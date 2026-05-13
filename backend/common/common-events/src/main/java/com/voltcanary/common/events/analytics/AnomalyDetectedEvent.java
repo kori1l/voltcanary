@@ -7,6 +7,7 @@ public record AnomalyDetectedEvent(
         UUID eventId,
         UUID deviceId,
         UUID anomalyId,
+        String type,
         String severity,
         double score,
         String description,

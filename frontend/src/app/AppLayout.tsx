@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearTokens } from "../api/client";
+import { BrandLogo } from "../components/BrandLogo";
 
 const navigation = [
   { to: "/dashboard", label: "Dashboard" },
@@ -18,7 +19,7 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">VoltCanary</div>
+        <BrandLogo />
         <nav className="nav">
           {navigation.map((item) => (
             <NavLink

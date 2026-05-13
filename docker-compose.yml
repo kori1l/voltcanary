@@ -43,6 +43,7 @@ x-java-app: &java-app
     TELEMETRY_SERVICE_URI: http://telemetry-service:8084
     ANALYTICS_SERVICE_URI: http://analytics-service:8085
     ALERT_SERVICE_URI: http://alert-service:8086
+    ML_SERVICE_URI: http://ml-service:8090
   depends_on:
     postgres:
       condition: service_healthy
@@ -349,6 +350,15 @@ services:
   alert-service:
     <<: *java-app
     command: sh -c "mvn -pl services/alert-service -am -DskipTests install && mvn -f services/alert-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ALERT_POSTGRES_DB: ${ALERT_POSTGRES_DB:-voltcanary_alerts}
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
     ports:
       - "${ALERT_SERVICE_PORT:-8086}:8086"
 
@@ -368,7 +378,7 @@ services:
     profiles:
       - app
     working_dir: /workspace/frontend
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    command: sh -c "test -d node_modules/.vite || npm ci; npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
     ports:

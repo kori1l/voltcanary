@@ -10,6 +10,11 @@ spring:
 app:
   kafka:
     consume-enabled: false
+    publish-enabled: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:true}
+  telemetry-service:
+    base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+  ml-service:
+    base-url: ${ML_SERVICE_URI:http://localhost:8090}
 
 server:
   port: 8085

@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RecommendationRepository extends JpaRepository<Recommendation, UUID> {
 
     List<Recommendation> findTop100ByDeviceIdOrderByCreatedAtDesc(UUID deviceId);
+
+    void deleteByDeviceId(UUID deviceId);
 }

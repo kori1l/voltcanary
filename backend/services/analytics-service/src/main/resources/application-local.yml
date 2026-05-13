@@ -2,3 +2,12 @@ spring:
   config:
     activate:
       on-profile: local
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:voltcanary}
+    username: ${POSTGRES_USER:voltcanary}
+    password: ${POSTGRES_PASSWORD:voltcanary}
+  jpa:
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true

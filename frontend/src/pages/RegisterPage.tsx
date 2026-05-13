@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { login, register } from "../auth/authApi";
 import { setTokens } from "../api/client";
+import { BrandLogo } from "../components/BrandLogo";
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export function RegisterPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <h1>VoltCanary</h1>
+        <BrandLogo size="large" />
         <p>Create an account</p>
         <form className="form-stack" onSubmit={onSubmit}>
           <label>

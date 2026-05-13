@@ -1,7 +1,7 @@
 package com.voltcanary.alert.consumer;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.voltcanary.alert.service.AlertService;
+import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -10,10 +10,17 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "app.kafka", name = "consume-enabled", havingValue = "true")
 public class RiskScoreChangedConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(RiskScoreChangedConsumer.class);
+    private final AlertService alertService;
 
-    @KafkaListener(topics = "risk-score.changed.v1", groupId = "${spring.kafka.consumer.group-id}")
-    public void consume(String eventPayload) {
-        log.info("Received risk-score.changed.v1 event: {}", eventPayload);
+    public RiskScoreChangedConsumer(AlertService alertService) {
+        this.alertService = alertService;
+    }
+
+    @KafkaListener(
+            topics = "risk-score.changed.v1",
+            groupId = "${spring.kafka.consumer.group-id}",
+            containerFactory = "riskScoreChangedKafkaListenerContainerFactory")
+    public void consume(RiskScoreChangedEvent event) {
+        alertService.handleRiskScoreChanged(event);
     }
 }

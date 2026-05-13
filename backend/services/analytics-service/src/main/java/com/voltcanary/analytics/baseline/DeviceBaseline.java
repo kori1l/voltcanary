@@ -22,4 +22,36 @@ public class DeviceBaseline {
 
     @Column(name = "calculated_at", nullable = false)
     private Instant calculatedAt;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public UUID getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(UUID deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getBaselineJson() {
+        return baselineJson;
+    }
+
+    public void setBaselineJson(String baselineJson) {
+        this.baselineJson = baselineJson;
+    }
+
+    public Instant getCalculatedAt() {
+        return calculatedAt;
+    }
+
+    public void setCalculatedAt(Instant calculatedAt) {
+        this.calculatedAt = calculatedAt;
+    }
 }

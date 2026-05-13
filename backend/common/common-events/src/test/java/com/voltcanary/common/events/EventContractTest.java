@@ -54,7 +54,7 @@ class EventContractTest {
         assertThat(new TelemetryReceivedEvent(eventId, deviceId, "source-1", now, Map.of(), now)).isNotNull();
         assertThat(new TelemetryValidatedEvent(eventId, deviceId, "source-1", now, Map.of(), List.of(), now))
                 .isNotNull();
-        assertThat(new AnomalyDetectedEvent(eventId, deviceId, UUID.randomUUID(), "HIGH", 0.91, "Spike", now))
+        assertThat(new AnomalyDetectedEvent(eventId, deviceId, UUID.randomUUID(), "POWER_SPIKE", "HIGH", 0.91, "Spike", now))
                 .isNotNull();
         assertThat(new RiskScoreChangedEvent(eventId, deviceId, 0.2, 0.7, "MEDIUM", now)).isNotNull();
         assertThat(new AlertCreatedEvent(eventId, UUID.randomUUID(), deviceId, "HIGH", "OPEN", "Voltage spike", now))

@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { setTokens } from "../api/client";
 import { login } from "../auth/authApi";
+import { BrandLogo } from "../components/BrandLogo";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -28,7 +29,7 @@ export function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
-        <h1>VoltCanary</h1>
+        <BrandLogo size="large" />
         <p>Sign in</p>
         <form className="form-stack" onSubmit={onSubmit}>
           <label>

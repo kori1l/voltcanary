@@ -9,7 +9,7 @@ spring:
 
 app:
   kafka:
-    consume-enabled: false
+    consume-enabled: ${ALERT_KAFKA_CONSUME_ENABLED:false}
 
 server:
   port: 8086

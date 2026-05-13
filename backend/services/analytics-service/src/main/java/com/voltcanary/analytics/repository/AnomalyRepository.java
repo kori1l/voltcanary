@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AnomalyRepository extends JpaRepository<Anomaly, UUID> {
 
     List<Anomaly> findTop100ByDeviceIdOrderByDetectedAtDesc(UUID deviceId);
+
+    void deleteByDeviceId(UUID deviceId);
 }

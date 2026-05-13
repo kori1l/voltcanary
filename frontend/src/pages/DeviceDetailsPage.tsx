@@ -1,15 +1,64 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import {
+  AnomalyResponse,
+  BaselineResponse,
+  getDeviceAnomalies,
+  getDeviceBaseline,
+  getDeviceRecommendations,
+  getDeviceRisk,
+  getLatestPrediction,
+  PredictionResponse,
+  recalculateAnalytics,
+  RecommendationResponse,
+  RiskResponse,
+} from "../analytics/analyticsApi";
 import { Device, getDevice } from "../devices/devicesApi";
-import { getLatestTelemetry, getTelemetryReadings, LatestTelemetry, TelemetryChart } from "../telemetry/telemetryApi";
+import {
+  getLatestTelemetry,
+  getTelemetryReadings,
+  LatestTelemetry,
+  sendTelemetryReading,
+  TelemetryChart,
+} from "../telemetry/telemetryApi";
 
 export function DeviceDetailsPage() {
   const { deviceId } = useParams();
   const [device, setDevice] = useState<Device | null>(null);
   const [latest, setLatest] = useState<LatestTelemetry | null>(null);
   const [chart, setChart] = useState<TelemetryChart | null>(null);
+  const [baseline, setBaseline] = useState<BaselineResponse | null>(null);
+  const [risk, setRisk] = useState<RiskResponse | null>(null);
+  const [anomalies, setAnomalies] = useState<AnomalyResponse[]>([]);
+  const [recommendations, setRecommendations] = useState<RecommendationResponse[]>([]);
+  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSendingTelemetry, setIsSendingTelemetry] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function loadAnalytics(currentDeviceId: string) {
+    try {
+      const [baselineResponse, riskResponse, anomaliesResponse, recommendationsResponse, predictionResponse] = await Promise.all([
+        getDeviceBaseline(currentDeviceId),
+        getDeviceRisk(currentDeviceId),
+        getDeviceAnomalies(currentDeviceId),
+        getDeviceRecommendations(currentDeviceId),
+        getLatestPrediction(currentDeviceId),
+      ]);
+      setBaseline(baselineResponse);
+      setRisk(riskResponse);
+      setAnomalies(anomaliesResponse);
+      setRecommendations(recommendationsResponse);
+      setPrediction(predictionResponse);
+    } catch {
+      setBaseline(null);
+      setRisk(null);
+      setAnomalies([]);
+      setRecommendations([]);
+      setPrediction(null);
+    }
+  }
 
   async function load() {
     if (!deviceId) {
@@ -31,6 +80,7 @@ export function DeviceDetailsPage() {
         setLatest(null);
         setChart(null);
       }
+      await loadAnalytics(deviceId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to load device");
     } finally {
@@ -50,6 +100,50 @@ export function DeviceDetailsPage() {
     const sourceId = localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001";
     return `curl -X POST http://localhost:8080/ingestion/readings -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\\"deviceId\\":\\"${deviceId}\\",\\"sourceId\\":\\"${sourceId}\\",\\"timestamp\\":\\"${new Date().toISOString()}\\",\\"metrics\\":{\\"activePowerW\\":840.2,\\"voltageV\\":230.1,\\"currentA\\":3.65,\\"energyWh\\":12450.7,\\"rssi\\":-61}}"`;
   }, [deviceId]);
+
+  async function sendTestTelemetry() {
+    if (!deviceId) {
+      return;
+    }
+    setIsSendingTelemetry(true);
+    setError(null);
+    try {
+      const sourceId = localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plud1";
+      await sendTelemetryReading({
+        deviceId,
+        sourceId,
+        timestamp: new Date().toISOString(),
+        metrics: {
+          activePowerW: 840.2,
+          voltageV: 230.1,
+          currentA: 3.65,
+          energyWh: 12450.7,
+          rssi: -61,
+        },
+      });
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to send test telemetry");
+    } finally {
+      setIsSendingTelemetry(false);
+    }
+  }
+
+  async function recalculateDeviceAnalytics() {
+    if (!deviceId) {
+      return;
+    }
+    setIsRecalculating(true);
+    setError(null);
+    try {
+      await recalculateAnalytics(deviceId);
+      await loadAnalytics(deviceId);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to recalculate analytics");
+    } finally {
+      setIsRecalculating(false);
+    }
+  }
 
   return (
     <>
@@ -84,6 +178,9 @@ export function DeviceDetailsPage() {
                 <h2>Power</h2>
                 <p>{latest ? `Latest sample ${new Date(latest.timestamp).toLocaleString()}` : "No telemetry yet"}</p>
               </div>
+              <button className="primary-button" type="button" onClick={() => void sendTestTelemetry()} disabled={isSendingTelemetry}>
+                {isSendingTelemetry ? "Sending..." : "Send test telemetry"}
+              </button>
             </div>
             {chart && chart.points.length > 0 ? (
               <PowerChart points={chart.points} />
@@ -95,17 +192,121 @@ export function DeviceDetailsPage() {
               </div>
             )}
           </section>
+
+          <section className="content-grid analytics-grid">
+            <div className="panel">
+              <div className="section-header">
+                <div>
+                  <h2>Risk</h2>
+                  <p>{risk ? `Calculated ${new Date(risk.calculatedAt).toLocaleString()}` : "No analytics yet"}</p>
+                </div>
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void recalculateDeviceAnalytics()}
+                  disabled={isRecalculating}
+                >
+                  {isRecalculating ? "Recalculating..." : "Recalculate"}
+                </button>
+              </div>
+
+              {risk ? (
+                <>
+                  <div className="risk-summary">
+                    <strong>{Math.round(risk.score)}</strong>
+                    <span>{risk.level}</span>
+                  </div>
+                  {risk.explanations.length > 0 ? (
+                    <ul className="plain-list">
+                      {risk.explanations.map((explanation) => (
+                        <li key={explanation}>{explanation}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="muted-text">No anomalies detected in the current analytics window.</p>
+                  )}
+                </>
+              ) : (
+                <div className="empty-state">
+                  <strong>No analytics yet</strong>
+                  <span>Recalculate analytics after telemetry arrives</span>
+                </div>
+              )}
+            </div>
+
+            <div className="panel">
+              <h2>Baseline</h2>
+              {baseline ? (
+                <div className="baseline-grid">
+                  <Metric label="Mean" value={baseline.mean} unit="W" />
+                  <Metric label="Median" value={baseline.median} unit="W" />
+                  <Metric label="P90" value={baseline.p90} unit="W" />
+                  <Metric label="Samples" value={baseline.sampleCount} unit="" />
+                </div>
+              ) : (
+                <p className="muted-text">No baseline calculated.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="panel analytics-grid">
+            <h2>ML Prediction</h2>
+            {prediction ? (
+              <div className="prediction-grid">
+                <Metric label="Model" valueText={prediction.modelVersion} />
+                <Metric label="Confidence" value={prediction.confidence * 100} unit="%" />
+                <Metric label="Anomaly score" value={prediction.anomalyScore} unit="" />
+                <Metric label="Degradation" value={prediction.degradationScore} unit="" />
+              </div>
+            ) : (
+              <p className="muted-text">No ML prediction calculated.</p>
+            )}
+          </section>
+
+          <section className="content-grid analytics-grid">
+            <div className="panel">
+              <h2>Anomalies</h2>
+              {anomalies.length > 0 ? (
+                <ul className="plain-list">
+                  {anomalies.map((anomaly) => (
+                    <li key={anomaly.id}>
+                      <strong>{anomaly.type}</strong>
+                      <span>{anomaly.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted-text">No anomalies detected.</p>
+              )}
+            </div>
+
+            <div className="panel">
+              <h2>Recommendations</h2>
+              {recommendations.length > 0 ? (
+                <ul className="plain-list">
+                  {recommendations.map((recommendation) => (
+                    <li key={recommendation.id}>
+                      <strong>{recommendation.title}</strong>
+                      <span>{recommendation.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted-text">No recommendations yet.</p>
+              )}
+            </div>
+          </section>
         </>
       ) : null}
     </>
   );
 }
 
-function Metric({ label, value, unit }: { label: string; value: number | undefined; unit: string }) {
+function Metric({ label, value, unit = "", valueText }: { label: string; value?: number; unit?: string; valueText?: string }) {
   return (
     <article className="metric-card">
       <span>{label}</span>
-      <strong>{value === undefined ? "No data" : `${value.toLocaleString()} ${unit}`}</strong>
+      <strong>{valueText ?? (value === undefined ? "No data" : `${value.toLocaleString()}${unit ? ` ${unit}` : ""}`)}</strong>
     </article>
   );
 }
