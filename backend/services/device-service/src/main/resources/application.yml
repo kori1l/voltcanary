@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: device-service
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+info:
+  app:
+    name: device-service
+    description: VoltCanary Device Service
+    version: 0.1.0

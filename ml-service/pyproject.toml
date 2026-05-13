@@ -1,0 +1,15 @@
+[project]
+name = "voltcanary-ml-service"
+version = "0.1.0"
+description = "ML service for VoltCanary"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "pydantic",
+  "pydantic-settings",
+  "httpx",
+]
+
+[tool.uvicorn]
+factory = false

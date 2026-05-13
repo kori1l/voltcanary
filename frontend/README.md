@@ -1,0 +1,3 @@
+# Frontend
+
+VoltCanary web application.

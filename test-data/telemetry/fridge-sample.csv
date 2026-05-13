@@ -1,0 +1,3 @@
+timestamp,device_id,power_watts,temperature_c
+2026-01-01T00:00:00Z,fridge-001,86.4,4.2
+2026-01-01T00:01:00Z,fridge-001,88.1,4.1

@@ -1,0 +1,426 @@
+Technical Requirements Document
+VoltCanary
+Predictive IoT Analytics Platform for Connected Devices
+Version 0.1 / Draft for Application Architecture Design
+Date: May 12, 2026
+
+Core idea: the platform collects real data from smart plugs and sensors, builds device behavior baselines, applies multiple analytical and forecasting models, and shows degradation, anomalies, failure risk, and user recommendations.
+ 
+1. General Project Description
+VoltCanary is a microservice-based IoT platform for collecting, storing, and analyzing telemetry from household, commercial, and small industrial devices. In the first stage, the platform works with smart plug data that measures the energy consumption of connected appliances. Later, the platform is extended with additional sensors: temperature, humidity, pressure, vibration, door/open-state sensors, water-leak sensors, air-quality sensors, and other parameters.
+The main product value is not simply to show a consumption chart, but to help the user understand how a device behavior is changing, whether there are signs of degradation, whether energy costs have increased, whether anomalies have appeared, and whether maintenance is recommended.
+Core requirement position: analytics must be built for all devices connected through smart plugs, but the depth of conclusions, forecast accuracy, and recommendation set depend on the device type, amount of historical data, and available additional sensors.
+Parameter	Description
+Product type	IoT + predictive analytics + user web account
+First data source	Smart plugs with power/energy measurement
+Source expansion	Temperature, humidity, pressure, vibration, leak, CO2, door state, external weather
+Key feature	Separate ML/Data Science microservice with model selection and data preparation tools
+Architecture	Microservice-based, event-driven, with server-side data storage
+User interface	User account with charts, forecasts, risk score, anomalies, and recommendations
+Limitation	The system must not promise exact failure diagnosis without enough data and confirmation
+
+2. Project Goals
+•	Product goal: give users a clear tool for early detection of device anomalies and degradation.
+•	Technical goal: build a production-like microservice system with an ingestion pipeline, time-series storage, analytics, an ML service, alerts, and a user web cabinet.
+•	ML/Data goal: create a service that supports data preparation, feature engineering, model selection, training, quality evaluation, and inference.
+•	Portfolio goal: create a strong senior-level project demonstrating Java backend, distributed systems, IoT, analytics, Kubernetes, and CI/CD.
+•	Business goal: lay the foundation for a product that can evolve toward B2C, small business, and B2B predictive maintenance.
+3. Problem and Value
+Typical smart plug applications show current power and total consumption. This is not enough to understand the state of a device. The user sees numbers but does not get answers to questions such as: has the device started working worse, is consumption growing, is there a failure risk, and should a technician be called?
+VoltCanary must turn raw measurements into useful engineering conclusions: normal behavior baseline, trends, regression, anomalies, risk score, forecast, and recommendations.
+Raw information	User value
+Air conditioner power increased	The device may be less efficient; check the filter, operating conditions, or call a technician if the anomaly repeats
+The fridge started switching on more often	Possible seal, ventilation, door, or cooling issue; the device should be checked
+A pump consumes more energy for the same runtime	Possible increased load, clogging, pressure change, or mechanical degradation
+A boiler started heating water for longer	Possible scale buildup, mode change, or heating element degradation
+Data stopped arriving	The device or smart plug is offline; the user should receive an alert
+
+4. Product Boundaries and Principles
+•	The platform must analyze all connected devices, but it must not promise identical accuracy for different appliance types.
+•	All telemetry data is stored on the server side and is available to the user through the web account.
+•	The first analytics level is based on smart plug data: active power, voltage, current, energy, relay state, online/offline.
+•	Additional sensors increase the confidence score and the depth of recommendations.
+•	Diagnostics must be probabilistic and explainable: the system reports signs, deviations, and recommendations, not an exact root cause without confirmation.
+•	The ML service is a key feature: the user/administrator/analyst must have tools for model selection, data preparation, and quality comparison.
+•	The architecture must be extensible: new devices, sensors, data sources, and models can be added without rewriting the core.
+5. Target Audience
+Segment	Examples	Main pain point
+B2C / household users	Air conditioner, fridge, boiler, heater, washing machine	The user does not understand why consumption has increased and when maintenance is needed
+Small business	Cafes, apartments, workshops, offices, small clinics, veterinary clinics	Product spoilage, equipment downtime, night failures, lack of control
+DIY / smart home	Home Assistant users, makers, engineers	They need more analytics than standard smart plug apps provide
+B2B / small physical assets	Pumps, fans, compressors, mini-machines, network cabinets	They need early warning before failure or overload
+
+6. Device Types and Analytics Levels
+The platform must support a universal Generic Appliance mode and specialized analytics profiles for different device types. Each device type should define possible metrics, rules, models, features, and recommendations.
+Device type	Power-only analytics	What improves accuracy
+Generic Appliance	Charts, baseline, trends, anomalies, consumption forecast	Any additional sensors
+Air Conditioner	Work/compressor cycles, energy growth over time, runtime change	Room temperature, external weather, humidity, mode
+Fridge / Freezer	Switching frequency, cycle duration, night consumption	Internal temperature, door sensor, room temperature
+Boiler	Heating time, energy per cycle, unusual cycles	Water temperature, room temperature, leak sensor
+Pump / Motor	Load peaks, runtime, consumption increase	Pressure, vibration, motor temperature
+Heater	Switching cycles, total consumption, long runtime periods	Room temperature, external temperature
+Washing Machine	Cycle stages, duration, consumption per cycle	Vibration, leak sensor, door state
+Server / NAS	Consumption, uptime, unusual peaks	Temperature, ping, SMART/API metrics
+3D Printer	Work status, cycle completion, unusual power usage	Temperature, camera, vibration
+
+7. Analytics Confidence Levels
+Level	Data	Capabilities	Limitations
+Level 1: Power-only	Smart plug only	Charts, baseline, trends, cycles, anomalies, general risk score	Cannot reliably diagnose a specific failure
+Level 2: Power + Environment	Plug + temperature/humidity/weather	Efficiency estimation based on environmental conditions	Degradation causes are still probabilistic
+Level 3: Power + Device-specific sensors	Plug + pressure/vibration/door/internal temperature	More accurate models and recommendations by device type	Requires sensor setup and data validation
+Level 4: Confirmed maintenance feedback	Data + maintenance/repair feedback	Model and recommendation improvement through feedback loop	Requires user discipline or a business process
+
+8. Functional Requirements
+8.1. Users and Web Account
+•	User registration and login.
+•	User profile and notification settings.
+•	Create locations: apartment, house, office, cafe, workshop, server room, other.
+•	Device list grouped by locations.
+•	General dashboard: online/offline, number of anomalies, high-risk devices, total consumption.
+•	Device page: charts, baseline, forecast, risk score, anomalies, recommendations, events, maintenance history.
+•	Alerts section: new / acknowledged / resolved.
+•	Reports section: daily, weekly, monthly, CSV/PDF export.
+8.2. Device Management
+•	Manually add a device.
+•	Select a device type from a directory or use Custom Device.
+•	Bind a data source: smart plug, sensor, CSV, API, MQTT topic.
+•	Configure thresholds and allowed ranges.
+•	Select analytics mode: basic, advanced, experimental.
+•	View data source status and the latest message.
+•	Maintenance history: cleaning, repair, part replacement, technician check.
+8.3. Data Ingestion
+The MVP must support several data ingestion methods so that the project is not dependent on one smart plug vendor.
+Source	Priority	Purpose
+REST ingestion API	MVP	Quick start, test data, integrations
+MQTT ingestion	MVP / v1	Native IoT stream from plugs and sensors
+CSV import	MVP	Upload historical data and datasets for ML
+Webhook/WebSocket	Later	Integrations with cloud APIs of devices
+Home Assistant integration	Later	Access to real smart home data
+Device vendor adapters	Later	Shelly, Sonoff, Tuya, and other devices
+
+8.4. Minimum Telemetry Format
+{
+  "deviceId": "device-123",
+  "sourceId": "plug-001",
+  "timestamp": "2026-05-12T12:30:00Z",
+  "metrics": {
+    "activePowerW": 840.2,
+    "voltageV": 230.1,
+    "currentA": 3.65,
+    "energyWh": 12450.7,
+    "relayState": "ON",
+    "rssi": -61
+  }
+}
+8.5. Charts and Visualization
+•	Active power chart over time.
+•	Energy consumption chart for a selected period.
+•	Current and voltage charts.
+•	Device cycle chart: start, work, stop.
+•	Baseline and baseline deviation chart.
+•	Regression trend chart.
+•	Forecast line for future consumption or feature change.
+•	Highlight anomalous points and periods.
+•	Compare periods: today/yesterday, week/week, month/month.
+•	For additional sensors: temperature, humidity, pressure, vibration, CO2, leak, and other metrics.
+8.6. Baseline and Feature Extraction
+•	Build an individual baseline for each device.
+•	Support baselines by time of day, day of week, and season.
+•	Calculate mean, median, and percentile values.
+•	Extract device work cycles.
+•	Calculate energy per cycle.
+•	Calculate cycle duration and idle time between cycles.
+•	Calculate start/stop frequency.
+•	Detect missing data, duplicate data, and out-of-order readings.
+•	Calculate features for ML models: rolling mean, rolling std, slope, peaks, runtime, idle time, duty cycle.
+8.7. Anomalies and Risk Score
+•	Detect sudden power spikes.
+•	Detect unusually long work cycles.
+•	Detect too frequent on/off switching.
+•	Detect consumption growth relative to baseline.
+•	Detect missing expected activity.
+•	Detect offline status of a data source.
+•	Calculate device risk score from 0 to 100.
+•	Classify risk level: LOW, MEDIUM, HIGH, CRITICAL.
+•	Explain the factors that affected the risk score.
+•	Store risk score history over time.
+9. ML/Data Science Microservice as a Key Feature
+The ML/Data Science service is a separate microservice and one of the core differentiating capabilities of the platform. It is responsible not only for inference but also for data preparation, model selection, training, quality evaluation, model comparison, versioning, and explainability of results.
+9.1. Main Responsibilities of the ML Service
+•	Receive prepared and raw time-series data from the Telemetry Service / storage.
+•	Clean data: remove outliers, fill missing values, smooth data, resample time series.
+•	Build datasets and feature sets for different device types.
+•	Support multiple selectable models.
+•	Allow model training and retraining to be started.
+•	Evaluate model quality on historical data.
+•	Select a default model for a device or device type.
+•	Perform batch inference and near-real-time inference.
+•	Return forecast, anomaly score, degradation score, confidence score, and explanations.
+•	Store model versions, training parameters, and experiment results.
+•	Accept user feedback about real maintenance events and false positives.
+9.2. Data Preparation Tools
+Tool	Description
+Data quality report	Shows missing values, duplicates, outliers, invalid values, and out-of-order readings
+Resampling	Normalizes the time series to a fixed step: 1s, 10s, 1m, 5m, 1h
+Smoothing	Moving average, exponential smoothing, median filter
+Cycle extraction	Extracts device work cycles from the power signal
+Feature engineering	Rolling stats, slope, peaks, duty cycle, energy per cycle, runtime, idle time
+Context join	Combines power data with temperature, humidity, weather, and device-specific sensors
+Labeling tools	Labels periods as normal, anomaly, maintenance, failure, unknown
+Dataset versioning	Versions datasets, feature sets, and preparation parameters
+
+9.3. Model Catalog
+The platform must support multiple classes of models. In the first stage, some models may be implemented as simple algorithms and some as extension points. The important requirement is to define an interface that allows model selection per device, result comparison, and model replacement without rewriting the application.
+Model class	Examples	Purpose
+Regression models	Linear, Ridge, Lasso, Polynomial, Random Forest, Gradient Boosting	Trends, consumption forecasts, factor influence estimation
+Time-series forecasting	Moving average, Exponential smoothing, ARIMA/SARIMA-like, Prophet-like, model adapters	Forecast future values and seasonality
+Anomaly detection	Z-score, IQR, Isolation Forest, One-Class SVM, robust thresholding	Detect deviations from normal behavior
+Change point detection	CUSUM, rolling statistics, Bayesian/heuristic adapters	Detect when device behavior changed
+Classification	Logistic Regression, Random Forest, Gradient Boosting	Classify state: normal / warning / anomaly
+Deep learning / experimental	Autoencoder, LSTM/GRU adapters	Advanced analysis of long time series after enough data is accumulated
+Rule-based models	Device-specific rules	Safe baseline for early versions and explainable recommendations
+
+9.4. Model Selection
+•	Each device must have a default model.
+•	Each device type must have a recommended set of models.
+•	In normal user mode, the user sees only results and confidence.
+•	An administrator/analyst can choose a model, run comparisons, and review quality metrics.
+•	The system must support Auto-select mode: selecting the best model based on historical data metrics.
+•	The system must support Manual mode: a user/administrator pins a specific model.
+•	When a model changes, results must keep modelVersion for reproducibility.
+9.5. Model Quality Metrics
+Task type	Metrics
+Regression / forecasting	MAE, RMSE, MAPE, R2, error distribution
+Anomaly detection	Precision, recall, false positive rate, anomaly review feedback
+Classification	Accuracy, precision, recall, F1, confusion matrix
+Operational usefulness	Number of useful alerts, share of confirmed issues, time to detection
+Confidence	History length, data quality, additional sensors, pattern stability
+
+9.6. ML Service Output
+{
+  "deviceId": "device-123",
+  "modelVersion": "ac-regression-v3",
+  "calculatedAt": "2026-05-12T14:00:00Z",
+  "forecast": [
+    {"timestamp": "2026-05-13T00:00:00Z", "expectedPowerW": 790.0}
+  ],
+  "anomalyScore": 0.82,
+  "degradationScore": 0.67,
+  "riskLevel": "HIGH",
+  "confidence": 0.71,
+  "explanations": [
+    "Average runtime increased by 22% over the last 14 days",
+    "Energy per cycle is above the historical baseline",
+    "Pattern is stable across the last 5 working cycles"
+  ]
+}
+9.7. Feedback Loop
+The user must be able to confirm or reject the system output. This is required to improve models and reduce false positives.
+•	The user marks a recommendation as useful / not useful.
+•	The user marks an event as a real issue / false positive.
+•	The user adds a maintenance event: filter cleaning, repair, replacement, inspection.
+•	The system compares telemetry before and after maintenance.
+•	The system links confirmed maintenance with subsequent telemetry changes.
+•	The ML service uses confirmed events as labels for future training.
+10. Recommendations and Alerts
+Alert type	Example message
+Offline	No data has been received from the smart plug for 30 minutes. Check power or connectivity.
+Power spike	A sudden power spike above the normal range was detected.
+Long cycle	The device is working longer than usual for this time of day.
+Consumption growth	Average consumption increased by 18% relative to the baseline.
+High degradation risk	The device behavior has changed. A check is recommended.
+Sensor conflict	Consumption is increasing, but temperature/pressure is not changing as expected.
+Maintenance reminder	A long time has passed since the last maintenance event; anomaly risk is increasing.
+
+10.1. Example of Careful Wording
+Do not use:
+"The air conditioner definitely has a refrigerant leak."
+
+Use:
+"The air conditioner behavior has changed: work cycle duration increased,
+and energy consumption is higher under similar conditions.
+Loss of efficiency is possible. Check the filter and operating mode,
+and contact a technician if the anomaly repeats."
+11. Microservice Architecture
+The system must be designed as a set of microservices. Kubernetes and CI/CD are the production-like deployment method, not the meaning of the product itself.
+Service	Responsibility
+API Gateway	Single entry point, routing, rate limiting, auth checks
+Auth Service	Users, roles, JWT/session, access security
+Account/Tenant Service	Locations, organizations, account settings
+Device Service	Devices, device types, sensors, data sources, analytics configuration
+Ingestion Service	REST/MQTT/CSV data ingestion, initial validation, event publication
+Telemetry Service	Normalization, quality flags, time-series storage, out-of-order handling
+Analytics Orchestrator	Runs baseline, feature extraction, ML-service calls, result aggregation
+ML/Data Science Service	Data preparation, models, training, inference, model registry, evaluation
+Recommendation Service	Rules and recommendation templates by device type
+Alert Service	Alert creation, deduplication, acknowledgement, escalation
+Notification Service	Email, Telegram, web notifications, later push notifications
+Report Service	Daily/weekly/monthly reports, CSV/PDF export
+Frontend / Web Cabinet	User account, charts, device and analytics management
+
+11.1. Data Flow
+Smart Plug / Sensor / CSV / API
+        ↓
+Ingestion Service
+        ↓
+Message Broker
+        ↓
+Telemetry Service -> Time-Series Storage
+        ↓
+Analytics Orchestrator
+        ↓
+ML/Data Science Service
+        ↓
+Risk Score / Forecast / Anomaly / Explanation
+        ↓
+Recommendation Service + Alert Service
+        ↓
+User Dashboard + Notifications
+11.2. Internal Events
+Event	Purpose
+TelemetryReceived	Raw data received from a source
+TelemetryValidated	Data validated and normalized
+DeviceStatusChanged	Device became online/offline or changed state
+BaselineUpdated	Device baseline updated
+FeaturesCalculated	Features for the model calculated
+ModelInferenceCompleted	ML service returned forecast/anomalies/risk score
+AnomalyDetected	An anomaly was detected
+RiskScoreChanged	Device risk level changed
+RecommendationCreated	A recommendation was created
+AlertCreated	An alert was created
+MaintenanceLogged	The user added a maintenance event
+
+12. Data Storage
+Storage	Purpose
+PostgreSQL	Users, devices, settings, alerts, recommendations, reports, maintenance history
+Time-series DB	Sensor readings and aggregates: TimescaleDB / InfluxDB / ClickHouse / PostgreSQL partitioning
+Object Storage	CSV uploads, exports, datasets, model artifacts, reports
+Message Broker	Kafka/RabbitMQ for internal events, MQTT broker for IoT input
+Cache	Redis for short-lived aggregates, sessions, rate limiting, latest readings
+Model Registry Storage	Model metadata, versions, parameters, quality metrics, artifacts
+
+13. Core Entities
+Entity	Key fields
+User	id, email, passwordHash, role, createdAt
+Account/Tenant	id, ownerId, plan, settings
+Location	id, accountId, name, type, address/timezone
+Device	id, accountId, locationId, name, type, manufacturer, model, status
+Sensor	id, deviceId, sensorType, unit, source, status
+DataSource	id, deviceId, sourceType, protocol, credentialsRef, status
+TelemetryReading	id, deviceId, sensorId, timestamp, metric, value, unit, quality, source
+DeviceBaseline	id, deviceId, metric, period, baselineValue, confidence, updatedAt
+FeatureSet	id, deviceId, version, window, features, createdAt
+ModelDefinition	id, type, algorithm, hyperparameters, applicableDeviceTypes
+ModelRun	id, modelId, datasetVersion, metrics, status, startedAt, finishedAt
+PredictionResult	id, deviceId, modelVersion, forecast, anomalyScore, degradationScore, confidence
+Anomaly	id, deviceId, type, severity, metric, value, expectedValue, detectedAt
+RiskScore	id, deviceId, score, level, reasons, modelVersion, calculatedAt
+Recommendation	id, deviceId, type, message, priority, createdAt
+Alert	id, deviceId, severity, status, message, createdAt, resolvedAt
+MaintenanceEvent	id, deviceId, type, note, confirmedIssue, createdAt
+
+14. API Requirements
+API group	Example endpoints
+Auth	POST /auth/register, POST /auth/login, POST /auth/refresh
+Devices	GET /devices, POST /devices, GET /devices/{id}, PATCH /devices/{id}
+Telemetry	POST /ingestion/readings, GET /devices/{id}/telemetry
+Analytics	GET /devices/{id}/baseline, GET /devices/{id}/forecast, GET /devices/{id}/risk
+ML	POST /ml/datasets, POST /ml/train, GET /ml/models, POST /ml/inference
+Alerts	GET /alerts, POST /alerts/{id}/ack, POST /alerts/{id}/resolve
+Reports	GET /reports/monthly, POST /reports/export
+Feedback	POST /devices/{id}/maintenance, POST /recommendations/{id}/feedback
+
+15. Non-Functional Requirements
+Category	Requirement
+Scalability	The system must scale by number of users, devices, and reading frequency
+Reliability	Do not lose data during short failures; support retry, idempotency, duplicate detection
+Data quality	Each reading must have quality flags and source metadata
+Security	User data isolation, HTTPS, secure credential storage, audit log
+Privacy	The user must understand what data is collected and how it is used
+Observability	Logs, metrics, traces, health checks, dashboards, system error alerts
+Performance	Charts must load quickly using aggregates and downsampling
+Maintainability	Services must have clear boundaries, contract APIs, and tests
+Deployment	Docker Compose for local development; Kubernetes for a production-like environment
+CI/CD	Pipeline: tests, build, Docker images, security checks, deploy to stage/prod-like
+
+16. MVP and Development Stages
+16.1. MVP 1 — Basic Platform
+•	User registration and web account.
+•	Add Generic Appliance device.
+•	REST ingestion of smart plug data.
+•	Store power readings.
+•	Power and consumption charts.
+•	Simple baseline.
+•	Linear trend / regression.
+•	2–3 anomaly types.
+•	Rule-based risk score.
+•	Simple recommendations.
+•	Docker Compose.
+16.2. MVP 2 — ML/Data Science Service
+•	Separate ML service.
+•	Data preparation pipeline.
+•	Feature extraction for power time series.
+•	Model catalog: regression + anomaly detection + rule-based.
+•	Model training API.
+•	Model evaluation and comparison.
+•	Model registry and modelVersion.
+•	Forecast/risk/anomaly inference.
+•	Show explanations in the user account.
+16.3. MVP 3 — Device-Specific Profiles
+•	Profiles: Air Conditioner, Fridge, Boiler, Pump.
+•	Work cycle extraction.
+•	Energy per cycle.
+•	Device-specific recommendations.
+•	Telegram/email alerts.
+•	CSV import/export.
+•	Feedback loop: the user confirms maintenance or false positives.
+16.4. MVP 4 — Additional Sensors and Production-Like Setup
+•	MQTT ingestion.
+•	Temperature/humidity/pressure/vibration as additional metrics.
+•	Correlation of power data with context.
+•	Kafka/internal broker.
+•	Kubernetes deployment.
+•	Observability stack.
+•	CI/CD pipeline.
+•	Load testing and fault scenarios.
+17. Acceptance Criteria for Version 0.1
+1.	The user can register and log in to the web account.
+2.	The user can add a device and select Generic Appliance type.
+3.	The system accepts telemetry through a REST API.
+4.	Readings are saved in storage.
+5.	The user can see power and consumption charts.
+6.	The system builds a normal behavior baseline.
+7.	The system builds a regression trend.
+8.	The system detects at least 2 anomaly types.
+9.	The system calculates risk score.
+10.	The system shows risk score explanation.
+11.	The system creates a recommendation.
+12.	The system supports a basic ML service or a stub with an agreed contract.
+13.	The project runs locally through Docker Compose.
+14.	The project has a README, architecture diagram, and data-flow description.
+18. Risks and Limitations
+Risk	Mitigation
+Users expect exact failure diagnosis	Use probabilistic wording, confidence score, and explanations
+One smart plug does not provide enough data	Add analytics levels and additional sensors
+Different device types behave too differently	Introduce device profiles and Generic Appliance mode
+Too many false positives	Feedback loop, alert deduplication, sensitivity settings
+ML is too complex at the start	Start with rule-based + regression + simple anomaly detection, but define the ML service from the beginning
+Dependency on a specific smart plug vendor	Start with REST/CSV/MQTT and an adapter layer
+Large volume of time-series data	Aggregates, downsampling, retention policies, time-series DB
+Security and privacy issues	Tenant isolation, secure credentials, audit log, HTTPS
+
+19. Out of Scope for the First Version
+•	Mobile application.
+•	Automatic appliance control.
+•	Guaranteed diagnosis of specific failures.
+•	Certified industrial or medical diagnostics.
+•	Integration with all smart plug manufacturers.
+•	Full billing/subscription system.
+•	Complex deep learning models as a mandatory MVP requirement.
+•	Device and sensor marketplace.
+20. Final Requirements Summary
+Develop a microservice-based predictive IoT analytics platform that collects data from smart plugs and additional sensors, stores telemetry on the server, builds charts, baselines, regression models, and forecasts, detects anomalies, calculates device degradation risk, and shows explainable recommendations to the user through a web account. A separate ML/Data Science microservice must support data preparation, feature engineering, model selection, training, quality evaluation, inference, model registry, and feedback loop. Analytics must work for all connected devices, but accuracy and depth of conclusions must depend on device type, data history, and available additional sensors.
+21. Short README Description
+VoltCanary is a predictive IoT analytics platform for connected appliances and small physical assets.
+
+It collects telemetry from smart plugs and sensors, builds a baseline of normal behavior, detects anomalies, trains and compares multiple analytical models, calculates degradation risk, and provides users with charts, alerts, forecasts, and maintenance recommendations.

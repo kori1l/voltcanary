@@ -1,0 +1,59 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Java / Maven
+target/
+**/target/
+.mvn/timing.properties
+
+# Node / frontend
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.vite/
+coverage/
+
+# Python
+.venv/
+**/.venv/
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Docker / local volumes
+.docker/
+docker-data/
+postgres-data/
+timescale-data/
+redis-data/
+minio-data/
+
+# Generated reports
+reports/
+*.hprof

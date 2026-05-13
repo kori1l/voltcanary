@@ -1,0 +1,6 @@
+{
+  "deviceId": "generic-appliance-001",
+  "timestamp": "2026-01-01T00:00:00Z",
+  "powerWatts": 120.5,
+  "status": "normal"
+}
