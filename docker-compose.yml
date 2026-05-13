@@ -26,6 +26,7 @@ x-java-app: &java-app
     POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
     POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    JWT_SECRET: ${JWT_SECRET:-change_me}
     TIMESCALE_HOST: timescaledb
     TIMESCALE_PORT: 5432
     TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
@@ -36,6 +37,12 @@ x-java-app: &java-app
     MINIO_ENDPOINT: http://minio:9000
     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+    IDENTITY_SERVICE_URI: http://identity-service:8081
+    DEVICE_SERVICE_URI: http://device-service:8082
+    INGESTION_SERVICE_URI: http://ingestion-service:8083
+    TELEMETRY_SERVICE_URI: http://telemetry-service:8084
+    ANALYTICS_SERVICE_URI: http://analytics-service:8085
+    ALERT_SERVICE_URI: http://alert-service:8086
   depends_on:
     postgres:
       condition: service_healthy
@@ -299,6 +306,25 @@ services:
   device-service:
     <<: *java-app
     command: sh -c "mvn -pl services/device-service -am -DskipTests install && mvn -f services/device-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DEVICE_POSTGRES_DB: ${DEVICE_POSTGRES_DB:-voltcanary_device}
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: 5432
+      TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
+      TIMESCALE_USER: ${TIMESCALE_USER:-voltcanary}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD:-change_me}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
     ports:
       - "${DEVICE_SERVICE_PORT:-8082}:8082"
 

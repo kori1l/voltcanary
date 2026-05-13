@@ -28,4 +28,4 @@ info:
 
 app:
   kafka:
-    consume-enabled: false
+    consume-enabled: true

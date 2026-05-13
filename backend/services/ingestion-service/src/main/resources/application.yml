@@ -25,4 +25,9 @@ info:
 
 app:
   kafka:
-    publish-enabled: false
+    publish-enabled: true
+  idempotency:
+    redis-enabled: false
+    ttl: PT24H
+  device-service:
+    base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}

@@ -14,12 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceAnalyticsConfigController {
 
     @GetMapping
-    public Map<String, String> get(@PathVariable UUID deviceId) {
+    public Map<String, String> get(@PathVariable("deviceId") UUID deviceId) {
         return Map.of("message", "get analytics config endpoint is not implemented yet");
     }
 
     @PatchMapping
-    public Map<String, String> update(@PathVariable UUID deviceId, @RequestBody Map<String, Object> request) {
+    public Map<String, String> update(@PathVariable("deviceId") UUID deviceId, @RequestBody Map<String, Object> request) {
         return Map.of("message", "update analytics config endpoint is not implemented yet");
     }
 }

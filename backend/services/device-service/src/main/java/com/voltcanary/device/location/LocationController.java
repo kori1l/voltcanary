@@ -1,7 +1,9 @@
 package com.voltcanary.device.location;
 
+import com.voltcanary.device.security.AuthenticatedUser;
+import com.voltcanary.device.security.JwtService;
+import jakarta.validation.Valid;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,28 +19,49 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/locations")
 public class LocationController {
 
+    private final LocationService locationService;
+    private final JwtService jwtService;
+
+    public LocationController(LocationService locationService, JwtService jwtService) {
+        this.locationService = locationService;
+        this.jwtService = jwtService;
+    }
+
     @PostMapping
-    public Map<String, String> create(@RequestBody Map<String, Object> request) {
-        return Map.of("message", "create location endpoint is not implemented yet");
+    public LocationResponse create(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @Valid @RequestBody LocationRequest request) {
+        return locationService.create(user(authorization), request);
     }
 
     @GetMapping
-    public List<Map<String, String>> list() {
-        return List.of();
+    public List<LocationResponse> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return locationService.list(user(authorization));
     }
 
     @GetMapping("/{id}")
-    public Map<String, String> get(@PathVariable UUID id) {
-        return Map.of("message", "get location endpoint is not implemented yet");
+    public LocationResponse get(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") UUID id) {
+        return locationService.get(user(authorization), id);
     }
 
     @PatchMapping("/{id}")
-    public Map<String, String> update(@PathVariable UUID id, @RequestBody Map<String, Object> request) {
-        return Map.of("message", "update location endpoint is not implemented yet");
+    public LocationResponse update(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") UUID id,
+            @Valid @RequestBody LocationRequest request) {
+        return locationService.update(user(authorization), id, request);
     }
 
     @DeleteMapping("/{id}")
-    public Map<String, String> delete(@PathVariable UUID id) {
-        return Map.of("message", "delete location endpoint is not implemented yet");
+    public void delete(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") UUID id) {
+        locationService.delete(user(authorization), id);
+    }
+
+    private AuthenticatedUser user(String authorization) {
+        return jwtService.parseBearerToken(authorization);
     }
 }

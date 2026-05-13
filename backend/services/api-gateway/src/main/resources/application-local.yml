@@ -27,32 +27,32 @@ spring:
                 allow-credentials: true
           routes:
             - id: identity-service
-              uri: http://localhost:8081
+              uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
               predicates:
                 - Path=/auth/**
 
             - id: device-service
-              uri: http://localhost:8082
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
               predicates:
                 - Path=/devices/**,/locations/**,/device-types/**
 
             - id: ingestion-service
-              uri: http://localhost:8083
+              uri: ${INGESTION_SERVICE_URI:http://localhost:8083}
               predicates:
                 - Path=/ingestion/**
 
             - id: telemetry-service
-              uri: http://localhost:8084
+              uri: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
               predicates:
                 - Path=/telemetry/**
 
             - id: analytics-service
-              uri: http://localhost:8085
+              uri: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
               predicates:
                 - Path=/analytics/**
 
             - id: alert-service
-              uri: http://localhost:8086
+              uri: ${ALERT_SERVICE_URI:http://localhost:8086}
               predicates:
                 - Path=/alerts/**
 
@@ -60,3 +60,9 @@ logging:
   level:
     com.voltcanary.gateway: INFO
     org.springframework.cloud.gateway: INFO
+IDENTITY_SERVICE_URI: http://identity-service:8081
+DEVICE_SERVICE_URI: http://device-service:8082
+INGESTION_SERVICE_URI: http://ingestion-service:8083
+TELEMETRY_SERVICE_URI: http://telemetry-service:8084
+ANALYTICS_SERVICE_URI: http://analytics-service:8085
+ALERT_SERVICE_URI: http://alert-service:8086

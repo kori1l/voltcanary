@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface DataSourceRepository extends JpaRepository<DataSource, UUID> {
 
     List<DataSource> findByDeviceId(UUID deviceId);
+
+    boolean existsByDeviceIdAndName(UUID deviceId, String name);
 }

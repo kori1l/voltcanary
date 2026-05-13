@@ -24,7 +24,7 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
         long startedAt = System.currentTimeMillis();
 
         ServerWebExchange mutatedExchange = exchange.mutate()
-                .request(request -> request.header(CORRELATION_ID_HEADER, correlationId))
+                .request(request -> request.headers(headers -> headers.set(CORRELATION_ID_HEADER, correlationId)))
                 .build();
 
         mutatedExchange.getResponse().beforeCommit(() -> {

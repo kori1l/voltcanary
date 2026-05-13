@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { clearTokens } from "../api/client";
 
 const navigation = [
   { to: "/dashboard", label: "Dashboard" },
@@ -7,6 +8,13 @@ const navigation = [
 ];
 
 export function AppLayout() {
+  const navigate = useNavigate();
+
+  function logout() {
+    clearTokens();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -22,6 +30,9 @@ export function AppLayout() {
             </NavLink>
           ))}
         </nav>
+        <button className="ghost-button sidebar-logout" type="button" onClick={logout}>
+          Logout
+        </button>
       </aside>
       <main className="main-content">
         <Outlet />

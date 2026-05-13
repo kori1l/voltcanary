@@ -1,6 +1,66 @@
 spring:
   application:
     name: api-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origins:
+                  - http://localhost:3000
+                allowed-methods:
+                  - GET
+                  - POST
+                  - PATCH
+                  - PUT
+                  - DELETE
+                  - OPTIONS
+                allowed-headers:
+                  - Authorization
+                  - Content-Type
+                  - X-Correlation-Id
+                exposed-headers:
+                  - X-Correlation-Id
+                allow-credentials: true
+          routes:
+            - id: identity-service
+              uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+              predicates:
+                - Path=/auth/**
+            - id: device-service-locations
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/locations/**
+            - id: device-service-devices
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/devices/**
+            - id: device-service-types
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/device-types/**
+            - id: ingestion-service
+              uri: ${INGESTION_SERVICE_URI:http://localhost:8083}
+              predicates:
+                - Path=/ingestion/**
+            - id: telemetry-service
+              uri: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+              predicates:
+                - Path=/telemetry/**
+            - id: analytics-service
+              uri: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+              predicates:
+                - Path=/analytics/**
+            - id: alert-service
+              uri: ${ALERT_SERVICE_URI:http://localhost:8086}
+              predicates:
+                - Path=/alerts/**
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change_me}
 
 server:
   port: 8080

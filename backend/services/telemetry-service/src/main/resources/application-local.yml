@@ -2,3 +2,13 @@ spring:
   config:
     activate:
       on-profile: local
+  datasource:
+    url: jdbc:postgresql://${TIMESCALE_HOST:localhost}:${TIMESCALE_PORT:5433}/${TIMESCALE_DB:voltcanary_telemetry}
+    username: ${TIMESCALE_USER:voltcanary}
+    password: ${TIMESCALE_PASSWORD:change_me}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+  flyway:
+    enabled: true
