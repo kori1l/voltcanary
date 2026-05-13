@@ -13,7 +13,10 @@ uvicorn app.main:app --reload --port 8090
 ## Endpoints
 
 - `GET /health`
-- `GET /ml/models`
-- `POST /ml/inference`
-- `POST /ml/train`
-- `GET /ml/runs/{id}`
+- `GET /models`
+- `POST /inference`
+- `POST /train`
+- `GET /runs/{id}`
+
+The same ML endpoints are also exposed under `/ml` for compatibility, for
+example `GET /ml/models` and `POST /ml/inference`.

@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: voltcanary-apps
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - api-gateway:8080
+          - identity-service:8081
+          - device-service:8082
+          - ingestion-service:8083
+          - telemetry-service:8084
+          - analytics-service:8085
+          - alert-service:8086
+
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets:
+          - redpanda:9644

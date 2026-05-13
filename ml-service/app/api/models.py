@@ -2,7 +2,7 @@ from app.schemas.model import ModelSummary
 from app.services.model_registry_service import ModelRegistryService
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/ml", tags=["models"])
+router = APIRouter(tags=["models"])
 model_registry_service = ModelRegistryService()
 
 

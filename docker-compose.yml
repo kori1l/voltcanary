@@ -1,6 +1,111 @@
+name: voltcanary
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+  POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
+
+x-timescale-env: &timescale-env
+  POSTGRES_USER: ${TIMESCALE_USER:-voltcanary}
+  POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-change_me}
+  POSTGRES_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
+
+x-java-app: &java-app
+  image: maven:3.9-eclipse-temurin-21
+  profiles:
+    - app
+  working_dir: /workspace/backend
+  volumes:
+    - ./backend:/workspace/backend
+    - maven-cache:/root/.m2
+  environment:
+    SPRING_PROFILES_ACTIVE: local
+    SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: 5432
+    POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
+    POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    TIMESCALE_HOST: timescaledb
+    TIMESCALE_PORT: 5432
+    TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
+    TIMESCALE_USER: ${TIMESCALE_USER:-voltcanary}
+    TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD:-change_me}
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    MINIO_ENDPOINT: http://minio:9000
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    timescaledb:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    redpanda:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    profiles:
+      - infra
+      - app
+    environment: *postgres-env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/docker-compose/init/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    profiles:
+      - infra
+      - app
+    environment: *timescale-env
+    ports:
+      - "${TIMESCALE_PORT:-5433}:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./deploy/docker-compose/init/timescaledb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    profiles:
+      - infra
+      - app
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
   redpanda:
-    image: redpandadata/redpanda:latest
+    image: redpandadata/redpanda:v24.2.18
+    profiles:
+      - infra
+      - app
     command:
       - redpanda
       - start
@@ -15,22 +120,249 @@ services:
       - "0"
       - --check=false
       - --kafka-addr
-      - PLAINTEXT://0.0.0.0:9092
+      - INTERNAL://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
       - --advertise-kafka-addr
-      - PLAINTEXT://localhost:9092
+      - INTERNAL://redpanda:9092,OUTSIDE://localhost:${REDPANDA_PORT:-9092}
+      - --pandaproxy-addr
+      - 0.0.0.0:8082
+      - --advertise-pandaproxy-addr
+      - redpanda:8082
     ports:
-      - "9092:9092"
-
-  postgres:
-    image: timescale/timescaledb:latest-pg16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltcanary}
-      POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
-    ports:
-      - "5432:5432"
+      - "${REDPANDA_PORT:-9092}:19092"
+      - "${REDPANDA_ADMIN_PORT:-9644}:9644"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health -X brokers=localhost:9092 | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 20s
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.18
+    profiles:
+      - infra
+      - app
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    volumes:
+      - ./deploy/docker-compose/init/redpanda:/init:ro
+    entrypoint: ["/bin/sh", "/init/create-topics.sh"]
+    restart: "no"
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles:
+      - infra
+      - app
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-voltcanary}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles:
+      - infra
+      - app
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-voltcanary}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+    volumes:
+      - ./deploy/docker-compose/init/minio:/init:ro
+    entrypoint: ["/bin/sh", "/init/create-buckets.sh"]
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles:
+      - observability
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./deploy/docker-compose/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  loki:
+    image: grafana/loki:3.3.2
+    profiles:
+      - observability
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - ./deploy/docker-compose/observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    profiles:
+      - observability
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./deploy/docker-compose/observability/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles:
+      - observability
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/docker-compose/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api-gateway:
+    <<: *java-app
+    command: sh -c "mvn -pl services/api-gateway -am -DskipTests install && mvn -f services/api-gateway/pom.xml spring-boot:run"
+    ports:
+      - "${API_GATEWAY_PORT:-8080}:8080"
+
+  identity-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/identity-service -am -DskipTests install && mvn -f services/identity-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      IDENTITY_POSTGRES_DB: ${IDENTITY_POSTGRES_DB:-voltcanary_identity}
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
+      JWT_REFRESH_TOKEN_TTL_SECONDS: ${JWT_REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: 5432
+      TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
+      TIMESCALE_USER: ${TIMESCALE_USER:-voltcanary}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD:-change_me}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+    ports:
+      - "${IDENTITY_SERVICE_PORT:-8081}:8081"
+
+  device-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/device-service -am -DskipTests install && mvn -f services/device-service/pom.xml spring-boot:run"
+    ports:
+      - "${DEVICE_SERVICE_PORT:-8082}:8082"
+
+  ingestion-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/ingestion-service -am -DskipTests install && mvn -f services/ingestion-service/pom.xml spring-boot:run"
+    ports:
+      - "${INGESTION_SERVICE_PORT:-8083}:8083"
+
+  telemetry-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/telemetry-service -am -DskipTests install && mvn -f services/telemetry-service/pom.xml spring-boot:run"
+    ports:
+      - "${TELEMETRY_SERVICE_PORT:-8084}:8084"
+
+  analytics-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/analytics-service -am -DskipTests install && mvn -f services/analytics-service/pom.xml spring-boot:run"
+    ports:
+      - "${ANALYTICS_SERVICE_PORT:-8085}:8085"
+
+  alert-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/alert-service -am -DskipTests install && mvn -f services/alert-service/pom.xml spring-boot:run"
+    ports:
+      - "${ALERT_SERVICE_PORT:-8086}:8086"
+
+  ml-service:
+    image: python:3.12-slim
+    profiles:
+      - app
+    working_dir: /workspace/ml-service
+    command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8090"
+    ports:
+      - "${ML_SERVICE_PORT:-8090}:8090"
+    volumes:
+      - ./ml-service:/workspace/ml-service
+
+  frontend:
+    image: node:22-alpine
+    profiles:
+      - app
+    working_dir: /workspace/frontend
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/workspace/frontend
+      - frontend-node-modules:/workspace/frontend/node_modules
+    depends_on:
+      api-gateway:
+        condition: service_started
 
 volumes:
   postgres-data:
+  timescale-data:
+  redis-data:
+  redpanda-data:
+  minio-data:
+  prometheus-data:
+  loki-data:
+  promtail-positions:
+  grafana-data:
+  maven-cache:
+  frontend-node-modules:

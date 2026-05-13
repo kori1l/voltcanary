@@ -161,10 +161,10 @@ http://localhost:3000
 
 ## Local Infrastructure
 
-Start PostgreSQL/TimescaleDB and Redpanda from Docker Compose:
+Start the local infrastructure from Docker Compose:
 
 ```bash
-docker compose up -d postgres redpanda
+docker compose --profile infra up -d
 ```
 
 Default PostgreSQL connection:
@@ -175,6 +175,53 @@ Port: 5432
 Database: voltcanary
 User: voltcanary
 Password: change_me
+```
+
+Default TimescaleDB connection:
+
+```text
+Host: localhost
+Port: 5433
+Database: voltcanary_telemetry
+User: voltcanary
+Password: change_me
+```
+
+Redpanda is exposed on `localhost:9092`, Redis on `localhost:6379`, MinIO on
+`http://localhost:9000`, and MinIO Console on `http://localhost:9001`.
+
+Start observability:
+
+```bash
+docker compose --profile observability up -d
+```
+
+Prometheus is available at `http://localhost:9090`, Grafana at
+`http://localhost:3001` with `admin` / `admin` by default.
+Loki is available at `http://localhost:3100` and is provisioned as a Grafana
+datasource for local container logs.
+
+View logs in Grafana:
+
+1. Open `http://localhost:3001`.
+2. Go to Explore.
+3. Select the `Loki` datasource.
+4. Query all local Compose logs:
+
+```logql
+{compose_project="voltcanary"}
+```
+
+Query one service:
+
+```logql
+{compose_service="api-gateway"}
+```
+
+Start application containers together with infrastructure:
+
+```bash
+docker compose --profile app up
 ```
 
 Environment variables are documented in `.env.example`.

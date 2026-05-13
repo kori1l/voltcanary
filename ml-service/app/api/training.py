@@ -1,7 +1,7 @@
 from app.services.training_service import TrainingService
 from fastapi import APIRouter
 
-router = APIRouter(prefix="/ml", tags=["training"])
+router = APIRouter(tags=["training"])
 training_service = TrainingService()
 
 
