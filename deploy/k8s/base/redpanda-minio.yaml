@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: voltcanary
+spec:
+  selector:
+    app: redpanda
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
+    - name: admin
+      port: 9644
+      targetPort: 9644
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: voltcanary
+spec:
+  serviceName: redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:v24.2.18
+          command:
+            - /entrypoint.sh
+          args:
+            - redpanda
+            - start
+            - --overprovisioned
+            - --smp
+            - "1"
+            - --memory
+            - 512M
+            - --reserve-memory
+            - 0M
+            - --node-id
+            - "0"
+            - --check=false
+            - --kafka-addr
+            - INTERNAL://0.0.0.0:9092
+            - --advertise-kafka-addr
+            - INTERNAL://redpanda:9092
+          ports:
+            - containerPort: 9092
+            - containerPort: 9644
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "rpk cluster health -X brokers=localhost:9092 | grep -q 'Healthy:.*true'"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: 9644
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-init
+  namespace: voltcanary
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-topics
+          image: redpandadata/redpanda:v24.2.18
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              topics="telemetry.raw.v1 telemetry.validated.v1 anomaly.detected.v1 risk-score.changed.v1 alert.created.v1 telemetry.raw.v1.dlq telemetry.validated.v1.dlq anomaly.detected.v1.dlq risk-score.changed.v1.dlq alert.created.v1.dlq"
+              until rpk -X brokers=redpanda:9092 topic list >/dev/null 2>&1; do sleep 3; done
+              for topic in $topics; do
+                rpk -X brokers=redpanda:9092 topic create "$topic" -p 3 -r 1 || true
+              done
+              rpk -X brokers=redpanda:9092 topic list
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: voltcanary
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: voltcanary
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-secrets
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-secrets
+                  key: MINIO_ROOT_PASSWORD
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init
+  namespace: voltcanary
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-buckets
+          image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-secrets
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-secrets
+                  key: MINIO_ROOT_PASSWORD
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              until mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do sleep 3; done
+              for bucket in csv-uploads model-artifacts reports exports; do
+                mc mb --ignore-existing "local/$bucket"
+              done
+              mc ls local

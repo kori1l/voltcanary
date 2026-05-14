@@ -13,7 +13,7 @@ import {
   RecommendationResponse,
   RiskResponse,
 } from "../analytics/analyticsApi";
-import { Device, getDevice } from "../devices/devicesApi";
+import { Device, getDevice, listLocations, Location } from "../devices/devicesApi";
 import {
   getLatestTelemetry,
   getTelemetryReadings,
@@ -22,9 +22,12 @@ import {
   TelemetryChart,
 } from "../telemetry/telemetryApi";
 
+type ChartPoint = { timestamp: string; value: number };
+
 export function DeviceDetailsPage() {
   const { deviceId } = useParams();
   const [device, setDevice] = useState<Device | null>(null);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [latest, setLatest] = useState<LatestTelemetry | null>(null);
   const [chart, setChart] = useState<TelemetryChart | null>(null);
   const [baseline, setBaseline] = useState<BaselineResponse | null>(null);
@@ -35,6 +38,8 @@ export function DeviceDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSendingTelemetry, setIsSendingTelemetry] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isChecked, setIsChecked] = useState(false);
+  const [showDemoTools, setShowDemoTools] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function loadAnalytics(currentDeviceId: string) {
@@ -67,8 +72,9 @@ export function DeviceDetailsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const deviceResponse = await getDevice(deviceId);
+      const [deviceResponse, locationsResponse] = await Promise.all([getDevice(deviceId), listLocations().catch(() => [])]);
       setDevice(deviceResponse);
+      setLocations(locationsResponse);
       try {
         const [latestResponse, chartResponse] = await Promise.all([
           getLatestTelemetry(deviceId),
@@ -93,13 +99,17 @@ export function DeviceDetailsPage() {
   }, [deviceId]);
 
   const readings = latest?.readings ?? {};
+  const locationById = useMemo(() => new Map(locations.map((location) => [location.id, fixKnownTypos(location.name)])), [locations]);
+  const locationName = device ? locationById.get(device.locationId ?? "") ?? "No location" : "No location";
+  const riskInsight = getRiskInsight(risk, anomalies, recommendations);
+  const latestAnomaly = anomalies[0] ?? null;
+  const sourceId = deviceId ? localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001" : "plug-001";
   const curlHint = useMemo(() => {
     if (!deviceId) {
       return "";
     }
-    const sourceId = localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001";
     return `curl -X POST http://localhost:8080/ingestion/readings -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d "{\\"deviceId\\":\\"${deviceId}\\",\\"sourceId\\":\\"${sourceId}\\",\\"timestamp\\":\\"${new Date().toISOString()}\\",\\"metrics\\":{\\"activePowerW\\":840.2,\\"voltageV\\":230.1,\\"currentA\\":3.65,\\"energyWh\\":12450.7,\\"rssi\\":-61}}"`;
-  }, [deviceId]);
+  }, [deviceId, sourceId]);
 
   async function sendTestTelemetry() {
     if (!deviceId) {
@@ -108,7 +118,6 @@ export function DeviceDetailsPage() {
     setIsSendingTelemetry(true);
     setError(null);
     try {
-      const sourceId = localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plud1";
       await sendTelemetryReading({
         deviceId,
         sourceId,
@@ -123,7 +132,7 @@ export function DeviceDetailsPage() {
       });
       await load();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to send test telemetry");
+      setError(requestError instanceof Error ? requestError.message : "Failed to simulate telemetry");
     } finally {
       setIsSendingTelemetry(false);
     }
@@ -139,7 +148,7 @@ export function DeviceDetailsPage() {
       await recalculateAnalytics(deviceId);
       await loadAnalytics(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to recalculate analytics");
+      setError(requestError instanceof Error ? requestError.message : "Failed to recalculate risk");
     } finally {
       setIsRecalculating(false);
     }
@@ -152,12 +161,26 @@ export function DeviceDetailsPage() {
           <Link className="back-link" to="/devices">
             Devices
           </Link>
-          <h1>{device?.name ?? "Device Details"}</h1>
-          <p>{deviceId}</p>
+          <h1>{device?.name ?? "Device details"}</h1>
+          <p>
+            {device
+              ? `${locationName} · ${formatEnum(device.status)} · Last telemetry: ${latest ? formatShortTime(latest.timestamp) : "No data"}`
+              : "Loading device status"}
+          </p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
-          Refresh
-        </button>
+        <div className="header-actions">
+          <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
+            Refresh device
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void recalculateDeviceAnalytics()}
+            disabled={isRecalculating || isLoading}
+          >
+            {isRecalculating ? "Recalculating..." : "Recalculate risk"}
+          </button>
+        </div>
       </header>
 
       {error ? <div className="error-message">{error}</div> : null}
@@ -165,177 +188,396 @@ export function DeviceDetailsPage() {
 
       {!isLoading && device ? (
         <>
-          <section className="metric-grid">
-            <Metric label="Active power" value={readings.activePowerW} unit="W" />
-            <Metric label="Voltage" value={readings.voltageV} unit="V" />
-            <Metric label="Current" value={readings.currentA} unit="A" />
-            <Metric label="Energy" value={readings.energyWh} unit="Wh" />
+          <section className={`insight-banner insight-banner-${riskInsight.tone}`}>
+            <div>
+              <span className="status-pill">{risk ? `${formatEnum(risk.level)} risk` : "No risk score"}</span>
+              <h2>{riskInsight.title}</h2>
+              <p>{riskInsight.description}</p>
+            </div>
+            <div className="action-row">
+              <Link className="ghost-button button-link" to="/alerts">
+                View alerts
+              </Link>
+              <button className="primary-button" type="button" onClick={() => setIsChecked(true)}>
+                {isChecked ? "Checked" : "Mark as checked"}
+              </button>
+            </div>
+          </section>
+
+          <section className="metric-grid device-overview-grid">
+            <Metric label="Active power" value={readings.activePowerW} unit="W" emphasis />
+            <Metric label="Risk score" valueText={risk ? `${Math.round(risk.score)} / 100` : "No score"} />
+            <Metric label="Last activity" valueText={latest ? formatShortTime(latest.timestamp) : "No telemetry"} />
+            <Metric label="Samples analyzed" value={baseline?.sampleCount} unit="" />
+          </section>
+
+          <section className="content-grid action-explanation-grid">
+            <div className="panel">
+              <h2>Why this matters</h2>
+              <ul className="explanation-list">
+                {riskInsight.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="panel">
+              <h2>Next action</h2>
+              <p className="muted-text">{riskInsight.nextAction}</p>
+              <div className="action-row action-row-start">
+                <button className="ghost-button" type="button" onClick={() => setIsChecked(true)}>
+                  Check power conditions
+                </button>
+                <button className="ghost-button" type="button" onClick={() => setIsChecked(true)}>
+                  Create maintenance note
+                </button>
+              </div>
+            </div>
           </section>
 
           <section className="panel">
             <div className="section-header">
               <div>
-                <h2>Power</h2>
-                <p>{latest ? `Latest sample ${new Date(latest.timestamp).toLocaleString()}` : "No telemetry yet"}</p>
+                <h2>Power over time</h2>
+                <p>
+                  {latest
+                    ? `Latest sample: ${formatShortDateTime(latest.timestamp)}. Baseline and threshold explain alerts.`
+                    : "No telemetry has arrived for this device yet."}
+                </p>
               </div>
-              <button className="primary-button" type="button" onClick={() => void sendTestTelemetry()} disabled={isSendingTelemetry}>
-                {isSendingTelemetry ? "Sending..." : "Send test telemetry"}
-              </button>
             </div>
             {chart && chart.points.length > 0 ? (
-              <PowerChart points={chart.points} />
+              <PowerChart points={chart.points} baseline={baseline?.mean} threshold={baseline?.p90} anomaly={latestAnomaly} />
             ) : (
               <div className="empty-state">
                 <strong>No telemetry yet</strong>
-                <span>Send test telemetry to see chart</span>
-                <code>{curlHint}</code>
+                <span>Use Demo tools only when presenting or testing the pipeline.</span>
               </div>
             )}
-          </section>
-
-          <section className="content-grid analytics-grid">
-            <div className="panel">
-              <div className="section-header">
-                <div>
-                  <h2>Risk</h2>
-                  <p>{risk ? `Calculated ${new Date(risk.calculatedAt).toLocaleString()}` : "No analytics yet"}</p>
-                </div>
-                <button
-                  className="primary-button"
-                  type="button"
-                  onClick={() => void recalculateDeviceAnalytics()}
-                  disabled={isRecalculating}
-                >
-                  {isRecalculating ? "Recalculating..." : "Recalculate"}
-                </button>
-              </div>
-
-              {risk ? (
-                <>
-                  <div className="risk-summary">
-                    <strong>{Math.round(risk.score)}</strong>
-                    <span>{risk.level}</span>
-                  </div>
-                  {risk.explanations.length > 0 ? (
-                    <ul className="plain-list">
-                      {risk.explanations.map((explanation) => (
-                        <li key={explanation}>{explanation}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted-text">No anomalies detected in the current analytics window.</p>
-                  )}
-                </>
-              ) : (
-                <div className="empty-state">
-                  <strong>No analytics yet</strong>
-                  <span>Recalculate analytics after telemetry arrives</span>
-                </div>
-              )}
-            </div>
-
-            <div className="panel">
-              <h2>Baseline</h2>
-              {baseline ? (
-                <div className="baseline-grid">
-                  <Metric label="Mean" value={baseline.mean} unit="W" />
-                  <Metric label="Median" value={baseline.median} unit="W" />
-                  <Metric label="P90" value={baseline.p90} unit="W" />
-                  <Metric label="Samples" value={baseline.sampleCount} unit="" />
-                </div>
-              ) : (
-                <p className="muted-text">No baseline calculated.</p>
-              )}
-            </div>
           </section>
 
           <section className="panel analytics-grid">
-            <h2>ML Prediction</h2>
-            {prediction ? (
-              <div className="prediction-grid">
-                <Metric label="Model" valueText={prediction.modelVersion} />
-                <Metric label="Confidence" value={prediction.confidence * 100} unit="%" />
-                <Metric label="Anomaly score" value={prediction.anomalyScore} unit="" />
-                <Metric label="Degradation" value={prediction.degradationScore} unit="" />
+            <div className="section-header">
+              <div>
+                <h2>Risk analysis</h2>
+                <p>{risk ? `Last calculated: ${formatShortDateTime(risk.calculatedAt)}` : "No analytics calculated yet."}</p>
+              </div>
+            </div>
+
+            {risk ? (
+              <div className="risk-analysis-layout">
+                <div className="risk-score-card">
+                  <strong>{Math.round(risk.score)} / 100</strong>
+                  <span>{formatEnum(risk.level)}</span>
+                </div>
+                <div>
+                  <h3>Main reasons</h3>
+                  <ul className="plain-list compact-list">
+                    {riskInsight.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                  <h3>Recommendation</h3>
+                  <p className="muted-text">{riskInsight.nextAction}</p>
+                </div>
               </div>
             ) : (
-              <p className="muted-text">No ML prediction calculated.</p>
+              <div className="empty-state">
+                <strong>No analytics yet</strong>
+                <span>Recalculate risk after telemetry arrives.</span>
+              </div>
             )}
           </section>
 
-          <section className="content-grid analytics-grid">
-            <div className="panel">
-              <h2>Anomalies</h2>
-              {anomalies.length > 0 ? (
-                <ul className="plain-list">
-                  {anomalies.map((anomaly) => (
-                    <li key={anomaly.id}>
-                      <strong>{anomaly.type}</strong>
-                      <span>{anomaly.description}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted-text">No anomalies detected.</p>
-              )}
-            </div>
+          <details className="panel technical-details">
+            <summary>Technical details</summary>
+            <div className="technical-grid">
+              <div>
+                <h3>Baseline</h3>
+                {baseline ? (
+                  <div className="baseline-grid">
+                    <Metric label="Typical power" value={baseline.mean} unit="W" />
+                    <Metric label="Median" value={baseline.median} unit="W" />
+                    <Metric label="P90 threshold" value={baseline.p90} unit="W" />
+                    <Metric label="Samples" value={baseline.sampleCount} unit="" />
+                  </div>
+                ) : (
+                  <p className="muted-text">No baseline calculated.</p>
+                )}
+              </div>
 
-            <div className="panel">
-              <h2>Recommendations</h2>
-              {recommendations.length > 0 ? (
-                <ul className="plain-list">
-                  {recommendations.map((recommendation) => (
-                    <li key={recommendation.id}>
-                      <strong>{recommendation.title}</strong>
-                      <span>{recommendation.description}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="muted-text">No recommendations yet.</p>
-              )}
+              <div>
+                <h3>Prediction</h3>
+                {prediction ? (
+                  <div className="prediction-grid">
+                    <Metric label="Model version" valueText={prediction.modelVersion} />
+                    <Metric label="Confidence" value={prediction.confidence * 100} unit="%" />
+                    <Metric label="Anomaly score" value={prediction.anomalyScore} unit="" />
+                    <Metric label="Degradation" value={prediction.degradationScore} unit="" />
+                  </div>
+                ) : (
+                  <p className="muted-text">No ML prediction calculated.</p>
+                )}
+              </div>
+
+              <div>
+                <h3>Anomaly events</h3>
+                {anomalies.length > 0 ? (
+                  <ul className="plain-list compact-list">
+                    {anomalies.map((anomaly) => (
+                      <li key={anomaly.id}>
+                        <strong>{formatEnum(anomaly.type)}</strong>
+                        <span>
+                          {anomaly.description} · {formatShortDateTime(anomaly.detectedAt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted-text">No anomalies detected.</p>
+                )}
+              </div>
+
+              <div>
+                <h3>Source</h3>
+                <dl className="metadata-list">
+                  <div>
+                    <dt>Device ID</dt>
+                    <dd>{device.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Source ID</dt>
+                    <dd>{sourceId}</dd>
+                  </div>
+                </dl>
+              </div>
             </div>
-          </section>
+          </details>
+
+          <details className="panel demo-tools" open={showDemoTools} onToggle={(event) => setShowDemoTools(event.currentTarget.open)}>
+            <summary>Demo tools</summary>
+            <div className="section-header">
+              <div>
+                <h2>Simulate telemetry</h2>
+                <p>Use this only for demos or local testing.</p>
+              </div>
+              <button className="primary-button" type="button" onClick={() => void sendTestTelemetry()} disabled={isSendingTelemetry}>
+                {isSendingTelemetry ? "Sending..." : "Simulate telemetry"}
+              </button>
+            </div>
+            <code>{curlHint}</code>
+          </details>
         </>
       ) : null}
     </>
   );
 }
 
-function Metric({ label, value, unit = "", valueText }: { label: string; value?: number; unit?: string; valueText?: string }) {
+function Metric({
+  label,
+  value,
+  unit = "",
+  valueText,
+  emphasis = false,
+}: {
+  label: string;
+  value?: number;
+  unit?: string;
+  valueText?: string;
+  emphasis?: boolean;
+}) {
   return (
-    <article className="metric-card">
+    <article className={`metric-card${emphasis ? " metric-card-emphasis" : ""}`}>
       <span>{label}</span>
-      <strong>{valueText ?? (value === undefined ? "No data" : `${value.toLocaleString()}${unit ? ` ${unit}` : ""}`)}</strong>
+      <strong>{valueText ?? (value === undefined ? "No data" : `${formatNumber(value)}${unit ? ` ${unit}` : ""}`)}</strong>
     </article>
   );
 }
 
-function PowerChart({ points }: { points: { timestamp: string; value: number }[] }) {
-  const width = 720;
-  const height = 260;
-  const padding = 28;
-  const values = points.map((point) => point.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const coordinates = points.map((point, index) => {
-    const x = padding + (index / Math.max(points.length - 1, 1)) * (width - padding * 2);
-    const y = height - padding - ((point.value - min) / range) * (height - padding * 2);
-    return `${x},${y}`;
-  });
+function PowerChart({
+  points,
+  baseline,
+  threshold,
+  anomaly,
+}: {
+  points: ChartPoint[];
+  baseline?: number;
+  threshold?: number;
+  anomaly?: AnomalyResponse | null;
+}) {
+  const [hovered, setHovered] = useState<{ point: ChartPoint; x: number; y: number } | null>(null);
+  const width = 820;
+  const height = 330;
+  const padding = { top: 28, right: 28, bottom: 54, left: 58 };
+  const values = [...points.map((point) => point.value), baseline, threshold].filter((value): value is number => value !== undefined);
+  const minValue = Math.min(...values, 0);
+  const maxValue = Math.max(...values, 1);
+  const range = maxValue - minValue || 1;
+  const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / range) * (height - padding.top - padding.bottom);
+  const xForIndex = (index: number) =>
+    padding.left + (index / Math.max(points.length - 1, 1)) * (width - padding.left - padding.right);
+  const coordinates = points.map((point, index) => ({
+    point,
+    x: xForIndex(index),
+    y: yForValue(point.value),
+  }));
+  const spike = coordinates.reduce((current, next) => (next.point.value > current.point.value ? next : current), coordinates[0]);
+  const yTicks = [minValue, minValue + range / 2, maxValue];
+  const xTicks = [coordinates[0], coordinates[Math.floor(coordinates.length / 2)], coordinates[coordinates.length - 1]].filter(Boolean);
 
   return (
-    <div className="chart-wrap">
+    <div className="chart-wrap annotated-chart">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Active power chart">
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
-        <polyline points={coordinates.join(" ")} />
-        {points.map((point, index) => {
-          const [x, y] = coordinates[index].split(",").map(Number);
-          return <circle key={`${point.timestamp}-${index}`} cx={x} cy={y} r="4" />;
+        {yTicks.map((tick) => {
+          const y = yForValue(tick);
+          return (
+            <g key={tick}>
+              <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
+              <text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
+                {Math.round(tick)} W
+              </text>
+            </g>
+          );
         })}
+
+        <line className="chart-axis" x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
+        <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
+
+        {baseline !== undefined ? (
+          <g>
+            <line className="chart-baseline" x1={padding.left} y1={yForValue(baseline)} x2={width - padding.right} y2={yForValue(baseline)} />
+            <text className="chart-line-label" x={width - padding.right - 8} y={yForValue(baseline) - 6} textAnchor="end">
+              Typical range
+            </text>
+          </g>
+        ) : null}
+
+        {threshold !== undefined ? (
+          <g>
+            <line className="chart-threshold" x1={padding.left} y1={yForValue(threshold)} x2={width - padding.right} y2={yForValue(threshold)} />
+            <text className="chart-line-label threshold-label" x={width - padding.right - 8} y={yForValue(threshold) - 6} textAnchor="end">
+              Alert threshold
+            </text>
+          </g>
+        ) : null}
+
+        <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} />
+
+        {coordinates.map((coordinate, index) => {
+          const isSpike = coordinate === spike && (threshold === undefined || coordinate.point.value >= threshold);
+          return (
+            <circle
+              key={`${coordinate.point.timestamp}-${index}`}
+              className={isSpike ? "chart-spike-point" : undefined}
+              cx={coordinate.x}
+              cy={coordinate.y}
+              r={isSpike ? 6 : 4}
+              onMouseEnter={() => setHovered(coordinate)}
+              onMouseLeave={() => setHovered(null)}
+              onFocus={() => setHovered(coordinate)}
+              tabIndex={0}
+            >
+              <title>{`${formatShortTime(coordinate.point.timestamp)} - ${formatNumber(coordinate.point.value)} W`}</title>
+            </circle>
+          );
+        })}
+
+        {spike ? (
+          <text className="chart-spike-label" x={spike.x} y={Math.max(spike.y - 14, 16)} textAnchor="middle">
+            {anomaly ? "Power spike" : "Peak"}
+          </text>
+        ) : null}
+
+        {xTicks.map((tick) => (
+          <text key={tick.point.timestamp} className="chart-axis-label" x={tick.x} y={height - 20} textAnchor="middle">
+            {formatShortTime(tick.point.timestamp)}
+          </text>
+        ))}
       </svg>
+      {hovered ? (
+        <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
+          <strong>{formatShortTime(hovered.point.timestamp)}</strong>
+          <span>{formatNumber(hovered.point.value)} W</span>
+          {threshold !== undefined && hovered.point.value >= threshold ? <em>Above threshold</em> : null}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function getRiskInsight(
+  risk: RiskResponse | null,
+  anomalies: AnomalyResponse[],
+  recommendations: RecommendationResponse[],
+) {
+  if (!risk) {
+    return {
+      tone: "neutral",
+      title: "No risk score available",
+      description: "Telemetry exists, but analytics have not produced a current risk score yet.",
+      reasons: ["Risk has not been calculated for the current window."],
+      nextAction: "Recalculate risk after new telemetry arrives.",
+    };
+  }
+
+  const level = formatEnum(risk.level);
+  const topAnomaly = anomalies[0];
+  const topRecommendation = recommendations[0];
+  const reasons =
+    risk.explanations.length > 0
+      ? risk.explanations.map(formatInsightText)
+      : anomalies.length > 0
+        ? anomalies.slice(0, 3).map((anomaly) => formatInsightText(anomaly.type))
+        : ["No current anomaly explanation was returned by analytics."];
+  const title = topAnomaly ? `${level} risk - ${formatInsightText(topAnomaly.type)}` : `${level} risk detected`;
+  const description = topAnomaly
+    ? `${topAnomaly.description} If this repeats, check the device load, power socket, or operating mode.`
+    : `Risk score is ${Math.round(risk.score)} out of 100. Review recent power behavior and confirm the device is operating normally.`;
+
+  return {
+    tone: risk.level.toLowerCase(),
+    title,
+    description,
+    reasons,
+    nextAction: topRecommendation
+      ? topRecommendation.description
+      : "Check power load and operating conditions, then mark this device as checked.",
+  };
+}
+
+function formatInsightText(value: string) {
+  return formatEnum(value)
+    .replace("P90", "typical range")
+    .replace("Ml", "ML")
+    .replace("Power Spike", "Power spike")
+    .replace("Consumption Growth", "Consumption growth");
+}
+
+function formatEnum(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function fixKnownTypos(value: string) {
+  return value.replace(/\bKithen\b/gi, "Kitchen");
+}
+
+function formatShortTime(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatShortDateTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

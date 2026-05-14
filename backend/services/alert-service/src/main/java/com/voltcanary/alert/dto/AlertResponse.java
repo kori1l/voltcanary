@@ -13,5 +13,6 @@ public record AlertResponse(
         String status,
         Instant createdAt,
         Instant acknowledgedAt,
-        Instant resolvedAt) {
+        Instant resolvedAt,
+        String resolutionReason) {
 }

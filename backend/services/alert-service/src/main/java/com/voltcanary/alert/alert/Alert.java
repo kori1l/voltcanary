@@ -48,6 +48,9 @@ public class Alert {
     @Column(name = "resolved_at")
     private Instant resolvedAt;
 
+    @Column(name = "resolution_reason")
+    private String resolutionReason;
+
     public UUID getId() {
         return id;
     }
@@ -134,5 +137,13 @@ public class Alert {
 
     public void setResolvedAt(Instant resolvedAt) {
         this.resolvedAt = resolvedAt;
+    }
+
+    public String getResolutionReason() {
+        return resolutionReason;
+    }
+
+    public void setResolutionReason(String resolutionReason) {
+        this.resolutionReason = resolutionReason;
     }
 }

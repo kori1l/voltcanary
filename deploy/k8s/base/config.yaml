@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voltcanary-config
+  namespace: voltcanary
+data:
+  SPRING_PROFILES_ACTIVE: local
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: voltcanary
+  IDENTITY_POSTGRES_DB: voltcanary_identity
+  DEVICE_POSTGRES_DB: voltcanary_device
+  ALERT_POSTGRES_DB: voltcanary_alerts
+  TIMESCALE_HOST: timescaledb
+  TIMESCALE_PORT: "5432"
+  TIMESCALE_DB: voltcanary_telemetry
+  TIMESCALE_USER: voltcanary
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  MINIO_ENDPOINT: http://minio:9000
+  MINIO_ACCESS_KEY: voltcanary
+  IDENTITY_SERVICE_URI: http://identity-service:8081
+  DEVICE_SERVICE_URI: http://device-service:8082
+  INGESTION_SERVICE_URI: http://ingestion-service:8083
+  TELEMETRY_SERVICE_URI: http://telemetry-service:8084
+  ANALYTICS_SERVICE_URI: http://analytics-service:8085
+  ALERT_SERVICE_URI: http://alert-service:8086
+  ML_SERVICE_URI: http://ml-service:8090
+  VITE_API_BASE_URL: http://localhost:8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voltcanary-secrets
+  namespace: voltcanary
+type: Opaque
+stringData:
+  POSTGRES_USER: voltcanary
+  POSTGRES_PASSWORD: change_me
+  TIMESCALE_PASSWORD: change_me
+  JWT_SECRET: change_me
+  MINIO_ROOT_USER: voltcanary
+  MINIO_ROOT_PASSWORD: change_me_change_me
+  MINIO_SECRET_KEY: change_me_change_me

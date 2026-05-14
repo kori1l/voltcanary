@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: voltcanary
+data:
+  001-create-databases.sh: |
+    #!/bin/sh
+    set -eu
+
+    databases="${POSTGRES_ADDITIONAL_DATABASES:-voltcanary_identity voltcanary_device voltcanary_alerts}"
+
+    for database in $databases; do
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    SELECT 'CREATE DATABASE "$database"'
+    WHERE NOT EXISTS (
+      SELECT FROM pg_database WHERE datname = '$database'
+    )
+    \gexec
+    EOSQL
+    done
+  010-create-schemas.sql: |
+    CREATE SCHEMA IF NOT EXISTS identity;
+    CREATE SCHEMA IF NOT EXISTS device;
+    CREATE SCHEMA IF NOT EXISTS ingestion;
+    CREATE SCHEMA IF NOT EXISTS analytics;
+    CREATE SCHEMA IF NOT EXISTS alerting;
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timescaledb-init
+  namespace: voltcanary
+data:
+  001-create-schemas.sql: |
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+    CREATE SCHEMA IF NOT EXISTS telemetry;
+    CREATE SCHEMA IF NOT EXISTS analytics;
+
+    CREATE TABLE IF NOT EXISTS telemetry.measurements (
+      device_id uuid NOT NULL,
+      source_id text NOT NULL,
+      recorded_at timestamptz NOT NULL,
+      metric_name text,
+      metric_value double precision,
+      unit text,
+      quality text,
+      created_at timestamptz,
+      active_power_w double precision,
+      voltage_v double precision,
+      current_a double precision,
+      energy_wh double precision,
+      relay_state text,
+      rssi integer,
+      raw_payload jsonb
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_measurements_device_source_time_metric
+      ON telemetry.measurements (device_id, source_id, recorded_at, metric_name);
+
+    SELECT create_hypertable(
+      'telemetry.measurements',
+      'recorded_at',
+      if_not_exists => TRUE
+    );

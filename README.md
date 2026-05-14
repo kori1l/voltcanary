@@ -226,6 +226,42 @@ docker compose --profile app up
 
 Environment variables are documented in `.env.example`.
 
+## Local Kubernetes
+
+The current local Kubernetes deployment is documented in
+`docs/k8s-local.md`. It uses Docker Desktop Kubernetes, Kustomize, local
+`hostPath` source mounts, and production-like controls for stateless services.
+
+Start the stack:
+
+```powershell
+kubectl apply -k deploy/k8s/overlays/local
+kubectl get deploy,hpa,pdb,pods -n voltcanary
+```
+
+Expose the frontend and API Gateway locally:
+
+```powershell
+kubectl -n voltcanary port-forward svc/frontend 3000:3000
+kubectl -n voltcanary port-forward svc/api-gateway 8080:8080
+```
+
+The stateless services run with two replicas, HPA from two to four pods, and
+PodDisruptionBudgets. Stateful services remain single-replica locally and need
+clustered configuration or managed services for real production HA.
+
+Kubernetes Dashboard:
+
+```text
+https://localhost:8443
+```
+
+Grafana:
+
+```text
+http://localhost:3001
+```
+
 ## Documentation
 
 Key documents:
@@ -233,6 +269,9 @@ Key documents:
 - `docs/architecture/01-system-overview.md`
 - `docs/architecture/02-service-boundaries.md`
 - `docs/architecture/03-data-flow.md`
+- `docs/architecture/06-kubernetes-deployment.md`
+- `docs/architecture/07-observability.md`
+- `docs/k8s-local.md`
 - `docs/events/event-envelope.md`
 - `docs/interview/talking-points.md`
 

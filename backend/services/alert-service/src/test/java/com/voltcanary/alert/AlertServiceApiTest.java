@@ -11,11 +11,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -76,7 +78,7 @@ class AlertServiceApiTest {
 
         ResponseEntity<AlertActionResponse> resolveResponse = restTemplate.postForEntity(
                 "/alerts/{id}/resolve",
-                null,
+                new HttpEntity<>(Map.of("reason", "Breaker was inspected and load returned to normal.")),
                 AlertActionResponse.class,
                 alert.id());
         assertThat(resolveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -88,5 +90,6 @@ class AlertServiceApiTest {
                 alert.id());
         assertThat(getResponse.getBody().status()).isEqualTo("RESOLVED");
         assertThat(getResponse.getBody().resolvedAt()).isNotNull();
+        assertThat(getResponse.getBody().resolutionReason()).isEqualTo("Breaker was inspected and load returned to normal.");
     }
 }

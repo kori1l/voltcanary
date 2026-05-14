@@ -11,6 +11,7 @@ export interface AlertResponse {
   createdAt: string;
   acknowledgedAt?: string | null;
   resolvedAt?: string | null;
+  resolutionReason?: string | null;
 }
 
 export interface AlertActionResponse {
@@ -28,8 +29,9 @@ export function acknowledgeAlert(alertId: string) {
   });
 }
 
-export function resolveAlert(alertId: string) {
+export function resolveAlert(alertId: string, reason: string) {
   return apiRequest<AlertActionResponse>(`/alerts/${alertId}/resolve`, {
     method: "POST",
+    body: JSON.stringify({ reason }),
   });
 }

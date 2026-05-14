@@ -2,12 +2,14 @@ package com.voltcanary.alert.controller;
 
 import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.dto.AlertResponse;
+import com.voltcanary.alert.dto.ResolveAlertRequest;
 import com.voltcanary.alert.service.AlertService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -38,8 +40,8 @@ public class AlertController {
     }
 
     @PostMapping("/{id}/resolve")
-    public AlertActionResponse resolve(@PathVariable("id") UUID id) {
-        AlertResponse alert = alertService.resolve(id);
+    public AlertActionResponse resolve(@PathVariable("id") UUID id, @RequestBody(required = false) ResolveAlertRequest request) {
+        AlertResponse alert = alertService.resolve(id, request == null ? null : request.reason());
         return new AlertActionResponse(alert.status(), alert.id());
     }
 }

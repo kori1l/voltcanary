@@ -102,12 +102,13 @@ public class AlertService {
     }
 
     @Transactional
-    public AlertResponse resolve(UUID id) {
+    public AlertResponse resolve(UUID id, String reason) {
         Alert alert = load(id);
         if (alert.getStatus() != AlertStatus.RESOLVED) {
             alert.setStatus(AlertStatus.RESOLVED);
             alert.setResolvedAt(Instant.now());
-            saveEvent(alert.getId(), "RESOLVED", alert);
+            alert.setResolutionReason(normalizeReason(reason));
+            saveEvent(alert.getId(), "RESOLVED", new AlertResolutionEvent(alert.getId(), alert.getResolutionReason()));
         }
         return toResponse(alert);
     }
@@ -192,7 +193,8 @@ public class AlertService {
                 alert.getStatus().name(),
                 alert.getCreatedAt(),
                 alert.getAcknowledgedAt(),
-                alert.getResolvedAt());
+                alert.getResolvedAt(),
+                alert.getResolutionReason());
     }
 
     private String writeJson(Object value) {
@@ -205,5 +207,16 @@ public class AlertService {
 
     private String valueOrDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String normalizeReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return "Resolved without a reason.";
+        }
+        String trimmed = reason.trim();
+        return trimmed.length() > 1000 ? trimmed.substring(0, 1000) : trimmed;
+    }
+
+    private record AlertResolutionEvent(UUID alertId, String reason) {
     }
 }

@@ -273,13 +273,13 @@ services:
 
   api-gateway:
     <<: *java-app
-    command: sh -c "mvn -pl services/api-gateway -am -DskipTests install && mvn -f services/api-gateway/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/api-gateway -am -Dmaven.test.skip=true install && mvn -f services/api-gateway/pom.xml spring-boot:run"
     ports:
       - "${API_GATEWAY_PORT:-8080}:8080"
 
   identity-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/identity-service -am -DskipTests install && mvn -f services/identity-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/identity-service -am -Dmaven.test.skip=true install && mvn -f services/identity-service/pom.xml spring-boot:run"
     environment:
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
@@ -306,7 +306,7 @@ services:
 
   device-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/device-service -am -DskipTests install && mvn -f services/device-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/device-service -am -Dmaven.test.skip=true install && mvn -f services/device-service/pom.xml spring-boot:run"
     environment:
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
@@ -331,25 +331,25 @@ services:
 
   ingestion-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/ingestion-service -am -DskipTests install && mvn -f services/ingestion-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/ingestion-service -am -Dmaven.test.skip=true install && mvn -f services/ingestion-service/pom.xml spring-boot:run"
     ports:
       - "${INGESTION_SERVICE_PORT:-8083}:8083"
 
   telemetry-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/telemetry-service -am -DskipTests install && mvn -f services/telemetry-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/telemetry-service -am -Dmaven.test.skip=true install && mvn -f services/telemetry-service/pom.xml spring-boot:run"
     ports:
       - "${TELEMETRY_SERVICE_PORT:-8084}:8084"
 
   analytics-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/analytics-service -am -DskipTests install && mvn -f services/analytics-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/analytics-service -am -Dmaven.test.skip=true install && mvn -f services/analytics-service/pom.xml spring-boot:run"
     ports:
       - "${ANALYTICS_SERVICE_PORT:-8085}:8085"
 
   alert-service:
     <<: *java-app
-    command: sh -c "mvn -pl services/alert-service -am -DskipTests install && mvn -f services/alert-service/pom.xml spring-boot:run"
+    command: sh -c "mvn -pl services/alert-service -am -Dmaven.test.skip=true install && mvn -f services/alert-service/pom.xml spring-boot:run"
     environment:
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092

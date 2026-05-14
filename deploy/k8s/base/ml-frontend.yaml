@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-service
+  namespace: voltcanary
+spec:
+  selector:
+    app: ml-service
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: voltcanary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-service
+  template:
+    metadata:
+      labels:
+        app: ml-service
+    spec:
+      containers:
+        - name: ml-service
+          image: python:3.12-slim
+          workingDir: /workspace/ml-service
+          command: ["/bin/sh", "-c"]
+          args: ["pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8090"]
+          ports:
+            - containerPort: 8090
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            periodSeconds: 20
+          volumeMounts:
+            - name: ml-workspace
+              mountPath: /workspace/ml-service
+      volumes:
+        - name: ml-workspace
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: voltcanary
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: voltcanary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: node:22-alpine
+          workingDir: /workspace/frontend
+          command: ["/bin/sh", "-c"]
+          args: ["test -d node_modules/.vite || npm ci; npm run dev -- --host 0.0.0.0"]
+          envFrom:
+            - configMapRef:
+                name: voltcanary-config
+          ports:
+            - containerPort: 3000
+          startupProbe:
+            httpGet:
+              path: /index.html
+              port: 3000
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: 3000
+            periodSeconds: 20
+          volumeMounts:
+            - name: frontend-workspace
+              mountPath: /workspace/frontend
+            - name: frontend-node-modules
+              mountPath: /workspace/frontend/node_modules
+      volumes:
+        - name: frontend-workspace
+          emptyDir: {}
+        - name: frontend-node-modules
+          emptyDir: {}
