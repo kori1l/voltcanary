@@ -55,6 +55,23 @@ export function DevicesPage() {
       return matchesSearch && matchesLocation && matchesStatus;
     });
   }, [devices, locationById, locationFilter, search, statusFilter]);
+  const roomGroups = useMemo(() => {
+    const orderedLocationIds = locations.map((location) => location.id);
+    const groups = new Map<string, Device[]>();
+    filteredDevices.forEach((device) => {
+      const groupId = device.locationId || "unassigned";
+      groups.set(groupId, [...(groups.get(groupId) ?? []), device]);
+    });
+
+    return [...groups.entries()]
+      .map(([locationId, roomDevices]) => ({
+        locationId,
+        name: locationId === "unassigned" ? "No location" : locationById.get(locationId) ?? "Unknown location",
+        devices: roomDevices.sort((left, right) => left.name.localeCompare(right.name)),
+        order: locationId === "unassigned" ? Number.MAX_SAFE_INTEGER : orderedLocationIds.indexOf(locationId),
+      }))
+      .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+  }, [filteredDevices, locationById, locations]);
 
   async function load() {
     setIsLoading(true);
@@ -193,35 +210,40 @@ export function DevicesPage() {
             <span>Clear search or add a new device.</span>
           </div>
         ) : (
-          <div className="device-list rich-device-list">
-            {filteredDevices.map((device) => {
-              const latest = latestByDevice[device.id];
-              const risk = riskByDevice[device.id];
-              return (
-                <Link className="device-row rich-device-row" to={`/devices/${device.id}`} key={device.id}>
-                  <div className="device-primary">
-                    <span className="device-type-icon" aria-hidden="true">
-                      {getDeviceInitial(typeByCode.get(device.type) ?? device.type)}
-                    </span>
-                    <div>
-                      <strong>{device.name}</strong>
-                      <span>
-                        {locationById.get(device.locationId ?? "") ?? "No location"} · {typeByCode.get(device.type) ?? formatEnum(device.type)}
-                      </span>
-                      <span>
-                        {formatEnum(device.status)} · Last telemetry: {latest ? formatRelativeTime(latest.timestamp) : "No data"}
-                      </span>
-                    </div>
+          <div className="room-device-board">
+            {roomGroups.map((group) => (
+              <section className="room-section" key={group.locationId} aria-labelledby={`room-${group.locationId}`}>
+                <div className="room-section-header">
+                  <div>
+                    <h2 id={`room-${group.locationId}`}>{group.name}</h2>
+                    <span>{group.devices.length} devices</span>
                   </div>
-                  <div className="device-meta device-signal-meta">
-                    <span className={`status-pill status-pill-${risk?.level.toLowerCase() ?? "neutral"}`}>
-                      Risk: {risk ? formatEnum(risk.level) : "No score"}
-                    </span>
-                    <span>Power: {latest?.readings.activePowerW !== undefined ? `${formatNumber(latest.readings.activePowerW)} W` : "No data"}</span>
-                  </div>
-                </Link>
-              );
-            })}
+                </div>
+                <div className="device-icon-grid">
+                  {group.devices.map((device) => {
+                    const latest = latestByDevice[device.id];
+                    const risk = riskByDevice[device.id];
+                    return (
+                      <Link className="device-icon-card" to={`/devices/${device.id}`} key={device.id}>
+                        <span className={`device-icon-frame device-icon-${getDeviceTone(device.type)}`} aria-hidden="true">
+                          <DeviceIcon type={device.type} />
+                        </span>
+                        <strong>{device.name}</strong>
+                        <span className="device-card-type">{typeByCode.get(device.type) ?? formatEnum(device.type)}</span>
+                        <span className="device-card-status">{formatEnum(device.status)}</span>
+                        <div className="device-card-signals">
+                          <span className={`status-pill status-pill-${risk?.level.toLowerCase() ?? "neutral"}`}>
+                            {risk ? formatEnum(risk.level) : "No score"}
+                          </span>
+                          <span>{latest?.readings.activePowerW !== undefined ? `${formatNumber(latest.readings.activePowerW)} W` : "No data"}</span>
+                        </div>
+                        <span className="device-card-telemetry">{latest ? formatRelativeTime(latest.timestamp) : "No telemetry"}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </section>
@@ -296,8 +318,106 @@ export function DevicesPage() {
   );
 }
 
-function getDeviceInitial(type: string) {
-  return formatEnum(type).charAt(0) || "D";
+function DeviceIcon({ type }: { type: string }) {
+  const normalizedType = type.toUpperCase();
+  if (normalizedType.includes("FRIDGE") || normalizedType.includes("FREEZER")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="15" y="6" width="18" height="36" rx="3" />
+        <line x1="15" y1="20" x2="33" y2="20" />
+        <line x1="20" y1="12" x2="20" y2="16" />
+        <line x1="20" y1="25" x2="20" y2="31" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("HEATER") || normalizedType.includes("BOILER")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="11" y="14" width="26" height="22" rx="4" />
+        <line x1="17" y1="20" x2="31" y2="20" />
+        <path d="M18 30c2-4 5-4 7 0s5 4 7 0" />
+        <line x1="16" y1="40" x2="16" y2="36" />
+        <line x1="32" y1="40" x2="32" y2="36" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("AC") || normalizedType.includes("AIR")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="8" y="12" width="32" height="16" rx="4" />
+        <line x1="14" y1="22" x2="34" y2="22" />
+        <path d="M17 33c2 2 4 2 6 0" />
+        <path d="M25 33c2 2 4 2 6 0" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("WASH")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="12" y="7" width="24" height="34" rx="4" />
+        <circle cx="24" cy="27" r="8" />
+        <circle cx="18" cy="13" r="1.8" />
+        <line x1="23" y1="13" x2="31" y2="13" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("PUMP")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <circle cx="22" cy="24" r="10" />
+        <path d="M31 20h7v8h-7" />
+        <path d="M12 24H7" />
+        <path d="M20 18l7 6-7 6z" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("SERVER") || normalizedType.includes("NAS")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="12" y="8" width="24" height="32" rx="3" />
+        <line x1="17" y1="17" x2="31" y2="17" />
+        <line x1="17" y1="25" x2="31" y2="25" />
+        <circle cx="18" cy="33" r="1.7" />
+        <circle cx="24" cy="33" r="1.7" />
+      </svg>
+    );
+  }
+  if (normalizedType.includes("PRINTER")) {
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <rect x="14" y="7" width="20" height="11" rx="2" />
+        <rect x="10" y="18" width="28" height="16" rx="3" />
+        <rect x="15" y="30" width="18" height="10" rx="2" />
+        <circle cx="33" cy="24" r="1.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 48 48" role="img">
+      <rect x="14" y="10" width="20" height="28" rx="4" />
+      <path d="M19 10V6" />
+      <path d="M29 10V6" />
+      <path d="M20 20h8" />
+      <path d="M20 27h8" />
+    </svg>
+  );
+}
+
+function getDeviceTone(type: string) {
+  const normalizedType = type.toUpperCase();
+  if (normalizedType.includes("FRIDGE") || normalizedType.includes("FREEZER")) {
+    return "cool";
+  }
+  if (normalizedType.includes("HEATER") || normalizedType.includes("BOILER")) {
+    return "warm";
+  }
+  if (normalizedType.includes("SERVER") || normalizedType.includes("NAS")) {
+    return "compute";
+  }
+  if (normalizedType.includes("PUMP") || normalizedType.includes("WASH")) {
+    return "water";
+  }
+  return "neutral";
 }
 
 function formatEnum(value: string) {
