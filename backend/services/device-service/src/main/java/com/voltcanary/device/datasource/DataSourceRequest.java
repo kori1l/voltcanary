@@ -1,9 +1,10 @@
 package com.voltcanary.device.datasource;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 public record DataSourceRequest(
-        @NotBlank String sourceType,
-        @NotBlank String protocol,
+        @NotNull DataSourceType sourceType,
+        @NotNull DataSourceProtocol protocol,
         @NotBlank String externalId) {
 }

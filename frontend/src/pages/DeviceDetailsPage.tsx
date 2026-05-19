@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   AnomalyResponse,
   BaselineResponse,
@@ -13,7 +13,7 @@ import {
   RecommendationResponse,
   RiskResponse,
 } from "../analytics/analyticsApi";
-import { Device, getDevice, listLocations, Location } from "../devices/devicesApi";
+import { Device, getDevice, listLocations, Location, updateDataSource } from "../devices/devicesApi";
 import {
   getLatestTelemetry,
   getTelemetryReadings,
@@ -21,11 +21,25 @@ import {
   sendTelemetryReading,
   TelemetryChart,
 } from "../telemetry/telemetryApi";
+import {
+  getSimulationConfig,
+  getSimulationRuns,
+  getSimulationStatus,
+  resetSimulationTemplate,
+  saveSimulationConfig,
+  SimulationConfig,
+  SimulationRun,
+  startSimulation,
+  stopSimulation,
+  validateSimulationConfig,
+} from "../simulation/simulationApi";
 
 type ChartPoint = { timestamp: string; value: number };
 
 export function DeviceDetailsPage() {
   const { deviceId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") ?? "overview";
   const [device, setDevice] = useState<Device | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [latest, setLatest] = useState<LatestTelemetry | null>(null);
@@ -41,6 +55,14 @@ export function DeviceDetailsPage() {
   const [isChecked, setIsChecked] = useState(false);
   const [showDemoTools, setShowDemoTools] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig | null>(null);
+  const [simulationStatus, setSimulationStatus] = useState<SimulationRun | null>(null);
+  const [simulationRuns, setSimulationRuns] = useState<SimulationRun[]>([]);
+  const [simulationYaml, setSimulationYaml] = useState("");
+  const [simulationProfile, setSimulationProfile] = useState("FRIDGE");
+  const [simulationProtocol, setSimulationProtocol] = useState("HTTP");
+  const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
+  const [isSimulationBusy, setIsSimulationBusy] = useState(false);
 
   async function loadAnalytics(currentDeviceId: string) {
     try {
@@ -87,10 +109,34 @@ export function DeviceDetailsPage() {
         setChart(null);
       }
       await loadAnalytics(deviceId);
+      await loadSimulation(deviceId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to load device");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadSimulation(currentDeviceId: string) {
+    try {
+      const [configResponse, statusResponse, runsResponse] = await Promise.all([
+        getSimulationConfig(currentDeviceId),
+        getSimulationStatus(currentDeviceId).catch(() => null),
+        getSimulationRuns(currentDeviceId).catch(() => []),
+      ]);
+      setSimulationConfig(configResponse);
+      setSimulationYaml(configResponse.yamlConfig);
+      setSimulationProfile(configResponse.profile);
+      setSimulationProtocol(configResponse.protocol);
+      setSimulationStatus(statusResponse);
+      setSimulationRuns(runsResponse);
+    } catch {
+      setSimulationConfig(null);
+      setSimulationYaml("");
+      setSimulationStatus(null);
+      setSimulationRuns([]);
+      setSimulationProfile("FRIDGE");
+      setSimulationProtocol("HTTP");
     }
   }
 
@@ -154,6 +200,75 @@ export function DeviceDetailsPage() {
     }
   }
 
+  async function validateYaml() {
+    if (!deviceId) return;
+    setIsSimulationBusy(true);
+    setSimulationMessage(null);
+    try {
+      const result = await validateSimulationConfig(deviceId, simulationYaml);
+      setSimulationMessage(result.valid ? "YAML is valid" : result.errors.map((item) => `${item.path}: ${item.message}`).join("; "));
+    } finally {
+      setIsSimulationBusy(false);
+    }
+  }
+
+  async function saveYaml() {
+    if (!deviceId || !simulationConfig) return;
+    setIsSimulationBusy(true);
+    setSimulationMessage(null);
+    try {
+      const saved = await saveSimulationConfig(deviceId, {
+        dataSourceId: simulationConfig.dataSourceId,
+        name: simulationConfig.name,
+        profile: simulationProfile,
+        protocol: simulationProtocol,
+        yamlConfig: simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
+      });
+      await updateDataSource(deviceId, simulationConfig.dataSourceId, {
+        sourceType: "SIMULATOR",
+        protocol: simulationProtocol === "MQTT" ? "MQTT" : "REST",
+        externalId: sourceId,
+      }).catch(() => undefined);
+      setSimulationConfig(saved);
+      setSimulationProfile(saved.profile);
+      setSimulationProtocol(saved.protocol);
+      setSimulationMessage("Config saved");
+    } finally {
+      setIsSimulationBusy(false);
+    }
+  }
+
+  async function toggleSimulation() {
+    if (!deviceId) return;
+    setIsSimulationBusy(true);
+    setSimulationMessage(null);
+    try {
+      if (simulationStatus?.status === "RUNNING") {
+        setSimulationStatus(await stopSimulation(deviceId));
+      } else {
+        setSimulationStatus(await startSimulation(deviceId));
+      }
+      await loadSimulation(deviceId);
+    } catch (requestError) {
+      setSimulationMessage(requestError instanceof Error ? requestError.message : "Simulation action failed");
+    } finally {
+      setIsSimulationBusy(false);
+    }
+  }
+
+  async function resetYamlTemplate() {
+    if (!deviceId || !simulationConfig) return;
+    setIsSimulationBusy(true);
+    setSimulationMessage(null);
+    try {
+      const template = await resetSimulationTemplate(deviceId, simulationProfile, sourceId);
+      setSimulationYaml(template.yamlConfig.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`));
+      setSimulationMessage("Template loaded");
+    } finally {
+      setIsSimulationBusy(false);
+    }
+  }
+
   return (
     <>
       <header className="page-header page-header-row">
@@ -204,14 +319,116 @@ export function DeviceDetailsPage() {
             </div>
           </section>
 
-          <section className="metric-grid device-overview-grid">
+          <nav className="tab-row" aria-label="Device sections">
+            {["overview", "telemetry", "analytics", "alerts", "simulation"].map((tab) => (
+              <button
+                key={tab}
+                className={activeTab === tab ? "tab-button tab-button-active" : "tab-button"}
+                type="button"
+                onClick={() => setSearchParams(tab === "overview" ? {} : { tab })}
+              >
+                {formatEnum(tab)}
+              </button>
+            ))}
+          </nav>
+
+          {activeTab === "simulation" ? (
+            <section className="panel simulation-panel">
+              <div className="section-header">
+                <div>
+                  <h2>Simulation</h2>
+                  <p>
+                    {simulationConfig
+                      ? `${formatEnum(simulationConfig.profile)} В· ${formatEnum(simulationConfig.status)} В· Version ${simulationConfig.yamlVersion}`
+                      : "No simulation config exists for this device."}
+                  </p>
+                </div>
+                <div className="action-row">
+                  <button className="ghost-button" type="button" onClick={() => void validateYaml()} disabled={!simulationConfig || isSimulationBusy}>
+                    Validate YAML
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => void saveYaml()} disabled={!simulationConfig || isSimulationBusy}>
+                    Save Config
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => void resetYamlTemplate()} disabled={!simulationConfig || isSimulationBusy}>
+                    Reset Template
+                  </button>
+                  <button className="primary-button" type="button" onClick={() => void toggleSimulation()} disabled={!simulationConfig || isSimulationBusy}>
+                    {simulationStatus?.status === "RUNNING" ? "Stop" : "Start"}
+                  </button>
+                </div>
+              </div>
+
+              {simulationMessage ? <div className="status-note">{simulationMessage}</div> : null}
+
+              {simulationConfig ? (
+                <>
+                  <section className="metric-grid">
+                    <Metric label="Status" valueText={formatEnum(simulationStatus?.status ?? "STOPPED")} />
+                    <Metric label="Protocol" valueText={simulationConfig.protocol} />
+                    <Metric label="Generated points" value={simulationStatus?.generatedPoints ?? 0} unit="" />
+                    <Metric label="Started" valueText={simulationStatus?.startedAt ? formatShortDateTime(simulationStatus.startedAt) : "Not running"} />
+                  </section>
+                  <div className="simulation-control-grid">
+                    <label>
+                      Profile
+                      <select value={simulationProfile} onChange={(event) => setSimulationProfile(event.target.value)}>
+                        {["GENERIC_APPLIANCE", "FRIDGE", "AIR_CONDITIONER", "BOILER", "PUMP", "HEATER"].map((profile) => (
+                          <option value={profile} key={profile}>
+                            {formatEnum(profile)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Protocol
+                      <select value={simulationProtocol} onChange={(event) => setSimulationProtocol(event.target.value)}>
+                        <option value="HTTP">HTTP</option>
+                        <option value="MQTT">MQTT</option>
+                      </select>
+                    </label>
+                  </div>
+                  <textarea
+                    className="yaml-editor"
+                    value={simulationYaml}
+                    onChange={(event) => setSimulationYaml(event.target.value)}
+                    spellCheck={false}
+                  />
+                  <div className="run-history">
+                    <h3>Run history</h3>
+                    {simulationRuns.length > 0 ? (
+                      <ul className="plain-list compact-list">
+                        {simulationRuns.map((run) => (
+                          <li key={run.runId ?? `${run.startedAt}-${run.status}`}>
+                            <strong>{formatEnum(run.status)}</strong>
+                            <span>
+                              {run.generatedPoints} points В· {run.startedAt ? formatShortDateTime(run.startedAt) : "No start time"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted-text">No runs yet.</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="empty-state">
+                  <strong>No simulator attached</strong>
+                  <span>Create a device with data source Simulator to manage runs here.</span>
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {activeTab !== "simulation" ? <section className="metric-grid device-overview-grid">
             <Metric label="Active power" value={readings.activePowerW} unit="W" emphasis />
             <Metric label="Risk score" valueText={risk ? `${Math.round(risk.score)} / 100` : "No score"} />
             <Metric label="Last activity" valueText={latest ? formatShortTime(latest.timestamp) : "No telemetry"} />
             <Metric label="Samples analyzed" value={baseline?.sampleCount} unit="" />
-          </section>
+          </section> : null}
 
-          <section className="content-grid action-explanation-grid">
+          {activeTab !== "simulation" ? <section className="content-grid action-explanation-grid">
             <div className="panel">
               <h2>Why this matters</h2>
               <ul className="explanation-list">
@@ -232,9 +449,9 @@ export function DeviceDetailsPage() {
                 </button>
               </div>
             </div>
-          </section>
+          </section> : null}
 
-          <section className="panel">
+          {activeTab !== "simulation" ? <section className="panel">
             <div className="section-header">
               <div>
                 <h2>Power over time</h2>
@@ -253,9 +470,9 @@ export function DeviceDetailsPage() {
                 <span>Use Demo tools only when presenting or testing the pipeline.</span>
               </div>
             )}
-          </section>
+          </section> : null}
 
-          <section className="panel analytics-grid">
+          {activeTab !== "simulation" ? <section className="panel analytics-grid">
             <div className="section-header">
               <div>
                 <h2>Risk analysis</h2>
@@ -286,9 +503,9 @@ export function DeviceDetailsPage() {
                 <span>Recalculate risk after telemetry arrives.</span>
               </div>
             )}
-          </section>
+          </section> : null}
 
-          <details className="panel technical-details">
+          {activeTab !== "simulation" ? <details className="panel technical-details">
             <summary>Technical details</summary>
             <div className="technical-grid">
               <div>
@@ -351,9 +568,9 @@ export function DeviceDetailsPage() {
                 </dl>
               </div>
             </div>
-          </details>
+          </details> : null}
 
-          <details className="panel demo-tools" open={showDemoTools} onToggle={(event) => setShowDemoTools(event.currentTarget.open)}>
+          {activeTab !== "simulation" ? <details className="panel demo-tools" open={showDemoTools} onToggle={(event) => setShowDemoTools(event.currentTarget.open)}>
             <summary>Demo tools</summary>
             <div className="section-header">
               <div>
@@ -365,7 +582,7 @@ export function DeviceDetailsPage() {
               </button>
             </div>
             <code>{curlHint}</code>
-          </details>
+          </details> : null}
         </>
       ) : null}
     </>

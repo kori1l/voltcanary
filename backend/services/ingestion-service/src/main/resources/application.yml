@@ -8,6 +8,9 @@ server:
   port: 8083
 
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -31,3 +34,8 @@ app:
     ttl: PT24H
   device-service:
     base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+  mqtt:
+    enabled: ${INGESTION_MQTT_ENABLED:false}
+    broker-url: ${INGESTION_MQTT_BROKER_URL:tcp://localhost:1883}
+    client-id: ${INGESTION_MQTT_CLIENT_ID:voltcanary-ingestion}
+    topic-filter: ${INGESTION_MQTT_TOPIC_FILTER:voltcanary/sources/+/telemetry}

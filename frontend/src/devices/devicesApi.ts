@@ -35,6 +35,19 @@ export interface CreateDataSourceRequest {
   externalId: string;
 }
 
+export interface DataSource {
+  id: string;
+  deviceId: string;
+  sourceType: string;
+  protocol: string;
+  externalId: string;
+}
+
+export interface SourceTokenResponse {
+  token: string;
+  tokenPrefix: string;
+}
+
 export function listDevices() {
   return apiRequest<Device[]>("/devices");
 }
@@ -66,8 +79,21 @@ export function createDevice(request: CreateDeviceRequest) {
 }
 
 export function createDataSource(deviceId: string, request: CreateDataSourceRequest) {
-  return apiRequest(`/devices/${deviceId}/data-sources`, {
+  return apiRequest<DataSource>(`/devices/${deviceId}/data-sources`, {
     method: "POST",
     body: JSON.stringify(request),
+  });
+}
+
+export function updateDataSource(deviceId: string, dataSourceId: string, request: CreateDataSourceRequest) {
+  return apiRequest<DataSource>(`/devices/${deviceId}/data-sources/${dataSourceId}`, {
+    method: "PATCH",
+    body: JSON.stringify(request),
+  });
+}
+
+export function createDataSourceToken(deviceId: string, dataSourceId: string) {
+  return apiRequest<SourceTokenResponse>(`/devices/${deviceId}/data-sources/${dataSourceId}/token`, {
+    method: "POST",
   });
 }

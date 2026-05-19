@@ -40,6 +40,7 @@ public final class FixtureBuilders {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                "POWER_SPIKE",
                 "WARNING",
                 0.72,
                 "Test anomaly",

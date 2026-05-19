@@ -13,6 +13,7 @@ data:
   IDENTITY_POSTGRES_DB: voltcanary_identity
   DEVICE_POSTGRES_DB: voltcanary_device
   ALERT_POSTGRES_DB: voltcanary_alerts
+  SIMULATOR_POSTGRES_DB: voltcanary_simulator
   TIMESCALE_HOST: timescaledb
   TIMESCALE_PORT: "5432"
   TIMESCALE_DB: voltcanary_telemetry
@@ -27,6 +28,12 @@ data:
   TELEMETRY_SERVICE_URI: http://telemetry-service:8084
   ANALYTICS_SERVICE_URI: http://analytics-service:8085
   ALERT_SERVICE_URI: http://alert-service:8086
+  SIMULATOR_SERVICE_URI: http://simulator-service:8087
+  SIMULATOR_INGESTION_URL: http://ingestion-service:8083/ingestion/readings
+  SIMULATOR_MQTT_ENABLED: "false"
+  SIMULATOR_MQTT_BROKER_URL: tcp://mosquitto:1883
+  INGESTION_MQTT_ENABLED: "false"
+  INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
   ML_SERVICE_URI: http://ml-service:8090
   VITE_API_BASE_URL: http://localhost:8080
 ---

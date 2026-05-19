@@ -6,6 +6,7 @@ import com.voltcanary.ingestion.dto.TelemetryIngestionRequest;
 import com.voltcanary.ingestion.service.IngestionService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,15 +25,28 @@ public class IngestionController {
 
     @PostMapping("/readings")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public IngestionAcceptedResponse ingest(@Valid @RequestBody TelemetryIngestionRequest request) {
-        ingestionService.ingest(request);
+    public IngestionAcceptedResponse ingest(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @Valid @RequestBody TelemetryIngestionRequest request) {
+        ingestionService.ingest(request, bearerToken(authorization), correlationId);
         return new IngestionAcceptedResponse("accepted", 1);
     }
 
     @PostMapping("/readings/batch")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public IngestionAcceptedResponse ingestBatch(@Valid @RequestBody BatchTelemetryIngestionRequest request) {
-        ingestionService.ingestBatch(request.readings());
+    public IngestionAcceptedResponse ingestBatch(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @Valid @RequestBody BatchTelemetryIngestionRequest request) {
+        ingestionService.ingestBatch(request.readings(), bearerToken(authorization), correlationId);
         return new IngestionAcceptedResponse("accepted", request.readings().size());
+    }
+
+    private String bearerToken(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        return authorization.substring("Bearer ".length());
     }
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { getDeviceRisk, RiskResponse } from "../analytics/analyticsApi";
 import {
   createDataSource,
+  createDataSourceToken,
   createDevice,
   createLocation,
   Device,
@@ -12,6 +13,7 @@ import {
   listLocations,
   Location,
 } from "../devices/devicesApi";
+import { getSimulationTemplate, saveSimulationConfig } from "../simulation/simulationApi";
 import { getLatestTelemetry, LatestTelemetry } from "../telemetry/telemetryApi";
 
 export function DevicesPage() {
@@ -28,6 +30,7 @@ export function DevicesPage() {
   const [manufacturer, setManufacturer] = useState("");
   const [model, setModel] = useState("");
   const [sourceId, setSourceId] = useState("");
+  const [sourceType, setSourceType] = useState("SMART_PLUG");
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -138,20 +141,33 @@ export function DevicesPage() {
         manufacturer: manufacturer || "Unknown",
         model: model || "Unknown",
       });
-      await createDataSource(device.id, {
-        sourceType: "SMART_PLUG",
+      const dataSource = await createDataSource(device.id, {
+        sourceType,
         protocol: "REST",
         externalId: sourceId,
       });
+      if (sourceType === "SIMULATOR") {
+        const token = await createDataSourceToken(device.id, dataSource.id);
+        const template = await getSimulationTemplate("FRIDGE", sourceId);
+        await saveSimulationConfig(device.id, {
+          dataSourceId: dataSource.id,
+          name: `${name} Simulator`,
+          profile: "FRIDGE",
+          protocol: "HTTP",
+          yamlConfig: template.yamlConfig.replace("sim-fridge-001", sourceId),
+          sourceToken: token.token,
+        });
+      }
       localStorage.setItem(`voltcanary.deviceSource.${device.id}`, sourceId);
       setDevices((current) => [...current, device]);
       setName("");
       setManufacturer("");
       setModel("");
       setSourceId("");
+      setSourceType("SMART_PLUG");
       setNewLocationName("");
       setIsCreateOpen(false);
-      navigate(`/devices/${device.id}`);
+      navigate(sourceType === "SIMULATOR" ? `/devices/${device.id}?tab=simulation` : `/devices/${device.id}`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create device");
     } finally {
@@ -297,6 +313,14 @@ export function DevicesPage() {
               <label>
                 Model
                 <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Unknown" />
+              </label>
+              <label>
+                Data source
+                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                  <option value="SMART_PLUG">Manual REST/API</option>
+                  <option value="SIMULATOR">Simulator</option>
+                  <option value="MQTT">MQTT</option>
+                </select>
               </label>
               <label>
                 Telemetry source ID

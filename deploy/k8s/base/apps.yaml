@@ -69,6 +69,81 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: simulator-service
+  namespace: voltcanary
+spec:
+  selector:
+    app: simulator-service
+  ports:
+    - name: http
+      port: 8087
+      targetPort: 8087
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator-service
+  namespace: voltcanary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator-service
+  template:
+    metadata:
+      labels:
+        app: simulator-service
+    spec:
+      containers:
+        - name: simulator-service
+          image: maven:3.9-eclipse-temurin-21
+          workingDir: /workspace/backend
+          command: ["/bin/sh", "-c"]
+          args: ["mvn -pl services/simulator-service -am -Dmaven.test.skip=true install && mvn -f services/simulator-service/pom.xml spring-boot:run"]
+          envFrom:
+            - configMapRef:
+                name: voltcanary-config
+            - secretRef:
+                name: voltcanary-secrets
+          ports:
+            - containerPort: 8087
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8087
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8087
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          volumeMounts:
+            - name: backend-workspace
+              mountPath: /workspace/backend
+            - name: maven-cache
+              mountPath: /root/.m2
+      volumes:
+        - name: backend-workspace
+          emptyDir: {}
+        - name: maven-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: identity-service
   namespace: voltcanary
 spec:

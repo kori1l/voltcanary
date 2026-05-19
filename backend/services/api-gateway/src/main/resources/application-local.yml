@@ -56,6 +56,11 @@ spring:
               predicates:
                 - Path=/alerts/**
 
+            - id: simulator-service
+              uri: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
+              predicates:
+                - Path=/simulation/**
+
 logging:
   level:
     com.voltcanary.gateway: INFO
@@ -66,3 +71,4 @@ INGESTION_SERVICE_URI: http://ingestion-service:8083
 TELEMETRY_SERVICE_URI: http://telemetry-service:8084
 ANALYTICS_SERVICE_URI: http://analytics-service:8085
 ALERT_SERVICE_URI: http://alert-service:8086
+SIMULATOR_SERVICE_URI: http://simulator-service:8087

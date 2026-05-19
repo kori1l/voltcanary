@@ -43,7 +43,10 @@ x-java-app: &java-app
     TELEMETRY_SERVICE_URI: http://telemetry-service:8084
     ANALYTICS_SERVICE_URI: http://analytics-service:8085
     ALERT_SERVICE_URI: http://alert-service:8086
+    SIMULATOR_SERVICE_URI: http://simulator-service:8087
     ML_SERVICE_URI: http://ml-service:8090
+    INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
+    INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
   depends_on:
     postgres:
       condition: service_healthy
@@ -196,6 +199,21 @@ services:
       - ./deploy/docker-compose/init/minio:/init:ro
     entrypoint: ["/bin/sh", "/init/create-buckets.sh"]
     restart: "no"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    profiles:
+      - infra
+      - app
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    command: sh -c "printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' > /mosquitto/config/mosquitto.conf && mosquitto -c /mosquitto/config/mosquitto.conf"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 3 >/dev/null 2>&1 || true"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -362,6 +380,22 @@ services:
     ports:
       - "${ALERT_SERVICE_PORT:-8086}:8086"
 
+  simulator-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/simulator-service -am -Dmaven.test.skip=true install && mvn -f services/simulator-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      SIMULATOR_POSTGRES_DB: ${SIMULATOR_POSTGRES_DB:-voltcanary_simulator}
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      SIMULATOR_INGESTION_URL: http://ingestion-service:8083/ingestion/readings
+      SIMULATOR_MQTT_ENABLED: ${SIMULATOR_MQTT_ENABLED:-false}
+      SIMULATOR_MQTT_BROKER_URL: tcp://mosquitto:1883
+    ports:
+      - "${SIMULATOR_SERVICE_PORT:-8087}:8087"
+
   ml-service:
     image: python:3.12-slim
     profiles:
@@ -390,6 +424,18 @@ services:
       api-gateway:
         condition: service_started
 
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    profiles:
+      - homeassistant
+    environment:
+      TZ: ${TZ:-Europe/Budapest}
+    ports:
+      - "${HOME_ASSISTANT_PORT:-8123}:8123"
+    volumes:
+      - homeassistant-config:/config
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   timescale-data:
@@ -402,3 +448,4 @@ volumes:
   grafana-data:
   maven-cache:
   frontend-node-modules:
+  homeassistant-config:

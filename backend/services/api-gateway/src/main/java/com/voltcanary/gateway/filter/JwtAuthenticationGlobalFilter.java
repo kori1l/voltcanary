@@ -41,7 +41,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         if (isPublic(exchange)) {
-            return chain.filter(exchange);
+            return chain.filter(stripUserHeaders(exchange));
         }
 
         String authorization = exchange.getRequest().getHeaders().getFirst("Authorization");
@@ -56,6 +56,9 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             String userRole = claims.getStringClaim("role");
             ServerWebExchange authenticatedExchange = exchange.mutate()
                     .request(request -> request.headers(headers -> {
+                        headers.remove(USER_ID_HEADER);
+                        headers.remove(USER_EMAIL_HEADER);
+                        headers.remove(USER_ROLE_HEADER);
                         headers.set(USER_ID_HEADER, userId);
                         headers.set(USER_EMAIL_HEADER, userEmail);
                         headers.set(USER_ROLE_HEADER, userRole);
@@ -97,6 +100,16 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         return exchange.getResponse().setComplete();
+    }
+
+    private ServerWebExchange stripUserHeaders(ServerWebExchange exchange) {
+        return exchange.mutate()
+                .request(request -> request.headers(headers -> {
+                    headers.remove(USER_ID_HEADER);
+                    headers.remove(USER_EMAIL_HEADER);
+                    headers.remove(USER_ROLE_HEADER);
+                }))
+                .build();
     }
 
     private byte[] sha256(String value) {

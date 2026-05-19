@@ -57,6 +57,10 @@ spring:
               uri: ${ALERT_SERVICE_URI:http://localhost:8086}
               predicates:
                 - Path=/alerts/**
+            - id: simulator-service
+              uri: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
+              predicates:
+                - Path=/simulation/**
 
 app:
   jwt:
