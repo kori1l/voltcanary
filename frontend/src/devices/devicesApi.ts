@@ -33,7 +33,7 @@ export interface DeviceType {
 export interface DeviceAccount {
   id: string;
   userId: string;
-  email: string;
+  name: string;
   status: "ACTIVE" | "DISABLED" | "DELETED";
 }
 

@@ -1,15 +1,17 @@
-import { TelemetryEvent, TelemetryMetricOverview } from "../model/telemetry.types";
+import { TelemetryEvent, TelemetryMetricOverview, TelemetryOverviewResponse } from "../model/telemetry.types";
 import { MetricCard } from "./MetricCard";
 
 export function MetricGrid({
   metrics,
   events,
+  range,
   showPoints,
   maxDisplayPoints,
   onAnalyze,
 }: {
   metrics: TelemetryMetricOverview[];
   events: TelemetryEvent[];
+  range: TelemetryOverviewResponse["range"];
   showPoints: boolean;
   maxDisplayPoints: number;
   onAnalyze: (metricKey: string) => void;
@@ -30,6 +32,7 @@ export function MetricGrid({
           key={metric.definition.key}
           metric={metric}
           events={events}
+          range={range}
           showPoints={showPoints}
           maxDisplayPoints={maxDisplayPoints}
           onAnalyze={() => onAnalyze(metric.definition.key)}

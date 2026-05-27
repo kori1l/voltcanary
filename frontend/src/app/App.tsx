@@ -3,6 +3,7 @@ import { AppLayout } from "./AppLayout";
 import { isAuthenticated } from "../api/client";
 import { AlertsPage } from "../pages/AlertsPage";
 import { AiAgentPage } from "../pages/AiAgentPage";
+import { AiAgentSettingsPage } from "../pages/AiAgentSettingsPage";
 import { AccountPage } from "../pages/AccountPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { DeviceDetailsPage } from "../pages/DeviceDetailsPage";
@@ -38,6 +39,7 @@ export function App() {
         <Route path="/devices/:deviceId" element={<DeviceDetailsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/ai-agent" element={<AiAgentPage />} />
+        <Route path="/ai-agent/settings" element={<AiAgentSettingsPage />} />
         <Route path="/account" element={<AccountPage />} />
       </Route>
       <Route path="*" element={<Navigate to={isAuthenticated() ? "/devices" : "/login"} replace />} />

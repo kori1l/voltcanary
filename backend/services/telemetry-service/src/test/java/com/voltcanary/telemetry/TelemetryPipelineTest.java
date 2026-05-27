@@ -171,6 +171,35 @@ class TelemetryPipelineTest {
     }
 
     @Test
+    void partiallyInvalidMetricsStillPersistValidMeasurements() {
+        UUID deviceId = UUID.randomUUID();
+        TelemetryReceivedEvent event = new TelemetryReceivedEvent(
+                UUID.randomUUID(),
+                deviceId,
+                "plug-001",
+                Instant.parse("2026-05-12T12:33:00Z"),
+                Map.of("activePowerW", 120.0, "voltageV", 230.0, "relayState", "ON"),
+                Instant.now());
+
+        int inserted = telemetryEventProcessor.process(event);
+
+        assertThat(inserted).isEqualTo(2);
+        Long rowCount = jdbcTemplate.queryForObject(
+                "select count(*) from telemetry.measurements where device_id = ?",
+                Long.class,
+                deviceId);
+        assertThat(rowCount).isEqualTo(2);
+        verify(telemetryValidatedPublisher).publish(any());
+
+        ResponseEntity<String> quality = restTemplate.getForEntity(
+                "/telemetry/devices/{deviceId}/quality",
+                String.class,
+                deviceId);
+        assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(quality.getBody()).contains("INVALID_VALUE");
+    }
+
+    @Test
     void outOfOrderEventIsAcceptedAndFlagged() {
         UUID deviceId = UUID.randomUUID();
         telemetryEventProcessor.process(event(deviceId, "plug-001", Instant.parse("2026-05-12T12:40:00Z")));

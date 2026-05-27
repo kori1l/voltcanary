@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AgentPlan,
   AgentProviderStatus,
@@ -7,6 +8,9 @@ import {
   executeAgentPlan,
   getAgentProviderStatus,
   listAgentTools,
+  listModelProviders,
+  ModelConfig,
+  ModelProvider,
 } from "../aiAgent/aiAgentApi";
 
 const EXAMPLES = [
@@ -22,6 +26,10 @@ export function AiAgentPage() {
   const [execution, setExecution] = useState<ExecutePlanResponse | null>(null);
   const [tools, setTools] = useState<string[]>([]);
   const [providerStatus, setProviderStatus] = useState<AgentProviderStatus | null>(null);
+  const [providers, setProviders] = useState<ModelProvider[]>([]);
+  const [models, setModels] = useState<ModelConfig[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [selectedModelConfigId, setSelectedModelConfigId] = useState("");
   const [isPlanning, setIsPlanning] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +37,24 @@ export function AiAgentPage() {
   useEffect(() => {
     listAgentTools().then(setTools).catch(() => setTools([]));
     getAgentProviderStatus().then(setProviderStatus).catch(() => setProviderStatus(null));
+    listModelProviders()
+      .then((items) => {
+        setProviders(items);
+        const defaultProvider = items.find((provider) => provider.isDefault) ?? items[0];
+        if (defaultProvider) {
+          setSelectedProviderId(defaultProvider.id);
+          setModels(defaultProvider.models);
+          setSelectedModelConfigId((defaultProvider.models.find((model) => model.isDefault) ?? defaultProvider.models[0])?.id ?? "");
+        }
+      })
+      .catch(() => setProviders([]));
   }, []);
+
+  useEffect(() => {
+    const provider = providers.find((item) => item.id === selectedProviderId);
+    setModels(provider?.models ?? []);
+    setSelectedModelConfigId((provider?.models.find((model) => model.isDefault) ?? provider?.models[0])?.id ?? "");
+  }, [providers, selectedProviderId]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -38,7 +63,7 @@ export function AiAgentPage() {
     setExecution(null);
     try {
       const context = contextJson.trim() ? JSON.parse(contextJson) as Record<string, unknown> : {};
-      setPlan(await createAgentPlan(message, context));
+      setPlan(await createAgentPlan(message, context, selectedProviderId || undefined, selectedModelConfigId || undefined));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create agent plan");
     } finally {
@@ -87,6 +112,33 @@ export function AiAgentPage() {
             Request
             <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={5} />
           </label>
+          <div className="agent-model-selector">
+            <label>
+              Provider
+              <select value={selectedProviderId} onChange={(event) => setSelectedProviderId(event.target.value)}>
+                <option value="">Rules fallback</option>
+                {providers.map((provider) => (
+                  <option value={provider.id} key={provider.id}>
+                    {provider.name} {provider.isDefault ? "(default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Model
+              <select value={selectedModelConfigId} onChange={(event) => setSelectedModelConfigId(event.target.value)} disabled={!selectedProviderId}>
+                <option value="">Default model</option>
+                {models.map((model) => (
+                  <option value={model.id} key={model.id}>
+                    {model.displayName} - {model.modelId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link className="ghost-button button-link" to="/ai-agent/settings">
+              Model settings
+            </Link>
+          </div>
           <label>
             Context JSON
             <textarea value={contextJson} onChange={(event) => setContextJson(event.target.value)} rows={8} spellCheck={false} />
@@ -123,6 +175,13 @@ export function AiAgentPage() {
                   {plan.confirmationRequired ? "Confirmation required" : "Read-only"}
                 </span>
               </div>
+              {plan.providerType || plan.modelId ? (
+                <div className="agent-plan-model-meta">
+                  <span>{plan.providerName ?? plan.providerType ?? "rules"}</span>
+                  <strong>{plan.modelId ?? "rule-based planner"}</strong>
+                  {plan.fallbackUsed ? <em>Fallback used</em> : null}
+                </div>
+              ) : null}
 
               <div className="agent-safety-notes">
                 {plan.safetyNotes.map((note) => <span key={note}>{note}</span>)}

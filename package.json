@@ -1,0 +1,23 @@
+{
+  "name": "voltcanary",
+  "version": "1.0.0",
+  "description": "VoltCanary is a predictive IoT analytics platform for connected appliances and small physical assets.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kori1l/voltcanary.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kori1l/voltcanary/issues"
+  },
+  "homepage": "https://github.com/kori1l/voltcanary#readme"
+}

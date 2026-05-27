@@ -1,4 +1,4 @@
-import { TelemetryEvent, TelemetryMetricOverview } from "../model/telemetry.types";
+import { TelemetryEvent, TelemetryMetricOverview, TelemetryOverviewResponse } from "../model/telemetry.types";
 import { formatMetricValue } from "../model/telemetry.utils";
 import { StatusBadge } from "./StatusBadge";
 import { TelemetryChart } from "./TelemetryChart";
@@ -6,12 +6,14 @@ import { TelemetryChart } from "./TelemetryChart";
 export function MetricCard({
   metric,
   events,
+  range,
   showPoints,
   maxDisplayPoints,
   onAnalyze,
 }: {
   metric: TelemetryMetricOverview;
   events: TelemetryEvent[];
+  range: TelemetryOverviewResponse["range"];
   showPoints: boolean;
   maxDisplayPoints: number;
   onAnalyze: () => void;
@@ -46,6 +48,7 @@ export function MetricCard({
         series={metric.series}
         label={metric.definition.name}
         unit={metric.definition.unit}
+        range={range}
         threshold={metric.threshold}
         events={events.filter((event) => event.metricKey === metric.definition.key)}
         showPoints={showPoints}

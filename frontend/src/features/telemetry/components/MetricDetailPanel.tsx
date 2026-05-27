@@ -1,4 +1,5 @@
-import { MetricDetailResponse, TelemetryEvent } from "../model/telemetry.types";
+import { useState } from "react";
+import { MetricDetailResponse, TelemetryEvent, TelemetryOverviewResponse } from "../model/telemetry.types";
 import { formatShortDateTime } from "../model/telemetry.utils";
 import { CorrelationPanel } from "./CorrelationPanel";
 import { EventTimeline } from "./EventTimeline";
@@ -11,22 +12,28 @@ import { ThresholdLegend } from "./ThresholdLegend";
 export function MetricDetailPanel({
   detail,
   allEvents,
+  range,
   selectedEventId,
   showPoints,
   maxDisplayPoints,
   rangeLabel,
+  onRangeSelect,
   onSelectEvent,
   onClose,
 }: {
   detail: MetricDetailResponse;
   allEvents: TelemetryEvent[];
+  range: TelemetryOverviewResponse["range"];
   selectedEventId?: string | null;
   showPoints: boolean;
   maxDisplayPoints: number;
   rangeLabel: string;
+  onRangeSelect: (from: string, to: string) => void;
   onSelectEvent: (eventId: string) => void;
   onClose: () => void;
 }) {
+  const [isBrushZoomEnabled, setIsBrushZoomEnabled] = useState(true);
+
   return (
     <div className="metric-detail-overlay" role="presentation" onMouseDown={onClose}>
       <section
@@ -60,16 +67,23 @@ export function MetricDetailPanel({
           <span>{allEvents.length} total events</span>
           <span>{showPoints ? "Points on" : "Points off"}</span>
           <span>{maxDisplayPoints} display points</span>
+          <label className="chart-option metric-detail-option">
+            <input type="checkbox" checked={isBrushZoomEnabled} onChange={(event) => setIsBrushZoomEnabled(event.target.checked)} />
+            <span>Brush zoom</span>
+          </label>
         </div>
 
         <TelemetryChart
           series={detail.series}
           label={detail.metric.name}
           unit={detail.metric.unit}
+          range={range}
           threshold={detail.threshold}
           events={allEvents}
           showPoints={showPoints}
           maxDisplayPoints={maxDisplayPoints}
+          enableRangeSelection={isBrushZoomEnabled}
+          onRangeSelect={onRangeSelect}
           mode="detailed"
         />
 

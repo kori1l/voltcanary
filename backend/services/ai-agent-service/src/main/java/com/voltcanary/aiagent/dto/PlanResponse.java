@@ -9,5 +9,11 @@ public record PlanResponse(
         String explanation,
         boolean confirmationRequired,
         List<String> safetyNotes,
-        List<AgentActionResponse> actions) {
+        List<AgentActionResponse> actions,
+        String providerType,
+        String providerName,
+        String modelId,
+        UUID providerId,
+        UUID modelConfigId,
+        boolean fallbackUsed) {
 }

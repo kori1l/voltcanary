@@ -1,23 +1,21 @@
 package com.voltcanary.aiagent.security;
 
-import com.nimbusds.jose.JWSVerifier;
-import com.nimbusds.jose.crypto.MACVerifier;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Date;
+import com.voltcanary.common.security.JwtAccessTokenClaims;
+import com.voltcanary.common.security.JwtAccessTokenService;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JwtIdentityService {
+    private final JwtAccessTokenService accessTokenService;
 
-    private final byte[] signingKey;
-
-    public JwtIdentityService(@Value("${app.jwt.secret:${JWT_SECRET:change_me}}") String secret) {
-        this.signingKey = sha256(secret);
+    public JwtIdentityService(
+            @Value("${app.jwt.key-id:${JWT_KEY_ID:dev-rsa}}") String activeKeyId,
+            @Value("${app.jwt.public-keys:${JWT_PUBLIC_KEYS:}}") String publicKeys,
+            @Value("${app.jwt.issuer:${JWT_ISSUER:voltcanary-identity}}") String issuer,
+            @Value("${app.jwt.audience:${JWT_AUDIENCE:voltcanary-api}}") String audience) {
+        this.accessTokenService = new JwtAccessTokenService(activeKeyId, publicKeys, issuer, audience);
     }
 
     public AuthenticatedUser parseBearerToken(String authorizationHeader) {
@@ -25,32 +23,12 @@ public class JwtIdentityService {
             throw new AuthenticationFailedException("Missing bearer token");
         }
         try {
-            SignedJWT jwt = SignedJWT.parse(authorizationHeader.substring("Bearer ".length()));
-            JWSVerifier verifier = new MACVerifier(signingKey);
-            if (!jwt.verify(verifier)) {
-                throw new AuthenticationFailedException("Invalid access token signature");
-            }
-            JWTClaimsSet claims = jwt.getJWTClaimsSet();
-            Date expiresAt = claims.getExpirationTime();
-            if (expiresAt == null || expiresAt.before(new Date())) {
-                throw new AuthenticationFailedException("Access token expired");
-            }
-            return new AuthenticatedUser(
-                    UUID.fromString(claims.getSubject()),
-                    claims.getStringClaim("email"),
-                    claims.getStringClaim("role"));
+            JwtAccessTokenClaims claims = accessTokenService.validate(authorizationHeader.substring("Bearer ".length()));
+            return new AuthenticatedUser(UUID.fromString(claims.subject()), claims.email(), claims.role());
         } catch (AuthenticationFailedException exception) {
             throw exception;
         } catch (Exception exception) {
             throw new AuthenticationFailedException("Invalid access token");
-        }
-    }
-
-    private byte[] sha256(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed to initialize JWT signing key", exception);
         }
     }
 }

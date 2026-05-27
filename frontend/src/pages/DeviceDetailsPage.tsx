@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { acknowledgeAlert, AlertResponse, listAlerts, resolveAlert } from "../alerts/alertsApi";
 import {
@@ -63,10 +63,19 @@ import { TelemetryOverviewResponse } from "../features/telemetry/model/telemetry
 import { formatMetricValue as formatTelemetryMetricValue } from "../features/telemetry/model/telemetry.utils";
 
 type ChartPoint = { timestamp: string; value: number };
-type SampledChartPoint = { point: ChartPoint; sourceIndex: number };
+type RenderChartPoint = ChartPoint & { synthetic?: boolean };
 type ChartMetricConfig = { key: string; label: string; unit: string };
 type ChartDensity = "compact" | "balanced" | "detailed";
 type ChartTimeRange = "15m" | "1h" | "6h" | "24h" | "7d" | "custom";
+type DashboardChartPreferences = {
+  selectedMetricKeys: string[];
+  showChartPoints: boolean;
+  chartDensity: ChartDensity;
+  chartTimeRange: ChartTimeRange;
+  customChartFrom: string;
+  customChartTo: string;
+  expandedChartMetricKey: string | null;
+};
 type SimulationSettings = {
   name: string;
   sourceId: string;
@@ -119,22 +128,33 @@ const CHART_TIME_RANGES: { value: ChartTimeRange; label: string; durationMs?: nu
   { value: "custom", label: "Custom" },
 ];
 
+const DEFAULT_DASHBOARD_CHART_PREFERENCES: DashboardChartPreferences = {
+  selectedMetricKeys: DEFAULT_CHART_METRICS,
+  showChartPoints: false,
+  chartDensity: "balanced",
+  chartTimeRange: "24h",
+  customChartFrom: toDateTimeLocalValue(new Date(Date.now() - 24 * 60 * 60 * 1000)),
+  customChartTo: toDateTimeLocalValue(new Date()),
+  expandedChartMetricKey: null,
+};
+
 export function DeviceDetailsPage() {
   const { deviceId } = useParams();
+  const initialChartPreferences = readDashboardChartPreferences(deviceId);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") ?? "overview";
   const [device, setDevice] = useState<Device | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [latest, setLatest] = useState<LatestTelemetry | null>(null);
   const [charts, setCharts] = useState<Record<string, TelemetryChart>>({});
-  const [selectedChartMetricKeys, setSelectedChartMetricKeys] = useState<string[]>(DEFAULT_CHART_METRICS);
-  const [showChartPoints, setShowChartPoints] = useState(false);
-  const [chartDensity, setChartDensity] = useState<ChartDensity>("balanced");
-  const [chartTimeRange, setChartTimeRange] = useState<ChartTimeRange>("24h");
-  const [customChartFrom, setCustomChartFrom] = useState(() => toDateTimeLocalValue(new Date(Date.now() - 24 * 60 * 60 * 1000)));
-  const [customChartTo, setCustomChartTo] = useState(() => toDateTimeLocalValue(new Date()));
+  const [selectedChartMetricKeys, setSelectedChartMetricKeys] = useState<string[]>(initialChartPreferences.selectedMetricKeys);
+  const [showChartPoints, setShowChartPoints] = useState(initialChartPreferences.showChartPoints);
+  const [chartDensity, setChartDensity] = useState<ChartDensity>(initialChartPreferences.chartDensity);
+  const [chartTimeRange, setChartTimeRange] = useState<ChartTimeRange>(initialChartPreferences.chartTimeRange);
+  const [customChartFrom, setCustomChartFrom] = useState(initialChartPreferences.customChartFrom);
+  const [customChartTo, setCustomChartTo] = useState(initialChartPreferences.customChartTo);
   const [metricSearch, setMetricSearch] = useState("");
-  const [expandedChartMetricKey, setExpandedChartMetricKey] = useState<string | null>(null);
+  const [expandedChartMetricKey, setExpandedChartMetricKey] = useState<string | null>(initialChartPreferences.expandedChartMetricKey);
   const [selectedTelemetryEventId, setSelectedTelemetryEventId] = useState<string | null>(null);
   const [deviceAlertStatusFilter, setDeviceAlertStatusFilter] = useState("active");
   const [showAllDeviceAlerts, setShowAllDeviceAlerts] = useState(false);
@@ -284,6 +304,30 @@ export function DeviceDetailsPage() {
   }, [deviceId]);
 
   useEffect(() => {
+    const preferences = readDashboardChartPreferences(deviceId);
+    setSelectedChartMetricKeys(preferences.selectedMetricKeys);
+    setShowChartPoints(preferences.showChartPoints);
+    setChartDensity(preferences.chartDensity);
+    setChartTimeRange(preferences.chartTimeRange);
+    setCustomChartFrom(preferences.customChartFrom);
+    setCustomChartTo(preferences.customChartTo);
+    setExpandedChartMetricKey(preferences.expandedChartMetricKey);
+  }, [deviceId]);
+
+  useEffect(() => {
+    if (!deviceId) return;
+    writeDashboardChartPreferences(deviceId, {
+      selectedMetricKeys: selectedChartMetricKeys,
+      showChartPoints,
+      chartDensity,
+      chartTimeRange,
+      customChartFrom,
+      customChartTo,
+      expandedChartMetricKey,
+    });
+  }, [deviceId, selectedChartMetricKeys, showChartPoints, chartDensity, chartTimeRange, customChartFrom, customChartTo, expandedChartMetricKey]);
+
+  useEffect(() => {
     if (!deviceId) {
       return;
     }
@@ -327,7 +371,6 @@ export function DeviceDetailsPage() {
   const locationName = device ? locationById.get(device.locationId ?? "") ?? "No location" : "No location";
   const riskInsight = getRiskInsight(risk, anomalies, recommendations);
   const latestAnomaly = anomalies[0] ?? null;
-  const sourceId = deviceId ? localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001" : "plug-001";
   const availableChartMetrics = Object.keys(charts)
     .map((key) => CHART_METRIC_LOOKUP.get(key) ?? createMetricConfig(key))
     .filter((metric) => charts[metric.key]?.points.length > 0)
@@ -340,6 +383,7 @@ export function DeviceDetailsPage() {
   });
   const expandedChartMetric = availableChartMetrics.find((metric) => metric.key === expandedChartMetricKey) ?? null;
   const simulationSettings = useMemo(() => readSimulationSettings(simulationYaml), [simulationYaml]);
+  const simulationSourceId = simulationSettings.sourceId || (deviceId ? localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001" : "plug-001");
   const chartTimeWindow = getChartTimeWindow(chartTimeRange, customChartFrom, customChartTo);
   const telemetryOverview = useMemo(() => {
     if (!deviceId || !chartTimeWindow) {
@@ -378,6 +422,9 @@ export function DeviceDetailsPage() {
 
   useEffect(() => {
     const availableKeys = availableChartKeySignature ? availableChartKeySignature.split("|") : [];
+    if (availableKeys.length === 0) {
+      return;
+    }
     setSelectedChartMetricKeys((current) => {
       const currentAvailable = current.filter((key) => availableKeys.includes(key));
       const defaultAvailable = DEFAULT_CHART_METRICS.filter((key) => availableKeys.includes(key));
@@ -456,18 +503,7 @@ export function DeviceDetailsPage() {
     setIsSimulationBusy(true);
     setSimulationMessage(null);
     try {
-      const saved = await saveSimulationConfig(deviceId, {
-        dataSourceId: simulationConfig.dataSourceId,
-        name: simulationConfig.name,
-        profile: simulationProfile,
-        protocol: simulationProtocol,
-        yamlConfig: simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
-      });
-      await updateDataSource(deviceId, simulationConfig.dataSourceId, {
-        sourceType: "SIMULATOR",
-        protocol: simulationProtocol === "MQTT" ? "MQTT" : "REST",
-        externalId: sourceId,
-      }).catch(() => undefined);
+      const saved = await saveCurrentSimulationConfig(false);
       setSimulationConfig(saved);
       setSimulationProfile(saved.profile);
       setSimulationProtocol(saved.protocol);
@@ -492,13 +528,15 @@ export function DeviceDetailsPage() {
   }
 
   async function toggleSimulation() {
-    if (!deviceId) return;
+    if (!deviceId || !simulationConfig) return;
     setIsSimulationBusy(true);
     setSimulationMessage(null);
     try {
       if (simulationStatus?.status === "RUNNING") {
         setSimulationStatus(await stopSimulation(deviceId));
       } else {
+        const saved = await saveCurrentSimulationConfig(simulationProtocol === "HTTP");
+        setSimulationConfig(saved);
         setSimulationStatus(await startSimulation(deviceId));
       }
       await loadSimulation(deviceId);
@@ -514,7 +552,7 @@ export function DeviceDetailsPage() {
     setIsSimulationBusy(true);
     setSimulationMessage(null);
     try {
-      const template = await resetSimulationTemplate(deviceId, simulationProfile, sourceId);
+      const template = await resetSimulationTemplate(deviceId, simulationProfile, simulationSourceId);
       setSimulationYaml(template.yamlConfig.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`));
       setSimulationMessage("Template loaded");
     } finally {
@@ -567,12 +605,53 @@ export function DeviceDetailsPage() {
     try {
       const response = await createDataSourceToken(deviceId, dataSourceId);
       setLastSourceToken(response.token);
+      if (simulationConfig?.dataSourceId === dataSourceId) {
+        const saved = await saveSimulationConfig(deviceId, {
+          dataSourceId: simulationConfig.dataSourceId,
+          name: simulationConfig.name,
+          profile: simulationProfile,
+          protocol: simulationProtocol,
+          yamlConfig: simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
+          sourceToken: response.token,
+        });
+        setSimulationConfig(saved);
+      }
       await loadRegistry(deviceId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to rotate source token");
     } finally {
       setIsRegistryBusy(false);
     }
+  }
+
+  async function saveCurrentSimulationConfig(rotateToken: boolean) {
+    if (!deviceId || !simulationConfig) {
+      throw new Error("Simulation config is not loaded");
+    }
+
+    const yamlConfig = updateSimulationYaml(
+      simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
+      "sourceId",
+      simulationSourceId,
+    );
+    await updateDataSource(deviceId, simulationConfig.dataSourceId, {
+      sourceType: "SIMULATOR",
+      protocol: simulationProtocol === "MQTT" ? "MQTT" : "REST",
+      externalId: simulationSourceId,
+    }).catch(() => undefined);
+    const token = rotateToken ? await createDataSourceToken(deviceId, simulationConfig.dataSourceId) : null;
+    if (token) {
+      setLastSourceToken(token.token);
+    }
+    localStorage.setItem(`voltcanary.deviceSource.${deviceId}`, simulationSourceId);
+    return saveSimulationConfig(deviceId, {
+      dataSourceId: simulationConfig.dataSourceId,
+      name: simulationConfig.name,
+      profile: simulationProfile,
+      protocol: simulationProtocol,
+      yamlConfig,
+      ...(token ? { sourceToken: token.token } : {}),
+    });
   }
 
   async function revokeSourceToken(dataSourceId: string) {
@@ -1180,7 +1259,6 @@ export function DeviceDetailsPage() {
                   range={chartTimeRange}
                   customFrom={customChartFrom}
                   customTo={customChartTo}
-                  density={chartDensity}
                   showPoints={showChartPoints}
                   selectedMetricKeys={selectedChartMetricKeys}
                   metricSearch={metricSearch}
@@ -1190,7 +1268,6 @@ export function DeviceDetailsPage() {
                   onRangeChange={setChartTimeRange}
                   onCustomFromChange={setCustomChartFrom}
                   onCustomToChange={setCustomChartTo}
-                  onDensityChange={setChartDensity}
                   onShowPointsChange={setShowChartPoints}
                   onMetricSearchChange={setMetricSearch}
                   onToggleMetric={toggleChartMetric}
@@ -1307,7 +1384,7 @@ export function DeviceDetailsPage() {
                   </div>
                   <div>
                     <dt>Source ID</dt>
-                    <dd>{sourceId}</dd>
+                    <dd>{simulationSourceId}</dd>
                   </div>
                 </dl>
               </div>
@@ -1323,7 +1400,6 @@ export function DeviceDetailsPage() {
               range={chartTimeRange}
               customFrom={customChartFrom}
               customTo={customChartTo}
-              density={chartDensity}
               showPoints={showChartPoints}
               selectedMetricKeys={selectedChartMetricKeys}
               metricSearch={metricSearch}
@@ -1333,7 +1409,6 @@ export function DeviceDetailsPage() {
               onRangeChange={setChartTimeRange}
               onCustomFromChange={setCustomChartFrom}
               onCustomToChange={setCustomChartTo}
-              onDensityChange={setChartDensity}
               onShowPointsChange={setShowChartPoints}
               onMetricSearchChange={setMetricSearch}
               onToggleMetric={toggleChartMetric}
@@ -1496,14 +1571,6 @@ export function DeviceDetailsPage() {
                       <input type="checkbox" checked={showChartPoints} onChange={(event) => setShowChartPoints(event.target.checked)} />
                       <span>Show points</span>
                     </label>
-                    <label className="chart-select">
-                      <span>Detail</span>
-                      <select value={chartDensity} onChange={(event) => setChartDensity(event.target.value as ChartDensity)}>
-                        <option value="compact">Compact</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="detailed">Detailed</option>
-                      </select>
-                    </label>
                   </div>
                 </div>
 
@@ -1511,6 +1578,7 @@ export function DeviceDetailsPage() {
                   points={analyticsFocusedPoints}
                   label={analyticsFocusedMetric?.label ?? "Metric"}
                   unit={analyticsFocusedMetric?.unit ?? ""}
+                  timeRange={chartTimeWindow}
                   baseline={analyticsBaseline?.mean}
                   threshold={
                     analyticsFocusedOverview?.threshold?.criticalMax ??
@@ -2143,6 +2211,48 @@ function inferMetricUnit(key: string) {
   return "";
 }
 
+function dashboardChartPreferencesKey(deviceId: string) {
+  return `voltcanary.dashboardCharts.${deviceId}`;
+}
+
+function readDashboardChartPreferences(deviceId: string | undefined): DashboardChartPreferences {
+  if (!deviceId) {
+    return DEFAULT_DASHBOARD_CHART_PREFERENCES;
+  }
+  try {
+    const raw = localStorage.getItem(dashboardChartPreferencesKey(deviceId));
+    if (!raw) {
+      return DEFAULT_DASHBOARD_CHART_PREFERENCES;
+    }
+    const parsed = JSON.parse(raw) as Partial<DashboardChartPreferences>;
+    return {
+      selectedMetricKeys: Array.isArray(parsed.selectedMetricKeys) && parsed.selectedMetricKeys.length > 0
+        ? parsed.selectedMetricKeys.filter((key): key is string => typeof key === "string")
+        : DEFAULT_DASHBOARD_CHART_PREFERENCES.selectedMetricKeys,
+      showChartPoints: typeof parsed.showChartPoints === "boolean" ? parsed.showChartPoints : DEFAULT_DASHBOARD_CHART_PREFERENCES.showChartPoints,
+      chartDensity: isChartDensity(parsed.chartDensity) ? parsed.chartDensity : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartDensity,
+      chartTimeRange: isChartTimeRange(parsed.chartTimeRange) ? parsed.chartTimeRange : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartTimeRange,
+      customChartFrom: typeof parsed.customChartFrom === "string" && parsed.customChartFrom ? parsed.customChartFrom : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartFrom,
+      customChartTo: typeof parsed.customChartTo === "string" && parsed.customChartTo ? parsed.customChartTo : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartTo,
+      expandedChartMetricKey: typeof parsed.expandedChartMetricKey === "string" ? parsed.expandedChartMetricKey : null,
+    };
+  } catch {
+    return DEFAULT_DASHBOARD_CHART_PREFERENCES;
+  }
+}
+
+function writeDashboardChartPreferences(deviceId: string, preferences: DashboardChartPreferences) {
+  localStorage.setItem(dashboardChartPreferencesKey(deviceId), JSON.stringify(preferences));
+}
+
+function isChartDensity(value: unknown): value is ChartDensity {
+  return value === "compact" || value === "balanced" || value === "detailed";
+}
+
+function isChartTimeRange(value: unknown): value is ChartTimeRange {
+  return value === "15m" || value === "1h" || value === "6h" || value === "24h" || value === "7d" || value === "custom";
+}
+
 function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo: string) {
   if (range === "custom") {
     const fromDate = new Date(customFrom);
@@ -2164,9 +2274,53 @@ function toDateTimeLocalValue(date: Date) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function sampleChartPoints(points: ChartPoint[], maxPoints: number): SampledChartPoint[] {
+function buildChartRenderPoints(points: ChartPoint[], maxPoints: number, timeRange?: { from: string; to: string } | null): RenderChartPoint[] {
+  const sortedPoints = [...points].sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
+  if (!timeRange) {
+    return sampleChartPoints(sortedPoints, maxPoints);
+  }
+
+  const fromMs = new Date(timeRange.from).getTime();
+  const toMs = new Date(timeRange.to).getTime();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+    return sampleChartPoints(sortedPoints, maxPoints);
+  }
+
+  const bucketCount = Math.max(2, maxPoints);
+  const bucketSizeMs = (toMs - fromMs) / (bucketCount - 1);
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const timestampMs = index === bucketCount - 1 ? toMs : fromMs + index * bucketSizeMs;
+    return {
+      timestamp: new Date(timestampMs).toISOString(),
+      value: 0,
+      synthetic: true,
+      sourceCount: 0,
+    };
+  });
+
+  for (const point of sortedPoints) {
+    const pointMs = new Date(point.timestamp).getTime();
+    if (!Number.isFinite(pointMs) || pointMs < fromMs || pointMs > toMs) {
+      continue;
+    }
+    const index = Math.min(bucketCount - 1, Math.max(0, Math.round((pointMs - fromMs) / bucketSizeMs)));
+    const bucket = buckets[index];
+    if (bucket.sourceCount === 0) {
+      bucket.value = point.value;
+    } else {
+      bucket.value = (bucket.value * bucket.sourceCount + point.value) / (bucket.sourceCount + 1);
+    }
+    bucket.timestamp = point.timestamp;
+    bucket.synthetic = false;
+    bucket.sourceCount += 1;
+  }
+
+  return buckets.map(({ sourceCount: _sourceCount, ...point }) => point);
+}
+
+function sampleChartPoints(points: ChartPoint[], maxPoints: number): RenderChartPoint[] {
   if (points.length <= maxPoints) {
-    return points.map((point, sourceIndex) => ({ point, sourceIndex }));
+    return points;
   }
 
   const lastIndex = points.length - 1;
@@ -2176,34 +2330,74 @@ function sampleChartPoints(points: ChartPoint[], maxPoints: number): SampledChar
     indexes.add(Math.round((index / (maxPoints - 1)) * lastIndex));
   }
 
-  return [...indexes].sort((first, second) => first - second).map((sourceIndex) => ({ point: points[sourceIndex], sourceIndex }));
+  return [...indexes].sort((first, second) => first - second).map((sourceIndex) => points[sourceIndex]);
+}
+
+function metricChartRangeTicks(timeRange: { from: string; to: string } | null | undefined, left: number, right: number) {
+  if (!timeRange) {
+    return [];
+  }
+  const fromMs = new Date(timeRange.from).getTime();
+  const toMs = new Date(timeRange.to).getTime();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+    return [];
+  }
+  return [
+    { timestamp: new Date(fromMs).toISOString(), x: left },
+    { timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(), x: left + (right - left) / 2 },
+    { timestamp: new Date(toMs).toISOString(), x: right },
+  ];
+}
+
+function formatMetricChartTimeLabel(timeRange: { from: string; to: string } | null | undefined, timestamp: string) {
+  if (!timeRange) {
+    return [formatShortTime(timestamp)];
+  }
+  const fromMs = new Date(timeRange.from).getTime();
+  const toMs = new Date(timeRange.to).getTime();
+  const value = new Date(timestamp);
+  if (Number.isFinite(toMs - fromMs) && toMs - fromMs >= 24 * 60 * 60 * 1000) {
+    return [
+      value.toLocaleDateString([], { month: "short", day: "numeric" }),
+      value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    ];
+  }
+  return [formatShortTime(timestamp)];
 }
 
 function MetricChart({
   points,
   label,
   unit,
+  timeRange,
   baseline,
   threshold,
   anomaly,
   showPoints,
   maxDisplayPoints,
   interactive = true,
+  enableRangeSelection = false,
+  onRangeSelect,
   size = "normal",
 }: {
   points: ChartPoint[];
   label: string;
   unit: string;
+  timeRange?: { from: string; to: string } | null;
   baseline?: number;
   threshold?: number;
   anomaly?: AnomalyResponse | null;
   showPoints: boolean;
   maxDisplayPoints: number;
   interactive?: boolean;
+  enableRangeSelection?: boolean;
+  onRangeSelect?: (from: string, to: string) => void;
   size?: "normal" | "large";
 }) {
-  const [hovered, setHovered] = useState<{ point: ChartPoint; x: number; y: number } | null>(null);
-  if (points.length === 0) {
+  const [hovered, setHovered] = useState<{ point: RenderChartPoint; x: number; y: number } | null>(null);
+  const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
+  const renderPoints = buildChartRenderPoints(points, maxDisplayPoints, timeRange);
+  if (renderPoints.length === 0) {
     return (
       <div className={`chart-wrap annotated-chart chart-${size}`}>
         <div className="empty-state">
@@ -2217,7 +2411,7 @@ function MetricChart({
   const width = 820;
   const height = 330;
   const padding = { top: 28, right: 28, bottom: 54, left: 58 };
-  const values = [...points.map((point) => point.value), baseline, threshold].filter((value): value is number => value !== undefined);
+  const values = [...renderPoints.map((point) => point.value), baseline, threshold].filter((value): value is number => value !== undefined);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
   const rawRange = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
@@ -2227,12 +2421,53 @@ function MetricChart({
   const maxValue = rawMax + paddingValue;
   const range = maxValue - minValue || 1;
   const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / range) * (height - padding.top - padding.bottom);
-  const xForIndex = (index: number) =>
-    padding.left + (index / Math.max(points.length - 1, 1)) * (width - padding.left - padding.right);
-  const sampledPoints = sampleChartPoints(points, maxDisplayPoints);
-  const coordinates = sampledPoints.map(({ point, sourceIndex }) => ({
+  const timeStart = timeRange ? new Date(timeRange.from).getTime() : new Date(renderPoints[0].timestamp).getTime();
+  const timeEnd = timeRange ? new Date(timeRange.to).getTime() : new Date(renderPoints[renderPoints.length - 1].timestamp).getTime();
+  const timeSpan = Math.max(timeEnd - timeStart, 1);
+  const xForTime = (timestamp: string) => {
+    const time = new Date(timestamp).getTime();
+    if (!Number.isFinite(time)) {
+      return padding.left;
+    }
+    return padding.left + ((time - timeStart) / timeSpan) * (width - padding.left - padding.right);
+  };
+  const chartLeft = padding.left;
+  const chartRight = width - padding.right;
+  const clampChartX = (value: number) => Math.min(chartRight, Math.max(chartLeft, value));
+  const timeForX = (x: number) => {
+    const ratio = (clampChartX(x) - chartLeft) / Math.max(chartRight - chartLeft, 1);
+    return timeStart + ratio * timeSpan;
+  };
+  const chartXFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const scale = width / Math.max(bounds.width, 1);
+    return clampChartX((event.clientX - bounds.left) * scale);
+  };
+  const canSelectRange = enableRangeSelection && Boolean(onRangeSelect) && Number.isFinite(timeStart) && Number.isFinite(timeEnd) && timeEnd > timeStart;
+  const startRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!canSelectRange || event.button !== 0) return;
+    const x = chartXFromPointer(event);
+    setHovered(null);
+    setSelection({ startX: x, currentX: x });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const updateRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!selection) return;
+    setSelection({ ...selection, currentX: chartXFromPointer(event) });
+  };
+  const finishRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
+    if (!selection) return;
+    const endX = chartXFromPointer(event);
+    const startX = selection.startX;
+    setSelection(null);
+    if (Math.abs(endX - startX) < 10 || !onRangeSelect) return;
+    const fromMs = Math.min(timeForX(startX), timeForX(endX));
+    const toMs = Math.max(timeForX(startX), timeForX(endX));
+    onRangeSelect(new Date(fromMs).toISOString(), new Date(toMs).toISOString());
+  };
+  const coordinates = renderPoints.map((point) => ({
     point,
-    x: xForIndex(sourceIndex),
+    x: xForTime(point.timestamp),
     y: yForValue(point.value),
   }));
   const spike = coordinates.reduce((current, next) => (next.point.value > current.point.value ? next : current), coordinates[0]);
@@ -2242,11 +2477,20 @@ function MetricChart({
       ? [spike]
       : [];
   const yTicks = [minValue, minValue + range / 2, maxValue];
-  const xTicks = [coordinates[0], coordinates[Math.floor(coordinates.length / 2)], coordinates[coordinates.length - 1]].filter(Boolean);
+  const xTicks = metricChartRangeTicks(timeRange, padding.left, width - padding.right);
 
   return (
     <div className={`chart-wrap annotated-chart chart-${size}`}>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} chart`}>
+      <svg
+        className={canSelectRange ? "chart-range-selectable" : undefined}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`${label} chart`}
+        onPointerDown={startRangeSelection}
+        onPointerMove={updateRangeSelection}
+        onPointerUp={finishRangeSelection}
+        onPointerCancel={() => setSelection(null)}
+      >
         {yTicks.map((tick) => {
           const y = yForValue(tick);
           return (
@@ -2261,6 +2505,8 @@ function MetricChart({
 
         <line className="chart-axis" x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
         <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
+
+        <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
 
         {baseline !== undefined ? (
           <g>
@@ -2281,6 +2527,16 @@ function MetricChart({
         ) : null}
 
         <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} />
+
+        {selection ? (
+          <rect
+            className="chart-range-selection"
+            x={Math.min(selection.startX, selection.currentX)}
+            y={padding.top}
+            width={Math.abs(selection.currentX - selection.startX)}
+            height={height - padding.top - padding.bottom}
+          />
+        ) : null}
 
         {visiblePointCoordinates.map((coordinate, index) => {
           const isSpike = coordinate === spike && (threshold === undefined || coordinate.point.value >= threshold);
@@ -2323,16 +2579,23 @@ function MetricChart({
           </text>
         ) : null}
 
-        {xTicks.map((tick) => (
-          <text key={tick.point.timestamp} className="chart-axis-label" x={tick.x} y={height - 20} textAnchor="middle">
-            {formatShortTime(tick.point.timestamp)}
-          </text>
-        ))}
+        {xTicks.map((tick) => {
+          const lines = formatMetricChartTimeLabel(timeRange, tick.timestamp);
+          return (
+            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - 28} textAnchor="middle">
+              {lines.map((line, index) => (
+                <tspan key={line} x={tick.x} dy={index === 0 ? 0 : 14}>
+                  {line}
+                </tspan>
+              ))}
+            </text>
+          );
+        })}
       </svg>
       {hovered ? (
         <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
           <strong>{formatShortTime(hovered.point.timestamp)}</strong>
-          <span>{formatMetricValue(hovered.point.value, unit)}</span>
+          <span>{hovered.point.synthetic ? "No data - 0" : formatMetricValue(hovered.point.value, unit)}</span>
           {threshold !== undefined && hovered.point.value >= threshold ? <em>Above threshold</em> : null}
         </div>
       ) : null}

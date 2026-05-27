@@ -411,6 +411,10 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: local
       JWT_SECRET: ${JWT_SECRET:-change_me}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       DEVICE_SERVICE_URI: http://device-service:8082
       SIMULATOR_SERVICE_URI: http://simulator-service:8087
       AI_PROVIDER: ${AI_PROVIDER:-rules}
@@ -418,6 +422,9 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-30000}
+      AI_AGENT_POSTGRES_DB: ${AI_AGENT_POSTGRES_DB:-voltcanary_ai_agent}
+      AI_AGENT_SECRET_ENCRYPTION_KEY: ${AI_AGENT_SECRET_ENCRYPTION_KEY:-change_me_32_bytes_minimum_local_dev_key}
+      AI_AGENT_SECRET_KEY_VERSION: ${AI_AGENT_SECRET_KEY_VERSION:-v1}
     ports:
       - "${AI_AGENT_SERVICE_PORT:-8088}:8088"
 

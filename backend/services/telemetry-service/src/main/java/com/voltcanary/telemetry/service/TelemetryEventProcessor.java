@@ -104,7 +104,7 @@ public class TelemetryEventProcessor {
 
             List<TelemetryMeasurement> measurements = normalize(event, qualityFlags);
             persistQualityFlags(readingId, event.deviceId(), qualityFlags);
-            if (measurements.isEmpty() || hasRejectingQuality(qualityFlags)) {
+            if (measurements.isEmpty() || hasRejectingEnvelopeQuality(qualityFlags)) {
                 deadLetterPublisher.publish(event, "telemetry_validation_failed", qualityFlags);
                 increment("invalid", "telemetry_validation_failed");
                 outcome = "invalid";
@@ -261,11 +261,9 @@ public class TelemetryEventProcessor {
                 .forEach(qualityFlagRepository::save);
     }
 
-    private boolean hasRejectingQuality(List<String> qualityFlags) {
+    private boolean hasRejectingEnvelopeQuality(List<String> qualityFlags) {
         return qualityFlags.contains(QualityFlag.MISSING_REQUIRED_FIELD.name())
-                || qualityFlags.contains(QualityFlag.INVALID_TIMESTAMP.name())
-                || qualityFlags.contains(QualityFlag.INVALID_VALUE.name())
-                || qualityFlags.contains(QualityFlag.OUT_OF_RANGE.name());
+                || qualityFlags.contains(QualityFlag.INVALID_TIMESTAMP.name());
     }
 
     private void addQualityFlag(List<String> qualityFlags, QualityFlag flag) {

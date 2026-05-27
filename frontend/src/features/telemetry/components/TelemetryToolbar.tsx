@@ -2,13 +2,11 @@ import { MetricDefinition } from "../model/telemetry.types";
 import { MetricSelector } from "./MetricSelector";
 
 export type TelemetryToolbarRange = "15m" | "1h" | "6h" | "24h" | "7d" | "custom";
-export type TelemetryToolbarDensity = "compact" | "balanced" | "detailed";
 
 export function TelemetryToolbar({
   range,
   customFrom,
   customTo,
-  density,
   showPoints,
   metrics,
   selectedMetricKeys,
@@ -16,7 +14,6 @@ export function TelemetryToolbar({
   onRangeChange,
   onCustomFromChange,
   onCustomToChange,
-  onDensityChange,
   onShowPointsChange,
   onMetricSearchChange,
   onToggleMetric,
@@ -27,7 +24,6 @@ export function TelemetryToolbar({
   range: TelemetryToolbarRange;
   customFrom: string;
   customTo: string;
-  density: TelemetryToolbarDensity;
   showPoints: boolean;
   metrics: MetricDefinition[];
   selectedMetricKeys: string[];
@@ -35,7 +31,6 @@ export function TelemetryToolbar({
   onRangeChange: (range: TelemetryToolbarRange) => void;
   onCustomFromChange: (value: string) => void;
   onCustomToChange: (value: string) => void;
-  onDensityChange: (density: TelemetryToolbarDensity) => void;
   onShowPointsChange: (value: boolean) => void;
   onMetricSearchChange: (value: string) => void;
   onToggleMetric: (metricKey: string) => void;
@@ -85,14 +80,6 @@ export function TelemetryToolbar({
         <label className="chart-option">
           <input type="checkbox" checked={showPoints} onChange={(event) => onShowPointsChange(event.target.checked)} />
           <span>Show points</span>
-        </label>
-        <label className="chart-select">
-          <span>Detail</span>
-          <select value={density} onChange={(event) => onDensityChange(event.target.value as TelemetryToolbarDensity)}>
-            <option value="compact">Compact</option>
-            <option value="balanced">Balanced</option>
-            <option value="detailed">Detailed</option>
-          </select>
         </label>
       </div>
     </div>

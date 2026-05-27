@@ -32,8 +32,8 @@ public class AiAgentOrchestrator {
         this.auditLogger = auditLogger;
     }
 
-    public PlanResponse createPlan(AuthenticatedUser user, String message, Map<String, Object> context) {
-        AgentPlan plan = planner.plan(user, message, context);
+    public PlanResponse createPlan(AuthenticatedUser user, String message, Map<String, Object> context, UUID providerId, UUID modelConfigId) {
+        AgentPlan plan = planner.plan(user, message, context, providerId, modelConfigId);
         planStore.save(plan);
         auditLogger.record(user, "PLAN_CREATED", plan.id(), null, Map.of("actionCount", plan.actions().size()));
         return toResponse(plan);
@@ -88,6 +88,12 @@ public class AiAgentOrchestrator {
                 plan.explanation(),
                 actions.stream().anyMatch(AgentActionResponse::requiresConfirmation),
                 plan.safetyNotes(),
-                actions);
+                actions,
+                plan.providerType(),
+                plan.providerName(),
+                plan.modelId(),
+                plan.providerId(),
+                plan.modelConfigId(),
+                plan.fallbackUsed());
     }
 }

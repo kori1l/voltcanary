@@ -1,6 +1,6 @@
 import { MetricDetailPanel } from "../components/MetricDetailPanel";
 import { MetricGrid } from "../components/MetricGrid";
-import { TelemetryToolbar, TelemetryToolbarDensity, TelemetryToolbarRange } from "../components/TelemetryToolbar";
+import { TelemetryToolbar, TelemetryToolbarRange } from "../components/TelemetryToolbar";
 import { EventTimeline } from "../components/EventTimeline";
 import { mapMetricDetail } from "../model/telemetry.mappers";
 import { TelemetryOverviewResponse } from "../model/telemetry.types";
@@ -10,7 +10,6 @@ export function TelemetryOverviewPage({
   range,
   customFrom,
   customTo,
-  density,
   showPoints,
   selectedMetricKeys,
   metricSearch,
@@ -20,7 +19,6 @@ export function TelemetryOverviewPage({
   onRangeChange,
   onCustomFromChange,
   onCustomToChange,
-  onDensityChange,
   onShowPointsChange,
   onMetricSearchChange,
   onToggleMetric,
@@ -35,7 +33,6 @@ export function TelemetryOverviewPage({
   range: TelemetryToolbarRange;
   customFrom: string;
   customTo: string;
-  density: TelemetryToolbarDensity;
   showPoints: boolean;
   selectedMetricKeys: string[];
   metricSearch: string;
@@ -45,7 +42,6 @@ export function TelemetryOverviewPage({
   onRangeChange: (range: TelemetryToolbarRange) => void;
   onCustomFromChange: (value: string) => void;
   onCustomToChange: (value: string) => void;
-  onDensityChange: (density: TelemetryToolbarDensity) => void;
   onShowPointsChange: (value: boolean) => void;
   onMetricSearchChange: (value: string) => void;
   onToggleMetric: (metricKey: string) => void;
@@ -60,6 +56,11 @@ export function TelemetryOverviewPage({
   const selectedMetricDefinitions = overview.metrics.map((metric) => metric.definition);
   const detail = openedMetricKey ? mapMetricDetail(overview, openedMetricKey, selectedEventId) : null;
   const rangeLabel = range === "custom" ? "Custom range" : range;
+  const applyDetailRangeSelection = (from: string, to: string) => {
+    onCustomFromChange(toDateTimeLocalValue(new Date(from)));
+    onCustomToChange(toDateTimeLocalValue(new Date(to)));
+    onRangeChange("custom");
+  };
 
   return (
     <section className="panel telemetry-monitoring-panel compact-telemetry-panel">
@@ -80,7 +81,6 @@ export function TelemetryOverviewPage({
         range={range}
         customFrom={customFrom}
         customTo={customTo}
-        density={density}
         showPoints={showPoints}
         metrics={selectedMetricDefinitions}
         selectedMetricKeys={selectedMetricKeys}
@@ -88,7 +88,6 @@ export function TelemetryOverviewPage({
         onRangeChange={onRangeChange}
         onCustomFromChange={onCustomFromChange}
         onCustomToChange={onCustomToChange}
-        onDensityChange={onDensityChange}
         onShowPointsChange={onShowPointsChange}
         onMetricSearchChange={onMetricSearchChange}
         onToggleMetric={onToggleMetric}
@@ -99,6 +98,7 @@ export function TelemetryOverviewPage({
       <MetricGrid
         metrics={selectedMetrics}
         events={overview.events}
+        range={overview.range}
         showPoints={showPoints}
         maxDisplayPoints={maxDisplayPoints}
         onAnalyze={onOpenMetric}
@@ -108,14 +108,21 @@ export function TelemetryOverviewPage({
         <MetricDetailPanel
           detail={detail}
           allEvents={overview.events}
+          range={overview.range}
           selectedEventId={selectedEventId}
           showPoints={showPoints}
           maxDisplayPoints={maxDisplayPoints * 2}
           rangeLabel={rangeLabel}
+          onRangeSelect={applyDetailRangeSelection}
           onSelectEvent={onSelectEvent}
           onClose={onCloseMetric}
         />
       ) : null}
     </section>
   );
+}
+
+function toDateTimeLocalValue(date: Date) {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
