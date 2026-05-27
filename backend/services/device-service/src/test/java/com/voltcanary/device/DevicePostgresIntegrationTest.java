@@ -1,16 +1,7 @@
 package com.voltcanary.device;
 
 import com.voltcanary.device.account.AccountResponse;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.time.Instant;
-import java.util.Date;
 import java.util.UUID;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.MACSigner;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,8 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "spring.jpa.hibernate.ddl-auto=validate",
-                "spring.jpa.open-in-view=false",
-                "JWT_SECRET=change_me"
+                "spring.jpa.open-in-view=false"
         })
 class DevicePostgresIntegrationTest {
 
@@ -68,25 +58,9 @@ class DevicePostgresIntegrationTest {
 
     private HttpHeaders headersFor(UUID userId, String email) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(jwt(userId, email));
+        headers.set("X-User-Id", userId.toString());
+        headers.set("X-User-Email", email);
+        headers.set("X-User-Role", "USER");
         return headers;
-    }
-
-    private String jwt(UUID userId, String email) {
-        try {
-            Instant now = Instant.now();
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
-                    .subject(userId.toString())
-                    .claim("email", email)
-                    .claim("role", "USER")
-                    .issueTime(Date.from(now))
-                    .expirationTime(Date.from(now.plusSeconds(900)))
-                    .build();
-            SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.HS256), claims);
-            jwt.sign(new MACSigner(MessageDigest.getInstance("SHA-256").digest("change_me".getBytes(StandardCharsets.UTF_8))));
-            return jwt.serialize();
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed to create test JWT", exception);
-        }
     }
 }

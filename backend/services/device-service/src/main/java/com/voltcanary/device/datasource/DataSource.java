@@ -27,12 +27,31 @@ public class DataSource {
     private DataSourceType type;
 
     @Column(name = "connection_ref")
+    private String connectionRef;
+
+    @Column(name = "source_id", nullable = false)
+    private String sourceId;
+
     @Enumerated(EnumType.STRING)
-    private DataSourceProtocol connectionRef;
+    @Column(name = "source_type", nullable = false)
+    private DataSourceType sourceType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private DataSourceProtocol protocol;
+
+    @Column(nullable = false)
+    private boolean enabled;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private SourceStatus status;
+
+    @Column(name = "last_seen_at")
+    private Instant lastSeenAt;
+
+    @Column(name = "credentials_ref")
+    private String credentialsRef;
 
     @Column(name = "ingestion_token_hash")
     private String ingestionTokenHash;
@@ -87,12 +106,44 @@ public class DataSource {
         this.type = type;
     }
 
-    public DataSourceProtocol getConnectionRef() {
+    public String getConnectionRef() {
         return connectionRef;
     }
 
-    public void setConnectionRef(DataSourceProtocol connectionRef) {
+    public void setConnectionRef(String connectionRef) {
         this.connectionRef = connectionRef;
+    }
+
+    public String getSourceId() {
+        return sourceId;
+    }
+
+    public void setSourceId(String sourceId) {
+        this.sourceId = sourceId;
+    }
+
+    public DataSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(DataSourceType sourceType) {
+        this.sourceType = sourceType;
+    }
+
+    public DataSourceProtocol getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(DataSourceProtocol protocol) {
+        this.protocol = protocol;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
     }
 
     public SourceStatus getStatus() {
@@ -101,6 +152,22 @@ public class DataSource {
 
     public void setStatus(SourceStatus status) {
         this.status = status;
+    }
+
+    public Instant getLastSeenAt() {
+        return lastSeenAt;
+    }
+
+    public void setLastSeenAt(Instant lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
+    }
+
+    public String getCredentialsRef() {
+        return credentialsRef;
+    }
+
+    public void setCredentialsRef(String credentialsRef) {
+        this.credentialsRef = credentialsRef;
     }
 
     public String getIngestionTokenHash() {

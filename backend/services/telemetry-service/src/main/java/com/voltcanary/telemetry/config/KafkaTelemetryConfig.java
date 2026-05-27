@@ -2,6 +2,7 @@ package com.voltcanary.telemetry.config;
 
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
+import com.voltcanary.telemetry.event.TelemetryDeadLetterEvent;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -53,5 +54,19 @@ public class KafkaTelemetryConfig {
     KafkaTemplate<String, TelemetryValidatedEvent> telemetryValidatedKafkaTemplate(
             ProducerFactory<String, TelemetryValidatedEvent> telemetryValidatedProducerFactory) {
         return new KafkaTemplate<>(telemetryValidatedProducerFactory);
+    }
+
+    @Bean
+    ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory(KafkaProperties kafkaProperties) {
+        Map<String, Object> properties = kafkaProperties.buildProducerProperties(null);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(properties);
+    }
+
+    @Bean
+    KafkaTemplate<String, TelemetryDeadLetterEvent> telemetryDeadLetterKafkaTemplate(
+            ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory) {
+        return new KafkaTemplate<>(telemetryDeadLetterProducerFactory);
     }
 }

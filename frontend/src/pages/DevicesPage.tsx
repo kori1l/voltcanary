@@ -8,6 +8,8 @@ import {
   createLocation,
   Device,
   DeviceType,
+  exportDevicesCsv,
+  importDevicesCsv,
   listDeviceTypes,
   listDevices,
   listLocations,
@@ -25,43 +27,39 @@ export function DevicesPage() {
   const [riskByDevice, setRiskByDevice] = useState<Record<string, RiskResponse | null>>({});
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [newLocationName, setNewLocationName] = useState("");
+  const [newLocationParentId, setNewLocationParentId] = useState("");
+  const [newLocationBuilding, setNewLocationBuilding] = useState("");
+  const [newLocationFloor, setNewLocationFloor] = useState("");
+  const [newLocationRoom, setNewLocationRoom] = useState("");
+  const [newLocationZone, setNewLocationZone] = useState("");
+  const [newLocationTags, setNewLocationTags] = useState("");
   const [name, setName] = useState("");
   const [type, setType] = useState("FRIDGE");
   const [manufacturer, setManufacturer] = useState("");
   const [model, setModel] = useState("");
+  const [metadataText, setMetadataText] = useState("{}");
   const [sourceId, setSourceId] = useState("");
   const [sourceType, setSourceType] = useState("SMART_PLUG");
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCsvOpen, setIsCsvOpen] = useState(false);
+  const [csvText, setCsvText] = useState("name,type,locationId,manufacturer,model\n");
+  const [csvMessage, setCsvMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const locationById = useMemo(
-    () => new Map(locations.map((location) => [location.id, fixKnownTypos(location.name)])),
+    () => new Map(locations.map((location) => [location.id, locationLabel(location)])),
     [locations],
   );
   const typeByCode = useMemo(() => new Map(deviceTypes.map((deviceType) => [deviceType.code, deviceType.displayName])), [deviceTypes]);
-  const filteredDevices = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return devices.filter((device) => {
-      const locationName = locationById.get(device.locationId ?? "") ?? "";
-      const matchesSearch =
-        !query ||
-        [device.name, device.type, device.status, locationName, device.manufacturer, device.model]
-          .filter(Boolean)
-          .some((value) => value!.toLowerCase().includes(query));
-      const matchesLocation = locationFilter === "all" || device.locationId === locationFilter;
-      const matchesStatus = statusFilter === "all" || device.status === statusFilter;
-      return matchesSearch && matchesLocation && matchesStatus;
-    });
-  }, [devices, locationById, locationFilter, search, statusFilter]);
   const roomGroups = useMemo(() => {
     const orderedLocationIds = locations.map((location) => location.id);
     const groups = new Map<string, Device[]>();
-    filteredDevices.forEach((device) => {
+    devices.forEach((device) => {
       const groupId = device.locationId || "unassigned";
       groups.set(groupId, [...(groups.get(groupId) ?? []), device]);
     });
@@ -74,15 +72,21 @@ export function DevicesPage() {
         order: locationId === "unassigned" ? Number.MAX_SAFE_INTEGER : orderedLocationIds.indexOf(locationId),
       }))
       .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
-  }, [filteredDevices, locationById, locations]);
+  }, [devices, locationById, locations]);
 
   async function load() {
     setIsLoading(true);
     setError(null);
     try {
       const [devicesResponse, locationsResponse, deviceTypesResponse] = await Promise.all([
-        listDevices(),
-        listLocations(),
+        listDevices({
+          search: search.trim() || undefined,
+          locationId: locationFilter === "all" ? undefined : locationFilter,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          limit: 100,
+          offset: 0,
+        }),
+        listLocations({ limit: 200, offset: 0 }),
         listDeviceTypes(),
       ]);
       setDevices(devicesResponse);
@@ -118,7 +122,7 @@ export function DevicesPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [locationFilter, search, statusFilter]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -127,19 +131,30 @@ export function DevicesPage() {
     try {
       let locationId = selectedLocationId;
       if (newLocationName.trim()) {
-        const location = await createLocation(newLocationName.trim());
+        const location = await createLocation({
+          parentId: newLocationParentId || null,
+          name: newLocationName.trim(),
+          description: null,
+          building: newLocationBuilding.trim() || null,
+          floor: newLocationFloor.trim() || null,
+          room: newLocationRoom.trim() || null,
+          zone: newLocationZone.trim() || null,
+          tags: splitTags(newLocationTags),
+        });
         locationId = location.id;
         setLocations((current) => [...current, location]);
       }
       if (!locationId) {
         throw new Error("Choose or create a location");
       }
+      const metadata = parseMetadata(metadataText);
       const device = await createDevice({
         locationId,
         name,
         type,
         manufacturer: manufacturer || "Unknown",
         model: model || "Unknown",
+        metadata,
       });
       const dataSource = await createDataSource(device.id, {
         sourceType,
@@ -163,15 +178,50 @@ export function DevicesPage() {
       setName("");
       setManufacturer("");
       setModel("");
+      setMetadataText("{}");
       setSourceId("");
       setSourceType("SMART_PLUG");
       setNewLocationName("");
+      setNewLocationParentId("");
+      setNewLocationBuilding("");
+      setNewLocationFloor("");
+      setNewLocationRoom("");
+      setNewLocationZone("");
+      setNewLocationTags("");
       setIsCreateOpen(false);
       navigate(sourceType === "SIMULATOR" ? `/devices/${device.id}?tab=simulation` : `/devices/${device.id}`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create device");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function onImportDevicesCsv() {
+    setError(null);
+    setCsvMessage(null);
+    setIsSubmitting(true);
+    try {
+      const response = await importDevicesCsv(csvText);
+      setCsvMessage(
+        response.errors.length > 0
+          ? `Imported ${response.importedCount}; ${response.errors.join("; ")}`
+          : `Imported ${response.importedCount} devices`,
+      );
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to import devices");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function onExportDevicesCsv() {
+    setError(null);
+    try {
+      downloadText(await exportDevicesCsv(), "devices.csv", "text/csv");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to export devices");
     }
   }
 
@@ -185,6 +235,12 @@ export function DevicesPage() {
         <div className="header-actions">
           <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
             Refresh devices
+          </button>
+          <button className="ghost-button" type="button" onClick={() => setIsCsvOpen(true)}>
+            Import CSV
+          </button>
+          <button className="ghost-button" type="button" onClick={() => void onExportDevicesCsv()}>
+            Export CSV
           </button>
           <button className="primary-button" type="button" onClick={() => setIsCreateOpen(true)}>
             Add device
@@ -204,7 +260,7 @@ export function DevicesPage() {
             <option value="all">All locations</option>
             {locations.map((location) => (
               <option value={location.id} key={location.id}>
-                {fixKnownTypos(location.name)}
+                {locationLabel(location)}
               </option>
             ))}
           </select>
@@ -220,7 +276,7 @@ export function DevicesPage() {
 
         {error ? <div className="error-message">{error}</div> : null}
         {isLoading ? <div className="empty-state">Loading devices...</div> : null}
-        {!isLoading && filteredDevices.length === 0 ? (
+        {!isLoading && devices.length === 0 ? (
           <div className="empty-state">
             <strong>No devices match these filters</strong>
             <span>Clear search or add a new device.</span>
@@ -287,7 +343,7 @@ export function DevicesPage() {
                   <option value="">Create new location</option>
                   {locations.map((location) => (
                     <option value={location.id} key={location.id}>
-                      {fixKnownTypos(location.name)}
+                      {locationLabel(location)}
                     </option>
                   ))}
                 </select>
@@ -296,6 +352,43 @@ export function DevicesPage() {
                 New location
                 <input value={newLocationName} onChange={(event) => setNewLocationName(event.target.value)} placeholder="Kitchen" />
               </label>
+              {newLocationName.trim() ? (
+                <>
+                  <label>
+                    Parent location
+                    <select value={newLocationParentId} onChange={(event) => setNewLocationParentId(event.target.value)}>
+                      <option value="">No parent</option>
+                      {locations.map((location) => (
+                        <option value={location.id} key={location.id}>
+                          {locationLabel(location)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="form-grid-two">
+                    <label>
+                      Building
+                      <input value={newLocationBuilding} onChange={(event) => setNewLocationBuilding(event.target.value)} placeholder="HQ" />
+                    </label>
+                    <label>
+                      Floor
+                      <input value={newLocationFloor} onChange={(event) => setNewLocationFloor(event.target.value)} placeholder="2" />
+                    </label>
+                    <label>
+                      Room
+                      <input value={newLocationRoom} onChange={(event) => setNewLocationRoom(event.target.value)} placeholder="204" />
+                    </label>
+                    <label>
+                      Zone
+                      <input value={newLocationZone} onChange={(event) => setNewLocationZone(event.target.value)} placeholder="north" />
+                    </label>
+                  </div>
+                  <label>
+                    Tags
+                    <input value={newLocationTags} onChange={(event) => setNewLocationTags(event.target.value)} placeholder="critical, it" />
+                  </label>
+                </>
+              ) : null}
               <label>
                 Device type
                 <select value={type} onChange={(event) => setType(event.target.value)}>
@@ -313,6 +406,10 @@ export function DevicesPage() {
               <label>
                 Model
                 <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Unknown" />
+              </label>
+              <label>
+                Metadata JSON
+                <textarea className="small-textarea" value={metadataText} onChange={(event) => setMetadataText(event.target.value)} />
               </label>
               <label>
                 Data source
@@ -335,6 +432,34 @@ export function DevicesPage() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isCsvOpen ? (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsCsvOpen(false)}>
+          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="device-import-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="section-header">
+              <div>
+                <h2 id="device-import-title">Import devices</h2>
+                <p>CSV header: name,type,locationId,manufacturer,model.</p>
+              </div>
+              <button className="ghost-button icon-button-text" type="button" onClick={() => setIsCsvOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="form-stack">
+              <textarea className="csv-textarea" value={csvText} onChange={(event) => setCsvText(event.target.value)} />
+              {csvMessage ? <div className="success-message">{csvMessage}</div> : null}
+              <div className="action-row">
+                <button className="ghost-button" type="button" onClick={() => setIsCsvOpen(false)}>
+                  Cancel
+                </button>
+                <button className="primary-button" type="button" onClick={() => void onImportDevicesCsv()} disabled={isSubmitting}>
+                  {isSubmitting ? "Importing..." : "Import devices"}
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       ) : null}
@@ -453,10 +578,6 @@ function formatEnum(value: string) {
     .join(" ");
 }
 
-function fixKnownTypos(value: string) {
-  return value.replace(/\bKithen\b/gi, "Kitchen");
-}
-
 function formatNumber(value: number) {
   return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
@@ -475,4 +596,40 @@ function formatRelativeTime(value: string) {
     return `${diffHours} hr ago`;
   }
   return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function locationLabel(location: Location) {
+  const hierarchy = [location.building, location.floor ? `Floor ${location.floor}` : null, location.room, location.zone]
+    .filter(Boolean)
+    .join(" / ");
+  return hierarchy ? `${location.name} - ${hierarchy}` : location.name;
+}
+
+function splitTags(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseMetadata(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "{}") {
+    return null;
+  }
+  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+  const secretKey = Object.keys(parsed).find((key) => /password|token|secret|credential/i.test(key));
+  if (secretKey) {
+    throw new Error(`Metadata must not contain secret key: ${secretKey}`);
+  }
+  return parsed;
+}
+
+function downloadText(text: string, filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }

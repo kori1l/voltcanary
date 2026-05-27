@@ -29,3 +29,20 @@ info:
 app:
   kafka:
     consume-enabled: true
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+  telemetry:
+    authorization:
+      enabled: ${TELEMETRY_AUTHORIZATION_ENABLED:true}
+      device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      timeout: ${TELEMETRY_AUTHORIZATION_TIMEOUT:2s}
+    validation:
+      max-future-skew: ${TELEMETRY_MAX_FUTURE_SKEW:5m}
+      max-past-age: ${TELEMETRY_MAX_PAST_AGE:7d}
+      max-metrics-per-event: ${TELEMETRY_MAX_METRICS_PER_EVENT:100}
+      max-events-per-device-per-minute: ${TELEMETRY_MAX_EVENTS_PER_DEVICE_PER_MINUTE:600}
+      max-chart-range: ${TELEMETRY_MAX_CHART_RANGE:30d}
+      max-export-page-size: ${TELEMETRY_MAX_EXPORT_PAGE_SIZE:1000}
+      backfill-source-prefixes: ${TELEMETRY_BACKFILL_SOURCE_PREFIXES:import-,backfill-}
+    timescale:
+      policy-enabled: ${TELEMETRY_TIMESCALE_POLICY_ENABLED:false}

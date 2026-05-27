@@ -44,6 +44,7 @@
         <module>services/device-service</module>
         <module>services/ingestion-service</module>
         <module>services/simulator-service</module>
+        <module>services/ai-agent-service</module>
         <module>services/telemetry-service</module>
         <module>services/analytics-service</module>
         <module>services/alert-service</module>

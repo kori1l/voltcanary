@@ -1,5 +1,6 @@
 package com.voltcanary.device.device;
 
+import java.util.Map;
 import java.util.UUID;
 
 public record DeviceResponse(
@@ -9,5 +10,6 @@ public record DeviceResponse(
         String type,
         String manufacturer,
         String model,
-        String status) {
+        String status,
+        Map<String, Object> metadata) {
 }

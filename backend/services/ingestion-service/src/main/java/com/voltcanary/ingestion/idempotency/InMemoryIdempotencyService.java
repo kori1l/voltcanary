@@ -1,6 +1,7 @@
 package com.voltcanary.ingestion.idempotency;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,11 +15,16 @@ class InMemoryIdempotencyService implements IdempotencyService {
     private final Set<String> keys = ConcurrentHashMap.newKeySet();
 
     @Override
-    public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp) {
-        return keys.add(key(deviceId, sourceId, timestamp));
+    public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        return keys.add(key(deviceId, sourceId, timestamp, metrics));
     }
 
-    private String key(UUID deviceId, String sourceId, Instant timestamp) {
-        return deviceId + ":" + sourceId + ":" + timestamp;
+    @Override
+    public void forget(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        keys.remove(key(deviceId, sourceId, timestamp, metrics));
+    }
+
+    private String key(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        return deviceId + ":" + sourceId + ":" + timestamp + ":" + metrics.hashCode();
     }
 }

@@ -18,6 +18,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
         properties = {
                 "app.kafka.publish-enabled=true",
                 "app.idempotency.redis-enabled=false",
+                "app.ingestion.backpressure-enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
 class IngestionReadingsTest {
@@ -90,8 +92,79 @@ class IngestionReadingsTest {
                 String.class);
 
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(duplicate.getBody()).contains("\"duplicateCount\":1");
         verify(telemetryEventPublisher, times(1)).publish(any());
         verify(deviceValidationClient, times(2)).dataSourceExists(eq(deviceId), eq(sourceId));
+    }
+
+    @Test
+    void rejectsUnsupportedMetricName() {
+        UUID deviceId = UUID.randomUUID();
+        String sourceId = "plug-001";
+        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                "/ingestion/readings",
+                Map.of(
+                        "deviceId", deviceId,
+                        "sourceId", sourceId,
+                        "timestamp", Instant.parse("2026-05-12T12:33:00Z").toString(),
+                        "metrics", Map.of("temperatureC", 24.5)),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(telemetryEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    void batchReturnsPartialSuccessWithPerItemStatus() {
+        UUID deviceId = UUID.randomUUID();
+        String sourceId = "plug-001";
+        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                "/ingestion/readings/batch",
+                Map.of("readings", java.util.List.of(
+                        request(deviceId, sourceId, Instant.parse("2026-05-12T12:34:00Z")),
+                        Map.of(
+                                "deviceId", deviceId,
+                                "sourceId", sourceId,
+                                "timestamp", Instant.parse("2026-05-12T12:35:00Z").toString(),
+                                "metrics", Map.of("unsupportedMetric", 1)))),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody()).contains("\"status\":\"partial\"");
+        assertThat(response.getBody()).contains("\"acceptedCount\":1");
+        assertThat(response.getBody()).contains("\"rejectedCount\":1");
+        assertThat(response.getBody()).contains("\"index\":1");
+        verify(telemetryEventPublisher, times(1)).publish(any());
+    }
+
+    @Test
+    void publishFailureReturnsUnavailableAndDoesNotConsumeIdempotencyKey() {
+        UUID deviceId = UUID.randomUUID();
+        String sourceId = "plug-001";
+        Instant timestamp = Instant.parse("2026-05-12T12:36:00Z");
+        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Telemetry broker publish failed"))
+                .doNothing()
+                .when(telemetryEventPublisher).publish(any());
+
+        ResponseEntity<String> failed = restTemplate.postForEntity(
+                "/ingestion/readings",
+                request(deviceId, sourceId, timestamp),
+                String.class);
+        ResponseEntity<String> retried = restTemplate.postForEntity(
+                "/ingestion/readings",
+                request(deviceId, sourceId, timestamp),
+                String.class);
+
+        assertThat(failed.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(retried.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        verify(telemetryEventPublisher, times(2)).publish(any());
     }
 
     private Map<String, Object> request(UUID deviceId, String sourceId, Instant timestamp) {

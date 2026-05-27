@@ -34,7 +34,9 @@ public class MqttPayloadMapper {
                     rawPayload,
                     null,
                     null,
-                    null);
+                    null,
+                    null,
+                    false);
         } catch (Exception exception) {
             throw new IllegalArgumentException("Invalid MQTT telemetry payload", exception);
         }

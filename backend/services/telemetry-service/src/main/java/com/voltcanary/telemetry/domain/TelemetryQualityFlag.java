@@ -31,4 +31,40 @@ public class TelemetryQualityFlag {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    protected TelemetryQualityFlag() {
+    }
+
+    public TelemetryQualityFlag(UUID id, UUID readingId, UUID deviceId, QualityFlag flag, String message, Instant createdAt) {
+        this.id = id;
+        this.readingId = readingId;
+        this.deviceId = deviceId;
+        this.flag = flag;
+        this.message = message;
+        this.createdAt = createdAt;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getReadingId() {
+        return readingId;
+    }
+
+    public UUID getDeviceId() {
+        return deviceId;
+    }
+
+    public QualityFlag getFlag() {
+        return flag;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
 }

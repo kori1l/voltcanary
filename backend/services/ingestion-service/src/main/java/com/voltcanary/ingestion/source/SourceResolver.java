@@ -48,6 +48,12 @@ public class SourceResolver {
         if (!"ACTIVE".equalsIgnoreCase(source.status())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Data source is not active");
         }
+        if (message.sourceId() != null && !message.sourceId().equals(source.externalId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Source token does not belong to submitted sourceId");
+        }
+        if (message.deviceId() != null && !message.deviceId().equals(source.deviceId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Source token does not belong to submitted deviceId");
+        }
         if (message.protocol() == IngestionProtocol.HTTP && !"REST".equalsIgnoreCase(source.protocol())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data source protocol does not allow REST ingestion");
         }

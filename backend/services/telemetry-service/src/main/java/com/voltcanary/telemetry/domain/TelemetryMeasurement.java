@@ -11,5 +11,6 @@ public record TelemetryMeasurement(
         double metricValue,
         String unit,
         QualityFlag quality,
+        Instant receivedAt,
         Instant createdAt) {
 }

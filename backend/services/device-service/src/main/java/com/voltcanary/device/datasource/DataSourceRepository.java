@@ -9,9 +9,11 @@ public interface DataSourceRepository extends JpaRepository<DataSource, UUID> {
 
     List<DataSource> findByDeviceId(UUID deviceId);
 
-    boolean existsByDeviceIdAndName(UUID deviceId, String name);
+    long countByProtocol(DataSourceProtocol protocol);
+
+    long countByStatus(SourceStatus status);
 
     Optional<DataSource> findByTokenPrefix(String tokenPrefix);
 
-    Optional<DataSource> findByName(String name);
+    Optional<DataSource> findFirstBySourceId(String sourceId);
 }

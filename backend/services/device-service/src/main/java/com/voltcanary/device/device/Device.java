@@ -2,6 +2,8 @@ package com.voltcanary.device.device;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -33,8 +35,12 @@ public class Device {
 
     private String model;
 
+    @Column(name = "metadata_json")
+    private String metadataJson;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;
+    private DeviceStatus status;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -106,11 +112,19 @@ public class Device {
         this.model = model;
     }
 
-    public String getStatus() {
+    public String getMetadataJson() {
+        return metadataJson;
+    }
+
+    public void setMetadataJson(String metadataJson) {
+        this.metadataJson = metadataJson;
+    }
+
+    public DeviceStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(DeviceStatus status) {
         this.status = status;
     }
 

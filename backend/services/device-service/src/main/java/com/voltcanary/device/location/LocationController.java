@@ -1,10 +1,11 @@
 package com.voltcanary.device.location;
 
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.security.JwtService;
+import com.voltcanary.device.security.AuthenticatedUserResolver;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -20,48 +22,52 @@ import org.springframework.web.bind.annotation.RestController;
 public class LocationController {
 
     private final LocationService locationService;
-    private final JwtService jwtService;
+    private final AuthenticatedUserResolver userResolver;
 
-    public LocationController(LocationService locationService, JwtService jwtService) {
+    public LocationController(LocationService locationService, AuthenticatedUserResolver userResolver) {
         this.locationService = locationService;
-        this.jwtService = jwtService;
+        this.userResolver = userResolver;
     }
 
     @PostMapping
     public LocationResponse create(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody LocationRequest request) {
-        return locationService.create(user(authorization), request);
+        return locationService.create(user(headers), request);
     }
 
     @GetMapping
-    public List<LocationResponse> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return locationService.list(user(authorization));
+    public List<LocationResponse> list(
+            @RequestHeader HttpHeaders headers,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "offset", required = false) Integer offset) {
+        return locationService.list(user(headers), search, limit, offset);
     }
 
     @GetMapping("/{id}")
     public LocationResponse get(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader HttpHeaders headers,
             @PathVariable("id") UUID id) {
-        return locationService.get(user(authorization), id);
+        return locationService.get(user(headers), id);
     }
 
     @PatchMapping("/{id}")
     public LocationResponse update(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader HttpHeaders headers,
             @PathVariable("id") UUID id,
             @Valid @RequestBody LocationRequest request) {
-        return locationService.update(user(authorization), id, request);
+        return locationService.update(user(headers), id, request);
     }
 
     @DeleteMapping("/{id}")
     public void delete(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader HttpHeaders headers,
             @PathVariable("id") UUID id) {
-        locationService.delete(user(authorization), id);
+        locationService.delete(user(headers), id);
     }
 
-    private AuthenticatedUser user(String authorization) {
-        return jwtService.parseBearerToken(authorization);
+    private AuthenticatedUser user(HttpHeaders headers) {
+        return userResolver.resolve(headers);
     }
 }

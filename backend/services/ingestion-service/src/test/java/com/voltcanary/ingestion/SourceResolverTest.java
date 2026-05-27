@@ -61,6 +61,53 @@ class SourceResolverTest {
                 .hasMessageContaining("403");
     }
 
+    @Test
+    void rejectsTokenBoundToDifferentSubmittedDevice() {
+        String token = "vc_src_live_test_token";
+        UUID registeredDeviceId = UUID.randomUUID();
+        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
+                .thenReturn(source(token, registeredDeviceId, "ACTIVE", "REST"));
+
+        IncomingTelemetryMessage message = new IncomingTelemetryMessage(
+                "sim-fridge-001",
+                Instant.now(),
+                Map.of("activePowerW", 120),
+                IngestionProtocol.HTTP,
+                null,
+                null,
+                token,
+                UUID.randomUUID(),
+                null,
+                false);
+
+        assertThatThrownBy(() -> resolver.resolve(message))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+    }
+
+    @Test
+    void rejectsTokenBoundToDifferentSubmittedSourceId() {
+        String token = "vc_src_live_test_token";
+        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
+                .thenReturn(source(token, UUID.randomUUID(), "ACTIVE", "REST"));
+
+        IncomingTelemetryMessage message = new IncomingTelemetryMessage(
+                "different-source",
+                Instant.now(),
+                Map.of("activePowerW", 120),
+                IngestionProtocol.HTTP,
+                null,
+                null,
+                token,
+                null,
+                null,
+                false);
+
+        assertThatThrownBy(() -> resolver.resolve(message))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+    }
+
     private IncomingTelemetryMessage message(String token) {
         return new IncomingTelemetryMessage(
                 "sim-fridge-001",
@@ -70,7 +117,9 @@ class SourceResolverTest {
                 null,
                 null,
                 token,
-                null);
+                null,
+                null,
+                false);
     }
 
     private InternalDataSourceResponse source(String token, UUID deviceId, String status, String protocol) {

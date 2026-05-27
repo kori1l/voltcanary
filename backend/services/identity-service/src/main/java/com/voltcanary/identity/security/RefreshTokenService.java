@@ -13,19 +13,27 @@ import java.util.HexFormat;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final TransactionTemplate requiresNewTransaction;
     private final SecureRandom secureRandom = new SecureRandom();
     private final long refreshTokenTtlSeconds;
 
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository,
+            PlatformTransactionManager transactionManager,
             @Value("${app.jwt.refresh-token-ttl-seconds:${JWT_REFRESH_TOKEN_TTL_SECONDS:2592000}}")
                     long refreshTokenTtlSeconds) {
         this.refreshTokenRepository = refreshTokenRepository;
+        this.requiresNewTransaction = new TransactionTemplate(transactionManager);
+        this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.refreshTokenTtlSeconds = refreshTokenTtlSeconds;
     }
 
@@ -49,6 +57,8 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));
 
         if (refreshToken.getRevokedAt() != null) {
+            UUID userId = refreshToken.getUser().getId();
+            requiresNewTransaction.executeWithoutResult(status -> revokeAllForUser(userId));
             throw new AuthenticationFailedException("Refresh token revoked");
         }
         if (!refreshToken.getExpiresAt().isAfter(Instant.now())) {
@@ -61,6 +71,16 @@ public class RefreshTokenService {
     public void revoke(RefreshToken refreshToken) {
         refreshToken.setRevokedAt(Instant.now());
         refreshTokenRepository.save(refreshToken);
+    }
+
+    @Transactional
+    public int revokeAllForUser(UUID userId) {
+        return refreshTokenRepository.revokeAllActiveByUserId(userId, Instant.now());
+    }
+
+    @Transactional
+    public long deleteExpired() {
+        return refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
     }
 
     public String hash(String token) {

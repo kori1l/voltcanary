@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import org.springframework.cloud.gateway.route.Route;
+import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
 
 @Component
 public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
@@ -53,12 +55,16 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
         HttpStatusCode statusCode = exchange.getResponse().getStatusCode();
         long durationMs = System.currentTimeMillis() - startedAt;
 
+        Route route = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
+
         log.info(
-                "correlationId={} method={} path={} status={} durationMs={}",
+                "correlationId={} method={} path={} status={} durationMs={} routeId={} downstreamUri={}",
                 correlationId,
                 exchange.getRequest().getMethod(),
                 exchange.getRequest().getURI().getPath(),
                 statusCode == null ? "UNKNOWN" : statusCode.value(),
-                durationMs);
+                durationMs,
+                route == null ? "unmatched" : route.getId(),
+                route == null ? "unmatched" : route.getUri());
     }
 }

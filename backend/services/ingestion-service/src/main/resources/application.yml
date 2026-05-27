@@ -29,11 +29,32 @@ info:
 app:
   kafka:
     publish-enabled: true
+  ingestion:
+    min-accepted-timestamp: ${INGESTION_MIN_ACCEPTED_TIMESTAMP:2020-01-01T00:00:00Z}
+    max-future-skew: ${INGESTION_MAX_FUTURE_SKEW:30s}
+    max-backfill-age: ${INGESTION_MAX_BACKFILL_AGE:30d}
+    max-metrics-per-reading: ${INGESTION_MAX_METRICS_PER_READING:100}
+    max-readings-per-batch: ${INGESTION_MAX_READINGS_PER_BATCH:500}
+    max-source-id-length: ${INGESTION_MAX_SOURCE_ID_LENGTH:255}
+    max-metric-name-length: ${INGESTION_MAX_METRIC_NAME_LENGTH:100}
+    kafka-ack-timeout: ${INGESTION_KAFKA_ACK_TIMEOUT:3s}
+    idempotency-ttl: ${INGESTION_IDEMPOTENCY_TTL:24h}
+    rate-limit-enabled: ${INGESTION_RATE_LIMIT_ENABLED:true}
+    rate-limit-window: ${INGESTION_RATE_LIMIT_WINDOW:1m}
+    source-requests-per-window: ${INGESTION_SOURCE_REQUESTS_PER_WINDOW:600}
+    device-requests-per-window: ${INGESTION_DEVICE_REQUESTS_PER_WINDOW:1200}
+    account-requests-per-window: ${INGESTION_ACCOUNT_REQUESTS_PER_WINDOW:5000}
+    ip-requests-per-window: ${INGESTION_IP_REQUESTS_PER_WINDOW:1000}
+    backpressure-enabled: ${INGESTION_BACKPRESSURE_ENABLED:true}
+    backpressure-cooldown: ${INGESTION_BACKPRESSURE_COOLDOWN:30s}
+    audit-capacity: ${INGESTION_AUDIT_CAPACITY:1000}
   idempotency:
     redis-enabled: false
     ttl: PT24H
   device-service:
     base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
   mqtt:
     enabled: ${INGESTION_MQTT_ENABLED:false}
     broker-url: ${INGESTION_MQTT_BROKER_URL:tcp://localhost:1883}

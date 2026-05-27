@@ -11,7 +11,9 @@ public class RestTelemetryMapper {
     public IncomingTelemetryMessage map(
             TelemetryIngestionRequest request,
             String sourceToken,
-            String correlationId) {
+            String correlationId,
+            String clientIp,
+            boolean historicalImport) {
         return new IncomingTelemetryMessage(
                 request.sourceId(),
                 request.timestamp(),
@@ -20,6 +22,8 @@ public class RestTelemetryMapper {
                 null,
                 correlationId,
                 sourceToken,
-                request.deviceId());
+                request.deviceId(),
+                clientIp,
+                historicalImport);
     }
 }

@@ -1,6 +1,7 @@
 package com.voltcanary.device.account;
 
-import com.voltcanary.device.security.JwtService;
+import com.voltcanary.device.security.AuthenticatedUserResolver;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,15 +12,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
 
     private final AccountService accountService;
-    private final JwtService jwtService;
+    private final AuthenticatedUserResolver userResolver;
 
-    public AccountController(AccountService accountService, JwtService jwtService) {
+    public AccountController(AccountService accountService, AuthenticatedUserResolver userResolver) {
         this.accountService = accountService;
-        this.jwtService = jwtService;
+        this.userResolver = userResolver;
     }
 
     @GetMapping("/current")
-    public AccountResponse currentAccount(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        return accountService.toResponse(accountService.currentAccount(jwtService.parseBearerToken(authorization)));
+    public AccountResponse currentAccount(@RequestHeader HttpHeaders headers) {
+        return accountService.toResponse(accountService.currentAccount(userResolver.resolve(headers)));
     }
 }

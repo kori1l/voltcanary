@@ -20,7 +20,9 @@ public class PayloadNormalizer {
                 message.rawPayload(),
                 message.correlationId(),
                 message.sourceToken(),
-                message.deviceId());
+                message.deviceId(),
+                message.clientIp(),
+                message.historicalImport());
     }
 
     private Object normalizeValue(Object value) {

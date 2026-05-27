@@ -1,17 +1,28 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { clearTokens } from "../api/client";
+import { clearTokens, getRefreshToken } from "../api/client";
+import { logout as logoutRequest } from "../auth/authApi";
 import { BrandLogo } from "../components/BrandLogo";
 
 const navigation = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/devices", label: "Devices" },
   { to: "/alerts", label: "Alerts" },
+  { to: "/ai-agent", label: "AI Agent" },
+  { to: "/account", label: "Account" },
 ];
 
 export function AppLayout() {
   const navigate = useNavigate();
 
-  function logout() {
+  async function logout() {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await logoutRequest(refreshToken);
+      } catch {
+        // Local logout should still complete if the token was already invalid.
+      }
+    }
     clearTokens();
     navigate("/login", { replace: true });
   }

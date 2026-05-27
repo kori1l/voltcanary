@@ -32,6 +32,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.consume-enabled=true",
+                "app.telemetry.authorization.enabled=false",
+                "app.telemetry.validation.max-past-age=30d",
                 "spring.kafka.consumer.group-id=telemetry-integration-test",
                 "spring.jpa.hibernate.ddl-auto=none"
         })

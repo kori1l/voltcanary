@@ -54,6 +54,9 @@ export function LoginPage() {
         <Link className="auth-link" to="/register">
           Register
         </Link>
+        <Link className="auth-link auth-link-secondary" to="/forgot-password">
+          Forgot password
+        </Link>
       </section>
     </main>
   );

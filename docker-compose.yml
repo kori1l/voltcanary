@@ -27,6 +27,9 @@ x-java-app: &java-app
     POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
     JWT_SECRET: ${JWT_SECRET:-change_me}
+    JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+    JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+    JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
     TIMESCALE_HOST: timescaledb
     TIMESCALE_PORT: 5432
     TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
@@ -44,6 +47,7 @@ x-java-app: &java-app
     ANALYTICS_SERVICE_URI: http://analytics-service:8085
     ALERT_SERVICE_URI: http://alert-service:8086
     SIMULATOR_SERVICE_URI: http://simulator-service:8087
+    AI_AGENT_SERVICE_URI: http://ai-agent-service:8088
     ML_SERVICE_URI: http://ml-service:8090
     INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
     INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
@@ -207,7 +211,9 @@ services:
       - app
     ports:
       - "${MQTT_PORT:-1883}:1883"
-    command: sh -c "printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' > /mosquitto/config/mosquitto.conf && mosquitto -c /mosquitto/config/mosquitto.conf"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "echo 'listener 1883' > /mosquitto/config/mosquitto.conf && echo 'allow_anonymous true' >> /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 3 >/dev/null 2>&1 || true"]
       interval: 10s
@@ -307,6 +313,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
       JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
       JWT_REFRESH_TOKEN_TTL_SECONDS: ${JWT_REFRESH_TOKEN_TTL_SECONDS:-2592000}
       TIMESCALE_HOST: timescaledb
@@ -395,6 +404,22 @@ services:
       SIMULATOR_MQTT_BROKER_URL: tcp://mosquitto:1883
     ports:
       - "${SIMULATOR_SERVICE_PORT:-8087}:8087"
+
+  ai-agent-service:
+    <<: *java-app
+    command: sh -c "mvn -pl services/ai-agent-service -am -Dmaven.test.skip=true install && mvn -f services/ai-agent-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      DEVICE_SERVICE_URI: http://device-service:8082
+      SIMULATOR_SERVICE_URI: http://simulator-service:8087
+      AI_PROVIDER: ${AI_PROVIDER:-rules}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-30000}
+    ports:
+      - "${AI_AGENT_SERVICE_PORT:-8088}:8088"
 
   ml-service:
     image: python:3.12-slim

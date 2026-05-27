@@ -30,4 +30,5 @@ compactor:
 
 limits_config:
   allow_structured_metadata: true
+  reject_old_samples: false
   retention_period: 168h

@@ -11,5 +11,7 @@ public record IncomingTelemetryMessage(
         String rawPayload,
         String correlationId,
         String sourceToken,
-        java.util.UUID deviceId) {
+        java.util.UUID deviceId,
+        String clientIp,
+        boolean historicalImport) {
 }

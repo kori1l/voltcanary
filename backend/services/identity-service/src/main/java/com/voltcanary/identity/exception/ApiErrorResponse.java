@@ -1,4 +1,11 @@
 package com.voltcanary.identity.exception;
 
-public record ApiErrorResponse(String code, String message) {
+import java.time.Instant;
+
+public record ApiErrorResponse(
+        String code,
+        String message,
+        String path,
+        String correlationId,
+        Instant timestamp) {
 }

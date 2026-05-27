@@ -20,3 +20,9 @@ info:
     name: device-service
     description: VoltCanary Device Service
     version: 0.1.0
+
+app:
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+  kafka:
+    publish-enabled: ${DEVICE_KAFKA_PUBLISH_ENABLED:true}

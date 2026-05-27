@@ -2,6 +2,7 @@ package com.voltcanary.ingestion.idempotency;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,9 +24,18 @@ class RedisIdempotencyService implements IdempotencyService {
     }
 
     @Override
-    public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp) {
+    public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
         Boolean inserted = redisTemplate.opsForValue()
-                .setIfAbsent("telemetry:ingestion:" + deviceId + ":" + sourceId + ":" + timestamp, "1", ttl);
+                .setIfAbsent(key(deviceId, sourceId, timestamp, metrics), "1", ttl);
         return Boolean.TRUE.equals(inserted);
+    }
+
+    @Override
+    public void forget(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        redisTemplate.delete(key(deviceId, sourceId, timestamp, metrics));
+    }
+
+    private String key(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        return "telemetry:ingestion:" + deviceId + ":" + sourceId + ":" + timestamp + ":" + metrics.hashCode();
     }
 }

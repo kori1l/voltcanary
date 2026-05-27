@@ -12,139 +12,139 @@ tokens, and basic login audit. It is not yet a full Keycloak replacement.
 
 ### Critical
 
-1. Add `/auth/refresh` to the API Gateway public paths.
-   - Current issue: once an access token expires, the gateway requires a valid
-     bearer token before allowing the refresh request.
-   - File: `backend/services/api-gateway/src/main/java/com/voltcanary/gateway/filter/JwtAuthenticationGlobalFilter.java`
+1. ~~Add `/auth/refresh` to the API Gateway public paths.~~
+   - ~~Current issue: once an access token expires, the gateway requires a valid
+     bearer token before allowing the refresh request.~~
+   - ~~File: `backend/services/api-gateway/src/main/java/com/voltcanary/gateway/filter/JwtAuthenticationGlobalFilter.java`~~
 
-2. Implement real logout.
-   - Current issue: `POST /auth/logout` returns a placeholder message.
-   - Expected behavior: revoke the provided refresh token by setting
-     `refresh_tokens.revoked_at`.
+2. ~~Implement real logout.~~
+   - ~~Current issue: `POST /auth/logout` returns a placeholder message.~~
+   - ~~Expected behavior: revoke the provided refresh token by setting
+     `refresh_tokens.revoked_at`.~~
 
-3. Add brute-force protection for login.
-   - Add rate limits by email and IP.
-   - Add temporary lockout after repeated failed attempts.
-   - Keep the public error message generic.
+3. ~~Add brute-force protection for login.~~
+   - ~~Add rate limits by email and IP.~~
+   - ~~Add temporary lockout after repeated failed attempts.~~
+   - ~~Keep the public error message generic.~~
 
-4. Add user status.
-   - Add a `status` field to `users`, for example `ACTIVE`, `DISABLED`,
-     `LOCKED`, `PENDING_VERIFICATION`.
-   - Login and refresh must reject disabled or locked users.
+4. ~~Add user status.~~
+   - ~~Add a `status` field to `users`, for example `ACTIVE`, `DISABLED`,
+     `LOCKED`, `PENDING_VERIFICATION`.~~
+   - ~~Login and refresh must reject disabled or locked users.~~
 
-5. Check user status during refresh.
-   - Current issue: refresh token validity is checked, but user status is not
-     part of the decision.
+5. ~~Check user status during refresh.~~
+   - ~~Current issue: refresh token validity is checked, but user status is not
+     part of the decision.~~
 
-6. Add tests for the auth flow.
-   - Registration success.
-   - Duplicate email.
-   - Weak password rejected.
-   - Login success.
-   - Wrong password audit.
-   - Refresh success.
-   - Revoked refresh token rejected.
-   - Expired refresh token rejected.
-   - `/auth/me` with valid, invalid, and expired access token.
-   - Logout revokes refresh token.
+6. ~~Add tests for the auth flow.~~
+   - ~~Registration success.~~
+   - ~~Duplicate email.~~
+   - ~~Weak password rejected.~~
+   - ~~Login success.~~
+   - ~~Wrong password audit.~~
+   - ~~Refresh success.~~
+   - ~~Revoked refresh token rejected.~~
+   - ~~Expired refresh token rejected.~~
+   - ~~`/auth/me` with valid, invalid, and expired access token.~~
+   - ~~Logout revokes refresh token.~~
 
-7. Ensure the gateway does not trust incoming `X-User-*` headers.
-   - The gateway should overwrite or remove incoming `X-User-Id`,
-     `X-User-Email`, and `X-User-Role` headers before forwarding requests.
+7. ~~Ensure the gateway does not trust incoming `X-User-*` headers.~~
+   - ~~The gateway should overwrite or remove incoming `X-User-Id`,
+     `X-User-Email`, and `X-User-Role` headers before forwarding requests.~~
 
 ### High
 
-8. Add `logout-all` support.
-   - Add an endpoint such as `POST /auth/logout-all`.
-   - Revoke all active refresh tokens for the current user.
+8. ~~Add `logout-all` support.~~
+   - ~~Add an endpoint such as `POST /auth/logout-all`.~~
+   - ~~Revoke all active refresh tokens for the current user.~~
 
-9. Add repository support for active user refresh tokens.
-   - Add methods such as `findByUserIdAndRevokedAtIsNull`.
-   - Needed for logout-all and session management.
+9. ~~Add repository support for active user refresh tokens.~~
+   - ~~Add methods such as `findByUserIdAndRevokedAtIsNull`.~~
+   - ~~Needed for logout-all and session management.~~
 
-10. Add cleanup for expired refresh tokens.
-    - Use a scheduled job or maintenance command to remove or archive expired
-      refresh tokens.
+10. ~~Add cleanup for expired refresh tokens.~~
+    - ~~Use a scheduled job or maintenance command to remove or archive expired
+      refresh tokens.~~
 
-11. Strengthen access token claims.
-    - Add `iss`.
-    - Add `aud`.
-    - Add `jti`.
-    - Add an explicit token type claim, for example `typ=access`.
+11. ~~Strengthen access token claims.~~
+    - ~~Add `iss`.~~
+    - ~~Add `aud`.~~
+    - ~~Add `jti`.~~
+    - ~~Add an explicit token type claim, for example `typ=access`.~~
 
-12. Improve refresh token rotation safety.
-    - Detect reuse of an already revoked refresh token.
-    - On reuse, revoke all refresh tokens for that user.
+12. ~~Improve refresh token rotation safety.~~
+    - ~~Detect reuse of an already revoked refresh token.~~
+    - ~~On reuse, revoke all refresh tokens for that user.~~
 
-13. Improve login audit.
-    - Store IP address.
-    - Store user agent.
-    - Store correlation/request id.
-    - Store normalized failure category.
+13. ~~Improve login audit.~~
+    - ~~Store IP address.~~
+    - ~~Store user agent.~~
+    - ~~Store correlation/request id.~~
+    - ~~Store normalized failure category.~~
 
-14. Add change password endpoint.
-    - Add `POST /auth/change-password`.
-    - Require current password.
-    - Revoke all refresh tokens after a successful password change.
+14. ~~Add change password endpoint.~~
+    - ~~Add `POST /auth/change-password`.~~
+    - ~~Require current password.~~
+    - ~~Revoke all refresh tokens after a successful password change.~~
 
-15. Add integration tests for gateway plus identity.
-    - `/auth/login` is public.
-    - `/auth/refresh` is public.
-    - Protected endpoint without token returns `401`.
-    - Protected endpoint with valid token succeeds.
-    - Protected endpoint with expired token returns `401`.
+15. ~~Add integration tests for gateway plus identity.~~
+    - ~~`/auth/login` is public.~~
+    - ~~`/auth/refresh` is public.~~
+    - ~~Protected endpoint without token returns `401`.~~
+    - ~~Protected endpoint with valid token succeeds.~~
+    - ~~Protected endpoint with expired token returns `401`.~~
 
-16. Synchronize JWT validation code.
-    - JWT parsing and validation logic currently exists in multiple services.
-    - Prefer a shared internal library or a documented contract with consistent
-      validation behavior.
+16. ~~Synchronize JWT validation code.~~
+    - ~~JWT parsing and validation logic currently exists in multiple services.~~
+    - ~~Prefer a shared internal library or a documented contract with consistent
+      validation behavior.~~
 
 ### Medium
 
-17. Consider asymmetric JWT signing.
-    - Move from shared-secret `HS256` to `RS256` or `ES256`.
-    - Identity signs with a private key.
-    - Gateway and services verify with a public key.
+17. ~~Consider asymmetric JWT signing.~~
+    - ~~Move from shared-secret `HS256` to `RS256` or `ES256`.~~
+    - ~~Identity signs with a private key.~~
+    - ~~Gateway and services verify with a public key.~~
 
-18. Prepare for key rotation.
-    - Add `kid` to JWT headers.
-    - Support active and previous verification keys.
+18. ~~Prepare for key rotation.~~
+    - ~~Add `kid` to JWT headers.~~
+    - ~~Support active and previous verification keys.~~
 
-19. Add password reset flow.
-    - Add forgot-password request endpoint.
-    - Add one-time reset token with expiry.
-    - Add reset confirmation endpoint.
-    - Integrate email delivery later.
+19. ~~Add password reset flow.~~
+    - ~~Add forgot-password request endpoint.~~
+    - ~~Add one-time reset token with expiry.~~
+    - ~~Add reset confirmation endpoint.~~
+    - ~~Integrate email delivery later.~~
 
-20. Add email verification.
-    - Add `email_verified`.
-    - Add verification token and confirmation endpoint.
-    - Prevent or limit access for unverified users if required.
+20. ~~Add email verification.~~
+    - ~~Add `email_verified`.~~
+    - ~~Add verification token and confirmation endpoint.~~
+    - ~~Prevent or limit access for unverified users if required.~~
 
-21. Expand roles and permissions.
-    - Current model has a single string role, defaulting to `USER`.
-    - Define roles such as `USER`, `ADMIN`, and `SUPPORT`.
-    - Decide whether authorization is enforced in gateway, services, or both.
+21. ~~Expand roles and permissions.~~
+    - ~~Current model has a single string role, defaulting to `USER`.~~
+    - ~~Define roles such as `USER`, `ADMIN`, and `SUPPORT`.~~
+    - ~~Decide whether authorization is enforced in gateway, services, or both.~~
 
-22. Add admin endpoints.
-    - List users.
-    - Disable or lock a user.
-    - Change user role.
-    - View active refresh sessions.
-    - Revoke user sessions.
+22. ~~Add admin endpoints.~~
+    - ~~List users.~~
+    - ~~Disable or lock a user.~~
+    - ~~Change user role.~~
+    - ~~View active refresh sessions.~~
+    - ~~Revoke user sessions.~~
 
-23. Improve API error consistency.
-    - Keep login failure responses generic.
-    - Ensure internal details do not leak through public error responses.
-    - Keep detailed failure reasons only in audit logs.
+23. ~~Improve API error consistency.~~
+    - ~~Keep login failure responses generic.~~
+    - ~~Ensure internal details do not leak through public error responses.~~
+    - ~~Keep detailed failure reasons only in audit logs.~~
 
-24. Document the auth contract.
-    - Endpoints.
-    - Access and refresh token TTL.
-    - JWT claims.
-    - Roles.
-    - Gateway-added downstream headers.
-    - Expected downstream authorization behavior.
+24. ~~Document the auth contract.~~
+    - ~~Endpoints.~~
+    - ~~Access and refresh token TTL.~~
+    - ~~JWT claims.~~
+    - ~~Roles.~~
+    - ~~Gateway-added downstream headers.~~
+    - ~~Expected downstream authorization behavior.~~
 
 ## API Gateway
 
@@ -154,130 +154,130 @@ adds user context headers, handles CORS, and attaches a correlation id.
 
 ### Critical
 
-1. Add `/auth/refresh` to public paths.
-   - Current issue: refresh requests require a valid access token at the
-     gateway, which breaks refresh once the access token expires.
-   - File: `backend/services/api-gateway/src/main/java/com/voltcanary/gateway/filter/JwtAuthenticationGlobalFilter.java`
+1. ~~Add `/auth/refresh` to public paths.~~
+   - ~~Current issue: refresh requests require a valid access token at the
+     gateway, which breaks refresh once the access token expires.~~
+   - ~~File: `backend/services/api-gateway/src/main/java/com/voltcanary/gateway/filter/JwtAuthenticationGlobalFilter.java`~~
 
-2. Strip or overwrite incoming `X-User-*` headers before forwarding.
-   - Current issue: the gateway sets `X-User-Id`, `X-User-Email`, and
+2. ~~Strip or overwrite incoming `X-User-*` headers before forwarding.~~
+   - ~~Current issue: the gateway sets `X-User-Id`, `X-User-Email`, and
      `X-User-Role`, but it should explicitly prevent clients from spoofing
-     those headers.
-   - Expected behavior: remove incoming identity headers first, then set values
-     only from validated JWT claims.
+     those headers.~~
+   - ~~Expected behavior: remove incoming identity headers first, then set values
+     only from validated JWT claims.~~
 
-3. Validate required JWT claims.
-   - Current issue: the gateway checks signature and expiration, but does not
-     enforce required claim presence beyond using them.
-   - Require non-empty `sub`.
-   - Require expected `typ=access` once identity-service adds it.
-   - Require expected `iss` and `aud` once those claims are introduced.
+3. ~~Validate required JWT claims.~~
+   - ~~Current issue: the gateway checks signature and expiration, but does not
+     enforce required claim presence beyond using them.~~
+   - ~~Require non-empty `sub`.~~
+   - ~~Require expected `typ=access` once identity-service adds it.~~
+   - ~~Require expected `iss` and `aud` once those claims are introduced.~~
 
-4. Add tests for gateway authentication behavior.
-   - Public route without token succeeds for `/auth/login`.
-   - Public route without token succeeds for `/auth/register`.
-   - Public route without token succeeds for `/auth/refresh` after it is added.
-   - Protected route without token returns `401`.
-   - Protected route with malformed token returns `401`.
-   - Protected route with expired token returns `401`.
-   - Protected route with valid token forwards user headers.
-   - Spoofed incoming `X-User-*` headers are overwritten.
+4. ~~Add tests for gateway authentication behavior.~~
+   - ~~Public route without token succeeds for `/auth/login`.~~
+   - ~~Public route without token succeeds for `/auth/register`.~~
+   - ~~Public route without token succeeds for `/auth/refresh` after it is added.~~
+   - ~~Protected route without token returns `401`.~~
+   - ~~Protected route with malformed token returns `401`.~~
+   - ~~Protected route with expired token returns `401`.~~
+   - ~~Protected route with valid token forwards user headers.~~
+   - ~~Spoofed incoming `X-User-*` headers are overwritten.~~
 
 ### High
 
-5. Centralize route definitions and remove duplication.
-   - Current issue: route definitions differ between `application.yml` and
-     `application-local.yml`.
-   - Keep common route structure in the base config and override only target
-     URIs or profile-specific values.
+5. ~~Centralize route definitions and remove duplication.~~
+   - ~~Current issue: route definitions differ between `application.yml` and
+     `application-local.yml`.~~
+   - ~~Keep common route structure in the base config and override only target
+     URIs or profile-specific values.~~
 
-6. Add route-level timeout policy.
-   - Define connect and response timeouts.
-   - Avoid requests hanging indefinitely when a downstream service is slow.
-   - Consider stricter timeouts for frontend-facing reads and longer timeouts
-     for ingestion or analytics operations.
+6. ~~Add route-level timeout policy.~~
+   - ~~Define connect and response timeouts.~~
+   - ~~Avoid requests hanging indefinitely when a downstream service is slow.~~
+   - ~~Consider stricter timeouts for frontend-facing reads and longer timeouts
+     for ingestion or analytics operations.~~
 
-7. Add circuit breaker or failure handling for downstream services.
-   - Use Spring Cloud Gateway circuit breaker support or a chosen resilience
-     library.
-   - Return consistent `503` responses when a service is unavailable.
-   - Avoid cascading failures when a downstream service is overloaded.
+7. ~~Add circuit breaker or failure handling for downstream services.~~
+   - ~~Use Spring Cloud Gateway circuit breaker support or a chosen resilience
+     library.~~
+   - ~~Return consistent `503` responses when a service is unavailable.~~
+   - ~~Avoid cascading failures when a downstream service is overloaded.~~
 
-8. Add rate limiting.
-   - Apply stricter limits on `/auth/login`, `/auth/register`, and ingestion
-     endpoints.
-   - Add general per-IP or per-user limits for protected routes.
-   - Decide whether Redis should back distributed rate limits.
+8. ~~Add rate limiting.~~
+   - ~~Apply stricter limits on `/auth/login`, `/auth/register`, and ingestion
+     endpoints.~~
+   - ~~Add general per-IP or per-user limits for protected routes.~~
+   - ~~Decide whether Redis should back distributed rate limits.~~
 
-9. Define request size limits.
-   - Protect ingestion and auth endpoints from oversized bodies.
-   - Return consistent `413 Payload Too Large`.
+9. ~~Define request size limits.~~
+   - ~~Protect ingestion and auth endpoints from oversized bodies.~~
+   - ~~Return consistent `413 Payload Too Large`.~~
 
-10. Improve CORS configuration.
-    - Current issue: CORS is configured both in YAML and in `CorsConfig`.
-    - Keep a single source of truth.
-    - Move allowed origins to environment/config properties.
-    - Support dev and production frontend origins explicitly.
+10. ~~Improve CORS configuration.~~
+    - ~~Current issue: CORS is configured both in YAML and in `CorsConfig`.~~
+    - ~~Keep a single source of truth.~~
+    - ~~Move allowed origins to environment/config properties.~~
+    - ~~Support dev and production frontend origins explicitly.~~
 
-11. Add structured access logs.
-    - Keep correlation id, method, path, status, and duration.
-    - Add route id and downstream target service when available.
-    - Avoid logging tokens or sensitive request bodies.
+11. ~~Add structured access logs.~~
+    - ~~Keep correlation id, method, path, status, and duration.~~
+    - ~~Add route id and downstream target service when available.~~
+    - ~~Avoid logging tokens or sensitive request bodies.~~
 
-12. Add security audit logs.
-    - Log rejected authentication attempts at gateway level.
-    - Include reason category such as missing token, malformed token, expired
-      token, invalid signature.
-    - Include correlation id.
+12. ~~Add security audit logs.~~
+    - ~~Log rejected authentication attempts at gateway level.~~
+    - ~~Include reason category such as missing token, malformed token, expired
+      token, invalid signature.~~
+    - ~~Include correlation id.~~
 
-13. Add OpenAPI or route documentation.
-    - Document which external paths are exposed through the gateway.
-    - Document which service owns each path.
-    - Document which paths are public and which require authentication.
+13. ~~Add OpenAPI or route documentation.~~
+    - ~~Document which external paths are exposed through the gateway.~~
+    - ~~Document which service owns each path.~~
+    - ~~Document which paths are public and which require authentication.~~
 
-14. Add health checks for downstream dependencies.
-    - Gateway health currently only reports its own process health.
-    - Add optional readiness checks or synthetic pings for key downstream
-      services if useful for operations.
+14. ~~Add health checks for downstream dependencies.~~
+    - ~~Gateway health currently only reports its own process health.~~
+    - ~~Add optional readiness checks or synthetic pings for key downstream
+      services if useful for operations.~~
 
 ### Medium
 
-15. Prepare for asymmetric JWT verification.
-    - Move away from shared `HS256` secret in gateway.
-    - Verify tokens with public keys once identity-service signs with
-      `RS256` or `ES256`.
-    - Support `kid`-based key selection.
+15. ~~Prepare for asymmetric JWT verification.~~
+    - ~~Move away from shared `HS256` secret in gateway.~~
+    - ~~Verify tokens with public keys once identity-service signs with
+      `RS256` or `ES256`.~~
+    - ~~Support `kid`-based key selection.~~
 
-16. Add API versioning strategy.
-    - Decide whether public routes should use `/api/v1/...`.
-    - Avoid breaking frontend and external clients when service contracts
-      evolve.
+16. ~~Add API versioning strategy.~~
+    - ~~Decide whether public routes should use `/api/v1/...`.~~
+    - ~~Avoid breaking frontend and external clients when service contracts
+      evolve.~~
 
-17. Add role or permission enforcement where appropriate.
-    - Current gateway checks authentication but not authorization.
-    - Decide which route families require `ADMIN`, `SUPPORT`, or regular
-      `USER`.
-    - Keep resource ownership checks in backend services.
+17. ~~Add role or permission enforcement where appropriate.~~
+    - ~~Current gateway checks authentication but not authorization.~~
+    - ~~Decide which route families require `ADMIN`, `SUPPORT`, or regular
+      `USER`.~~
+    - ~~Keep resource ownership checks in backend services.~~
 
-18. Add service-to-service boundary documentation.
-    - Clarify that external traffic goes through the gateway.
-    - Clarify that internal synchronous traffic should use internal service DNS.
-    - Clarify that asynchronous traffic should use Redpanda/Kafka.
+18. ~~Add service-to-service boundary documentation.~~
+    - ~~Clarify that external traffic goes through the gateway.~~
+    - ~~Clarify that internal synchronous traffic should use internal service DNS.~~
+    - ~~Clarify that asynchronous traffic should use Redpanda/Kafka.~~
 
-19. Add consistent error response shape.
-    - Gateway-generated errors should follow the same shape as service errors.
-    - Include correlation id in error responses.
-    - Avoid leaking internal target service details.
+19. ~~Add consistent error response shape.~~
+    - ~~Gateway-generated errors should follow the same shape as service errors.~~
+    - ~~Include correlation id in error responses.~~
+    - ~~Avoid leaking internal target service details.~~
 
-20. Add metrics by route.
-    - Track request count, latency, status codes, and downstream failures by
-      route id.
-    - Expose metrics through actuator/prometheus.
+20. ~~Add metrics by route.~~
+    - ~~Track request count, latency, status codes, and downstream failures by
+      route id.~~
+    - ~~Expose metrics through actuator/prometheus.~~
 
-21. Add production origin and TLS assumptions.
-    - Document whether TLS terminates at ingress, gateway, or load balancer.
-    - Ensure forwarded headers are handled correctly behind ingress.
-    - Configure trusted proxy behavior explicitly.
+21. ~~Add production origin and TLS assumptions.~~
+    - ~~Document whether TLS terminates at ingress, gateway, or load balancer.~~
+    - ~~Ensure forwarded headers are handled correctly behind ingress.~~
+    - ~~Configure trusted proxy behavior explicitly.~~
 
 ## Telemetry Service
 
@@ -287,158 +287,155 @@ publishes validated telemetry events for analytics.
 
 ### Critical
 
-1. Add ownership and authorization checks for telemetry reads.
-   - Current issue: `/telemetry/devices/{deviceId}/...` accepts a device id but
-     does not verify that the authenticated user can access that device.
-   - Options:
-     - call `device-service` for ownership checks;
-     - use a replicated authorization model;
-     - enforce ownership in gateway plus service.
+1. ~~Add ownership and authorization checks for telemetry reads.~~
+   - ~~Current issue: `/telemetry/devices/{deviceId}/...` accepts a device id but
+     does not verify that the authenticated user can access that device.~~
+   - ~~Options:~~
+     - ~~call `device-service` for ownership checks;~~
+     - ~~use a replicated authorization model;~~
+     - ~~enforce ownership in gateway plus service.~~
 
-2. Strengthen event validation before persistence.
-   - Validate required fields: `deviceId`, `sourceId`, `timestamp`, `metrics`.
-   - Reject or flag timestamps too far in the future.
-   - Reject or flag timestamps older than the allowed ingestion window.
-   - Reject unknown or unsupported metric names unless explicitly allowed.
-   - Validate metric value ranges per metric.
+2. ~~Strengthen event validation before persistence.~~
+   - ~~Validate required fields: `deviceId`, `sourceId`, `timestamp`, `metrics`.~~
+   - ~~Reject or flag timestamps too far in the future.~~
+   - ~~Reject or flag timestamps older than the allowed ingestion window.~~
+   - ~~Reject unknown or unsupported metric names unless explicitly allowed.~~
+   - ~~Validate metric value ranges per metric.~~
 
-3. Implement quality flag persistence and API.
-   - Current issue: `/telemetry/devices/{deviceId}/quality` returns an empty
-     list.
-   - Persist quality flags for invalid, duplicate, normalized, out-of-order, or
-     out-of-range readings.
-   - Return quality history through the existing quality endpoint.
+3. ~~Implement quality flag persistence and API.~~
+   - ~~Current issue: `/telemetry/devices/{deviceId}/quality` returns an empty
+     list.~~
+   - ~~Persist quality flags for invalid, duplicate, normalized, out-of-order, or
+     out-of-range readings.~~
+   - ~~Return quality history through the existing quality endpoint.~~
 
-4. Add dead-letter handling for bad Kafka events.
-   - Current issue: malformed or repeatedly failing events can poison consumer
-     processing.
-   - Add retry policy.
-   - Add `telemetry.raw.dlq.v1`.
-   - Include failure reason and original event metadata.
+4. ~~Add dead-letter handling for bad Kafka events.~~
+   - ~~Current issue: malformed or repeatedly failing events can poison consumer
+     processing.~~
+   - ~~Add retry policy.~~
+   - ~~Add `telemetry.raw.dlq.v1`.~~
+   - ~~Include failure reason and original event metadata.~~
 
-5. Make idempotency behavior explicit.
-   - Current issue: duplicate metric rows are ignored at insert time, while
-     duplicate events are only partially represented by quality flags.
-   - Define whether duplicate events should publish validated events.
-   - Track duplicate count and reason in quality data.
+5. ~~Make idempotency behavior explicit.~~
+   - ~~Current issue: duplicate metric rows are ignored at insert time, while
+     duplicate events are only partially represented by quality flags.~~
+   - ~~Define whether duplicate events should publish validated events.~~
+   - ~~Track duplicate count and reason in quality data.~~
 
-6. Add tests for the telemetry pipeline.
-   - Raw event with numeric metrics creates measurement rows.
-   - Non-numeric metrics are ignored or flagged according to policy.
-   - `NaN` and infinite values are rejected or flagged.
-   - Duplicate events do not duplicate rows.
-   - Valid persisted event publishes `TelemetryValidatedEvent`.
-   - Invalid event goes to DLQ or records quality flags.
-   - `/latest` and `/readings` return expected data.
+6. ~~Add tests for the telemetry pipeline.~~
+   - ~~Raw event with numeric metrics creates measurement rows.~~
+   - ~~Non-numeric metrics are ignored or flagged according to policy.~~
+   - ~~`NaN` and infinite values are rejected or flagged.~~
+   - ~~Duplicate events do not duplicate rows.~~
+   - ~~Valid persisted event publishes `TelemetryValidatedEvent`.~~
+   - ~~Invalid event goes to DLQ or records quality flags.~~
+   - ~~`/latest` and `/readings` return expected data.~~
 
 ### High
 
-7. Use batch inserts for measurement persistence.
-   - Current issue: `TelemetryMeasurementRepository.insertAll` inserts rows one
-     by one.
-   - Use JDBC batch updates for better throughput.
-   - Preserve duplicate handling.
+7. ~~Use batch inserts for measurement persistence.~~
+   - ~~Current issue: `TelemetryMeasurementRepository.insertAll` inserts rows one
+     by one.~~
+   - ~~Use JDBC batch updates for better throughput.~~
+   - ~~Preserve duplicate handling.~~
 
-8. Add batch query and aggregation support for charts.
-   - Current `/readings` returns raw points with a hard `limit 1000`.
-   - Add downsampling or bucketed aggregation for large time ranges.
-   - Support interval parameters such as `1m`, `5m`, `1h`.
+8. ~~Add batch query and aggregation support for charts.~~
+   - ~~Current `/readings` returns raw points with a hard `limit 1000`.~~
+   - ~~Add downsampling or bucketed aggregation for large time ranges.~~
+   - ~~Support interval parameters such as `1m`, `5m`, `1h`.~~
 
-9. Add TimescaleDB hypertable setup.
-   - Ensure `telemetry.measurements` is a hypertable.
-   - Add appropriate chunk interval.
-   - Verify indexes match query patterns.
+9. ~~Add TimescaleDB hypertable setup.~~
+   - ~~Ensure `telemetry.measurements` is a hypertable.~~
+   - ~~Add appropriate chunk interval.~~
+   - ~~Verify indexes match query patterns.~~
 
-10. Add TimescaleDB retention and compression policy.
-    - Define how long raw measurements are kept.
-    - Compress older chunks.
-    - Keep aggregates longer than raw data if needed.
+10. ~~Add TimescaleDB retention and compression policy.~~
+    - ~~Define how long raw measurements are kept.~~
+    - ~~Compress older chunks.~~
+    - ~~Keep aggregates longer than raw data if needed.~~
 
-11. Add metric registry or metric metadata.
-    - Define supported metrics such as `activePowerW`, `voltageV`, `currentA`,
-      `energyWh`, `rssi`.
-    - Store unit, type, allowed range, and display name.
-    - Use it for validation and UI metadata.
+11. ~~Add metric registry or metric metadata.~~
+    - ~~Define supported metrics such as `activePowerW`, `voltageV`, `currentA`,
+      `energyWh`, `rssi`.~~
+    - ~~Store unit, type, allowed range, and display name.~~
+    - ~~Use it for validation and UI metadata.~~
 
-12. Add an endpoint to list metrics available for a device.
-    - Example: `GET /telemetry/devices/{deviceId}/metrics`.
-    - Useful for charts and debugging.
+12. ~~Add an endpoint to list metrics available for a device.~~
+    - ~~Example: `GET /telemetry/devices/{deviceId}/metrics`.~~
+    - ~~Useful for charts and debugging.~~
 
-13. Add source/device validation on consumed events.
-    - Do not blindly trust `TelemetryReceivedEvent`.
-    - Verify that `sourceId` is registered for `deviceId`, or document that
-      ingestion-service is the only trust boundary.
-    - Decide whether telemetry-service should fail closed or record quality
-      errors when source metadata is missing.
+13. ~~Add source/device validation on consumed events.~~
+    - ~~Do not blindly trust `TelemetryReceivedEvent`.~~
+    - ~~Verify that `sourceId` is registered for `deviceId`, or document that
+      ingestion-service is the only trust boundary.~~
+    - ~~Decide whether telemetry-service should fail closed or record quality
+      errors when source metadata is missing.~~
 
-14. Improve out-of-order handling.
-    - Detect readings arriving older than the latest known timestamp.
-    - Decide whether to accept, flag, or reject.
-    - Important for buffered edge collectors and offline backfill.
+14. ~~Improve out-of-order handling.~~
+    - ~~Detect readings arriving older than the latest known timestamp.~~
+    - ~~Decide whether to accept, flag, or reject.~~
+    - ~~Important for buffered edge collectors and offline backfill.~~
 
-15. Improve logging and metrics.
-    - Count consumed events.
-    - Count inserted rows.
-    - Count duplicate rows.
-    - Count invalid metrics.
-    - Track processing latency from event timestamp to persistence.
-    - Expose metrics by topic and outcome.
+15. ~~Improve logging and metrics.~~
+    - ~~Count consumed events.~~
+    - ~~Count inserted rows.~~
+    - ~~Count duplicate rows.~~
+    - ~~Count invalid metrics.~~
+    - ~~Track processing latency from event timestamp to persistence.~~
+    - ~~Expose metrics by topic and outcome.~~
 
-16. Add consumer lag monitoring.
-    - Track Redpanda/Kafka consumer lag for `telemetry.raw.v1`.
-    - Alert when lag grows beyond threshold.
+16. ~~Add consumer lag monitoring.~~
+    - ~~Track Redpanda/Kafka consumer lag for `telemetry.raw.v1`.~~
+    - ~~Alert when lag grows beyond threshold.~~
 
-17. Add schema compatibility checks for Kafka events.
-    - Define event versioning policy.
-    - Keep compatibility between ingestion-service producers and
-      telemetry-service consumers.
-    - Consider schema registry later if event contracts grow.
+17. ~~Add schema compatibility checks for Kafka events.~~
+    - ~~Define event versioning policy.~~
+    - ~~Keep compatibility between ingestion-service producers and
+      telemetry-service consumers.~~
+    - ~~Consider schema registry later if event contracts grow.~~
 
 ### Medium
 
-18. Remove or complete legacy telemetry tables.
-    - `telemetry_readings`, `telemetry_quality_flags`, and
-      `telemetry_aggregates` exist, but the active path mostly uses
-      `telemetry.measurements`.
-    - Either wire these tables into the current flow or remove them to avoid
-      confusion.
+18. ~~Remove or complete legacy telemetry tables.~~
+    - ~~`telemetry_readings` and `telemetry_quality_flags` are wired into the
+      active flow; the unused `telemetry_aggregates` table and repository were
+      removed.~~
 
-19. Clarify timestamp semantics.
-    - Define `recorded_at` as device reading time.
-    - Define `created_at` as persistence time.
-    - Add `received_at` if the system needs ingestion arrival time.
+19. ~~Clarify timestamp semantics.~~
+    - ~~`recorded_at` is device reading time.~~
+    - ~~`created_at` is telemetry-service persistence time.~~
+    - ~~`received_at` is ingestion arrival time propagated from the raw event.~~
 
-20. Add support for backfill/import use cases.
-    - Allow historical telemetry imports with explicit source and quality.
-    - Avoid triggering noisy real-time alerts for old backfilled data unless
-      requested.
+20. ~~Add support for backfill/import use cases.~~
+    - ~~Historical telemetry is accepted only from explicit import/backfill
+      source prefixes.~~
+    - ~~Backfilled data is stored and quality-flagged, but does not publish
+      realtime `TelemetryValidatedEvent` messages.~~
 
-21. Add multi-tenant partitioning assumptions.
-    - Current measurement rows contain `device_id`, but not `account_id`.
-    - Decide whether TimescaleDB rows should also include `account_id` for
-      faster authorization and tenant-level operations.
+21. ~~Add multi-tenant partitioning assumptions.~~
+    - ~~Telemetry tables include nullable `account_id` columns and account-first
+      indexes so the event contract can be extended without reshaping storage.~~
 
-22. Add normalized raw payload storage policy.
-    - Current measurement repository writes normalized metric rows only.
-    - Decide whether raw payload should be stored, where, and for how long.
-    - Avoid storing sensitive vendor payloads unnecessarily.
+22. ~~Add normalized raw payload storage policy.~~
+    - ~~`telemetry_readings.metrics_json` stores only supported telemetry metric
+      keys. Unsupported vendor payload fields are not persisted.~~
 
-23. Add configurable metric limits.
-    - Maximum metrics per event.
-    - Maximum events per device per minute.
-    - Maximum accepted time range for chart queries.
+23. ~~Add configurable metric limits.~~
+    - ~~Maximum metrics per event.~~
+    - ~~Maximum events per device per minute.~~
+    - ~~Maximum accepted time range for chart queries.~~
 
-24. Add API pagination or cursoring for readings.
-    - Current chart endpoint is enough for UI charts but not for export or
-      detailed inspection.
-    - Add cursor-based export endpoints if needed.
+24. ~~Add API pagination or cursoring for readings.~~
+    - ~~Current chart endpoint remains UI-oriented.~~
+    - ~~Added cursor-based `/telemetry/devices/{deviceId}/readings/export`
+      endpoint for detailed inspection and exports.~~
 
-25. Add service documentation.
-    - Document input event contract.
-    - Document output event contract.
-    - Document TimescaleDB schema.
-    - Document metric naming conventions.
-    - Document quality flag meanings.
+25. ~~Add service documentation.~~
+    - ~~Document input event contract.~~
+    - ~~Document output event contract.~~
+    - ~~Document TimescaleDB schema.~~
+    - ~~Document metric naming conventions.~~
+    - ~~Document quality flag meanings.~~
 
 ## Ingestion Service
 
@@ -450,164 +447,149 @@ PostgreSQL database of its own.
 
 ### Critical
 
-1. Add source or device authentication for ingestion.
-   - Current issue: real collectors/devices should not rely on a normal user
-     access token for high-frequency telemetry submission.
-   - Add source/device ingestion tokens or another service credential model.
-   - Store only token hashes.
-   - Support token rotation and revocation.
+1. ~~Add source or device authentication for ingestion.~~
+   - ~~Collectors use source ingestion tokens resolved through device-service.~~
+   - ~~Only token hashes are compared in ingestion.~~
+   - ~~Rotation and revocation are delegated to data-source management.~~
 
-2. Enforce ownership and source binding.
-   - Current issue: ingestion checks that a data source exists for a device, but
-     the authorization model for who may submit that source is not explicit.
-   - Verify that the source token belongs to the submitted `sourceId`.
-   - Verify that `sourceId` belongs to `deviceId`.
-   - Verify that the device/source is active.
+2. ~~Enforce ownership and source binding.~~
+   - ~~Verify that the source token belongs to the submitted `sourceId`.~~
+   - ~~Verify that the source token belongs to the submitted `deviceId`.~~
+   - ~~Verify that the device/source is active and protocol-compatible.~~
 
-3. Define trust boundary between ingestion and telemetry.
-   - `ingestion-service` should be the main external validation boundary for
-     raw readings.
-   - Document which validations happen in ingestion and which are repeated in
-     telemetry for defense in depth.
+3. ~~Define trust boundary between ingestion and telemetry.~~
+   - ~~`ingestion-service` is documented as the main external validation
+     boundary.~~
+   - ~~Telemetry-service repeats defensive validation before persistence.~~
 
-4. Improve Kafka publish reliability.
-   - Current issue: publish is fire-and-forget from the service perspective.
-   - Handle producer send failure explicitly.
-   - Return a clear error when the event cannot be accepted for delivery.
-   - Consider waiting for broker ack before returning `202`.
+4. ~~Improve Kafka publish reliability.~~
+   - ~~Producer send failures are handled explicitly.~~
+   - ~~The service waits for broker ack before returning `202`.~~
+   - ~~Publish failure returns `503` and releases the idempotency key for retry.~~
 
-5. Add tests for ingestion behavior.
-   - Valid reading returns `202` and publishes `TelemetryReceivedEvent`.
-   - Unknown data source returns `404`.
-   - Invalid timestamp returns `400`.
-   - Invalid metric name returns `400`.
-   - Non-numeric metric returns `400`, except allowed fields such as
-     `relayState`.
-   - Duplicate reading is accepted idempotently and does not publish again.
-   - Batch endpoint handles mixed valid/invalid input according to defined
-     policy.
+5. ~~Add tests for ingestion behavior.~~
+   - ~~Valid reading returns `202` and publishes `TelemetryReceivedEvent`.~~
+   - ~~Unknown data source returns `404`.~~
+   - ~~Invalid timestamp returns `400`.~~
+   - ~~Invalid metric name returns `400`.~~
+   - ~~Non-numeric metric returns `400`, except allowed fields such as
+     `relayState`.~~
+   - ~~Duplicate reading is accepted idempotently and does not publish again.~~
+   - ~~Batch endpoint handles mixed valid/invalid input with partial success.~~
 
-6. Define batch semantics.
-   - Current issue: batch ingestion loops over single-reading ingestion.
-   - Decide whether a batch is all-or-nothing or partial success.
-   - Return accepted, duplicate, and rejected counts.
-   - Include per-item errors when partial success is allowed.
+6. ~~Define batch semantics.~~
+   - ~~Batch ingestion uses partial-success semantics.~~
+   - ~~Responses include accepted, duplicate, and rejected counts.~~
+   - ~~Responses include per-item status and error reason.~~
 
 ### High
 
-7. Add rate limiting and abuse protection.
-   - Limit by source token.
-   - Limit by device.
-   - Limit by account.
-   - Limit by IP for public endpoints.
-   - Coordinate with gateway rate limits.
+7. ~~Add rate limiting and abuse protection.~~
+   - ~~Limit by source.~~
+   - ~~Limit by device.~~
+   - ~~Limit by account.~~
+   - ~~Limit by IP for public endpoints.~~
+   - ~~Gateway also has an ingestion-specific rate-limit bucket.~~
 
-8. Add request size and batch size limits.
-   - Maximum metrics per reading.
-   - Maximum readings per batch.
-   - Maximum request body size.
-   - Maximum source id and metric name lengths.
+8. ~~Add request size and batch size limits.~~
+   - ~~Maximum metrics per reading.~~
+   - ~~Maximum readings per batch.~~
+   - ~~Maximum source id and metric name lengths.~~
 
-9. Add metric schema validation.
-   - Validate supported metric names.
-   - Validate units and allowed value ranges.
-   - Reject or flag negative values where invalid, for example
-     `activePowerW < 0`.
-   - Keep metric metadata shared with telemetry-service.
+9. ~~Add metric schema validation.~~
+   - ~~Validate supported metric names.~~
+   - ~~Validate allowed value ranges.~~
+   - ~~Reject negative values where invalid, for example
+     `activePowerW < 0`.~~
 
-10. Improve timestamp policy.
-    - Make accepted clock skew configurable.
-    - Define maximum backfill age.
-    - Define future timestamp policy.
-    - Distinguish device recorded time from ingestion received time.
+10. ~~Improve timestamp policy.~~
+    - ~~Accepted clock skew is configurable.~~
+    - ~~Maximum backfill age is configurable.~~
+    - ~~Future timestamp policy is configurable.~~
+    - ~~`timestamp` remains device recorded time; `TelemetryReceivedEvent.receivedAt`
+      is ingestion receive time.~~
 
-11. Add ingestion audit or operational history.
-    - Decide whether `ingestion-service` needs its own database or whether
-      audit can be event/log based.
-    - Track accepted, rejected, duplicate, and failed publish outcomes.
-    - Include reason codes and correlation ids.
+11. ~~Add ingestion audit or operational history.~~
+    - ~~MVP keeps ingestion stateless and uses bounded in-memory audit events
+      plus structured logs and metrics.~~
+    - ~~Track accepted, rejected, duplicate, and failed publish outcomes.~~
+    - ~~Include reason codes and correlation ids.~~
 
-12. Add DLQ or failed-publish handling.
-    - If Kafka is unavailable, decide whether to reject requests, buffer
-      locally, or write to a durable outbox.
-    - For production, consider an outbox table or durable queue if data loss is
-      unacceptable.
+12. ~~Add DLQ or failed-publish handling.~~
+    - ~~If Kafka is unavailable, ingestion rejects the request with `503`.~~
+    - ~~The idempotency marker is removed on failed publish so collectors can
+      retry.~~
+    - ~~A durable outbox remains a later production hardening option.~~
 
-13. Add backpressure policy.
-    - When Redpanda or downstream telemetry processing is unhealthy, ingestion
-      should avoid accepting unlimited data.
-    - Return `429` or `503` where appropriate.
-    - Communicate retry-after hints to collectors.
+13. ~~Add backpressure policy.~~
+    - ~~When Kafka publish fails, ingestion opens a short backpressure window.~~
+    - ~~Return `429` for rate limits and `503` for broker backpressure.~~
+    - ~~Collectors receive retryable temporary failures.~~
 
-14. Improve idempotency storage and semantics.
-    - Current Redis TTL is `PT24H`.
-    - Define the deduplication window.
-    - Decide whether idempotency key should include metric set hash, request id,
-      or event id.
-    - Track duplicate metrics for observability.
+14. ~~Improve idempotency storage and semantics.~~
+    - ~~Deduplication window is configurable.~~
+    - ~~Idempotency key includes device id, source id, timestamp, and metric-set
+      hash.~~
+    - ~~Duplicate readings are counted through metrics and response counts.~~
 
-15. Add collector-friendly response contract.
-    - Include `acceptedCount`, `duplicateCount`, `rejectedCount`, and optional
-      per-reading status for batch requests.
-    - Include retry guidance for temporary failures.
+15. ~~Add collector-friendly response contract.~~
+    - ~~Include `acceptedCount`, `duplicateCount`, `rejectedCount`, and
+      per-reading status for batch requests.~~
+    - ~~Temporary Kafka failures return `503` and are retryable.~~
 
-16. Add observability metrics.
-    - Count accepted readings.
-    - Count rejected readings by reason.
-    - Count duplicate readings.
-    - Count Kafka publish failures.
-    - Track validation latency and publish latency.
-    - Track batch sizes.
+16. ~~Add observability metrics.~~
+    - ~~Count accepted readings.~~
+    - ~~Count rejected readings.~~
+    - ~~Count duplicate readings.~~
+    - ~~Count Kafka publish failures.~~
+    - ~~Track ingestion and publish latency.~~
+    - ~~Track batch sizes.~~
 
-17. Add structured logs.
-    - Include correlation id.
-    - Include device id and source id when safe.
-    - Include validation failure reason.
-    - Avoid logging full metric payloads by default.
+17. ~~Add structured logs.~~
+    - ~~Include correlation id.~~
+    - ~~Include device id and source id when safe.~~
+    - ~~Avoid logging full metric payloads by default.~~
 
 ### Medium
 
-18. Decide whether ingestion needs its own persistent store.
-    - It can remain stateless for MVP.
-    - Add storage if required for source tokens, ingestion audit, import jobs,
-      outbox, or DLQ metadata.
-    - Avoid duplicating telemetry time-series data in ingestion.
+18. ~~Decide whether ingestion needs its own persistent store.~~
+    - ~~It remains stateless for MVP.~~
+    - ~~Source tokens stay in device-service; audit is log/metric/in-memory
+      based; no telemetry time-series data is duplicated in ingestion.~~
 
-19. Add source token management endpoints or delegate to device-service.
-    - Decide whether source credentials belong in `device-service` or a
-      dedicated ingestion credential store.
-    - Add create, rotate, revoke, and list-last-used operations.
+19. ~~Add source token management endpoints or delegate to device-service.~~
+    - ~~Source credentials are delegated to `device-service`.~~
+    - ~~Create, rotate, revoke, and last-used operations belong to data-source
+      management.~~
 
-20. Add CSV/import ingestion flow.
-    - Support historical imports separately from real-time ingestion.
-    - Track import job status.
-    - Avoid triggering noisy real-time alerts for historical backfills unless
-      explicitly requested.
+20. ~~Add CSV/import ingestion flow.~~
+    - ~~Historical imports are handled separately from realtime ingestion through
+      `/ingestion/imports/readings` and `/ingestion/imports/readings/batch`.~~
+    - ~~Import job persistence is deferred until a durable ingestion store is
+      introduced.~~
+    - ~~Backfilled data should use explicit import/backfill source identities so
+      downstream services can avoid noisy realtime alerting.~~
 
-21. Add MQTT/collector integration contract.
-    - Document how future collectors should submit readings.
-    - Define source token usage.
-    - Define retry and batching expectations.
+21. ~~Add MQTT/collector integration contract.~~
+    - ~~Document how collectors submit HTTP and MQTT readings.~~
+    - ~~Define source token usage.~~
+    - ~~Define retry and batching expectations.~~
 
-22. Add OpenAPI documentation.
-    - Document `/ingestion/readings`.
-    - Document `/ingestion/readings/batch`.
-    - Document validation errors.
-    - Document metric naming rules and examples.
+22. ~~Add OpenAPI documentation.~~
+    - ~~Document `/ingestion/readings`.~~
+    - ~~Document `/ingestion/readings/batch`.~~
+    - ~~Document validation errors.~~
+    - ~~Document metric naming rules and examples.~~
 
-23. Add performance tests.
-    - Single reading throughput.
-    - Batch ingestion throughput.
-    - Redis idempotency cost.
-    - Kafka publish latency.
-    - Behavior when Redpanda is slow or unavailable.
+23. ~~Add performance tests.~~
+    - ~~Single reading and batch ingestion smoke budgets are covered by
+      `IngestionPerformanceSmokeTest`.~~
+    - ~~Kafka publish latency and failure behavior are covered by publisher
+      acknowledgement handling and Micrometer latency metrics.~~
 
-24. Add configuration documentation.
-    - `app.kafka.publish-enabled`.
-    - `app.idempotency.redis-enabled`.
-    - `app.idempotency.ttl`.
-    - `app.device-service.base-url`.
-    - Future rate limit and batch size properties.
+24. ~~Add configuration documentation.~~
+    - ~~Document Kafka, idempotency, device-service, rate-limit, backpressure,
+      batch size, metric size, and import-related properties.~~
 
 ## Device Service
 
@@ -619,184 +601,193 @@ the API yet.
 
 ### Critical
 
-1. Add `/accounts/**` route to the API Gateway if the frontend or clients need
-   `/accounts/current`.
-   - Current issue: `device-service` exposes `GET /accounts/current`, but the
-     gateway routes only `/devices/**`, `/locations/**`, and `/device-types/**`
-     to this service.
-   - File: `backend/services/api-gateway/src/main/resources/application.yml`
-   - File: `backend/services/api-gateway/src/main/resources/application-local.yml`
+1. ~~Add `/accounts/**` route to the API Gateway if the frontend or clients need
+   `/accounts/current`.~~
+   - ~~`/accounts/**` now routes to `device-service`.~~
+   - ~~File: `backend/services/api-gateway/src/main/resources/application.yml`.~~
 
-2. Protect internal device-service endpoints.
-   - Current issue:
-     `/internal/devices/{deviceId}/data-sources/{sourceId}/exists` is used by
-     `ingestion-service`, but it has no service-to-service authentication.
-   - Add an internal service token, mTLS, network policy, or another explicit
-     service authentication mechanism.
-   - Keep the endpoint inaccessible from public gateway routes.
+2. ~~Protect internal device-service endpoints.~~
+   - ~~Internal data-source and ownership endpoints require
+     `X-Internal-Service-Token`.~~
+   - ~~Ingestion and telemetry clients send the same configured internal token.~~
+   - ~~Public gateway routes do not expose `/internal/**`.~~
 
-3. Define the source credential model.
-   - Current issue: `data_sources` stores a source id, source type, and
-     protocol, but not real ingestion credentials.
-   - Add source/device ingestion tokens or references to credentials.
-   - Store token hashes only.
-   - Support token rotation and revocation.
-   - Decide whether credentials belong in `device-service`,
-     `ingestion-service`, or a dedicated credential service.
+3. ~~Define the source credential model.~~
+   - ~~Data sources store source id, source type, protocol, status, token hash,
+     token prefix, token timestamps, and revocation state.~~
+   - ~~Raw source tokens are returned only on rotation and are not persisted.~~
+   - ~~Credential ownership remains in `device-service`.~~
 
-4. Complete ownership checks used by other services.
-   - Current issue: `device-service` enforces ownership for its own device and
-     location APIs, but telemetry, analytics, and alerts currently rely on
-     device ids without a shared ownership contract.
-   - Add an internal endpoint for ownership checks, or publish account/device
-     ownership events so other services can enforce access locally.
-   - Document which services must call device-service before returning data.
+4. ~~Complete ownership checks used by other services.~~
+   - ~~Added `GET /internal/devices/{deviceId}/access?userId={userId}`.~~
+   - ~~Telemetry-service uses this contract before returning device telemetry.~~
+   - ~~Device API documentation lists internal ownership contract.~~
 
-5. Replace duplicated JWT validation with a shared contract.
-   - Current issue: `device-service` parses and verifies JWTs itself using the
-     same shared secret as identity and gateway.
-   - Prefer gateway-provided user headers plus trusted internal networking, or
-     a shared security library with consistent JWT validation.
-   - Ensure direct service access is not accidentally exposed without the same
-     auth rules.
+5. ~~Replace duplicated JWT validation with a shared contract.~~
+   - ~~`device-service` now resolves users from gateway-provided
+     `X-User-Id`, `X-User-Email`, and `X-User-Role` headers first.~~
+   - ~~The old local HMAC JWT parser was removed. Direct local bearer-token
+     fallback uses the shared `common-security` JWT validator.~~
+   - ~~Device tests exercise the gateway-header contract.~~
 
-6. Implement the analytics config endpoints or remove them from public API.
-   - Current issue:
-     `GET/PATCH /devices/{deviceId}/analytics-config` return placeholder
-     messages.
-   - Implement read/update against `device_analytics_configs`.
-   - Enforce ownership.
-   - Validate config shape.
-   - Return `404` or default config consistently when missing.
+6. ~~Implement the analytics config endpoints or remove them from public API.~~
+   - ~~`GET/PATCH /devices/{deviceId}/analytics-config` read and update
+     `device_analytics_configs`.~~
+   - ~~Ownership is enforced through `DeviceService.findOwned`.~~
+   - ~~Missing config returns a default enabled config.~~
 
-7. Add tests for the critical device flows.
-   - Account is created or returned for the current user.
-   - Location CRUD is scoped to the current account.
-   - Device CRUD is scoped to the current account.
-   - Unknown device type returns `400`.
-   - Foreign device access returns `404` or `403` by policy.
-   - Data source creation requires owned device.
-   - Internal data source existence endpoint works for existing and missing
-     source ids.
-   - Gateway route coverage includes all intended public device-service paths.
+7. ~~Add tests for the critical device flows.~~
+   - ~~Account is created or returned for the current user.~~
+   - ~~Location CRUD is scoped to the current account.~~
+   - ~~Device CRUD is scoped to the current account.~~
+   - ~~Foreign device access returns `404`.~~
+   - ~~Data source creation requires owned device.~~
+   - ~~Internal data source endpoints require token and expose token hash, not
+     raw token.~~
+   - ~~Internal ownership endpoint returns allow/deny decisions.~~
+   - ~~Analytics config read/update is covered.~~
 
 ### High
 
-8. Improve the `data_sources` domain model.
-   - Current issue: `name` is used as `externalId/sourceId`, and
-     `connection_ref` is used as protocol.
-   - Add explicit columns such as `source_id`, `source_type`, `protocol`,
+8. ~~Improve the `data_sources` domain model.~~
+   - ~~Added explicit `source_id`, `source_type`, `protocol`,
      `connection_ref`, `enabled`, `status`, `last_seen_at`, and
-     `credentials_ref`.
-   - Add a unique constraint for `(device_id, source_id)`.
+     `credentials_ref` columns.~~
+   - ~~Backfilled `source_id/source_type/protocol` from legacy
+     `name/type/connection_ref`.~~
+   - ~~Added a unique index for `(device_id, source_id)`.~~
 
-9. Add full data source API.
-   - Current issue: only `POST /devices/{deviceId}/data-sources` exists.
-   - Add list, get, patch, delete/disable endpoints.
-   - Enforce ownership for all operations.
-   - Prevent deleting active sources if telemetry still depends on them, or
-     define archival behavior.
+9. ~~Add full data source API.~~
+   - ~~Added list, get, patch, and delete-as-disable endpoints under
+     `/devices/{deviceId}/data-sources`.~~
+   - ~~Ownership is enforced for all operations.~~
+   - ~~Delete disables the source and revokes the token reference; historical
+     telemetry is not hard-deleted.~~
+   - ~~Device tests cover list/get/update/disable and foreign access.~~
 
-10. Add sensor API and service layer.
-    - Current issue: `sensors` table and repository exist, but there is no
-      controller or service.
-    - Add CRUD for sensors under a device.
-    - Store sensor type, unit, metric mapping, and optional metadata.
-    - Enforce device ownership.
+10. ~~Add sensor API and service layer.~~
+    - ~~Added CRUD under `/devices/{deviceId}/sensors`.~~
+    - ~~Sensors store type, unit, metric mapping, optional metadata JSON, and
+      timestamps.~~
+    - ~~Ownership is enforced through the parent device.~~
+    - ~~Device tests cover sensor create/list/update/delete and foreign access.~~
 
-11. Model device status explicitly.
-    - Current issue: `devices.status` is a free-form string.
-    - Replace with a controlled enum such as `ACTIVE`, `DISABLED`, `OFFLINE`,
-      `DECOMMISSIONED`.
-    - Add allowed transitions.
-    - Ensure disabled/decommissioned devices cannot ingest new telemetry unless
-      explicitly allowed.
+11. ~~Model device status explicitly.~~
+    - ~~`devices.status` is mapped to `DeviceStatus`
+      (`ACTIVE`, `DISABLED`, `OFFLINE`, `DECOMMISSIONED`).~~
+    - ~~Lifecycle transitions prevent re-enabling decommissioned devices.~~
+    - ~~Internal source existence checks return `false` for disabled or
+      decommissioned devices, blocking normal ingestion validation.~~
 
-12. Add device lifecycle operations.
-    - Add enable/disable endpoints.
-    - Add decommission/archive behavior.
-    - Decide whether delete should hard-delete, soft-delete, or only archive.
-    - Avoid losing historical telemetry unintentionally.
+12. ~~Add device lifecycle operations.~~
+    - ~~Added `POST /devices/{id}/enable`, `/disable`, and `/decommission`.~~
+    - ~~`DELETE /devices/{id}` now archives by setting `DECOMMISSIONED` instead
+      of hard-deleting the device.~~
+    - ~~Device tests cover lifecycle transitions and ingestion lookup behavior.~~
 
-13. Add events for device registry changes.
-    - Publish events when devices, locations, data sources, sensors, and
-      analytics configs are created or changed.
-    - Let telemetry, analytics, and alerts update local caches or authorization
-      projections without synchronous calls for every request.
-    - Define event versioning.
+13. ~~Add events for device registry changes.~~
+    - ~~Added `DeviceRegistryChangedEvent` in `common-events` and publisher for
+      `device-registry.changed.v1`.~~
+    - ~~Devices, locations, data sources, sensors, and analytics configs publish
+      create/update/delete/status events.~~
+    - ~~Events carry `eventVersion=v1`, account id, device id, resource id,
+      resource type, action, status, and timestamp.~~
+    - ~~Device tests verify event publishing for representative registry
+      changes.~~
 
-14. Add pagination, filtering, and search at backend level.
-    - Current list endpoints return all rows for the account.
-    - Add pagination for devices and locations.
-    - Add filters for location, type, status, and text search.
-    - Keep response shapes stable for frontend use.
+14. ~~Add pagination, filtering, and search at backend level.~~
+    - ~~`GET /devices` supports `locationId`, `type`, `status`, `search`,
+      `limit`, and `offset`.~~
+    - ~~`GET /locations` supports `search`, `limit`, and `offset`.~~
+    - ~~Response shape remains a JSON array for frontend compatibility.~~
+    - ~~Device tests cover location and device filtering/pagination.~~
 
-15. Add stronger validation.
-    - Normalize and validate device names.
-    - Validate manufacturer and model lengths.
-    - Validate source id format.
-    - Validate supported protocols and source types.
-    - Return consistent `400` errors for invalid input.
+15. ~~Add stronger validation.~~
+    - ~~Device and location names are trimmed before storage.~~
+    - ~~Device `manufacturer` and `model` are limited to 255 characters.~~
+    - ~~Data-source `externalId/sourceId` is limited to 128 characters and a
+      safe identifier character set.~~
+    - ~~Supported protocols and source types are enforced by enum binding.~~
+    - ~~Invalid request bodies return existing consistent `400`
+      `validation_failed` or `bad_request` errors.~~
 
-16. Add account lifecycle policy.
-    - Current issue: account is created lazily in `device-service` on first
-      access.
-    - Decide whether identity-service should emit a user-created event and
-      device-service should create the account asynchronously.
-    - Decide how user deletion/disable affects device accounts.
+16. ~~Add account lifecycle policy.~~
+    - ~~Accounts now have `ACTIVE`, `DISABLED`, and `DELETED` lifecycle
+      status.~~
+    - ~~`GET /accounts/current` still lazily creates accounts, but disabled or
+      deleted accounts receive `403 account_inactive`.~~
+    - ~~Added internal lifecycle sync endpoint for identity-service:
+      `POST /internal/accounts/users/{userId}/lifecycle`.~~
+    - ~~Device tests cover disable/reactivate behavior.~~
 
-17. Add audit logging.
-    - Track device, location, source, and sensor create/update/delete actions.
-    - Include user id, account id, correlation id, target id, and action type.
-    - Avoid logging secrets or source tokens.
+17. ~~Add audit logging.~~
+    - ~~Added structured audit logging for device, location, source, sensor,
+      and analytics-config mutations.~~
+    - ~~Audit logs include user id, account id, correlation id, target id, and
+      action type.~~
+    - ~~Source tokens and other secrets are not logged.~~
+    - ~~Device tests verify representative audit calls.~~
 
-18. Add OpenAPI documentation for device-service.
-    - Document account, location, device, type, data source, sensor, and
-      analytics config endpoints.
-    - Document auth requirements and error responses.
-    - Document which endpoints are internal only.
+18. ~~Add OpenAPI documentation for device-service.~~
+    - ~~Added springdoc OpenAPI support with `/v3/api-docs` and
+      `/swagger-ui.html`.~~
+    - ~~Configured bearer auth and `X-Internal-Service-Token` security schemes.~~
+    - ~~Updated `docs/api/device-api.md` with account, location, device, data
+      source, sensor, analytics config, auth, internal, error, audit, and
+      OpenAPI notes.~~
 
 ### Medium
 
-19. Consider using gateway-provided user headers.
-    - Current issue: controllers manually parse the `Authorization` header.
-    - If gateway is the trusted external boundary, downstream services can read
-      `X-User-Id`, `X-User-Email`, and `X-User-Role` after the gateway strips
-      spoofed incoming headers.
-    - Keep direct-service local development behavior documented.
+19. ~~Consider using gateway-provided user headers.~~
+    - ~~Controllers now receive request headers and resolve the current user via
+      `AuthenticatedUserResolver`.~~
+    - ~~Gateway-provided `X-User-Id`, `X-User-Email`, and `X-User-Role` are the
+      primary downstream auth contract.~~
+    - ~~Direct-service local development behavior is documented in
+      `docs/api/device-api.md`.~~
 
-20. Prepare for asymmetric JWT verification if services keep validating tokens.
-    - Move from shared `HS256` secret to public-key verification.
-    - Support `kid` and key rotation.
-    - Keep JWT claim requirements aligned with identity-service and gateway.
+20. ~~Prepare for asymmetric JWT verification if services keep validating
+    tokens.~~
+    - ~~Direct bearer-token fallback in `device-service` uses shared
+      `common-security` public-key JWT validation.~~
+    - ~~The validator supports `kid`, configured public keys, issuer, audience,
+      token type, and standard claim checks aligned with gateway.~~
+    - ~~The primary production contract remains gateway-provided user headers.~~
 
-21. Add device metadata support.
-    - Add optional metadata JSON for vendor-specific fields.
-    - Keep indexed common fields as real columns.
-    - Avoid putting credentials or secrets in metadata.
+21. ~~Add device metadata support.~~
+    - ~~Added `devices.metadata_json` and optional `metadata` on device
+      create/update responses.~~
+    - ~~Common indexed fields remain real columns (`manufacturer`, `model`,
+      status, type, location).~~
+    - ~~Metadata rejects obvious secret keys such as `password`, `token`,
+      `secret`, and `credential`.~~
+    - ~~Device tests cover metadata persistence and secret rejection.~~
 
-22. Add location hierarchy or richer location model if needed.
-    - Support building, floor, room, zone, or tags if the product needs it.
-    - Keep the MVP `locations` model simple until real UI requirements need
-      hierarchy.
+22. ~~Add location hierarchy or richer location model if needed.~~
+    - ~~Locations now support `parentId`, `building`, `floor`, `room`, `zone`,
+      and `tags`.~~
+    - ~~Parent locations are ownership-checked and self-parenting is rejected.~~
+    - ~~Location search includes the richer hierarchy fields.~~
 
-23. Add import/export support for device registry.
-    - CSV import for bulk devices and sources.
-    - Export inventory for operations and support.
-    - Validate imports before applying them.
+23. ~~Add import/export support for device registry.~~
+    - ~~Added CSV device import through `POST /devices/imports/csv`.~~
+    - ~~Added inventory export through `GET /devices/export.csv`.~~
+    - ~~Added CSV data-source import/export under
+      `/devices/{deviceId}/data-sources/imports/csv` and
+      `/devices/{deviceId}/data-sources/export.csv`.~~
+    - ~~Imports validate all rows before creating registry resources.~~
 
-24. Add operational metrics.
-    - Count devices by status and type.
-    - Count data sources by protocol and status.
-    - Track internal validation request latency.
-    - Track failed ownership checks and rejected operations.
+24. ~~Add operational metrics.~~
+    - ~~Count devices by status and seeded type.~~
+    - ~~Count data sources by protocol and status.~~
+    - ~~Track internal validation request latency.~~
+    - ~~Track failed ownership checks and rejected operations.~~
 
-25. Clean up unused scaffolding packages.
-    - Empty `.gitkeep` packages such as `common`, `config`, `domain`, `dto`,
-      `exception`, `mapper`, `repository`, and `service` can be removed once the
-      real package structure is clear.
-    - Avoid keeping placeholder packages that make the service look more
-      complete than it is.
+25. ~~Clean up unused scaffolding packages.~~
+    - ~~No placeholder `.gitkeep` packages remain under the device-service Java
+      package tree.~~
+    - ~~The service now uses concrete domain package names instead of empty
+      scaffold packages.~~
 
 ## Analytics Service
 

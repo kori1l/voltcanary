@@ -56,6 +56,9 @@ export function RegisterPage() {
         <Link className="auth-link" to="/login">
           Sign in
         </Link>
+        <Link className="auth-link auth-link-secondary" to="/verify-email">
+          Verify email
+        </Link>
       </section>
     </main>
   );

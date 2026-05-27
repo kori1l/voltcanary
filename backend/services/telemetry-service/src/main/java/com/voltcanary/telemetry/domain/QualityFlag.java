@@ -9,5 +9,7 @@ public enum QualityFlag {
     INVALID_VALUE,
     DUPLICATE,
     OUT_OF_RANGE,
-    NORMALIZED
+    NORMALIZED,
+    BACKFILL,
+    RATE_LIMITED
 }
