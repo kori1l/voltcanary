@@ -26,8 +26,14 @@ public class Recommendation {
     @Column(name = "priority", nullable = false)
     private String priority;
 
+    @Column(name = "status", nullable = false)
+    private String status;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "superseded_at")
+    private Instant supersededAt;
 
     public UUID getId() {
         return id;
@@ -69,11 +75,27 @@ public class Recommendation {
         this.priority = priority;
     }
 
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getSupersededAt() {
+        return supersededAt;
+    }
+
+    public void setSupersededAt(Instant supersededAt) {
+        this.supersededAt = supersededAt;
     }
 }

@@ -2,12 +2,16 @@ package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.BaselineResponse;
+import com.voltcanary.analytics.dto.FeatureSetResponse;
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.dto.RecalculateResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
+import com.voltcanary.analytics.repository.AnomalyRepository;
+import com.voltcanary.analytics.repository.DeviceBaselineRepository;
+import com.voltcanary.analytics.repository.RecommendationRepository;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
 import java.time.Instant;
@@ -31,6 +35,8 @@ import static org.mockito.Mockito.when;
         properties = {
                 "app.kafka.consume-enabled=false",
                 "app.kafka.publish-enabled=false",
+                "app.analytics.authorization.enabled=false",
+                "app.analytics.jobs.async=false",
                 "spring.datasource.url=jdbc:h2:mem:analytics-recalculation;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
                 "spring.jpa.hibernate.ddl-auto=none",
                 "spring.flyway.enabled=true"
@@ -45,6 +51,15 @@ class AnalyticsRecalculationTest {
 
     @MockitoBean
     private MlClient mlClient;
+
+    @Autowired
+    private DeviceBaselineRepository baselineRepository;
+
+    @Autowired
+    private AnomalyRepository anomalyRepository;
+
+    @Autowired
+    private RecommendationRepository recommendationRepository;
 
     @Test
     void recalculateCreatesBaselineAnomaliesRiskAndRecommendations() {
@@ -61,8 +76,21 @@ class AnalyticsRecalculationTest {
                 point(start.plusSeconds(420), 100),
                 point(start.plusSeconds(480), 100),
                 point(start.plusSeconds(540), 400));
+        List<TelemetryChartResponse.Point> nextPoints = List.of(
+                point(start, 120),
+                point(start.plusSeconds(60), 120),
+                point(start.plusSeconds(120), 120),
+                point(start.plusSeconds(180), 120),
+                point(start.plusSeconds(240), 120),
+                point(start.plusSeconds(300), 120),
+                point(start.plusSeconds(360), 120),
+                point(start.plusSeconds(420), 120),
+                point(start.plusSeconds(480), 120),
+                point(start.plusSeconds(540), 480));
         when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
-                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", points));
+                .thenReturn(
+                        new TelemetryChartResponse(deviceId, "activePowerW", points),
+                        new TelemetryChartResponse(deviceId, "activePowerW", nextPoints));
         when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any()))
                 .thenReturn(new MlInferenceResponse(
                         deviceId,
@@ -81,10 +109,8 @@ class AnalyticsRecalculationTest {
 
         assertThat(recalculated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(recalculated.getBody()).isNotNull();
-        assertThat(recalculated.getBody().anomalyCount()).isEqualTo(2);
-        assertThat(recalculated.getBody().riskScore()).isEqualTo(60);
-        assertThat(recalculated.getBody().riskLevel()).isEqualTo("MEDIUM");
-        assertThat(recalculated.getBody().recommendationCount()).isEqualTo(2);
+        assertThat(recalculated.getBody().status()).isEqualTo("completed");
+        assertThat(recalculated.getBody().jobId()).isNotNull();
 
         ResponseEntity<BaselineResponse> baseline = restTemplate.getForEntity(
                 "/analytics/devices/{deviceId}/baseline",
@@ -96,6 +122,13 @@ class AnalyticsRecalculationTest {
         assertThat(baseline.getBody().median()).isEqualTo(100);
         assertThat(baseline.getBody().p90()).isEqualTo(100);
         assertThat(baseline.getBody().sampleCount()).isEqualTo(10);
+        assertThat(baselineRepository.findFirstByDeviceIdOrderByCalculatedAtDesc(deviceId)).hasValueSatisfying(entity -> {
+            assertThat(entity.getMetric()).isEqualTo("activePowerW");
+            assertThat(entity.getPeriod()).isEqualTo("last_24h");
+            assertThat(entity.getAlgorithmVersion()).isEqualTo("baseline-basic-v1");
+            assertThat(entity.getMean()).isEqualTo(130);
+            assertThat(entity.getSampleCount()).isEqualTo(10);
+        });
 
         ResponseEntity<AnomalyResponse[]> anomalies = restTemplate.getForEntity(
                 "/analytics/devices/{deviceId}/anomalies",
@@ -103,6 +136,16 @@ class AnalyticsRecalculationTest {
                 deviceId);
         assertThat(anomalies.getBody()).extracting(AnomalyResponse::type)
                 .containsExactlyInAnyOrder("POWER_SPIKE", "CONSUMPTION_GROWTH");
+
+        ResponseEntity<FeatureSetResponse[]> features = restTemplate.getForEntity(
+                "/analytics/devices/{deviceId}/features",
+                FeatureSetResponse[].class,
+                deviceId);
+        assertThat(features.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(features.getBody()).hasSize(1);
+        assertThat(features.getBody()[0].features())
+                .containsEntry("metric", "activePowerW")
+                .containsEntry("sampleCount", 10);
 
         ResponseEntity<RiskResponse> risk = restTemplate.getForEntity(
                 "/analytics/devices/{deviceId}/risk",
@@ -126,6 +169,25 @@ class AnalyticsRecalculationTest {
         assertThat(prediction.getBody()).isNotNull();
         assertThat(prediction.getBody().modelVersion()).isEqualTo("mock-model-v1");
         assertThat(prediction.getBody().confidence()).isEqualTo(0.5);
+
+        restTemplate.postForEntity(
+                "/analytics/devices/{deviceId}/recalculate",
+                null,
+                RecalculateResponse.class,
+                deviceId);
+
+        assertThat(anomalyRepository.findTop100ByDeviceIdAndStatusOrderByDetectedAtDesc(deviceId, "ACTIVE"))
+                .hasSize(2)
+                .allSatisfy(anomaly -> {
+                    assertThat(anomaly.getRuleId()).isNotBlank();
+                    assertThat(anomaly.getRuleVersion()).isEqualTo("rules-v1");
+                });
+        assertThat(anomalyRepository.findTop100ByDeviceIdAndStatusOrderByDetectedAtDesc(deviceId, "SUPERSEDED"))
+                .hasSize(2);
+        assertThat(recommendationRepository.findTop100ByDeviceIdAndStatusOrderByCreatedAtDesc(deviceId, "ACTIVE"))
+                .hasSize(2);
+        assertThat(recommendationRepository.findTop100ByDeviceIdAndStatusOrderByCreatedAtDesc(deviceId, "SUPERSEDED"))
+                .hasSize(2);
     }
 
     private TelemetryChartResponse.Point point(Instant timestamp, double value) {

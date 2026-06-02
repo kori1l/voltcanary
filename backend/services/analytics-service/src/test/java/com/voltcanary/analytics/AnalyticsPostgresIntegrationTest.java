@@ -31,6 +31,8 @@ import static org.mockito.Mockito.when;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.publish-enabled=false",
+                "app.analytics.authorization.enabled=false",
+                "app.analytics.jobs.async=false",
                 "spring.jpa.hibernate.ddl-auto=none"
         })
 class AnalyticsPostgresIntegrationTest {

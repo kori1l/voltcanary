@@ -2682,17 +2682,26 @@ code {
 }
 
 .status-pill-low,
-.status-pill-neutral {
+.status-pill-neutral,
+.status-pill-completed {
   border-color: var(--success-border);
   background: var(--success-bg);
   color: var(--success);
 }
 
 .status-pill-high,
-.status-pill-critical {
+.status-pill-critical,
+.status-pill-failed {
   border-color: var(--danger-border);
   background: var(--danger-bg);
   color: var(--danger);
+}
+
+.status-pill-pending,
+.status-pill-running {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-active);
 }
 
 .device-overview-grid {

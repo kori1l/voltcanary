@@ -47,8 +47,9 @@ public class TelemetryController {
             @RequestParam(value = "interval", required = false) String interval,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId);
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         Instant effectiveTo = to == null ? Instant.now() : to;
         Instant effectiveFrom = from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
         requireAcceptedRange(effectiveFrom, effectiveTo);
@@ -65,8 +66,9 @@ public class TelemetryController {
             @RequestParam(value = "limit", required = false, defaultValue = "500") int limit,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId);
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         requireAcceptedRange(from, to);
         int effectiveLimit = Math.max(1, Math.min(limit, validationProperties.getMaxExportPageSize()));
         return telemetryQueryService.export(deviceId, metric, from, to, cursor, effectiveLimit);
@@ -77,8 +79,9 @@ public class TelemetryController {
             @PathVariable("deviceId") UUID deviceId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId);
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         return telemetryQueryService.latestMeasurements(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No telemetry for device"));
     }
@@ -88,8 +91,9 @@ public class TelemetryController {
             @PathVariable("deviceId") UUID deviceId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId);
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         return telemetryQueryService.getQuality(deviceId);
     }
 
@@ -98,8 +102,9 @@ public class TelemetryController {
             @PathVariable("deviceId") UUID deviceId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId);
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         return telemetryQueryService.getMetrics(deviceId);
     }
 

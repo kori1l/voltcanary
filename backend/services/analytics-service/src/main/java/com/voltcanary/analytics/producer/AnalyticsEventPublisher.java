@@ -47,14 +47,21 @@ public class AnalyticsEventPublisher {
         anomalyKafkaTemplate.send(ANOMALY_TOPIC, anomaly.getDeviceId().toString(), event);
     }
 
-    public void publishRiskScore(RiskScore riskScore) {
+    public void publishRiskScore(RiskScore riskScore, double previousScore) {
         if (!publishEnabled) {
+            return;
+        }
+        if (Double.compare(previousScore, riskScore.getScore()) == 0) {
+            log.info("Skipping {} riskScoreId={} deviceId={} because score did not change",
+                    RISK_TOPIC,
+                    riskScore.getId(),
+                    riskScore.getDeviceId());
             return;
         }
         RiskScoreChangedEvent event = new RiskScoreChangedEvent(
                 riskScore.getId(),
                 riskScore.getDeviceId(),
-                0,
+                previousScore,
                 riskScore.getScore(),
                 riskScore.getLevel(),
                 riskScore.getCalculatedAt());

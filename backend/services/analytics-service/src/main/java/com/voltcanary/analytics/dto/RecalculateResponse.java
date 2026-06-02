@@ -5,6 +5,7 @@ import java.util.UUID;
 public record RecalculateResponse(
     String status,
     UUID deviceId,
+    UUID jobId,
     UUID baselineId,
     int anomalyCount,
     double riskScore,

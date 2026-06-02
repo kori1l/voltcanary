@@ -20,6 +20,24 @@ public class PredictionResult {
     @Column(name = "model_name", nullable = false)
     private String modelName;
 
+    @Column(name = "model_version")
+    private String modelVersion;
+
+    @Column(name = "anomaly_score")
+    private Double anomalyScore;
+
+    @Column(name = "degradation_score")
+    private Double degradationScore;
+
+    @Column(name = "confidence")
+    private Double confidence;
+
+    @Column(name = "risk_level")
+    private String riskLevel;
+
+    @Column(name = "status")
+    private String status;
+
     @Column(name = "prediction_json", nullable = false, columnDefinition = "text")
     private String predictionJson;
 
@@ -48,6 +66,54 @@ public class PredictionResult {
 
     public void setModelName(String modelName) {
         this.modelName = modelName;
+    }
+
+    public String getModelVersion() {
+        return modelVersion;
+    }
+
+    public void setModelVersion(String modelVersion) {
+        this.modelVersion = modelVersion;
+    }
+
+    public Double getAnomalyScore() {
+        return anomalyScore;
+    }
+
+    public void setAnomalyScore(Double anomalyScore) {
+        this.anomalyScore = anomalyScore;
+    }
+
+    public Double getDegradationScore() {
+        return degradationScore;
+    }
+
+    public void setDegradationScore(Double degradationScore) {
+        this.degradationScore = degradationScore;
+    }
+
+    public Double getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Double confidence) {
+        this.confidence = confidence;
+    }
+
+    public String getRiskLevel() {
+        return riskLevel;
+    }
+
+    public void setRiskLevel(String riskLevel) {
+        this.riskLevel = riskLevel;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public String getPredictionJson() {

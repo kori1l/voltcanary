@@ -50,14 +50,34 @@ export interface PredictionResponse {
   createdAt: string;
 }
 
+export interface FeatureSetResponse {
+  id: string;
+  deviceId: string;
+  windowStart: string;
+  windowEnd: string;
+  features: Record<string, unknown>;
+}
+
 export interface RecalculateResponse {
   status: string;
   deviceId: string;
-  baselineId: string;
+  jobId: string;
+  baselineId: string | null;
   anomalyCount: number;
   riskScore: number;
   riskLevel: string;
   recommendationCount: number;
+}
+
+export interface AnalyticsJobResponse {
+  id: string;
+  deviceId: string;
+  jobType: string;
+  status: string;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
 }
 
 export function recalculateAnalytics(deviceId: string) {
@@ -66,12 +86,24 @@ export function recalculateAnalytics(deviceId: string) {
   });
 }
 
+export function getAnalyticsJobs(deviceId: string) {
+  return apiRequest<AnalyticsJobResponse[]>(`/analytics/devices/${deviceId}/jobs`);
+}
+
+export function getAnalyticsJob(deviceId: string, jobId: string) {
+  return apiRequest<AnalyticsJobResponse>(`/analytics/devices/${deviceId}/jobs/${jobId}`);
+}
+
 export function getDeviceBaseline(deviceId: string) {
   return apiRequest<BaselineResponse>(`/analytics/devices/${deviceId}/baseline`);
 }
 
 export function getDeviceAnomalies(deviceId: string) {
   return apiRequest<AnomalyResponse[]>(`/analytics/devices/${deviceId}/anomalies`);
+}
+
+export function getDeviceFeatures(deviceId: string) {
+  return apiRequest<FeatureSetResponse[]>(`/analytics/devices/${deviceId}/features`);
 }
 
 export function getDeviceRisk(deviceId: string) {

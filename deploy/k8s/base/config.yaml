@@ -12,6 +12,7 @@ data:
   POSTGRES_DB: voltcanary
   IDENTITY_POSTGRES_DB: voltcanary_identity
   DEVICE_POSTGRES_DB: voltcanary_device
+  ANALYTICS_POSTGRES_DB: voltcanary_analytics
   ALERT_POSTGRES_DB: voltcanary_alerts
   SIMULATOR_POSTGRES_DB: voltcanary_simulator
   TIMESCALE_HOST: timescaledb

@@ -4,6 +4,7 @@ x-postgres-env: &postgres-env
   POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
   POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
+  POSTGRES_ADDITIONAL_DATABASES: ${POSTGRES_ADDITIONAL_DATABASES:-voltcanary_identity voltcanary_device voltcanary_analytics voltcanary_alerts voltcanary_simulator voltcanary_ai_agent}
 
 x-timescale-env: &timescale-env
   POSTGRES_USER: ${TIMESCALE_USER:-voltcanary}
@@ -52,8 +53,8 @@ x-java-app: &java-app
     INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
     INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
   depends_on:
-    postgres:
-      condition: service_healthy
+    postgres-database-init:
+      condition: service_completed_successfully
     timescaledb:
       condition: service_healthy
     redis:
@@ -81,6 +82,23 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  postgres-database-init:
+    image: postgres:16-alpine
+    profiles:
+      - infra
+      - app
+    environment:
+      <<: *postgres-env
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    command: /docker-entrypoint-initdb.d/001-create-databases.sh
+    volumes:
+      - ./deploy/docker-compose/init/postgres:/docker-entrypoint-initdb.d:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
@@ -371,6 +389,20 @@ services:
   analytics-service:
     <<: *java-app
     command: sh -c "mvn -pl services/analytics-service -am -Dmaven.test.skip=true install && mvn -f services/analytics-service/pom.xml spring-boot:run"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ANALYTICS_POSTGRES_DB: ${ANALYTICS_POSTGRES_DB:-voltcanary_analytics}
+      APP_KAFKA_CONSUME_ENABLED: ${ANALYTICS_KAFKA_CONSUME_ENABLED:-true}
+      ANALYTICS_KAFKA_PUBLISH_ENABLED: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:-true}
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      TELEMETRY_SERVICE_URI: http://telemetry-service:8084
+      DEVICE_SERVICE_URI: http://device-service:8082
+      ML_SERVICE_URI: http://ml-service:8090
     ports:
       - "${ANALYTICS_SERVICE_PORT:-8085}:8085"
 

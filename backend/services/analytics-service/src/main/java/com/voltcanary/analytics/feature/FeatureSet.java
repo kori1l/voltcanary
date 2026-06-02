@@ -25,4 +25,44 @@ public class FeatureSet {
 
     @Column(name = "features_json", nullable = false, columnDefinition = "text")
     private String featuresJson;
+
+    public UUID getId() {
+        return id;
+    }
+
+    public void setId(UUID id) {
+        this.id = id;
+    }
+
+    public UUID getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(UUID deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public Instant getWindowStart() {
+        return windowStart;
+    }
+
+    public void setWindowStart(Instant windowStart) {
+        this.windowStart = windowStart;
+    }
+
+    public Instant getWindowEnd() {
+        return windowEnd;
+    }
+
+    public void setWindowEnd(Instant windowEnd) {
+        this.windowEnd = windowEnd;
+    }
+
+    public String getFeaturesJson() {
+        return featuresJson;
+    }
+
+    public void setFeaturesJson(String featuresJson) {
+        this.featuresJson = featuresJson;
+    }
 }

@@ -11,10 +11,59 @@ app:
   kafka:
     consume-enabled: false
     publish-enabled: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:true}
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+    service-name: ${INTERNAL_SERVICE_NAME:analytics-service}
+  analytics:
+    jobs:
+      async: ${ANALYTICS_JOBS_ASYNC:true}
+    metrics:
+      default-metrics: ${ANALYTICS_DEFAULT_METRICS:activePowerW}
+      default-window: ${ANALYTICS_DEFAULT_WINDOW:24h}
+      period-label: ${ANALYTICS_PERIOD_LABEL:last_24h}
+    dlq:
+      topic: ${ANALYTICS_DLQ_TOPIC:analytics.telemetry.validated.dlq.v1}
+    retention:
+      enabled: ${ANALYTICS_RETENTION_ENABLED:true}
+      cleanup-cron: ${ANALYTICS_RETENTION_CLEANUP_CRON:0 20 3 * * *}
+      baselines: ${ANALYTICS_RETENTION_BASELINES:180d}
+      feature-sets: ${ANALYTICS_RETENTION_FEATURE_SETS:90d}
+      predictions: ${ANALYTICS_RETENTION_PREDICTIONS:90d}
+      anomalies: ${ANALYTICS_RETENTION_ANOMALIES:180d}
+      risk-scores: ${ANALYTICS_RETENTION_RISK_SCORES:180d}
+      jobs: ${ANALYTICS_RETENTION_JOBS:30d}
+      recommendations: ${ANALYTICS_RETENTION_RECOMMENDATIONS:180d}
+      outbox: ${ANALYTICS_RETENTION_OUTBOX:7d}
+    authorization:
+      enabled: ${ANALYTICS_AUTHORIZATION_ENABLED:true}
+      device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      timeout: ${ANALYTICS_AUTHORIZATION_TIMEOUT:2s}
+    rules:
+      version: ${ANALYTICS_RULE_VERSION:rules-v1}
+      power-spike:
+        enabled: ${ANALYTICS_RULE_POWER_SPIKE_ENABLED:true}
+        median-multiplier: ${ANALYTICS_RULE_POWER_SPIKE_MEDIAN_MULTIPLIER:1.8}
+        mean-multiplier: ${ANALYTICS_RULE_POWER_SPIKE_MEAN_MULTIPLIER:1.2}
+        score: ${ANALYTICS_RULE_POWER_SPIKE_SCORE:30}
+        severity: ${ANALYTICS_RULE_POWER_SPIKE_SEVERITY:MEDIUM}
+      consumption-growth:
+        enabled: ${ANALYTICS_RULE_CONSUMPTION_GROWTH_ENABLED:true}
+        min-points: ${ANALYTICS_RULE_CONSUMPTION_GROWTH_MIN_POINTS:4}
+        growth-multiplier: ${ANALYTICS_RULE_CONSUMPTION_GROWTH_MULTIPLIER:1.15}
+        score: ${ANALYTICS_RULE_CONSUMPTION_GROWTH_SCORE:30}
+        severity: ${ANALYTICS_RULE_CONSUMPTION_GROWTH_SEVERITY:MEDIUM}
+      long-cycle:
+        enabled: ${ANALYTICS_RULE_LONG_CYCLE_ENABLED:true}
+        min-points: ${ANALYTICS_RULE_LONG_CYCLE_MIN_POINTS:8}
+        min-high-points: ${ANALYTICS_RULE_LONG_CYCLE_MIN_HIGH_POINTS:4}
+        score: ${ANALYTICS_RULE_LONG_CYCLE_SCORE:20}
+        severity: ${ANALYTICS_RULE_LONG_CYCLE_SEVERITY:LOW}
   telemetry-service:
     base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+    timeout: ${ANALYTICS_TELEMETRY_TIMEOUT:2s}
   ml-service:
     base-url: ${ML_SERVICE_URI:http://localhost:8090}
+    timeout: ${ANALYTICS_ML_TIMEOUT:2s}
 
 server:
   port: 8085

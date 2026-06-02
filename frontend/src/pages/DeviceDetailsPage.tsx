@@ -3,11 +3,13 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { acknowledgeAlert, AlertResponse, listAlerts, resolveAlert } from "../alerts/alertsApi";
 import {
   AnomalyResponse,
+  AnalyticsJobResponse,
   BaselineResponse,
   getDeviceAnomalies,
   getDeviceBaseline,
   getDeviceRecommendations,
   getDeviceRisk,
+  getAnalyticsJob,
   getLatestPrediction,
   PredictionResponse,
   recalculateAnalytics,
@@ -165,6 +167,7 @@ export function DeviceDetailsPage() {
   const [deviceAlerts, setDeviceAlerts] = useState<AlertResponse[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationResponse[]>([]);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [analyticsJob, setAnalyticsJob] = useState<AnalyticsJobResponse | null>(null);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [analyticsConfig, setAnalyticsConfig] = useState<AnalyticsConfig | null>(null);
@@ -250,7 +253,7 @@ export function DeviceDetailsPage() {
       const hasTelemetry = await loadTelemetry(deviceId);
       const loadedRisk = await loadAnalytics(deviceId);
       if (hasTelemetry && !loadedRisk) {
-        await recalculateAnalytics(deviceId).catch(() => undefined);
+        await enqueueAndWaitForAnalyticsJob(deviceId).catch(() => undefined);
         await loadAnalytics(deviceId);
       }
       await loadRegistry(deviceId);
@@ -455,13 +458,35 @@ export function DeviceDetailsPage() {
     setIsRecalculating(true);
     setError(null);
     try {
-      await recalculateAnalytics(deviceId);
+      await enqueueAndWaitForAnalyticsJob(deviceId);
       await loadAnalytics(deviceId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to recalculate risk");
     } finally {
       setIsRecalculating(false);
     }
+  }
+
+  async function enqueueAndWaitForAnalyticsJob(currentDeviceId: string) {
+    const response = await recalculateAnalytics(currentDeviceId);
+    if (!response.jobId) {
+      return null;
+    }
+    let job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => null);
+    if (job) {
+      setAnalyticsJob(job);
+    }
+    for (let attempt = 0; attempt < 12 && job && ["PENDING", "RUNNING"].includes(job.status); attempt += 1) {
+      await delay(1000);
+      job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => job);
+      if (job) {
+        setAnalyticsJob(job);
+      }
+    }
+    if (job?.status === "FAILED") {
+      throw new Error(job.errorMessage ?? "Analytics recalculation failed");
+    }
+    return job;
   }
 
   async function updateDeviceAlert(alertId: string, action: "ack" | "resolve") {
@@ -810,6 +835,11 @@ export function DeviceDetailsPage() {
           >
             {isRecalculating ? "Recalculating..." : "Recalculate risk"}
           </button>
+          {analyticsJob ? (
+            <span className={`status-pill status-pill-${analyticsJob.status.toLowerCase()}`}>
+              Job {formatEnum(analyticsJob.status)}
+            </span>
+          ) : null}
         </div>
       </header>
 
@@ -1509,6 +1539,11 @@ export function DeviceDetailsPage() {
                     <button className="primary-button" type="button" onClick={() => void recalculateDeviceAnalytics()} disabled={isRecalculating}>
                       {isRecalculating ? "Recalculating" : "Recalculate"}
                     </button>
+                    {analyticsJob ? (
+                      <span className={`status-pill status-pill-${analyticsJob.status.toLowerCase()}`}>
+                        Job {formatEnum(analyticsJob.status)}
+                      </span>
+                    ) : null}
                     <button className="ghost-button" type="button" onClick={selectAllChartMetrics} disabled={availableChartMetrics.length === 0}>
                       Select all
                     </button>
@@ -2658,6 +2693,10 @@ function formatEnum(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function formatNumber(value: number) {

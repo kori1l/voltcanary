@@ -798,193 +798,207 @@ demo flows, but it is not yet a fully automatic analytics pipeline.
 
 ### Critical
 
-1. Add ownership and authorization checks for analytics reads and recalculation.
-   - Current issue: `/analytics/devices/{deviceId}/...` accepts a device id but
-     does not verify that the authenticated user owns or can access that device.
-   - Call `device-service` for ownership checks, or maintain a local
-     account/device authorization projection.
-   - Enforce the same checks for `GET` endpoints and `POST /recalculate`.
+1. ~~Add ownership and authorization checks for analytics reads and recalculation.~~
+   - ~~Analytics endpoints now call `device-service` internal device access
+     checks through `AnalyticsAccessService`.~~
+   - ~~`GET` endpoints and `POST /recalculate` enforce the same checks using
+     gateway-provided `X-User-*` headers.~~
 
-2. Implement real handling of `telemetry.validated.v1`.
-   - Current issue: `TelemetryValidatedConsumer` only logs the event payload and
-     is disabled by default.
-   - Deserialize `TelemetryValidatedEvent`.
-   - Trigger incremental analytics or enqueue a recalculation job.
-   - Define throttling/debouncing so every single telemetry point does not cause
-     an expensive full recalculation.
+2. ~~Implement real handling of `telemetry.validated.v1`.~~
+   - ~~`TelemetryValidatedConsumer` now deserializes `TelemetryValidatedEvent`.~~
+   - ~~Validated telemetry enqueues a recalculation job for the device.~~
+   - ~~Active `PENDING` or `RUNNING` jobs are reused as a simple debounce so each
+     telemetry point does not start a duplicate full recalculation.~~
 
-3. Move recalculation out of synchronous HTTP request flow.
-   - Current issue: `POST /analytics/devices/{deviceId}/recalculate` performs
-     the full calculation inline.
-   - Use `analytics_jobs` as a real job table.
-   - Return job id and status.
-   - Add job states such as `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`.
-   - Add endpoints to query job status.
+3. ~~Move recalculation out of synchronous HTTP request flow.~~
+   - ~~`POST /analytics/devices/{deviceId}/recalculate` now creates or returns
+     an analytics job instead of running the full calculation inline.~~
+   - ~~`analytics_jobs` tracks `PENDING`, `RUNNING`, `COMPLETED`, and `FAILED`.~~
+   - ~~Added job list and job status endpoints under
+     `/analytics/devices/{deviceId}/jobs`.~~
 
-4. Add failure handling for telemetry-service calls.
-   - Current issue: analytics depends on
-     `/telemetry/devices/{deviceId}/readings`; failures can break recalculation.
-   - Add timeout settings.
-   - Handle `404`, `5xx`, and connection failures explicitly.
-   - Return a clear error or mark the analytics job as failed with a reason.
+4. ~~Add failure handling for telemetry-service calls.~~
+   - ~~`TelemetryClient` now applies a timeout and maps `404`, `5xx`, and
+     connection failures to explicit service errors.~~
+   - ~~Failed recalculation jobs are marked `FAILED` with an error message.~~
 
-5. Add failure handling and fallback for ML-service calls.
-   - Current issue: `MlClient` has no fallback when ML service is unavailable.
-   - Decide whether rule-based analytics can still complete without ML.
-   - Store prediction status such as `AVAILABLE`, `UNAVAILABLE`, or `FAILED`.
-   - Avoid failing the whole recalculation when optional ML inference is down.
+5. ~~Add failure handling and fallback for ML-service calls.~~
+   - ~~`MlClient` now has timeout handling and returns no inference result when
+     ML is unavailable.~~
+   - ~~Rule-based analytics still completes and stores prediction JSON with
+     `status=UNAVAILABLE` when optional ML inference is down.~~
 
-6. Fix `RiskScoreChangedEvent.previousScore`.
-   - Current issue: published risk events always set `previousScore` to `0`.
-   - Read the previous latest risk score before saving the new one.
-   - Publish both previous and current score.
-   - Avoid noisy alerting when the score did not meaningfully change.
+6. ~~Fix `RiskScoreChangedEvent.previousScore`.~~
+   - ~~Analytics now reads the previous latest risk score before saving the new
+     one.~~
+   - ~~Published risk events include previous and current scores, and unchanged
+     scores are not published again.~~
 
-7. Add tests for the automatic analytics pipeline.
-   - Consuming `TelemetryValidatedEvent` triggers the expected analytics action.
-   - Invalid Kafka events are rejected or sent to DLQ.
-   - Recalculation persists baseline, anomalies, risk score, recommendations,
-     and prediction.
-   - Kafka events are published with correct payloads.
-   - Telemetry and ML failures are handled predictably.
-   - Authorization prevents access to another user's device analytics.
+7. ~~Add tests for the automatic analytics pipeline.~~
+   - ~~Consuming `TelemetryValidatedEvent` triggers recalculation job enqueue.~~
+   - ~~Invalid Kafka events are rejected by the consumer.~~
+   - ~~Recalculation persists baseline, feature set, anomalies, risk score,
+     recommendations, and prediction.~~
+   - ~~Kafka event publisher tests verify anomaly and risk payloads, including
+     previous/current risk scores.~~
+   - ~~Telemetry and ML failure handling is covered.~~
+   - ~~Authorization denies access to another user's device analytics.~~
 
 ### High
 
-8. Replace hard-coded metric selection.
-   - Current issue: analytics uses only `activePowerW` and a fixed `last_24h`
-     period.
-   - Support metric profiles per device type.
-   - Support multiple metrics such as `voltageV`, `currentA`, `energyWh`,
-     `rssi`, temperature, vibration, or device-specific metrics.
-   - Read analytics configuration from `device-service` or a local config table.
+8. ~~Replace hard-coded metric selection.~~
+   - ~~Analytics metrics are now configured through
+     `app.analytics.metrics.default-metrics`.~~
+   - ~~The default window and response period label are configurable through
+     `app.analytics.metrics.default-window` and
+     `app.analytics.metrics.period-label`.~~
+   - ~~Recalculation iterates all configured metrics and stores per-metric
+     baselines and feature windows.~~
+   - Note: per-device metric profiles from device-service are still a future
+     extension; the hard-coded service-level metric selection is removed.
 
-9. Implement `FeatureSet` creation and `/features` endpoint.
-   - Current issue: `feature_sets` table and repository exist, but feature
-     generation is not wired.
-   - Persist calculated feature windows.
-   - Return recent feature sets through
-     `GET /analytics/devices/{deviceId}/features`.
-   - Include window start/end, metric names, and derived values.
+9. ~~Implement `FeatureSet` creation and `/features` endpoint.~~
+   - ~~Recalculation now persists calculated feature windows.~~
+   - ~~`GET /analytics/devices/{deviceId}/features` returns recent feature
+     sets.~~
+   - ~~Feature responses include window start/end, metric name, sample count,
+     baseline statistics, and latest value.~~
 
-10. Improve baseline storage model.
-    - Current issue: baseline values are stored as opaque JSON.
-    - Consider typed columns for common values such as metric, period, mean,
-      median, p90, min, max, and sample count.
-    - Keep JSON only for extensible model-specific details.
-    - Add versioning for baseline calculation algorithms.
+10. ~~Improve baseline storage model.~~
+    - ~~Baseline values are now stored in typed columns for metric, period,
+      algorithm version, mean, median, p90, min, max, and sample count.~~
+    - ~~`baseline_json` remains for extensible details and backward
+      compatibility.~~
+    - ~~Baseline responses prefer typed columns and fall back to JSON for older
+      rows.~~
 
-11. Preserve anomaly history.
-    - Current issue: recalculation deletes all anomalies for a device before
-      saving new ones.
-    - Keep historical anomalies.
-    - Add status or lifecycle fields such as `ACTIVE`, `SUPERSEDED`,
-      `RESOLVED`, `EXPIRED`.
-    - Avoid creating duplicate anomalies for the same condition in the same
-      window.
+11. ~~Preserve anomaly history.~~
+    - ~~Recalculation no longer deletes anomaly rows for a device.~~
+    - ~~Anomalies now have lifecycle fields `status` and `superseded_at`.~~
+    - ~~Previous active anomalies are marked `SUPERSEDED`; new recalculation
+      results are saved as `ACTIVE`.~~
+    - ~~Read endpoints return active anomalies only.~~
 
-12. Preserve recommendation history or lifecycle.
-    - Current issue: recalculation deletes all recommendations for a device.
-    - Add status such as `ACTIVE`, `DISMISSED`, `COMPLETED`, `SUPERSEDED`.
-    - Allow users or future automation to mark recommendations as handled.
+12. ~~Preserve recommendation history or lifecycle.~~
+    - ~~Recalculation no longer deletes recommendation rows for a device.~~
+    - ~~Recommendations now have lifecycle fields `status` and
+      `superseded_at`.~~
+    - ~~Previous active recommendations are marked `SUPERSEDED`; new
+      recommendations are saved as `ACTIVE`.~~
+    - ~~Read endpoints return active recommendations only.~~
 
-13. Add configurable rule engine for anomaly detection.
-    - Current issue: rules are hard-coded in `AnalyticsRecalculationService`.
-    - Move thresholds and rule enablement to configuration.
-    - Support different thresholds per device type and metric.
-    - Store rule id/version with every anomaly for traceability.
+13. ~~Add configurable rule engine for anomaly detection.~~
+    - ~~Rule thresholds, enablement, severities, scores, and version are now
+      configurable under `app.analytics.rules`.~~
+    - ~~Rules can be enabled or disabled independently for power spikes,
+      consumption growth, and long cycles.~~
+    - ~~Anomalies now store `rule_id` and `rule_version` for traceability.~~
 
-14. Split calculation logic into dedicated services.
-    - Current issue: `AnalyticsRecalculationService` contains baseline,
-      anomaly, risk, recommendation, prediction, DTO mapping, and JSON
-      conversion logic.
-    - Move baseline calculation to `BaselineCalculator`.
-    - Move risk calculation to `RiskScoreCalculator`.
-    - Add dedicated anomaly detector and recommendation generator classes.
-    - Keep orchestration in `AnalyticsRecalculationService`.
+14. ~~Split calculation logic into dedicated services.~~
+    - ~~Baseline calculation moved to `BaselineCalculator`.~~
+    - ~~Risk calculation moved to `RiskScoreCalculator`.~~
+    - ~~Anomaly detection moved to `AnomalyDetector`.~~
+    - ~~Recommendation generation moved to `RecommendationGenerator`.~~
+    - ~~`AnalyticsRecalculationService` now orchestrates persistence,
+      downstream calls, and event publication.~~
 
-15. Add idempotency for recalculation and event publication.
-    - Avoid duplicate anomaly and risk events when the same window is processed
-      repeatedly.
-    - Track calculation window and input version.
-    - Make published event ids stable or store an outbox.
+15. ~~Add idempotency for recalculation and event publication.~~
+    - ~~Recalculation tracks `window_start`, `window_end`, and `input_hash` for
+      anomalies and risk scores.~~
+    - ~~Anomaly and risk ids are stable for the same device/window/input set.~~
+    - ~~Outbox event keys deduplicate repeated publication for the same
+      calculation input.~~
 
-16. Add transactional outbox for Kafka events.
-    - Current issue: database writes and Kafka publishes are not atomic.
-    - A failure after DB commit but before Kafka publish can lose alert events.
-    - Store outgoing events in an outbox table and publish them reliably.
+16. ~~Add transactional outbox for Kafka events.~~
+    - ~~Outgoing analytics events are stored in `analytics_event_outbox` inside
+      the recalculation transaction.~~
+    - ~~A scheduled publisher sends pending outbox rows to Kafka and marks them
+      `PUBLISHED` or `FAILED`.~~
+    - ~~Outbox publish attempts and last error are retained for retry/debugging.~~
 
-17. Add DLQ and retry handling for analytics consumers.
-    - Configure retry policy for Kafka consumers.
-    - Send repeatedly failing events to an analytics DLQ topic.
-    - Include failure reason and original event metadata.
+17. ~~Add DLQ and retry handling for analytics consumers.~~
+    - ~~Kafka listeners now use a bounded retry error handler.~~
+    - ~~Invalid telemetry payloads and events without `deviceId` are published to
+      `analytics.telemetry.validated.dlq.v1`.~~
+    - ~~DLQ payloads include source topic, failure reason, original payload, and
+      failure timestamp.~~
 
-18. Improve risk score model.
-    - Current issue: risk score is a simple sum of hard-coded anomaly weights.
-    - Define score factors, weights, and caps explicitly.
-    - Include data quality and sample size.
-    - Store explanations with machine-readable reason codes.
+18. ~~Improve risk score model.~~
+    - ~~Risk scoring now records explicit factor codes, weights, rule ids,
+      sample size, and cap in `risk_scores.explanation_json`.~~
+    - ~~Low sample size and missing telemetry are represented as data-quality
+      factors.~~
+    - ~~The stored model version is `risk-basic-v2`.~~
 
-19. Add multi-tenant data model assumptions.
-    - Current analytics tables store `device_id` but not `account_id`.
-    - Decide whether to denormalize `account_id` into analytics rows for faster
-      authorization and tenant-level cleanup.
-    - Keep ownership rules consistent with device-service.
+19. ~~Add multi-tenant data model assumptions.~~
+    - ~~Analytics tables now include nullable `account_id` columns and indexes
+      for future denormalized tenant filtering and cleanup.~~
+    - ~~Authorization still uses device-service as the source of truth until
+      upstream events/API responses carry tenant ownership consistently.~~
 
-20. Add retention policy for analytics data.
-    - Define how long baselines, feature sets, predictions, anomalies, risk
-      scores, jobs, and recommendations are kept.
-    - Add cleanup jobs if required.
-    - Avoid unbounded growth from frequent recalculations.
+20. ~~Add retention policy for analytics data.~~
+    - ~~Retention durations are configurable under `app.analytics.retention`.~~
+    - ~~A scheduled cleanup job removes old baselines, feature sets,
+      predictions, anomalies, risk scores, jobs, recommendations, and completed
+      outbox rows.~~
+    - ~~The cleanup can be disabled with `app.analytics.retention.enabled=false`.~~
 
 ### Medium
 
-21. Use a dedicated analytics database/schema.
-    - Current local config uses `POSTGRES_DB=voltcanary`.
-    - Decide whether analytics should use `voltcanary_analytics` or a separate
-      schema.
-    - Keep service ownership of tables clear.
+21. ~~Use a dedicated analytics database/schema.~~
+    - ~~Local analytics config now uses `ANALYTICS_POSTGRES_DB`, defaulting to
+      `voltcanary_analytics`, instead of the shared `POSTGRES_DB=voltcanary`.~~
+    - ~~Docker Compose and Kubernetes init defaults create
+      `voltcanary_analytics`.~~
+    - ~~Analytics migrations own tables inside that dedicated database.~~
 
-22. Remove unused WebFlux dependency or switch to reactive client intentionally.
-    - Current code uses synchronous `RestClient`, not `WebClient`.
-    - Remove `spring-boot-starter-webflux` if it is not needed.
-    - If reactive IO is desired, use it consistently and document why.
+22. ~~Remove unused WebFlux dependency or switch to reactive client intentionally.~~
+    - ~~Current code uses synchronous `RestClient`, not `WebClient`.~~
+    - ~~Removed `spring-boot-starter-webflux` from analytics-service.~~
 
-23. Add service-to-service authentication for telemetry and ML calls.
-    - Analytics calls telemetry-service and ML-service directly.
-    - Add internal service credentials, mTLS, or trusted network policy.
-    - Avoid relying only on Kubernetes DNS isolation.
+23. ~~Add service-to-service authentication for telemetry and ML calls.~~
+    - ~~Telemetry and ML REST calls now send `X-Internal-Service-Token`.~~
+    - ~~The source service is identified with `X-Source-Service`.~~
+    - ~~Credentials are configured through `app.internal.service-token` and
+      `app.internal.service-name`.~~
 
-24. Add observability metrics.
-    - Count recalculation jobs by status.
-    - Track recalculation duration.
-    - Track telemetry fetch failures.
-    - Track ML inference failures and latency.
-    - Count anomalies by type and severity.
-    - Count published analytics events.
+24. ~~Add observability metrics.~~
+    - ~~Recalculation jobs are counted by enqueue/completion status.~~
+    - ~~Recalculation and job durations are timed.~~
+    - ~~Telemetry fetch failures are counted.~~
+    - ~~ML inference failures and latency are tracked.~~
+    - ~~Anomalies are counted by type and severity.~~
+    - ~~Outgoing analytics events are counted on enqueue and publish.~~
 
-25. Add structured logs.
-    - Include correlation id, device id, job id, and calculation window.
-    - Avoid logging full telemetry payloads by default.
-    - Include clear reason codes for failed calculations.
+25. ~~Add structured logs.~~
+    - ~~Job logs include device id and job id, with MDC context during job
+      execution.~~
+    - ~~Recalculation completion logs include device id, calculation window,
+      input hash, metric count, anomaly count, and risk details.~~
+    - ~~Failure logs use reason codes and avoid full telemetry payloads.~~
 
-26. Add OpenAPI documentation.
-    - Document analytics endpoints.
-    - Document response shapes for baseline, anomalies, risk,
-      recommendations, predictions, and jobs.
-    - Document which endpoints are user-facing and which are internal.
+26. ~~Add OpenAPI documentation.~~
+    - ~~Analytics service now includes springdoc OpenAPI support.~~
+    - ~~Analytics endpoints are tagged and documented with operation
+      descriptions.~~
+    - ~~Bearer and internal service token security schemes are declared.~~
 
-27. Improve prediction result model.
-    - Current prediction output is stored as opaque JSON.
-    - Add typed columns for model version, anomaly score, degradation score,
-      confidence, and risk level.
-    - Store explanations separately or as structured JSON with versioning.
+27. ~~Improve prediction result model.~~
+    - ~~Prediction results now have typed columns for model version, anomaly
+      score, degradation score, confidence, risk level, and status.~~
+    - ~~Responses prefer typed columns and fall back to `prediction_json` for
+      older rows.~~
+    - ~~Explanation lists remain in structured JSON for forward-compatible
+      versioning.~~
 
-28. Add performance tests.
-    - Test recalculation with small, medium, and large telemetry windows.
-    - Measure telemetry-service query cost.
-    - Measure database write volume.
-    - Verify event publishing behavior under load.
+28. ~~Add performance tests.~~
+    - ~~Recalculation is tested with small, medium, and large telemetry
+      windows.~~
+    - ~~Telemetry-service query cost is verified as one configured metric fetch
+      per recalculation.~~
+    - ~~Database write volume is bounded for baseline, feature, anomaly, risk,
+      recommendation, prediction, and outbox rows.~~
+    - ~~Outbox event creation is verified under large telemetry input.~~
 
 ## Alert Service
 

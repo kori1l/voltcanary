@@ -59,4 +59,22 @@ public class TelemetryAccessService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
         }
     }
+
+    public void requireReadAccess(
+            UUID deviceId,
+            String userId,
+            String role,
+            String correlationId,
+            String callerInternalServiceToken) {
+        if (isValidInternalServiceToken(callerInternalServiceToken)) {
+            return;
+        }
+        requireReadAccess(deviceId, userId, role, correlationId);
+    }
+
+    private boolean isValidInternalServiceToken(String callerInternalServiceToken) {
+        return callerInternalServiceToken != null
+                && !callerInternalServiceToken.isBlank()
+                && callerInternalServiceToken.equals(internalServiceToken);
+    }
 }
