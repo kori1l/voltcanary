@@ -16,7 +16,7 @@ import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.shared.NotFoundException;
+import com.voltcanary.device.exception.NotFoundException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;

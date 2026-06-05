@@ -11,7 +11,7 @@ import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.repository.LocationRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.shared.NotFoundException;
+import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

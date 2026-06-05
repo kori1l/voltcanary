@@ -4,7 +4,7 @@ import com.voltcanary.common.security.JwtAccessTokenClaims;
 import com.voltcanary.common.security.JwtAccessTokenService;
 import com.voltcanary.device.config.DeviceJwtProperties;
 import com.voltcanary.device.domain.Device;
-import com.voltcanary.device.shared.AuthenticationFailedException;
+import com.voltcanary.device.exception.AuthenticationFailedException;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;

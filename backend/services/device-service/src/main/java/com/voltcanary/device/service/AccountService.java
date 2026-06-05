@@ -6,7 +6,7 @@ import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountResponse;
 import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.shared.AccountInactiveException;
+import com.voltcanary.device.exception.AccountInactiveException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;

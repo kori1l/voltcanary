@@ -20,6 +20,9 @@ public class AlertEvent {
     @Column(name = "event_type", nullable = false)
     private String eventType;
 
+    @Column(name = "actor_id")
+    private UUID actorId;
+
     @Column(name = "payload_json", nullable = false, columnDefinition = "text")
     private String payloadJson;
 
@@ -48,6 +51,14 @@ public class AlertEvent {
 
     public void setEventType(String eventType) {
         this.eventType = eventType;
+    }
+
+    public UUID getActorId() {
+        return actorId;
+    }
+
+    public void setActorId(UUID actorId) {
+        this.actorId = actorId;
     }
 
     public String getPayloadJson() {

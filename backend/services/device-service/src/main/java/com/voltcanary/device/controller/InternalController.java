@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 
 
@@ -49,6 +51,18 @@ public class InternalController {
             @RequestParam("userId") UUID userId) {
         internalServiceAuth.require(internalToken);
         return Map.of("allowed", deviceRepository.existsByIdAndAccountUserId(deviceId, userId));
+    }
+
+    @GetMapping("/devices/{deviceId}/owner")
+    public Map<String, String> deviceOwner(
+            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+            @PathVariable("deviceId") UUID deviceId) {
+        internalServiceAuth.require(internalToken);
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        return Map.of(
+                "deviceId", device.getId().toString(),
+                "accountId", device.getAccountId().toString());
     }
 
     @PostMapping("/accounts/users/{userId}/lifecycle")

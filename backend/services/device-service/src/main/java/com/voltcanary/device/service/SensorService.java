@@ -10,7 +10,7 @@ import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.repository.SensorRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.shared.NotFoundException;
+import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

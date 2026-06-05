@@ -1078,6 +1078,10 @@ a {
   gap: 10px;
 }
 
+.action-row {
+  flex-wrap: wrap;
+}
+
 .alert-card-header strong {
   color: var(--text);
   font-weight: 720;
@@ -3234,7 +3238,7 @@ code {
 
 .alert-summary-counts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(105px, 1fr));
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
   gap: 10px;
   min-width: 380px;
 }
@@ -3274,11 +3278,110 @@ code {
   margin-bottom: 0;
 }
 
+.notification-channel-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.notification-channel-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(220px, 1.4fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+}
+
+.notification-channel-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-channel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+}
+
+.notification-channel-row div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.notification-channel-row strong {
+  color: var(--text);
+}
+
+.notification-channel-row span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .alert-context {
   display: block;
   margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.alert-trace-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.alert-trace-list div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(248, 250, 252, 0.86);
+  padding: 7px 8px;
+}
+
+.alert-trace-list dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.alert-trace-list dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-attempts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border-radius: var(--radius);
+  background: rgba(248, 250, 252, 0.88);
+  padding: 8px;
+}
+
+.notification-attempt-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.8fr) minmax(70px, 0.8fr) minmax(0, 1.4fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notification-attempt-row strong {
+  color: var(--text);
 }
 
 .recommended-action {

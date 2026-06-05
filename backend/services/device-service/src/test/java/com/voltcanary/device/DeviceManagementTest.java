@@ -16,6 +16,7 @@ import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.repository.DeviceRepository;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,9 @@ class DeviceManagementTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private DeviceRepository deviceRepository;
 
     @MockitoBean
     private DeviceRegistryEventPublisher eventPublisher;
@@ -592,6 +596,24 @@ class DeviceManagementTest {
         assertThat(ownerAccess.getBody()).contains("\"allowed\":true");
         assertThat(foreignAccess.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(foreignAccess.getBody()).contains("\"allowed\":false");
+    }
+
+    @Test
+    void internalOwnerLookupReturnsDeviceAccountId() {
+        UUID ownerId = UUID.randomUUID();
+        LocationResponse location = createLocation(ownerId, "Lookup kitchen");
+        DeviceResponse device = createDevice(ownerId, location.id(), "Lookup fridge");
+
+        ResponseEntity<String> ownerLookup = restTemplate.exchange(
+                "/internal/devices/" + device.id() + "/owner",
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                String.class);
+
+        assertThat(ownerLookup.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ownerLookup.getBody()).contains("\"deviceId\":\"" + device.id());
+        assertThat(ownerLookup.getBody()).contains("\"accountId\":\""
+                + deviceRepository.findById(device.id()).orElseThrow().getAccountId());
     }
 
     @Test

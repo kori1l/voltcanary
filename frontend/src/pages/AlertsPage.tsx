@@ -1,28 +1,66 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { acknowledgeAlert, AlertResponse, listAlerts, resolveAlert } from "../alerts/alertsApi";
+import {
+  acknowledgeAlert,
+  AlertResponse,
+  AlertSummaryResponse,
+  createNotificationChannel,
+  deleteNotificationChannel,
+  disableNotificationChannel,
+  enableNotificationChannel,
+  getAlertSummary,
+  listAlerts,
+  listNotificationAttempts,
+  listNotificationChannels,
+  NotificationAttemptResponse,
+  NotificationChannelResponse,
+  resolveAlert,
+} from "../alerts/alertsApi";
 import { Device, listDevices, listLocations, Location } from "../devices/devicesApi";
+
+const ALERT_LIMIT = 100;
 
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertResponse[]>([]);
+  const [summary, setSummary] = useState<AlertSummaryResponse | null>(null);
+  const [channels, setChannels] = useState<NotificationChannelResponse[]>([]);
+  const [attemptsByAlert, setAttemptsByAlert] = useState<Record<string, NotificationAttemptResponse[]>>({});
+  const [expandedAttempts, setExpandedAttempts] = useState<Record<string, boolean>>({});
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [deviceFilter, setDeviceFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [channelName, setChannelName] = useState("Ops webhook");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [credentialsRef, setCredentialsRef] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSavingChannel, setIsSavingChannel] = useState(false);
+  const [loadingAttempts, setLoadingAttempts] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const serverStatusFilter = statusFilter === "active" || statusFilter === "all" ? undefined : statusFilter;
+  const requestFilters = {
+    deviceId: deviceFilter === "all" ? undefined : deviceFilter,
+    severity: severityFilter === "all" ? undefined : severityFilter,
+    status: serverStatusFilter,
+    limit: ALERT_LIMIT,
+  };
 
   async function load() {
     setIsLoading(true);
     setError(null);
     try {
-      const [alertsResponse, devicesResponse, locationsResponse] = await Promise.all([
-        listAlerts(),
+      const [alertsResponse, summaryResponse, channelsResponse, devicesResponse, locationsResponse] = await Promise.all([
+        listAlerts(requestFilters),
+        getAlertSummary(requestFilters),
+        listNotificationChannels().catch(() => []),
         listDevices().catch(() => []),
         listLocations().catch(() => []),
       ]);
       setAlerts(alertsResponse);
+      setSummary(summaryResponse);
+      setChannels(channelsResponse);
       setDevices(devicesResponse);
       setLocations(locationsResponse);
     } catch (requestError) {
@@ -34,7 +72,7 @@ export function AlertsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [deviceFilter, severityFilter, statusFilter]);
 
   async function updateStatus(alertId: string, action: "ack" | "resolve") {
     setError(null);
@@ -54,48 +92,106 @@ export function AlertsPage() {
     }
   }
 
+  async function toggleAttempts(alertId: string) {
+    const nextExpanded = !expandedAttempts[alertId];
+    setExpandedAttempts((current) => ({ ...current, [alertId]: nextExpanded }));
+    if (!nextExpanded || attemptsByAlert[alertId]) {
+      return;
+    }
+    setLoadingAttempts(alertId);
+    setError(null);
+    try {
+      const attempts = await listNotificationAttempts(alertId);
+      setAttemptsByAlert((current) => ({ ...current, [alertId]: attempts }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to load notification attempts");
+    } finally {
+      setLoadingAttempts(null);
+    }
+  }
+
+  async function addWebhookChannel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!webhookUrl.trim()) {
+      setError("Webhook URL is required");
+      return;
+    }
+    setIsSavingChannel(true);
+    setError(null);
+    try {
+      await createNotificationChannel({
+        name: channelName.trim() || "Ops webhook",
+        channelType: "WEBHOOK",
+        config: { url: webhookUrl.trim() },
+        credentialsRef: credentialsRef.trim() || null,
+        enabled: true,
+      });
+      setWebhookUrl("");
+      setCredentialsRef("");
+      setChannels(await listNotificationChannels());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to create notification channel");
+    } finally {
+      setIsSavingChannel(false);
+    }
+  }
+
+  async function setChannelEnabled(channel: NotificationChannelResponse, enabled: boolean) {
+    setError(null);
+    try {
+      const updated = enabled ? await enableNotificationChannel(channel.id) : await disableNotificationChannel(channel.id);
+      setChannels((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to update notification channel");
+    }
+  }
+
+  async function removeChannel(channel: NotificationChannelResponse) {
+    setError(null);
+    try {
+      await deleteNotificationChannel(channel.id);
+      setChannels((current) => current.filter((item) => item.id !== channel.id));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to delete notification channel");
+    }
+  }
+
   const deviceById = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
   const locationById = useMemo(() => new Map(locations.map((location) => [location.id, fixKnownTypos(location.name)])), [locations]);
-  const filteredAlerts = useMemo(() => {
+  const visibleAlerts = useMemo(() => {
     return alerts
-      .filter((alert) => deviceFilter === "all" || alert.deviceId === deviceFilter)
-      .filter((alert) => severityFilter === "all" || alert.severity === severityFilter)
-      .filter((alert) => {
-        if (statusFilter === "active") {
-          return alert.status !== "RESOLVED";
-        }
-        return statusFilter === "all" || alert.status === statusFilter;
-      })
+      .filter((alert) => (statusFilter === "active" ? alert.status !== "RESOLVED" : true))
       .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  }, [alerts, deviceFilter, severityFilter, statusFilter]);
+  }, [alerts, statusFilter]);
   const grouped = useMemo(
     () => ({
-      new: filteredAlerts.filter((alert) => alert.status === "OPEN"),
-      acknowledged: filteredAlerts.filter((alert) => alert.status === "ACKNOWLEDGED"),
-      resolved: filteredAlerts.filter((alert) => alert.status === "RESOLVED"),
+      new: visibleAlerts.filter((alert) => alert.status === "OPEN"),
+      acknowledged: visibleAlerts.filter((alert) => alert.status === "ACKNOWLEDGED"),
+      resolved: visibleAlerts.filter((alert) => alert.status === "RESOLVED"),
     }),
-    [filteredAlerts],
+    [visibleAlerts],
   );
   const mostImportant = grouped.new[0] ?? grouped.acknowledged[0] ?? null;
-  const severities = [...new Set(alerts.map((alert) => alert.severity))];
+  const severities = ["CRITICAL", "HIGH", "WARNING", "INFO"];
 
   return (
     <>
       <header className="page-header page-header-row">
         <div>
           <h1>Alerts</h1>
-          <p>Review active issues, acknowledge what you are checking, then resolve with a reason.</p>
+          <p>Review active issues, delivery status, and source context from analytics.</p>
         </div>
         <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
-          Refresh alerts
+          Refresh
         </button>
       </header>
 
       <section className="alert-summary-panel">
         <div className="alert-summary-counts">
-          <SummaryMetric label="New alerts" value={alerts.filter((alert) => alert.status === "OPEN").length} />
-          <SummaryMetric label="Acknowledged" value={alerts.filter((alert) => alert.status === "ACKNOWLEDGED").length} />
-          <SummaryMetric label="Resolved" value={alerts.filter((alert) => alert.status === "RESOLVED").length} />
+          <SummaryMetric label="Open" value={summary?.byStatus.OPEN ?? grouped.new.length} />
+          <SummaryMetric label="Acknowledged" value={summary?.byStatus.ACKNOWLEDGED ?? grouped.acknowledged.length} />
+          <SummaryMetric label="Resolved" value={summary?.byStatus.RESOLVED ?? grouped.resolved.length} />
+          <SummaryMetric label="Critical" value={summary?.bySeverity.CRITICAL ?? 0} />
         </div>
         <div className="most-important-alert">
           <span className="status-pill">Most important</span>
@@ -103,7 +199,7 @@ export function AlertsPage() {
             <>
               <strong>{mostImportant.title}</strong>
               <span>
-                {deviceById.get(mostImportant.deviceId)?.name ?? "Unknown device"} · {formatShortDateTime(mostImportant.createdAt)}
+                {deviceById.get(mostImportant.deviceId)?.name ?? "Unknown device"} - {formatShortDateTime(mostImportant.createdAt)}
               </span>
             </>
           ) : (
@@ -134,13 +230,52 @@ export function AlertsPage() {
             ))}
           </select>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">All statuses</option>
             <option value="active">Active only</option>
-            <option value="OPEN">New</option>
+            <option value="all">All statuses</option>
+            <option value="OPEN">Open</option>
             <option value="ACKNOWLEDGED">Acknowledged</option>
             <option value="RESOLVED">Resolved</option>
           </select>
         </div>
+      </section>
+
+      <section className="panel notification-channel-panel">
+        <div className="section-header">
+          <div>
+            <h2>Notification Channels</h2>
+            <p>{channels.length} configured</p>
+          </div>
+        </div>
+        <form className="notification-channel-form" onSubmit={addWebhookChannel}>
+          <input value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder="Channel name" />
+          <input value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} placeholder="Webhook URL" />
+          <input value={credentialsRef} onChange={(event) => setCredentialsRef(event.target.value)} placeholder="Credentials ref" />
+          <button className="primary-button" type="submit" disabled={isSavingChannel}>
+            Add webhook
+          </button>
+        </form>
+        {channels.length > 0 ? (
+          <div className="notification-channel-list">
+            {channels.map((channel) => (
+              <article className="notification-channel-row" key={channel.id}>
+                <div>
+                  <strong>{channel.name}</strong>
+                  <span>
+                    {formatEnum(channel.channelType)} - {channel.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <div className="action-row">
+                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)}>
+                    {channel.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)}>
+                    Delete
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {error ? <div className="error-message">{error}</div> : null}
@@ -148,27 +283,9 @@ export function AlertsPage() {
 
       {!isLoading ? (
         <section className="content-grid alerts-grid">
-          <AlertColumn
-            title="New"
-            alerts={grouped.new}
-            deviceById={deviceById}
-            locationById={locationById}
-            onUpdate={updateStatus}
-          />
-          <AlertColumn
-            title="Acknowledged"
-            alerts={grouped.acknowledged}
-            deviceById={deviceById}
-            locationById={locationById}
-            onUpdate={updateStatus}
-          />
-          <AlertColumn
-            title="Resolved"
-            alerts={grouped.resolved}
-            deviceById={deviceById}
-            locationById={locationById}
-            onUpdate={updateStatus}
-          />
+          <AlertColumn title="Open" alerts={grouped.new} deviceById={deviceById} locationById={locationById} attemptsByAlert={attemptsByAlert} expandedAttempts={expandedAttempts} loadingAttempts={loadingAttempts} onAttempts={toggleAttempts} onUpdate={updateStatus} />
+          <AlertColumn title="Acknowledged" alerts={grouped.acknowledged} deviceById={deviceById} locationById={locationById} attemptsByAlert={attemptsByAlert} expandedAttempts={expandedAttempts} loadingAttempts={loadingAttempts} onAttempts={toggleAttempts} onUpdate={updateStatus} />
+          <AlertColumn title="Resolved" alerts={grouped.resolved} deviceById={deviceById} locationById={locationById} attemptsByAlert={attemptsByAlert} expandedAttempts={expandedAttempts} loadingAttempts={loadingAttempts} onAttempts={toggleAttempts} onUpdate={updateStatus} />
         </section>
       ) : null}
     </>
@@ -189,12 +306,20 @@ function AlertColumn({
   alerts,
   deviceById,
   locationById,
+  attemptsByAlert,
+  expandedAttempts,
+  loadingAttempts,
+  onAttempts,
   onUpdate,
 }: {
   title: string;
   alerts: AlertResponse[];
   deviceById: Map<string, Device>;
   locationById: Map<string, string>;
+  attemptsByAlert: Record<string, NotificationAttemptResponse[]>;
+  expandedAttempts: Record<string, boolean>;
+  loadingAttempts: string | null;
+  onAttempts: (alertId: string) => Promise<void>;
   onUpdate: (alertId: string, action: "ack" | "resolve") => Promise<void>;
 }) {
   return (
@@ -207,28 +332,32 @@ function AlertColumn({
           {alerts.map((alert) => {
             const device = deviceById.get(alert.deviceId);
             const location = device ? locationById.get(device.locationId ?? "") : null;
+            const attempts = attemptsByAlert[alert.id] ?? [];
             return (
               <article className={`alert-card severity-${alert.severity.toLowerCase()}`} key={alert.id}>
                 <div className="alert-card-header">
                   <div>
                     <strong>{formatAlertTitle(alert)}</strong>
                     <span className="alert-context">
-                      {device?.name ?? "Unknown device"} {location ? `· ${location}` : ""} · {formatShortDateTime(alert.createdAt)}
+                      {device?.name ?? "Unknown device"} {location ? `- ${location}` : ""} - {formatShortDateTime(alert.createdAt)}
                     </span>
                   </div>
                   <span>{formatEnum(alert.severity)}</span>
                 </div>
                 <p>{formatAlertDescription(alert)}</p>
+                <AlertTrace alert={alert} />
                 {alert.status === "RESOLVED" ? (
                   <p className="resolution-reason">
                     Resolution reason: <strong>{alert.resolutionReason || "No reason recorded."}</strong>
                   </p>
                 ) : null}
-                <p className="recommended-action">Recommended action: check load and power conditions.</p>
                 <div className="action-row">
                   <Link className="ghost-button button-link" to={`/devices/${alert.deviceId}`}>
                     View device
                   </Link>
+                  <button className="ghost-button" type="button" onClick={() => void onAttempts(alert.id)}>
+                    {expandedAttempts[alert.id] ? "Hide attempts" : "Delivery"}
+                  </button>
                   {alert.status === "OPEN" ? (
                     <button className="primary-button" type="button" onClick={() => void onUpdate(alert.id, "ack")}>
                       Acknowledge
@@ -236,15 +365,62 @@ function AlertColumn({
                   ) : null}
                   {alert.status === "ACKNOWLEDGED" ? (
                     <button className="primary-button" type="button" onClick={() => void onUpdate(alert.id, "resolve")}>
-                      Resolve with reason
+                      Resolve
                     </button>
                   ) : null}
                 </div>
+                {expandedAttempts[alert.id] ? (
+                  <NotificationAttempts attempts={attempts} isLoading={loadingAttempts === alert.id} />
+                ) : null}
               </article>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function AlertTrace({ alert }: { alert: AlertResponse }) {
+  const items = [
+    ["Source", shortId(alert.sourceEventId)],
+    ["Anomaly", shortId(alert.anomalyId)],
+    ["Risk", shortId(alert.riskScoreId)],
+    ["Rule", alert.ruleId],
+    ["Window", formatWindow(alert.calculationWindowStart, alert.calculationWindowEnd)],
+    ["Input", shortHash(alert.calculationInputHash)],
+  ].filter(([, value]) => value);
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <dl className="alert-trace-list">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function NotificationAttempts({ attempts, isLoading }: { attempts: NotificationAttemptResponse[]; isLoading: boolean }) {
+  if (isLoading) {
+    return <p className="notification-attempts">Loading delivery attempts...</p>;
+  }
+  if (attempts.length === 0) {
+    return <p className="notification-attempts">No delivery attempts recorded.</p>;
+  }
+  return (
+    <div className="notification-attempts">
+      {attempts.map((attempt) => (
+        <div className="notification-attempt-row" key={attempt.id}>
+          <span>{formatEnum(attempt.channelType)}</span>
+          <strong>{formatEnum(attempt.status)}</strong>
+          <span>{attempt.lastErrorCode || attempt.providerResponse || formatShortDateTime(attempt.createdAt)}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -274,7 +450,7 @@ function severityRank(value: string) {
   if (normalized === "WARNING" || normalized === "MEDIUM") {
     return 2;
   }
-  if (normalized === "LOW") {
+  if (normalized === "INFO" || normalized === "LOW") {
     return 1;
   }
   return 0;
@@ -300,4 +476,19 @@ function formatShortDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function shortId(value?: string | null) {
+  return value ? value.slice(0, 8) : null;
+}
+
+function shortHash(value?: string | null) {
+  return value ? value.slice(0, 10) : null;
+}
+
+function formatWindow(start?: string | null, end?: string | null) {
+  if (!start || !end) {
+    return null;
+  }
+  return `${formatShortDateTime(start)} - ${formatShortDateTime(end)}`;
 }

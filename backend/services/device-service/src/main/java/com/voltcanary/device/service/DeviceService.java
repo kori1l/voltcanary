@@ -15,7 +15,7 @@ import com.voltcanary.device.metrics.DeviceOperationalMetrics;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.DeviceTypeRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.shared.NotFoundException;
+import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;

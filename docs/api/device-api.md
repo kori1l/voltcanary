@@ -49,11 +49,21 @@ Device, location, and data-source APIs are scoped to the authenticated user's
 account. Other services can verify ownership through:
 
 - `GET /internal/devices/{deviceId}/access?userId={userId}`
+- `GET /internal/devices/{deviceId}/owner`
 
 Response:
 
 ```json
 { "allowed": true }
+```
+
+Owner lookup response:
+
+```json
+{
+  "deviceId": "11a45242-7bf4-4f88-a71c-5969299f3bfc",
+  "accountId": "2c07eb26-e038-4565-b637-d9787c861477"
+}
 ```
 
 Device status is controlled by enum values: `ACTIVE`, `DISABLED`, `OFFLINE`,

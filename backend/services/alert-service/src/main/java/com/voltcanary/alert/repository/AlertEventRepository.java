@@ -8,4 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AlertEventRepository extends JpaRepository<AlertEvent, UUID> {
 
     List<AlertEvent> findByAlertIdOrderByCreatedAtDesc(UUID alertId);
+
+    boolean existsByAlertIdAndEventType(UUID alertId, String eventType);
+
+    long deleteByCreatedAtBefore(java.time.Instant createdAtBefore);
 }

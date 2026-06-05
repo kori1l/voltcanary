@@ -10,6 +10,41 @@ spring:
 app:
   kafka:
     consume-enabled: ${ALERT_KAFKA_CONSUME_ENABLED:false}
+  internal:
+    service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+    service-name: ${INTERNAL_SERVICE_NAME:alert-service}
+  alert:
+    authorization:
+      enabled: ${ALERT_AUTHORIZATION_ENABLED:true}
+      device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      timeout: ${ALERT_AUTHORIZATION_TIMEOUT:2s}
+    kafka:
+      retry:
+        max-attempts: ${ALERT_KAFKA_RETRY_MAX_ATTEMPTS:3}
+        interval: ${ALERT_KAFKA_RETRY_INTERVAL:1s}
+      dlq:
+        anomaly-topic: ${ALERT_KAFKA_ANOMALY_DLQ_TOPIC:anomaly.detected.dlq.v1}
+        risk-score-topic: ${ALERT_KAFKA_RISK_SCORE_DLQ_TOPIC:risk-score.changed.dlq.v1}
+    notifications:
+      enabled: ${ALERT_NOTIFICATIONS_ENABLED:true}
+      max-attempts: ${ALERT_NOTIFICATIONS_MAX_ATTEMPTS:3}
+      retry-interval: ${ALERT_NOTIFICATIONS_RETRY_INTERVAL:1s}
+      connect-timeout-millis: ${ALERT_NOTIFICATIONS_CONNECT_TIMEOUT_MS:2000}
+      read-timeout-millis: ${ALERT_NOTIFICATIONS_READ_TIMEOUT_MS:5000}
+    escalation:
+      enabled: ${ALERT_ESCALATION_ENABLED:true}
+      initial-delay-ms: ${ALERT_ESCALATION_INITIAL_DELAY_MS:60000}
+      scan-interval-ms: ${ALERT_ESCALATION_SCAN_INTERVAL_MS:60000}
+      warning-after: ${ALERT_ESCALATION_WARNING_AFTER:30m}
+      high-after: ${ALERT_ESCALATION_HIGH_AFTER:15m}
+      critical-after: ${ALERT_ESCALATION_CRITICAL_AFTER:5m}
+    retention:
+      enabled: ${ALERT_RETENTION_ENABLED:true}
+      initial-delay-ms: ${ALERT_RETENTION_INITIAL_DELAY_MS:300000}
+      scan-interval-ms: ${ALERT_RETENTION_SCAN_INTERVAL_MS:3600000}
+      resolved-alert-ttl: ${ALERT_RETENTION_RESOLVED_ALERT_TTL:180d}
+      event-ttl: ${ALERT_RETENTION_EVENT_TTL:365d}
+      notification-attempt-ttl: ${ALERT_RETENTION_NOTIFICATION_ATTEMPT_TTL:90d}
 
 server:
   port: 8086

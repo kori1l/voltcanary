@@ -133,12 +133,26 @@ tokens, and basic login audit. It is not yet a full Keycloak replacement.
     - ~~View active refresh sessions.~~
     - ~~Revoke user sessions.~~
 
-23. ~~Improve API error consistency.~~
+23. Add user deletion and downstream lifecycle propagation.
+    - Current issue: identity-service has admin status changes, but no public or
+      admin delete/deactivate contract that represents user deletion.
+    - Add an explicit user deletion lifecycle decision, for example hard delete
+      with audit retention or soft delete with a `DELETED` status.
+    - When a user is disabled, locked, or deleted, revoke active refresh
+      sessions and make the access-token behavior explicit.
+    - Publish or synchronously call downstream lifecycle sync for services that
+      own user-scoped resources, starting with device-service account lifecycle.
+    - Add gateway and identity tests for admin deletion/deactivation,
+      post-deletion login, refresh, and `/auth/me` behavior.
+    - Document whether deletion is reversible, what audit data remains, and how
+      support/admin users can inspect deleted accounts.
+
+24. ~~Improve API error consistency.~~
     - ~~Keep login failure responses generic.~~
     - ~~Ensure internal details do not leak through public error responses.~~
     - ~~Keep detailed failure reasons only in audit logs.~~
 
-24. ~~Document the auth contract.~~
+25. ~~Document the auth contract.~~
     - ~~Endpoints.~~
     - ~~Access and refresh token TTL.~~
     - ~~JWT claims.~~
@@ -720,7 +734,22 @@ the API yet.
       `POST /internal/accounts/users/{userId}/lifecycle`.~~
     - ~~Device tests cover disable/reactivate behavior.~~
 
-17. ~~Add audit logging.~~
+17. Define account-deleted cascade behavior for devices and sources.
+    - Current issue: `POST /internal/accounts/users/{userId}/lifecycle` with
+      `DELETED` marks the device account deleted and blocks device API access,
+      but existing devices remain in the database and may stay `ACTIVE`.
+    - Decide whether user deletion should hard-delete account-owned devices,
+      soft-delete/decommission them, disable data sources, revoke source tokens,
+      or retain them only for audit/history.
+    - Apply the chosen policy consistently to locations, devices, sensors, data
+      sources, analytics configs, and registry-change events.
+    - Ensure telemetry history retention is explicit and does not allow deleted
+      accounts to read or ingest through old credentials.
+    - Add integration tests for: create user, create devices and simulator
+      sources, delete/deactivate user, verify device API is blocked, verify
+      remaining devices/sources follow the documented cascade policy.
+
+18. ~~Add audit logging.~~
     - ~~Added structured audit logging for device, location, source, sensor,
       and analytics-config mutations.~~
     - ~~Audit logs include user id, account id, correlation id, target id, and
@@ -728,7 +757,7 @@ the API yet.
     - ~~Source tokens and other secrets are not logged.~~
     - ~~Device tests verify representative audit calls.~~
 
-18. ~~Add OpenAPI documentation for device-service.~~
+19. ~~Add OpenAPI documentation for device-service.~~
     - ~~Added springdoc OpenAPI support with `/v3/api-docs` and
       `/swagger-ui.html`.~~
     - ~~Configured bearer auth and `X-Internal-Service-Token` security schemes.~~
@@ -738,7 +767,7 @@ the API yet.
 
 ### Medium
 
-19. ~~Consider using gateway-provided user headers.~~
+20. ~~Consider using gateway-provided user headers.~~
     - ~~Controllers now receive request headers and resolve the current user via
       `AuthenticatedUserResolver`.~~
     - ~~Gateway-provided `X-User-Id`, `X-User-Email`, and `X-User-Role` are the
@@ -746,7 +775,7 @@ the API yet.
     - ~~Direct-service local development behavior is documented in
       `docs/api/device-api.md`.~~
 
-20. ~~Prepare for asymmetric JWT verification if services keep validating
+21. ~~Prepare for asymmetric JWT verification if services keep validating
     tokens.~~
     - ~~Direct bearer-token fallback in `device-service` uses shared
       `common-security` public-key JWT validation.~~
@@ -754,7 +783,7 @@ the API yet.
       token type, and standard claim checks aligned with gateway.~~
     - ~~The primary production contract remains gateway-provided user headers.~~
 
-21. ~~Add device metadata support.~~
+22. ~~Add device metadata support.~~
     - ~~Added `devices.metadata_json` and optional `metadata` on device
       create/update responses.~~
     - ~~Common indexed fields remain real columns (`manufacturer`, `model`,
@@ -763,13 +792,13 @@ the API yet.
       `secret`, and `credential`.~~
     - ~~Device tests cover metadata persistence and secret rejection.~~
 
-22. ~~Add location hierarchy or richer location model if needed.~~
+23. ~~Add location hierarchy or richer location model if needed.~~
     - ~~Locations now support `parentId`, `building`, `floor`, `room`, `zone`,
       and `tags`.~~
     - ~~Parent locations are ownership-checked and self-parenting is rejected.~~
     - ~~Location search includes the richer hierarchy fields.~~
 
-23. ~~Add import/export support for device registry.~~
+24. ~~Add import/export support for device registry.~~
     - ~~Added CSV device import through `POST /devices/imports/csv`.~~
     - ~~Added inventory export through `GET /devices/export.csv`.~~
     - ~~Added CSV data-source import/export under
@@ -777,13 +806,13 @@ the API yet.
       `/devices/{deviceId}/data-sources/export.csv`.~~
     - ~~Imports validate all rows before creating registry resources.~~
 
-24. ~~Add operational metrics.~~
+25. ~~Add operational metrics.~~
     - ~~Count devices by status and seeded type.~~
     - ~~Count data sources by protocol and status.~~
     - ~~Track internal validation request latency.~~
     - ~~Track failed ownership checks and rejected operations.~~
 
-25. ~~Clean up unused scaffolding packages.~~
+26. ~~Clean up unused scaffolding packages.~~
     - ~~No placeholder `.gitkeep` packages remain under the device-service Java
       package tree.~~
     - ~~The service now uses concrete domain package names instead of empty
@@ -1009,186 +1038,222 @@ notification and escalation service.
 
 ### Critical
 
-1. Add ownership and authorization checks for alert APIs.
-   - Current issue: `GET /alerts` returns the latest alerts globally, without
-     verifying that the authenticated user can access the referenced devices.
-   - Filter alerts by devices owned by the current user's account.
-   - Enforce the same ownership checks for `GET /alerts/{id}`,
-     `POST /alerts/{id}/ack`, and `POST /alerts/{id}/resolve`.
-   - Use `device-service` ownership checks or a local account/device projection.
+1. ~~Add ownership and authorization checks for alert APIs.~~
+   - ~~`GET /alerts` now filters returned alerts through `device-service`
+     ownership checks for the current gateway-provided user context.~~
+   - ~~`GET /alerts/{id}`, `POST /alerts/{id}/ack`, and
+     `POST /alerts/{id}/resolve` enforce the same device ownership check.~~
+   - ~~`ADMIN` and `SUPPORT` roles can read across devices.~~
 
-2. Add account or tenant reference to alerts.
-   - Current issue: `alerts` stores `device_id` but not `account_id`.
-   - Add `account_id` if the service should enforce authorization locally.
-   - Populate it from device registry events or a trusted device-service lookup.
-   - Index `(account_id, created_at)` and `(account_id, status, created_at)`.
+2. ~~Add account or tenant reference to alerts.~~
+   - ~~Added nullable `alerts.account_id` and account-oriented indexes as the
+     storage base for tenant-local enforcement.~~
+   - ~~Analytics events currently carry `device_id`, so alert-service resolves
+     `account_id` through the trusted device-service owner lookup during alert
+     creation.~~
+   - ~~Added device-service internal owner endpoint
+     `GET /internal/devices/{deviceId}/owner`.~~
+   - ~~Index `(account_id, created_at)` and
+     `(account_id, status, created_at)`.~~
 
-3. Add unique constraint for deduplication.
-   - Current issue: `deduplication_key` has an index but not a unique
-     constraint.
-   - Concurrent consumers or repeated events can still create duplicate alerts.
-   - Add a unique constraint or implement database-level upsert behavior.
+3. ~~Add unique constraint for deduplication.~~
+   - ~~`deduplication_key` now has a database-level unique index.~~
+   - ~~Repeated events continue to return the existing alert.~~
 
-4. Implement retry and DLQ handling for Kafka consumers.
-   - Current issue: bad or repeatedly failing events can poison consumer
-     processing.
-   - Add retry policy.
-   - Add DLQ topics for `anomaly.detected.v1` and `risk-score.changed.v1`.
-   - Store failure reason and original event metadata.
+4. ~~Implement retry and DLQ handling for Kafka consumers.~~
+   - ~~Bad or repeatedly failing events no longer poison consumer processing.~~
+   - ~~Added bounded retry policy for alert Kafka listeners.~~
+   - ~~Added DLQ topics for `anomaly.detected.v1` and
+     `risk-score.changed.v1`.~~
+   - ~~DLQ records include Spring Kafka failure/source headers and preserve the
+     original event value when the event was successfully deserialized.~~
 
-5. Add tests for alert authorization and tenant isolation.
-   - User sees only alerts for devices in their account.
-   - User cannot get, acknowledge, or resolve another user's alert.
+5. ~~Add tests for alert authorization and tenant isolation.~~
+   - ~~User sees only alerts for devices they can access.~~
+   - ~~User cannot get, acknowledge, or resolve another user's alert.~~
    - Admin/support behavior is explicit if such roles are added.
-   - Alert list filtering does not leak foreign device ids.
+   - ~~Alert list filtering does not leak foreign device ids.~~
 
-6. Add tests for deduplication under repeated events.
-   - Same anomaly event creates only one alert.
-   - Same deduplication key under concurrent handling creates only one alert.
-   - Different hours or different severities create separate alerts by policy.
-   - Resolved alert behavior on repeated events is defined and tested.
+6. ~~Add tests for deduplication under repeated events.~~
+   - ~~Same anomaly event creates only one alert.~~
+   - ~~Same deduplication key under concurrent handling creates only one
+     alert.~~
+   - ~~Different hours or different severities create separate alerts by
+     policy.~~
+   - ~~Resolved alert behavior on repeated events is defined and tested.~~
+   - ~~Alert creation uses a per-deduplication-key in-process lock plus the
+     database unique index as a second line of protection.~~
 
 ### High
 
-7. Add filtering and pagination to `GET /alerts`.
-   - Support filters by `deviceId`, `status`, `severity`, `alertType`, `from`,
-     and `to`.
-   - Add cursor or page-based pagination.
-   - Keep default ordering by newest first.
-   - Avoid returning only a hard-coded global top 100.
+7. ~~Add filtering and pagination to alert list APIs.~~
+   - ~~Support filters by `deviceId`, `status`, `severity`, `alertType`,
+     `from`, and `to`.~~
+   - ~~Added page-based pagination through `GET /alerts/page`.~~
+   - ~~Keep default ordering by newest first.~~
+   - ~~Avoid returning only a hard-coded global top 100 by supporting a bounded
+     `limit` parameter.~~
+   - ~~Pagination metadata is computed after ownership filtering so tenant
+     isolation remains accurate.~~
 
-8. Implement notification delivery.
-   - Current issue: `notification_channels` exists, but no notifications are
-     sent.
-   - Add delivery workers for chosen channels, for example email, webhook,
-     Telegram, Slack, SMS, or push notifications.
-   - Store delivery attempts and outcomes.
-   - Avoid blocking Kafka consumers on slow external notification providers.
+8. ~~Implement notification delivery.~~
+   - ~~Added after-commit asynchronous delivery dispatch so Kafka consumers do
+     not wait on external providers.~~
+   - ~~Implemented `WEBHOOK` delivery worker with retry, timeout, sent/failed
+     attempt updates, and delivery metrics.~~
+   - ~~Added HTTP-backed delivery workers for `EMAIL`, `TELEGRAM`, `SLACK`,
+     `SMS`, and `PUSH` channels in addition to `WEBHOOK`.~~
+   - ~~Store delivery attempts and outcomes.~~
+   - ~~Avoid blocking Kafka consumers on slow external notification providers.~~
 
-9. Add notification channel API.
-   - Add create, list, update, disable, and delete endpoints.
-   - Scope channels by account.
-   - Validate channel configuration.
-   - Store secrets through Vault or another secret store, not plain JSON in the
-     database.
+9. ~~Add notification channel API.~~
+   - ~~Added create, list, update, disable, enable, and delete endpoints under
+     `/alerts/notification-channels`.~~
+   - ~~Channels are scoped by account.~~
+   - ~~Channel configuration is validated.~~
+   - ~~Secrets are referenced through `credentialsRef`; inline secret-like
+     config keys are rejected.~~
 
-10. Add notification delivery status model.
-    - Store notification attempts separately from alerts.
-    - Track `PENDING`, `SENT`, `FAILED`, `RETRYING`, and `DISABLED`.
-    - Store retry count, last error code, provider response summary, and sent
-      time.
+10. ~~Add notification delivery status model.~~
+    - ~~Store notification attempts separately from alerts.~~
+    - ~~Track `PENDING`, `SENT`, `FAILED`, `RETRYING`, and `DISABLED`.~~
+    - ~~Store retry count, last error code, provider response summary, and sent
+      time.~~
+    - ~~Expose per-alert attempts through
+      `GET /alerts/{id}/notification-attempts`.~~
 
-11. Add escalation policy.
-    - Define what happens when `CRITICAL` or `WARNING` alerts are not
-      acknowledged within a configured period.
-    - Support repeated notifications, escalation to another channel, or higher
-      priority.
-    - Store escalation events in `alert_events`.
+11. ~~Add escalation policy.~~
+    - ~~Unacknowledged `OPEN` `WARNING`, `HIGH`, and `CRITICAL` alerts are
+      escalated after configurable thresholds.~~
+    - ~~Escalated alerts remain `OPEN`; the escalation is stored as an
+      `ESCALATED` event in `alert_events`.~~
+    - ~~Escalation triggers another notification delivery pass with
+      `ALERT_ESCALATED` webhook payloads.~~
+    - ~~Escalation scans are scheduled and idempotent per alert.~~
 
-12. Improve deduplication strategy.
-    - Current key is `deviceId:alertType:severity:hour`.
-    - Decide whether deduplication should consider anomaly id, metric, window,
-      rule id, or source id.
-    - Define behavior when a new event arrives for an already resolved alert.
-    - Move logic into `AlertDeduplicationService` instead of keeping it inside
-      `AlertService`.
+12. ~~Improve deduplication strategy.~~
+    - ~~Current key is `deviceId:alertType:severity:hour`.~~
+    - ~~Policy is source-event idempotency first, then active condition window
+      deduplication by `deviceId + alertType + severity + hour`.~~
+    - ~~Rule/window/input hash, anomaly id, and risk score id are stored as
+      correlation context but do not currently split deduplication keys.~~
+    - ~~A new event for an already resolved matching alert creates a new
+      `OPEN` alert; repeated events then deduplicate into that unresolved
+      alert.~~
+    - ~~Moved key construction and existing-alert lookup into
+      `AlertDeduplicationService`.~~
 
-13. Add alert lifecycle actor fields.
-    - Add `acknowledged_by`.
-    - Add `resolved_by`.
-    - Add `assigned_to` if manual operations are planned.
-    - Include actor information in `alert_events`.
+13. ~~Add alert lifecycle actor fields.~~
+    - ~~Added `acknowledged_by`.~~
+    - ~~Added `resolved_by`.~~
+    - ~~Added `assigned_to` for future manual assignment flows.~~
+    - ~~`alert_events` now stores `actor_id`.~~
 
-14. Standardize alert event payloads.
-    - Current issue: `ACKNOWLEDGED` stores the whole `Alert`, while `RESOLVED`
-      stores a custom resolution object.
-    - Define a consistent event payload shape.
-    - Include event id, alert id, actor id, action, timestamp, and reason when
-      relevant.
+14. ~~Standardize alert event payloads.~~
+    - ~~`CREATED`, `ACKNOWLEDGED`, and `RESOLVED` events now use a consistent
+      payload shape.~~
+    - ~~Payloads include event id, alert id, actor id, action, timestamp,
+      status, reason, and context.~~
 
-15. Align severity taxonomy across services.
-    - Analytics uses levels such as `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`.
-    - Alert service uses `INFO`, `WARNING`, `CRITICAL`.
-    - Decide whether to add `HIGH` to alerts or keep the current mapping.
-    - Document the mapping and keep frontend display consistent.
+15. ~~Align severity taxonomy across services.~~
+    - ~~Analytics uses levels such as `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`.~~
+    - ~~Alert service now supports `INFO`, `WARNING`, `HIGH`, and
+      `CRITICAL`.~~
+    - ~~Mapping is `LOW -> INFO`, `MEDIUM -> WARNING`, `HIGH -> HIGH`, and
+      `CRITICAL -> CRITICAL`.~~
+    - ~~Frontend display already handles `HIGH`; API documentation now includes
+      the mapping.~~
 
-16. Add alert source and correlation fields.
-    - Store source event id.
-    - Store anomaly id or risk score id.
-    - Store rule id or analytics calculation id when available.
-    - This makes alert traceability and debugging easier.
+16. ~~Add alert source and correlation fields.~~
+    - ~~Store source event id.~~
+    - ~~Store anomaly id when available.~~
+    - ~~Store risk score id when available.~~
+    - ~~Store rule id or analytics calculation id when available.~~
+    - ~~Alerts now keep analytics rule/window/input hash context in DB, API
+      responses, alert event payloads, and webhook payloads.~~
 
-17. Add idempotency by source event id.
-    - Deduplication by hour prevents some duplicates but does not guarantee
-      idempotent event handling.
-    - Store consumed event ids or source event references.
-    - Ignore events that were already processed.
+17. ~~Add idempotency by source event id.~~
+    - ~~Alerts now store source event references.~~
+    - ~~Repeated analytics events with the same source event id return the
+      existing alert instead of creating another one.~~
 
-18. Add alert reopen policy.
-    - Define what happens when the same condition appears again after an alert
-      was resolved.
-    - Options: create a new alert, reopen the old alert, or append an event to
-      the resolved alert.
-    - Make this behavior explicit and test it.
+18. ~~Add alert reopen policy.~~
+    - ~~When the same condition appears again after an alert was resolved, the
+      service creates a new `OPEN` alert.~~
+    - ~~The old resolved alert remains closed for audit/history.~~
+    - ~~Repeated events while the new alert is unresolved deduplicate into the
+      new alert.~~
+    - ~~Behavior is covered by service/API tests.~~
 
-19. Add notification preferences.
-    - Allow account-level or user-level preferences.
-    - Configure severities, quiet hours, channels, and device groups.
-    - Ensure critical alerts can bypass quiet hours if required.
+19. ~~Add notification preferences.~~
+    - ~~Added account-level default notification preferences under
+      `/alerts/notification-preferences`.~~
+    - ~~Preferences configure severities, quiet hours, channel types, and
+      device filters.~~
+    - ~~Critical alerts can bypass quiet hours when configured.~~
 
-20. Add alert aggregation for dashboards.
-    - Count open, acknowledged, and resolved alerts.
-    - Count by severity and device.
-    - Add endpoint for dashboard summary instead of forcing frontend to compute
-      everything from raw alerts.
+20. ~~Add alert aggregation for dashboards.~~
+    - ~~Count open, acknowledged, and resolved alerts.~~
+    - ~~Count by severity and device.~~
+    - ~~Added `GET /alerts/summary` so the frontend does not need to compute
+      dashboard counts from raw alerts.~~
 
 ### Medium
 
-21. Add service-to-service trust boundary documentation.
-    - Alert service trusts events from analytics topics.
-    - Document which producers are allowed to write those topics.
-    - Add Kafka ACLs or deployment-level restrictions when moving beyond local
-      development.
+21. ~~Add service-to-service trust boundary documentation.~~
+    - ~~Alert service trusts events from analytics topics.~~
+    - ~~Documented allowed producers for `anomaly.detected.v1` and
+      `risk-score.changed.v1`.~~
+    - ~~Documented Kafka ACL and deployment-level restrictions for
+      non-local environments in `docs/alert-service-trust-boundary.md`.~~
 
-22. Add notification channel secrets handling.
-    - `notification_channels.config_json` should not store raw secrets.
-    - Store only non-secret config and a `credentials_ref`.
-    - Put actual tokens/passwords/webhook secrets in Vault or another secret
-      manager.
+22. ~~Add notification channel secrets handling.~~
+    - ~~`notification_channels.config_json` stores only non-secret config.~~
+    - ~~Added `notification_channels.credentials_ref`.~~
+    - ~~Actual tokens/passwords/webhook secrets must live in Vault or another
+      secret manager.~~
+    - ~~API validation rejects secret-like keys inside channel config.~~
 
-23. Add retention policy.
-    - Define how long resolved alerts and alert events are kept.
-    - Define whether old notification attempts are archived or deleted.
-    - Add cleanup jobs if needed.
+23. ~~Add retention policy.~~
+    - ~~Resolved alerts default to 180 days.~~
+    - ~~Alert events default to 365 days.~~
+    - ~~Notification attempts default to 90 days.~~
+    - ~~Added scheduled cleanup job with configurable TTLs.~~
 
-24. Add OpenAPI documentation.
-    - Document alert list filters.
-    - Document lifecycle actions.
-    - Document error responses.
-    - Document notification channel endpoints once implemented.
+24. ~~Add OpenAPI documentation.~~
+    - ~~Document alert list filters and page response metadata.~~
+    - ~~Document lifecycle actions.~~
+    - ~~Document error responses.~~
+    - ~~Document notification channel endpoints.~~
+    - ~~Document notification delivery attempt statuses and endpoint.~~
 
-25. Add observability metrics.
-    - Count alerts created by type and severity.
-    - Count acknowledgements and resolutions.
-    - Track time-to-ack and time-to-resolve.
-    - Count Kafka consumer failures.
-    - Count notification attempts, successes, failures, and retries.
+25. ~~Add observability metrics.~~
+    - ~~Count alerts created by type and severity.~~
+    - ~~Count acknowledgements and resolutions.~~
+    - ~~Track time-to-ack and time-to-resolve.~~
+    - ~~Count deduplicated alert events by reason.~~
+    - ~~Count Kafka consumer failures.~~
+    - ~~Count notification attempts, successes, failures, and retries.~~
 
-26. Add structured logs.
-    - Include correlation id, alert id, device id, source event id, and action.
-    - Avoid logging full notification secrets or sensitive channel config.
-    - Log deduplication decisions with clear reason codes.
+26. ~~Add structured logs.~~
+    - ~~Alert lifecycle actions include correlation id, alert id, device id,
+      source event id, actor id, and action.~~
+    - ~~Alert creation and deduplication logs include alert id, device id,
+      source event id, alert type, severity, and reason.~~
+    - ~~Notification secrets are not logged because notification delivery is not
+      implemented yet.~~
+    - ~~Deduplication decisions log clear reason codes.~~
 
-27. Add admin/support workflows if needed.
-    - Search alerts across accounts for support users.
-    - Add role-based access checks.
-    - Keep regular users scoped to their own account.
+27. ~~Add admin/support workflows if needed.~~
+    - ~~Added `/alerts/support/search` for support/admin users to search across
+      accounts.~~
+    - ~~Added explicit role-based access check for support search.~~
+    - ~~Regular users remain scoped through existing ownership checks.~~
 
-28. Clean up unused scaffolding.
-    - `AlertDeduplicationService` should either be wired into real logic or
-      removed until needed.
-    - Empty placeholder packages should be cleaned up when the service package
-      layout is standardized.
+28. ~~Clean up unused scaffolding.~~
+    - ~~`AlertDeduplicationService` is now wired into alert creation logic.~~
+    - ~~Empty placeholder packages were removed from the alert-service Java
+      package tree.~~
 
 ## Project Structure
 

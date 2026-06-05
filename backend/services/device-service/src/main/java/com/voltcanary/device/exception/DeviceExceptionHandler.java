@@ -1,10 +1,6 @@
 package com.voltcanary.device.exception;
 
 import com.voltcanary.device.metrics.DeviceOperationalMetrics;
-import com.voltcanary.device.shared.AccountInactiveException;
-import com.voltcanary.device.shared.ApiErrorResponse;
-import com.voltcanary.device.shared.AuthenticationFailedException;
-import com.voltcanary.device.shared.NotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
