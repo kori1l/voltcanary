@@ -1,6 +1,7 @@
 package com.voltcanary.analytics.recommendation;
 
-import com.voltcanary.analytics.anomaly.Anomaly;
+import com.voltcanary.analytics.domain.Anomaly;
+import com.voltcanary.analytics.domain.Recommendation;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;

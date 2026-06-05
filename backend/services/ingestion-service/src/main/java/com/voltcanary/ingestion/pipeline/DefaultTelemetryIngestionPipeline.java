@@ -4,6 +4,7 @@ import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.ingestion.abuse.IngestionRateLimiter;
 import com.voltcanary.ingestion.audit.IngestionAuditService;
 import com.voltcanary.ingestion.backpressure.KafkaBackpressureService;
+import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.idempotency.IdempotencyService;
 import com.voltcanary.ingestion.kafka.TelemetryEventPublisher;
 import com.voltcanary.ingestion.normalization.PayloadNormalizer;
@@ -17,7 +18,6 @@ import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -48,7 +48,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             KafkaBackpressureService backpressureService,
             IngestionAuditService auditService,
             MeterRegistry meterRegistry,
-            @Value("${app.kafka.publish-enabled:false}") boolean kafkaPublishEnabled) {
+            IngestionProperties properties) {
         this.ingestionValidator = ingestionValidator;
         this.payloadNormalizer = payloadNormalizer;
         this.sourceResolver = sourceResolver;
@@ -59,7 +59,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
         this.backpressureService = backpressureService;
         this.auditService = auditService;
         this.meterRegistry = meterRegistry;
-        this.kafkaPublishEnabled = kafkaPublishEnabled;
+        this.kafkaPublishEnabled = properties.isKafkaPublishEnabled();
     }
 
     @Override

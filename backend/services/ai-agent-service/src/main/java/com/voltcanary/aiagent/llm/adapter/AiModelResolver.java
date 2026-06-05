@@ -1,17 +1,18 @@
 package com.voltcanary.aiagent.llm.adapter;
 
-import com.voltcanary.aiagent.provider.AiModelConfig;
-import com.voltcanary.aiagent.provider.AiModelConfigRepository;
-import com.voltcanary.aiagent.provider.AiModelProvider;
-import com.voltcanary.aiagent.provider.AiModelProviderRepository;
-import com.voltcanary.aiagent.provider.AiModelProviderSecretRepository;
-import com.voltcanary.aiagent.provider.AiModelProviderStatus;
-import com.voltcanary.aiagent.provider.AiModelSecretType;
-import com.voltcanary.aiagent.provider.AiSecretEncryptionService;
+import com.voltcanary.aiagent.domain.AiModelConfig;
+import com.voltcanary.aiagent.domain.AiModelProvider;
+import com.voltcanary.aiagent.domain.AiModelProviderStatus;
+import com.voltcanary.aiagent.domain.AiModelSecretType;
+import com.voltcanary.aiagent.repository.AiModelConfigRepository;
+import com.voltcanary.aiagent.repository.AiModelProviderRepository;
+import com.voltcanary.aiagent.repository.AiModelProviderSecretRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
+import com.voltcanary.aiagent.service.AiSecretEncryptionService;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+
 
 @Component
 public class AiModelResolver {

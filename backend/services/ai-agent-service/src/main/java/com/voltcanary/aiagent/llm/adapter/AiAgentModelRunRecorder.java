@@ -1,10 +1,11 @@
 package com.voltcanary.aiagent.llm.adapter;
 
-import com.voltcanary.aiagent.provider.AiAgentModelRun;
-import com.voltcanary.aiagent.provider.AiAgentModelRunRepository;
+import com.voltcanary.aiagent.domain.AiAgentModelRun;
+import com.voltcanary.aiagent.repository.AiAgentModelRunRepository;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+
 
 @Component
 public class AiAgentModelRunRecorder {

@@ -2,10 +2,10 @@ package com.voltcanary.alert.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.alert.alert.Alert;
-import com.voltcanary.alert.alert.AlertEvent;
-import com.voltcanary.alert.alert.AlertSeverity;
-import com.voltcanary.alert.alert.AlertStatus;
+import com.voltcanary.alert.domain.Alert;
+import com.voltcanary.alert.domain.AlertEvent;
+import com.voltcanary.alert.domain.AlertSeverity;
+import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;

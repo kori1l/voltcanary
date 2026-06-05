@@ -1,9 +1,11 @@
 package com.voltcanary.device.controller;
 
 import com.voltcanary.device.config.InternalServiceAuth;
-import com.voltcanary.device.account.AccountLifecycleRequest;
-import com.voltcanary.device.account.AccountService;
-import com.voltcanary.device.device.DeviceRepository;
+import com.voltcanary.device.domain.Account;
+import com.voltcanary.device.domain.Device;
+import com.voltcanary.device.dto.AccountLifecycleRequest;
+import com.voltcanary.device.repository.DeviceRepository;
+import com.voltcanary.device.service.AccountService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -12,9 +14,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+
 
 @RestController
 @RequestMapping("/internal")

@@ -4,7 +4,6 @@ import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -21,11 +20,6 @@ public class DownstreamFailureGlobalFilter implements GlobalFilter, Ordered {
 
     private final MeterRegistry meterRegistry;
 
-    public DownstreamFailureGlobalFilter() {
-        this(null);
-    }
-
-    @Autowired
     public DownstreamFailureGlobalFilter(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
     }

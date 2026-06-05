@@ -1,10 +1,10 @@
 package com.voltcanary.ingestion.idempotency;
 
+import com.voltcanary.ingestion.config.IngestionProperties;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -18,9 +18,9 @@ class RedisIdempotencyService implements IdempotencyService {
 
     RedisIdempotencyService(
             StringRedisTemplate redisTemplate,
-            @Value("${app.idempotency.ttl:PT24H}") Duration ttl) {
+            IngestionProperties properties) {
         this.redisTemplate = redisTemplate;
-        this.ttl = ttl;
+        this.ttl = properties.getIdempotencyTtl();
     }
 
     @Override

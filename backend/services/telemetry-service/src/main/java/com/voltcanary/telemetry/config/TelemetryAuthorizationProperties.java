@@ -10,6 +10,7 @@ public class TelemetryAuthorizationProperties {
 
     private boolean enabled = true;
     private String deviceServiceBaseUrl = "http://localhost:8082";
+    private String internalServiceToken = "dev-internal-token";
     private Duration timeout = Duration.ofSeconds(2);
 
     public boolean isEnabled() {
@@ -26,6 +27,14 @@ public class TelemetryAuthorizationProperties {
 
     public void setDeviceServiceBaseUrl(String deviceServiceBaseUrl) {
         this.deviceServiceBaseUrl = deviceServiceBaseUrl;
+    }
+
+    public String getInternalServiceToken() {
+        return internalServiceToken;
+    }
+
+    public void setInternalServiceToken(String internalServiceToken) {
+        this.internalServiceToken = internalServiceToken;
     }
 
     public Duration getTimeout() {

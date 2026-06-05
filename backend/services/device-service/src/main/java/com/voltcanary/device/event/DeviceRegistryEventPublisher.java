@@ -1,13 +1,15 @@
 package com.voltcanary.device.event;
 
 import com.voltcanary.common.events.device.DeviceRegistryChangedEvent;
+import com.voltcanary.device.config.DeviceKafkaProperties;
+import com.voltcanary.device.domain.Device;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+
 
 @Component
 public class DeviceRegistryEventPublisher {
@@ -21,9 +23,9 @@ public class DeviceRegistryEventPublisher {
 
     public DeviceRegistryEventPublisher(
             KafkaTemplate<String, DeviceRegistryChangedEvent> kafkaTemplate,
-            @Value("${app.kafka.publish-enabled:true}") boolean publishEnabled) {
+            DeviceKafkaProperties kafkaProperties) {
         this.kafkaTemplate = kafkaTemplate;
-        this.publishEnabled = publishEnabled;
+        this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
     public void publish(

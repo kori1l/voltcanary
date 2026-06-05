@@ -1,12 +1,12 @@
 package com.voltcanary.analytics.producer;
 
-import com.voltcanary.analytics.anomaly.Anomaly;
-import com.voltcanary.analytics.risk.RiskScore;
+import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
+import com.voltcanary.analytics.domain.Anomaly;
+import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +24,10 @@ public class AnalyticsEventPublisher {
     public AnalyticsEventPublisher(
             KafkaTemplate<String, AnomalyDetectedEvent> anomalyKafkaTemplate,
             KafkaTemplate<String, RiskScoreChangedEvent> riskKafkaTemplate,
-            @Value("${app.kafka.publish-enabled:true}") boolean publishEnabled) {
+            AnalyticsKafkaProperties kafkaProperties) {
         this.anomalyKafkaTemplate = anomalyKafkaTemplate;
         this.riskKafkaTemplate = riskKafkaTemplate;
-        this.publishEnabled = publishEnabled;
+        this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
     public void publishAnomaly(Anomaly anomaly) {

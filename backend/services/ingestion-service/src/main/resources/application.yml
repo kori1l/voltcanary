@@ -48,6 +48,14 @@ app:
     backpressure-enabled: ${INGESTION_BACKPRESSURE_ENABLED:true}
     backpressure-cooldown: ${INGESTION_BACKPRESSURE_COOLDOWN:30s}
     audit-capacity: ${INGESTION_AUDIT_CAPACITY:1000}
+    device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+    kafka-publish-enabled: ${APP_KAFKA_PUBLISH_ENABLED:true}
+    mqtt:
+      enabled: ${INGESTION_MQTT_ENABLED:false}
+      broker-url: ${INGESTION_MQTT_BROKER_URL:tcp://localhost:1883}
+      client-id: ${INGESTION_MQTT_CLIENT_ID:voltcanary-ingestion}
+      topic-filter: ${INGESTION_MQTT_TOPIC_FILTER:voltcanary/sources/+/telemetry}
   idempotency:
     redis-enabled: false
     ttl: PT24H

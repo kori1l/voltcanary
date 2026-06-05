@@ -1,5 +1,6 @@
 package com.voltcanary.ingestion.mqtt;
 
+import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.pipeline.TelemetryIngestionPipeline;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -11,12 +12,11 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "app.mqtt", name = "enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "app.ingestion.mqtt", name = "enabled", havingValue = "true")
 public class MqttTelemetrySubscriber implements MqttCallback {
 
     private static final Logger log = LoggerFactory.getLogger(MqttTelemetrySubscriber.class);
@@ -33,15 +33,13 @@ public class MqttTelemetrySubscriber implements MqttCallback {
             MqttTopicParser topicParser,
             MqttPayloadMapper payloadMapper,
             TelemetryIngestionPipeline pipeline,
-            @Value("${app.mqtt.broker-url}") String brokerUrl,
-            @Value("${app.mqtt.client-id}") String clientId,
-            @Value("${app.mqtt.topic-filter}") String topicFilter) {
+            IngestionProperties properties) {
         this.topicParser = topicParser;
         this.payloadMapper = payloadMapper;
         this.pipeline = pipeline;
-        this.brokerUrl = brokerUrl;
-        this.clientId = clientId;
-        this.topicFilter = topicFilter;
+        this.brokerUrl = properties.getMqtt().getBrokerUrl();
+        this.clientId = properties.getMqtt().getClientId();
+        this.topicFilter = properties.getMqtt().getTopicFilter();
     }
 
     @PostConstruct

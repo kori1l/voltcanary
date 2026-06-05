@@ -1,5 +1,6 @@
 package com.voltcanary.identity.security;
 
+import com.voltcanary.identity.config.IdentityJwtProperties;
 import com.voltcanary.identity.domain.RefreshToken;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.exception.AuthenticationFailedException;
@@ -11,7 +12,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -29,12 +29,11 @@ public class RefreshTokenService {
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository,
             PlatformTransactionManager transactionManager,
-            @Value("${app.jwt.refresh-token-ttl-seconds:${JWT_REFRESH_TOKEN_TTL_SECONDS:2592000}}")
-                    long refreshTokenTtlSeconds) {
+            IdentityJwtProperties properties) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.requiresNewTransaction = new TransactionTemplate(transactionManager);
         this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.refreshTokenTtlSeconds = refreshTokenTtlSeconds;
+        this.refreshTokenTtlSeconds = properties.getRefreshTokenTtlSeconds();
     }
 
     public IssuedRefreshToken issue(User user) {

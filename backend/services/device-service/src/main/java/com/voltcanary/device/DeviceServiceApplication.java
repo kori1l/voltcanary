@@ -1,7 +1,9 @@
 package com.voltcanary.device;
 
-import org.springframework.boot.SpringApplication;
+import com.voltcanary.device.domain.Device;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.SpringApplication;
+
 
 @SpringBootApplication
 public class DeviceServiceApplication {

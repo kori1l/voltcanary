@@ -3,7 +3,10 @@ package com.voltcanary.gateway;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.voltcanary.common.security.JwtAccessTokenService;
+import com.voltcanary.gateway.config.GatewayCorsProperties;
+import com.voltcanary.gateway.config.GatewayJwtProperties;
 import com.voltcanary.gateway.config.GatewayRateLimitProperties;
+import com.voltcanary.gateway.filter.CorsPreflightGlobalFilter;
 import com.voltcanary.gateway.filter.DownstreamFailureGlobalFilter;
 import com.voltcanary.gateway.filter.GatewayAuthorizationGlobalFilter;
 import com.voltcanary.gateway.filter.GatewayRateLimitGlobalFilter;
@@ -34,6 +37,13 @@ import reactor.core.publisher.Mono;
                         + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.ServletWebServerFactoryAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,"
+                        + "org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration,"
                         + "org.springframework.boot.actuate.autoconfigure.security.reactive.ReactiveManagementWebSecurityAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration,"
@@ -192,11 +202,12 @@ class ApiGatewaySmokeTest {
 
     @Test
     void authenticatedRequestOverwritesSpoofedUserHeaders() {
-        JwtAuthenticationGlobalFilter filter = new JwtAuthenticationGlobalFilter(
-                JwtAccessTokenService.DEV_KEY_ID,
-                JwtAccessTokenService.DEV_KEY_ID + "=" + JwtAccessTokenService.DEV_PUBLIC_KEY,
-                "voltcanary-identity",
-                "voltcanary-api");
+        GatewayJwtProperties jwtProperties = new GatewayJwtProperties();
+        jwtProperties.setKeyId(JwtAccessTokenService.DEV_KEY_ID);
+        jwtProperties.setPublicKeys(JwtAccessTokenService.DEV_KEY_ID + "=" + JwtAccessTokenService.DEV_PUBLIC_KEY);
+        jwtProperties.setIssuer("voltcanary-identity");
+        jwtProperties.setAudience("voltcanary-api");
+        JwtAuthenticationGlobalFilter filter = new JwtAuthenticationGlobalFilter(jwtProperties);
         AtomicReference<ServerWebExchange> forwardedExchange = new AtomicReference<>();
         GatewayFilterChain chain = exchange -> {
             forwardedExchange.set(exchange);
@@ -232,13 +243,17 @@ class ApiGatewaySmokeTest {
 
     @Test
     void corsAllowsFrontendOrigin() {
-        webTestClient.method(HttpMethod.OPTIONS)
-                .uri("/devices")
+        CorsPreflightGlobalFilter filter = new CorsPreflightGlobalFilter(new GatewayCorsProperties());
+        MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.options("/devices")
                 .header(HttpHeaders.ORIGIN, "http://localhost:3000")
-                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
-                .exchange()
-                .expectStatus().isOk()
-                .expectHeader().valueEquals(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000");
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"));
+        GatewayFilterChain chain = request -> Mono.empty();
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(exchange.getResponse().getHeaders().getFirst(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN))
+                .isEqualTo("http://localhost:3000");
     }
 
     @Test
@@ -299,7 +314,7 @@ class ApiGatewaySmokeTest {
 
     @Test
     void downstreamFailureReturns503Json() {
-        DownstreamFailureGlobalFilter filter = new DownstreamFailureGlobalFilter();
+        DownstreamFailureGlobalFilter filter = new DownstreamFailureGlobalFilter(null);
         GatewayFilterChain failingChain = exchange -> Mono.error(new IllegalStateException("downstream failed"));
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/devices")
                 .header("X-Correlation-Id", "failure-correlation-id"));

@@ -1,13 +1,16 @@
 package com.voltcanary.analytics;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.anomaly.Anomaly;
 import com.voltcanary.analytics.config.AnalyticsAuthorizationProperties;
+import com.voltcanary.analytics.config.AnalyticsDownstreamProperties;
+import com.voltcanary.analytics.config.AnalyticsInternalProperties;
+import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import com.voltcanary.analytics.consumer.TelemetryValidatedConsumer;
+import com.voltcanary.analytics.domain.Anomaly;
+import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.producer.AnalyticsEventPublisher;
-import com.voltcanary.analytics.risk.RiskScore;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.AnalyticsJobService;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
@@ -19,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpMethod;
@@ -84,7 +88,9 @@ class AnalyticsPipelineTest {
     void analyticsPublisherUsesExpectedEventPayloads() {
         KafkaTemplate<String, AnomalyDetectedEvent> anomalyTemplate = mock(KafkaTemplate.class);
         KafkaTemplate<String, RiskScoreChangedEvent> riskTemplate = mock(KafkaTemplate.class);
-        AnalyticsEventPublisher publisher = new AnalyticsEventPublisher(anomalyTemplate, riskTemplate, true);
+        AnalyticsKafkaProperties kafkaProperties = new AnalyticsKafkaProperties();
+        kafkaProperties.setPublishEnabled(true);
+        AnalyticsEventPublisher publisher = new AnalyticsEventPublisher(anomalyTemplate, riskTemplate, kafkaProperties);
         UUID deviceId = UUID.randomUUID();
         Anomaly anomaly = new Anomaly();
         anomaly.setId(UUID.randomUUID());
@@ -124,10 +130,12 @@ class AnalyticsPipelineTest {
         AnalyticsAuthorizationProperties properties = new AnalyticsAuthorizationProperties();
         properties.setDeviceServiceBaseUrl("http://device-service");
         properties.setTimeout(Duration.ofSeconds(1));
+        AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
+        internalProperties.setServiceToken("internal-token");
         AnalyticsAccessService accessService = new AnalyticsAccessService(
                 properties,
-                builder.baseUrl(properties.getDeviceServiceBaseUrl()).build(),
-                "internal-token");
+                builder,
+                internalProperties);
         UUID deviceId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         server.expect(once(), requestTo("http://device-service/internal/devices/" + deviceId + "/access?userId=" + userId))
@@ -144,7 +152,15 @@ class AnalyticsPipelineTest {
     void telemetryClientMapsServerFailureToServiceUnavailable() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        TelemetryClient client = new TelemetryClient(builder.baseUrl("http://telemetry-service").build());
+        AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
+        downstreamProperties.setTelemetryService(new AnalyticsDownstreamProperties.DownstreamService(
+                "http://telemetry-service",
+                Duration.ofSeconds(1)));
+        TelemetryClient client = new TelemetryClient(
+                builder,
+                downstreamProperties,
+                new AnalyticsInternalProperties(),
+                new SimpleMeterRegistry());
         UUID deviceId = UUID.randomUUID();
         server.expect(once(), requestTo(startsWith("http://telemetry-service/telemetry/devices/" + deviceId + "/readings")))
                 .andRespond(withServerError());
@@ -163,7 +179,15 @@ class AnalyticsPipelineTest {
     void mlClientReturnsNullWhenInferenceIsUnavailable() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        MlClient client = new MlClient(builder.baseUrl("http://ml-service").build());
+        AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
+        downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
+                "http://ml-service",
+                Duration.ofSeconds(1)));
+        MlClient client = new MlClient(
+                builder,
+                downstreamProperties,
+                new AnalyticsInternalProperties(),
+                new SimpleMeterRegistry());
         server.expect(once(), requestTo("http://ml-service/inference"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withServerError());

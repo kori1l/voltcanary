@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 public class AiAgentProperties {
     private String provider = "rules";
     private OpenAi openai = new OpenAi();
+    private Services services = new Services();
+    private Secrets secrets = new Secrets();
 
     public String getProvider() {
         return provider;
@@ -23,6 +25,22 @@ public class AiAgentProperties {
 
     public void setOpenai(OpenAi openai) {
         this.openai = openai;
+    }
+
+    public Services getServices() {
+        return services;
+    }
+
+    public void setServices(Services services) {
+        this.services = services;
+    }
+
+    public Secrets getSecrets() {
+        return secrets;
+    }
+
+    public void setSecrets(Secrets secrets) {
+        this.secrets = secrets;
     }
 
     public static class OpenAi {
@@ -62,5 +80,25 @@ public class AiAgentProperties {
         public void setTimeoutMs(int timeoutMs) {
             this.timeoutMs = timeoutMs;
         }
+    }
+
+    public static class Services {
+        private String deviceBaseUrl = "http://localhost:8082";
+        private String simulatorBaseUrl = "http://localhost:8087";
+
+        public String getDeviceBaseUrl() { return deviceBaseUrl; }
+        public void setDeviceBaseUrl(String deviceBaseUrl) { this.deviceBaseUrl = deviceBaseUrl; }
+        public String getSimulatorBaseUrl() { return simulatorBaseUrl; }
+        public void setSimulatorBaseUrl(String simulatorBaseUrl) { this.simulatorBaseUrl = simulatorBaseUrl; }
+    }
+
+    public static class Secrets {
+        private String encryptionKey = "";
+        private String keyVersion = "v1";
+
+        public String getEncryptionKey() { return encryptionKey; }
+        public void setEncryptionKey(String encryptionKey) { this.encryptionKey = encryptionKey; }
+        public String getKeyVersion() { return keyVersion; }
+        public void setKeyVersion(String keyVersion) { this.keyVersion = keyVersion; }
     }
 }

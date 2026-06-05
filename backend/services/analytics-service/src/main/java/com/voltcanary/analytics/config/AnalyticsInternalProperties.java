@@ -1,0 +1,28 @@
+package com.voltcanary.analytics.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConfigurationProperties(prefix = "app.internal")
+public class AnalyticsInternalProperties {
+
+    private String serviceToken = "dev-internal-token";
+    private String serviceName = "analytics-service";
+
+    public String getServiceToken() {
+        return serviceToken;
+    }
+
+    public void setServiceToken(String serviceToken) {
+        this.serviceToken = serviceToken;
+    }
+
+    public String getServiceName() {
+        return serviceName;
+    }
+
+    public void setServiceName(String serviceName) {
+        this.serviceName = serviceName;
+    }
+}

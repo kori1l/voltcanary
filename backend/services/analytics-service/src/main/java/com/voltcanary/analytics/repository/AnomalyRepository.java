@@ -1,6 +1,6 @@
 package com.voltcanary.analytics.repository;
 
-import com.voltcanary.analytics.anomaly.Anomaly;
+import com.voltcanary.analytics.domain.Anomaly;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

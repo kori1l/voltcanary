@@ -1,6 +1,6 @@
 package com.voltcanary.ingestion.source;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.voltcanary.ingestion.config.IngestionProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -12,10 +12,9 @@ public class DeviceServiceSourceClient {
 
     public DeviceServiceSourceClient(
             RestClient.Builder restClientBuilder,
-            @Value("${app.device-service.base-url:http://localhost:8082}") String deviceServiceBaseUrl,
-            @Value("${app.internal.service-token:${INTERNAL_SERVICE_TOKEN:dev-internal-token}}") String internalServiceToken) {
-        this.restClient = restClientBuilder.baseUrl(deviceServiceBaseUrl).build();
-        this.internalServiceToken = internalServiceToken;
+            IngestionProperties properties) {
+        this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
+        this.internalServiceToken = properties.getInternalServiceToken();
     }
 
     public InternalDataSourceResponse findByTokenPrefix(String tokenPrefix) {

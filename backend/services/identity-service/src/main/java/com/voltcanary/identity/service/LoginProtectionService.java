@@ -1,5 +1,6 @@
 package com.voltcanary.identity.service;
 
+import com.voltcanary.identity.config.IdentityAuthProperties;
 import com.voltcanary.identity.exception.AuthenticationFailedException;
 import java.time.Clock;
 import java.time.Instant;
@@ -7,8 +8,6 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -24,31 +23,13 @@ public class LoginProtectionService {
     private final long attemptWindowSeconds;
     private final int failedAttemptsBeforeLockout;
     private final long lockoutSeconds;
-
-    @Autowired
-    public LoginProtectionService(
-            @Value("${app.auth.login.max-attempts-per-email:10}") int maxAttemptsPerEmail,
-            @Value("${app.auth.login.max-attempts-per-ip:50}") int maxAttemptsPerIp,
-            @Value("${app.auth.login.attempt-window-seconds:60}") long attemptWindowSeconds,
-            @Value("${app.auth.login.failed-attempts-before-lockout:5}") int failedAttemptsBeforeLockout,
-            @Value("${app.auth.login.lockout-seconds:300}") long lockoutSeconds) {
-        this(maxAttemptsPerEmail, maxAttemptsPerIp, attemptWindowSeconds, failedAttemptsBeforeLockout, lockoutSeconds,
-                Clock.systemUTC());
-    }
-
-    LoginProtectionService(
-            int maxAttemptsPerEmail,
-            int maxAttemptsPerIp,
-            long attemptWindowSeconds,
-            int failedAttemptsBeforeLockout,
-            long lockoutSeconds,
-            Clock clock) {
-        this.maxAttemptsPerEmail = maxAttemptsPerEmail;
-        this.maxAttemptsPerIp = maxAttemptsPerIp;
-        this.attemptWindowSeconds = attemptWindowSeconds;
-        this.failedAttemptsBeforeLockout = failedAttemptsBeforeLockout;
-        this.lockoutSeconds = lockoutSeconds;
-        this.clock = clock;
+    public LoginProtectionService(IdentityAuthProperties properties) {
+        this.maxAttemptsPerEmail = properties.getLogin().getMaxAttemptsPerEmail();
+        this.maxAttemptsPerIp = properties.getLogin().getMaxAttemptsPerIp();
+        this.attemptWindowSeconds = properties.getLogin().getAttemptWindowSeconds();
+        this.failedAttemptsBeforeLockout = properties.getLogin().getFailedAttemptsBeforeLockout();
+        this.lockoutSeconds = properties.getLogin().getLockoutSeconds();
+        this.clock = Clock.systemUTC();
     }
 
     public void checkAllowed(String email, String clientIp) {

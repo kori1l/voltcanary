@@ -1193,56 +1193,133 @@ notification and escalation service.
 ## Project Structure
 
 The current repository layout works for MVP development, but the package and
-folder structure should be normalized before the system grows further.
+folder structure should be normalized before the system grows further. The goal
+is to make services easier to navigate, not to introduce a deeper architecture.
+Prefer a small layered package layout per service unless a service has a
+documented reason to use feature slices.
 
-### Medium
+### Critical
 
-1. Standardize service locations.
-   - Keep all backend microservices under one predictable folder, for example
-     `backend/services`.
-   - Keep shared backend libraries under a separate folder, for example
-     `backend/libs` or `backend/common`.
-   - Avoid mixing deploy files, generated files, service code, and shared code
-     in the same level.
-
-2. Standardize Java package layout inside each service.
-   - Use a consistent structure such as:
+1. ~~Standardize Java package layout inside every service.~~
+   - ~~Use the same top-level packages where they apply:~~
      - `controller`
      - `service`
      - `repository`
-     - `domain` or `entity`
+     - `domain`
      - `dto`
      - `mapper`
      - `config`
      - `security`
      - `exception`
-   - Avoid having each domain feature invent a different internal layout unless
-     the service intentionally follows a feature-sliced architecture.
+   - ~~All REST controllers now live in `controller`, including internal
+     controllers.~~
+   - ~~JPA entities and domain aggregate models now live in `domain`.~~
+   - ~~Repositories now live in `repository`; feature-package repositories were
+     moved.~~
+   - ~~Request/response records live in `dto` where the service uses DTOs.~~
+   - ~~Integration clients remain in service-specific infrastructure packages
+     only where those packages are already meaningful.~~
+   - ~~`domain` is used consistently instead of introducing a second `entity`
+     synonym.~~
 
-3. Decide between layered and feature-sliced package style.
+2. ~~Flatten feature-sliced packages where they currently obscure common roles.~~
+   - ~~Current examples were `device/device`, `device/datasource`,
+     `device/location`, `device/sensor`, and analytics packages such as
+     `anomaly`, `baseline`, `prediction`, `risk`, and `recommendation`.~~
+   - ~~Controllers were moved from feature packages into `controller`.~~
+   - ~~JPA entities were moved from feature packages into `domain`.~~
+   - ~~Repositories were moved from feature packages into `repository`.~~
+   - ~~Small device feature packages were flattened into standard layer
+     packages.~~
+   - ~~Analytics keeps calculation packages such as `anomaly` and `risk` for
+     cohesive non-JPA algorithms; entity classes are no longer in those
+     packages.~~
+
+3. ~~Eliminate Spring field injection and method injection in production code.~~
+   - ~~Production code now uses constructor injection for required
+     dependencies.~~
+   - ~~`src/main/java` has no `@Autowired` usages.~~
+   - ~~Single-constructor services no longer carry redundant constructor
+     `@Autowired`.~~
+   - ~~No method injection remains in production code.~~
+   - ~~Tests may still use field injection where Spring test setup is clearer.~~
+
+4. ~~Move `@Value` configuration access into typed configuration classes.~~
+   - ~~Scattered `@Value` constructor parameters were replaced with
+     typed `@ConfigurationProperties` classes under `config`.~~
+   - ~~Properties are grouped by ownership, for example `JwtProperties`,
+     `InternalServiceProperties`, `DownstreamServiceProperties`,
+     `KafkaProperties`, `MqttProperties`, and service-specific feature
+     properties.~~
+   - ~~Defaults live in properties classes or configuration files, not in
+     scattered constructors.~~
+   - ~~Production Java code no longer contains direct `@Value` usage outside
+     config.~~
+
+5. ~~Audit and fix N+1 query risks before reshaping packages.~~
+   - ~~JPA relationship and repository list endpoints were audited after the
+     package reshaping.~~
+   - ~~Existing entity relationships are `LAZY`; no `FetchType.EAGER` usage was
+     found.~~
+   - ~~List endpoints found by the audit either read simple entities without
+     related traversal or already use explicit repository queries.~~
+   - ~~The structure checker keeps future package changes visible; query-count
+     tests should still be added with future endpoints that traverse
+     relationships.~~
+
+6. ~~Fix IDE-reported structural inspections as part of each service cleanup.~~
+   - ~~Unused imports and redundant production injection annotations were
+     removed while touching the services.~~
+   - ~~Package-private helper visibility that broke after package moves was
+     corrected where needed.~~
+   - ~~The cleanup stayed structural; behavior changes were avoided.~~
+
+### Medium
+
+7. ~~Standardize service locations.~~
+   - ~~Backend microservices are under `backend/services`.~~
+   - ~~Shared backend libraries are under `backend/common`.~~
+   - ~~Deploy files, generated files, service code, and shared code remain in
+     separate top-level locations.~~
+
+8. ~~Decide and document allowed package exceptions.~~
    - Layered style example:
      `controller/DeviceController`, `service/DeviceService`,
-     `repository/DeviceRepository`, `entity/Device`.
+     `repository/DeviceRepository`, `domain/Device`.
    - Feature-sliced style example:
      `device/DeviceController`, `device/DeviceService`,
      `device/DeviceRepository`, `device/Device`.
-   - Pick one approach and apply it consistently across services.
+   - ~~The default is the layered style above.~~
+   - ~~Feature-sliced packages are allowed only when documented and when they
+     reduce navigation cost.~~
+   - ~~The rule is documented in `docs/repository-structure.md`.~~
 
-4. Remove empty placeholder packages after the structure is chosen.
-   - Empty `.gitkeep` packages make services look more complete than they are.
-   - Keep only folders that contain real code or documented extension points.
+9. ~~Remove empty placeholder packages after the structure is chosen.~~
+   - ~~Empty `.gitkeep` placeholders in source package directories were
+     removed.~~
+   - ~~Only folders with real code or documented extension points remain in
+     source.~~
 
-5. Align test package structure with production code.
-   - Integration tests should be easy to find.
-   - Unit tests should mirror the class or feature they cover.
-   - Shared test utilities should have a clear location.
+10. ~~Align test package structure with production code.~~
+   - ~~Existing service tests remain under the matching service package.~~
+   - ~~Test field injection is intentionally allowed by the production-only
+     structure checker.~~
+   - ~~No new shared test utility location was needed for this cleanup.~~
 
-6. Add a short repository structure document.
-   - Document where new services go.
-   - Document where shared libraries go.
-   - Document where API docs, architecture docs, deployment manifests, and
-     scripts belong.
-   - This should prevent the layout from drifting as more services are added.
+11. ~~Add a short repository structure document.~~
+   - ~~Added `docs/repository-structure.md`.~~
+   - ~~It documents backend services, shared backend code, Java package layers,
+     and allowed package exceptions.~~
+
+12. ~~Add automated structure checks.~~
+   - ~~Added `scripts/check-project-structure.ps1` as an equivalent static
+     structure check.~~
+   - ~~It checks that controllers live in `..controller..`.~~
+   - ~~It checks that JPA entities live in `..domain..`.~~
+   - ~~It checks that repositories live in `..repository..`.~~
+   - ~~It checks that production code has no Spring injection annotations.~~
+   - ~~It checks that production code does not introduce direct `@Value` usage
+     outside configuration classes.~~
 
 ## Kubernetes And Deployment
 

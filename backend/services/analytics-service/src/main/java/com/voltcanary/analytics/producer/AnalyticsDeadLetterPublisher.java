@@ -2,10 +2,11 @@ package com.voltcanary.analytics.producer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.config.AnalyticsDlqProperties;
+import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -20,12 +21,12 @@ public class AnalyticsDeadLetterPublisher {
     public AnalyticsDeadLetterPublisher(
             KafkaTemplate<String, String> kafkaTemplate,
             ObjectMapper objectMapper,
-            @Value("${app.analytics.dlq.topic:analytics.telemetry.validated.dlq.v1}") String topic,
-            @Value("${app.kafka.publish-enabled:true}") boolean publishEnabled) {
+            AnalyticsDlqProperties dlqProperties,
+            AnalyticsKafkaProperties kafkaProperties) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
-        this.topic = topic;
-        this.publishEnabled = publishEnabled;
+        this.topic = dlqProperties.getTopic();
+        this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
     public void publish(String sourceTopic, String originalPayload, String reason) {

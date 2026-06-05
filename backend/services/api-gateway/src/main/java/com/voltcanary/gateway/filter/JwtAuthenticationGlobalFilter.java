@@ -2,11 +2,11 @@ package com.voltcanary.gateway.filter;
 
 import com.voltcanary.common.security.JwtAccessTokenClaims;
 import com.voltcanary.common.security.JwtAccessTokenService;
+import com.voltcanary.gateway.config.GatewayJwtProperties;
 import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -44,12 +44,12 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
     private final JwtAccessTokenService accessTokenService;
 
-    public JwtAuthenticationGlobalFilter(
-            @Value("${app.jwt.key-id:${JWT_KEY_ID:dev-rsa}}") String activeKeyId,
-            @Value("${app.jwt.public-keys:${JWT_PUBLIC_KEYS:}}") String publicKeys,
-            @Value("${app.jwt.issuer:${JWT_ISSUER:voltcanary-identity}}") String issuer,
-            @Value("${app.jwt.audience:${JWT_AUDIENCE:voltcanary-api}}") String audience) {
-        this.accessTokenService = new JwtAccessTokenService(activeKeyId, publicKeys, issuer, audience);
+    public JwtAuthenticationGlobalFilter(GatewayJwtProperties properties) {
+        this.accessTokenService = new JwtAccessTokenService(
+                properties.getKeyId(),
+                properties.getPublicKeys(),
+                properties.getIssuer(),
+                properties.getAudience());
     }
 
     @Override

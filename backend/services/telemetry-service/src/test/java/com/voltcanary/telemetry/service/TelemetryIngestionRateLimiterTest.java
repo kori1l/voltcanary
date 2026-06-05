@@ -1,9 +1,6 @@
 package com.voltcanary.telemetry.service;
 
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -15,9 +12,7 @@ class TelemetryIngestionRateLimiterTest {
     void limitsEventsPerDeviceWithinMinuteWindow() {
         TelemetryValidationProperties properties = new TelemetryValidationProperties();
         properties.setMaxEventsPerDevicePerMinute(2);
-        TelemetryIngestionRateLimiter limiter = new TelemetryIngestionRateLimiter(
-                properties,
-                Clock.fixed(Instant.parse("2026-05-12T12:30:10Z"), ZoneOffset.UTC));
+        TelemetryIngestionRateLimiter limiter = new TelemetryIngestionRateLimiter(properties);
         UUID deviceId = UUID.randomUUID();
 
         assertThat(limiter.allow(deviceId)).isTrue();

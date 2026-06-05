@@ -2,19 +2,20 @@ package com.voltcanary.aiagent.llm.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.aiagent.domain.AiModelConfig;
+import com.voltcanary.aiagent.domain.AiModelProviderType;
 import com.voltcanary.aiagent.dto.TestModelProviderResponse;
 import com.voltcanary.aiagent.llm.LlmPlanDraft;
-import com.voltcanary.aiagent.provider.AiModelConfig;
-import com.voltcanary.aiagent.provider.AiModelProviderType;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+
 
 @Component
 public class OpenAiCompatibleAdapter implements AiModelAdapter {

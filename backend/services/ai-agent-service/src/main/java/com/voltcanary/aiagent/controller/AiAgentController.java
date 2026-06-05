@@ -1,10 +1,10 @@
 package com.voltcanary.aiagent.controller;
 
 import com.voltcanary.aiagent.config.AiAgentProperties;
-import com.voltcanary.aiagent.dto.ExecutePlanRequest;
-import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.dto.CreateModelConfigRequest;
 import com.voltcanary.aiagent.dto.CreateModelProviderRequest;
+import com.voltcanary.aiagent.dto.ExecutePlanRequest;
+import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.dto.ModelConfigResponse;
 import com.voltcanary.aiagent.dto.ModelProviderCapabilityResponse;
 import com.voltcanary.aiagent.dto.ModelProviderResponse;
@@ -16,14 +16,14 @@ import com.voltcanary.aiagent.dto.TestModelProviderResponse;
 import com.voltcanary.aiagent.dto.UpdateModelConfigRequest;
 import com.voltcanary.aiagent.dto.UpdateModelProviderRequest;
 import com.voltcanary.aiagent.model.AgentTool;
-import com.voltcanary.aiagent.provider.AiModelConfigRepository;
-import com.voltcanary.aiagent.provider.AiModelConfigService;
-import com.voltcanary.aiagent.provider.AiModelProviderCapabilityRegistry;
-import com.voltcanary.aiagent.provider.AiModelProviderRepository;
-import com.voltcanary.aiagent.provider.AiModelProviderService;
+import com.voltcanary.aiagent.repository.AiModelConfigRepository;
+import com.voltcanary.aiagent.repository.AiModelProviderRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AiAgentOrchestrator;
+import com.voltcanary.aiagent.service.AiModelConfigService;
+import com.voltcanary.aiagent.service.AiModelProviderCapabilityRegistry;
+import com.voltcanary.aiagent.service.AiModelProviderService;
 import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
@@ -37,6 +37,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/ai-agent")

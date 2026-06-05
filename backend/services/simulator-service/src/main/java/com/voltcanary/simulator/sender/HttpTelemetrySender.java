@@ -2,7 +2,6 @@ package com.voltcanary.simulator.sender;
 
 import com.voltcanary.simulator.generator.GeneratedTelemetryPoint;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -12,10 +11,8 @@ public class HttpTelemetrySender implements TelemetrySender {
 
     private final RestClient restClient;
 
-    public HttpTelemetrySender(
-            RestClient.Builder restClientBuilder,
-            @Value("${app.simulator.http.ingestion-url:http://localhost:8083/ingestion/readings}") String ingestionUrl) {
-        this.restClient = restClientBuilder.baseUrl(ingestionUrl).build();
+    public HttpTelemetrySender(RestClient.Builder restClientBuilder, SimulatorSenderProperties properties) {
+        this.restClient = restClientBuilder.baseUrl(properties.getHttp().getIngestionUrl()).build();
     }
 
     @Override

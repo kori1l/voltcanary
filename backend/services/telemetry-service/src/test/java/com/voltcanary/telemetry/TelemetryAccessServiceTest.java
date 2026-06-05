@@ -33,6 +33,7 @@ class TelemetryAccessServiceTest {
         TelemetryAuthorizationProperties properties = new TelemetryAuthorizationProperties();
         properties.setEnabled(true);
         properties.setDeviceServiceBaseUrl("http://device-service");
-        return new TelemetryAccessService(properties, RestClient.builder(), internalServiceToken);
+        properties.setInternalServiceToken(internalServiceToken);
+        return new TelemetryAccessService(properties, RestClient.builder());
     }
 }

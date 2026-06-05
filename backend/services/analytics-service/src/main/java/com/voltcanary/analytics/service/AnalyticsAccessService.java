@@ -1,14 +1,12 @@
 package com.voltcanary.analytics.service;
 
 import com.voltcanary.analytics.config.AnalyticsAuthorizationProperties;
+import com.voltcanary.analytics.config.AnalyticsInternalProperties;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
@@ -21,30 +19,15 @@ public class AnalyticsAccessService {
     private final AnalyticsAuthorizationProperties properties;
     private final RestClient restClient;
     private final String internalServiceToken;
-
-    @Autowired
     public AnalyticsAccessService(
             AnalyticsAuthorizationProperties properties,
             RestClient.Builder restClientBuilder,
-            @Value("${app.internal.service-token:${INTERNAL_SERVICE_TOKEN:dev-internal-token}}") String internalServiceToken) {
+            AnalyticsInternalProperties internalProperties) {
         this.properties = properties;
-        this.internalServiceToken = internalServiceToken;
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(properties.getTimeout());
-        requestFactory.setReadTimeout(properties.getTimeout());
+        this.internalServiceToken = internalProperties.getServiceToken();
         this.restClient = restClientBuilder
                 .baseUrl(properties.getDeviceServiceBaseUrl())
-                .requestFactory(requestFactory)
                 .build();
-    }
-
-    public AnalyticsAccessService(
-            AnalyticsAuthorizationProperties properties,
-            RestClient restClient,
-            String internalServiceToken) {
-        this.properties = properties;
-        this.restClient = restClient;
-        this.internalServiceToken = internalServiceToken;
     }
 
     public void requireReadAccess(UUID deviceId, String userId, String role, String correlationId) {

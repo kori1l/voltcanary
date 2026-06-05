@@ -1,6 +1,6 @@
 package com.voltcanary.device;
 
-import com.voltcanary.device.account.AccountResponse;
+import com.voltcanary.device.dto.AccountResponse;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

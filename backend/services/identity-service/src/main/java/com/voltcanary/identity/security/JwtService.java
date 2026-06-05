@@ -2,10 +2,10 @@ package com.voltcanary.identity.security;
 
 import com.voltcanary.common.security.JwtAccessTokenClaims;
 import com.voltcanary.common.security.JwtAccessTokenService;
+import com.voltcanary.identity.config.IdentityJwtProperties;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.exception.AuthenticationFailedException;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,16 +14,14 @@ public class JwtService {
     private final JwtAccessTokenService accessTokenService;
     private final long accessTokenTtlSeconds;
 
-    public JwtService(
-            @Value("${app.jwt.key-id:${JWT_KEY_ID:dev-rsa}}") String activeKeyId,
-            @Value("${app.jwt.private-key:${JWT_PRIVATE_KEY:}}") String privateKey,
-            @Value("${app.jwt.public-keys:${JWT_PUBLIC_KEYS:}}") String publicKeys,
-            @Value("${app.jwt.access-token-ttl-seconds:${JWT_ACCESS_TOKEN_TTL_SECONDS:900}}")
-                    long accessTokenTtlSeconds,
-            @Value("${app.jwt.issuer:${JWT_ISSUER:voltcanary-identity}}") String issuer,
-            @Value("${app.jwt.audience:${JWT_AUDIENCE:voltcanary-api}}") String audience) {
-        this.accessTokenService = new JwtAccessTokenService(activeKeyId, privateKey, publicKeys, issuer, audience);
-        this.accessTokenTtlSeconds = accessTokenTtlSeconds;
+    public JwtService(IdentityJwtProperties properties) {
+        this.accessTokenService = new JwtAccessTokenService(
+                properties.getKeyId(),
+                properties.getPrivateKey(),
+                properties.getPublicKeys(),
+                properties.getIssuer(),
+                properties.getAudience());
+        this.accessTokenTtlSeconds = properties.getAccessTokenTtlSeconds();
     }
 
     public String createAccessToken(User user) {

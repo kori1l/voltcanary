@@ -9,7 +9,6 @@ import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -20,13 +19,10 @@ public class MqttTelemetrySender implements TelemetrySender {
     private final String topicTemplate;
     private MqttClient client;
 
-    public MqttTelemetrySender(
-            ObjectMapper objectMapper,
-            @Value("${app.simulator.mqtt.broker-url}") String brokerUrl,
-            @Value("${app.simulator.mqtt.topic-template}") String topicTemplate) {
+    public MqttTelemetrySender(ObjectMapper objectMapper, SimulatorSenderProperties properties) {
         this.objectMapper = objectMapper;
-        this.brokerUrl = brokerUrl;
-        this.topicTemplate = topicTemplate;
+        this.brokerUrl = properties.getMqtt().getBrokerUrl();
+        this.topicTemplate = properties.getMqtt().getTopicTemplate();
     }
 
     @Override

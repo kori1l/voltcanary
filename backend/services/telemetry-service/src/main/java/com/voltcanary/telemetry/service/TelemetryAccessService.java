@@ -4,11 +4,11 @@ import com.voltcanary.telemetry.config.TelemetryAuthorizationProperties;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 @Service
 public class TelemetryAccessService {
@@ -21,11 +21,10 @@ public class TelemetryAccessService {
 
     public TelemetryAccessService(
             TelemetryAuthorizationProperties properties,
-            RestClient.Builder restClientBuilder,
-            @org.springframework.beans.factory.annotation.Value("${app.internal.service-token:${INTERNAL_SERVICE_TOKEN:dev-internal-token}}") String internalServiceToken) {
+            RestClient.Builder restClientBuilder) {
         this.properties = properties;
         this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
-        this.internalServiceToken = internalServiceToken;
+        this.internalServiceToken = properties.getInternalServiceToken();
     }
 
     public void requireReadAccess(UUID deviceId, String userId, String role, String correlationId) {

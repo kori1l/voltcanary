@@ -1,6 +1,7 @@
 package com.voltcanary.analytics.risk;
 
-import com.voltcanary.analytics.anomaly.Anomaly;
+import com.voltcanary.analytics.domain.Anomaly;
+import com.voltcanary.analytics.domain.RiskScore;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;

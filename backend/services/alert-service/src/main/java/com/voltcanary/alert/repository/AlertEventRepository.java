@@ -1,6 +1,6 @@
 package com.voltcanary.alert.repository;
 
-import com.voltcanary.alert.alert.AlertEvent;
+import com.voltcanary.alert.domain.AlertEvent;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;

@@ -1,6 +1,6 @@
 package com.voltcanary.alert.repository;
 
-import com.voltcanary.alert.alert.Alert;
+import com.voltcanary.alert.domain.Alert;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

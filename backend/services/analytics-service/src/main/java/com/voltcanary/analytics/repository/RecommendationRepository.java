@@ -1,6 +1,6 @@
 package com.voltcanary.analytics.repository;
 
-import com.voltcanary.analytics.recommendation.Recommendation;
+import com.voltcanary.analytics.domain.Recommendation;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;

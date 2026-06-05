@@ -9,9 +9,11 @@ spring:
             connect-timeout: ${GATEWAY_CONNECT_TIMEOUT_MS:2000}
             response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
           globalcors:
+            add-to-simple-url-handler-mapping: true
             cors-configurations:
               '[/**]':
-                allowed-origin-patterns: ${GATEWAY_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+                allowed-origin-patterns:
+                  - ${GATEWAY_CORS_ALLOWED_ORIGINS:http://localhost:3000}
                 allowed-methods:
                   - GET
                   - POST
@@ -90,9 +92,35 @@ app:
       default-max-bytes: ${GATEWAY_REQUEST_MAX_BYTES:1048576}
       auth-max-bytes: ${GATEWAY_AUTH_REQUEST_MAX_BYTES:65536}
       ingestion-max-bytes: ${GATEWAY_INGESTION_REQUEST_MAX_BYTES:262144}
+    cors:
+      allowed-origin-patterns:
+        - ${GATEWAY_CORS_ALLOWED_ORIGINS:http://localhost:3000}
+      allowed-methods:
+        - GET
+        - POST
+        - PATCH
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowed-headers:
+        - Authorization
+        - Content-Type
+        - X-Correlation-Id
+      exposed-headers:
+        - X-Correlation-Id
+      allow-credentials: true
     downstream-health:
       enabled: ${GATEWAY_DOWNSTREAM_HEALTH_ENABLED:false}
       timeout: ${GATEWAY_DOWNSTREAM_HEALTH_TIMEOUT:2s}
+      services:
+        identity-service: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+        device-service: ${DEVICE_SERVICE_URI:http://localhost:8082}
+        ingestion-service: ${INGESTION_SERVICE_URI:http://localhost:8083}
+        telemetry-service: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+        analytics-service: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+        alert-service: ${ALERT_SERVICE_URI:http://localhost:8086}
+        simulator-service: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
+        ai-agent-service: ${AI_AGENT_SERVICE_URI:http://localhost:8088}
 
 server:
   port: 8080

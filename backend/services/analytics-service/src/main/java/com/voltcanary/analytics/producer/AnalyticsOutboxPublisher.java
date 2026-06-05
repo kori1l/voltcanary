@@ -1,12 +1,12 @@
 package com.voltcanary.analytics.producer;
 
+import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import com.voltcanary.analytics.domain.AnalyticsEventOutbox;
 import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
 import java.time.Instant;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -27,11 +27,11 @@ public class AnalyticsOutboxPublisher {
     public AnalyticsOutboxPublisher(
             AnalyticsEventOutboxRepository repository,
             KafkaTemplate<String, String> kafkaTemplate,
-            @Value("${app.kafka.publish-enabled:true}") boolean publishEnabled,
+            AnalyticsKafkaProperties kafkaProperties,
             MeterRegistry meterRegistry) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
-        this.publishEnabled = publishEnabled;
+        this.publishEnabled = kafkaProperties.isPublishEnabled();
         this.meterRegistry = meterRegistry;
     }
 

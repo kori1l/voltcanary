@@ -27,6 +27,10 @@ public class IngestionProperties {
     private boolean backpressureEnabled = true;
     private Duration backpressureCooldown = Duration.ofSeconds(30);
     private int auditCapacity = 1_000;
+    private String deviceServiceBaseUrl = "http://localhost:8082";
+    private String internalServiceToken = "dev-internal-token";
+    private boolean kafkaPublishEnabled = false;
+    private Mqtt mqtt = new Mqtt();
 
     public Instant getMinAcceptedTimestamp() {
         return minAcceptedTimestamp;
@@ -170,5 +174,53 @@ public class IngestionProperties {
 
     public void setAuditCapacity(int auditCapacity) {
         this.auditCapacity = auditCapacity;
+    }
+
+    public String getDeviceServiceBaseUrl() {
+        return deviceServiceBaseUrl;
+    }
+
+    public void setDeviceServiceBaseUrl(String deviceServiceBaseUrl) {
+        this.deviceServiceBaseUrl = deviceServiceBaseUrl;
+    }
+
+    public String getInternalServiceToken() {
+        return internalServiceToken;
+    }
+
+    public void setInternalServiceToken(String internalServiceToken) {
+        this.internalServiceToken = internalServiceToken;
+    }
+
+    public boolean isKafkaPublishEnabled() {
+        return kafkaPublishEnabled;
+    }
+
+    public void setKafkaPublishEnabled(boolean kafkaPublishEnabled) {
+        this.kafkaPublishEnabled = kafkaPublishEnabled;
+    }
+
+    public Mqtt getMqtt() {
+        return mqtt;
+    }
+
+    public void setMqtt(Mqtt mqtt) {
+        this.mqtt = mqtt;
+    }
+
+    public static class Mqtt {
+        private boolean enabled = false;
+        private String brokerUrl = "tcp://localhost:1883";
+        private String clientId = "voltcanary-ingestion";
+        private String topicFilter = "voltcanary/sources/+/telemetry";
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public String getBrokerUrl() { return brokerUrl; }
+        public void setBrokerUrl(String brokerUrl) { this.brokerUrl = brokerUrl; }
+        public String getClientId() { return clientId; }
+        public void setClientId(String clientId) { this.clientId = clientId; }
+        public String getTopicFilter() { return topicFilter; }
+        public void setTopicFilter(String topicFilter) { this.topicFilter = topicFilter; }
     }
 }

@@ -2,6 +2,7 @@ package com.voltcanary.analytics.anomaly;
 
 import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.config.AnalyticsRuleProperties;
+import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;

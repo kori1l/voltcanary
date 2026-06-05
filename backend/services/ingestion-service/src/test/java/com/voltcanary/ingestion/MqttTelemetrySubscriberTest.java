@@ -1,6 +1,7 @@
 package com.voltcanary.ingestion;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.mqtt.MqttTelemetrySubscriber;
 import com.voltcanary.ingestion.mqtt.MqttTopicParser;
@@ -17,13 +18,15 @@ class MqttTelemetrySubscriberTest {
     @Test
     void callsPipeline() throws Exception {
         TelemetryIngestionPipeline pipeline = mock(TelemetryIngestionPipeline.class);
+        IngestionProperties properties = new IngestionProperties();
+        properties.getMqtt().setBrokerUrl("tcp://localhost:1883");
+        properties.getMqtt().setClientId("test-client");
+        properties.getMqtt().setTopicFilter("voltcanary/sources/+/telemetry");
         MqttTelemetrySubscriber subscriber = new MqttTelemetrySubscriber(
                 new MqttTopicParser(),
                 new MqttPayloadMapper(new ObjectMapper()),
                 pipeline,
-                "tcp://localhost:1883",
-                "test-client",
-                "voltcanary/sources/+/telemetry");
+                properties);
 
         subscriber.messageArrived(
                 "voltcanary/sources/sim-fridge-001/telemetry",

@@ -3,13 +3,11 @@ package com.voltcanary.ingestion.abuse;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.source.ResolvedSource;
-import java.time.Clock;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.http.HttpStatus;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,17 +15,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class IngestionRateLimiter {
 
     private final IngestionProperties properties;
-    private final Clock clock;
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
 
-    @Autowired
     public IngestionRateLimiter(IngestionProperties properties) {
-        this(properties, Clock.systemUTC());
-    }
-
-    IngestionRateLimiter(IngestionProperties properties, Clock clock) {
         this.properties = properties;
-        this.clock = clock;
     }
 
     public void check(IncomingTelemetryMessage message, ResolvedSource source) {
@@ -63,7 +54,7 @@ public class IngestionRateLimiter {
 
     private long currentWindowStartedAt() {
         long windowMillis = Math.max(1, properties.getRateLimitWindow().toMillis());
-        long now = clock.millis();
+        long now = System.currentTimeMillis();
         return now - (now % windowMillis);
     }
 

@@ -1,8 +1,8 @@
 package com.voltcanary.ingestion.device;
 
+import com.voltcanary.ingestion.config.IngestionProperties;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
@@ -16,10 +16,9 @@ public class DeviceValidationClient {
 
     public DeviceValidationClient(
             RestClient.Builder restClientBuilder,
-            @Value("${app.device-service.base-url:http://localhost:8082}") String deviceServiceBaseUrl,
-            @Value("${app.internal.service-token:${INTERNAL_SERVICE_TOKEN:dev-internal-token}}") String internalServiceToken) {
-        this.restClient = restClientBuilder.baseUrl(deviceServiceBaseUrl).build();
-        this.internalServiceToken = internalServiceToken;
+            IngestionProperties properties) {
+        this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
+        this.internalServiceToken = properties.getInternalServiceToken();
     }
 
     public boolean dataSourceExists(UUID deviceId, String sourceId) {

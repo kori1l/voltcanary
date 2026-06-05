@@ -1,5 +1,6 @@
 package com.voltcanary.identity.service;
 
+import com.voltcanary.identity.config.IdentityAuthProperties;
 import com.voltcanary.identity.domain.EmailVerificationToken;
 import com.voltcanary.identity.domain.PasswordResetToken;
 import com.voltcanary.identity.domain.User;
@@ -43,7 +44,6 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,10 +77,7 @@ public class AuthService {
             PasswordResetTokenRepository passwordResetTokenRepository,
             EmailVerificationTokenRepository emailVerificationTokenRepository,
             RefreshTokenRepository refreshTokenRepository,
-            @Value("${app.auth.password-reset-token-ttl-seconds:${PASSWORD_RESET_TOKEN_TTL_SECONDS:900}}")
-                    long passwordResetTokenTtlSeconds,
-            @Value("${app.auth.email-verification-token-ttl-seconds:${EMAIL_VERIFICATION_TOKEN_TTL_SECONDS:86400}}")
-                    long emailVerificationTokenTtlSeconds) {
+            IdentityAuthProperties authProperties) {
         this.userRepository = userRepository;
         this.loginAuditService = loginAuditService;
         this.passwordEncoder = passwordEncoder;
@@ -90,8 +87,8 @@ public class AuthService {
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.emailVerificationTokenRepository = emailVerificationTokenRepository;
         this.refreshTokenRepository = refreshTokenRepository;
-        this.passwordResetTokenTtlSeconds = passwordResetTokenTtlSeconds;
-        this.emailVerificationTokenTtlSeconds = emailVerificationTokenTtlSeconds;
+        this.passwordResetTokenTtlSeconds = authProperties.getPasswordResetTokenTtlSeconds();
+        this.emailVerificationTokenTtlSeconds = authProperties.getEmailVerificationTokenTtlSeconds();
     }
 
     @Transactional

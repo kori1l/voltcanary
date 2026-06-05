@@ -35,6 +35,7 @@ app:
     authorization:
       enabled: ${TELEMETRY_AUTHORIZATION_ENABLED:true}
       device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
       timeout: ${TELEMETRY_AUTHORIZATION_TIMEOUT:2s}
     validation:
       max-future-skew: ${TELEMETRY_MAX_FUTURE_SKEW:5m}

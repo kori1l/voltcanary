@@ -1,5 +1,6 @@
 package com.voltcanary.analytics.service;
 
+import com.voltcanary.analytics.config.AnalyticsJobProperties;
 import com.voltcanary.analytics.domain.AnalyticsJob;
 import com.voltcanary.analytics.dto.AnalyticsJobResponse;
 import com.voltcanary.analytics.repository.AnalyticsJobRepository;
@@ -8,7 +9,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -27,11 +27,11 @@ public class AnalyticsJobService {
     public AnalyticsJobService(
             AnalyticsJobRepository jobRepository,
             AnalyticsJobRunner jobRunner,
-            @Value("${app.analytics.jobs.async:true}") boolean asyncJobs,
+            AnalyticsJobProperties jobProperties,
             MeterRegistry meterRegistry) {
         this.jobRepository = jobRepository;
         this.jobRunner = jobRunner;
-        this.asyncJobs = asyncJobs;
+        this.asyncJobs = jobProperties.isAsync();
         this.meterRegistry = meterRegistry;
     }
 

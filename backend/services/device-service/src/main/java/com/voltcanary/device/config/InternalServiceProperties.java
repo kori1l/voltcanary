@@ -1,7 +1,9 @@
 package com.voltcanary.device.config;
 
+import com.voltcanary.device.domain.Device;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
 
 @Component
 @ConfigurationProperties(prefix = "app.internal")

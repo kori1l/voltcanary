@@ -2,10 +2,10 @@ package com.voltcanary.analytics.producer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.anomaly.Anomaly;
+import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.AnalyticsEventOutbox;
 import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
-import com.voltcanary.analytics.risk.RiskScore;
+import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import java.time.Instant;

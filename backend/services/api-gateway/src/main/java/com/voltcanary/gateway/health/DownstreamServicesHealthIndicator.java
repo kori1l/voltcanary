@@ -1,9 +1,8 @@
 package com.voltcanary.gateway.health;
 
+import com.voltcanary.gateway.config.GatewayDownstreamProperties;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.ReactiveHealthIndicator;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -21,26 +20,10 @@ public class DownstreamServicesHealthIndicator implements ReactiveHealthIndicato
 
     public DownstreamServicesHealthIndicator(
             WebClient.Builder webClientBuilder,
-            @Value("${app.gateway.downstream-health.timeout:2s}") Duration timeout,
-            @Value("${IDENTITY_SERVICE_URI:http://localhost:8081}") String identityServiceUri,
-            @Value("${DEVICE_SERVICE_URI:http://localhost:8082}") String deviceServiceUri,
-            @Value("${INGESTION_SERVICE_URI:http://localhost:8083}") String ingestionServiceUri,
-            @Value("${TELEMETRY_SERVICE_URI:http://localhost:8084}") String telemetryServiceUri,
-            @Value("${ANALYTICS_SERVICE_URI:http://localhost:8085}") String analyticsServiceUri,
-            @Value("${ALERT_SERVICE_URI:http://localhost:8086}") String alertServiceUri,
-            @Value("${SIMULATOR_SERVICE_URI:http://localhost:8087}") String simulatorServiceUri,
-            @Value("${AI_AGENT_SERVICE_URI:http://localhost:8088}") String aiAgentServiceUri) {
+            GatewayDownstreamProperties properties) {
         this.webClient = webClientBuilder.build();
-        this.timeout = timeout;
-        this.serviceUris = new LinkedHashMap<>();
-        this.serviceUris.put("identity-service", identityServiceUri);
-        this.serviceUris.put("device-service", deviceServiceUri);
-        this.serviceUris.put("ingestion-service", ingestionServiceUri);
-        this.serviceUris.put("telemetry-service", telemetryServiceUri);
-        this.serviceUris.put("analytics-service", analyticsServiceUri);
-        this.serviceUris.put("alert-service", alertServiceUri);
-        this.serviceUris.put("simulator-service", simulatorServiceUri);
-        this.serviceUris.put("ai-agent-service", aiAgentServiceUri);
+        this.timeout = properties.getTimeout();
+        this.serviceUris = properties.getServices();
     }
 
     @Override

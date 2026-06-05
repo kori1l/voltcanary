@@ -1,16 +1,18 @@
 package com.voltcanary.device.metrics;
 
-import com.voltcanary.device.datasource.DataSourceProtocol;
-import com.voltcanary.device.datasource.DataSourceRepository;
-import com.voltcanary.device.datasource.SourceStatus;
-import com.voltcanary.device.device.DeviceRepository;
-import com.voltcanary.device.device.DeviceStatus;
+import com.voltcanary.device.domain.DataSourceProtocol;
+import com.voltcanary.device.domain.Device;
+import com.voltcanary.device.domain.DeviceStatus;
+import com.voltcanary.device.domain.SourceStatus;
+import com.voltcanary.device.repository.DataSourceRepository;
+import com.voltcanary.device.repository.DeviceRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+
 
 @Component
 public class DeviceOperationalMetrics {

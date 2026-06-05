@@ -1,11 +1,11 @@
 package com.voltcanary.aiagent.service;
 
+import com.voltcanary.aiagent.config.AiAgentProperties;
 import com.voltcanary.aiagent.dto.ActionExecutionResponse;
 import com.voltcanary.aiagent.model.AgentAction;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -15,12 +15,9 @@ public class ToolExecutor {
     private final RestClient deviceClient;
     private final RestClient simulatorClient;
 
-    public ToolExecutor(
-            RestClient.Builder restClientBuilder,
-            @Value("${app.services.device-base-url}") String deviceBaseUrl,
-            @Value("${app.services.simulator-base-url}") String simulatorBaseUrl) {
-        this.deviceClient = restClientBuilder.baseUrl(deviceBaseUrl).build();
-        this.simulatorClient = restClientBuilder.baseUrl(simulatorBaseUrl).build();
+    public ToolExecutor(RestClient.Builder restClientBuilder, AiAgentProperties properties) {
+        this.deviceClient = restClientBuilder.baseUrl(properties.getServices().getDeviceBaseUrl()).build();
+        this.simulatorClient = restClientBuilder.baseUrl(properties.getServices().getSimulatorBaseUrl()).build();
     }
 
     public ActionExecutionResponse execute(AgentAction action, String authorization, UUID userId, Map<String, Object> outputs) {

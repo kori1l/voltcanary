@@ -2,13 +2,11 @@ package com.voltcanary.gateway.filter;
 
 import com.voltcanary.gateway.config.GatewayRateLimitProperties;
 import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
-import java.time.Clock;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -23,17 +21,10 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
     private static final Logger log = LoggerFactory.getLogger(GatewayRateLimitGlobalFilter.class);
 
     private final GatewayRateLimitProperties properties;
-    private final Clock clock;
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
 
-    @Autowired
     public GatewayRateLimitGlobalFilter(GatewayRateLimitProperties properties) {
-        this(properties, Clock.systemUTC());
-    }
-
-    GatewayRateLimitGlobalFilter(GatewayRateLimitProperties properties, Clock clock) {
         this.properties = properties;
-        this.clock = clock;
     }
 
     @Override
@@ -100,7 +91,7 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
 
     private long currentWindowStartedAt() {
         long windowMillis = Math.max(1, properties.getWindow().toMillis());
-        long now = clock.millis();
+        long now = System.currentTimeMillis();
         return now - (now % windowMillis);
     }
 

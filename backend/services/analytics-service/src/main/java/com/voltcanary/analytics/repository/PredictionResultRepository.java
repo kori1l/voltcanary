@@ -1,6 +1,6 @@
 package com.voltcanary.analytics.repository;
 
-import com.voltcanary.analytics.prediction.PredictionResult;
+import com.voltcanary.analytics.domain.PredictionResult;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

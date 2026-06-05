@@ -27,6 +27,13 @@ import org.springframework.beans.factory.annotation.Autowired;
                         + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.ServletWebServerFactoryAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration,"
+                        + "org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration,"
+                        + "org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.security.reactive.ReactiveSecurityAutoConfiguration,"
                         + "org.springframework.boot.actuate.autoconfigure.security.reactive.ReactiveManagementWebSecurityAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.security.reactive.ReactiveUserDetailsServiceAutoConfiguration,"
@@ -115,6 +122,7 @@ class GatewayIdentityIntegrationTest {
         }
         identityContext = new SpringApplicationBuilder(IdentityServiceApplication.class)
                 .properties(
+                        "spring.config.name=gateway-identity-test",
                         "server.port=0",
                         "spring.main.web-application-type=servlet",
                         "spring.autoconfigure.exclude=org.springframework.cloud.gateway.config.GatewayClassPathWarningAutoConfiguration,"

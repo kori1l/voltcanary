@@ -1,29 +1,20 @@
 package com.voltcanary.telemetry.service;
 
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
-import java.time.Clock;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class TelemetryIngestionRateLimiter {
 
     private final TelemetryValidationProperties properties;
-    private final Clock clock;
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
 
-    @Autowired
     public TelemetryIngestionRateLimiter(TelemetryValidationProperties properties) {
-        this(properties, Clock.systemUTC());
-    }
-
-    TelemetryIngestionRateLimiter(TelemetryValidationProperties properties, Clock clock) {
         this.properties = properties;
-        this.clock = clock;
     }
 
     public boolean allow(UUID deviceId) {
@@ -42,7 +33,7 @@ public class TelemetryIngestionRateLimiter {
     }
 
     private long currentMinuteStartedAt() {
-        long now = clock.millis();
+        long now = System.currentTimeMillis();
         return now - (now % 60_000);
     }
 
