@@ -1,7 +1,9 @@
 package com.voltcanary.alert.consumer;
 
-import com.voltcanary.alert.service.AlertService;
+import com.voltcanary.alert.service.AnalyticsAlertEventHandler;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -10,10 +12,12 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "app.kafka", name = "consume-enabled", havingValue = "true")
 public class AnomalyDetectedConsumer {
 
-    private final AlertService alertService;
+    private static final Logger log = LoggerFactory.getLogger(AnomalyDetectedConsumer.class);
 
-    public AnomalyDetectedConsumer(AlertService alertService) {
-        this.alertService = alertService;
+    private final AnalyticsAlertEventHandler eventHandler;
+
+    public AnomalyDetectedConsumer(AnalyticsAlertEventHandler eventHandler) {
+        this.eventHandler = eventHandler;
     }
 
     @KafkaListener(
@@ -21,6 +25,11 @@ public class AnomalyDetectedConsumer {
             groupId = "${spring.kafka.consumer.group-id}",
             containerFactory = "anomalyDetectedKafkaListenerContainerFactory")
     public void consume(AnomalyDetectedEvent event) {
-        alertService.handleAnomaly(event);
+        boolean processed = eventHandler.handleAnomaly(event);
+        log.info(
+                "anomalyDetectedConsumed eventId={} deviceId={} processed={}",
+                event.eventId(),
+                event.deviceId(),
+                processed);
     }
 }

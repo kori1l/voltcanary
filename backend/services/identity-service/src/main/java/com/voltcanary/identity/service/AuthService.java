@@ -63,6 +63,8 @@ public class AuthService {
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final DeviceAccountLifecycleClient deviceAccountLifecycleClient;
+    private final IdentityLifecycleOutboxService identityLifecycleOutboxService;
     private final SecureRandom secureRandom = new SecureRandom();
     private final long passwordResetTokenTtlSeconds;
     private final long emailVerificationTokenTtlSeconds;
@@ -77,6 +79,8 @@ public class AuthService {
             PasswordResetTokenRepository passwordResetTokenRepository,
             EmailVerificationTokenRepository emailVerificationTokenRepository,
             RefreshTokenRepository refreshTokenRepository,
+            DeviceAccountLifecycleClient deviceAccountLifecycleClient,
+            IdentityLifecycleOutboxService identityLifecycleOutboxService,
             IdentityAuthProperties authProperties) {
         this.userRepository = userRepository;
         this.loginAuditService = loginAuditService;
@@ -87,6 +91,8 @@ public class AuthService {
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.emailVerificationTokenRepository = emailVerificationTokenRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.deviceAccountLifecycleClient = deviceAccountLifecycleClient;
+        this.identityLifecycleOutboxService = identityLifecycleOutboxService;
         this.passwordResetTokenTtlSeconds = authProperties.getPasswordResetTokenTtlSeconds();
         this.emailVerificationTokenTtlSeconds = authProperties.getEmailVerificationTokenTtlSeconds();
     }
@@ -277,6 +283,24 @@ public class AuthService {
                 .orElseThrow(() -> new AuthenticationFailedException("User not found"));
         user.setStatus(request.status());
         user.setUpdatedAt(Instant.now());
+        if (request.status() != UserStatus.ACTIVE) {
+            refreshTokenService.revokeAllForUser(user.getId());
+        }
+        identityLifecycleOutboxService.enqueueAccountLifecycle(user);
+        deviceAccountLifecycleClient.sync(user.getId(), user.getEmail(), user.getStatus());
+        return toAdminUserResponse(user);
+    }
+
+    @Transactional
+    public AdminUserResponse deleteUser(String authorizationHeader, UUID userId) {
+        requireAdmin(authorizationHeader);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthenticationFailedException("User not found"));
+        user.setStatus(UserStatus.DELETED);
+        user.setUpdatedAt(Instant.now());
+        refreshTokenService.revokeAllForUser(user.getId());
+        identityLifecycleOutboxService.enqueueAccountLifecycle(user);
+        deviceAccountLifecycleClient.sync(user.getId(), user.getEmail(), user.getStatus());
         return toAdminUserResponse(user);
     }
 

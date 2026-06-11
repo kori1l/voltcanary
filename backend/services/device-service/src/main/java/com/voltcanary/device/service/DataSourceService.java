@@ -1,6 +1,7 @@
 package com.voltcanary.device.service;
 
 import com.voltcanary.device.audit.DeviceAuditService;
+import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.DataSource;
 import com.voltcanary.device.domain.DataSourceProtocol;
 import com.voltcanary.device.domain.DataSourceType;
@@ -13,6 +14,7 @@ import com.voltcanary.device.dto.DataSourceResponse;
 import com.voltcanary.device.dto.InternalDataSourceResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
@@ -35,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DataSourceService {
 
     private final DeviceService deviceService;
+    private final AccountRepository accountRepository;
     private final DeviceRepository deviceRepository;
     private final DataSourceRepository dataSourceRepository;
     private final DeviceRegistryEventPublisher eventPublisher;
@@ -43,11 +46,13 @@ public class DataSourceService {
 
     public DataSourceService(
             DeviceService deviceService,
+            AccountRepository accountRepository,
             DeviceRepository deviceRepository,
             DataSourceRepository dataSourceRepository,
             DeviceRegistryEventPublisher eventPublisher,
             DeviceAuditService auditService) {
         this.deviceService = deviceService;
+        this.accountRepository = accountRepository;
         this.deviceRepository = deviceRepository;
         this.dataSourceRepository = dataSourceRepository;
         this.eventPublisher = eventPublisher;
@@ -189,6 +194,9 @@ public class DataSourceService {
     @Transactional(readOnly = true)
     public boolean exists(UUID deviceId, String sourceId) {
         return deviceRepository.findById(deviceId)
+                .filter(device -> accountRepository.findById(device.getAccountId())
+                        .filter(account -> account.getStatus() == AccountStatus.ACTIVE)
+                        .isPresent())
                 .filter(device -> device.getStatus() == DeviceStatus.ACTIVE)
                 .filter(device -> dataSourceRepository.findByDeviceId(device.getId()).stream()
                         .anyMatch(source -> source.isEnabled()

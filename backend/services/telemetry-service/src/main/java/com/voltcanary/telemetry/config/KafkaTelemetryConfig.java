@@ -69,4 +69,18 @@ public class KafkaTelemetryConfig {
             ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory) {
         return new KafkaTemplate<>(telemetryDeadLetterProducerFactory);
     }
+
+    @Bean
+    ProducerFactory<String, String> telemetryStringProducerFactory(KafkaProperties kafkaProperties) {
+        Map<String, Object> properties = kafkaProperties.buildProducerProperties(null);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        return new DefaultKafkaProducerFactory<>(properties);
+    }
+
+    @Bean
+    KafkaTemplate<String, String> telemetryStringKafkaTemplate(
+            ProducerFactory<String, String> telemetryStringProducerFactory) {
+        return new KafkaTemplate<>(telemetryStringProducerFactory);
+    }
 }

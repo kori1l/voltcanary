@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.common.events.alert.AlertCreatedEvent;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
+import com.voltcanary.common.events.identity.IdentityAccountLifecycleEvent;
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
 import java.time.Instant;
@@ -58,6 +59,8 @@ class EventContractTest {
                 .isNotNull();
         assertThat(new RiskScoreChangedEvent(eventId, deviceId, 0.2, 0.7, "MEDIUM", now)).isNotNull();
         assertThat(new AlertCreatedEvent(eventId, UUID.randomUUID(), deviceId, "HIGH", "OPEN", "Voltage spike", now))
+                .isNotNull();
+        assertThat(new IdentityAccountLifecycleEvent(eventId, "v1", UUID.randomUUID(), "user@example.com", "ACTIVE", now))
                 .isNotNull();
     }
 }

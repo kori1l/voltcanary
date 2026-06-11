@@ -6,6 +6,7 @@ import com.voltcanary.ingestion.pipeline.IngestionProtocol;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
@@ -38,7 +39,7 @@ public class SourceResolver {
         String tokenPrefix = tokenValidator.prefix(message.sourceToken());
         InternalDataSourceResponse source = cache.getByTokenPrefix(tokenPrefix)
                 .orElseGet(() -> {
-                    InternalDataSourceResponse fetched = sourceClient.findByTokenPrefix(tokenPrefix);
+                    InternalDataSourceResponse fetched = fetchByTokenPrefix(tokenPrefix);
                     cache.putByTokenPrefix(tokenPrefix, fetched);
                     return fetched;
                 });
@@ -57,6 +58,10 @@ public class SourceResolver {
         if (message.protocol() == IngestionProtocol.HTTP && !"REST".equalsIgnoreCase(source.protocol())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data source protocol does not allow REST ingestion");
         }
+        if (!deviceValidationClient.dataSourceExists(source.deviceId(), source.externalId())) {
+            cache.evictByTokenPrefix(tokenPrefix);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source");
+        }
         return new ResolvedSource(
                 source.accountId(),
                 source.deviceId(),
@@ -65,6 +70,14 @@ public class SourceResolver {
                 source.sourceType(),
                 source.protocol(),
                 source.status());
+    }
+
+    private InternalDataSourceResponse fetchByTokenPrefix(String tokenPrefix) {
+        try {
+            return sourceClient.findByTokenPrefix(tokenPrefix);
+        } catch (HttpClientErrorException.NotFound exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token", exception);
+        }
     }
 
     private ResolvedSource resolveDevMode(IncomingTelemetryMessage message) {

@@ -40,6 +40,7 @@ public class TelemetryEventProcessor {
     private final MetricCatalog metricCatalog;
     private final TelemetryValidationProperties validationProperties;
     private final TelemetryIngestionRateLimiter rateLimiter;
+    private final ProcessedEventService processedEventService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
 
@@ -52,6 +53,7 @@ public class TelemetryEventProcessor {
             MetricCatalog metricCatalog,
             TelemetryValidationProperties validationProperties,
             TelemetryIngestionRateLimiter rateLimiter,
+            ProcessedEventService processedEventService,
             ObjectMapper objectMapper,
             MeterRegistry meterRegistry) {
         this.measurementRepository = measurementRepository;
@@ -62,6 +64,7 @@ public class TelemetryEventProcessor {
         this.metricCatalog = metricCatalog;
         this.validationProperties = validationProperties;
         this.rateLimiter = rateLimiter;
+        this.processedEventService = processedEventService;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
     }
@@ -75,6 +78,12 @@ public class TelemetryEventProcessor {
         int inserted = 0;
         try {
             increment("consumed", "received");
+            if (event != null && !processedEventService.markIfNew("telemetry.raw.v1", event.eventId())) {
+                increment("duplicate", "event_id");
+                outcome = "duplicate";
+                log.info("Skipped duplicate telemetry eventId={}", event.eventId());
+                return 0;
+            }
             validateRequiredFields(event, qualityFlags);
             persistReading(event, readingId);
             if (!qualityFlags.isEmpty()) {

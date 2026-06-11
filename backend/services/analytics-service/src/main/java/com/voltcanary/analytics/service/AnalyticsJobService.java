@@ -1,18 +1,18 @@
 package com.voltcanary.analytics.service;
 
 import com.voltcanary.analytics.config.AnalyticsJobProperties;
+import com.voltcanary.analytics.config.AnalyticsMetricProperties;
 import com.voltcanary.analytics.domain.AnalyticsJob;
 import com.voltcanary.analytics.dto.AnalyticsJobResponse;
 import com.voltcanary.analytics.repository.AnalyticsJobRepository;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class AnalyticsJobService {
@@ -21,6 +21,7 @@ public class AnalyticsJobService {
 
     private final AnalyticsJobRepository jobRepository;
     private final AnalyticsJobRunner jobRunner;
+    private final AnalyticsMetricProperties metricProperties;
     private final boolean asyncJobs;
     private final MeterRegistry meterRegistry;
 
@@ -28,15 +29,22 @@ public class AnalyticsJobService {
             AnalyticsJobRepository jobRepository,
             AnalyticsJobRunner jobRunner,
             AnalyticsJobProperties jobProperties,
+            AnalyticsMetricProperties metricProperties,
             MeterRegistry meterRegistry) {
         this.jobRepository = jobRepository;
         this.jobRunner = jobRunner;
+        this.metricProperties = metricProperties;
         this.asyncJobs = jobProperties.isAsync();
         this.meterRegistry = meterRegistry;
     }
 
     @Transactional
     public AnalyticsJobResponse enqueueRecalculation(UUID deviceId) {
+        return enqueueRecalculation(deviceId, null);
+    }
+
+    @Transactional
+    public AnalyticsJobResponse enqueueRecalculation(UUID deviceId, Instant eventTime) {
         Optional<AnalyticsJob> existing = jobRepository.findFirstByDeviceIdAndStatusInOrderByCreatedAtDesc(
                 deviceId,
                 ACTIVE_STATUSES);
@@ -49,18 +57,12 @@ public class AnalyticsJobService {
         job.setDeviceId(deviceId);
         job.setJobType("RECALCULATION");
         job.setStatus("PENDING");
+        job.setActiveKey("ACTIVE");
         job.setCreatedAt(Instant.now());
+        applyDeterministicWindow(job, eventTime);
         jobRepository.saveAndFlush(job);
         meterRegistry.counter("analytics.jobs.enqueued", "status", "pending").increment();
-        if (asyncJobs) {
-            UUID jobId = job.getId();
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    jobRunner.runAsync(jobId);
-                }
-            });
-        } else {
+        if (!asyncJobs) {
             jobRunner.run(job.getId());
         }
         return toResponse(jobRepository.findById(job.getId()).orElse(job));
@@ -88,5 +90,14 @@ public class AnalyticsJobService {
                 job.getStartedAt(),
                 job.getCompletedAt(),
                 job.getErrorMessage());
+    }
+
+    private void applyDeterministicWindow(AnalyticsJob job, Instant eventTime) {
+        if (eventTime == null) {
+            return;
+        }
+        Instant windowEnd = eventTime.truncatedTo(ChronoUnit.HOURS).plus(1, ChronoUnit.HOURS);
+        job.setWindowEnd(windowEnd);
+        job.setWindowStart(windowEnd.minus(metricProperties.getDefaultWindow()));
     }
 }

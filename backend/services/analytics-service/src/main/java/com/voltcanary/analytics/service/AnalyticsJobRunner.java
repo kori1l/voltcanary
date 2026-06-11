@@ -9,7 +9,6 @@ import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -30,11 +29,6 @@ public class AnalyticsJobRunner {
         this.meterRegistry = meterRegistry;
     }
 
-    @Async
-    public void runAsync(UUID jobId) {
-        run(jobId);
-    }
-
     public void run(UUID jobId) {
         AnalyticsJob job = jobRepository.findById(jobId).orElseThrow();
         Timer.Sample timer = Timer.start(meterRegistry);
@@ -45,9 +39,17 @@ public class AnalyticsJobRunner {
         jobRepository.saveAndFlush(job);
         try {
             log.info("analyticsJobStarted jobId={} deviceId={} jobType={}", job.getId(), job.getDeviceId(), job.getJobType());
-            recalculationService.recalculate(job.getDeviceId());
+            AnalyticsRecalculationService.RecalculationResult result = job.getWindowEnd() == null
+                    ? recalculationService.recalculate(job.getDeviceId())
+                    : recalculationService.recalculate(job.getDeviceId(), job.getWindowEnd());
             job.setStatus("COMPLETED");
+            job.setActiveKey(null);
             job.setCompletedAt(Instant.now());
+            job.setWindowStart(result.windowStart());
+            job.setWindowEnd(result.windowEnd());
+            job.setInputHash(result.inputHash());
+            job.setLockedAt(null);
+            job.setLockedBy(null);
             job.setErrorMessage(null);
             jobRepository.save(job);
             meterRegistry.counter("analytics.jobs.completed", "status", "completed").increment();
@@ -60,7 +62,10 @@ public class AnalyticsJobRunner {
                     job.getDeviceId(),
                     exception.getClass().getSimpleName());
             job.setStatus("FAILED");
+            job.setActiveKey(null);
             job.setCompletedAt(Instant.now());
+            job.setLockedAt(null);
+            job.setLockedBy(null);
             job.setErrorMessage(message(exception));
             jobRepository.save(job);
             meterRegistry.counter("analytics.jobs.completed", "status", "failed", "reason", exception.getClass().getSimpleName()).increment();

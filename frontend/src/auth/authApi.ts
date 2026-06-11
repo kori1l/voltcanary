@@ -38,7 +38,7 @@ export interface AdminUserResponse {
   id: string;
   email: string;
   role: "USER" | "ADMIN" | "SUPPORT";
-  status: "ACTIVE" | "DISABLED" | "LOCKED" | "PENDING_VERIFICATION";
+  status: "ACTIVE" | "DISABLED" | "LOCKED" | "PENDING_VERIFICATION" | "DELETED";
   emailVerified: boolean;
   createdAt: string;
   updatedAt: string;

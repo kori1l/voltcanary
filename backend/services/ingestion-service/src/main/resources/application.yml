@@ -3,6 +3,18 @@ spring:
     name: ingestion-service
   kafka:
     bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        retry.backoff.ms: 100
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 server:
   port: 8083
@@ -40,6 +52,7 @@ app:
     kafka-ack-timeout: ${INGESTION_KAFKA_ACK_TIMEOUT:3s}
     idempotency-ttl: ${INGESTION_IDEMPOTENCY_TTL:24h}
     rate-limit-enabled: ${INGESTION_RATE_LIMIT_ENABLED:true}
+    redis-rate-limit-enabled: ${INGESTION_RATE_LIMIT_REDIS_ENABLED:true}
     rate-limit-window: ${INGESTION_RATE_LIMIT_WINDOW:1m}
     source-requests-per-window: ${INGESTION_SOURCE_REQUESTS_PER_WINDOW:600}
     device-requests-per-window: ${INGESTION_DEVICE_REQUESTS_PER_WINDOW:1200}
@@ -57,8 +70,8 @@ app:
       client-id: ${INGESTION_MQTT_CLIENT_ID:voltcanary-ingestion}
       topic-filter: ${INGESTION_MQTT_TOPIC_FILTER:voltcanary/sources/+/telemetry}
   idempotency:
-    redis-enabled: false
-    ttl: PT24H
+    redis-enabled: ${INGESTION_IDEMPOTENCY_REDIS_ENABLED:true}
+    ttl: ${INGESTION_IDEMPOTENCY_TTL:PT24H}
   device-service:
     base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
   internal:

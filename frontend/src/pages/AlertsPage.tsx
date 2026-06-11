@@ -30,7 +30,7 @@ export function AlertsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [deviceFilter, setDeviceFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("active");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [channelName, setChannelName] = useState("Ops webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [credentialsRef, setCredentialsRef] = useState("");

@@ -1,6 +1,15 @@
 spring:
   application:
     name: identity-service
+  kafka:
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        retry.backoff.ms: 100
 
 server:
   port: 8081
@@ -20,3 +29,16 @@ info:
     name: identity-service
     description: VoltCanary Identity Service
     version: 0.1.0
+
+app:
+  kafka:
+    publish-enabled: ${IDENTITY_KAFKA_PUBLISH_ENABLED:false}
+  identity:
+    downstream:
+      device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+      device-lifecycle-sync-enabled: ${IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED:false}
+      device-lifecycle-reconciliation-enabled: ${IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED:false}
+      device-lifecycle-reconciliation-batch-size: ${IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_BATCH_SIZE:100}
+    lifecycle-reconciliation:
+      delay: ${IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_DELAY:5m}

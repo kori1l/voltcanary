@@ -35,6 +35,15 @@ public class AnalyticsEventOutbox {
     @Column(name = "last_error")
     private String lastError;
 
+    @Column(name = "next_attempt_at")
+    private Instant nextAttemptAt;
+
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "locked_by")
+    private String lockedBy;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -103,6 +112,30 @@ public class AnalyticsEventOutbox {
 
     public void setLastError(String lastError) {
         this.lastError = lastError;
+    }
+
+    public Instant getNextAttemptAt() {
+        return nextAttemptAt;
+    }
+
+    public void setNextAttemptAt(Instant nextAttemptAt) {
+        this.nextAttemptAt = nextAttemptAt;
+    }
+
+    public Instant getLockedAt() {
+        return lockedAt;
+    }
+
+    public void setLockedAt(Instant lockedAt) {
+        this.lockedAt = lockedAt;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     public Instant getCreatedAt() {

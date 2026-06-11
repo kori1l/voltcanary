@@ -9,6 +9,7 @@ import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
+import com.voltcanary.alert.scheduling.SchedulerLockService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,6 +20,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,8 @@ public class AlertEscalationService {
 
     private static final Logger log = LoggerFactory.getLogger(AlertEscalationService.class);
     private static final String ESCALATED = "ESCALATED";
+    private static final String LOCK_NAME = "alert.escalation-scan";
+    private static final Duration LOCK_LEASE = Duration.ofMinutes(5);
 
     private final AlertRepository alertRepository;
     private final AlertEventRepository alertEventRepository;
@@ -35,6 +39,7 @@ public class AlertEscalationService {
     private final NotificationDeliveryService notificationDeliveryService;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
+    private final SchedulerLockService schedulerLockService;
 
     public AlertEscalationService(
             AlertRepository alertRepository,
@@ -42,13 +47,15 @@ public class AlertEscalationService {
             AlertEscalationProperties properties,
             NotificationDeliveryService notificationDeliveryService,
             MeterRegistry meterRegistry,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            SchedulerLockService schedulerLockService) {
         this.alertRepository = alertRepository;
         this.alertEventRepository = alertEventRepository;
         this.properties = properties;
         this.notificationDeliveryService = notificationDeliveryService;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
+        this.schedulerLockService = schedulerLockService;
     }
 
     @Scheduled(
@@ -57,7 +64,14 @@ public class AlertEscalationService {
     public void scheduledEscalationScan() {
         if (properties.isEnabled()) {
             try {
-                escalateDueAlerts(Instant.now());
+                if (!schedulerLockService.acquire(LOCK_NAME, LOCK_LEASE)) {
+                    return;
+                }
+                try {
+                    escalateDueAlerts(Instant.now());
+                } finally {
+                    schedulerLockService.release(LOCK_NAME);
+                }
             } catch (DataAccessException exception) {
                 log.debug("alertEscalationScanSkipped reason={}", exception.getClass().getSimpleName());
             }
@@ -87,7 +101,9 @@ public class AlertEscalationService {
             if (alertEventRepository.existsByAlertIdAndEventType(alert.getId(), ESCALATED)) {
                 continue;
             }
-            saveEscalationEvent(alert, threshold, now);
+            if (!saveEscalationEvent(alert, threshold, now)) {
+                continue;
+            }
             notificationDeliveryService.dispatchAlertEscalated(alert);
             meterRegistry.counter(
                     "alert.escalations",
@@ -104,7 +120,7 @@ public class AlertEscalationService {
         return escalated;
     }
 
-    private void saveEscalationEvent(Alert alert, Duration threshold, Instant now) {
+    private boolean saveEscalationEvent(Alert alert, Duration threshold, Instant now) {
         UUID eventId = UUID.randomUUID();
         AlertEvent event = new AlertEvent();
         event.setId(eventId);
@@ -112,8 +128,14 @@ public class AlertEscalationService {
         event.setEventType(ESCALATED);
         event.setActorId(null);
         event.setCreatedAt(now);
+        event.setDeduplicationKey(alert.getId() + ":" + ESCALATED);
         event.setPayloadJson(writeJson(escalationPayload(eventId, alert, threshold, now)));
-        alertEventRepository.save(event);
+        try {
+            alertEventRepository.saveAndFlush(event);
+            return true;
+        } catch (DataIntegrityViolationException ignored) {
+            return false;
+        }
     }
 
     private Map<String, Object> escalationPayload(UUID eventId, Alert alert, Duration threshold, Instant now) {

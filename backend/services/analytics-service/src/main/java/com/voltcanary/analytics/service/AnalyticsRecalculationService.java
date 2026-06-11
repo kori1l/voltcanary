@@ -35,7 +35,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -110,9 +109,13 @@ public class AnalyticsRecalculationService {
 
     @Transactional
     public RecalculationResult recalculate(UUID deviceId) {
+        return recalculate(deviceId, Instant.now());
+    }
+
+    @Transactional
+    public RecalculationResult recalculate(UUID deviceId, Instant windowEnd) {
         Timer.Sample timer = Timer.start(meterRegistry);
         Instant now = Instant.now();
-        Instant windowEnd = now.truncatedTo(ChronoUnit.MINUTES);
         Instant windowStart = windowEnd.minus(metricProperties.getDefaultWindow());
         String period = metricProperties.getPeriodLabel();
         List<String> metrics = metricProperties.getDefaultMetrics();
@@ -192,7 +195,15 @@ public class AnalyticsRecalculationService {
                 anomalies.size(),
                 risk.getLevel(),
                 risk.getScore());
-        return new RecalculationResult(savedBaseline, anomalies, risk, recommendations, prediction);
+        return new RecalculationResult(
+                savedBaseline,
+                anomalies,
+                risk,
+                recommendations,
+                prediction,
+                windowStart,
+                windowEnd,
+                inputHash);
     }
 
     @Transactional(readOnly = true)
@@ -453,7 +464,10 @@ public class AnalyticsRecalculationService {
             List<Anomaly> anomalies,
             RiskScore riskScore,
             List<Recommendation> recommendations,
-            PredictionResult prediction) {
+            PredictionResult prediction,
+            Instant windowStart,
+            Instant windowEnd,
+            String inputHash) {
     }
 
 }

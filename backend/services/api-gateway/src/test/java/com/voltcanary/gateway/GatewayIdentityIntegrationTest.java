@@ -22,6 +22,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+                "app.gateway.rate-limit.redis-enabled=false",
+                "management.health.redis.enabled=false",
                 "spring.main.web-application-type=reactive",
                 "spring.autoconfigure.exclude=org.springframework.cloud.gateway.config.GatewayClassPathWarningAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
@@ -127,7 +129,8 @@ class GatewayIdentityIntegrationTest {
                         "spring.main.web-application-type=servlet",
                         "spring.autoconfigure.exclude=org.springframework.cloud.gateway.config.GatewayClassPathWarningAutoConfiguration,"
                                 + "org.springframework.cloud.gateway.config.GatewayAutoConfiguration,"
-                                + "org.springframework.cloud.gateway.config.GatewayMetricsAutoConfiguration",
+                                + "org.springframework.cloud.gateway.config.GatewayMetricsAutoConfiguration,"
+                                + "org.springframework.cloud.gateway.config.GatewayRedisAutoConfiguration",
                         "app.jwt.key-id=" + JwtAccessTokenService.DEV_KEY_ID,
                         "app.jwt.private-key=" + JwtAccessTokenService.DEV_PRIVATE_KEY,
                         "app.jwt.public-keys=" + JwtAccessTokenService.DEV_KEY_ID + "=" + JwtAccessTokenService.DEV_PUBLIC_KEY,

@@ -2,12 +2,16 @@ package com.voltcanary.simulator;
 
 import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.domain.SimulationProtocol;
+import com.voltcanary.simulator.domain.SimulationRun;
 import com.voltcanary.simulator.domain.SimulationRunStatus;
 import com.voltcanary.simulator.dto.SaveSimulationConfigRequest;
+import com.voltcanary.simulator.repository.SimulationConfigRepository;
 import com.voltcanary.simulator.repository.SimulationRunEventRepository;
+import com.voltcanary.simulator.repository.SimulationRunRepository;
 import com.voltcanary.simulator.runner.SimulationRunManager;
 import com.voltcanary.simulator.runner.SimulationRunner;
 import com.voltcanary.simulator.service.SimulationConfigService;
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,8 +19,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -34,6 +40,12 @@ class SimulationPersistenceTest {
 
     @Autowired
     private SimulationRunEventRepository runEventRepository;
+
+    @Autowired
+    private SimulationRunRepository runRepository;
+
+    @Autowired
+    private SimulationConfigRepository configRepository;
 
     @MockitoBean
     private SimulationRunner simulationRunner;
@@ -71,6 +83,78 @@ class SimulationPersistenceTest {
                 .extracting("eventType")
                 .containsExactly("STARTING", "RUNNING", "STOPPING", "STOPPED");
         assertThat(runEventRepository.findByRunIdOrderByCreatedAtAsc(started.runId())).hasSize(4);
+    }
+
+    @Test
+    void rejectsStartWhenAnotherReplicaOwnsActiveLease() {
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID dataSourceId = UUID.randomUUID();
+
+        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-active-lease", "active-lease"));
+        var config = configRepository.findByDeviceId(deviceId).orElseThrow();
+        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        run.setLeaseUntil(Instant.now().plusSeconds(300));
+        runRepository.saveAndFlush(run);
+
+        assertThatThrownBy(() -> runManager.start(userId, deviceId))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409 CONFLICT");
+    }
+
+    @Test
+    void startsAfterExpiredReplicaLeaseIsReconciled() {
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID dataSourceId = UUID.randomUUID();
+
+        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-expired-lease", "expired-lease"));
+        var config = configRepository.findByDeviceId(deviceId).orElseThrow();
+        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        run.setLeaseUntil(Instant.now().minusSeconds(1));
+        runRepository.saveAndFlush(run);
+
+        var started = runManager.start(userId, deviceId);
+
+        assertThat(started.status()).isEqualTo(SimulationRunStatus.RUNNING);
+        assertThat(runRepository.findById(run.getId()).orElseThrow().getStatus())
+                .isEqualTo(SimulationRunStatus.STOPPED);
+    }
+
+    @Test
+    void extendsActiveRunLeaseWithNamedParameters() {
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID dataSourceId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Instant leaseUntil = Instant.now().plusSeconds(120);
+
+        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-lease-extension", "lease-extension"));
+        var config = configRepository.findByDeviceId(deviceId).orElseThrow();
+        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        run.setId(runId);
+        run.setLeaseOwner("simulator-test-replica");
+        runRepository.saveAndFlush(run);
+
+        int updated = runRepository.extendLease(runId, "simulator-test-replica", leaseUntil);
+
+        assertThat(updated).isEqualTo(1);
+        assertThat(runRepository.findById(runId).orElseThrow().getLeaseUntil()).isEqualTo(leaseUntil);
+    }
+
+    private SimulationRun activeRun(UUID configId, UUID accountId, UUID deviceId, UUID dataSourceId) {
+        SimulationRun run = new SimulationRun();
+        run.setId(UUID.randomUUID());
+        run.setConfigId(configId);
+        run.setAccountId(accountId);
+        run.setDeviceId(deviceId);
+        run.setDataSourceId(dataSourceId);
+        run.setStatus(SimulationRunStatus.RUNNING);
+        run.setStartedAt(Instant.now());
+        run.setGeneratedPoints(0);
+        run.setActiveKey("ACTIVE");
+        run.setLeaseOwner("other-replica");
+        return run;
     }
 
     private SaveSimulationConfigRequest request(UUID dataSourceId, String sourceId, String name) {

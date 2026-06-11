@@ -19,6 +19,7 @@ public class IngestionProperties {
     private Duration kafkaAckTimeout = Duration.ofSeconds(3);
     private Duration idempotencyTtl = Duration.ofHours(24);
     private boolean rateLimitEnabled = true;
+    private boolean redisRateLimitEnabled = true;
     private Duration rateLimitWindow = Duration.ofMinutes(1);
     private int sourceRequestsPerWindow = 600;
     private int deviceRequestsPerWindow = 1_200;
@@ -110,6 +111,14 @@ public class IngestionProperties {
 
     public void setRateLimitEnabled(boolean rateLimitEnabled) {
         this.rateLimitEnabled = rateLimitEnabled;
+    }
+
+    public boolean isRedisRateLimitEnabled() {
+        return redisRateLimitEnabled;
+    }
+
+    public void setRedisRateLimitEnabled(boolean redisRateLimitEnabled) {
+        this.redisRateLimitEnabled = redisRateLimitEnabled;
     }
 
     public Duration getRateLimitWindow() {

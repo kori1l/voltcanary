@@ -38,6 +38,10 @@ x-java-app: &java-app
     TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD:-change_me}
     REDIS_HOST: redis
     REDIS_PORT: 6379
+    INGESTION_IDEMPOTENCY_REDIS_ENABLED: "true"
+    INGESTION_RATE_LIMIT_REDIS_ENABLED: "true"
+    TELEMETRY_RATE_LIMIT_REDIS_ENABLED: "true"
+    GATEWAY_RATE_LIMIT_REDIS_ENABLED: "true"
     MINIO_ENDPOINT: http://minio:9000
     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
@@ -346,6 +350,11 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
+      DEVICE_SERVICE_URI: http://device-service:8082
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
+      IDENTITY_KAFKA_PUBLISH_ENABLED: "true"
+      IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED: "false"
+      IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED: "true"
     ports:
       - "${IDENTITY_SERVICE_PORT:-8081}:8081"
 
@@ -361,6 +370,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
+      DEVICE_KAFKA_PUBLISH_ENABLED: "true"
+      DEVICE_KAFKA_CONSUME_ENABLED: "true"
       TIMESCALE_HOST: timescaledb
       TIMESCALE_PORT: 5432
       TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
@@ -397,6 +408,7 @@ services:
       ANALYTICS_POSTGRES_DB: ${ANALYTICS_POSTGRES_DB:-voltcanary_analytics}
       APP_KAFKA_CONSUME_ENABLED: ${ANALYTICS_KAFKA_CONSUME_ENABLED:-true}
       ANALYTICS_KAFKA_PUBLISH_ENABLED: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:-true}
+      ANALYTICS_JOBS_WORKER_ENABLED: "true"
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
@@ -418,6 +430,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
+      DEVICE_SERVICE_URI: http://device-service:8082
     ports:
       - "${ALERT_SERVICE_PORT:-8086}:8086"
 

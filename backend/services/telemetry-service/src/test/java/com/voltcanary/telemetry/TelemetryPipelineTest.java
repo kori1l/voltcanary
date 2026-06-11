@@ -26,8 +26,11 @@ import static org.mockito.Mockito.never;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.consume-enabled=false",
+                "app.kafka.publish-enabled=false",
                 "app.telemetry.authorization.enabled=false",
+                "app.telemetry.validation.redis-rate-limit-enabled=false",
                 "app.telemetry.validation.max-past-age=30d",
+                "management.health.redis.enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
 class TelemetryPipelineTest {
@@ -131,13 +134,16 @@ class TelemetryPipelineTest {
                 deviceId);
         assertThat(rowCount).isEqualTo(5);
         verify(telemetryValidatedPublisher, times(1)).publish(any());
-
-        ResponseEntity<String> quality = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/quality",
-                String.class,
+        Long readingCount = jdbcTemplate.queryForObject(
+                "select count(*) from telemetry_readings where device_id = ?",
+                Long.class,
                 deviceId);
-        assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(quality.getBody()).contains("DUPLICATE");
+        assertThat(readingCount).isEqualTo(1);
+        Long processedCount = jdbcTemplate.queryForObject(
+                "select count(*) from processed_events where source_name = 'telemetry.raw.v1' and event_id = ?",
+                Long.class,
+                event.eventId());
+        assertThat(processedCount).isEqualTo(1);
     }
 
     @Test

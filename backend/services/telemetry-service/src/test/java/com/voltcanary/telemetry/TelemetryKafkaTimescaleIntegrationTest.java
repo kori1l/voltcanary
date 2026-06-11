@@ -33,7 +33,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "app.kafka.consume-enabled=true",
                 "app.telemetry.authorization.enabled=false",
+                "app.telemetry.validation.redis-rate-limit-enabled=false",
                 "app.telemetry.validation.max-past-age=30d",
+                "management.health.redis.enabled=false",
                 "spring.kafka.consumer.group-id=telemetry-integration-test",
                 "spring.jpa.hibernate.ddl-auto=none"
         })

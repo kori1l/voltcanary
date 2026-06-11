@@ -3,6 +3,7 @@ package com.voltcanary.alert;
 import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
+import com.voltcanary.alert.dto.AlertSummaryResponse;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.service.AlertEscalationService;
@@ -55,6 +56,16 @@ class AlertServiceApiTest {
 
     @Autowired
     private AlertEscalationService alertEscalationService;
+
+    @Test
+    void staticAlertRoutesAreNotCapturedByAlertIdRoute() {
+        ResponseEntity<AlertSummaryResponse> summaryResponse = restTemplate.getForEntity(
+                "/alerts/summary",
+                AlertSummaryResponse.class);
+
+        assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(summaryResponse.getBody()).isNotNull();
+    }
 
     @Test
     void anomalyCreatesDeduplicatedAlertAndApiCanAckAndResolve() {

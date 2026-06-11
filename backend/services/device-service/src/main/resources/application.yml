@@ -1,6 +1,17 @@
 spring:
   application:
     name: device-service
+  kafka:
+    consumer:
+      group-id: ${DEVICE_KAFKA_CONSUMER_GROUP:device-service}
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        retry.backoff.ms: 100
 
 server:
   port: 8082
@@ -25,4 +36,5 @@ app:
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
   kafka:
-    publish-enabled: ${DEVICE_KAFKA_PUBLISH_ENABLED:true}
+    publish-enabled: ${DEVICE_KAFKA_PUBLISH_ENABLED:false}
+    consume-enabled: ${DEVICE_KAFKA_CONSUME_ENABLED:false}

@@ -125,7 +125,7 @@ public class AlertController {
                 size);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}")
     public AlertResponse getAlert(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -134,7 +134,7 @@ public class AlertController {
         return alertService.getAlert(id, userId, role, correlationId);
     }
 
-    @GetMapping("/{id}/notification-attempts")
+    @GetMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/notification-attempts")
     public List<NotificationAttemptResponse> notificationAttempts(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -143,7 +143,7 @@ public class AlertController {
         return notificationAttemptService.listForAlert(id, userId, role, correlationId);
     }
 
-    @PostMapping("/{id}/ack")
+    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/ack")
     public AlertActionResponse acknowledge(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -153,7 +153,7 @@ public class AlertController {
         return new AlertActionResponse(alert.status(), alert.id());
     }
 
-    @PostMapping("/{id}/resolve")
+    @PostMapping("/{id:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}}/resolve")
     public AlertActionResponse resolve(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,

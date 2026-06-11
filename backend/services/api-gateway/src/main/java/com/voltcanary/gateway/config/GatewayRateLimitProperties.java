@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 public class GatewayRateLimitProperties {
 
     private boolean enabled = true;
+    private boolean redisEnabled = true;
     private Duration window = Duration.ofMinutes(1);
     private int authRequestsPerWindow = 30;
     private int ingestionRequestsPerWindow = 120;
@@ -20,6 +21,14 @@ public class GatewayRateLimitProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isRedisEnabled() {
+        return redisEnabled;
+    }
+
+    public void setRedisEnabled(boolean redisEnabled) {
+        this.redisEnabled = redisEnabled;
     }
 
     public Duration getWindow() {

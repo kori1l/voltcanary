@@ -12,7 +12,7 @@ import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.producer.AnalyticsEventPublisher;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
-import com.voltcanary.analytics.service.AnalyticsJobService;
+import com.voltcanary.analytics.service.TelemetryValidatedEventHandler;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
@@ -50,9 +50,9 @@ class AnalyticsPipelineTest {
 
     @Test
     void telemetryValidatedEventEnqueuesRecalculationJob() throws Exception {
-        AnalyticsJobService jobService = mock(AnalyticsJobService.class);
+        TelemetryValidatedEventHandler eventHandler = mock(TelemetryValidatedEventHandler.class);
         AnalyticsDeadLetterPublisher deadLetterPublisher = mock(AnalyticsDeadLetterPublisher.class);
-        TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(objectMapper, jobService, deadLetterPublisher);
+        TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(objectMapper, eventHandler, deadLetterPublisher);
         UUID deviceId = UUID.randomUUID();
         TelemetryValidatedEvent event = new TelemetryValidatedEvent(
                 UUID.randomUUID(),
@@ -65,14 +65,14 @@ class AnalyticsPipelineTest {
 
         consumer.consume(objectMapper.writeValueAsString(event));
 
-        verify(jobService).enqueueRecalculation(deviceId);
+        verify(eventHandler).handle(event);
     }
 
     @Test
     void invalidTelemetryValidatedEventIsRejected() {
-        AnalyticsJobService jobService = mock(AnalyticsJobService.class);
+        TelemetryValidatedEventHandler eventHandler = mock(TelemetryValidatedEventHandler.class);
         AnalyticsDeadLetterPublisher deadLetterPublisher = mock(AnalyticsDeadLetterPublisher.class);
-        TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(objectMapper, jobService, deadLetterPublisher);
+        TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(objectMapper, eventHandler, deadLetterPublisher);
 
         assertThatThrownBy(() -> consumer.consume("{not-json"))
                 .isInstanceOf(IllegalArgumentException.class)

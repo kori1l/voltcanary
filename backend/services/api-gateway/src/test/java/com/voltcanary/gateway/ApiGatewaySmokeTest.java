@@ -12,6 +12,7 @@ import com.voltcanary.gateway.filter.GatewayAuthorizationGlobalFilter;
 import com.voltcanary.gateway.filter.GatewayRateLimitGlobalFilter;
 import com.voltcanary.gateway.filter.JwtAuthenticationGlobalFilter;
 import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,8 @@ import reactor.core.publisher.Mono;
         properties = {
                 "app.jwt.key-id=dev-rsa",
                 "app.jwt.public-keys=dev-rsa=" + JwtAccessTokenService.DEV_PUBLIC_KEY,
+                "app.gateway.rate-limit.redis-enabled=false",
+                "management.health.redis.enabled=false",
                 "spring.main.web-application-type=reactive",
                 "spring.autoconfigure.exclude=org.springframework.cloud.gateway.config.GatewayClassPathWarningAutoConfiguration,"
                         + "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
@@ -272,7 +275,7 @@ class ApiGatewaySmokeTest {
     void rateLimitReturns429AfterConfiguredLimit() {
         GatewayRateLimitProperties properties = new GatewayRateLimitProperties();
         properties.setAuthRequestsPerWindow(1);
-        GatewayRateLimitGlobalFilter filter = new GatewayRateLimitGlobalFilter(properties);
+        GatewayRateLimitGlobalFilter filter = new GatewayRateLimitGlobalFilter(properties, Optional.empty());
         GatewayFilterChain chain = exchange -> Mono.empty();
 
         MockServerWebExchange first = MockServerWebExchange.from(MockServerHttpRequest.post("/auth/login")

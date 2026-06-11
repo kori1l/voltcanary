@@ -13,7 +13,10 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.consume-enabled=false",
+                "app.kafka.publish-enabled=false",
                 "app.telemetry.authorization.enabled=false",
+                "app.telemetry.validation.redis-rate-limit-enabled=false",
+                "management.health.redis.enabled=false",
                 "spring.flyway.enabled=false",
                 "spring.jpa.hibernate.ddl-auto=none"
         })

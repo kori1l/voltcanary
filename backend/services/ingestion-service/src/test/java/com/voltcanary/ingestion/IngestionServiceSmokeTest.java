@@ -13,6 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.publish-enabled=false",
+                "app.idempotency.redis-enabled=false",
+                "app.ingestion.redis-rate-limit-enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
 class IngestionServiceSmokeTest {

@@ -23,6 +23,9 @@ public class AnalyticsJob {
     @Column(name = "status", nullable = false)
     private String status;
 
+    @Column(name = "active_key")
+    private String activeKey;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -31,6 +34,21 @@ public class AnalyticsJob {
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @Column(name = "window_start")
+    private Instant windowStart;
+
+    @Column(name = "window_end")
+    private Instant windowEnd;
+
+    @Column(name = "input_hash")
+    private String inputHash;
+
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "locked_by")
+    private String lockedBy;
 
     @Column(name = "error_message")
     private String errorMessage;
@@ -67,6 +85,14 @@ public class AnalyticsJob {
         this.status = status;
     }
 
+    public String getActiveKey() {
+        return activeKey;
+    }
+
+    public void setActiveKey(String activeKey) {
+        this.activeKey = activeKey;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -89,6 +115,46 @@ public class AnalyticsJob {
 
     public void setCompletedAt(Instant completedAt) {
         this.completedAt = completedAt;
+    }
+
+    public Instant getWindowStart() {
+        return windowStart;
+    }
+
+    public void setWindowStart(Instant windowStart) {
+        this.windowStart = windowStart;
+    }
+
+    public Instant getWindowEnd() {
+        return windowEnd;
+    }
+
+    public void setWindowEnd(Instant windowEnd) {
+        this.windowEnd = windowEnd;
+    }
+
+    public String getInputHash() {
+        return inputHash;
+    }
+
+    public void setInputHash(String inputHash) {
+        this.inputHash = inputHash;
+    }
+
+    public Instant getLockedAt() {
+        return lockedAt;
+    }
+
+    public void setLockedAt(Instant lockedAt) {
+        this.lockedAt = lockedAt;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 
     public String getErrorMessage() {

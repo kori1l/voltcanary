@@ -3,7 +3,7 @@ package com.voltcanary.analytics.consumer;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
-import com.voltcanary.analytics.service.AnalyticsJobService;
+import com.voltcanary.analytics.service.TelemetryValidatedEventHandler;
 import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,15 +19,15 @@ public class TelemetryValidatedConsumer {
     private static final String SOURCE_TOPIC = "telemetry.validated.v1";
 
     private final ObjectMapper objectMapper;
-    private final AnalyticsJobService jobService;
+    private final TelemetryValidatedEventHandler eventHandler;
     private final AnalyticsDeadLetterPublisher deadLetterPublisher;
 
     public TelemetryValidatedConsumer(
             ObjectMapper objectMapper,
-            AnalyticsJobService jobService,
+            TelemetryValidatedEventHandler eventHandler,
             AnalyticsDeadLetterPublisher deadLetterPublisher) {
         this.objectMapper = objectMapper;
-        this.jobService = jobService;
+        this.eventHandler = eventHandler;
         this.deadLetterPublisher = deadLetterPublisher;
     }
 
@@ -38,12 +38,13 @@ public class TelemetryValidatedConsumer {
             deadLetterPublisher.publish(SOURCE_TOPIC, eventPayload, "TelemetryValidatedEvent deviceId is required");
             throw new IllegalArgumentException("TelemetryValidatedEvent deviceId is required");
         }
+        boolean processed = eventHandler.handle(event);
         log.info(
-                "analyticsTelemetryValidatedReceived eventId={} deviceId={} timestamp={}",
+                "analyticsTelemetryValidatedReceived eventId={} deviceId={} timestamp={} processed={}",
                 event.eventId(),
                 event.deviceId(),
-                event.timestamp());
-        jobService.enqueueRecalculation(event.deviceId());
+                event.timestamp(),
+                processed);
     }
 
     private TelemetryValidatedEvent readEvent(String eventPayload) {

@@ -32,7 +32,8 @@ import static org.mockito.Mockito.when;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "app.kafka.publish-enabled=true",
-                "app.idempotency.redis-enabled=false"
+                "app.idempotency.redis-enabled=false",
+                "app.ingestion.redis-rate-limit-enabled=false"
         })
 class IngestionKafkaIntegrationTest {
 

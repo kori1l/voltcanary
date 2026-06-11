@@ -69,6 +69,7 @@ type RenderChartPoint = ChartPoint & { synthetic?: boolean };
 type ChartMetricConfig = { key: string; label: string; unit: string };
 type ChartDensity = "compact" | "balanced" | "detailed";
 type ChartTimeRange = "15m" | "1h" | "6h" | "24h" | "7d" | "custom";
+const MIN_CUSTOM_CHART_RANGE_MS = 60 * 1000;
 type DashboardChartPreferences = {
   selectedMetricKeys: string[];
   showChartPoints: boolean;
@@ -158,7 +159,7 @@ export function DeviceDetailsPage() {
   const [metricSearch, setMetricSearch] = useState("");
   const [expandedChartMetricKey, setExpandedChartMetricKey] = useState<string | null>(initialChartPreferences.expandedChartMetricKey);
   const [selectedTelemetryEventId, setSelectedTelemetryEventId] = useState<string | null>(null);
-  const [deviceAlertStatusFilter, setDeviceAlertStatusFilter] = useState("active");
+  const [deviceAlertStatusFilter, setDeviceAlertStatusFilter] = useState("all");
   const [showAllDeviceAlerts, setShowAllDeviceAlerts] = useState(false);
   const [isTelemetryLoading, setIsTelemetryLoading] = useState(false);
   const [baseline, setBaseline] = useState<BaselineResponse | null>(null);
@@ -302,6 +303,20 @@ export function DeviceDetailsPage() {
     }
   }
 
+  async function refreshSimulationRuntime(currentDeviceId: string) {
+    try {
+      const [statusResponse, runsResponse] = await Promise.all([
+        getSimulationStatus(currentDeviceId).catch(() => null),
+        getSimulationRuns(currentDeviceId).catch(() => []),
+      ]);
+      setSimulationStatus(statusResponse);
+      setSimulationRuns(runsResponse);
+    } catch {
+      setSimulationStatus(null);
+      setSimulationRuns([]);
+    }
+  }
+
   useEffect(() => {
     void load();
   }, [deviceId]);
@@ -368,6 +383,27 @@ export function DeviceDetailsPage() {
       window.clearTimeout(timeoutId);
     };
   }, [deviceId, simulationConfig, simulationYaml]);
+
+  useEffect(() => {
+    if (!deviceId || activeTab !== "simulation") {
+      return;
+    }
+    if (simulationConfig) {
+      void refreshSimulationRuntime(deviceId);
+    } else {
+      void loadSimulation(deviceId);
+    }
+  }, [deviceId, activeTab, simulationConfig?.id]);
+
+  useEffect(() => {
+    if (!deviceId || simulationStatus?.status !== "RUNNING") {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshSimulationRuntime(deviceId);
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [deviceId, simulationStatus?.status]);
 
   const readings = latest?.readings ?? {};
   const locationById = useMemo(() => new Map(locations.map((location) => [location.id, locationLabel(location)])), [locations]);
@@ -2295,7 +2331,8 @@ function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo:
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate >= toDate) {
       return null;
     }
-    return { from: fromDate.toISOString(), to: toDate.toISOString() };
+    const normalized = ensureMinimumChartRange(fromDate, toDate);
+    return { from: normalized.from.toISOString(), to: normalized.to.toISOString() };
   }
 
   const preset = CHART_TIME_RANGES.find((item) => item.value === range);
@@ -2306,7 +2343,19 @@ function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo:
 
 function toDateTimeLocalValue(date: Date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 19);
+}
+
+function ensureMinimumChartRange(from: Date, to: Date) {
+  const spanMs = to.getTime() - from.getTime();
+  if (spanMs >= MIN_CUSTOM_CHART_RANGE_MS) {
+    return { from, to };
+  }
+  const midpoint = from.getTime() + spanMs / 2;
+  return {
+    from: new Date(midpoint - MIN_CUSTOM_CHART_RANGE_MS / 2),
+    to: new Date(midpoint + MIN_CUSTOM_CHART_RANGE_MS / 2),
+  };
 }
 
 function buildChartRenderPoints(points: ChartPoint[], maxPoints: number, timeRange?: { from: string; to: string } | null): RenderChartPoint[] {

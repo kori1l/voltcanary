@@ -14,6 +14,7 @@ public class TelemetryValidationProperties {
     private Duration maxPastAge = Duration.ofDays(7);
     private int maxMetricsPerEvent = 100;
     private int maxEventsPerDevicePerMinute = 600;
+    private boolean redisRateLimitEnabled = true;
     private Duration maxChartRange = Duration.ofDays(30);
     private int maxExportPageSize = 1000;
     private List<String> backfillSourcePrefixes = new ArrayList<>(List.of("import-", "backfill-"));
@@ -48,6 +49,14 @@ public class TelemetryValidationProperties {
 
     public void setMaxEventsPerDevicePerMinute(int maxEventsPerDevicePerMinute) {
         this.maxEventsPerDevicePerMinute = maxEventsPerDevicePerMinute;
+    }
+
+    public boolean isRedisRateLimitEnabled() {
+        return redisRateLimitEnabled;
+    }
+
+    public void setRedisRateLimitEnabled(boolean redisRateLimitEnabled) {
+        this.redisRateLimitEnabled = redisRateLimitEnabled;
     }
 
     public Duration getMaxChartRange() {

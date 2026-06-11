@@ -133,19 +133,23 @@ tokens, and basic login audit. It is not yet a full Keycloak replacement.
     - ~~View active refresh sessions.~~
     - ~~Revoke user sessions.~~
 
-23. Add user deletion and downstream lifecycle propagation.
-    - Current issue: identity-service has admin status changes, but no public or
-      admin delete/deactivate contract that represents user deletion.
-    - Add an explicit user deletion lifecycle decision, for example hard delete
-      with audit retention or soft delete with a `DELETED` status.
-    - When a user is disabled, locked, or deleted, revoke active refresh
-      sessions and make the access-token behavior explicit.
-    - Publish or synchronously call downstream lifecycle sync for services that
-      own user-scoped resources, starting with device-service account lifecycle.
-    - Add gateway and identity tests for admin deletion/deactivation,
-      post-deletion login, refresh, and `/auth/me` behavior.
-    - Document whether deletion is reversible, what audit data remains, and how
-      support/admin users can inspect deleted accounts.
+23. ~~Add user deletion and downstream lifecycle propagation.~~
+    - ~~Added soft-delete through `DELETE /auth/admin/users/{userId}` with
+      `DELETED` status.~~
+    - ~~Admin status changes and deletion revoke active refresh sessions when the
+      target user becomes inactive.~~
+    - ~~Identity synchronously syncs user lifecycle to device-service account
+      lifecycle when enabled.~~
+    - ~~Existing access tokens remain cryptographically valid until expiry, but
+      `/accounts/current` and device-domain access are blocked by account
+      lifecycle.~~
+    - ~~Device-service internal data-source existence checks require the owning
+      account to be `ACTIVE`, so old source tokens cannot ingest after user
+      deletion or disable.~~
+    - ~~Added identity/device/ingestion regression tests and live gateway-level
+      destructive smoke coverage for delete/deactivate behavior.~~
+    - Follow-up: decide support/admin inspectability for deleted accounts in the
+      product UI if needed.
 
 24. ~~Improve API error consistency.~~
     - ~~Keep login failure responses generic.~~
@@ -734,20 +738,23 @@ the API yet.
       `POST /internal/accounts/users/{userId}/lifecycle`.~~
     - ~~Device tests cover disable/reactivate behavior.~~
 
-17. Define account-deleted cascade behavior for devices and sources.
-    - Current issue: `POST /internal/accounts/users/{userId}/lifecycle` with
-      `DELETED` marks the device account deleted and blocks device API access,
-      but existing devices remain in the database and may stay `ACTIVE`.
-    - Decide whether user deletion should hard-delete account-owned devices,
-      soft-delete/decommission them, disable data sources, revoke source tokens,
-      or retain them only for audit/history.
-    - Apply the chosen policy consistently to locations, devices, sensors, data
-      sources, analytics configs, and registry-change events.
-    - Ensure telemetry history retention is explicit and does not allow deleted
-      accounts to read or ingest through old credentials.
-    - Add integration tests for: create user, create devices and simulator
-      sources, delete/deactivate user, verify device API is blocked, verify
-      remaining devices/sources follow the documented cascade policy.
+17. Define account-deleted physical cascade behavior for devices and sources.
+    - Runtime security behavior is implemented: `POST
+      /internal/accounts/users/{userId}/lifecycle` with `DELETED` marks the
+      device account deleted, blocks device API access, and internal source
+      existence returns `false` even if owned devices/sources still have active
+      row statuses.
+    - Old source tokens are rejected after user deletion because ingestion
+      revalidates cached source registry data against device-service.
+    - Remaining decision: whether user deletion should physically hard-delete
+      account-owned devices, soft-delete/decommission them, disable data
+      sources, revoke source tokens, or retain them only for audit/history.
+    - Apply the chosen physical cleanup policy consistently to locations,
+      devices, sensors, data sources, analytics configs, and registry-change
+      events.
+    - Telemetry history retention is still a product/data-retention policy
+      decision, but deleted accounts cannot read device API or ingest through old
+      credentials.
 
 18. ~~Add audit logging.~~
     - ~~Added structured audit logging for device, location, source, sensor,
@@ -1254,6 +1261,295 @@ notification and escalation service.
     - ~~`AlertDeduplicationService` is now wired into alert creation logic.~~
     - ~~Empty placeholder packages were removed from the alert-service Java
       package tree.~~
+
+## Horizontal Scaling And Eventual Consistency
+
+The current asynchronous path is `ingestion-service -> telemetry-service ->
+analytics-service -> alert-service`. It is suitable for MVP and local
+single-replica development, but it is not yet a complete horizontally scalable
+eventually consistent system. The outbox pattern is currently used only in
+`analytics-service` through `analytics_event_outbox`. Other services still rely
+on direct Kafka sends, in-process schedulers, or in-memory state.
+
+### Critical
+
+1. ~~Standardize durable event publication with transactional outbox.~~
+   - ~~Current issue: `analytics-service` has an outbox, but
+     `telemetry-service` publishes `telemetry.validated.v1` and telemetry DLQ
+     events directly from the telemetry processing transaction.~~
+   - ~~`telemetry-service` now stores `telemetry.validated.v1` and telemetry
+     DLQ events in `telemetry_event_outbox` inside the telemetry processing
+     transaction; a scheduled outbox publisher sends JSON payloads to Kafka.~~
+   - ~~Current issue: `device-service` publishes `device-registry.changed.v1`
+     directly after device/source database writes.~~
+   - ~~`device-service` now stores `device-registry.changed.v1` events in
+     `device_event_outbox` inside the same transaction as domain writes, and a
+     scheduled publisher sends JSON payloads to Kafka.~~
+   - ~~`identity-service` stores `identity.account-lifecycle.v1` events in
+     `identity_event_outbox` inside the same transaction as user status changes
+     and delete transitions.~~
+   - ~~`device-service` consumes `identity.account-lifecycle.v1` with a
+     `processed_events` inbox table before applying account lifecycle state.~~
+   - ~~Add a common outbox table shape per state-owning service: `id`,
+     `event_key`, `topic`, `message_key`, `payload_json`, `status`,
+     `attempts`, `next_attempt_at`, `locked_at`, `locked_by`, `last_error`,
+     `created_at`, and `published_at`.~~
+   - ~~Write outbox rows in the same database transaction as the domain state
+     change.~~
+   - ~~Publish from outbox workers, not directly from domain services, for
+     events that are required to keep downstream projections eventually
+     consistent.~~
+   - ~~Keep direct synchronous calls only for hard fail-closed security
+     decisions, and pair them with a durable retry/outbox record for
+     compensation.~~
+
+2. ~~Make outbox publishers safe with multiple replicas.~~
+   - ~~Current issue: `analytics-service` scheduled publisher reads
+     `findTop100ByStatusOrderByCreatedAtAsc("PENDING")` in every pod without
+     row claiming, leasing, `SKIP LOCKED`, or a publisher id.~~
+   - ~~`analytics-service` outbox rows now have `next_attempt_at`, `locked_at`,
+     and `locked_by`.~~
+   - ~~`analytics-service` and `telemetry-service` outbox publishers atomically
+     claim due rows, move them to `PROCESSING`, publish outside the claim
+     transaction, and then mark each row `PUBLISHED`, retryable `PENDING`, or
+     `FAILED`.~~
+   - ~~`device-service` uses the same claim/lease/retry publisher model for
+     `device_event_outbox`.~~
+   - ~~Expired `PROCESSING` rows are claimable again after the lease TTL.~~
+   - ~~Preserve consumer idempotency because duplicates are still possible after
+     Kafka accepts a message but before the outbox row is marked `PUBLISHED`.~~
+
+3. ~~Add consumer inbox or processed-event idempotency tables.~~
+   - ~~Current issue: Kafka delivery should be treated as at-least-once, but
+     not every consumer stores `eventId` processing state.~~
+   - `telemetry-service` deduplicates metric rows with a unique measurement
+     index, but ~~`telemetry_readings` can still be inserted again on replay.~~
+   - ~~`telemetry-service` now records consumed `telemetry.raw.v1` event ids in
+     `processed_events` inside the same transaction as telemetry rows and
+     telemetry outbox side effects; duplicate replays skip processing before
+     inserting another reading.~~
+   - ~~`analytics-service` deduplicates active jobs by lookup, but concurrent
+     pods can race before a job is persisted.~~
+   - ~~`analytics-service` records consumed `telemetry.validated.v1` event ids
+     in `processed_events` before enqueueing recalculation jobs; duplicate
+     replays skip job side effects.~~
+   - ~~`alert-service` has unique alert constraints for source event and
+     deduplication key, but scheduled escalation and notification attempts can
+     still duplicate side effects.~~
+   - ~~`alert-service` records consumed `anomaly.detected.v1` and
+     `risk-score.changed.v1` event ids in `processed_events` before alert side
+     effects; duplicate replays skip handler side effects.~~
+   - ~~Add a `processed_events` or service-specific inbox table keyed by source
+     topic, partition, offset, and/or event id where side effects matter.~~
+   - ~~Commit Kafka offsets only after the database transaction that records the
+     inbox row and side effects succeeds.~~
+
+4. ~~Move multi-replica control state out of process memory.~~
+   - ~~Current issue: gateway rate limits use `ConcurrentHashMap`, so every
+     `api-gateway` pod enforces an independent limit.~~
+   - ~~Current issue: ingestion rate limits use `ConcurrentHashMap`, so every
+     `ingestion-service` pod enforces independent source/device/account limits.~~
+   - ~~Current issue: `ingestion-service` defaults to in-memory idempotency in
+     `application.yml`; only the `local` profile enables Redis idempotency.~~
+   - ~~Current issue: telemetry processing rate limits use `ConcurrentHashMap`,
+     so every `telemetry-service` pod has an independent per-device limiter.~~
+   - ~~`ingestion-service` default configuration now enables Redis-backed
+     idempotency through `INGESTION_IDEMPOTENCY_REDIS_ENABLED`, with Redis
+     host/port configured from environment variables.~~
+   - ~~Docker Compose and Kubernetes base config set
+     `INGESTION_IDEMPOTENCY_REDIS_ENABLED=true`.~~
+   - ~~`telemetry-service` per-device processing rate limits now use Redis
+     atomic counters when `TELEMETRY_RATE_LIMIT_REDIS_ENABLED=true`; Compose and
+     Kubernetes base config enable this by default, while tests can explicitly
+     disable it.~~
+   - ~~`ingestion-service` source/device/account/ip rate limits now use Redis
+     atomic counters when `INGESTION_RATE_LIMIT_REDIS_ENABLED=true`; Compose and
+     Kubernetes base config enable this by default, while tests can explicitly
+     disable it.~~
+   - ~~`api-gateway` route-category/client-IP rate limits now use Redis atomic
+     counters when `GATEWAY_RATE_LIMIT_REDIS_ENABLED=true`; Compose and
+     Kubernetes base config enable this by default, while tests can explicitly
+     disable it.~~
+   - ~~Move gateway, ingestion, and telemetry rate limits to Redis or another
+     shared atomic store.~~
+   - ~~Keep local in-memory implementations only behind explicit local/test
+     profiles.~~
+
+5. ~~Add distributed locks or claim-based work for scheduled jobs.~~
+   - ~~Current issue: `@Scheduled` jobs run in every pod for identity
+     refresh-token cleanup, analytics outbox publishing, analytics retention,
+     alert escalation, and alert retention.~~
+   - ~~Idempotent cleanup jobs may tolerate duplicate runs, but they still
+     create unnecessary load under horizontal scaling.~~
+   - ~~Alert escalation can produce duplicate escalation events or duplicate
+     notifications because `existsByAlertIdAndEventType` is not an atomic
+     distributed claim.~~
+   - ~~Use ShedLock, PostgreSQL advisory locks, leader election, or claimable DB
+     rows for scheduled work.~~
+   - ~~Add database uniqueness for one-time side effects, for example one
+     escalation event per alert unless policy explicitly allows repeated
+     escalation levels.~~
+   - ~~`identity-service`, `analytics-service`, and `alert-service` now use a
+     `scheduler_locks` lease table for singleton scheduled work.~~
+   - ~~Identity refresh-token cleanup, analytics retention cleanup, alert
+     escalation scan, and alert retention cleanup acquire a database lease
+     before running.~~
+   - ~~Outbox publishers use claim-based row leasing, so multiple replicas can
+     publish without processing the same outbox row concurrently.~~
+   - ~~Alert escalation uses `alert_events.deduplication_key` with a unique
+     index and dispatches notifications only after the escalation event insert
+     succeeds.~~
+
+6. ~~Make simulator runs single-owner or distributed.~~
+   - ~~Current issue: `simulator-service` tracks active runs in
+     `RunningSimulationRegistry`, an in-memory map of `deviceId` to
+     `ScheduledFuture`.~~
+   - ~~Multiple simulator pods can start the same device simulation because the
+     registry is local to each pod.~~
+   - ~~A stopped or restarted pod marks previous runs stopped on startup, but it
+     does not transfer ownership to another pod.~~
+   - ~~Either document `simulator-service` as single-replica only, or replace
+     the in-memory registry with database leases/workers keyed by device id.~~
+   - ~~`simulation_runs.active_key` plus a unique `(device_id, active_key)`
+     index prevents more than one active run per device across simulator
+     replicas.~~
+   - ~~`lease_owner` and `lease_until` identify the owning replica and allow
+     expired active runs to be stopped during startup or scheduled
+     reconciliation.~~
+   - ~~Remote stop requests move the run to `STOPPING` without releasing the
+     active claim; the owner or stale-lease reconciliation clears the claim when
+     the run is actually stopped.~~
+
+7. ~~Define Kafka producer and topic scaling policy.~~
+   - ~~Kafka producer settings are explicit for current event producers:
+     `acks=all`, `enable.idempotence=true`, max retries,
+     `max.in.flight.requests.per.connection=5`, delivery timeout, and retry
+     backoff.~~
+   - ~~Keep stable message keys: device-scoped telemetry and analytics events
+     should use `deviceId`; account-scoped registry events should use
+     `accountId` only when per-account ordering is intended.~~
+   - ~~Set topic partition counts based on expected max consumer replicas and
+     ordering boundaries.~~
+   - ~~Document listener concurrency per service and keep it <= partition
+     count.~~
+   - ~~`docs/architecture/04-event-driven-architecture.md` now defines topic
+     keys, ordering boundaries, default consumer groups, listener concurrency,
+     and partition-count guidance.~~
+
+8. ~~Make identity lifecycle propagation durable and replayable.~~
+   - ~~Current lifecycle sync to device-service is synchronous and optional
+     behind `IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED`.~~
+   - ~~User deletion/disable is a security-sensitive state transition, so the
+     system must choose either fail-closed synchronous propagation or durable
+     asynchronous propagation with immediate token/session revocation and
+     downstream retry.~~
+   - ~~Add an identity lifecycle outbox event and a device-service inbox
+     handler, or keep the synchronous command but persist a retryable sync task
+     in the identity transaction.~~
+   - ~~Identity status/delete transactions revoke refresh sessions immediately
+     and enqueue durable `identity.account-lifecycle.v1` events.~~
+   - ~~Identity outbox publication is lease/retry based and `device-service`
+     applies events idempotently via `processed_events`.~~
+   - ~~Identity lifecycle reconciliation compares recent identity user statuses
+     with device-service account lifecycle status under a distributed scheduler
+     lock and re-enqueues lifecycle outbox events for missing or drifted
+     accounts.~~
+
+### High
+
+9. ~~Make analytics job execution claim-based.~~
+   - ~~Current issue: `AnalyticsJobService` checks for active jobs and then
+     inserts a new one without a database constraint that prevents concurrent
+     active jobs for the same device.~~
+   - ~~Add a unique partial index or deterministic job key for active
+     recalculation jobs, for example `(device_id, job_type)` where status is
+     `PENDING` or `RUNNING`.~~
+   - ~~`analytics_jobs.active_key` plus unique
+     `(device_id, job_type, active_key)` prevents more than one active
+     recalculation job per device and job type; completed/failed jobs clear the
+     key.~~
+   - ~~Add worker leasing to claim `PENDING` jobs instead of immediately
+     running `@Async` in the pod that created the job.~~
+   - ~~Add recovery for stale `RUNNING` jobs after worker crashes.~~
+   - ~~Async recalculation enqueue now leaves jobs `PENDING`; scheduled
+     analytics workers claim jobs with `locked_at`/`locked_by`, move them to
+     `RUNNING`, and clear active/lock state on completion or failure.~~
+   - ~~Stale `RUNNING` jobs with expired locks are claimable again by another
+     worker.~~
+   - ~~Derive recalculation windows from event time or fixed buckets when
+     idempotency must be deterministic; current `now`-based windows can create
+     different input hashes for repeated triggers.~~
+
+10. Make alert notification delivery durable and idempotent.
+    - Current issue: notification delivery is dispatched with after-commit
+      `@Async`; if the pod dies after commit but before/during async execution,
+      the notification can be lost.
+    - Use `notification_attempts` as a durable queue or add a dedicated
+      notification outbox.
+    - Claim pending notification attempts with leases so multiple alert-service
+      pods do not deliver the same attempt.
+    - Add an idempotency key for notification side effects, for example
+      `alert_id + channel_id + delivery_event_type`.
+    - Include provider idempotency keys in webhook/email/SMS requests where the
+      provider supports them.
+
+11. Add service-level reconciliation loops.
+    - Add telemetry-to-analytics reconciliation for persisted telemetry rows
+      that did not produce `telemetry.validated.v1`.
+    - Add analytics outbox reconciliation for stuck or failed outbox rows.
+    - Add alert reconciliation for analytics events that were processed but did
+      not create the expected alert due to transient downstream failures.
+    - Add device registry reconciliation so ingestion caches and projections can
+      be rebuilt from device-service if registry events are missed.
+
+12. Standardize event envelopes across all asynchronous topics.
+    - `docs/events/event-envelope.md` defines event id, producer, correlation,
+      and versioning expectations, but some topics still use service-specific
+      record shapes directly.
+    - Ensure every published event has a stable `eventId`, `correlationId`,
+      `producer`, `occurredAt`, schema version, and tenant/account context when
+      available.
+    - Consumers should use envelope metadata for idempotency, tracing, DLQ
+      records, and replay tooling.
+
+13. Add a horizontal scaling matrix.
+    - For each deployment, document whether it is safe to scale beyond one
+      replica today.
+    - Mark `api-gateway`, `ingestion-service`, `telemetry-service`,
+      `analytics-service`, `alert-service`, and `simulator-service` separately.
+    - For each service list required external state: Redis, Kafka partitions,
+      database locks, outbox/inbox tables, and leader election.
+    - Keep HPA disabled for services that still have process-local ownership
+      state.
+
+14. Add failover and replay tests.
+    - Test duplicate Kafka delivery for telemetry, analytics, and alert
+      consumers.
+    - Test producer crash after database commit and before Kafka publish for
+      services with outbox.
+    - Test outbox worker crash after Kafka ack and before marking `PUBLISHED`.
+    - Test two replicas claiming the same outbox, job, escalation, and
+      notification work.
+    - Test Redis outage behavior for ingestion idempotency and rate limiting.
+
+### Medium
+
+15. Add operational metrics for eventual consistency.
+    - Track outbox depth, oldest pending age, failed rows, retry count, and
+      stuck `PROCESSING` leases per service.
+    - Track inbox duplicate counts and consumer replay counts.
+    - Track scheduler lock acquisition/skipped runs.
+    - Track Redis-backed rate-limit and idempotency latency/errors.
+    - Alert on growing outbox lag, consumer lag, and stale running jobs.
+
+16. Document consistency contracts per user-visible flow.
+    - Define which operations are strongly consistent in the request path and
+      which are eventually consistent through Kafka/outbox.
+    - Define acceptable propagation delay for telemetry appearing in dashboards,
+      analytics results, alert creation, and notifications.
+    - Define retry expectations for clients when ingestion returns `202`,
+      `409`, `429`, or `503`.
+    - Document replay procedures for outbox rows, DLQ topics, and failed jobs.
 
 ## Project Structure
 

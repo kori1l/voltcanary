@@ -9,11 +9,14 @@ import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
+import com.voltcanary.analytics.repository.AnalyticsJobRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
 import com.voltcanary.analytics.repository.RecommendationRepository;
+import com.voltcanary.analytics.service.AnalyticsJobService;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +31,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(
@@ -60,6 +65,12 @@ class AnalyticsRecalculationTest {
 
     @Autowired
     private RecommendationRepository recommendationRepository;
+
+    @Autowired
+    private AnalyticsJobService jobService;
+
+    @Autowired
+    private AnalyticsJobRepository jobRepository;
 
     @Test
     void recalculateCreatesBaselineAnomaliesRiskAndRecommendations() {
@@ -101,6 +112,7 @@ class AnalyticsRecalculationTest {
                         0.5,
                         List.of("Mock inference result")));
 
+        Instant requestStartedAt = Instant.now();
         ResponseEntity<RecalculateResponse> recalculated = restTemplate.postForEntity(
                 "/analytics/devices/{deviceId}/recalculate",
                 null,
@@ -111,6 +123,13 @@ class AnalyticsRecalculationTest {
         assertThat(recalculated.getBody()).isNotNull();
         assertThat(recalculated.getBody().status()).isEqualTo("completed");
         assertThat(recalculated.getBody().jobId()).isNotNull();
+        org.mockito.ArgumentCaptor<Instant> windowEndCaptor = org.mockito.ArgumentCaptor.forClass(Instant.class);
+        verify(telemetryClient, atLeastOnce()).readings(
+                eq(deviceId),
+                eq("activePowerW"),
+                any(Instant.class),
+                windowEndCaptor.capture());
+        assertThat(windowEndCaptor.getAllValues().getFirst()).isAfterOrEqualTo(requestStartedAt);
 
         ResponseEntity<BaselineResponse> baseline = restTemplate.getForEntity(
                 "/analytics/devices/{deviceId}/baseline",
@@ -188,6 +207,31 @@ class AnalyticsRecalculationTest {
                 .hasSize(2);
         assertThat(recommendationRepository.findTop100ByDeviceIdAndStatusOrderByCreatedAtDesc(deviceId, "SUPERSEDED"))
                 .hasSize(2);
+    }
+
+    @Test
+    void eventTriggeredRecalculationUsesDeterministicWindowBucket() {
+        UUID deviceId = UUID.randomUUID();
+        Instant eventTime = Instant.parse("2026-05-29T10:17:42Z");
+        Instant expectedWindowEnd = Instant.parse("2026-05-29T11:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(eventTime.minusSeconds(60), 100),
+                        point(eventTime, 140))));
+
+        var response = jobService.enqueueRecalculation(deviceId, eventTime);
+
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        verify(telemetryClient).readings(
+                eq(deviceId),
+                eq("activePowerW"),
+                eq(expectedWindowEnd.minus(Duration.ofHours(24))),
+                eq(expectedWindowEnd));
+        assertThat(jobRepository.findById(response.id())).hasValueSatisfying(job -> {
+            assertThat(job.getWindowStart()).isEqualTo(expectedWindowEnd.minus(Duration.ofHours(24)));
+            assertThat(job.getWindowEnd()).isEqualTo(expectedWindowEnd);
+            assertThat(job.getInputHash()).isNotBlank();
+        });
     }
 
     private TelemetryChartResponse.Point point(Instant timestamp, double value) {

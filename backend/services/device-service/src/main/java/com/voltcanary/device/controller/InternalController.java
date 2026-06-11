@@ -4,6 +4,7 @@ import com.voltcanary.device.config.InternalServiceAuth;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountLifecycleRequest;
+import com.voltcanary.device.dto.AccountLifecycleStatusResponse;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.service.AccountService;
 import jakarta.validation.Valid;
@@ -73,5 +74,15 @@ public class InternalController {
         internalServiceAuth.require(internalToken);
         var account = accountService.syncUser(userId, request.email(), request.status());
         return Map.of("accountId", account.getId().toString(), "status", account.getStatus().name());
+    }
+
+    @GetMapping("/accounts/users/{userId}/lifecycle")
+    public AccountLifecycleStatusResponse accountLifecycle(
+            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+            @PathVariable("userId") UUID userId) {
+        internalServiceAuth.require(internalToken);
+        Account account = accountService.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
+        return new AccountLifecycleStatusResponse(account.getUserId(), account.getStatus().name());
     }
 }

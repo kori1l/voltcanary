@@ -26,6 +26,9 @@ public class AlertEvent {
     @Column(name = "payload_json", nullable = false, columnDefinition = "text")
     private String payloadJson;
 
+    @Column(name = "deduplication_key")
+    private String deduplicationKey;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -67,6 +70,14 @@ public class AlertEvent {
 
     public void setPayloadJson(String payloadJson) {
         this.payloadJson = payloadJson;
+    }
+
+    public String getDeduplicationKey() {
+        return deduplicationKey;
+    }
+
+    public void setDeduplicationKey(String deduplicationKey) {
+        this.deduplicationKey = deduplicationKey;
     }
 
     public Instant getCreatedAt() {

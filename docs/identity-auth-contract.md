@@ -38,10 +38,21 @@ All admin endpoints require `Authorization: Bearer <accessToken>` for a user wit
 - `GET /auth/admin/users`
 - `PATCH /auth/admin/users/{userId}/status`
 - `PATCH /auth/admin/users/{userId}/role`
+- `DELETE /auth/admin/users/{userId}`
 - `GET /auth/admin/users/{userId}/sessions`
 - `POST /auth/admin/users/{userId}/sessions/revoke`
 
-Supported statuses are `ACTIVE`, `DISABLED`, `LOCKED`, and `PENDING_VERIFICATION`.
+Supported statuses are `ACTIVE`, `DISABLED`, `LOCKED`, `PENDING_VERIFICATION`, and `DELETED`.
+
+`DELETE /auth/admin/users/{userId}` is a soft delete. It sets the user status to
+`DELETED`, revokes active refresh sessions, and syncs the downstream
+device-service account lifecycle when lifecycle sync is enabled.
+
+Inactive statuses (`DISABLED`, `LOCKED`, `PENDING_VERIFICATION`, `DELETED`) are
+rejected for login and refresh. Existing access tokens are not revoked at the JWT
+layer, but downstream services must enforce lifecycle state. Device-service
+blocks `/accounts/current` and internal source existence for inactive accounts,
+so old source tokens cannot continue ingestion after user deletion.
 
 ## Token Contract
 

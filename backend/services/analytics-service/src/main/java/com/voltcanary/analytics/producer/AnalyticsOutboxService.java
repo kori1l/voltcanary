@@ -91,6 +91,7 @@ public class AnalyticsOutboxService {
         outbox.setStatus("PENDING");
         outbox.setAttempts(0);
         outbox.setCreatedAt(Instant.now());
+        outbox.setNextAttemptAt(outbox.getCreatedAt());
         repository.save(outbox);
         meterRegistry.counter("analytics.events.enqueued", "topic", topic).increment();
     }

@@ -80,6 +80,14 @@ class NotificationChannelApiTest {
 
     @Test
     void channelCrudIsScopedByAccountAndUsesCredentialsRef() {
+        ResponseEntity<List<NotificationChannelResponse>> initialListResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.GET,
+                entity(ACCOUNT_ID, null),
+                new ParameterizedTypeReference<>() {
+                });
+        assertThat(initialListResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
         ResponseEntity<NotificationChannelResponse> createResponse = restTemplate.exchange(
                 "/alerts/notification-channels",
                 HttpMethod.POST,

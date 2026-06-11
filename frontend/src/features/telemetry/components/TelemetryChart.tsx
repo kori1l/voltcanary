@@ -33,42 +33,34 @@ export function TelemetryChart({
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
   const renderSeries = buildRenderSeries(series, maxDisplayPoints, range);
   const values = renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value));
-
-  if (values.length === 0) {
-    return (
-      <div className={`chart-wrap annotated-chart chart-${mode === "detailed" ? "large" : "normal"}`}>
-        <div className="empty-state">
-          <strong>No samples</strong>
-          <span>Try a wider time range.</span>
-        </div>
-      </div>
-    );
-  }
-
   const width = 820;
   const height = 330;
   const padding = { top: 28, right: 28, bottom: 54, left: 58 };
-  const thresholdValues = [
-    threshold?.normalMin,
-    threshold?.normalMax,
-    threshold?.warningMin,
-    threshold?.warningMax,
-    threshold?.criticalMin,
-    threshold?.criticalMax,
-    threshold?.spikeThreshold,
-  ].filter((value): value is number => value !== undefined);
+  const thresholdEntries = [
+    { key: "normalMin", value: threshold?.normalMin },
+    { key: "normalMax", value: threshold?.normalMax },
+    { key: "warningMin", value: threshold?.warningMin },
+    { key: "warningMax", value: threshold?.warningMax },
+    { key: "criticalMin", value: threshold?.criticalMin },
+    { key: "criticalMax", value: threshold?.criticalMax },
+    { key: "spikeThreshold", value: threshold?.spikeThreshold },
+  ].filter((entry): entry is { key: string; value: number } => entry.value !== undefined);
+  const thresholdValues = thresholdEntries.map((entry) => entry.value);
   const allValues = [...values, ...thresholdValues];
+  const hasValues = values.length > 0;
   const rawMin = Math.min(...allValues);
   const rawMax = Math.max(...allValues);
-  const rawRange = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
+  const safeRawMin = Number.isFinite(rawMin) ? rawMin : 0;
+  const safeRawMax = Number.isFinite(rawMax) ? rawMax : 1;
+  const rawRange = safeRawMax - safeRawMin || Math.max(Math.abs(safeRawMax), 1);
   const paddingValue = rawRange * 0.08;
-  const includeZero = ["W", "Wh", "A"].includes(unit) && rawMin >= 0;
-  const actualMax = Math.max(...values);
+  const includeZero = ["W", "Wh", "A"].includes(unit) && safeRawMin >= 0;
+  const actualMax = hasValues ? Math.max(...values) : safeRawMax;
   const warningReference = threshold?.warningMax ?? threshold?.spikeThreshold ?? threshold?.criticalMax;
-  const minValue = includeZero ? 0 : rawMin - paddingValue;
+  const minValue = includeZero ? 0 : safeRawMin - paddingValue;
   const maxValue = unit === "W"
     ? Math.max(actualMax * 1.15, warningReference !== undefined ? warningReference * 1.3 : actualMax * 1.15, 1)
-    : rawMax + paddingValue;
+    : safeRawMax + paddingValue;
   const valueRange = maxValue - minValue || 1;
   const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / valueRange) * (height - padding.top - padding.bottom);
   const rangeStart = new Date(range.from).getTime();
@@ -158,9 +150,9 @@ export function TelemetryChart({
 
         <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
 
-        {thresholdValues.map((value) => (
+        {thresholdEntries.map(({ key, value }, index) => (
           <line
-            key={`threshold-${value}`}
+            key={`threshold-${key}-${index}-${value}`}
             className={isCriticalThreshold(value, threshold) ? "chart-threshold chart-threshold-critical" : "chart-threshold"}
             x1={padding.left}
             y1={yForValue(value)}
@@ -176,7 +168,13 @@ export function TelemetryChart({
           </g>
         ))}
 
-        <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} />
+        {coordinates.length > 0 ? <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} /> : null}
+
+        {coordinates.length === 0 ? (
+          <text className="chart-axis-label" x={(padding.left + width - padding.right) / 2} y={(padding.top + height - padding.bottom) / 2} textAnchor="middle">
+            No samples in selected range
+          </text>
+        ) : null}
 
         {selection ? (
           <rect
@@ -228,7 +226,7 @@ export function TelemetryChart({
           return (
             <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - 28} textAnchor="middle">
               {lines.map((line, index) => (
-                <tspan key={line} x={tick.x} dy={index === 0 ? 0 : 14}>
+                <tspan key={`${line}-${index}`} x={tick.x} dy={index === 0 ? 0 : 14}>
                   {line}
                 </tspan>
               ))}
@@ -264,7 +262,7 @@ function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: 
     return {
       timestamp: new Date(timestampMs).toISOString(),
       metricKey: sorted[0]?.metricKey ?? "",
-      value: 0,
+      value: null as number | null,
       quality: "partial" as const,
       synthetic: true,
       sourceCount: 0,
@@ -281,7 +279,7 @@ function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: 
     if (bucket.sourceCount === 0) {
       bucket.value = sample.value;
     } else {
-      bucket.value = (bucket.value * bucket.sourceCount + sample.value) / (bucket.sourceCount + 1);
+      bucket.value = ((bucket.value ?? 0) * bucket.sourceCount + sample.value) / (bucket.sourceCount + 1);
     }
     bucket.timestamp = sample.timestamp;
     bucket.metricKey = sample.metricKey;

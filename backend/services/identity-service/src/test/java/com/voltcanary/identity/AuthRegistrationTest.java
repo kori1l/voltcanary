@@ -262,6 +262,70 @@ class AuthRegistrationTest {
     }
 
     @Test
+    void adminCanSoftDeleteUserAndSessionsAreRevoked() {
+        register("delete-admin@example.com", "Password123!");
+        register("delete-managed@example.com", "Password123!");
+        User admin = userRepository.findByEmail("delete-admin@example.com").orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        userRepository.save(admin);
+        User managed = userRepository.findByEmail("delete-managed@example.com").orElseThrow();
+        AuthTokenResponse adminTokens = login("delete-admin@example.com", "Password123!").getBody();
+        AuthTokenResponse managedTokens = login("delete-managed@example.com", "Password123!").getBody();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminTokens.accessToken());
+        ResponseEntity<String> deleted = restTemplate.exchange(
+                "/auth/admin/users/" + managed.getId(),
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                String.class);
+        ResponseEntity<String> loginAfterDelete = restTemplate.postForEntity(
+                "/auth/login",
+                Map.of("email", "delete-managed@example.com", "password", "Password123!"),
+                String.class);
+        ResponseEntity<String> refreshAfterDelete = restTemplate.postForEntity(
+                "/auth/refresh",
+                Map.of("refreshToken", managedTokens.refreshToken()),
+                String.class);
+
+        assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deleted.getBody()).contains("\"status\":\"DELETED\"");
+        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.DELETED);
+        assertThat(loginAfterDelete.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(refreshAfterDelete.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(refreshTokenRepository.findByUserId(managed.getId()))
+                .allSatisfy(token -> assertThat(token.getRevokedAt()).isNotNull());
+    }
+
+    @Test
+    void adminStatusChangeRevokesSessionsWhenUserBecomesInactive() {
+        register("status-admin@example.com", "Password123!");
+        register("status-managed@example.com", "Password123!");
+        User admin = userRepository.findByEmail("status-admin@example.com").orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        userRepository.save(admin);
+        User managed = userRepository.findByEmail("status-managed@example.com").orElseThrow();
+        AuthTokenResponse adminTokens = login("status-admin@example.com", "Password123!").getBody();
+        AuthTokenResponse managedTokens = login("status-managed@example.com", "Password123!").getBody();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminTokens.accessToken());
+        ResponseEntity<String> disabled = restTemplate.exchange(
+                "/auth/admin/users/" + managed.getId() + "/status",
+                HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("status", "DISABLED"), headers),
+                String.class);
+        ResponseEntity<String> refreshAfterDisable = restTemplate.postForEntity(
+                "/auth/refresh",
+                Map.of("refreshToken", managedTokens.refreshToken()),
+                String.class);
+
+        assertThat(disabled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(disabled.getBody()).contains("\"status\":\"DISABLED\"");
+        assertThat(refreshAfterDisable.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void adminEndpointsRejectRegularUsers() {
         register("regular-admin-check@example.com", "Password123!");
         AuthTokenResponse tokens = login("regular-admin-check@example.com", "Password123!").getBody();

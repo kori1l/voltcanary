@@ -393,6 +393,37 @@ class DeviceManagementTest {
     }
 
     @Test
+    void accountLifecycleBlocksIngestionLookupForActiveDeviceSources() {
+        UUID userId = UUID.randomUUID();
+        LocationResponse location = createLocation(userId, "Account lifecycle kitchen");
+        DeviceResponse device = createDevice(userId, location.id(), "Account lifecycle fridge");
+        createDataSource(userId, device.id(), "plug-account-lifecycle-001");
+
+        ResponseEntity<String> activeLookup = restTemplate.exchange(
+                "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                String.class);
+        ResponseEntity<String> deletedAccount = restTemplate.exchange(
+                "/internal/accounts/users/" + userId + "/lifecycle",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of("email", "account-lifecycle@example.com", "status", "DELETED"),
+                        internalHeaders()),
+                String.class);
+        ResponseEntity<String> deletedLookup = restTemplate.exchange(
+                "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                String.class);
+
+        assertThat(activeLookup.getBody()).contains("\"exists\":true");
+        assertThat(deletedAccount.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deletedAccount.getBody()).contains("\"status\":\"DELETED\"");
+        assertThat(deletedLookup.getBody()).contains("\"exists\":false");
+    }
+
+    @Test
     void publishesRegistryEventsForDeviceDomainChanges() {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Event kitchen");

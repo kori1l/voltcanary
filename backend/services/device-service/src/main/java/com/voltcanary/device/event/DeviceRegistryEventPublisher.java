@@ -2,12 +2,10 @@ package com.voltcanary.device.event;
 
 import com.voltcanary.common.events.device.DeviceRegistryChangedEvent;
 import com.voltcanary.device.config.DeviceKafkaProperties;
-import com.voltcanary.device.domain.Device;
 import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 
@@ -18,13 +16,13 @@ public class DeviceRegistryEventPublisher {
     private static final String TOPIC = "device-registry.changed.v1";
     private static final String VERSION = "v1";
 
-    private final KafkaTemplate<String, DeviceRegistryChangedEvent> kafkaTemplate;
+    private final DeviceOutboxService outboxService;
     private final boolean publishEnabled;
 
     public DeviceRegistryEventPublisher(
-            KafkaTemplate<String, DeviceRegistryChangedEvent> kafkaTemplate,
+            DeviceOutboxService outboxService,
             DeviceKafkaProperties kafkaProperties) {
-        this.kafkaTemplate = kafkaTemplate;
+        this.outboxService = outboxService;
         this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
@@ -57,6 +55,6 @@ public class DeviceRegistryEventPublisher {
                 accountId,
                 deviceId,
                 resourceId);
-        kafkaTemplate.send(TOPIC, key, event);
+        outboxService.enqueue(event.eventId().toString(), TOPIC, key, event);
     }
 }

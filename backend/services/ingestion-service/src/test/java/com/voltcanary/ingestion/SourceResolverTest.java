@@ -14,6 +14,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,11 +26,12 @@ import static org.mockito.Mockito.when;
 class SourceResolverTest {
 
     private final DeviceServiceSourceClient sourceClient = mock(DeviceServiceSourceClient.class);
+    private final DeviceValidationClient deviceValidationClient = mock(DeviceValidationClient.class);
     private final SourceResolver resolver = new SourceResolver(
             new SourceRegistryCache(),
             new SourceTokenValidator(),
             sourceClient,
-            mock(DeviceValidationClient.class));
+            deviceValidationClient);
 
     @Test
     void resolvesValidSourceToken() {
@@ -36,6 +39,7 @@ class SourceResolverTest {
         UUID deviceId = UUID.randomUUID();
         when(sourceClient.findByTokenPrefix("vc_src_live_test"))
                 .thenReturn(source(token, deviceId, "ACTIVE", "REST"));
+        when(deviceValidationClient.dataSourceExists(deviceId, "sim-fridge-001")).thenReturn(true);
 
         assertThat(resolver.resolve(message(token)).deviceId()).isEqualTo(deviceId);
     }
@@ -48,6 +52,17 @@ class SourceResolverTest {
         assertThatThrownBy(() -> resolver.resolve(message("vc_src_live_test_token")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401");
+    }
+
+    @Test
+    void rejectsUnknownTokenPrefixWithoutLeakingDeviceServiceNotFound() {
+        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
+                .thenThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
+
+        assertThatThrownBy(() -> resolver.resolve(message("vc_src_live_test_token")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("401")
+                .hasMessageContaining("Invalid source token");
     }
 
     @Test
@@ -67,6 +82,7 @@ class SourceResolverTest {
         UUID registeredDeviceId = UUID.randomUUID();
         when(sourceClient.findByTokenPrefix("vc_src_live_test"))
                 .thenReturn(source(token, registeredDeviceId, "ACTIVE", "REST"));
+        when(deviceValidationClient.dataSourceExists(registeredDeviceId, "sim-fridge-001")).thenReturn(true);
 
         IncomingTelemetryMessage message = new IncomingTelemetryMessage(
                 "sim-fridge-001",
@@ -106,6 +122,20 @@ class SourceResolverTest {
         assertThatThrownBy(() -> resolver.resolve(message))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("403");
+    }
+
+    @Test
+    void rejectsCachedTokenWhenDeviceSourceNoLongerExists() {
+        String token = "vc_src_live_test_token";
+        UUID deviceId = UUID.randomUUID();
+        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
+                .thenReturn(source(token, deviceId, "ACTIVE", "REST"));
+        when(deviceValidationClient.dataSourceExists(deviceId, "sim-fridge-001")).thenReturn(true, false);
+
+        assertThat(resolver.resolve(message(token)).deviceId()).isEqualTo(deviceId);
+        assertThatThrownBy(() -> resolver.resolve(message(token)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
     }
 
     private IncomingTelemetryMessage message(String token) {

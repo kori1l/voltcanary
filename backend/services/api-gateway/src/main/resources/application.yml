@@ -1,6 +1,10 @@
 spring:
   application:
     name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   cloud:
     gateway:
       server:
@@ -84,6 +88,7 @@ app:
   gateway:
     rate-limit:
       enabled: ${GATEWAY_RATE_LIMIT_ENABLED:true}
+      redis-enabled: ${GATEWAY_RATE_LIMIT_REDIS_ENABLED:true}
       window: ${GATEWAY_RATE_LIMIT_WINDOW:1m}
       auth-requests-per-window: ${GATEWAY_AUTH_RATE_LIMIT:30}
       ingestion-requests-per-window: ${GATEWAY_INGESTION_RATE_LIMIT:120}

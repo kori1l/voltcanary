@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
         properties = {
                 "app.kafka.publish-enabled=true",
                 "app.idempotency.redis-enabled=false",
+                "app.ingestion.redis-rate-limit-enabled=false",
                 "app.ingestion.backpressure-enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })

@@ -26,6 +26,10 @@ public class SourceRegistryCache {
         byTokenPrefix.put(tokenPrefix, new Entry(source, Instant.now().plus(TTL)));
     }
 
+    public void evictByTokenPrefix(String tokenPrefix) {
+        byTokenPrefix.remove(tokenPrefix);
+    }
+
     private record Entry(InternalDataSourceResponse source, Instant expiresAt) {
     }
 }

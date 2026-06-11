@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 public class AnalyticsJobProperties {
 
     private boolean async = true;
+    private boolean workerEnabled = false;
 
     public boolean isAsync() {
         return async;
@@ -15,5 +16,13 @@ public class AnalyticsJobProperties {
 
     public void setAsync(boolean async) {
         this.async = async;
+    }
+
+    public boolean isWorkerEnabled() {
+        return workerEnabled;
+    }
+
+    public void setWorkerEnabled(boolean workerEnabled) {
+        this.workerEnabled = workerEnabled;
     }
 }

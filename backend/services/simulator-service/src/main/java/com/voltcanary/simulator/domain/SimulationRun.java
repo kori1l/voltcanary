@@ -37,6 +37,12 @@ public class SimulationRun {
     private long generatedPoints;
     @Column(name = "last_error")
     private String lastError;
+    @Column(name = "active_key")
+    private String activeKey;
+    @Column(name = "lease_owner")
+    private String leaseOwner;
+    @Column(name = "lease_until")
+    private Instant leaseUntil;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -62,4 +68,10 @@ public class SimulationRun {
     public void setGeneratedPoints(long generatedPoints) { this.generatedPoints = generatedPoints; }
     public String getLastError() { return lastError; }
     public void setLastError(String lastError) { this.lastError = lastError; }
+    public String getActiveKey() { return activeKey; }
+    public void setActiveKey(String activeKey) { this.activeKey = activeKey; }
+    public String getLeaseOwner() { return leaseOwner; }
+    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
+    public Instant getLeaseUntil() { return leaseUntil; }
+    public void setLeaseUntil(Instant leaseUntil) { this.leaseUntil = leaseUntil; }
 }

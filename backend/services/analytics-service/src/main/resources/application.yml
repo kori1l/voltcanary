@@ -6,6 +6,14 @@ spring:
     consumer:
       group-id: analytics-service
       auto-offset-reset: earliest
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        retry.backoff.ms: 100
 
 app:
   kafka:
@@ -17,6 +25,8 @@ app:
   analytics:
     jobs:
       async: ${ANALYTICS_JOBS_ASYNC:true}
+      worker-enabled: ${ANALYTICS_JOBS_WORKER_ENABLED:false}
+      worker-delay: ${ANALYTICS_JOBS_WORKER_DELAY:5s}
     metrics:
       default-metrics: ${ANALYTICS_DEFAULT_METRICS:activePowerW}
       default-window: ${ANALYTICS_DEFAULT_WINDOW:24h}

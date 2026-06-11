@@ -1,11 +1,23 @@
 spring:
   application:
     name: telemetry-service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: telemetry-service
       auto-offset-reset: earliest
+    producer:
+      acks: all
+      retries: 2147483647
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        retry.backoff.ms: 100
 
 server:
   port: 8084
@@ -42,6 +54,7 @@ app:
       max-past-age: ${TELEMETRY_MAX_PAST_AGE:7d}
       max-metrics-per-event: ${TELEMETRY_MAX_METRICS_PER_EVENT:100}
       max-events-per-device-per-minute: ${TELEMETRY_MAX_EVENTS_PER_DEVICE_PER_MINUTE:600}
+      redis-rate-limit-enabled: ${TELEMETRY_RATE_LIMIT_REDIS_ENABLED:true}
       max-chart-range: ${TELEMETRY_MAX_CHART_RANGE:30d}
       max-export-page-size: ${TELEMETRY_MAX_EXPORT_PAGE_SIZE:1000}
       backfill-source-prefixes: ${TELEMETRY_BACKFILL_SOURCE_PREFIXES:import-,backfill-}

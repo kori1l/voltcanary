@@ -5,6 +5,8 @@ import { EventTimeline } from "../components/EventTimeline";
 import { mapMetricDetail } from "../model/telemetry.mappers";
 import { TelemetryOverviewResponse } from "../model/telemetry.types";
 
+const MIN_DETAIL_SELECTION_RANGE_MS = 60 * 1000;
+
 export function TelemetryOverviewPage({
   overview,
   range,
@@ -57,8 +59,9 @@ export function TelemetryOverviewPage({
   const detail = openedMetricKey ? mapMetricDetail(overview, openedMetricKey, selectedEventId) : null;
   const rangeLabel = range === "custom" ? "Custom range" : range;
   const applyDetailRangeSelection = (from: string, to: string) => {
-    onCustomFromChange(toDateTimeLocalValue(new Date(from)));
-    onCustomToChange(toDateTimeLocalValue(new Date(to)));
+    const normalized = ensureMinimumRange(new Date(from), new Date(to));
+    onCustomFromChange(toDateTimeLocalValue(normalized.from));
+    onCustomToChange(toDateTimeLocalValue(normalized.to));
     onRangeChange("custom");
   };
 
@@ -124,5 +127,26 @@ export function TelemetryOverviewPage({
 
 function toDateTimeLocalValue(date: Date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 19);
+}
+
+function ensureMinimumRange(from: Date, to: Date) {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+    const now = Date.now();
+    return {
+      from: new Date(now - MIN_DETAIL_SELECTION_RANGE_MS),
+      to: new Date(now),
+    };
+  }
+  const spanMs = toMs - fromMs;
+  if (spanMs >= MIN_DETAIL_SELECTION_RANGE_MS) {
+    return { from, to };
+  }
+  const midpoint = fromMs + spanMs / 2;
+  return {
+    from: new Date(midpoint - MIN_DETAIL_SELECTION_RANGE_MS / 2),
+    to: new Date(midpoint + MIN_DETAIL_SELECTION_RANGE_MS / 2),
+  };
 }
