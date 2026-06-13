@@ -123,6 +123,7 @@ public class TelemetryEventProcessor {
             meterRegistry.counter("voltcanary.telemetry.rows", "outcome", "inserted")
                     .increment(inserted);
             if (inserted > 0 && !qualityFlags.contains(QualityFlag.BACKFILL.name())) {
+                Instant validatedAt = Instant.now();
                 validatedPublisher.publish(new TelemetryValidatedEvent(
                         UUID.randomUUID(),
                         event.deviceId(),
@@ -130,7 +131,12 @@ public class TelemetryEventProcessor {
                         event.timestamp(),
                         numericMetrics(event.metrics()),
                         qualityFlags.isEmpty() ? List.of(QualityFlag.OK.name()) : qualityFlags,
-                        Instant.now()));
+                        validatedAt,
+                        "v1",
+                        event.correlationId(),
+                        "telemetry-service",
+                        event.accountId(),
+                        validatedAt), readingId);
             } else {
                 outcome = "duplicate";
             }

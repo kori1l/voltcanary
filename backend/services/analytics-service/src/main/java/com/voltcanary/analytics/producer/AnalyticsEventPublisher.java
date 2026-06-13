@@ -46,6 +46,11 @@ public class AnalyticsEventPublisher {
                 anomaly.getSeverity(),
                 anomaly.getScore(),
                 anomaly.getDescription(),
+                anomaly.getDetectedAt(),
+                "v1",
+                null,
+                "analytics-service",
+                null,
                 anomaly.getDetectedAt());
         log.info("Publishing {} anomalyId={} deviceId={}", ANOMALY_TOPIC, anomaly.getId(), anomaly.getDeviceId());
         anomalyKafkaTemplate.send(ANOMALY_TOPIC, anomaly.getDeviceId().toString(), event);
@@ -72,6 +77,11 @@ public class AnalyticsEventPublisher {
                 previousScore,
                 riskScore.getScore(),
                 riskScore.getLevel(),
+                riskScore.getCalculatedAt(),
+                "v1",
+                null,
+                "analytics-service",
+                null,
                 riskScore.getCalculatedAt());
         log.info("Publishing {} riskScoreId={} deviceId={}", RISK_TOPIC, riskScore.getId(), riskScore.getDeviceId());
         riskKafkaTemplate.send(RISK_TOPIC, riskScore.getDeviceId().toString(), event);

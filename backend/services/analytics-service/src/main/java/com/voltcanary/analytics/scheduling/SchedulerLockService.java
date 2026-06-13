@@ -5,6 +5,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,16 +18,21 @@ public class SchedulerLockService {
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
+    private final MeterRegistry meterRegistry;
     private final String ownerId = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
 
-    public SchedulerLockService(JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
+    public SchedulerLockService(
+            JdbcTemplate jdbcTemplate,
+            PlatformTransactionManager transactionManager,
+            MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
+        this.meterRegistry = meterRegistry;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public boolean acquire(String lockName, Duration lease) {
-        return transactionTemplate.execute(status -> {
+        boolean acquired = transactionTemplate.execute(status -> {
             Instant now = Instant.now();
             Instant lockedUntil = now.plus(lease);
             int updated = jdbcTemplate.update("""
@@ -56,6 +62,11 @@ public class SchedulerLockService {
                 return false;
             }
         });
+        meterRegistry.counter(
+                "analytics.scheduler.lock.acquire",
+                "lock", lockName,
+                "outcome", acquired ? "acquired" : "skipped").increment();
+        return acquired;
     }
 
     public void release(String lockName) {

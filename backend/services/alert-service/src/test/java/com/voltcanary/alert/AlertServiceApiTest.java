@@ -4,10 +4,15 @@ import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.dto.AlertSummaryResponse;
+import com.voltcanary.alert.domain.AlertAnalyticsEventInboxStatus;
+import com.voltcanary.alert.repository.AlertAnalyticsEventInboxRepository;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
+import com.voltcanary.alert.service.AlertAnalyticsEventInboxService;
+import com.voltcanary.alert.service.AlertAnalyticsEventReconciliationService;
 import com.voltcanary.alert.service.AlertEscalationService;
 import com.voltcanary.alert.service.AlertService;
+import com.voltcanary.alert.service.AnalyticsAlertEventHandler;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import java.time.Instant;
 import java.util.UUID;
@@ -38,7 +43,9 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.datasource.url=jdbc:h2:mem:alert-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
                 "spring.jpa.hibernate.ddl-auto=none",
                 "spring.flyway.enabled=true",
-                "app.alert.authorization.enabled=false"
+                "app.alert.authorization.enabled=false",
+                "app.alert.notifications.worker-enabled=false",
+                "app.alert.reconciliation.enabled=false"
         })
 class AlertServiceApiTest {
 
@@ -56,6 +63,15 @@ class AlertServiceApiTest {
 
     @Autowired
     private AlertEscalationService alertEscalationService;
+
+    @Autowired
+    private AlertAnalyticsEventInboxService alertAnalyticsEventInboxService;
+
+    @Autowired
+    private AlertAnalyticsEventReconciliationService alertAnalyticsEventReconciliationService;
+
+    @Autowired
+    private AlertAnalyticsEventInboxRepository alertAnalyticsEventInboxRepository;
 
     @Test
     void staticAlertRoutesAreNotCapturedByAlertIdRoute() {
@@ -175,6 +191,40 @@ class AlertServiceApiTest {
 
         assertThat(second.getId()).isEqualTo(first.getId());
         assertThat(second.getSourceEventId()).isEqualTo(eventId);
+    }
+
+    @Test
+    void analyticsEventInboxReplaysFailedEventWithoutDuplicateAlert() {
+        UUID deviceId = UUID.randomUUID();
+        AnomalyDetectedEvent event = new AnomalyDetectedEvent(
+                UUID.randomUUID(),
+                deviceId,
+                UUID.randomUUID(),
+                "POWER_SPIKE",
+                "MEDIUM",
+                30,
+                "Replayable power spike.",
+                Instant.parse("2026-05-13T12:25:00Z"));
+        var entry = alertAnalyticsEventInboxService.recordReceived(
+                AnalyticsAlertEventHandler.ANOMALY_TOPIC,
+                event.eventId(),
+                AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE,
+                event);
+        alertAnalyticsEventInboxService.markProcessing(entry.getId());
+        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("transient downstream failure"));
+
+        alertAnalyticsEventReconciliationService.reconcile(
+                alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow());
+        alertAnalyticsEventReconciliationService.reconcile(
+                alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow());
+
+        var stored = alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow();
+        assertThat(stored.getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.PROCESSED);
+        assertThat(stored.getAlertId()).isNotNull();
+        assertThat(stored.getAttempts()).isEqualTo(2);
+        assertThat(alertRepository.findAll())
+                .filteredOn(alert -> event.eventId().equals(alert.getSourceEventId()))
+                .hasSize(1);
     }
 
     @Test

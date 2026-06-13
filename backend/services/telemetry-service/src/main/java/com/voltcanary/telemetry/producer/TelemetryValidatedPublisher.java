@@ -2,6 +2,7 @@ package com.voltcanary.telemetry.producer;
 
 import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
 import com.voltcanary.telemetry.event.TelemetryTopics;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -18,15 +19,20 @@ public class TelemetryValidatedPublisher {
     }
 
     public void publish(TelemetryValidatedEvent event) {
+        publish(event, null);
+    }
+
+    public void publish(TelemetryValidatedEvent event, UUID readingId) {
         log.info(
                 "Publishing validated telemetry topic={} eventId={} deviceId={}",
                 TelemetryTopics.TELEMETRY_VALIDATED_V1,
                 event.eventId(),
                 event.deviceId());
         outboxService.enqueue(
-                "telemetry-validated:" + event.eventId(),
+                readingId == null ? "telemetry-validated:" + event.eventId() : "telemetry-validated-reading:" + readingId,
                 TelemetryTopics.TELEMETRY_VALIDATED_V1,
                 event.deviceId().toString(),
-                event);
+                event,
+                readingId);
     }
 }

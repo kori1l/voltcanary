@@ -14,6 +14,8 @@ public interface DataSourceRepository extends JpaRepository<DataSource, UUID> {
 
     List<DataSource> findByDeviceId(UUID deviceId);
 
+    List<DataSource> findByDeviceIdIn(List<UUID> deviceIds);
+
     long countByProtocol(DataSourceProtocol protocol);
 
     long countByStatus(SourceStatus status);

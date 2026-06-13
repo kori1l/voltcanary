@@ -45,7 +45,9 @@ public class DeviceRegistryEventPublisher {
                 deviceId,
                 resourceId,
                 status,
-                Instant.now());
+                Instant.now(),
+                null,
+                "device-service");
         String key = accountId == null ? resourceId.toString() : accountId.toString();
         log.info(
                 "Publishing {} resourceType={} action={} accountId={} deviceId={} resourceId={}",

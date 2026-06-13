@@ -10,5 +10,21 @@ public record AlertCreatedEvent(
         String severity,
         String status,
         String title,
-        Instant createdAt) {
+        Instant createdAt,
+        String eventVersion,
+        String correlationId,
+        String producer,
+        UUID accountId,
+        Instant occurredAt) {
+
+    public AlertCreatedEvent(
+            UUID eventId,
+            UUID alertId,
+            UUID deviceId,
+            String severity,
+            String status,
+            String title,
+            Instant createdAt) {
+        this(eventId, alertId, deviceId, severity, status, title, createdAt, "v1", null, null, null, createdAt);
+    }
 }

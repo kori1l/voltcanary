@@ -28,6 +28,12 @@ public class NotificationAttempt {
     @Column(name = "channel_type", nullable = false)
     private String channelType;
 
+    @Column(name = "delivery_event_type", nullable = false)
+    private String deliveryEventType;
+
+    @Column(name = "idempotency_key", nullable = false)
+    private String idempotencyKey;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private NotificationAttemptStatus status;
@@ -49,6 +55,15 @@ public class NotificationAttempt {
 
     @Column(name = "sent_at")
     private Instant sentAt;
+
+    @Column(name = "next_attempt_at", nullable = false)
+    private Instant nextAttemptAt;
+
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "locked_by")
+    private String lockedBy;
 
     public UUID getId() {
         return id;
@@ -88,6 +103,22 @@ public class NotificationAttempt {
 
     public void setChannelType(String channelType) {
         this.channelType = channelType;
+    }
+
+    public String getDeliveryEventType() {
+        return deliveryEventType;
+    }
+
+    public void setDeliveryEventType(String deliveryEventType) {
+        this.deliveryEventType = deliveryEventType;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
     }
 
     public NotificationAttemptStatus getStatus() {
@@ -144,5 +175,29 @@ public class NotificationAttempt {
 
     public void setSentAt(Instant sentAt) {
         this.sentAt = sentAt;
+    }
+
+    public Instant getNextAttemptAt() {
+        return nextAttemptAt;
+    }
+
+    public void setNextAttemptAt(Instant nextAttemptAt) {
+        this.nextAttemptAt = nextAttemptAt;
+    }
+
+    public Instant getLockedAt() {
+        return lockedAt;
+    }
+
+    public void setLockedAt(Instant lockedAt) {
+        this.lockedAt = lockedAt;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
     }
 }

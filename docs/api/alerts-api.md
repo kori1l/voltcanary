@@ -220,11 +220,15 @@ API keys, webhook secrets, or credentials in `config`; store those in a secret
 manager and pass only `credentialsRef`.
 
 All supported channel types are delivered asynchronously after alert creation
-and escalation. For the current provider-neutral implementation, each channel
-requires `config.url`; the service sends an `ALERT_CREATED` or
-`ALERT_ESCALATED` JSON payload to that URL and records each delivery as a
-notification attempt. Secrets such as webhook signing keys, bot tokens, SMTP
-passwords, and provider API keys must be resolved from `credentialsRef` by the
+and escalation. Alert-service first creates durable `notification_attempts`
+rows in the same transaction as the alert lifecycle change. Background workers
+then claim due attempts with row leases and deliver them. For the current
+provider-neutral implementation, each channel requires `config.url`; the
+service sends an `ALERT_CREATED` or `ALERT_ESCALATED` JSON payload to that URL
+and records each delivery as a notification attempt. The payload includes an
+`idempotencyKey`, and HTTP deliveries also send it as the `Idempotency-Key`
+header. Secrets such as webhook signing keys, bot tokens, SMTP passwords, and
+provider API keys must be resolved from `credentialsRef` by the
 deployment/provider adapter, not stored in channel config.
 
 ## Notification Preferences
@@ -270,6 +274,7 @@ Attempt statuses:
 | Status | Meaning |
 | --- | --- |
 | `PENDING` | Attempt was created and is waiting for delivery. |
+| `PROCESSING` | A worker claimed the attempt with a lease and is delivering it. |
 | `SENT` | Provider accepted or completed delivery. |
 | `FAILED` | Delivery failed and is not currently retrying. |
 | `RETRYING` | Delivery failed and is scheduled for another attempt. |

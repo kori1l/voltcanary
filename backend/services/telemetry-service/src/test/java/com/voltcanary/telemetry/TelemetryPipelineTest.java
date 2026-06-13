@@ -5,6 +5,7 @@ import com.voltcanary.telemetry.producer.TelemetryDeadLetterPublisher;
 import com.voltcanary.telemetry.producer.TelemetryValidatedPublisher;
 import com.voltcanary.telemetry.service.TelemetryEventProcessor;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.never;
                 "app.kafka.publish-enabled=false",
                 "app.telemetry.authorization.enabled=false",
                 "app.telemetry.validation.redis-rate-limit-enabled=false",
+                "app.telemetry.reconciliation.enabled=false",
                 "app.telemetry.validation.max-past-age=30d",
                 "management.health.redis.enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
@@ -53,7 +55,9 @@ class TelemetryPipelineTest {
     @Test
     void consumesEventSavesReadingsAndExposesLatestAndChartPoints() {
         UUID deviceId = UUID.randomUUID();
-        Instant timestamp = Instant.parse("2026-05-12T12:30:00Z");
+        Instant timestamp = recentTimestamp(300);
+        Instant from = timestamp.minusSeconds(1800);
+        Instant to = timestamp.plusSeconds(1800);
 
         int inserted = telemetryEventProcessor.process(event(deviceId, "plug-001", timestamp));
 
@@ -63,7 +67,7 @@ class TelemetryPipelineTest {
                 Long.class,
                 deviceId);
         assertThat(rowCount).isEqualTo(5);
-        verify(telemetryValidatedPublisher).publish(any());
+        verify(telemetryValidatedPublisher).publish(any(), any());
 
         ResponseEntity<String> latest = restTemplate.getForEntity(
                 "/telemetry/devices/{deviceId}/latest",
@@ -71,20 +75,24 @@ class TelemetryPipelineTest {
                 deviceId);
         assertThat(latest.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(latest.getBody()).contains("\"activePowerW\":840.2");
-        assertThat(latest.getBody()).contains("\"timestamp\":\"2026-05-12T12:30:00Z\"");
+        assertThat(latest.getBody()).contains("\"timestamp\":\"" + timestamp + "\"");
 
         ResponseEntity<String> chart = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from=2026-05-12T12:00:00Z&to=2026-05-12T13:00:00Z",
+                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}",
                 String.class,
-                deviceId);
+                deviceId,
+                from,
+                to);
         assertThat(chart.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(chart.getBody()).contains("\"metric\":\"activePowerW\"");
         assertThat(chart.getBody()).contains("\"value\":840.2");
 
         ResponseEntity<String> aggregatedChart = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from=2026-05-12T12:00:00Z&to=2026-05-12T13:00:00Z&interval=1m",
+                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}&interval=1m",
                 String.class,
-                deviceId);
+                deviceId,
+                from,
+                to);
         assertThat(aggregatedChart.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(aggregatedChart.getBody()).contains("\"metric\":\"activePowerW\"");
 
@@ -97,9 +105,11 @@ class TelemetryPipelineTest {
         assertThat(metrics.getBody()).contains("\"unit\":\"W\"");
 
         ResponseEntity<String> export = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings/export?metric=activePowerW&from=2026-05-12T12:00:00Z&to=2026-05-12T13:00:00Z&limit=1",
+                "/telemetry/devices/{deviceId}/readings/export?metric=activePowerW&from={from}&to={to}&limit=1",
                 String.class,
-                deviceId);
+                deviceId,
+                from,
+                to);
         assertThat(export.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(export.getBody()).contains("\"points\"");
         assertThat(export.getBody()).contains("\"value\":840.2");
@@ -120,7 +130,7 @@ class TelemetryPipelineTest {
     @Test
     void duplicateEventDoesNotCreateDuplicateRows() {
         UUID deviceId = UUID.randomUUID();
-        Instant timestamp = Instant.parse("2026-05-12T12:31:00Z");
+        Instant timestamp = recentTimestamp(240);
         TelemetryReceivedEvent event = event(deviceId, "plug-001", timestamp);
 
         int firstInsert = telemetryEventProcessor.process(event);
@@ -133,7 +143,7 @@ class TelemetryPipelineTest {
                 Long.class,
                 deviceId);
         assertThat(rowCount).isEqualTo(5);
-        verify(telemetryValidatedPublisher, times(1)).publish(any());
+        verify(telemetryValidatedPublisher, times(1)).publish(any(), any());
         Long readingCount = jdbcTemplate.queryForObject(
                 "select count(*) from telemetry_readings where device_id = ?",
                 Long.class,
@@ -153,7 +163,7 @@ class TelemetryPipelineTest {
                 UUID.randomUUID(),
                 deviceId,
                 "plug-001",
-                Instant.parse("2026-05-12T12:32:00Z"),
+                recentTimestamp(180),
                 Map.of("voltageV", 5000.0, "relayState", "ON"),
                 Instant.now());
 
@@ -183,7 +193,7 @@ class TelemetryPipelineTest {
                 UUID.randomUUID(),
                 deviceId,
                 "plug-001",
-                Instant.parse("2026-05-12T12:33:00Z"),
+                recentTimestamp(120),
                 Map.of("activePowerW", 120.0, "voltageV", 230.0, "relayState", "ON"),
                 Instant.now());
 
@@ -195,7 +205,7 @@ class TelemetryPipelineTest {
                 Long.class,
                 deviceId);
         assertThat(rowCount).isEqualTo(2);
-        verify(telemetryValidatedPublisher).publish(any());
+        verify(telemetryValidatedPublisher).publish(any(), any());
 
         ResponseEntity<String> quality = restTemplate.getForEntity(
                 "/telemetry/devices/{deviceId}/quality",
@@ -208,9 +218,10 @@ class TelemetryPipelineTest {
     @Test
     void outOfOrderEventIsAcceptedAndFlagged() {
         UUID deviceId = UUID.randomUUID();
-        telemetryEventProcessor.process(event(deviceId, "plug-001", Instant.parse("2026-05-12T12:40:00Z")));
+        Instant latest = recentTimestamp(60);
+        telemetryEventProcessor.process(event(deviceId, "plug-001", latest));
 
-        int inserted = telemetryEventProcessor.process(event(deviceId, "plug-001", Instant.parse("2026-05-12T12:39:00Z")));
+        int inserted = telemetryEventProcessor.process(event(deviceId, "plug-001", latest.minusSeconds(60)));
 
         assertThat(inserted).isEqualTo(5);
         ResponseEntity<String> quality = restTemplate.getForEntity(
@@ -234,7 +245,7 @@ class TelemetryPipelineTest {
                 Long.class,
                 deviceId);
         assertThat(rowCount).isEqualTo(5);
-        verify(telemetryValidatedPublisher, never()).publish(any());
+        verify(telemetryValidatedPublisher, never()).publish(any(), any());
 
         ResponseEntity<String> quality = restTemplate.getForEntity(
                 "/telemetry/devices/{deviceId}/quality",
@@ -251,7 +262,7 @@ class TelemetryPipelineTest {
                 UUID.randomUUID(),
                 deviceId,
                 "plug-001",
-                Instant.parse("2026-05-12T12:50:00Z"),
+                recentTimestamp(30),
                 Map.of("activePowerW", 840.2, "vendorSecret", "do-not-store"),
                 Instant.now()));
 
@@ -276,5 +287,9 @@ class TelemetryPipelineTest {
                         "energyWh", 12450.7,
                         "rssi", -61),
                 Instant.now());
+    }
+
+    private Instant recentTimestamp(long secondsAgo) {
+        return Instant.now().minusSeconds(secondsAgo).truncatedTo(ChronoUnit.MICROS);
     }
 }

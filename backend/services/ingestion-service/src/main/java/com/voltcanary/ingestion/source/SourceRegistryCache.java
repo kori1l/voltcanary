@@ -2,6 +2,7 @@ package com.voltcanary.ingestion.source;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +29,31 @@ public class SourceRegistryCache {
 
     public void evictByTokenPrefix(String tokenPrefix) {
         byTokenPrefix.remove(tokenPrefix);
+    }
+
+    public List<CachedSource> snapshot(int maxEntries) {
+        if (maxEntries <= 0) {
+            return List.of();
+        }
+        Instant now = Instant.now();
+        return byTokenPrefix.entrySet().stream()
+                .filter(entry -> {
+                    boolean expired = entry.getValue().expiresAt().isBefore(now);
+                    if (expired) {
+                        byTokenPrefix.remove(entry.getKey(), entry.getValue());
+                    }
+                    return !expired;
+                })
+                .limit(maxEntries)
+                .map(entry -> new CachedSource(entry.getKey(), entry.getValue().source()))
+                .toList();
+    }
+
+    public int size() {
+        return byTokenPrefix.size();
+    }
+
+    public record CachedSource(String tokenPrefix, InternalDataSourceResponse source) {
     }
 
     private record Entry(InternalDataSourceResponse source, Instant expiresAt) {

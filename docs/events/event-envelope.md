@@ -14,6 +14,7 @@ idempotency, tracing, versioning, and troubleshooting.
   "occurredAt": "2026-05-12T12:30:01Z",
   "correlationId": "uuid",
   "producer": "ingestion-service",
+  "accountId": "uuid",
   "payload": {}
 }
 ```
@@ -26,9 +27,29 @@ idempotency, tracing, versioning, and troubleshooting.
 | `eventType` | string | yes | Logical event name, for example `TelemetryReceived`. |
 | `eventVersion` | integer | yes | Schema version of this event type. Starts at `1`. |
 | `occurredAt` | ISO-8601 instant | yes | Time when the domain event occurred, not when it was consumed. |
-| `correlationId` | UUID string | yes | Request or workflow correlation ID propagated across services. |
+| `correlationId` | string | yes | Request or workflow correlation ID propagated across services. |
 | `producer` | string | yes | Service that produced the event. |
+| `accountId` | UUID string | when available | Tenant/account context for authorization, replay, and troubleshooting. |
 | `payload` | object | yes | Event-specific payload. |
+
+## Transitional Direct-Record Shape
+
+Some existing topics still publish domain records directly instead of wrapping
+them in `EventEnvelope<T>` as the Kafka value. During this transition, every
+published common event record must expose the same metadata fields at the top
+level:
+
+- `eventId`
+- `eventVersion`
+- `correlationId`
+- `producer`
+- `accountId`
+- `occurredAt`
+
+The direct-record shape keeps current consumers and serializers compatible while
+still giving consumers the envelope metadata needed for idempotency, tracing,
+tenant-aware replay, and DLQ tooling. New topics should prefer the explicit
+`EventEnvelope<T>` value shape.
 
 ## Example: TelemetryReceived
 
@@ -40,6 +61,7 @@ idempotency, tracing, versioning, and troubleshooting.
   "occurredAt": "2026-05-12T12:30:01Z",
   "correlationId": "2a0560b2-2a19-49aa-9e4d-784703f2587d",
   "producer": "ingestion-service",
+  "accountId": "6ee1ef72-9352-4b62-8cd3-8dd06f3612f0",
   "payload": {
     "deviceId": "7f3f1f9f-8a9a-45f3-8e8a-f0d50cf69e91",
     "sourceId": "plug-001",

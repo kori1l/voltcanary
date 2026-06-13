@@ -97,13 +97,19 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             }
 
             UUID eventId = UUID.randomUUID();
+            Instant receivedAt = Instant.now();
             TelemetryReceivedEvent event = new TelemetryReceivedEvent(
                     eventId,
                     source.deviceId(),
                     normalizedMessage.sourceId(),
                     normalizedMessage.timestamp(),
                     normalizedMessage.metrics(),
-                    Instant.now());
+                    receivedAt,
+                    "v1",
+                    normalizedMessage.correlationId(),
+                    "ingestion-service",
+                    source.accountId(),
+                    normalizedMessage.timestamp());
             if (kafkaPublishEnabled) {
                 try {
                     telemetryEventPublisher.publish(event);

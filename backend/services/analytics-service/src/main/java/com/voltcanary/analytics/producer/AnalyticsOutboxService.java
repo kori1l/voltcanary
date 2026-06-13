@@ -47,6 +47,11 @@ public class AnalyticsOutboxService {
                 anomaly.getSeverity(),
                 anomaly.getScore(),
                 anomaly.getDescription(),
+                anomaly.getDetectedAt(),
+                "v1",
+                null,
+                "analytics-service",
+                null,
                 anomaly.getDetectedAt());
         enqueue(
                 "anomaly:" + anomaly.getDeviceId() + ":" + anomaly.getRuleId() + ":" + anomaly.getWindowStart() + ":" + anomaly.getWindowEnd() + ":" + anomaly.getInputHash(),
@@ -70,6 +75,11 @@ public class AnalyticsOutboxService {
                 previousScore,
                 riskScore.getScore(),
                 riskScore.getLevel(),
+                riskScore.getCalculatedAt(),
+                "v1",
+                null,
+                "analytics-service",
+                null,
                 riskScore.getCalculatedAt());
         enqueue(
                 "risk:" + riskScore.getDeviceId() + ":" + riskScore.getWindowStart() + ":" + riskScore.getWindowEnd() + ":" + riskScore.getInputHash(),

@@ -2,7 +2,7 @@ package com.voltcanary.alert.service;
 
 import com.voltcanary.alert.config.AlertNotificationProperties;
 import com.voltcanary.alert.domain.Alert;
-import java.util.UUID;
+import com.voltcanary.alert.repository.NotificationChannelRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -11,10 +11,18 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class NotificationDeliveryService {
 
     private final AlertNotificationProperties properties;
+    private final NotificationChannelRepository channelRepository;
+    private final NotificationAttemptService attemptService;
     private final NotificationDeliveryWorker worker;
 
-    public NotificationDeliveryService(AlertNotificationProperties properties, NotificationDeliveryWorker worker) {
+    public NotificationDeliveryService(
+            AlertNotificationProperties properties,
+            NotificationChannelRepository channelRepository,
+            NotificationAttemptService attemptService,
+            NotificationDeliveryWorker worker) {
         this.properties = properties;
+        this.channelRepository = channelRepository;
+        this.attemptService = attemptService;
         this.worker = worker;
     }
 
@@ -30,16 +38,17 @@ public class NotificationDeliveryService {
         if (!properties.isEnabled() || alert == null || alert.getAccountId() == null) {
             return;
         }
-        UUID alertId = alert.getId();
+        channelRepository.findByAccountIdAndEnabledTrueOrderByCreatedAtDesc(alert.getAccountId())
+                .forEach(channel -> attemptService.createPendingAttempt(alert, channel, deliveryEventType));
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    worker.deliverAlert(alertId, deliveryEventType);
+                    worker.processAvailableAsync();
                 }
             });
             return;
         }
-        worker.deliverAlert(alertId, deliveryEventType);
+        worker.processAvailableAsync();
     }
 }

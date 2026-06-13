@@ -21,12 +21,16 @@ public class TelemetryOutboxService {
     }
 
     public void enqueue(String eventKey, String topic, String messageKey, Object payload) {
+        enqueue(eventKey, topic, messageKey, payload, null);
+    }
+
+    public void enqueue(String eventKey, String topic, String messageKey, Object payload, UUID readingId) {
         Instant now = Instant.now();
         try {
             jdbcTemplate.update("""
                     insert into telemetry_event_outbox
-                        (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at)
-                    values (?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
+                        (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at, reading_id)
+                    values (?, ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)
                     """,
                     UUID.randomUUID(),
                     eventKey,
@@ -34,7 +38,8 @@ public class TelemetryOutboxService {
                     messageKey,
                     writeJson(payload),
                     Timestamp.from(now),
-                    Timestamp.from(now));
+                    Timestamp.from(now),
+                    readingId);
         } catch (DuplicateKeyException ignored) {
             // Kafka is at-least-once; duplicate processing should not enqueue duplicate side effects.
         }

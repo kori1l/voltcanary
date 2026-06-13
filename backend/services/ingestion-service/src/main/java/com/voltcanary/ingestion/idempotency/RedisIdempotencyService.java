@@ -1,6 +1,8 @@
 package com.voltcanary.ingestion.idempotency;
 
 import com.voltcanary.ingestion.config.IngestionProperties;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -15,24 +17,55 @@ class RedisIdempotencyService implements IdempotencyService {
 
     private final StringRedisTemplate redisTemplate;
     private final Duration ttl;
+    private final MeterRegistry meterRegistry;
 
     RedisIdempotencyService(
             StringRedisTemplate redisTemplate,
-            IngestionProperties properties) {
+            IngestionProperties properties,
+            MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
         this.ttl = properties.getIdempotencyTtl();
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
     public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
-        Boolean inserted = redisTemplate.opsForValue()
-                .setIfAbsent(key(deviceId, sourceId, timestamp, metrics), "1", ttl);
-        return Boolean.TRUE.equals(inserted);
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = "duplicate";
+        try {
+            Boolean inserted = redisTemplate.opsForValue()
+                    .setIfAbsent(key(deviceId, sourceId, timestamp, metrics), "1", ttl);
+            boolean created = Boolean.TRUE.equals(inserted);
+            outcome = created ? "created" : "duplicate";
+            return created;
+        } catch (RuntimeException exception) {
+            outcome = "error";
+            meterRegistry.counter(
+                    "voltcanary.ingestion.redis.idempotency.errors",
+                    "reason",
+                    exception.getClass().getSimpleName()).increment();
+            throw exception;
+        } finally {
+            sample.stop(meterRegistry.timer("voltcanary.ingestion.redis.idempotency.latency", "outcome", outcome));
+        }
     }
 
     @Override
     public void forget(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
-        redisTemplate.delete(key(deviceId, sourceId, timestamp, metrics));
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = "deleted";
+        try {
+            redisTemplate.delete(key(deviceId, sourceId, timestamp, metrics));
+        } catch (RuntimeException exception) {
+            outcome = "error";
+            meterRegistry.counter(
+                    "voltcanary.ingestion.redis.idempotency.errors",
+                    "reason",
+                    exception.getClass().getSimpleName()).increment();
+            throw exception;
+        } finally {
+            sample.stop(meterRegistry.timer("voltcanary.ingestion.redis.idempotency.latency", "outcome", outcome));
+        }
     }
 
     private String key(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {

@@ -12,6 +12,7 @@ import com.voltcanary.simulator.runner.SimulationRunManager;
 import com.voltcanary.simulator.runner.SimulationRunner;
 import com.voltcanary.simulator.service.SimulationConfigService;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import org.junit.jupiter.api.BeforeEach;
@@ -127,7 +128,7 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        Instant leaseUntil = Instant.now().plusSeconds(120);
+        Instant leaseUntil = Instant.now().plusSeconds(120).truncatedTo(ChronoUnit.MICROS);
 
         configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-lease-extension", "lease-extension"));
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();

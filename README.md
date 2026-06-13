@@ -271,6 +271,7 @@ Key documents:
 - `docs/architecture/03-data-flow.md`
 - `docs/architecture/06-kubernetes-deployment.md`
 - `docs/architecture/07-observability.md`
+- `docs/architecture/09-horizontal-scaling-matrix.md`
 - `docs/k8s-local.md`
 - `docs/events/event-envelope.md`
 - `docs/interview/talking-points.md`

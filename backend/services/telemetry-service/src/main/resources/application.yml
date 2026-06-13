@@ -60,3 +60,8 @@ app:
       backfill-source-prefixes: ${TELEMETRY_BACKFILL_SOURCE_PREFIXES:import-,backfill-}
     timescale:
       policy-enabled: ${TELEMETRY_TIMESCALE_POLICY_ENABLED:false}
+    reconciliation:
+      enabled: ${TELEMETRY_RECONCILIATION_ENABLED:true}
+      interval: ${TELEMETRY_RECONCILIATION_INTERVAL:1m}
+      reading-grace-period: ${TELEMETRY_RECONCILIATION_READING_GRACE_PERIOD:30s}
+      batch-size: ${TELEMETRY_RECONCILIATION_BATCH_SIZE:100}

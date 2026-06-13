@@ -15,7 +15,45 @@ public record AnomalyDetectedEvent(
         String severity,
         double score,
         String description,
-        Instant detectedAt) {
+        Instant detectedAt,
+        String eventVersion,
+        String correlationId,
+        String producer,
+        UUID accountId,
+        Instant occurredAt) {
+
+    public AnomalyDetectedEvent(
+            UUID eventId,
+            UUID deviceId,
+            UUID anomalyId,
+            String ruleId,
+            Instant windowStart,
+            Instant windowEnd,
+            String inputHash,
+            String type,
+            String severity,
+            double score,
+            String description,
+            Instant detectedAt) {
+        this(
+                eventId,
+                deviceId,
+                anomalyId,
+                ruleId,
+                windowStart,
+                windowEnd,
+                inputHash,
+                type,
+                severity,
+                score,
+                description,
+                detectedAt,
+                "v1",
+                null,
+                null,
+                null,
+                detectedAt);
+    }
 
     public AnomalyDetectedEvent(
             UUID eventId,

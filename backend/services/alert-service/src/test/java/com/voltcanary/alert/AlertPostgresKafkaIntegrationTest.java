@@ -42,6 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.kafka.consumer.group-id=alert-integration-test",
                 "spring.jpa.hibernate.ddl-auto=none",
                 "app.alert.authorization.enabled=false",
+                "app.alert.notifications.worker-enabled=false",
+                "app.alert.reconciliation.enabled=false",
                 "app.alert.kafka.retry.max-attempts=2",
                 "app.alert.kafka.retry.interval=100ms"
         })

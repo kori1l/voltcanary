@@ -63,7 +63,7 @@ class TelemetryKafkaTimescaleIntegrationTest {
     @Test
     void consumesKafkaEventSavesTimescaleRowsAndReturnsLatestReading() throws Exception {
         UUID deviceId = UUID.randomUUID();
-        Instant timestamp = Instant.parse("2026-05-12T12:30:00Z");
+        Instant timestamp = Instant.now().minusSeconds(60);
         publish(new TelemetryReceivedEvent(
                 UUID.randomUUID(),
                 deviceId,

@@ -128,3 +128,6 @@ Infrastructure:
 - Docker Compose for local development
 - Kubernetes and Helm for production-like deployment
 - Prometheus and Grafana for observability
+
+Scaling readiness is tracked in
+`docs/architecture/09-horizontal-scaling-matrix.md`.

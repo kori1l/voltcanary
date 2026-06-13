@@ -16,11 +16,13 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -41,6 +43,7 @@ public class NotificationDeliveryWorker {
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
     private final MeterRegistry meterRegistry;
+    private final String workerId = "alert-notification-" + UUID.randomUUID();
 
     public NotificationDeliveryWorker(
             AlertRepository alertRepository,
@@ -63,19 +66,49 @@ public class NotificationDeliveryWorker {
         this.meterRegistry = meterRegistry;
     }
 
-    @Async("alertNotificationExecutor")
-    public void deliverAlert(UUID alertId, String deliveryEventType) {
-        alertRepository.findById(alertId).ifPresent(alert -> {
-            if (alert.getAccountId() == null) {
-                return;
-            }
-            channelRepository.findByAccountIdAndEnabledTrueOrderByCreatedAtDesc(alert.getAccountId())
-                    .forEach(channel -> deliver(alert, channel, deliveryEventType));
-        });
+    @Scheduled(
+            initialDelayString = "${app.alert.notifications.initial-delay-ms:5000}",
+            fixedDelayString = "${app.alert.notifications.scan-interval-ms:5000}")
+    public void processScheduled() {
+        if (!properties.isWorkerEnabled()) {
+            return;
+        }
+        processAvailable();
     }
 
-    private void deliver(Alert alert, NotificationChannel channel, String deliveryEventType) {
-        NotificationAttempt attempt = attemptService.createPendingAttempt(alert, channel);
+    public void processAvailable() {
+        if (!properties.isEnabled()) {
+            return;
+        }
+        int limit = properties.getClaimBatchSize();
+        for (int index = 0; index < limit; index++) {
+            Optional<NotificationAttempt> claimed = attemptService.claimNext(
+                    workerId,
+                    properties.getLeaseDuration(),
+                    limit);
+            if (claimed.isEmpty()) {
+                return;
+            }
+            deliver(claimed.get());
+        }
+    }
+
+    @Async("alertNotificationExecutor")
+    public void processAvailableAsync() {
+        processAvailable();
+    }
+
+    private void deliver(NotificationAttempt attempt) {
+        Alert alert = alertRepository.findById(attempt.getAlertId()).orElse(null);
+        if (alert == null || alert.getAccountId() == null) {
+            attemptService.markFailed(attempt.getId(), "ALERT_NOT_FOUND", "Alert is missing or has no account");
+            return;
+        }
+        NotificationChannel channel = channelRepository.findById(attempt.getChannelId()).orElse(null);
+        if (channel == null) {
+            attemptService.markFailed(attempt.getId(), "CHANNEL_NOT_FOUND", "Notification channel is missing");
+            return;
+        }
         if (!channel.isEnabled()) {
             attemptService.markDisabled(attempt.getId(), "Notification channel is disabled");
             return;
@@ -93,50 +126,43 @@ public class NotificationDeliveryWorker {
             attemptService.markFailed(attempt.getId(), "CONFIG_MISSING_URL", channel.getChannelType() + " channel requires config.url");
             return;
         }
-        deliverHttp(alert, channel, attempt, url, deliveryEventType);
+        deliverHttp(alert, channel, attempt, url);
     }
 
-    private void deliverHttp(Alert alert, NotificationChannel channel, NotificationAttempt attempt, String url, String deliveryEventType) {
-        Map<String, Object> payload = deliveryPayload(alert, channel, deliveryEventType);
+    private void deliverHttp(Alert alert, NotificationChannel channel, NotificationAttempt attempt, String url) {
+        Map<String, Object> payload = deliveryPayload(alert, channel, attempt);
         String channelType = safeChannelType(channel);
-        int attempts = properties.getMaxAttempts();
-        for (int index = 1; index <= attempts; index++) {
-            try {
-                HttpStatusCode status = restClient.post()
-                        .uri(URI.create(url))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(payload)
-                        .retrieve()
-                        .toBodilessEntity()
-                        .getStatusCode();
-                attemptService.markSent(attempt.getId(), "HTTP " + status.value());
-                meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "sent").increment();
-                return;
-            } catch (RestClientResponseException exception) {
-                if (index < attempts && exception.getStatusCode().is5xxServerError()) {
-                    attemptService.markRetrying(attempt.getId(), "HTTP_" + exception.getStatusCode().value(), responseSummary(exception));
-                    sleepBeforeRetry();
-                    continue;
-                }
-                attemptService.markFailed(attempt.getId(), "HTTP_" + exception.getStatusCode().value(), responseSummary(exception));
-                meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "failed").increment();
-                return;
-            } catch (Exception exception) {
-                if (index < attempts) {
-                    attemptService.markRetrying(attempt.getId(), exception.getClass().getSimpleName(), exception.getMessage());
-                    sleepBeforeRetry();
-                    continue;
-                }
-                attemptService.markFailed(attempt.getId(), exception.getClass().getSimpleName(), exception.getMessage());
-                meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "failed").increment();
-                log.warn(
-                        "alertNotificationDeliveryFailed alertId={} channelId={} channelType={} reason={}",
-                        alert.getId(),
-                        channel.getId(),
-                        channelType,
-                        exception.getClass().getSimpleName());
+        try {
+            HttpStatusCode status = restClient.post()
+                    .uri(URI.create(url))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("Idempotency-Key", attempt.getIdempotencyKey())
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .getStatusCode();
+            attemptService.markSent(attempt.getId(), "HTTP " + status.value());
+            meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "sent").increment();
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().is5xxServerError() && canRetry(attempt)) {
+                markRetrying(attempt, "HTTP_" + exception.getStatusCode().value(), responseSummary(exception));
                 return;
             }
+            attemptService.markFailed(attempt.getId(), "HTTP_" + exception.getStatusCode().value(), responseSummary(exception));
+            meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "failed").increment();
+        } catch (Exception exception) {
+            if (canRetry(attempt)) {
+                markRetrying(attempt, exception.getClass().getSimpleName(), exception.getMessage());
+                return;
+            }
+            attemptService.markFailed(attempt.getId(), exception.getClass().getSimpleName(), exception.getMessage());
+            meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "failed").increment();
+            log.warn(
+                    "alertNotificationDeliveryFailed alertId={} channelId={} channelType={} reason={}",
+                    alert.getId(),
+                    channel.getId(),
+                    channelType,
+                    exception.getClass().getSimpleName());
         }
     }
 
@@ -158,9 +184,10 @@ public class NotificationDeliveryWorker {
         }
     }
 
-    private Map<String, Object> deliveryPayload(Alert alert, NotificationChannel channel, String deliveryEventType) {
+    private Map<String, Object> deliveryPayload(Alert alert, NotificationChannel channel, NotificationAttempt attempt) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("eventType", deliveryEventType);
+        payload.put("eventType", attempt.getDeliveryEventType());
+        payload.put("idempotencyKey", attempt.getIdempotencyKey());
         payload.put("channelType", safeChannelType(channel));
         payload.put("alertId", alert.getId());
         payload.put("accountId", alert.getAccountId());
@@ -197,12 +224,17 @@ public class NotificationDeliveryWorker {
         return "HTTP " + exception.getStatusCode().value() + ": " + body;
     }
 
-    private void sleepBeforeRetry() {
-        try {
-            Thread.sleep(properties.getRetryInterval().toMillis());
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-        }
+    private boolean canRetry(NotificationAttempt attempt) {
+        return attempt.getRetryCount() + 1 < properties.getMaxAttempts();
+    }
+
+    private void markRetrying(NotificationAttempt attempt, String errorCode, String providerResponseSummary) {
+        Instant nextAttemptAt = Instant.now().plus(properties.getRetryInterval());
+        attemptService.markRetrying(attempt.getId(), errorCode, providerResponseSummary, nextAttemptAt);
+        meterRegistry.counter(
+                "alert.notifications.deliveries",
+                "channelType", attempt.getChannelType(),
+                "status", "retrying").increment();
     }
 
     private SimpleClientHttpRequestFactory requestFactory(AlertNotificationProperties properties) {

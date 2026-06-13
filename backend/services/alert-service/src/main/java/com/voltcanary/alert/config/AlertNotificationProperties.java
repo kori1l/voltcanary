@@ -7,8 +7,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AlertNotificationProperties {
 
     private boolean enabled = true;
+    private boolean workerEnabled = true;
     private int maxAttempts = 3;
     private Duration retryInterval = Duration.ofSeconds(1);
+    private Duration leaseDuration = Duration.ofSeconds(30);
+    private int claimBatchSize = 25;
     private int connectTimeoutMillis = 2000;
     private int readTimeoutMillis = 5000;
 
@@ -18,6 +21,14 @@ public class AlertNotificationProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isWorkerEnabled() {
+        return workerEnabled;
+    }
+
+    public void setWorkerEnabled(boolean workerEnabled) {
+        this.workerEnabled = workerEnabled;
     }
 
     public int getMaxAttempts() {
@@ -34,6 +45,24 @@ public class AlertNotificationProperties {
 
     public void setRetryInterval(Duration retryInterval) {
         this.retryInterval = retryInterval == null ? Duration.ZERO : retryInterval;
+    }
+
+    public Duration getLeaseDuration() {
+        return leaseDuration;
+    }
+
+    public void setLeaseDuration(Duration leaseDuration) {
+        this.leaseDuration = leaseDuration == null || leaseDuration.isNegative() || leaseDuration.isZero()
+                ? Duration.ofSeconds(30)
+                : leaseDuration;
+    }
+
+    public int getClaimBatchSize() {
+        return claimBatchSize;
+    }
+
+    public void setClaimBatchSize(int claimBatchSize) {
+        this.claimBatchSize = Math.max(1, claimBatchSize);
     }
 
     public int getConnectTimeoutMillis() {

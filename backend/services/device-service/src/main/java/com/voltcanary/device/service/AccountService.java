@@ -2,7 +2,6 @@ package com.voltcanary.device.service;
 
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.AccountStatus;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountResponse;
 import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
@@ -18,9 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class AccountService {
 
     private final AccountRepository accountRepository;
+    private final AccountDeletionCleanupService accountDeletionCleanupService;
 
-    public AccountService(AccountRepository accountRepository) {
+    public AccountService(
+            AccountRepository accountRepository,
+            AccountDeletionCleanupService accountDeletionCleanupService) {
         this.accountRepository = accountRepository;
+        this.accountDeletionCleanupService = accountDeletionCleanupService;
     }
 
     @Transactional
@@ -47,6 +50,7 @@ public class AccountService {
             account.setDisabledAt(now);
         } else if (status == AccountStatus.DELETED) {
             account.setDeletedAt(now);
+            accountDeletionCleanupService.cleanupDeletedAccount(account.getId(), now);
         } else {
             account.setDisabledAt(null);
             account.setDeletedAt(null);

@@ -64,6 +64,10 @@ app:
     device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
     internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
     kafka-publish-enabled: ${APP_KAFKA_PUBLISH_ENABLED:true}
+    source-registry-reconciliation:
+      enabled: ${INGESTION_SOURCE_REGISTRY_RECONCILIATION_ENABLED:true}
+      interval: ${INGESTION_SOURCE_REGISTRY_RECONCILIATION_INTERVAL:1m}
+      batch-size: ${INGESTION_SOURCE_REGISTRY_RECONCILIATION_BATCH_SIZE:100}
     mqtt:
       enabled: ${INGESTION_MQTT_ENABLED:false}
       broker-url: ${INGESTION_MQTT_BROKER_URL:tcp://localhost:1883}

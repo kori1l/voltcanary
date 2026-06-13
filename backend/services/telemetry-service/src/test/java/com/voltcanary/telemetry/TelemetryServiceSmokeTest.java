@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "app.kafka.publish-enabled=false",
                 "app.telemetry.authorization.enabled=false",
                 "app.telemetry.validation.redis-rate-limit-enabled=false",
+                "app.telemetry.reconciliation.enabled=false",
                 "management.health.redis.enabled=false",
                 "spring.flyway.enabled=false",
                 "spring.jpa.hibernate.ddl-auto=none"

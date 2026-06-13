@@ -97,7 +97,7 @@ class IngestionKafkaIntegrationTest {
         return Map.of(
                 "deviceId", deviceId,
                 "sourceId", sourceId,
-                "timestamp", Instant.parse("2026-05-12T12:30:00Z").toString(),
+                "timestamp", Instant.now().minusSeconds(30).toString(),
                 "metrics", Map.of("activePowerW", 840.2, "voltageV", 230.1));
     }
 }

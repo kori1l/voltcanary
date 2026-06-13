@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "app.kafka.consume-enabled=false",
                 "app.kafka.publish-enabled=false",
+                "app.analytics.outbox.reconciliation.enabled=false",
                 "spring.flyway.enabled=false",
                 "spring.jpa.hibernate.ddl-auto=none"
         })

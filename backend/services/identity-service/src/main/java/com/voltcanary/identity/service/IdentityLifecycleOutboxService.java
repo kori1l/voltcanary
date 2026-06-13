@@ -33,7 +33,10 @@ public class IdentityLifecycleOutboxService {
                 user.getId(),
                 user.getEmail(),
                 accountStatus(user.getStatus()),
-                now);
+                now,
+                null,
+                "identity-service",
+                user.getId());
         jdbcTemplate.update("""
                 insert into identity_event_outbox
                     (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at)

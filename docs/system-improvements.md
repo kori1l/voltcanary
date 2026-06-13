@@ -738,23 +738,22 @@ the API yet.
       `POST /internal/accounts/users/{userId}/lifecycle`.~~
     - ~~Device tests cover disable/reactivate behavior.~~
 
-17. Define account-deleted physical cascade behavior for devices and sources.
-    - Runtime security behavior is implemented: `POST
-      /internal/accounts/users/{userId}/lifecycle` with `DELETED` marks the
-      device account deleted, blocks device API access, and internal source
-      existence returns `false` even if owned devices/sources still have active
-      row statuses.
-    - Old source tokens are rejected after user deletion because ingestion
-      revalidates cached source registry data against device-service.
-    - Remaining decision: whether user deletion should physically hard-delete
-      account-owned devices, soft-delete/decommission them, disable data
-      sources, revoke source tokens, or retain them only for audit/history.
-    - Apply the chosen physical cleanup policy consistently to locations,
-      devices, sensors, data sources, analytics configs, and registry-change
-      events.
-    - Telemetry history retention is still a product/data-retention policy
-      decision, but deleted accounts cannot read device API or ingest through old
-      credentials.
+17. ~~Define account-deleted physical cascade behavior for devices and sources.~~
+    - ~~`POST /internal/accounts/users/{userId}/lifecycle` with `DELETED` marks
+      the device account deleted, blocks device API access, and internal source
+      existence returns `false`.~~
+    - ~~Account deletion uses a soft cleanup policy rather than hard-deleting
+      registry rows: owned devices are moved to `DECOMMISSIONED`, owned data
+      sources are disabled and moved to `REVOKED`, and active source tokens get
+      `token_revoked_at`.~~
+    - ~~Locations, sensors, and analytics configs are retained as historical
+      account-owned records through their existing device/location references;
+      the decommissioned device state prevents further normal use.~~
+    - ~~Registry-change events are emitted for cleanup transitions when device
+      registry publishing is enabled.~~
+    - ~~Telemetry history retention remains a separate product/data-retention
+      policy, but deleted accounts cannot read device API or ingest through old
+      credentials.~~
 
 18. ~~Add audit logging.~~
     - ~~Added structured audit logging for device, location, source, sensor,
@@ -1480,76 +1479,125 @@ on direct Kafka sends, in-process schedulers, or in-memory state.
      idempotency must be deterministic; current `now`-based windows can create
      different input hashes for repeated triggers.~~
 
-10. Make alert notification delivery durable and idempotent.
-    - Current issue: notification delivery is dispatched with after-commit
-      `@Async`; if the pod dies after commit but before/during async execution,
-      the notification can be lost.
-    - Use `notification_attempts` as a durable queue or add a dedicated
-      notification outbox.
-    - Claim pending notification attempts with leases so multiple alert-service
-      pods do not deliver the same attempt.
-    - Add an idempotency key for notification side effects, for example
-      `alert_id + channel_id + delivery_event_type`.
-    - Include provider idempotency keys in webhook/email/SMS requests where the
-      provider supports them.
+10. ~~Make alert notification delivery durable and idempotent.~~
+    - ~~Notification delivery no longer depends on creating attempts inside an
+      after-commit async task. Alert creation/escalation now creates durable
+      `notification_attempts` rows before commit.~~
+    - ~~`notification_attempts` are the durable delivery queue. Attempts include
+      `delivery_event_type`, `idempotency_key`, `next_attempt_at`, `locked_at`,
+      and `locked_by`.~~
+    - ~~Workers claim due attempts with row leases and move them through
+      `PROCESSING`, `SENT`, `RETRYING`, `FAILED`, or `DISABLED`. Stale
+      `PROCESSING` attempts become claimable after the lease expires.~~
+    - ~~Notification side effects use stable idempotency keys:
+      `alert_id + channel_id + delivery_event_type`. Duplicate dispatches reuse
+      the existing attempt instead of creating another delivery.~~
+    - ~~HTTP provider calls include the idempotency key in the JSON payload and
+      the `Idempotency-Key` header.~~
 
-11. Add service-level reconciliation loops.
-    - Add telemetry-to-analytics reconciliation for persisted telemetry rows
-      that did not produce `telemetry.validated.v1`.
-    - Add analytics outbox reconciliation for stuck or failed outbox rows.
-    - Add alert reconciliation for analytics events that were processed but did
-      not create the expected alert due to transient downstream failures.
-    - Add device registry reconciliation so ingestion caches and projections can
-      be rebuilt from device-service if registry events are missed.
+11. ~~Add service-level reconciliation loops.~~
+    - ~~Add telemetry-to-analytics reconciliation for persisted telemetry rows
+      that did not produce `telemetry.validated.v1`.~~
+      - ~~`telemetry-service` now tags validated outbox rows with
+        `reading_id`, uses that as the idempotency key for realtime processing,
+        and periodically scans persisted readings with measurements but no
+        corresponding `telemetry.validated.v1` outbox row.~~
+      - ~~Backfill sources remain excluded from realtime validated-event
+        recovery, matching the normal processing path.~~
+    - ~~Add analytics outbox reconciliation for stuck or failed outbox rows.~~
+      - ~~`analytics-service` now periodically claims a scheduler lock and
+        resets old `FAILED` and stale `PROCESSING` `analytics_event_outbox` rows
+        back to `PENDING` with delayed retry metadata.~~
+      - ~~The reconciliation loop is configurable through
+        `app.analytics.outbox.reconciliation.*` and is covered by a focused
+        Flyway-backed test.~~
+    - ~~Add alert reconciliation for analytics events that were processed but did
+      not create the expected alert due to transient downstream failures.~~
+      - ~~`alert-service` now stores consumed analytics events in
+        `alert_analytics_event_inbox`, records processing status and retry
+        metadata, and replays `FAILED` or stale `PROCESSING` entries under a
+        scheduler lock.~~
+      - ~~Replay is idempotent because alert creation is still keyed by source
+        event/deduplication data, and terminal inbox entries are skipped.~~
+    - ~~Add device registry reconciliation so ingestion caches and projections
+      can be rebuilt from device-service if registry events are missed.~~
+      - ~~`ingestion-service` now periodically reconciles its local
+        `SourceRegistryCache` against device-service, refreshing cached source
+        metadata by `dataSourceId` and evicting sources that no longer exist.~~
+      - ~~The loop is per-pod because the cache is in-memory, configurable
+        through `app.ingestion.source-registry-reconciliation.*`, and covered by
+        a focused unit test.~~
 
-12. Standardize event envelopes across all asynchronous topics.
-    - `docs/events/event-envelope.md` defines event id, producer, correlation,
-      and versioning expectations, but some topics still use service-specific
-      record shapes directly.
-    - Ensure every published event has a stable `eventId`, `correlationId`,
-      `producer`, `occurredAt`, schema version, and tenant/account context when
-      available.
-    - Consumers should use envelope metadata for idempotency, tracing, DLQ
-      records, and replay tooling.
+12. ~~Standardize event envelopes across all asynchronous topics.~~
+    - ~~`docs/events/event-envelope.md` defines event id, producer,
+      correlation, versioning, account context, and transition expectations for
+      explicit `EventEnvelope<T>` values and direct common event records.~~
+    - ~~Common published event records now expose `eventId`, `eventVersion`,
+      `correlationId`, `producer`, `accountId`, and `occurredAt` metadata fields
+      while keeping backward-compatible constructors for existing call sites.~~
+    - ~~The main producer paths in ingestion, telemetry, analytics, device, and
+      identity populate producer/version metadata and propagate correlation or
+      account context where it is available.~~
+    - ~~`EventContractTest` verifies envelope JSON and metadata fields across
+      all common asynchronous event records.~~
 
-13. Add a horizontal scaling matrix.
-    - For each deployment, document whether it is safe to scale beyond one
-      replica today.
-    - Mark `api-gateway`, `ingestion-service`, `telemetry-service`,
-      `analytics-service`, `alert-service`, and `simulator-service` separately.
-    - For each service list required external state: Redis, Kafka partitions,
-      database locks, outbox/inbox tables, and leader election.
-    - Keep HPA disabled for services that still have process-local ownership
-      state.
+13. ~~Add a horizontal scaling matrix.~~
+    - ~~Added `docs/architecture/09-horizontal-scaling-matrix.md`.~~
+    - ~~The matrix marks `api-gateway`, `ingestion-service`,
+      `telemetry-service`, `analytics-service`, `alert-service`, and
+      `simulator-service` separately.~~
+    - ~~It lists required external state such as Redis, Kafka partitions,
+      database locks, outbox/inbox tables, and process-local state.~~
+    - ~~It calls out services that should stay single-replica until
+      process-local ownership or in-memory protection is replaced by shared
+      infrastructure.~~
 
-14. Add failover and replay tests.
-    - Test duplicate Kafka delivery for telemetry, analytics, and alert
-      consumers.
-    - Test producer crash after database commit and before Kafka publish for
-      services with outbox.
-    - Test outbox worker crash after Kafka ack and before marking `PUBLISHED`.
-    - Test two replicas claiming the same outbox, job, escalation, and
-      notification work.
-    - Test Redis outage behavior for ingestion idempotency and rate limiting.
+14. ~~Add failover and replay tests.~~
+    - ~~Duplicate Kafka delivery is covered for telemetry, analytics, and alert
+      consumers: telemetry raw events are idempotent through
+      `TelemetryPipelineTest`, analytics validated events are idempotent through
+      `AnalyticsConsumerReplayTest`, and alert anomaly events are idempotent
+      through `AlertServiceApiTest`.~~
+    - ~~Producer crash after database commit and before Kafka publish is covered
+      by pending-row replay tests in `TelemetryOutboxReplayTest` and
+      `AnalyticsOutboxReplayTest`.~~
+    - ~~Outbox worker crash after Kafka ack and before marking `PUBLISHED` is
+      covered by stale `PROCESSING` replay tests in `TelemetryOutboxReplayTest`
+      and `AnalyticsOutboxReplayTest`.~~
+    - ~~Two-replica claiming behavior is covered for analytics jobs by
+      `AnalyticsJobClaimReplayTest`, alert notification delivery by
+      `NotificationChannelApiTest`, and alert escalation/idempotent alert
+      creation by existing alert service tests.~~
+    - ~~Redis outage behavior is covered for ingestion rate limiting fallback
+      and Redis idempotency fail-closed behavior by `IngestionRedisOutageTest`
+      and `RedisIdempotencyServiceOutageTest`.~~
 
 ### Medium
 
-15. Add operational metrics for eventual consistency.
-    - Track outbox depth, oldest pending age, failed rows, retry count, and
-      stuck `PROCESSING` leases per service.
-    - Track inbox duplicate counts and consumer replay counts.
-    - Track scheduler lock acquisition/skipped runs.
-    - Track Redis-backed rate-limit and idempotency latency/errors.
-    - Alert on growing outbox lag, consumer lag, and stale running jobs.
+15. ~~Add operational metrics for eventual consistency.~~
+    - ~~Telemetry, analytics, and alert services expose SQL-backed gauges for
+      outbox depth, oldest pending age, failed rows, retry count, and stuck
+      `PROCESSING` leases.~~
+    - ~~Alert-service exposes analytics inbox depth and stuck processing gauges;
+      analytics-service exposes job depth and stale running job gauges.~~
+    - ~~Scheduler lock acquisition/skipped runs are counted in identity,
+      analytics, and alert scheduler lock services.~~
+    - ~~Ingestion records Redis-backed rate-limit and idempotency latency and
+      error metrics.~~
+    - ~~`docs/architecture/10-consistency-contracts.md` lists alerting signals
+      for growing outbox lag, failed rows, lock contention, Redis errors, and
+      stale running jobs.~~
 
-16. Document consistency contracts per user-visible flow.
-    - Define which operations are strongly consistent in the request path and
-      which are eventually consistent through Kafka/outbox.
-    - Define acceptable propagation delay for telemetry appearing in dashboards,
-      analytics results, alert creation, and notifications.
-    - Define retry expectations for clients when ingestion returns `202`,
-      `409`, `429`, or `503`.
-    - Document replay procedures for outbox rows, DLQ topics, and failed jobs.
+16. ~~Document consistency contracts per user-visible flow.~~
+    - ~~Added `docs/architecture/10-consistency-contracts.md`.~~
+    - ~~The document defines which operations are strongly consistent in the
+      request path and which propagate through Kafka/outbox.~~
+    - ~~It defines operating propagation targets for telemetry appearing in
+      dashboards, analytics results, alert creation, and notifications.~~
+    - ~~It defines client retry expectations for ingestion `202`, `409`, `429`,
+      `503`, and ambiguous network timeouts.~~
+    - ~~It documents replay procedures for outbox rows, inbox rows, DLQ records,
+      and failed/stale analytics jobs.~~
 
 ## Project Structure
 

@@ -52,7 +52,10 @@ Inactive statuses (`DISABLED`, `LOCKED`, `PENDING_VERIFICATION`, `DELETED`) are
 rejected for login and refresh. Existing access tokens are not revoked at the JWT
 layer, but downstream services must enforce lifecycle state. Device-service
 blocks `/accounts/current` and internal source existence for inactive accounts,
-so old source tokens cannot continue ingestion after user deletion.
+so old source tokens cannot continue ingestion after user deletion. For
+`DELETED` accounts, device-service also soft-cleans the registry by
+decommissioning owned devices and revoking owned data sources without
+hard-deleting historical registry rows.
 
 ## Token Contract
 

@@ -1,6 +1,7 @@
 package com.voltcanary.ingestion.source;
 
 import com.voltcanary.ingestion.config.IngestionProperties;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -33,7 +34,15 @@ public class DeviceServiceSourceClient {
                 .body(InternalDataSourceResponse.class);
     }
 
-    public void markTokenUsed(java.util.UUID dataSourceId) {
+    public InternalDataSourceResponse findById(UUID dataSourceId) {
+        return restClient.get()
+                .uri("/internal/data-sources/{dataSourceId}", dataSourceId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(InternalDataSourceResponse.class);
+    }
+
+    public void markTokenUsed(UUID dataSourceId) {
         restClient.post()
                 .uri("/internal/data-sources/{dataSourceId}/token-used", dataSourceId)
                 .header("X-Internal-Service-Token", internalServiceToken)

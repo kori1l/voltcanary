@@ -35,10 +35,20 @@ app:
         risk-score-topic: ${ALERT_KAFKA_RISK_SCORE_DLQ_TOPIC:risk-score.changed.dlq.v1}
     notifications:
       enabled: ${ALERT_NOTIFICATIONS_ENABLED:true}
+      worker-enabled: ${ALERT_NOTIFICATIONS_WORKER_ENABLED:true}
       max-attempts: ${ALERT_NOTIFICATIONS_MAX_ATTEMPTS:3}
       retry-interval: ${ALERT_NOTIFICATIONS_RETRY_INTERVAL:1s}
+      lease-duration: ${ALERT_NOTIFICATIONS_LEASE_DURATION:30s}
+      claim-batch-size: ${ALERT_NOTIFICATIONS_CLAIM_BATCH_SIZE:25}
       connect-timeout-millis: ${ALERT_NOTIFICATIONS_CONNECT_TIMEOUT_MS:2000}
       read-timeout-millis: ${ALERT_NOTIFICATIONS_READ_TIMEOUT_MS:5000}
+    reconciliation:
+      enabled: ${ALERT_RECONCILIATION_ENABLED:true}
+      interval: ${ALERT_RECONCILIATION_INTERVAL:30s}
+      lock-lease: ${ALERT_RECONCILIATION_LOCK_LEASE:20s}
+      processing-timeout: ${ALERT_RECONCILIATION_PROCESSING_TIMEOUT:5m}
+      retry-delay: ${ALERT_RECONCILIATION_RETRY_DELAY:30s}
+      batch-size: ${ALERT_RECONCILIATION_BATCH_SIZE:25}
     escalation:
       enabled: ${ALERT_ESCALATION_ENABLED:true}
       initial-delay-ms: ${ALERT_ESCALATION_INITIAL_DELAY_MS:60000}

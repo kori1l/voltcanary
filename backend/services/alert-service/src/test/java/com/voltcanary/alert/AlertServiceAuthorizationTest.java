@@ -39,7 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
                 "app.kafka.consume-enabled=false",
                 "spring.datasource.url=jdbc:h2:mem:alert-auth;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
                 "spring.jpa.hibernate.ddl-auto=none",
-                "spring.flyway.enabled=true"
+                "spring.flyway.enabled=true",
+                "app.alert.notifications.worker-enabled=false",
+                "app.alert.reconciliation.enabled=false"
         })
 class AlertServiceAuthorizationTest {
 

@@ -27,6 +27,15 @@ app:
       async: ${ANALYTICS_JOBS_ASYNC:true}
       worker-enabled: ${ANALYTICS_JOBS_WORKER_ENABLED:false}
       worker-delay: ${ANALYTICS_JOBS_WORKER_DELAY:5s}
+    outbox:
+      reconciliation:
+        enabled: ${ANALYTICS_OUTBOX_RECONCILIATION_ENABLED:true}
+        interval: ${ANALYTICS_OUTBOX_RECONCILIATION_INTERVAL:1m}
+        lock-lease: ${ANALYTICS_OUTBOX_RECONCILIATION_LOCK_LEASE:30s}
+        failed-after: ${ANALYTICS_OUTBOX_RECONCILIATION_FAILED_AFTER:5m}
+        processing-timeout: ${ANALYTICS_OUTBOX_RECONCILIATION_PROCESSING_TIMEOUT:5m}
+        retry-delay: ${ANALYTICS_OUTBOX_RECONCILIATION_RETRY_DELAY:30s}
+        batch-size: ${ANALYTICS_OUTBOX_RECONCILIATION_BATCH_SIZE:100}
     metrics:
       default-metrics: ${ANALYTICS_DEFAULT_METRICS:activePowerW}
       default-window: ${ANALYTICS_DEFAULT_WINDOW:24h}

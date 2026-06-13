@@ -16,6 +16,7 @@ import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import java.util.Map;
 import java.util.UUID;
@@ -48,6 +49,9 @@ class DeviceManagementTest {
 
     @Autowired
     private DeviceRepository deviceRepository;
+
+    @Autowired
+    private DataSourceRepository dataSourceRepository;
 
     @MockitoBean
     private DeviceRegistryEventPublisher eventPublisher;
@@ -393,11 +397,16 @@ class DeviceManagementTest {
     }
 
     @Test
-    void accountLifecycleBlocksIngestionLookupForActiveDeviceSources() {
+    void accountDeletionDecommissionsDevicesAndRevokesSources() {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Account lifecycle kitchen");
         DeviceResponse device = createDevice(userId, location.id(), "Account lifecycle fridge");
-        createDataSource(userId, device.id(), "plug-account-lifecycle-001");
+        DataSourceResponse dataSource = createDataSource(userId, device.id(), "plug-account-lifecycle-001");
+        restTemplate.exchange(
+                "/devices/" + device.id() + "/data-sources/" + dataSource.id() + "/token",
+                HttpMethod.POST,
+                new HttpEntity<>(headersFor(userId, "account-lifecycle@example.com")),
+                SourceTokenResponse.class);
 
         ResponseEntity<String> activeLookup = restTemplate.exchange(
                 "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
@@ -421,6 +430,14 @@ class DeviceManagementTest {
         assertThat(deletedAccount.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(deletedAccount.getBody()).contains("\"status\":\"DELETED\"");
         assertThat(deletedLookup.getBody()).contains("\"exists\":false");
+        assertThat(deviceRepository.findById(device.id()).orElseThrow().getStatus().name())
+                .isEqualTo("DECOMMISSIONED");
+        assertThat(dataSourceRepository.findById(dataSource.id()).orElseThrow())
+                .satisfies(source -> {
+                    assertThat(source.isEnabled()).isFalse();
+                    assertThat(source.getStatus().name()).isEqualTo("REVOKED");
+                    assertThat(source.getTokenRevokedAt()).isNotNull();
+                });
     }
 
     @Test

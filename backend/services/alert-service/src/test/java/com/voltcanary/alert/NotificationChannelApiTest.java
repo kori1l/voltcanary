@@ -9,6 +9,7 @@ import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.dto.NotificationAttemptResponse;
 import com.voltcanary.alert.dto.NotificationChannelResponse;
 import com.voltcanary.alert.repository.AlertRepository;
+import com.voltcanary.alert.repository.NotificationAttemptRepository;
 import com.voltcanary.alert.repository.NotificationChannelRepository;
 import com.voltcanary.alert.service.AlertService;
 import com.voltcanary.alert.service.NotificationDeliveryService;
@@ -18,6 +19,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,8 @@ import org.springframework.http.ResponseEntity;
                 "spring.datasource.url=jdbc:h2:mem:notification-channel-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
                 "spring.jpa.hibernate.ddl-auto=none",
                 "spring.flyway.enabled=true",
+                "app.alert.notifications.worker-enabled=false",
+                "app.alert.reconciliation.enabled=false",
                 "app.alert.authorization.enabled=false"
         })
 class NotificationChannelApiTest {
@@ -68,6 +72,9 @@ class NotificationChannelApiTest {
 
     @Autowired
     private NotificationChannelRepository notificationChannelRepository;
+
+    @Autowired
+    private NotificationAttemptRepository notificationAttemptRepository;
 
     private HttpServer webhookServer;
 
@@ -232,12 +239,51 @@ class NotificationChannelApiTest {
     }
 
     @Test
+    void notificationAttemptClaimUsesLeaseSoOnlyStaleProcessingWorkIsReplayed() {
+        Alert alert = saveAlertWithAccount();
+        UUID claimAccountId = UUID.randomUUID();
+        ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(claimAccountId, Map.of(
+                        "name", "Claim webhook",
+                        "channelType", "WEBHOOK",
+                        "config", Map.of("urlRef", "claim-webhook"),
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+        var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
+        var pending = notificationAttemptService.createPendingAttempt(alert, channel, "ALERT_CREATED");
+
+        var firstClaim = notificationAttemptService.claimNext("worker-a", Duration.ofMinutes(2), 10);
+        var secondClaim = notificationAttemptService.claimNext("worker-b", Duration.ofMinutes(2), 10);
+
+        assertThat(firstClaim).isPresent();
+        assertThat(firstClaim.get().getId()).isEqualTo(pending.getId());
+        assertThat(notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy())
+                .isEqualTo("worker-a");
+        assertThat(secondClaim).isEmpty();
+
+        var stale = notificationAttemptRepository.findById(pending.getId()).orElseThrow();
+        stale.setLockedAt(Instant.now().minus(Duration.ofMinutes(5)));
+        notificationAttemptRepository.saveAndFlush(stale);
+
+        var replayClaim = notificationAttemptService.claimNext("worker-b", Duration.ofMinutes(2), 10);
+
+        assertThat(replayClaim).isPresent();
+        assertThat(replayClaim.get().getId()).isEqualTo(pending.getId());
+        assertThat(notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy())
+                .isEqualTo("worker-b");
+    }
+
+    @Test
     void webhookNotificationDeliveryCreatesSentAttempt() throws Exception {
         AtomicInteger requests = new AtomicInteger();
         AtomicReference<String> requestBody = new AtomicReference<>("");
+        AtomicReference<String> idempotencyKey = new AtomicReference<>("");
         webhookServer = HttpServer.create(new InetSocketAddress(0), 0);
         webhookServer.createContext("/alerts", exchange -> {
             requests.incrementAndGet();
+            idempotencyKey.set(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -263,13 +309,20 @@ class NotificationChannelApiTest {
         notificationDeliveryService.dispatchAlertCreated(alert);
 
         List<NotificationAttemptResponse> attempts = waitForAttempts(alert.getId(), "SENT");
+        notificationDeliveryService.dispatchAlertCreated(alert);
+        Thread.sleep(250);
+
         assertThat(requests.get()).isEqualTo(1);
         assertThat(requestBody.get()).contains("\"eventType\":\"ALERT_CREATED\"");
+        assertThat(requestBody.get()).contains("\"idempotencyKey\":\"" + idempotencyKey.get() + "\"");
         assertThat(requestBody.get()).contains("\"alertId\":\"" + alert.getId());
         assertThat(attempts).hasSize(1);
         assertThat(attempts.getFirst().channelId()).isEqualTo(createChannelResponse.getBody().id());
         assertThat(attempts.getFirst().status()).isEqualTo("SENT");
         assertThat(attempts.getFirst().providerResponseSummary()).isEqualTo("HTTP 202");
+        assertThat(idempotencyKey.get())
+                .isEqualTo(alert.getId() + ":" + createChannelResponse.getBody().id() + ":ALERT_CREATED");
+        assertThat(notificationAttemptRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())).hasSize(1);
     }
 
     private Alert saveAlertWithAccount() {

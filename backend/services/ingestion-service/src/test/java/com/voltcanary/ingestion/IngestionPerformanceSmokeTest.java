@@ -50,7 +50,7 @@ class IngestionPerformanceSmokeTest {
         when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
 
         List<Map<String, Object>> readings = new ArrayList<>();
-        Instant start = Instant.parse("2026-05-12T13:00:00Z");
+        Instant start = Instant.now().minusSeconds(300);
         for (int index = 0; index < 50; index++) {
             readings.add(request(deviceId, sourceId, start.plusSeconds(index)));
         }
@@ -71,7 +71,7 @@ class IngestionPerformanceSmokeTest {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "perf-single";
         when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
-        Instant start = Instant.parse("2026-05-12T14:00:00Z");
+        Instant start = Instant.now().minusSeconds(300);
 
         for (int index = 0; index < 20; index++) {
             ResponseEntity<String> response = restTemplate.postForEntity(

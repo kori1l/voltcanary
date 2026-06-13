@@ -3,6 +3,8 @@ package com.voltcanary.ingestion.abuse;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.source.ResolvedSource;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,12 +26,15 @@ public class IngestionRateLimiter {
     private final IngestionProperties properties;
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
     private final StringRedisTemplate redisTemplate;
+    private final MeterRegistry meterRegistry;
 
     public IngestionRateLimiter(
             IngestionProperties properties,
-            Optional<StringRedisTemplate> redisTemplate) {
+            Optional<StringRedisTemplate> redisTemplate,
+            MeterRegistry meterRegistry) {
         this.properties = properties;
         this.redisTemplate = redisTemplate.orElse(null);
+        this.meterRegistry = meterRegistry;
     }
 
     public void check(IncomingTelemetryMessage message, ResolvedSource source) {
@@ -68,15 +73,26 @@ public class IngestionRateLimiter {
 
     private Boolean allowRedis(String key, long windowStartedAt, int limit) {
         String redisKey = "ingestion:rate-limit:" + key + ":" + windowStartedAt;
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = "allowed";
         try {
             Long count = redisTemplate.opsForValue().increment(redisKey);
             if (count != null && count == 1L) {
                 redisTemplate.expire(redisKey, redisTtl());
             }
-            return count == null || count <= limit;
+            boolean allowed = count == null || count <= limit;
+            outcome = allowed ? "allowed" : "limited";
+            return allowed;
         } catch (RuntimeException exception) {
+            outcome = "error";
+            meterRegistry.counter(
+                    "voltcanary.ingestion.redis.rate_limit.errors",
+                    "reason",
+                    exception.getClass().getSimpleName()).increment();
             log.warn("ingestionRateLimitRedisUnavailable reasonCode={}", exception.getClass().getSimpleName());
             return null;
+        } finally {
+            sample.stop(meterRegistry.timer("voltcanary.ingestion.redis.rate_limit.latency", "outcome", outcome));
         }
     }
 

@@ -48,7 +48,7 @@ class IngestionReadingsTest {
     void acceptsValidReadingAndPublishesKafkaEvent() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        Instant timestamp = Instant.parse("2026-05-12T12:30:00Z");
+        Instant timestamp = recentTimestamp(30);
         when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
@@ -72,7 +72,7 @@ class IngestionReadingsTest {
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings",
-                request(deviceId, sourceId, Instant.parse("2026-05-12T12:31:00Z")),
+                request(deviceId, sourceId, recentTimestamp(31)),
                 String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -83,7 +83,7 @@ class IngestionReadingsTest {
     void duplicateReadingIsAcceptedButNotPublishedAgain() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        Instant timestamp = Instant.parse("2026-05-12T12:32:00Z");
+        Instant timestamp = recentTimestamp(32);
         when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
 
         restTemplate.postForEntity("/ingestion/readings", request(deviceId, sourceId, timestamp), String.class);
@@ -109,7 +109,7 @@ class IngestionReadingsTest {
                 Map.of(
                         "deviceId", deviceId,
                         "sourceId", sourceId,
-                        "timestamp", Instant.parse("2026-05-12T12:33:00Z").toString(),
+                        "timestamp", recentTimestamp(33).toString(),
                         "metrics", Map.of("temperatureC", 24.5)),
                 String.class);
 
@@ -126,11 +126,11 @@ class IngestionReadingsTest {
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings/batch",
                 Map.of("readings", java.util.List.of(
-                        request(deviceId, sourceId, Instant.parse("2026-05-12T12:34:00Z")),
+                        request(deviceId, sourceId, recentTimestamp(34)),
                         Map.of(
                                 "deviceId", deviceId,
                                 "sourceId", sourceId,
-                                "timestamp", Instant.parse("2026-05-12T12:35:00Z").toString(),
+                                "timestamp", recentTimestamp(35).toString(),
                                 "metrics", Map.of("unsupportedMetric", 1)))),
                 String.class);
 
@@ -146,7 +146,7 @@ class IngestionReadingsTest {
     void publishFailureReturnsUnavailableAndDoesNotConsumeIdempotencyKey() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        Instant timestamp = Instant.parse("2026-05-12T12:36:00Z");
+        Instant timestamp = recentTimestamp(36);
         when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
         doThrow(new org.springframework.web.server.ResponseStatusException(
                 HttpStatus.SERVICE_UNAVAILABLE,
@@ -180,5 +180,9 @@ class IngestionReadingsTest {
                         "energyWh", 12450.7,
                         "rssi", -61,
                         "relayState", "ON"));
+    }
+
+    private Instant recentTimestamp(long secondsAgo) {
+        return Instant.now().minusSeconds(secondsAgo);
     }
 }

@@ -32,6 +32,12 @@ Request:
 }
 ```
 
+When an account is synchronized as `DELETED`, device-service applies a soft
+cleanup policy. Account-owned devices are marked `DECOMMISSIONED`, owned data
+sources are disabled and marked `REVOKED`, and any active source token gets
+`token_revoked_at`. Locations, sensors, and analytics configs remain as
+historical registry records behind the decommissioned devices.
+
 ## Devices And Ownership
 
 - `GET /devices`: list devices for the current account. Optional query

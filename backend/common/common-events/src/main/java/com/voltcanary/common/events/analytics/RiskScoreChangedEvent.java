@@ -13,7 +13,41 @@ public record RiskScoreChangedEvent(
         double previousScore,
         double currentScore,
         String riskLevel,
-        Instant changedAt) {
+        Instant changedAt,
+        String eventVersion,
+        String correlationId,
+        String producer,
+        UUID accountId,
+        Instant occurredAt) {
+
+    public RiskScoreChangedEvent(
+            UUID eventId,
+            UUID deviceId,
+            UUID riskScoreId,
+            Instant windowStart,
+            Instant windowEnd,
+            String inputHash,
+            double previousScore,
+            double currentScore,
+            String riskLevel,
+            Instant changedAt) {
+        this(
+                eventId,
+                deviceId,
+                riskScoreId,
+                windowStart,
+                windowEnd,
+                inputHash,
+                previousScore,
+                currentScore,
+                riskLevel,
+                changedAt,
+                "v1",
+                null,
+                null,
+                null,
+                changedAt);
+    }
 
     public RiskScoreChangedEvent(
             UUID eventId,
