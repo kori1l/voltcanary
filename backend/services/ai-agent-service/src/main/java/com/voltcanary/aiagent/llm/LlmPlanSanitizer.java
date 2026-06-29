@@ -25,6 +25,26 @@ public class LlmPlanSanitizer {
         ALLOWED_PARAMETERS.put(AgentTool.CREATE_SIMULATOR_CONFIG, Set.of(
                 "deviceId", "dataSourceId", "name", "profile", "protocol", "sourceId", "yamlConfig"));
         ALLOWED_PARAMETERS.put(AgentTool.VALIDATE_SIMULATOR_YAML, Set.of("deviceId", "yamlConfig"));
+        ALLOWED_PARAMETERS.put(AgentTool.CREATE_ALERT_RULE, Set.of(
+                "name", "description", "ruleType", "enabled", "scopeType", "scopeId", "deviceType",
+                "metric", "conditionType", "threshold", "thresholdUnit", "baselineMultiplier", "minPoints",
+                "severity", "cooldownSeconds", "deduplicationWindowSeconds", "notificationChannelIds", "config"));
+        ALLOWED_PARAMETERS.put(AgentTool.UPDATE_ALERT_RULE, Set.of(
+                "ruleId", "name", "description", "ruleType", "enabled", "scopeType", "scopeId", "deviceType",
+                "metric", "conditionType", "threshold", "thresholdUnit", "baselineMultiplier", "minPoints",
+                "severity", "cooldownSeconds", "deduplicationWindowSeconds", "notificationChannelIds", "config"));
+        ALLOWED_PARAMETERS.put(AgentTool.TEST_ALERT_RULE, Set.of(
+                "deviceId", "from", "to", "name", "description", "ruleType", "enabled", "scopeType", "scopeId",
+                "deviceType", "metric", "conditionType", "threshold", "thresholdUnit", "baselineMultiplier",
+                "minPoints", "severity", "cooldownSeconds", "deduplicationWindowSeconds", "notificationChannelIds",
+                "config"));
+        ALLOWED_PARAMETERS.put(AgentTool.EXPLAIN_ALERT, Set.of("alertId"));
+        ALLOWED_PARAMETERS.put(AgentTool.OPEN_TELEMETRY_WINDOW, Set.of("deviceId", "metric", "from", "to", "alertId"));
+        ALLOWED_PARAMETERS.put(AgentTool.CREATE_DEMO_DEVICE, Set.of(
+                "name", "type", "locationId", "manufacturer", "model", "profile", "protocol", "sourceId",
+                "preset", "startImmediately"));
+        ALLOWED_PARAMETERS.put(AgentTool.START_SIMULATION, Set.of("deviceId"));
+        ALLOWED_PARAMETERS.put(AgentTool.STOP_SIMULATION, Set.of("deviceId"));
     }
 
     public AgentPlan sanitize(AuthenticatedUser user, String message, LlmPlanDraft draft, AgentPlan fallback) {
@@ -40,7 +60,7 @@ public class LlmPlanSanitizer {
                     tool,
                     textOrFallback(actionDraft.title(), fallbackTitle(tool)),
                     textOrFallback(actionDraft.description(), fallbackDescription(tool)),
-                    tool != AgentTool.VALIDATE_SIMULATOR_YAML,
+                    requiresConfirmation(tool),
                     parameters));
         }
 
@@ -107,6 +127,14 @@ public class LlmPlanSanitizer {
             case CREATE_DATA_SOURCE -> "Create simulator data source";
             case CREATE_SIMULATOR_CONFIG -> "Create simulator config";
             case VALIDATE_SIMULATOR_YAML -> "Validate simulator YAML";
+            case CREATE_ALERT_RULE -> "Create alert rule";
+            case UPDATE_ALERT_RULE -> "Update alert rule";
+            case TEST_ALERT_RULE -> "Test alert rule";
+            case EXPLAIN_ALERT -> "Explain alert";
+            case OPEN_TELEMETRY_WINDOW -> "Open telemetry window";
+            case CREATE_DEMO_DEVICE -> "Create demo device";
+            case START_SIMULATION -> "Start simulation";
+            case STOP_SIMULATION -> "Stop simulation";
         };
     }
 
@@ -116,6 +144,21 @@ public class LlmPlanSanitizer {
             case CREATE_DATA_SOURCE -> "Attach a SIMULATOR data source to the target device through device-service.";
             case CREATE_SIMULATOR_CONFIG -> "Create simulator YAML through simulator-service.";
             case VALIDATE_SIMULATOR_YAML -> "Validate simulator YAML without changing resources.";
+            case CREATE_ALERT_RULE -> "Create an alert rule through alert-service.";
+            case UPDATE_ALERT_RULE -> "Update an existing alert rule through alert-service.";
+            case TEST_ALERT_RULE -> "Test an alert rule against recent telemetry without saving it.";
+            case EXPLAIN_ALERT -> "Load alert and rule details and return an operator-focused explanation.";
+            case OPEN_TELEMETRY_WINDOW -> "Return a route to the relevant device telemetry window.";
+            case CREATE_DEMO_DEVICE -> "Create a demo device, simulator source, and simulator configuration.";
+            case START_SIMULATION -> "Start simulator telemetry for the target device.";
+            case STOP_SIMULATION -> "Stop simulator telemetry for the target device.";
+        };
+    }
+
+    private boolean requiresConfirmation(AgentTool tool) {
+        return switch (tool) {
+            case VALIDATE_SIMULATOR_YAML, TEST_ALERT_RULE, EXPLAIN_ALERT, OPEN_TELEMETRY_WINDOW -> false;
+            default -> true;
         };
     }
 

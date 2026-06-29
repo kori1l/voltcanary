@@ -4,6 +4,7 @@ import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.dto.SaveSimulationConfigRequest;
 import com.voltcanary.simulator.dto.SimulationConfigResponse;
 import com.voltcanary.simulator.dto.SimulationConfigVersionResponse;
+import com.voltcanary.simulator.dto.SimulationPresetResponse;
 import com.voltcanary.simulator.dto.SimulationRunDetailResponse;
 import com.voltcanary.simulator.dto.SimulationRunResponse;
 import com.voltcanary.simulator.dto.ValidateConfigRequest;
@@ -61,8 +62,9 @@ public class SimulationController {
     public Map<String, String> resetTemplate(
             @PathVariable("deviceId") UUID deviceId,
             @RequestParam(value = "profile", defaultValue = "FRIDGE") SimulationProfile profile,
-            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId) {
-        return Map.of("yamlConfig", configService.template(profile, sourceId));
+            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
+            @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
+        return Map.of("yamlConfig", configService.template(profile, sourceId, preset));
     }
 
     @GetMapping("/devices/{deviceId}/config/versions")
@@ -75,11 +77,17 @@ public class SimulationController {
         return Arrays.stream(SimulationProfile.values()).map(Enum::name).toList();
     }
 
+    @GetMapping("/presets")
+    public List<SimulationPresetResponse> presets() {
+        return configService.presets();
+    }
+
     @GetMapping("/templates/{profile}")
     public Map<String, String> template(
             @PathVariable("profile") SimulationProfile profile,
-            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId) {
-        return Map.of("yamlConfig", configService.template(profile, sourceId));
+            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
+            @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
+        return Map.of("yamlConfig", configService.template(profile, sourceId, preset));
     }
 
     @PostMapping("/devices/{deviceId}/start")

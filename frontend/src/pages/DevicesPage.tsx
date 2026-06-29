@@ -2,9 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getDeviceRisk, RiskResponse } from "../analytics/analyticsApi";
 import {
-  createDataSource,
-  createDataSourceToken,
-  createDevice,
   createLocation,
   Device,
   DeviceType,
@@ -15,14 +12,24 @@ import {
   listLocations,
   Location,
 } from "../devices/devicesApi";
-import { getSimulationTemplate, saveSimulationConfig } from "../simulation/simulationApi";
+import { createDemoDevice, createDeviceWithSource, defaultSourceId, DeviceSourceMode } from "../devices/createDeviceFlow";
+import { listSimulationPresets, SimulationPreset } from "../simulation/simulationApi";
 import { getLatestTelemetry, LatestTelemetry } from "../telemetry/telemetryApi";
+
+const wizardSteps = ["Basics", "Location", "Telemetry", "Review"] as const;
+const demoPresets = [
+  { value: "NORMAL_OPERATION", label: "Normal operation", detail: "Stable telemetry for testing dashboards and charts." },
+  { value: "POWER_SPIKE", label: "Power spike", detail: "Short high-power event that should exercise alert rules." },
+  { value: "OFFLINE_WINDOW", label: "Offline window", detail: "Temporary telemetry gap for offline detection workflows." },
+  { value: "CONSUMPTION_GROWTH", label: "Consumption growth", detail: "Gradual load increase for trend and baseline rules." },
+] as const;
 
 export function DevicesPage() {
   const navigate = useNavigate();
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+  const [simulationPresets, setSimulationPresets] = useState<SimulationPreset[]>([]);
   const [latestByDevice, setLatestByDevice] = useState<Record<string, LatestTelemetry | null>>({});
   const [riskByDevice, setRiskByDevice] = useState<Record<string, RiskResponse | null>>({});
   const [selectedLocationId, setSelectedLocationId] = useState("");
@@ -39,7 +46,11 @@ export function DevicesPage() {
   const [model, setModel] = useState("");
   const [metadataText, setMetadataText] = useState("{}");
   const [sourceId, setSourceId] = useState("");
-  const [sourceType, setSourceType] = useState("SMART_PLUG");
+  const [sourceMode, setSourceMode] = useState<DeviceSourceMode>("API");
+  const [demoProfile, setDemoProfile] = useState("FRIDGE");
+  const [demoPreset, setDemoPreset] = useState("NORMAL_OPERATION");
+  const [startDemoImmediately, setStartDemoImmediately] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -73,12 +84,25 @@ export function DevicesPage() {
       }))
       .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
   }, [devices, locationById, locations]);
+  const demoPresetOptions = simulationPresets.length > 0
+    ? simulationPresets.map((preset) => ({ value: preset.id, label: preset.name, detail: preset.description }))
+    : [...demoPresets];
+  const selectedPreset = demoPresetOptions.find((preset) => preset.value === demoPreset) ?? demoPresetOptions[0];
+  const sourceIdPreview = sourceId.trim() || "Auto-generated on create";
+  const canAdvanceWizard =
+    wizardStep === 0
+      ? Boolean(name.trim() && type)
+      : wizardStep === 1
+        ? Boolean(selectedLocationId || newLocationName.trim())
+        : wizardStep === 2
+          ? Boolean(sourceMode)
+          : true;
 
   async function load() {
     setIsLoading(true);
     setError(null);
     try {
-      const [devicesResponse, locationsResponse, deviceTypesResponse] = await Promise.all([
+      const [devicesResponse, locationsResponse, deviceTypesResponse, simulationPresetsResponse] = await Promise.all([
         listDevices({
           search: search.trim() || undefined,
           locationId: locationFilter === "all" ? undefined : locationFilter,
@@ -88,10 +112,12 @@ export function DevicesPage() {
         }),
         listLocations({ limit: 200, offset: 0 }),
         listDeviceTypes(),
+        listSimulationPresets().catch(() => []),
       ]);
       setDevices(devicesResponse);
       setLocations(locationsResponse);
       setDeviceTypes(deviceTypesResponse);
+      setSimulationPresets(simulationPresetsResponse);
       if (!selectedLocationId && locationsResponse.length > 0) {
         setSelectedLocationId(locationsResponse[0].id);
       }
@@ -124,8 +150,40 @@ export function DevicesPage() {
     void load();
   }, [locationFilter, search, statusFilter]);
 
+  function openCreateWizard() {
+    setWizardStep(0);
+    setSourceId(defaultSourceId(sourceMode, name || "device"));
+    setIsCreateOpen(true);
+  }
+
+  function resetCreateForm() {
+    setName("");
+    setManufacturer("");
+    setModel("");
+    setMetadataText("{}");
+    setSourceId("");
+    setSourceMode("API");
+    setDemoProfile("FRIDGE");
+    setDemoPreset("NORMAL_OPERATION");
+    setStartDemoImmediately(false);
+    setWizardStep(0);
+    setNewLocationName("");
+    setNewLocationParentId("");
+    setNewLocationBuilding("");
+    setNewLocationFloor("");
+    setNewLocationRoom("");
+    setNewLocationZone("");
+    setNewLocationTags("");
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (wizardStep < wizardSteps.length - 1) {
+      if (canAdvanceWizard) {
+        setWizardStep((current) => Math.min(current + 1, wizardSteps.length - 1));
+      }
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
     try {
@@ -148,48 +206,34 @@ export function DevicesPage() {
         throw new Error("Choose or create a location");
       }
       const metadata = parseMetadata(metadataText);
-      const device = await createDevice({
+      const externalId = sourceId.trim() || defaultSourceId(sourceMode, name);
+      const deviceRequest = {
         locationId,
         name,
         type,
         manufacturer: manufacturer || "Unknown",
         model: model || "Unknown",
         metadata,
-      });
-      const dataSource = await createDataSource(device.id, {
-        sourceType,
-        protocol: "REST",
-        externalId: sourceId,
-      });
-      if (sourceType === "SIMULATOR") {
-        const token = await createDataSourceToken(device.id, dataSource.id);
-        const template = await getSimulationTemplate("FRIDGE", sourceId);
-        await saveSimulationConfig(device.id, {
-          dataSourceId: dataSource.id,
-          name: `${name} Simulator`,
-          profile: "FRIDGE",
-          protocol: "HTTP",
-          yamlConfig: template.yamlConfig.replace("sim-fridge-001", sourceId),
-          sourceToken: token.token,
-        });
-      }
-      localStorage.setItem(`voltcanary.deviceSource.${device.id}`, sourceId);
+      };
+      const result =
+        sourceMode === "SIMULATOR"
+          ? await createDemoDevice(deviceRequest, {
+              mode: "SIMULATOR",
+              externalId,
+              profile: demoProfile,
+              preset: demoPreset,
+              startImmediately: startDemoImmediately,
+            })
+          : await createDeviceWithSource(deviceRequest, {
+              mode: sourceMode,
+              externalId,
+            });
+      const device = result.device;
+      localStorage.setItem(`voltcanary.deviceSource.${device.id}`, externalId);
       setDevices((current) => [...current, device]);
-      setName("");
-      setManufacturer("");
-      setModel("");
-      setMetadataText("{}");
-      setSourceId("");
-      setSourceType("SMART_PLUG");
-      setNewLocationName("");
-      setNewLocationParentId("");
-      setNewLocationBuilding("");
-      setNewLocationFloor("");
-      setNewLocationRoom("");
-      setNewLocationZone("");
-      setNewLocationTags("");
+      resetCreateForm();
       setIsCreateOpen(false);
-      navigate(sourceType === "SIMULATOR" ? `/devices/${device.id}?tab=simulation` : `/devices/${device.id}`);
+      navigate(sourceMode === "SIMULATOR" ? `/devices/${device.id}?tab=telemetry` : `/devices/${device.id}`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to create device");
     } finally {
@@ -242,7 +286,7 @@ export function DevicesPage() {
           <button className="ghost-button" type="button" onClick={() => void onExportDevicesCsv()}>
             Export CSV
           </button>
-          <button className="primary-button" type="button" onClick={() => setIsCreateOpen(true)}>
+          <button className="primary-button" type="button" onClick={openCreateWizard}>
             Add device
           </button>
         </div>
@@ -332,32 +376,57 @@ export function DevicesPage() {
                 Close
               </button>
             </div>
-            <form className="form-stack" onSubmit={onSubmit}>
-              <label>
-                Name
-                <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Kitchen fridge" />
-              </label>
-              <label>
-                Location
-                <select value={selectedLocationId} onChange={(event) => setSelectedLocationId(event.target.value)}>
-                  <option value="">Create new location</option>
-                  {locations.map((location) => (
-                    <option value={location.id} key={location.id}>
-                      {locationLabel(location)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                New location
-                <input value={newLocationName} onChange={(event) => setNewLocationName(event.target.value)} placeholder="Kitchen" />
-              </label>
-              {newLocationName.trim() ? (
-                <>
+            <form className="device-wizard form-stack" onSubmit={onSubmit}>
+              <div className="wizard-steps" aria-label="Add device steps">
+                {wizardSteps.map((step, index) => (
+                  <button
+                    className={index === wizardStep ? "wizard-step wizard-step-active" : index < wizardStep ? "wizard-step wizard-step-done" : "wizard-step"}
+                    type="button"
+                    key={step}
+                    onClick={() => setWizardStep(index)}
+                    disabled={index > wizardStep && !canAdvanceWizard}
+                  >
+                    <span>{index + 1}</span>
+                    {step}
+                  </button>
+                ))}
+              </div>
+
+              {wizardStep === 0 ? (
+                <div className="wizard-panel">
+                  <div className="form-grid-two">
+                    <label>
+                      Name
+                      <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Kitchen fridge" />
+                    </label>
+                    <label>
+                      Device type
+                      <select value={type} onChange={(event) => setType(event.target.value)}>
+                        {deviceTypes.map((deviceType) => (
+                          <option value={deviceType.code} key={deviceType.code}>
+                            {deviceType.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Manufacturer
+                      <input value={manufacturer} onChange={(event) => setManufacturer(event.target.value)} placeholder="Bosch" />
+                    </label>
+                    <label>
+                      Model
+                      <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Unknown" />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
+              {wizardStep === 1 ? (
+                <div className="wizard-panel">
                   <label>
-                    Parent location
-                    <select value={newLocationParentId} onChange={(event) => setNewLocationParentId(event.target.value)}>
-                      <option value="">No parent</option>
+                    Existing location
+                    <select value={selectedLocationId} onChange={(event) => setSelectedLocationId(event.target.value)}>
+                      <option value="">Create new location</option>
                       {locations.map((location) => (
                         <option value={location.id} key={location.id}>
                           {locationLabel(location)}
@@ -365,70 +434,146 @@ export function DevicesPage() {
                       ))}
                     </select>
                   </label>
-                  <div className="form-grid-two">
-                    <label>
-                      Building
-                      <input value={newLocationBuilding} onChange={(event) => setNewLocationBuilding(event.target.value)} placeholder="HQ" />
-                    </label>
-                    <label>
-                      Floor
-                      <input value={newLocationFloor} onChange={(event) => setNewLocationFloor(event.target.value)} placeholder="2" />
-                    </label>
-                    <label>
-                      Room
-                      <input value={newLocationRoom} onChange={(event) => setNewLocationRoom(event.target.value)} placeholder="204" />
-                    </label>
-                    <label>
-                      Zone
-                      <input value={newLocationZone} onChange={(event) => setNewLocationZone(event.target.value)} placeholder="north" />
-                    </label>
-                  </div>
                   <label>
-                    Tags
-                    <input value={newLocationTags} onChange={(event) => setNewLocationTags(event.target.value)} placeholder="critical, it" />
+                    New location
+                    <input value={newLocationName} onChange={(event) => setNewLocationName(event.target.value)} placeholder="Kitchen" />
                   </label>
-                </>
+                  {newLocationName.trim() ? (
+                    <>
+                      <label>
+                        Parent location
+                        <select value={newLocationParentId} onChange={(event) => setNewLocationParentId(event.target.value)}>
+                          <option value="">No parent</option>
+                          {locations.map((location) => (
+                            <option value={location.id} key={location.id}>
+                              {locationLabel(location)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="form-grid-two">
+                        <label>
+                          Building
+                          <input value={newLocationBuilding} onChange={(event) => setNewLocationBuilding(event.target.value)} placeholder="HQ" />
+                        </label>
+                        <label>
+                          Floor
+                          <input value={newLocationFloor} onChange={(event) => setNewLocationFloor(event.target.value)} placeholder="2" />
+                        </label>
+                        <label>
+                          Room
+                          <input value={newLocationRoom} onChange={(event) => setNewLocationRoom(event.target.value)} placeholder="204" />
+                        </label>
+                        <label>
+                          Zone
+                          <input value={newLocationZone} onChange={(event) => setNewLocationZone(event.target.value)} placeholder="north" />
+                        </label>
+                      </div>
+                      <label>
+                        Tags
+                        <input value={newLocationTags} onChange={(event) => setNewLocationTags(event.target.value)} placeholder="critical, it" />
+                      </label>
+                    </>
+                  ) : null}
+                </div>
               ) : null}
-              <label>
-                Device type
-                <select value={type} onChange={(event) => setType(event.target.value)}>
-                  {deviceTypes.map((deviceType) => (
-                    <option value={deviceType.code} key={deviceType.code}>
-                      {deviceType.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Manufacturer
-                <input value={manufacturer} onChange={(event) => setManufacturer(event.target.value)} placeholder="Bosch" />
-              </label>
-              <label>
-                Model
-                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Unknown" />
-              </label>
-              <label>
-                Metadata JSON
-                <textarea className="small-textarea" value={metadataText} onChange={(event) => setMetadataText(event.target.value)} />
-              </label>
-              <label>
-                Data source
-                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-                  <option value="SMART_PLUG">Manual REST/API</option>
-                  <option value="SIMULATOR">Simulator</option>
-                  <option value="MQTT">MQTT</option>
-                </select>
-              </label>
-              <label>
-                Telemetry source ID
-                <input value={sourceId} onChange={(event) => setSourceId(event.target.value)} required placeholder="plug-001" />
-              </label>
+
+              {wizardStep === 2 ? (
+                <div className="wizard-panel">
+                  <div className="source-choice-grid">
+                    <button className={sourceMode === "API" ? "source-choice source-choice-active" : "source-choice"} type="button" onClick={() => setSourceMode("API")}>
+                      <strong>Smart plug/API</strong>
+                      <span>REST telemetry source for meters, plugs, and integrations.</span>
+                    </button>
+                    <button className={sourceMode === "MQTT" ? "source-choice source-choice-active" : "source-choice"} type="button" onClick={() => setSourceMode("MQTT")}>
+                      <strong>MQTT sensor</strong>
+                      <span>MQTT telemetry source for gateway and sensor feeds.</span>
+                    </button>
+                    <button className={sourceMode === "SIMULATOR" ? "source-choice source-choice-active" : "source-choice"} type="button" onClick={() => setSourceMode("SIMULATOR")}>
+                      <strong>Simulator/demo source</strong>
+                      <span>Creates simulator telemetry without editing YAML first.</span>
+                    </button>
+                  </div>
+
+                  {sourceMode === "SIMULATOR" ? (
+                    <div className="demo-source-panel">
+                      <div className="form-grid-two">
+                        <label>
+                          Demo profile
+                          <select value={demoProfile} onChange={(event) => setDemoProfile(event.target.value)}>
+                            <option value="FRIDGE">Fridge</option>
+                            <option value="GENERIC_APPLIANCE">Generic appliance</option>
+                          </select>
+                        </label>
+                        <label>
+                          Preset
+                          <select value={demoPreset} onChange={(event) => setDemoPreset(event.target.value)}>
+                            {demoPresetOptions.map((preset) => (
+                              <option value={preset.value} key={preset.value}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="status-note">
+                        {selectedPreset.detail} Expected metrics include active power, voltage, current, and accumulated energy.
+                      </div>
+                      <label className="checkbox-row">
+                        <input type="checkbox" checked={startDemoImmediately} onChange={(event) => setStartDemoImmediately(event.target.checked)} />
+                        Start telemetry after creation
+                      </label>
+                    </div>
+                  ) : null}
+
+                  <details className="assistant-advanced">
+                    <summary>Advanced</summary>
+                    <label>
+                      Telemetry source ID
+                      <input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="Auto-generated" />
+                    </label>
+                    <label>
+                      Metadata JSON
+                      <textarea className="small-textarea" value={metadataText} onChange={(event) => setMetadataText(event.target.value)} />
+                    </label>
+                  </details>
+                </div>
+              ) : null}
+
+              {wizardStep === 3 ? (
+                <div className="wizard-panel wizard-review">
+                  <dl>
+                    <div>
+                      <dt>Device</dt>
+                      <dd>{name || "Unnamed device"} - {typeByCode.get(type) ?? formatEnum(type)}</dd>
+                    </div>
+                    <div>
+                      <dt>Location</dt>
+                      <dd>{newLocationName.trim() || locationById.get(selectedLocationId) || "No location selected"}</dd>
+                    </div>
+                    <div>
+                      <dt>Telemetry</dt>
+                      <dd>{sourceMode === "SIMULATOR" ? `${selectedPreset.label} demo source` : sourceMode === "MQTT" ? "MQTT sensor" : "Smart plug/API"}</dd>
+                    </div>
+                    <div>
+                      <dt>Source ID</dt>
+                      <dd>{sourceIdPreview}</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+
               <div className="action-row">
                 <button className="ghost-button" type="button" onClick={() => setIsCreateOpen(false)}>
                   Cancel
                 </button>
-                <button className="primary-button" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Adding..." : "Add device"}
+                {wizardStep > 0 ? (
+                  <button className="ghost-button" type="button" onClick={() => setWizardStep((current) => Math.max(current - 1, 0))}>
+                    Back
+                  </button>
+                ) : null}
+                <button className="primary-button" type="submit" disabled={isSubmitting || !canAdvanceWizard}>
+                  {isSubmitting ? "Adding..." : wizardStep === wizardSteps.length - 1 ? "Add device" : "Next"}
                 </button>
               </div>
             </form>

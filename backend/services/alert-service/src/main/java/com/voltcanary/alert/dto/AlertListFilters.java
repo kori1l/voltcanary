@@ -10,6 +10,7 @@ public record AlertListFilters(
         AlertStatus status,
         AlertSeverity severity,
         String alertType,
+        String ruleId,
         Instant from,
         Instant to,
         Integer limit) {

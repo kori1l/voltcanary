@@ -31,7 +31,16 @@ public class ActionPlanner {
             - CREATE_DATA_SOURCE
             - CREATE_SIMULATOR_CONFIG
             - VALIDATE_SIMULATOR_YAML
+            - CREATE_ALERT_RULE
+            - UPDATE_ALERT_RULE
+            - TEST_ALERT_RULE
+            - EXPLAIN_ALERT
+            - OPEN_TELEMETRY_WINDOW
+            - CREATE_DEMO_DEVICE
+            - START_SIMULATION
+            - STOP_SIMULATION
             Never include accountId, tenantId, admin credentials, direct database access, or telemetry table access.
+            Read-only tools are VALIDATE_SIMULATOR_YAML, TEST_ALERT_RULE, EXPLAIN_ALERT, and OPEN_TELEMETRY_WINDOW.
             Do not execute anything. Create a concise plan that downstream services will validate and execute later.
             JSON schema:
             {
@@ -118,10 +127,66 @@ public class ActionPlanner {
     private AgentPlan ruleBasedPlan(AuthenticatedUser user, String message, Map<String, Object> context) {
         String normalized = message.toLowerCase(Locale.ROOT);
         List<AgentAction> actions = new ArrayList<>();
-        boolean wantsDevice = containsAny(normalized, "device", "устрой", "датчик", "розет", "fridge", "холодиль", "meter");
-        boolean wantsSimulator = containsAny(normalized, "simulator", "симуля", "yaml", "source", "источник");
+        boolean wantsDemoDevice = containsAny(normalized, "demo", "sample", "simulated")
+                && containsAny(normalized, "device", "plug", "fridge", "meter");
+        boolean wantsDevice = containsAny(normalized, "device", "sensor", "plug", "fridge", "meter");
+        boolean wantsSimulator = containsAny(normalized, "simulator", "simulation", "yaml", "source", "telemetry source");
+        boolean wantsRule = containsAny(normalized, "alert rule", "rule", "threshold", "power spike", "configure alert");
+        boolean wantsRuleTest = containsAny(normalized, "test rule", "simulate rule", "preview rule");
+        boolean wantsExplainAlert = containsAny(normalized, "explain alert", "why alert", "alert explanation")
+                || (contextValue(context, "alertId") != null && containsAny(normalized, "explain", "why"));
+        boolean wantsTelemetry = containsAny(normalized, "open telemetry", "telemetry window", "show telemetry")
+                || (contextValue(context, "deviceId") != null && containsAny(normalized, "telemetry", "chart", "window"));
+        boolean wantsStart = containsAny(normalized, "start simulation", "start simulator");
+        boolean wantsStop = containsAny(normalized, "stop simulation", "stop simulator");
 
-        if (wantsDevice) {
+        if (wantsExplainAlert) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.EXPLAIN_ALERT,
+                    "Explain alert",
+                    "Load alert details, related rule data when available, and the telemetry route for evidence.",
+                    false,
+                    Map.of("alertId", stringValue(context, "alertId", ""))));
+        }
+
+        if (wantsTelemetry) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.OPEN_TELEMETRY_WINDOW,
+                    "Open telemetry window",
+                    "Open the device telemetry view with the current metric and time window.",
+                    false,
+                    telemetryParameters(context)));
+        }
+
+        if (wantsRuleTest) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.TEST_ALERT_RULE,
+                    "Test alert rule",
+                    "Preview an alert rule against the selected device and time window without saving it.",
+                    false,
+                    alertRuleParameters(context)));
+        } else if (wantsRule) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.CREATE_ALERT_RULE,
+                    "Create alert rule",
+                    "Create a configurable alert rule using alert-service after confirmation.",
+                    true,
+                    alertRuleParameters(context)));
+        }
+
+        if (wantsDemoDevice) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.CREATE_DEMO_DEVICE,
+                    "Create demo device",
+                    "Create a demo device with a simulator source and simulator configuration.",
+                    true,
+                    demoDeviceParameters(message, context)));
+        } else if (wantsDevice) {
             actions.add(new AgentAction(
                     UUID.randomUUID(),
                     AgentTool.CREATE_DEVICE,
@@ -131,7 +196,7 @@ public class ActionPlanner {
                     deviceParameters(message, context)));
         }
 
-        if (wantsSimulator || wantsDevice) {
+        if (!wantsDemoDevice && (wantsSimulator || wantsDevice)) {
             actions.add(new AgentAction(
                     UUID.randomUUID(),
                     AgentTool.CREATE_DATA_SOURCE,
@@ -146,6 +211,26 @@ public class ActionPlanner {
                     "Create or replace simulator YAML through simulator-service.",
                     true,
                     simulatorParameters(message, context)));
+        }
+
+        if (wantsStart) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.START_SIMULATION,
+                    "Start simulation",
+                    "Start simulator telemetry for the target device.",
+                    true,
+                    Map.of("deviceId", stringValue(context, "deviceId", ""))));
+        }
+
+        if (wantsStop) {
+            actions.add(new AgentAction(
+                    UUID.randomUUID(),
+                    AgentTool.STOP_SIMULATION,
+                    "Stop simulation",
+                    "Stop simulator telemetry for the target device.",
+                    true,
+                    Map.of("deviceId", stringValue(context, "deviceId", ""))));
         }
 
         if (actions.isEmpty()) {
@@ -177,7 +262,7 @@ public class ActionPlanner {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("name", stringValue(context, "name", inferName(message)));
         parameters.put("type", stringValue(context, "type", inferType(message)));
-        parameters.put("locationId", context == null ? null : context.get("locationId"));
+        parameters.put("locationId", contextValue(context, "locationId"));
         parameters.put("manufacturer", stringValue(context, "manufacturer", "VoltCanary"));
         parameters.put("model", stringValue(context, "model", "AI-created"));
         return parameters;
@@ -185,7 +270,7 @@ public class ActionPlanner {
 
     private Map<String, Object> dataSourceParameters(String message, Map<String, Object> context) {
         Map<String, Object> parameters = new LinkedHashMap<>();
-        parameters.put("deviceId", context == null ? null : context.get("deviceId"));
+        parameters.put("deviceId", contextValue(context, "deviceId"));
         parameters.put("sourceType", "SIMULATOR");
         parameters.put("protocol", containsAny(message.toLowerCase(Locale.ROOT), "mqtt") ? "MQTT" : "REST");
         parameters.put("externalId", stringValue(context, "sourceId", "sim-" + UUID.randomUUID().toString().substring(0, 8)));
@@ -197,13 +282,58 @@ public class ActionPlanner {
         String profile = stringValue(context, "profile", inferProfile(message));
         String protocol = containsAny(message.toLowerCase(Locale.ROOT), "mqtt") ? "MQTT" : "HTTP";
         Map<String, Object> parameters = new LinkedHashMap<>();
-        parameters.put("deviceId", context == null ? null : context.get("deviceId"));
-        parameters.put("dataSourceId", context == null ? null : context.get("dataSourceId"));
+        parameters.put("deviceId", contextValue(context, "deviceId"));
+        parameters.put("dataSourceId", contextValue(context, "dataSourceId"));
         parameters.put("name", stringValue(context, "simulatorName", sourceId + "-simulator"));
         parameters.put("profile", profile);
         parameters.put("protocol", protocol);
         parameters.put("sourceId", sourceId);
         parameters.put("yamlConfig", stringValue(context, "yamlConfig", defaultYaml(sourceId, profile, protocol)));
+        return parameters;
+    }
+
+    private Map<String, Object> demoDeviceParameters(String message, Map<String, Object> context) {
+        Map<String, Object> parameters = new LinkedHashMap<>(deviceParameters(message, context));
+        String sourceId = stringValue(context, "sourceId", "sim-" + UUID.randomUUID().toString().substring(0, 8));
+        parameters.put("profile", stringValue(context, "profile", inferProfile(message)));
+        parameters.put("protocol", stringValue(context, "protocol", "HTTP"));
+        parameters.put("sourceId", sourceId);
+        parameters.put("preset", stringValue(context, "preset", "NORMAL_OPERATION"));
+        parameters.put("startImmediately", contextValue(context, "startImmediately") == null ? Boolean.FALSE : contextValue(context, "startImmediately"));
+        return parameters;
+    }
+
+    private Map<String, Object> alertRuleParameters(Map<String, Object> context) {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("deviceId", contextValue(context, "deviceId"));
+        parameters.put("from", contextValue(context, "from"));
+        parameters.put("to", contextValue(context, "to"));
+        parameters.put("name", stringValue(context, "ruleName", "AI suggested alert rule"));
+        parameters.put("description", stringValue(context, "description", "Created from assistant context."));
+        parameters.put("ruleType", stringValue(context, "ruleType", "THRESHOLD"));
+        parameters.put("enabled", Boolean.TRUE);
+        parameters.put("scopeType", contextValue(context, "deviceId") == null ? "FLEET" : "DEVICE");
+        parameters.put("scopeId", contextValue(context, "deviceId"));
+        parameters.put("metric", stringValue(context, "metric", "activePowerW"));
+        parameters.put("conditionType", stringValue(context, "conditionType", "ABOVE_THRESHOLD"));
+        parameters.put("threshold", contextValue(context, "threshold") == null ? 100 : contextValue(context, "threshold"));
+        parameters.put("thresholdUnit", stringValue(context, "thresholdUnit", "W"));
+        parameters.put("baselineMultiplier", contextValue(context, "baselineMultiplier"));
+        parameters.put("minPoints", contextValue(context, "minPoints") == null ? 1 : contextValue(context, "minPoints"));
+        parameters.put("severity", stringValue(context, "severity", "WARNING"));
+        parameters.put("cooldownSeconds", contextValue(context, "cooldownSeconds") == null ? 900 : contextValue(context, "cooldownSeconds"));
+        parameters.put("deduplicationWindowSeconds", contextValue(context, "deduplicationWindowSeconds") == null ? 900 : contextValue(context, "deduplicationWindowSeconds"));
+        parameters.put("config", Map.of());
+        return parameters;
+    }
+
+    private Map<String, Object> telemetryParameters(Map<String, Object> context) {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("deviceId", contextValue(context, "deviceId"));
+        parameters.put("metric", stringValue(context, "metric", "activePowerW"));
+        parameters.put("from", contextValue(context, "from"));
+        parameters.put("to", contextValue(context, "to"));
+        parameters.put("alertId", contextValue(context, "alertId"));
         return parameters;
     }
 
@@ -257,14 +387,14 @@ public class ActionPlanner {
     }
 
     private String inferName(String message) {
-        if (message.toLowerCase(Locale.ROOT).contains("fridge") || message.toLowerCase(Locale.ROOT).contains("холодиль")) {
+        if (message.toLowerCase(Locale.ROOT).contains("fridge")) {
             return "AI Fridge";
         }
         return "AI Created Device";
     }
 
     private String inferType(String message) {
-        if (message.toLowerCase(Locale.ROOT).contains("fridge") || message.toLowerCase(Locale.ROOT).contains("холодиль")) {
+        if (message.toLowerCase(Locale.ROOT).contains("fridge")) {
             return "FRIDGE";
         }
         return "SMART_PLUG";
@@ -284,7 +414,11 @@ public class ActionPlanner {
     }
 
     private String stringValue(Map<String, Object> context, String key, String fallback) {
-        Object value = context == null ? null : context.get(key);
+        Object value = contextValue(context, key);
         return value == null || value.toString().isBlank() ? fallback : value.toString();
+    }
+
+    private Object contextValue(Map<String, Object> context, String key) {
+        return context == null ? null : context.get(key);
     }
 }

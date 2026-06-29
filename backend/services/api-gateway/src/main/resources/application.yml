@@ -69,6 +69,10 @@ spring:
               uri: ${ALERT_SERVICE_URI:http://localhost:8086}
               predicates:
                 - Path=/alerts/**
+            - id: alert-rules-service
+              uri: ${ALERT_SERVICE_URI:http://localhost:8086}
+              predicates:
+                - Path=/alert-rules/**
             - id: simulator-service
               uri: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
               predicates:

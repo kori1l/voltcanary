@@ -1,18 +1,53 @@
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clearTokens, getRefreshToken } from "../api/client";
-import { logout as logoutRequest } from "../auth/authApi";
+import { logout as logoutRequest, me, MeResponse } from "../auth/authApi";
+import { AssistantDrawer } from "../aiAgent/AssistantDrawer";
 import { BrandLogo } from "../components/BrandLogo";
 
-const navigation = [
+const userNavigation = [
+  { to: "/devices", label: "Devices" },
+  { to: "/alerts", label: "Alerts" },
+  { to: "/settings", label: "Settings" },
+];
+
+const adminNavigation = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/devices", label: "Devices" },
   { to: "/alerts", label: "Alerts" },
   { to: "/ai-agent", label: "AI Agent" },
-  { to: "/account", label: "Account" },
+  { to: "/ai-agent/settings", label: "AI Settings" },
+  { to: "/account", label: "Admin" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export function AppLayout() {
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<MeResponse | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    me()
+      .then((currentProfile) => {
+        if (mounted) {
+          setProfile(currentProfile);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const navigation = useMemo(
+    () => (profile?.role === "ADMIN" ? adminNavigation : userNavigation),
+    [profile?.role],
+  );
 
   async function logout() {
     const refreshToken = getRefreshToken();
@@ -24,6 +59,7 @@ export function AppLayout() {
       }
     }
     clearTokens();
+    setProfile(null);
     navigate("/login", { replace: true });
   }
 
@@ -49,6 +85,7 @@ export function AppLayout() {
       <main className="main-content">
         <Outlet />
       </main>
+      <AssistantDrawer />
     </div>
   );
 }

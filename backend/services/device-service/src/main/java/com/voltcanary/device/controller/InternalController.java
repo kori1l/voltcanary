@@ -6,8 +6,10 @@ import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountLifecycleRequest;
 import com.voltcanary.device.dto.AccountLifecycleStatusResponse;
 import com.voltcanary.device.repository.DeviceRepository;
+import com.voltcanary.device.repository.DeviceTypeRepository;
 import com.voltcanary.device.service.AccountService;
 import jakarta.validation.Valid;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,14 +30,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class InternalController {
 
     private final DeviceRepository deviceRepository;
+    private final DeviceTypeRepository deviceTypeRepository;
     private final AccountService accountService;
     private final InternalServiceAuth internalServiceAuth;
 
     public InternalController(
             DeviceRepository deviceRepository,
+            DeviceTypeRepository deviceTypeRepository,
             AccountService accountService,
             InternalServiceAuth internalServiceAuth) {
         this.deviceRepository = deviceRepository;
+        this.deviceTypeRepository = deviceTypeRepository;
         this.accountService = accountService;
         this.internalServiceAuth = internalServiceAuth;
     }
@@ -64,6 +69,27 @@ public class InternalController {
         return Map.of(
                 "deviceId", device.getId().toString(),
                 "accountId", device.getAccountId().toString());
+    }
+
+    @GetMapping("/devices/{deviceId}/metadata")
+    public Map<String, String> deviceMetadata(
+            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+            @PathVariable("deviceId") UUID deviceId) {
+        internalServiceAuth.require(internalToken);
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        String deviceType = deviceTypeRepository.findById(device.getDeviceTypeId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device type not found"))
+                .getCode();
+        Map<String, String> response = new LinkedHashMap<>();
+        response.put("deviceId", device.getId().toString());
+        response.put("accountId", device.getAccountId().toString());
+        if (device.getLocationId() != null) {
+            response.put("locationId", device.getLocationId().toString());
+        }
+        response.put("type", deviceType);
+        response.put("status", device.getStatus().name());
+        return response;
     }
 
     @PostMapping("/accounts/users/{userId}/lifecycle")

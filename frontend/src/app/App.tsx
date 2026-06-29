@@ -8,6 +8,7 @@ import { AccountPage } from "../pages/AccountPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { DeviceDetailsPage } from "../pages/DeviceDetailsPage";
 import { DevicesPage } from "../pages/DevicesPage";
+import { SettingsPage } from "../pages/SettingsPage";
 import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
 import { LoginPage } from "../pages/LoginPage";
 import { RegisterPage } from "../pages/RegisterPage";
@@ -33,11 +34,12 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/devices" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/devices" element={<DevicesPage />} />
         <Route path="/devices/:deviceId" element={<DeviceDetailsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/ai-agent" element={<AiAgentPage />} />
         <Route path="/ai-agent/settings" element={<AiAgentSettingsPage />} />
         <Route path="/account" element={<AccountPage />} />

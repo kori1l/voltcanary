@@ -53,6 +53,7 @@ public class AlertController {
             @RequestParam(value = "status", required = false) AlertStatus status,
             @RequestParam(value = "severity", required = false) AlertSeverity severity,
             @RequestParam(value = "alertType", required = false) String alertType,
+            @RequestParam(value = "ruleId", required = false) String ruleId,
             @RequestParam(value = "from", required = false) Instant from,
             @RequestParam(value = "to", required = false) Instant to,
             @RequestParam(value = "limit", required = false) Integer limit) {
@@ -60,7 +61,7 @@ public class AlertController {
                 userId,
                 role,
                 correlationId,
-                new AlertListFilters(deviceId, status, severity, alertType, from, to, limit));
+                new AlertListFilters(deviceId, status, severity, alertType, ruleId, from, to, limit));
     }
 
     @GetMapping("/summary")
@@ -72,13 +73,14 @@ public class AlertController {
             @RequestParam(value = "status", required = false) AlertStatus status,
             @RequestParam(value = "severity", required = false) AlertSeverity severity,
             @RequestParam(value = "alertType", required = false) String alertType,
+            @RequestParam(value = "ruleId", required = false) String ruleId,
             @RequestParam(value = "from", required = false) Instant from,
             @RequestParam(value = "to", required = false) Instant to) {
         return alertService.alertSummary(
                 userId,
                 role,
                 correlationId,
-                new AlertListFilters(deviceId, status, severity, alertType, from, to, null));
+                new AlertListFilters(deviceId, status, severity, alertType, ruleId, from, to, null));
     }
 
     @GetMapping("/page")
@@ -90,6 +92,7 @@ public class AlertController {
             @RequestParam(value = "status", required = false) AlertStatus status,
             @RequestParam(value = "severity", required = false) AlertSeverity severity,
             @RequestParam(value = "alertType", required = false) String alertType,
+            @RequestParam(value = "ruleId", required = false) String ruleId,
             @RequestParam(value = "from", required = false) Instant from,
             @RequestParam(value = "to", required = false) Instant to,
             @RequestParam(value = "page", required = false) Integer page,
@@ -98,7 +101,7 @@ public class AlertController {
                 userId,
                 role,
                 correlationId,
-                new AlertListFilters(deviceId, status, severity, alertType, from, to, null),
+                new AlertListFilters(deviceId, status, severity, alertType, ruleId, from, to, null),
                 page,
                 size);
     }
@@ -112,6 +115,7 @@ public class AlertController {
             @RequestParam(value = "status", required = false) AlertStatus status,
             @RequestParam(value = "severity", required = false) AlertSeverity severity,
             @RequestParam(value = "alertType", required = false) String alertType,
+            @RequestParam(value = "ruleId", required = false) String ruleId,
             @RequestParam(value = "from", required = false) Instant from,
             @RequestParam(value = "to", required = false) Instant to,
             @RequestParam(value = "page", required = false) Integer page,
@@ -119,7 +123,7 @@ public class AlertController {
         return alertService.supportSearchAlerts(
                 userId,
                 role,
-                new AlertListFilters(deviceId, status, severity, alertType, from, to, null),
+                new AlertListFilters(deviceId, status, severity, alertType, ruleId, from, to, null),
                 accountId,
                 page,
                 size);

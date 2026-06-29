@@ -26,10 +26,15 @@ app:
     secrets:
       encryption-key: ${AI_AGENT_SECRET_ENCRYPTION_KEY:}
       key-version: ${AI_AGENT_SECRET_KEY_VERSION:v1}
+    services:
+      device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      alert-base-url: ${ALERT_SERVICE_URI:http://localhost:8084}
+      simulator-base-url: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
   jwt:
     secret: ${JWT_SECRET:change_me}
   services:
     device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    alert-base-url: ${ALERT_SERVICE_URI:http://localhost:8084}
     simulator-base-url: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
 
 info:

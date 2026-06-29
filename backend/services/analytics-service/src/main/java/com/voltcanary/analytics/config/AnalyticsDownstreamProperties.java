@@ -10,6 +10,7 @@ public class AnalyticsDownstreamProperties {
 
     private DownstreamService telemetryService = new DownstreamService("http://localhost:8084", Duration.ofSeconds(2));
     private DownstreamService mlService = new DownstreamService("http://localhost:8090", Duration.ofSeconds(2));
+    private DownstreamService alertService = new DownstreamService("http://localhost:8086", Duration.ofSeconds(2));
 
     public DownstreamService getTelemetryService() {
         return telemetryService;
@@ -25,6 +26,14 @@ public class AnalyticsDownstreamProperties {
 
     public void setMlService(DownstreamService mlService) {
         this.mlService = mlService;
+    }
+
+    public DownstreamService getAlertService() {
+        return alertService;
+    }
+
+    public void setAlertService(DownstreamService alertService) {
+        this.alertService = alertService;
     }
 
     public static class DownstreamService {

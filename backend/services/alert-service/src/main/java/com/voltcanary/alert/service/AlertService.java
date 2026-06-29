@@ -153,7 +153,7 @@ public class AlertService {
     @Transactional(readOnly = true)
     public List<AlertResponse> listAlerts(String userId, String role, String correlationId, AlertListFilters filters) {
         AlertListFilters normalizedFilters = filters == null
-                ? new AlertListFilters(null, null, null, null, null, null, null)
+                ? new AlertListFilters(null, null, null, null, null, null, null, null)
                 : filters;
         return accessibleAlerts(userId, role, correlationId, normalizedFilters, true)
                 .stream()
@@ -164,7 +164,7 @@ public class AlertService {
     @Transactional(readOnly = true)
     public AlertSummaryResponse alertSummary(String userId, String role, String correlationId, AlertListFilters filters) {
         AlertListFilters normalizedFilters = filters == null
-                ? new AlertListFilters(null, null, null, null, null, null, null)
+                ? new AlertListFilters(null, null, null, null, null, null, null, null)
                 : filters;
         return toSummary(accessibleAlerts(userId, role, correlationId, normalizedFilters, false));
     }
@@ -178,7 +178,7 @@ public class AlertService {
             Integer page,
             Integer size) {
         AlertListFilters normalizedFilters = filters == null
-                ? new AlertListFilters(null, null, null, null, null, null, null)
+                ? new AlertListFilters(null, null, null, null, null, null, null, null)
                 : filters;
         int normalizedPage = normalizedPage(page);
         int normalizedSize = normalizedSize(size);
@@ -208,7 +208,7 @@ public class AlertService {
             Integer size) {
         alertAccessService.requirePrivileged(userId, role);
         AlertListFilters normalizedFilters = filters == null
-                ? new AlertListFilters(null, null, null, null, null, null, null)
+                ? new AlertListFilters(null, null, null, null, null, null, null, null)
                 : filters;
         int normalizedPage = normalizedPage(page);
         int normalizedSize = normalizedSize(size);
@@ -472,6 +472,7 @@ public class AlertService {
                 equalsIfPresent("status", filters.status()),
                 equalsIfPresent("severity", filters.severity()),
                 equalsIfPresent("alertType", filters.alertType()),
+                equalsIfPresent("ruleId", filters.ruleId()),
                 createdAtFrom(filters.from()),
                 createdAtTo(filters.to()));
     }

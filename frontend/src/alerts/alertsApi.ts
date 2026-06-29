@@ -36,6 +36,9 @@ export interface AlertFilters {
   status?: string;
   severity?: string;
   alertType?: string;
+  ruleId?: string;
+  from?: string;
+  to?: string;
   limit?: number;
 }
 
@@ -81,6 +84,84 @@ export interface NotificationChannelRequest {
   enabled: boolean;
 }
 
+export interface AlertRule {
+  id: string;
+  accountId: string;
+  name: string;
+  description: string | null;
+  ruleType: string;
+  enabled: boolean;
+  scopeType: string;
+  scopeId: string | null;
+  deviceType: string | null;
+  metric: string;
+  conditionType: string;
+  threshold: number | null;
+  thresholdUnit: string | null;
+  baselineMultiplier: number | null;
+  minPoints: number | null;
+  severity: string;
+  cooldownSeconds: number;
+  deduplicationWindowSeconds: number;
+  notificationChannelIds: string[];
+  config: Record<string, unknown>;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertRuleRequest {
+  name: string;
+  description?: string | null;
+  ruleType: string;
+  enabled?: boolean;
+  scopeType: string;
+  scopeId?: string | null;
+  deviceType?: string | null;
+  metric: string;
+  conditionType: string;
+  threshold?: number | null;
+  thresholdUnit?: string | null;
+  baselineMultiplier?: number | null;
+  minPoints?: number | null;
+  severity: string;
+  cooldownSeconds?: number;
+  deduplicationWindowSeconds?: number;
+  notificationChannelIds?: string[];
+  config?: Record<string, unknown>;
+}
+
+export interface AlertRuleFilters {
+  enabled?: boolean;
+  ruleType?: string;
+  scopeType?: string;
+  metric?: string;
+}
+
+export interface AlertRuleTestRequest {
+  deviceId?: string;
+  rule: AlertRuleRequest;
+  from?: string;
+  to?: string;
+}
+
+export interface AlertRuleTestResponse {
+  matched: boolean;
+  matchCount: number;
+  wouldCreateAlert: boolean;
+  severity: string;
+  previewTitle: string;
+  previewDescription: string;
+  evaluationStatus: string;
+  evidence: {
+    timestamp: string;
+    metric: string;
+    value: number | null;
+    threshold: number | null;
+    alertId: string | null;
+  }[];
+}
+
 export function listAlerts(filters: AlertFilters = {}) {
   return apiRequest<AlertResponse[]>(`/alerts${query(filters)}`);
 }
@@ -120,6 +201,51 @@ export function deleteNotificationChannel(channelId: string) {
   return apiRequest<void>(`/alerts/notification-channels/${channelId}`, {
     method: "DELETE",
   });
+}
+
+export function listAlertRules(filters: AlertRuleFilters = {}) {
+  return apiRequest<AlertRule[]>(`/alert-rules${query(filters)}`);
+}
+
+export function getAlertRule(ruleId: string) {
+  return apiRequest<AlertRule>(`/alert-rules/${ruleId}`);
+}
+
+export function createAlertRule(request: AlertRuleRequest) {
+  return apiRequest<AlertRule>("/alert-rules", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function updateAlertRule(ruleId: string, request: Partial<AlertRuleRequest>) {
+  return apiRequest<AlertRule>(`/alert-rules/${ruleId}`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+export function deleteAlertRule(ruleId: string) {
+  return apiRequest<void>(`/alert-rules/${ruleId}`, { method: "DELETE" });
+}
+
+export function enableAlertRule(ruleId: string) {
+  return apiRequest<AlertRule>(`/alert-rules/${ruleId}/enable`, { method: "POST" });
+}
+
+export function disableAlertRule(ruleId: string) {
+  return apiRequest<AlertRule>(`/alert-rules/${ruleId}/disable`, { method: "POST" });
+}
+
+export function testAlertRule(request: AlertRuleTestRequest) {
+  return apiRequest<AlertRuleTestResponse>("/alert-rules/test", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function listEffectiveAlertRules(deviceId: string) {
+  return apiRequest<AlertRule[]>(`/alert-rules/effective?deviceId=${encodeURIComponent(deviceId)}`);
 }
 
 export function acknowledgeAlert(alertId: string) {

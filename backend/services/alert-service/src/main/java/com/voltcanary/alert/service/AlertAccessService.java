@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -79,6 +80,36 @@ public class AlertAccessService {
         }
     }
 
+    public DeviceRuleContext resolveDeviceRuleContext(UUID deviceId, String correlationId) {
+        if (!properties.isEnabled()) {
+            return new DeviceRuleContext(deviceId, null, null, null, null);
+        }
+        try {
+            return restClient.get()
+                    .uri("/internal/devices/{deviceId}/metadata", deviceId)
+                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                    .header("X-Internal-Service-Token", internalServiceToken)
+                    .retrieve()
+                    .body(DeviceRuleContext.class);
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
+            }
+            log.warn(
+                    "alertDeviceRuleContextLookupFailed deviceId={} status={} reason={}",
+                    deviceId,
+                    exception.getStatusCode().value(),
+                    exception.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device metadata unavailable");
+        } catch (Exception exception) {
+            log.warn(
+                    "alertDeviceRuleContextLookupFailed deviceId={} reason={}",
+                    deviceId,
+                    exception.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device metadata unavailable");
+        }
+    }
+
     public void requireReadAccess(UUID deviceId, String userId, String role, String correlationId) {
         if (!properties.isEnabled()) {
             return;
@@ -112,5 +143,8 @@ public class AlertAccessService {
     }
 
     private record DeviceOwnerResponse(UUID accountId) {
+    }
+
+    public record DeviceRuleContext(UUID deviceId, UUID accountId, UUID locationId, String type, String status) {
     }
 }

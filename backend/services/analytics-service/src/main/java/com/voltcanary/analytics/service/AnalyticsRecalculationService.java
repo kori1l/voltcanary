@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.anomaly.AnomalyDetector;
+import com.voltcanary.analytics.anomaly.UserRuleAnomalyDetector;
 import com.voltcanary.analytics.domain.DeviceBaseline;
 import com.voltcanary.analytics.baseline.BaselineCalculator;
 import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.config.AnalyticsMetricProperties;
 import com.voltcanary.analytics.dto.AnomalyResponse;
+import com.voltcanary.analytics.dto.AlertRuleSnapshot;
 import com.voltcanary.analytics.dto.BaselineResponse;
 import com.voltcanary.analytics.dto.FeatureSetResponse;
 import com.voltcanary.analytics.dto.PredictionResponse;
@@ -37,6 +39,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +71,8 @@ public class AnalyticsRecalculationService {
     private final AnalyticsMetricProperties metricProperties;
     private final BaselineCalculator baselineCalculator;
     private final AnomalyDetector anomalyDetector;
+    private final UserRuleAnomalyDetector userRuleAnomalyDetector;
+    private final AlertRuleClient alertRuleClient;
     private final RiskScoreCalculator riskScoreCalculator;
     private final RecommendationGenerator recommendationGenerator;
     private final MeterRegistry meterRegistry;
@@ -86,6 +91,8 @@ public class AnalyticsRecalculationService {
             AnalyticsMetricProperties metricProperties,
             BaselineCalculator baselineCalculator,
             AnomalyDetector anomalyDetector,
+            UserRuleAnomalyDetector userRuleAnomalyDetector,
+            AlertRuleClient alertRuleClient,
             RiskScoreCalculator riskScoreCalculator,
             RecommendationGenerator recommendationGenerator,
             MeterRegistry meterRegistry) {
@@ -102,6 +109,8 @@ public class AnalyticsRecalculationService {
         this.metricProperties = metricProperties;
         this.baselineCalculator = baselineCalculator;
         this.anomalyDetector = anomalyDetector;
+        this.userRuleAnomalyDetector = userRuleAnomalyDetector;
+        this.alertRuleClient = alertRuleClient;
         this.riskScoreCalculator = riskScoreCalculator;
         this.recommendationGenerator = recommendationGenerator;
         this.meterRegistry = meterRegistry;
@@ -121,6 +130,8 @@ public class AnalyticsRecalculationService {
         List<String> metrics = metricProperties.getDefaultMetrics();
         List<TelemetryChartResponse> charts = new ArrayList<>();
         List<BaselineStats> baselines = new ArrayList<>();
+        Map<String, TelemetryChartResponse> chartByMetric = new HashMap<>();
+        Map<String, BaselineStats> baselineByMetric = new HashMap<>();
         List<Double> allValues = new ArrayList<>();
         DeviceBaseline savedBaseline = null;
 
@@ -135,6 +146,8 @@ public class AnalyticsRecalculationService {
             saveFeatureSet(deviceId, metric, period, windowStart, windowEnd, baseline, chart);
             charts.add(chart);
             baselines.add(baseline);
+            chartByMetric.put(metric, chart);
+            baselineByMetric.put(metric, baseline);
             allValues.addAll(values);
             if (savedBaseline == null) {
                 savedBaseline = baselineEntity;
@@ -157,6 +170,28 @@ public class AnalyticsRecalculationService {
                     deviceId,
                     charts.get(index),
                     baselines.get(index),
+                    windowStart,
+                    windowEnd,
+                    inputHash,
+                    now));
+        }
+        for (AlertRuleSnapshot rule : alertRuleClient.effectiveRules(deviceId, inputHash)) {
+            if (rule.metric() == null || rule.metric().isBlank()) {
+                continue;
+            }
+            TelemetryChartResponse chart = chartByMetric.computeIfAbsent(rule.metric(), metric -> telemetryClient.readings(deviceId, metric, windowStart, windowEnd));
+            BaselineStats baseline = baselineByMetric.computeIfAbsent(rule.metric(), metric -> {
+                List<Double> values = chart == null || chart.points() == null ? List.of() : chart.points().stream()
+                        .map(TelemetryChartResponse.Point::value)
+                        .sorted()
+                        .toList();
+                return baselineCalculator.calculate(values);
+            });
+            detected.addAll(userRuleAnomalyDetector.detect(
+                    deviceId,
+                    rule,
+                    chart,
+                    baseline,
                     windowStart,
                     windowEnd,
                     inputHash,

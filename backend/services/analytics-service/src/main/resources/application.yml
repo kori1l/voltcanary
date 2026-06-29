@@ -83,6 +83,9 @@ app:
   ml-service:
     base-url: ${ML_SERVICE_URI:http://localhost:8090}
     timeout: ${ANALYTICS_ML_TIMEOUT:2s}
+  alert-service:
+    base-url: ${ALERT_SERVICE_URI:http://localhost:8086}
+    timeout: ${ANALYTICS_ALERT_TIMEOUT:2s}
 
 server:
   port: 8085

@@ -63,6 +63,9 @@ app:
       resolved-alert-ttl: ${ALERT_RETENTION_RESOLVED_ALERT_TTL:180d}
       event-ttl: ${ALERT_RETENTION_EVENT_TTL:365d}
       notification-attempt-ttl: ${ALERT_RETENTION_NOTIFICATION_ATTEMPT_TTL:90d}
+  analytics-service:
+    base-url: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+    timeout: ${ALERT_ANALYTICS_TIMEOUT:3s}
 
 server:
   port: 8086

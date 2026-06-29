@@ -25,6 +25,16 @@ export interface SimulationRun {
   lastError: string | null;
 }
 
+export interface SimulationPreset {
+  id: string;
+  name: string;
+  description: string;
+  metrics: string[];
+  expectedAlerts: string[];
+  defaultDuration: string;
+  defaultInterval: string;
+}
+
 export function getSimulationConfig(deviceId: string) {
   return apiRequest<SimulationConfig>(`/simulation/devices/${deviceId}/config`);
 }
@@ -53,8 +63,13 @@ export function validateSimulationConfig(deviceId: string, yamlConfig: string) {
   });
 }
 
-export function getSimulationTemplate(profile = "FRIDGE", sourceId = "sim-fridge-001") {
-  return apiRequest<{ yamlConfig: string }>(`/simulation/templates/${profile}?sourceId=${encodeURIComponent(sourceId)}`);
+export function listSimulationPresets() {
+  return apiRequest<SimulationPreset[]>("/simulation/presets");
+}
+
+export function getSimulationTemplate(profile = "FRIDGE", sourceId = "sim-fridge-001", preset = "NORMAL_OPERATION") {
+  const params = new URLSearchParams({ sourceId, preset });
+  return apiRequest<{ yamlConfig: string }>(`/simulation/templates/${profile}?${params.toString()}`);
 }
 
 export function resetSimulationTemplate(deviceId: string, profile = "FRIDGE", sourceId = "sim-fridge-001") {

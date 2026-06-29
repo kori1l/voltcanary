@@ -84,10 +84,13 @@ public class AiAgentProperties {
 
     public static class Services {
         private String deviceBaseUrl = "http://localhost:8082";
+        private String alertBaseUrl = "http://localhost:8084";
         private String simulatorBaseUrl = "http://localhost:8087";
 
         public String getDeviceBaseUrl() { return deviceBaseUrl; }
         public void setDeviceBaseUrl(String deviceBaseUrl) { this.deviceBaseUrl = deviceBaseUrl; }
+        public String getAlertBaseUrl() { return alertBaseUrl; }
+        public void setAlertBaseUrl(String alertBaseUrl) { this.alertBaseUrl = alertBaseUrl; }
         public String getSimulatorBaseUrl() { return simulatorBaseUrl; }
         public void setSimulatorBaseUrl(String simulatorBaseUrl) { this.simulatorBaseUrl = simulatorBaseUrl; }
     }

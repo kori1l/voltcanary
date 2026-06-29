@@ -7,6 +7,7 @@ import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.dto.SaveSimulationConfigRequest;
 import com.voltcanary.simulator.dto.SimulationConfigResponse;
 import com.voltcanary.simulator.dto.SimulationConfigVersionResponse;
+import com.voltcanary.simulator.dto.SimulationPresetResponse;
 import com.voltcanary.simulator.dto.ValidateConfigResponse;
 import com.voltcanary.simulator.repository.SimulationConfigRepository;
 import com.voltcanary.simulator.repository.SimulationConfigVersionRepository;
@@ -84,6 +85,14 @@ public class SimulationConfigService {
 
     public String template(SimulationProfile profile, String sourceId) {
         return templates.template(profile, sourceId);
+    }
+
+    public String template(SimulationProfile profile, String sourceId, String preset) {
+        return templates.template(profile, sourceId, preset);
+    }
+
+    public List<SimulationPresetResponse> presets() {
+        return templates.presets();
     }
 
     @Transactional(readOnly = true)

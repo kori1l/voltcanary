@@ -63,6 +63,8 @@ import { TelemetryOverviewPage } from "../features/telemetry/pages/TelemetryOver
 import { mapTelemetryOverview } from "../features/telemetry/model/telemetry.mappers";
 import { TelemetryOverviewResponse } from "../features/telemetry/model/telemetry.types";
 import { formatMetricValue as formatTelemetryMetricValue } from "../features/telemetry/model/telemetry.utils";
+import { DeviceIncidentSummary } from "../devices/details/DeviceIncidentSummary";
+import { DeviceDetailsTab, DeviceTabs } from "../devices/details/DeviceTabs";
 
 type ChartPoint = { timestamp: string; value: number };
 type RenderChartPoint = ChartPoint & { synthetic?: boolean };
@@ -145,7 +147,7 @@ export function DeviceDetailsPage() {
   const { deviceId } = useParams();
   const initialChartPreferences = readDashboardChartPreferences(deviceId);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") ?? "overview";
+  const activeTab = normalizeDeviceTab(searchParams.get("tab"));
   const [device, setDevice] = useState<Device | null>(null);
   const [locations, setLocations] = useState<Location[]>([]);
   const [latest, setLatest] = useState<LatestTelemetry | null>(null);
@@ -333,6 +335,22 @@ export function DeviceDetailsPage() {
   }, [deviceId]);
 
   useEffect(() => {
+    const metric = searchParams.get("metric");
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+    if (activeTab !== "telemetry" || !metric) {
+      return;
+    }
+    setSelectedChartMetricKeys([metric]);
+    setExpandedChartMetricKey(metric);
+    if (from && to) {
+      setChartTimeRange("custom");
+      setCustomChartFrom(toDateTimeLocalValue(new Date(from)));
+      setCustomChartTo(toDateTimeLocalValue(new Date(to)));
+    }
+  }, [activeTab, searchParams]);
+
+  useEffect(() => {
     if (!deviceId) return;
     writeDashboardChartPreferences(deviceId, {
       selectedMetricKeys: selectedChartMetricKeys,
@@ -451,6 +469,9 @@ export function DeviceDetailsPage() {
   const analyticsFocusedEvents = telemetryOverview?.events.filter((event) => !analyticsFocusedMetric || event.metricKey === analyticsFocusedMetric.key) ?? [];
   const analyticsFocusedPoints = analyticsFocusedMetric ? charts[analyticsFocusedMetric.key]?.points ?? [] : [];
   const analyticsBaseline = analyticsFocusedMetric && baseline?.metric === analyticsFocusedMetric.key ? baseline : null;
+  const configureAlertRoute = deviceId && analyticsFocusedMetric && chartTimeWindow
+    ? `/alerts?view=rules&deviceId=${encodeURIComponent(deviceId)}&metric=${encodeURIComponent(analyticsFocusedMetric.key)}&from=${encodeURIComponent(chartTimeWindow.from)}&to=${encodeURIComponent(chartTimeWindow.to)}`
+    : null;
   const filteredDeviceAlerts = deviceAlerts
     .filter((alert) => {
       if (deviceAlertStatusFilter === "active") return alert.status !== "RESOLVED";
@@ -458,6 +479,10 @@ export function DeviceDetailsPage() {
     })
     .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   const visibleDeviceAlerts = showAllDeviceAlerts ? filteredDeviceAlerts : filteredDeviceAlerts.slice(0, 12);
+
+  function changeTab(tab: DeviceDetailsTab) {
+    setSearchParams(tab === "overview" ? {} : { tab });
+  }
 
   useEffect(() => {
     const availableKeys = availableChartKeySignature ? availableChartKeySignature.split("|") : [];
@@ -886,26 +911,7 @@ export function DeviceDetailsPage() {
         <>
           {activeTab === "overview" && incident ? (
             <>
-              <section className={`incident-summary incident-summary-${incident.riskTone}`}>
-                <div>
-                  <div className="incident-title-row">
-                    <span className="status-pill">{incident.riskLabel}</span>
-                    <h2>{incident.title}</h2>
-                  </div>
-                  <p className="incident-metrics">
-                    {incident.eventCount} events in {incident.timeRangeLabel} - Peak {incident.peakValue} - Current value {incident.currentValue}
-                  </p>
-                  <p className="incident-conclusion">{incident.conclusion}</p>
-                </div>
-                <div className="action-row">
-                  <Link className="ghost-button button-link" to="/alerts">
-                    View alerts
-                  </Link>
-                  <button className="primary-button" type="button" onClick={() => setIsChecked(true)}>
-                    {isChecked ? "Checked" : "Mark as checked"}
-                  </button>
-                </div>
-              </section>
+              <DeviceIncidentSummary incident={incident} isChecked={isChecked} onChecked={() => setIsChecked(true)} />
 
               <section className="metric-grid device-overview-grid compact-kpi-row">
                 <Metric label={incident.problemMetricName} valueText={incident.currentValue} emphasis />
@@ -916,24 +922,13 @@ export function DeviceDetailsPage() {
             </>
           ) : null}
 
-          <nav className="tab-row" aria-label="Device sections">
-            {["overview", "telemetry", "registry", "analytics", "alerts", "simulation"].map((tab) => (
-              <button
-                key={tab}
-                className={activeTab === tab ? "tab-button tab-button-active" : "tab-button"}
-                type="button"
-                onClick={() => setSearchParams(tab === "overview" ? {} : { tab })}
-              >
-                {formatEnum(tab)}
-              </button>
-            ))}
-          </nav>
+          <DeviceTabs activeTab={activeTab} onChange={changeTab} />
 
           {activeTab === "simulation" ? (
             <section className="panel simulation-panel">
               <div className="section-header">
                 <div>
-                  <h2>Simulation</h2>
+                  <h2>Demo tools</h2>
                   <p>
                     {simulationConfig
                       ? `${formatEnum(simulationConfig.profile)} - ${formatEnum(simulationConfig.status)} - Version ${simulationConfig.yamlVersion}`
@@ -1159,7 +1154,7 @@ export function DeviceDetailsPage() {
             </section>
           ) : null}
 
-          {activeTab === "registry" ? (
+          {activeTab === "configuration" ? (
             <section className="registry-grid">
               <section className="panel">
                 <div className="section-header">
@@ -1461,36 +1456,49 @@ export function DeviceDetailsPage() {
           ) : null}
 
           {activeTab === "telemetry" && telemetryOverview ? (
-            <TelemetryOverviewPage
-              overview={telemetryOverview}
-              range={chartTimeRange}
-              customFrom={customChartFrom}
-              customTo={customChartTo}
-              showPoints={showChartPoints}
-              selectedMetricKeys={selectedChartMetricKeys}
-              metricSearch={metricSearch}
-              openedMetricKey={expandedChartMetricKey}
-              selectedEventId={selectedTelemetryEventId}
-              maxDisplayPoints={CHART_DENSITY_LIMITS[chartDensity]}
-              onRangeChange={setChartTimeRange}
-              onCustomFromChange={setCustomChartFrom}
-              onCustomToChange={setCustomChartTo}
-              onShowPointsChange={setShowChartPoints}
-              onMetricSearchChange={setMetricSearch}
-              onToggleMetric={toggleChartMetric}
-              onSelectAll={selectAllChartMetrics}
-              onResetMetrics={resetChartMetrics}
-              onClearMetrics={() => setSelectedChartMetricKeys([])}
-              onOpenMetric={setExpandedChartMetricKey}
-              onCloseMetric={() => setExpandedChartMetricKey(null)}
-              onSelectEvent={(eventId) => {
-                setSelectedTelemetryEventId(eventId);
-                const event = telemetryOverview.events.find((item) => item.id === eventId);
-                if (event?.metricKey) {
-                  setExpandedChartMetricKey(event.metricKey);
-                }
-              }}
-            />
+            <>
+              <section className="panel telemetry-action-panel">
+                <div>
+                  <strong>{analyticsFocusedMetric?.label ?? "Telemetry"} alerting</strong>
+                  <span>Create or tune a rule from the current metric and time window.</span>
+                </div>
+                {configureAlertRoute ? (
+                  <Link className="primary-button button-link" to={configureAlertRoute}>
+                    Configure alert
+                  </Link>
+                ) : null}
+              </section>
+              <TelemetryOverviewPage
+                overview={telemetryOverview}
+                range={chartTimeRange}
+                customFrom={customChartFrom}
+                customTo={customChartTo}
+                showPoints={showChartPoints}
+                selectedMetricKeys={selectedChartMetricKeys}
+                metricSearch={metricSearch}
+                openedMetricKey={expandedChartMetricKey}
+                selectedEventId={selectedTelemetryEventId}
+                maxDisplayPoints={CHART_DENSITY_LIMITS[chartDensity]}
+                onRangeChange={setChartTimeRange}
+                onCustomFromChange={setCustomChartFrom}
+                onCustomToChange={setCustomChartTo}
+                onShowPointsChange={setShowChartPoints}
+                onMetricSearchChange={setMetricSearch}
+                onToggleMetric={toggleChartMetric}
+                onSelectAll={selectAllChartMetrics}
+                onResetMetrics={resetChartMetrics}
+                onClearMetrics={() => setSelectedChartMetricKeys([])}
+                onOpenMetric={setExpandedChartMetricKey}
+                onCloseMetric={() => setExpandedChartMetricKey(null)}
+                onSelectEvent={(eventId) => {
+                  setSelectedTelemetryEventId(eventId);
+                  const event = telemetryOverview.events.find((item) => item.id === eventId);
+                  if (event?.metricKey) {
+                    setExpandedChartMetricKey(event.metricKey);
+                  }
+                }}
+              />
+            </>
           ) : null}
 
           {activeTab === "analytics" ? (
@@ -1868,6 +1876,16 @@ function Metric({
       <strong>{valueText ?? (value === undefined ? "No data" : `${formatNumber(value)}${unit ? ` ${unit}` : ""}`)}</strong>
     </article>
   );
+}
+
+function normalizeDeviceTab(value: string | null): DeviceDetailsTab {
+  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "configuration" || value === "simulation") {
+    return value;
+  }
+  if (value === "registry" || value === "config") {
+    return "configuration";
+  }
+  return "overview";
 }
 
 function buildIncidentSummary(overview: TelemetryOverviewResponse, riskLevel: string | null, range: ChartTimeRange) {
