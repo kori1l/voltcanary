@@ -9,6 +9,7 @@ import com.voltcanary.analytics.domain.DeviceBaseline;
 import com.voltcanary.analytics.baseline.BaselineCalculator;
 import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.config.AnalyticsMetricProperties;
+import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.AlertRuleSnapshot;
 import com.voltcanary.analytics.dto.BaselineResponse;
@@ -18,6 +19,7 @@ import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.domain.PredictionResult;
 import com.voltcanary.analytics.producer.AnalyticsOutboxService;
@@ -76,6 +78,7 @@ public class AnalyticsRecalculationService {
     private final RiskScoreCalculator riskScoreCalculator;
     private final RecommendationGenerator recommendationGenerator;
     private final MeterRegistry meterRegistry;
+    private final MaintenanceWindowProjectionService maintenanceWindowProjectionService;
 
     public AnalyticsRecalculationService(
             TelemetryClient telemetryClient,
@@ -95,7 +98,8 @@ public class AnalyticsRecalculationService {
             AlertRuleClient alertRuleClient,
             RiskScoreCalculator riskScoreCalculator,
             RecommendationGenerator recommendationGenerator,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry,
+            MaintenanceWindowProjectionService maintenanceWindowProjectionService) {
         this.telemetryClient = telemetryClient;
         this.baselineRepository = baselineRepository;
         this.featureSetRepository = featureSetRepository;
@@ -114,6 +118,7 @@ public class AnalyticsRecalculationService {
         this.riskScoreCalculator = riskScoreCalculator;
         this.recommendationGenerator = recommendationGenerator;
         this.meterRegistry = meterRegistry;
+        this.maintenanceWindowProjectionService = maintenanceWindowProjectionService;
     }
 
     @Transactional
@@ -128,27 +133,54 @@ public class AnalyticsRecalculationService {
         Instant windowStart = windowEnd.minus(metricProperties.getDefaultWindow());
         String period = metricProperties.getPeriodLabel();
         List<String> metrics = metricProperties.getDefaultMetrics();
+        List<MaintenanceWindowReadModel> maintenanceWindows =
+                maintenanceWindowProjectionService.activeOverlapping(deviceId, windowStart, windowEnd);
+        List<MaintenanceWindowReadModel> analyticsExclusions = maintenanceWindows.stream()
+                .filter(MaintenanceWindowReadModel::isExcludeFromAnalytics)
+                .toList();
         List<TelemetryChartResponse> charts = new ArrayList<>();
         List<BaselineStats> baselines = new ArrayList<>();
         Map<String, TelemetryChartResponse> chartByMetric = new HashMap<>();
         Map<String, BaselineStats> baselineByMetric = new HashMap<>();
         List<Double> allValues = new ArrayList<>();
         DeviceBaseline savedBaseline = null;
+        int excludedSamples = 0;
 
         for (String metric : metrics) {
-            TelemetryChartResponse chart = telemetryClient.readings(deviceId, metric, windowStart, windowEnd);
+            TelemetryChartResponse rawChart = telemetryClient.readings(deviceId, metric, windowStart, windowEnd);
+            TelemetryChartResponse chart = filterChart(rawChart, analyticsExclusions);
+            excludedSamples += excludedSampleCount(rawChart, chart);
             List<Double> values = chart == null ? List.of() : chart.points().stream()
                     .map(TelemetryChartResponse.Point::value)
                     .sorted()
                     .toList();
             BaselineStats baseline = baselineCalculator.calculate(values);
-            DeviceBaseline baselineEntity = saveBaseline(deviceId, metric, period, baseline, now);
-            saveFeatureSet(deviceId, metric, period, windowStart, windowEnd, baseline, chart);
             charts.add(chart);
             baselines.add(baseline);
             chartByMetric.put(metric, chart);
             baselineByMetric.put(metric, baseline);
             allValues.addAll(values);
+        }
+
+        if (allValues.isEmpty() && excludedSamples > 0) {
+            meterRegistry.counter("analytics.maintenance.jobs_skipped", "reason", "full_coverage").increment();
+            timer.stop(meterRegistry.timer("analytics.recalculation.duration", "status", "skipped"));
+            String inputHash = inputHash(deviceId, windowStart, windowEnd, charts, maintenanceWindows);
+            return RecalculationResult.skipped(windowStart, windowEnd, inputHash, "MAINTENANCE_FULL_COVERAGE");
+        }
+
+        for (int index = 0; index < metrics.size(); index++) {
+            DeviceBaseline baselineEntity = saveBaseline(deviceId, metrics.get(index), period, baselines.get(index), now);
+            saveFeatureSet(
+                    deviceId,
+                    metrics.get(index),
+                    period,
+                    windowStart,
+                    windowEnd,
+                    baselines.get(index),
+                    charts.get(index),
+                    excludedSamples,
+                    maintenanceWindows);
             if (savedBaseline == null) {
                 savedBaseline = baselineEntity;
             }
@@ -156,7 +188,7 @@ public class AnalyticsRecalculationService {
 
         BaselineStats primaryBaseline = baselines.isEmpty() ? baselineCalculator.calculate(List.of()) : baselines.get(0);
         TelemetryChartResponse primaryChart = charts.isEmpty() ? null : charts.get(0);
-        String inputHash = inputHash(deviceId, windowStart, windowEnd, charts);
+        String inputHash = inputHash(deviceId, windowStart, windowEnd, charts, maintenanceWindows);
         double previousRiskScore = riskScoreRepository.findFirstByDeviceIdOrderByCalculatedAtDesc(deviceId)
                 .map(RiskScore::getScore)
                 .orElse(0.0);
@@ -179,7 +211,9 @@ public class AnalyticsRecalculationService {
             if (rule.metric() == null || rule.metric().isBlank()) {
                 continue;
             }
-            TelemetryChartResponse chart = chartByMetric.computeIfAbsent(rule.metric(), metric -> telemetryClient.readings(deviceId, metric, windowStart, windowEnd));
+            TelemetryChartResponse chart = chartByMetric.computeIfAbsent(rule.metric(), metric -> filterChart(
+                    telemetryClient.readings(deviceId, metric, windowStart, windowEnd),
+                    analyticsExclusions));
             BaselineStats baseline = baselineByMetric.computeIfAbsent(rule.metric(), metric -> {
                 List<Double> values = chart == null || chart.points() == null ? List.of() : chart.points().stream()
                         .map(TelemetryChartResponse.Point::value)
@@ -207,7 +241,7 @@ public class AnalyticsRecalculationService {
                 inputHash,
                 now));
         PredictionResult prediction = predictionResultRepository.save(
-                prediction(deviceId, primaryChart, primaryBaseline, risk, now));
+                prediction(deviceId, primaryChart, primaryBaseline, risk, now, maintenanceWindows));
         List<Recommendation> recommendations = recommendationRepository.saveAll(
                 recommendationGenerator.generate(deviceId, anomalies, now));
         anomalies.forEach(outboxService::enqueueAnomaly);
@@ -238,7 +272,9 @@ public class AnalyticsRecalculationService {
                 prediction,
                 windowStart,
                 windowEnd,
-                inputHash);
+                inputHash,
+                false,
+                null);
     }
 
     @Transactional(readOnly = true)
@@ -314,26 +350,39 @@ public class AnalyticsRecalculationService {
             Instant windowStart,
             Instant windowEnd,
             BaselineStats baseline,
-            TelemetryChartResponse chart) {
+            TelemetryChartResponse chart,
+            int excludedSamples,
+            List<MaintenanceWindowReadModel> maintenanceWindows) {
         FeatureSet entity = new FeatureSet();
         entity.setId(UUID.randomUUID());
         entity.setDeviceId(deviceId);
         entity.setWindowStart(windowStart);
         entity.setWindowEnd(windowEnd);
-        entity.setFeaturesJson(writeJson(Map.of(
-                "metric", metric,
-                "period", period,
-                "sampleCount", baseline.sampleCount(),
-                "mean", baseline.mean(),
-                "median", baseline.median(),
-                "p90", baseline.p90(),
-                "min", baseline.min(),
-                "max", baseline.max(),
-                "latestValue", latestValue(chart))));
+        entity.setFeaturesJson(writeJson(Map.ofEntries(
+                Map.entry("metric", metric),
+                Map.entry("period", period),
+                Map.entry("sampleCount", baseline.sampleCount()),
+                Map.entry("mean", baseline.mean()),
+                Map.entry("median", baseline.median()),
+                Map.entry("p90", baseline.p90()),
+                Map.entry("min", baseline.min()),
+                Map.entry("max", baseline.max()),
+                Map.entry("latestValue", latestValue(chart)),
+                Map.entry("maintenanceExcludedSampleCount", excludedSamples),
+                Map.entry("maintenanceExcludedWindowIds", maintenanceWindows.stream()
+                        .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
+                        .map(UUID::toString)
+                        .toList()))));
         return featureSetRepository.save(entity);
     }
 
-    private PredictionResult prediction(UUID deviceId, TelemetryChartResponse chart, BaselineStats baseline, RiskScore risk, Instant now) {
+    private PredictionResult prediction(
+            UUID deviceId,
+            TelemetryChartResponse chart,
+            BaselineStats baseline,
+            RiskScore risk,
+            Instant now,
+            List<MaintenanceWindowReadModel> maintenanceWindows) {
         Map<String, Object> metrics = Map.of(
                 "metric", chart == null ? "" : chart.metric(),
                 "sampleCount", baseline.sampleCount(),
@@ -343,9 +392,24 @@ public class AnalyticsRecalculationService {
                 "min", baseline.min(),
                 "max", baseline.max(),
                 "riskScore", risk.getScore(),
-                "latestValue", latestValue(chart));
-        MlInferenceResponse response = mlClient.requestPrediction(deviceId, now, metrics);
-        String status = response == null ? "UNAVAILABLE" : "AVAILABLE";
+                "latestValue", latestValue(chart),
+                "maintenanceExcludedWindowIds", maintenanceWindows.stream()
+                        .filter(MaintenanceWindowReadModel::isExcludeFromMl)
+                        .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
+                        .map(UUID::toString)
+                        .toList());
+        boolean suppressMl = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl)
+                && (chart == null || chart.points().isEmpty());
+        List<MlExcludedInterval> excludedIntervals = maintenanceWindows.stream()
+                .filter(MaintenanceWindowReadModel::isExcludeFromMl)
+                .map(window -> new MlExcludedInterval(
+                        window.getMaintenanceWindowId(),
+                        window.getStartAt(),
+                        window.getEndAt(),
+                        "MAINTENANCE"))
+                .toList();
+        MlInferenceResponse response = suppressMl ? null : mlClient.requestPrediction(deviceId, now, metrics, excludedIntervals);
+        String status = suppressMl ? "SUPPRESSED_MAINTENANCE" : response == null ? "UNAVAILABLE" : "AVAILABLE";
         PredictionResult result = new PredictionResult();
         result.setId(UUID.randomUUID());
         result.setDeviceId(deviceId);
@@ -363,6 +427,7 @@ public class AnalyticsRecalculationService {
                 "degradationScore", response == null ? 0 : response.degradationScore(),
                 "riskLevel", response == null ? "" : response.riskLevel(),
                 "confidence", response == null ? 0 : response.confidence(),
+                "reason", suppressMl ? "maintenance" : "",
                 "explanations", response == null || response.explanations() == null ? List.of() : response.explanations())));
         result.setCreatedAt(now);
         return result;
@@ -474,7 +539,8 @@ public class AnalyticsRecalculationService {
             UUID deviceId,
             Instant windowStart,
             Instant windowEnd,
-            List<TelemetryChartResponse> charts) {
+            List<TelemetryChartResponse> charts,
+            List<MaintenanceWindowReadModel> maintenanceWindows) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             digest.update((deviceId + "|" + windowStart + "|" + windowEnd).getBytes(StandardCharsets.UTF_8));
@@ -488,10 +554,45 @@ public class AnalyticsRecalculationService {
                                 .forEach(point -> digest.update(
                                         ("|" + point.timestamp() + "=" + point.value()).getBytes(StandardCharsets.UTF_8)));
                     });
+            maintenanceWindows.stream()
+                    .sorted(Comparator.comparing(MaintenanceWindowReadModel::getMaintenanceWindowId))
+                    .forEach(window -> digest.update(
+                            ("|maintenance:" + window.getMaintenanceWindowId() + ":" + window.getVersion()
+                                    + ":" + window.isExcludeFromAnalytics() + ":" + window.isExcludeFromMl())
+                                    .getBytes(StandardCharsets.UTF_8)));
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
+    }
+
+    private TelemetryChartResponse filterChart(
+            TelemetryChartResponse chart,
+            List<MaintenanceWindowReadModel> analyticsExclusions) {
+        if (chart == null || chart.points() == null || chart.points().isEmpty() || analyticsExclusions.isEmpty()) {
+            return chart;
+        }
+        return new TelemetryChartResponse(
+                chart.deviceId(),
+                chart.metric(),
+                chart.points().stream()
+                        .filter(point -> !isInsideAny(point.timestamp(), analyticsExclusions))
+                        .toList());
+    }
+
+    private int excludedSampleCount(TelemetryChartResponse rawChart, TelemetryChartResponse filteredChart) {
+        int raw = rawChart == null || rawChart.points() == null ? 0 : rawChart.points().size();
+        int filtered = filteredChart == null || filteredChart.points() == null ? 0 : filteredChart.points().size();
+        int excluded = raw - filtered;
+        if (excluded > 0) {
+            meterRegistry.counter("analytics.maintenance.samples_excluded").increment(excluded);
+        }
+        return Math.max(excluded, 0);
+    }
+
+    private boolean isInsideAny(Instant timestamp, List<MaintenanceWindowReadModel> windows) {
+        return windows.stream().anyMatch(window ->
+                !timestamp.isBefore(window.getStartAt()) && timestamp.isBefore(window.getEndAt()));
     }
 
     public record RecalculationResult(
@@ -502,7 +603,23 @@ public class AnalyticsRecalculationService {
             PredictionResult prediction,
             Instant windowStart,
             Instant windowEnd,
-            String inputHash) {
+            String inputHash,
+            boolean skipped,
+            String skipReason) {
+
+        static RecalculationResult skipped(Instant windowStart, Instant windowEnd, String inputHash, String skipReason) {
+            return new RecalculationResult(
+                    null,
+                    List.of(),
+                    null,
+                    List.of(),
+                    null,
+                    windowStart,
+                    windowEnd,
+                    inputHash,
+                    true,
+                    skipReason);
+        }
     }
 
 }

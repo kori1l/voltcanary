@@ -43,6 +43,7 @@ public class AlertService {
     private final AlertAccessService alertAccessService;
     private final AlertDeduplicationService deduplicationService;
     private final NotificationDeliveryService notificationDeliveryService;
+    private final AlertMaintenanceSuppressionService maintenanceSuppressionService;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
 
@@ -52,6 +53,7 @@ public class AlertService {
             AlertAccessService alertAccessService,
             AlertDeduplicationService deduplicationService,
             NotificationDeliveryService notificationDeliveryService,
+            AlertMaintenanceSuppressionService maintenanceSuppressionService,
             MeterRegistry meterRegistry,
             ObjectMapper objectMapper) {
         this.alertRepository = alertRepository;
@@ -59,6 +61,7 @@ public class AlertService {
         this.alertAccessService = alertAccessService;
         this.deduplicationService = deduplicationService;
         this.notificationDeliveryService = notificationDeliveryService;
+        this.maintenanceSuppressionService = maintenanceSuppressionService;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
     }
@@ -72,6 +75,15 @@ public class AlertService {
         if (existingBySourceEvent.isPresent()) {
             recordDeduplicationHit(existingBySourceEvent.get(), "source_event_id");
             return existingBySourceEvent.get();
+        }
+        if (maintenanceSuppressionService.suppressesEvent(
+                event.deviceId(),
+                event.eventId(),
+                "ANOMALY_DETECTED",
+                event.windowStart(),
+                event.windowEnd(),
+                event.detectedAt())) {
+            return null;
         }
         var activeInWindow = deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.detectedAt());
         if (activeInWindow.isPresent()) {
@@ -117,6 +129,15 @@ public class AlertService {
         if (existingBySourceEvent.isPresent()) {
             recordDeduplicationHit(existingBySourceEvent.get(), "source_event_id");
             return existingBySourceEvent.get();
+        }
+        if (maintenanceSuppressionService.suppressesEvent(
+                event.deviceId(),
+                event.eventId(),
+                "RISK_SCORE_CHANGED",
+                event.windowStart(),
+                event.windowEnd(),
+                event.changedAt())) {
+            return null;
         }
         var activeInWindow = deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.changedAt());
         if (activeInWindow.isPresent()) {

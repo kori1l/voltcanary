@@ -119,6 +119,39 @@ export interface AnalyticsConfig {
   config: Record<string, unknown>;
 }
 
+export type MaintenanceWindowStatus = "SCHEDULED" | "ACTIVE" | "FINISHED" | "CANCELLED";
+
+export interface MaintenanceWindow {
+  id: string;
+  accountId: string;
+  deviceId: string;
+  title: string;
+  description: string | null;
+  startAt: string;
+  endAt: string;
+  status: MaintenanceWindowStatus;
+  suppressAlerts: boolean;
+  excludeFromAnalytics: boolean;
+  excludeFromMl: boolean;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface MaintenanceWindowRequest {
+  title: string;
+  description?: string | null;
+  startAt: string;
+  endAt: string;
+  suppressAlerts: boolean;
+  excludeFromAnalytics: boolean;
+  excludeFromMl: boolean;
+}
+
 function query(params: Record<string, string | number | undefined>) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -280,5 +313,29 @@ export function updateAnalyticsConfig(deviceId: string, request: AnalyticsConfig
   return apiRequest<AnalyticsConfig>(`/devices/${deviceId}/analytics-config`, {
     method: "PATCH",
     body: JSON.stringify(request),
+  });
+}
+
+export function listMaintenanceWindows(deviceId: string) {
+  return apiRequest<MaintenanceWindow[]>(`/devices/${deviceId}/maintenance-windows`);
+}
+
+export function createMaintenanceWindow(deviceId: string, request: MaintenanceWindowRequest) {
+  return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function cancelMaintenanceWindow(deviceId: string, windowId: string, reason: string) {
+  return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows/${windowId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function finishMaintenanceWindowNow(deviceId: string, windowId: string) {
+  return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows/${windowId}/finish-now`, {
+    method: "POST",
   });
 }

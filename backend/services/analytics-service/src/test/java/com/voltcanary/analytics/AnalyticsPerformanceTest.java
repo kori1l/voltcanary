@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
@@ -78,7 +79,8 @@ class AnalyticsPerformanceTest {
         UUID deviceId = UUID.randomUUID();
         when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
                 .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", points(sampleCount)));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any())).thenReturn(null);
+        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
+                .thenReturn(null);
 
         long baselinesBefore = baselineRepository.count();
         long featuresBefore = featureSetRepository.count();

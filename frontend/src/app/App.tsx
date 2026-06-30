@@ -11,6 +11,7 @@ import { DevicesPage } from "../pages/DevicesPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
 import { LoginPage } from "../pages/LoginPage";
+import { MaintenanceCalendarPage } from "../maintenance/MaintenanceCalendarPage";
 import { RegisterPage } from "../pages/RegisterPage";
 import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { VerifyEmailPage } from "../pages/VerifyEmailPage";
@@ -37,6 +38,7 @@ export function App() {
         <Route path="/" element={<Navigate to="/devices" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/devices" element={<DevicesPage />} />
+        <Route path="/maintenance" element={<MaintenanceCalendarPage />} />
         <Route path="/devices/:deviceId" element={<DeviceDetailsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/settings" element={<SettingsPage />} />

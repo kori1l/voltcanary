@@ -13,11 +13,15 @@ import com.voltcanary.device.dto.DataSourceResponse;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigResponse;
 import com.voltcanary.device.dto.DeviceResponse;
 import com.voltcanary.device.dto.LocationResponse;
+import com.voltcanary.device.dto.MaintenanceOperationResponse;
+import com.voltcanary.device.dto.MaintenanceWindowResponse;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -394,6 +398,220 @@ class DeviceManagementTest {
         assertThat(decommissioned.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(decommissioned.getBody().status()).isEqualTo("DECOMMISSIONED");
         assertThat(enableAfterDecommission.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void managesMaintenanceWindowsAndExposesInternalChanges() {
+        UUID userId = UUID.randomUUID();
+        LocationResponse location = createLocation(userId, "Maintenance lab");
+        DeviceResponse device = createDevice(userId, location.id(), "Maintenance fridge");
+        Instant startAt = Instant.now().plusSeconds(3600);
+        Instant endAt = startAt.plusSeconds(7200);
+
+        ResponseEntity<MaintenanceWindowResponse> created = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Sensor replacement",
+                                "description", "Technician visit",
+                                "startAt", startAt.toString(),
+                                "endAt", endAt.toString(),
+                                "suppressAlerts", true,
+                                "excludeFromAnalytics", true,
+                                "excludeFromMl", true),
+                        headersFor(userId, "maintenance@example.com")),
+                MaintenanceWindowResponse.class);
+
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(created.getBody()).isNotNull();
+        assertThat(created.getBody().status()).isEqualTo("SCHEDULED");
+        assertThat(created.getBody().version()).isEqualTo(1);
+
+        ResponseEntity<MaintenanceWindowResponse[]> list = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows?from=" + startAt.minusSeconds(60) + "&to=" + endAt.plusSeconds(60),
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
+                MaintenanceWindowResponse[].class);
+        assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(list.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceWindowResponse[]> unboundedList = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows",
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
+                MaintenanceWindowResponse[].class);
+        assertThat(unboundedList.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(unboundedList.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceWindowResponse> updated = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows/" + created.getBody().id(),
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Sensor and cable replacement",
+                                "startAt", startAt.plusSeconds(300).toString(),
+                                "endAt", endAt.plusSeconds(300).toString(),
+                                "suppressAlerts", false,
+                                "excludeFromAnalytics", true,
+                                "excludeFromMl", true),
+                        headersFor(userId, "maintenance@example.com")),
+                MaintenanceWindowResponse.class);
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().title()).isEqualTo("Sensor and cable replacement");
+        assertThat(updated.getBody().suppressAlerts()).isFalse();
+        assertThat(updated.getBody().version()).isEqualTo(2);
+
+        ResponseEntity<MaintenanceWindowResponse[]> internalList = restTemplate.exchange(
+                "/internal/devices/" + device.id() + "/maintenance-windows?from=" + startAt + "&to=" + endAt.plusSeconds(600),
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                MaintenanceWindowResponse[].class);
+        assertThat(internalList.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(internalList.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceWindowResponse> cancelled = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows/" + created.getBody().id() + "/cancel",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("reason", "Work postponed"), headersFor(userId, "maintenance@example.com")),
+                MaintenanceWindowResponse.class);
+        assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(cancelled.getBody().status()).isEqualTo("CANCELLED");
+        assertThat(cancelled.getBody().version()).isEqualTo(3);
+
+        ResponseEntity<MaintenanceWindowResponse[]> changes = restTemplate.exchange(
+                "/internal/maintenance-windows/changes?updatedAfter=1970-01-01T00:00:00Z",
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                MaintenanceWindowResponse[].class);
+        assertThat(changes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(changes.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+    }
+
+    @Test
+    void rejectsMaintenanceWindowForDecommissionedDevice() {
+        UUID userId = UUID.randomUUID();
+        LocationResponse location = createLocation(userId, "Decommissioned maintenance lab");
+        DeviceResponse device = createDevice(userId, location.id(), "Decommissioned maintenance fridge");
+        restTemplate.exchange(
+                "/devices/" + device.id() + "/decommission",
+                HttpMethod.POST,
+                new HttpEntity<>(headersFor(userId, "maintenance-decommissioned@example.com")),
+                DeviceResponse.class);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/devices/" + device.id() + "/maintenance-windows",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Invalid work",
+                                "startAt", Instant.now().plusSeconds(60).toString(),
+                                "endAt", Instant.now().plusSeconds(3600).toString()),
+                        headersFor(userId, "maintenance-decommissioned@example.com")),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).contains("Decommissioned devices cannot receive maintenance windows");
+    }
+
+    @Test
+    void managesMultiDeviceMaintenanceOperations() {
+        UUID userId = UUID.randomUUID();
+        LocationResponse location = createLocation(userId, "Maintenance calendar lab");
+        DeviceResponse firstDevice = createDevice(userId, location.id(), "Calendar fridge");
+        DeviceResponse secondDevice = createDevice(userId, location.id(), "Calendar pump");
+        Instant startAt = Instant.now().plusSeconds(3600);
+        Instant endAt = startAt.plusSeconds(7200);
+
+        ResponseEntity<MaintenanceOperationResponse> created = restTemplate.exchange(
+                "/maintenance-operations",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Batch firmware upgrade",
+                                "description", "Calendar operation",
+                                "deviceIds", List.of(firstDevice.id().toString(), secondDevice.id().toString()),
+                                "startAt", startAt.toString(),
+                                "endAt", endAt.toString(),
+                                "suppressAlerts", true,
+                                "excludeFromAnalytics", true,
+                                "excludeFromMl", true),
+                        headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse.class);
+
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(created.getBody()).isNotNull();
+        assertThat(created.getBody().status()).isEqualTo("SCHEDULED");
+        assertThat(created.getBody().devices()).hasSize(2);
+        assertThat(created.getBody().devices()).extracting(device -> device.deviceId())
+                .containsExactlyInAnyOrder(firstDevice.id(), secondDevice.id());
+
+        ResponseEntity<MaintenanceOperationResponse[]> list = restTemplate.exchange(
+                "/maintenance-operations?from=" + startAt.minusSeconds(60) + "&to=" + endAt.plusSeconds(60),
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse[].class);
+        assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(list.getBody()).extracting(MaintenanceOperationResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceWindowResponse[]> firstWindows = restTemplate.exchange(
+                "/devices/" + firstDevice.id() + "/maintenance-windows",
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceWindowResponse[].class);
+        assertThat(firstWindows.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(firstWindows.getBody()).extracting(MaintenanceWindowResponse::operationId).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceOperationResponse> updated = restTemplate.exchange(
+                "/maintenance-operations/" + created.getBody().id(),
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Updated batch firmware upgrade",
+                                "description", "Calendar operation updated",
+                                "deviceIds", List.of(firstDevice.id().toString()),
+                                "startAt", startAt.plusSeconds(300).toString(),
+                                "endAt", endAt.plusSeconds(300).toString(),
+                                "suppressAlerts", true,
+                                "excludeFromAnalytics", false,
+                                "excludeFromMl", true),
+                        headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse.class);
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().devices()).extracting(device -> device.deviceId()).contains(firstDevice.id());
+        assertThat(updated.getBody().version()).isEqualTo(2);
+
+        ResponseEntity<MaintenanceOperationResponse> cancelled = restTemplate.exchange(
+                "/maintenance-operations/" + created.getBody().id() + "/cancel",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("reason", "Calendar operation cancelled"), headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse.class);
+        assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(cancelled.getBody().status()).isEqualTo("CANCELLED");
+
+        ResponseEntity<MaintenanceOperationResponse> active = restTemplate.exchange(
+                "/maintenance-operations",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Active operation",
+                                "deviceIds", List.of(firstDevice.id().toString(), secondDevice.id().toString()),
+                                "startAt", Instant.now().minusSeconds(60).toString(),
+                                "endAt", Instant.now().plusSeconds(3600).toString(),
+                                "suppressAlerts", true,
+                                "excludeFromAnalytics", true,
+                                "excludeFromMl", true),
+                        headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse.class);
+        assertThat(active.getBody().status()).isEqualTo("ACTIVE");
+
+        ResponseEntity<MaintenanceOperationResponse> finished = restTemplate.exchange(
+                "/maintenance-operations/" + active.getBody().id() + "/finish-now",
+                HttpMethod.POST,
+                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+                MaintenanceOperationResponse.class);
+        assertThat(finished.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(finished.getBody().status()).isEqualTo("FINISHED");
     }
 
     @Test

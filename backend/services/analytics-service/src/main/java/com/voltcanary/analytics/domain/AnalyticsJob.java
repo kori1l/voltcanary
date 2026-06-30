@@ -53,6 +53,9 @@ public class AnalyticsJob {
     @Column(name = "error_message")
     private String errorMessage;
 
+    @Column(name = "skip_reason")
+    private String skipReason;
+
     public UUID getId() {
         return id;
     }
@@ -163,5 +166,13 @@ public class AnalyticsJob {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getSkipReason() {
+        return skipReason;
+    }
+
+    public void setSkipReason(String skipReason) {
+        this.skipReason = skipReason;
     }
 }

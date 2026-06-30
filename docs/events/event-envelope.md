@@ -90,6 +90,7 @@ Examples:
 
 - `telemetry.raw.v1`
 - `telemetry.validated.v1`
+- `maintenance-window.changed.v1`
 - `anomaly.detected.v1`
 - `risk-score.changed.v1`
 - `alert.created.v1`
@@ -102,6 +103,7 @@ Use stable domain keys to preserve useful ordering:
 | --- | --- |
 | `telemetry.raw.v1` | `deviceId` |
 | `telemetry.validated.v1` | `deviceId` |
+| `maintenance-window.changed.v1` | `deviceId` |
 | `anomaly.detected.v1` | `deviceId` |
 | `risk-score.changed.v1` | `deviceId` |
 | `alert.created.v1` | `alertId` or `deviceId` depending on consumer need |

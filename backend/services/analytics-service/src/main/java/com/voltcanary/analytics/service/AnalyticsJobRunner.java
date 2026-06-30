@@ -42,7 +42,7 @@ public class AnalyticsJobRunner {
             AnalyticsRecalculationService.RecalculationResult result = job.getWindowEnd() == null
                     ? recalculationService.recalculate(job.getDeviceId())
                     : recalculationService.recalculate(job.getDeviceId(), job.getWindowEnd());
-            job.setStatus("COMPLETED");
+            job.setStatus(result.skipped() ? "SKIPPED" : "COMPLETED");
             job.setActiveKey(null);
             job.setCompletedAt(Instant.now());
             job.setWindowStart(result.windowStart());
@@ -51,10 +51,12 @@ public class AnalyticsJobRunner {
             job.setLockedAt(null);
             job.setLockedBy(null);
             job.setErrorMessage(null);
+            job.setSkipReason(result.skipReason());
             jobRepository.save(job);
-            meterRegistry.counter("analytics.jobs.completed", "status", "completed").increment();
-            timer.stop(meterRegistry.timer("analytics.jobs.duration", "status", "completed"));
-            log.info("analyticsJobCompleted jobId={} deviceId={}", job.getId(), job.getDeviceId());
+            String terminalStatus = result.skipped() ? "skipped" : "completed";
+            meterRegistry.counter("analytics.jobs.completed", "status", terminalStatus).increment();
+            timer.stop(meterRegistry.timer("analytics.jobs.duration", "status", terminalStatus));
+            log.info("analyticsJobCompleted jobId={} deviceId={} status={}", job.getId(), job.getDeviceId(), job.getStatus());
         } catch (Exception exception) {
             log.warn(
                     "analyticsJobFailed jobId={} deviceId={} reasonCode={}",

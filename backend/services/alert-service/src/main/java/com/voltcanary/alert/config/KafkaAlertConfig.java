@@ -2,6 +2,7 @@ package com.voltcanary.alert.config;
 
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
+import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -30,6 +31,7 @@ public class KafkaAlertConfig {
 
     private static final String ANOMALY_TOPIC = "anomaly.detected.v1";
     private static final String RISK_SCORE_TOPIC = "risk-score.changed.v1";
+    private static final String MAINTENANCE_WINDOW_TOPIC = "maintenance-window.changed.v1";
 
     @Bean
     ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory(KafkaProperties kafkaProperties) {
@@ -73,6 +75,29 @@ public class KafkaAlertConfig {
             DefaultErrorHandler alertKafkaErrorHandler) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, RiskScoreChangedEvent>();
         factory.setConsumerFactory(riskScoreChangedConsumerFactory);
+        factory.setCommonErrorHandler(alertKafkaErrorHandler);
+        return factory;
+    }
+
+    @Bean
+    ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory(KafkaProperties kafkaProperties) {
+        Map<String, Object> properties = kafkaProperties.buildConsumerProperties(null);
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
+        properties.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
+        properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, MaintenanceWindowChangedEvent.class.getName());
+        properties.put(JsonDeserializer.TRUSTED_PACKAGES, "com.voltcanary.common.events.device");
+        properties.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
+        return new DefaultKafkaConsumerFactory<>(properties);
+    }
+
+    @Bean
+    ConcurrentKafkaListenerContainerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedKafkaListenerContainerFactory(
+            ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory,
+            DefaultErrorHandler alertKafkaErrorHandler) {
+        var factory = new ConcurrentKafkaListenerContainerFactory<String, MaintenanceWindowChangedEvent>();
+        factory.setConsumerFactory(maintenanceWindowChangedConsumerFactory);
         factory.setCommonErrorHandler(alertKafkaErrorHandler);
         return factory;
     }
@@ -124,6 +149,9 @@ public class KafkaAlertConfig {
         }
         if (RISK_SCORE_TOPIC.equals(sourceTopic)) {
             return alertKafkaProperties.getDlq().getRiskScoreTopic();
+        }
+        if (MAINTENANCE_WINDOW_TOPIC.equals(sourceTopic)) {
+            return alertKafkaProperties.getDlq().getMaintenanceWindowTopic();
         }
         return sourceTopic + ".dlq";
     }

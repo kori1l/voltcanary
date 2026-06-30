@@ -10,11 +10,11 @@ through APIs or events, not by reading another service database directly.
 | --- | --- | --- |
 | `api-gateway` | Public routing boundary, CORS, correlation ID, future auth enforcement | Business data |
 | `identity-service` | Users, roles, refresh tokens, login audit | Devices, telemetry, analytics results |
-| `device-service` | Accounts, locations, devices, device types, sensors, data sources, analytics config | Raw telemetry, risk score history, alerts |
+| `device-service` | Accounts, locations, devices, device types, sensors, data sources, analytics config, maintenance windows | Raw telemetry, risk score history, alerts |
 | `ingestion-service` | Ingestion validation state, idempotency keys later | Canonical telemetry storage |
 | `telemetry-service` | Telemetry readings, quality flags, aggregates, latest readings | Device metadata ownership, analytics conclusions |
-| `analytics-service` | Baselines, features, anomalies, risk scores, predictions, recommendations, analytics jobs | Raw ingestion API, alert lifecycle |
-| `alert-service` | Alerts, alert events, notification channels, deduplication state | Risk score calculation |
+| `analytics-service` | Baselines, features, anomalies, risk scores, predictions, recommendations, analytics jobs, maintenance read model | Raw ingestion API, alert lifecycle, maintenance ownership |
+| `alert-service` | Alerts, alert events, notification channels, deduplication state, maintenance read model, suppression audit | Risk score calculation, maintenance ownership |
 | `ml-service` | Model metadata, model runs, datasets, inference contracts, model artifacts metadata | Device inventory and alert lifecycle |
 | `frontend` | Client-side views and UI state | Server-side domain data |
 
@@ -68,6 +68,7 @@ Owns the device management domain:
 - sensors
 - data sources
 - analytics configuration
+- maintenance windows and their policy flags
 
 REST API:
 
@@ -87,6 +88,7 @@ REST API:
 - `GET /devices/{deviceId}/data-sources`
 - `GET /devices/{deviceId}/analytics-config`
 - `PATCH /devices/{deviceId}/analytics-config`
+- `GET/POST /devices/{deviceId}/maintenance-windows`
 
 ### Ingestion Service
 
@@ -136,6 +138,7 @@ recommendations, and calls the ML service for inference.
 Consumes:
 
 - `telemetry.validated.v1`
+- `maintenance-window.changed.v1`
 
 Publishes:
 
@@ -155,6 +158,10 @@ REST API:
 - `GET /analytics/devices/{deviceId}/recommendations`
 - `POST /analytics/devices/{deviceId}/recalculate`
 
+Maintenance windows are projected locally. Analytics excludes matching samples
+from derived calculations according to the window policy and reconciles missed
+window changes through device-service internal APIs.
+
 ### Alert Service
 
 Owns alert lifecycle. It creates alerts from analytics events, deduplicates
@@ -164,6 +171,7 @@ Consumes:
 
 - `anomaly.detected.v1`
 - `risk-score.changed.v1`
+- `maintenance-window.changed.v1`
 - `recommendation.created.v1` later
 
 Publishes:
@@ -179,6 +187,10 @@ REST API:
 - `GET /alerts/{id}`
 - `POST /alerts/{id}/ack`
 - `POST /alerts/{id}/resolve`
+
+Maintenance windows are projected locally. Alert-service suppresses matching
+new analytics events and auto-resolves overlapping unresolved alerts without
+synchronous device-service lookups in the alert creation path.
 
 ### ML Service
 
@@ -225,3 +237,5 @@ Events are used for asynchronous processing:
 3. At-least-once processing is assumed; consumers must be idempotent.
 4. Every event carries `eventId`, `correlationId`, `producer`, and `occurredAt`.
 5. User-facing analytics must be explainable and must include confidence where applicable.
+6. Device maintenance policy is owned by device-service and propagated by
+   events plus reconciliation; consumers use local read models in hot paths.

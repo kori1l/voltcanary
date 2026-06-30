@@ -43,6 +43,7 @@ public class AlertKafkaProperties {
     public static class Dlq {
         private String anomalyTopic = "anomaly.detected.dlq.v1";
         private String riskScoreTopic = "risk-score.changed.dlq.v1";
+        private String maintenanceWindowTopic = "maintenance-window.changed.dlq.v1";
 
         public String getAnomalyTopic() {
             return anomalyTopic;
@@ -58,6 +59,14 @@ public class AlertKafkaProperties {
 
         public void setRiskScoreTopic(String riskScoreTopic) {
             this.riskScoreTopic = riskScoreTopic;
+        }
+
+        public String getMaintenanceWindowTopic() {
+            return maintenanceWindowTopic;
+        }
+
+        public void setMaintenanceWindowTopic(String maintenanceWindowTopic) {
+            this.maintenanceWindowTopic = maintenanceWindowTopic;
         }
     }
 }

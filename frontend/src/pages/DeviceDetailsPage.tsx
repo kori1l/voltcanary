@@ -18,7 +18,9 @@ import {
 } from "../analytics/analyticsApi";
 import {
   AnalyticsConfig,
+  cancelMaintenanceWindow,
   createDataSource,
+  createMaintenanceWindow,
   createDataSourceToken,
   createSensor,
   DataSource,
@@ -30,12 +32,15 @@ import {
   exportDataSourcesCsv,
   getAnalyticsConfig,
   Device,
+  finishMaintenanceWindowNow,
   getDevice,
   importDataSourcesCsv,
   listDataSources,
   listLocations,
+  listMaintenanceWindows,
   listSensors,
   Location,
+  MaintenanceWindow,
   revokeDataSourceToken,
   Sensor,
   updateAnalyticsConfig,
@@ -171,6 +176,16 @@ export function DeviceDetailsPage() {
   const [recommendations, setRecommendations] = useState<RecommendationResponse[]>([]);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [analyticsJob, setAnalyticsJob] = useState<AnalyticsJobResponse | null>(null);
+  const [maintenanceWindows, setMaintenanceWindows] = useState<MaintenanceWindow[]>([]);
+  const [maintenanceTitle, setMaintenanceTitle] = useState("Planned maintenance");
+  const [maintenanceDescription, setMaintenanceDescription] = useState("");
+  const [maintenanceStartAt, setMaintenanceStartAt] = useState(toDateTimeLocalValue(new Date()));
+  const [maintenanceEndAt, setMaintenanceEndAt] = useState(toDateTimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [maintenanceSuppressAlerts, setMaintenanceSuppressAlerts] = useState(true);
+  const [maintenanceExcludeAnalytics, setMaintenanceExcludeAnalytics] = useState(true);
+  const [maintenanceExcludeMl, setMaintenanceExcludeMl] = useState(true);
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
+  const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false);
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [analyticsConfig, setAnalyticsConfig] = useState<AnalyticsConfig | null>(null);
@@ -249,9 +264,14 @@ export function DeviceDetailsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [deviceResponse, locationsResponse] = await Promise.all([getDevice(deviceId), listLocations().catch(() => [])]);
+      const [deviceResponse, locationsResponse, maintenanceResponse] = await Promise.all([
+        getDevice(deviceId),
+        listLocations().catch(() => []),
+        listMaintenanceWindows(deviceId).catch(() => []),
+      ]);
       setDevice(deviceResponse);
       setLocations(locationsResponse);
+      setMaintenanceWindows(maintenanceResponse);
       setDeviceAlerts((await listAlerts().catch(() => [])).filter((alert) => alert.deviceId === deviceId));
       const hasTelemetry = await loadTelemetry(deviceId);
       const loadedRisk = await loadAnalytics(deviceId);
@@ -479,9 +499,79 @@ export function DeviceDetailsPage() {
     })
     .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   const visibleDeviceAlerts = showAllDeviceAlerts ? filteredDeviceAlerts : filteredDeviceAlerts.slice(0, 12);
+  const sortedMaintenanceWindows = [...maintenanceWindows].sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime());
+  const activeMaintenanceWindows = maintenanceWindows.filter((window) => window.status === "ACTIVE");
+  const upcomingMaintenanceWindows = maintenanceWindows.filter((window) => window.status === "SCHEDULED");
+  const suppressingMaintenanceWindow = activeMaintenanceWindows.find((window) => window.suppressAlerts || window.excludeFromAnalytics || window.excludeFromMl) ?? null;
 
   function changeTab(tab: DeviceDetailsTab) {
     setSearchParams(tab === "overview" ? {} : { tab });
+  }
+
+  async function refreshMaintenanceWindows(currentDeviceId = deviceId) {
+    if (!currentDeviceId) return;
+    setMaintenanceWindows(await listMaintenanceWindows(currentDeviceId).catch(() => []));
+  }
+
+  async function submitMaintenanceWindow() {
+    if (!deviceId) return;
+    setIsMaintenanceBusy(true);
+    setMaintenanceMessage(null);
+    try {
+      const start = new Date(maintenanceStartAt);
+      const end = new Date(maintenanceEndAt);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+        setMaintenanceMessage("Maintenance end must be after start.");
+        return;
+      }
+      await createMaintenanceWindow(deviceId, {
+        title: maintenanceTitle.trim() || "Planned maintenance",
+        description: maintenanceDescription.trim() || null,
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+        suppressAlerts: maintenanceSuppressAlerts,
+        excludeFromAnalytics: maintenanceExcludeAnalytics,
+        excludeFromMl: maintenanceExcludeMl,
+      });
+      setMaintenanceMessage("Maintenance window created.");
+      setMaintenanceTitle("Planned maintenance");
+      setMaintenanceDescription("");
+      setMaintenanceStartAt(toDateTimeLocalValue(new Date()));
+      setMaintenanceEndAt(toDateTimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)));
+      await refreshMaintenanceWindows(deviceId);
+    } catch (requestError) {
+      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to create maintenance window");
+    } finally {
+      setIsMaintenanceBusy(false);
+    }
+  }
+
+  async function cancelWindow(windowId: string) {
+    if (!deviceId) return;
+    setIsMaintenanceBusy(true);
+    setMaintenanceMessage(null);
+    try {
+      await cancelMaintenanceWindow(deviceId, windowId, "Cancelled from device maintenance panel.");
+      await refreshMaintenanceWindows(deviceId);
+    } catch (requestError) {
+      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to cancel maintenance window");
+    } finally {
+      setIsMaintenanceBusy(false);
+    }
+  }
+
+  async function finishWindowNow(windowId: string) {
+    if (!deviceId) return;
+    setIsMaintenanceBusy(true);
+    setMaintenanceMessage(null);
+    try {
+      await finishMaintenanceWindowNow(deviceId, windowId);
+      await refreshMaintenanceWindows(deviceId);
+    } catch (requestError) {
+      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to finish maintenance window");
+    } finally {
+      setIsMaintenanceBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -870,6 +960,11 @@ export function DeviceDetailsPage() {
           </p>
         </div>
         <div className="header-actions">
+          {suppressingMaintenanceWindow ? (
+            <span className="status-pill status-pill-maintenance">Maintenance active</span>
+          ) : upcomingMaintenanceWindows.length > 0 ? (
+            <span className="status-pill status-pill-pending">{upcomingMaintenanceWindows.length} scheduled</span>
+          ) : null}
           <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
             Refresh device
           </button>
@@ -923,6 +1018,119 @@ export function DeviceDetailsPage() {
           ) : null}
 
           <DeviceTabs activeTab={activeTab} onChange={changeTab} />
+
+          {suppressingMaintenanceWindow && (activeTab === "telemetry" || activeTab === "analytics" || activeTab === "alerts") ? (
+            <section className="maintenance-notice">
+              <div>
+                <strong>{suppressingMaintenanceWindow.title}</strong>
+                <span>
+                  {formatShortDateTime(suppressingMaintenanceWindow.startAt)} - {formatShortDateTime(suppressingMaintenanceWindow.endAt)}
+                </span>
+              </div>
+              <button className="ghost-button" type="button" onClick={() => changeTab("maintenance")}>
+                Open maintenance
+              </button>
+            </section>
+          ) : null}
+
+          {activeTab === "maintenance" ? (
+            <section className="maintenance-layout">
+              <section className="panel maintenance-form-panel">
+                <div className="section-header">
+                  <div>
+                    <h2>Maintenance window</h2>
+                    <p>Schedule device maintenance and define how downstream processing treats the gap.</p>
+                  </div>
+                  <button className="ghost-button" type="button" onClick={() => void refreshMaintenanceWindows()} disabled={isMaintenanceBusy}>
+                    Refresh
+                  </button>
+                </div>
+                {maintenanceMessage ? <div className="status-note">{maintenanceMessage}</div> : null}
+                <div className="maintenance-form-grid">
+                  <label>
+                    <span>Title</span>
+                    <input value={maintenanceTitle} onChange={(event) => setMaintenanceTitle(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Description</span>
+                    <input value={maintenanceDescription} onChange={(event) => setMaintenanceDescription(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>Start</span>
+                    <input type="datetime-local" value={maintenanceStartAt} onChange={(event) => setMaintenanceStartAt(event.target.value)} />
+                  </label>
+                  <label>
+                    <span>End</span>
+                    <input type="datetime-local" value={maintenanceEndAt} onChange={(event) => setMaintenanceEndAt(event.target.value)} />
+                  </label>
+                </div>
+                <div className="maintenance-policy-grid">
+                  <label>
+                    <input type="checkbox" checked={maintenanceSuppressAlerts} onChange={(event) => setMaintenanceSuppressAlerts(event.target.checked)} />
+                    <span>Suppress alerts</span>
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={maintenanceExcludeAnalytics} onChange={(event) => setMaintenanceExcludeAnalytics(event.target.checked)} />
+                    <span>Exclude analytics</span>
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={maintenanceExcludeMl} onChange={(event) => setMaintenanceExcludeMl(event.target.checked)} />
+                    <span>Exclude ML</span>
+                  </label>
+                </div>
+                <button className="primary-button" type="button" onClick={() => void submitMaintenanceWindow()} disabled={isMaintenanceBusy}>
+                  {isMaintenanceBusy ? "Saving..." : "Schedule maintenance"}
+                </button>
+              </section>
+
+              <section className="panel maintenance-list-panel">
+                <div className="section-header">
+                  <div>
+                    <h2>Windows</h2>
+                    <p>{activeMaintenanceWindows.length} active, {upcomingMaintenanceWindows.length} scheduled.</p>
+                  </div>
+                </div>
+                {sortedMaintenanceWindows.length > 0 ? (
+                  <div className="maintenance-window-list">
+                    {sortedMaintenanceWindows.map((window) => (
+                      <article className={`maintenance-window-row maintenance-window-${window.status.toLowerCase()}`} key={window.id}>
+                        <div>
+                          <strong>{window.title}</strong>
+                          <span>{window.description || "No description"}</span>
+                          <small>
+                            {formatShortDateTime(window.startAt)} - {formatShortDateTime(window.endAt)}
+                          </small>
+                        </div>
+                        <div className="maintenance-window-meta">
+                          <span className={`status-pill status-pill-${window.status.toLowerCase()}`}>{formatEnum(window.status)}</span>
+                          <span>{window.suppressAlerts ? "Alerts off" : "Alerts on"}</span>
+                          <span>{window.excludeFromAnalytics ? "Analytics excluded" : "Analytics included"}</span>
+                          <span>{window.excludeFromMl ? "ML excluded" : "ML included"}</span>
+                        </div>
+                        <div className="action-row">
+                          {window.status === "ACTIVE" ? (
+                            <button className="ghost-button" type="button" onClick={() => void finishWindowNow(window.id)} disabled={isMaintenanceBusy}>
+                              Finish now
+                            </button>
+                          ) : null}
+                          {window.status === "ACTIVE" || window.status === "SCHEDULED" ? (
+                            <button className="ghost-button" type="button" onClick={() => void cancelWindow(window.id)} disabled={isMaintenanceBusy}>
+                              Cancel
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>No maintenance windows</strong>
+                    <span>Schedule maintenance before planned telemetry gaps, device inspections, or firmware work.</span>
+                  </div>
+                )}
+              </section>
+            </section>
+          ) : null}
 
           {activeTab === "simulation" ? (
             <section className="panel simulation-panel">
@@ -1665,6 +1873,7 @@ export function DeviceDetailsPage() {
                     analyticsBaseline?.p90
                   }
                   anomaly={latestAnomaly}
+                  maintenanceWindows={maintenanceWindows}
                   showPoints={showChartPoints}
                   maxDisplayPoints={CHART_DENSITY_LIMITS[chartDensity] * 2}
                   size="large"
@@ -1879,7 +2088,7 @@ function Metric({
 }
 
 function normalizeDeviceTab(value: string | null): DeviceDetailsTab {
-  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "configuration" || value === "simulation") {
+  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "maintenance" || value === "configuration" || value === "simulation") {
     return value;
   }
   if (value === "registry" || value === "config") {
@@ -2475,6 +2684,7 @@ function MetricChart({
   baseline,
   threshold,
   anomaly,
+  maintenanceWindows = [],
   showPoints,
   maxDisplayPoints,
   interactive = true,
@@ -2489,6 +2699,7 @@ function MetricChart({
   baseline?: number;
   threshold?: number;
   anomaly?: AnomalyResponse | null;
+  maintenanceWindows?: MaintenanceWindow[];
   showPoints: boolean;
   maxDisplayPoints: number;
   interactive?: boolean;
@@ -2580,6 +2791,22 @@ function MetricChart({
       : [];
   const yTicks = [minValue, minValue + range / 2, maxValue];
   const xTicks = metricChartRangeTicks(timeRange, padding.left, width - padding.right);
+  const maintenanceBands = maintenanceWindows
+    .filter((window) => window.status === "ACTIVE" || window.status === "SCHEDULED")
+    .map((window) => {
+      const start = Math.max(new Date(window.startAt).getTime(), timeStart);
+      const end = Math.min(new Date(window.endAt).getTime(), timeEnd);
+      return Number.isFinite(start) && Number.isFinite(end) && end > start
+        ? {
+            id: window.id,
+            title: window.title,
+            status: window.status,
+            x: padding.left + ((start - timeStart) / timeSpan) * (width - padding.left - padding.right),
+            width: ((end - start) / timeSpan) * (width - padding.left - padding.right),
+          }
+        : null;
+    })
+    .filter((band): band is { id: string; title: string; status: MaintenanceWindow["status"]; x: number; width: number } => band !== null);
 
   return (
     <div className={`chart-wrap annotated-chart chart-${size}`}>
@@ -2609,6 +2836,19 @@ function MetricChart({
         <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
 
         <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
+
+        {maintenanceBands.map((band) => (
+          <g key={band.id}>
+            <rect
+              className={`chart-maintenance-band chart-maintenance-band-${band.status.toLowerCase()}`}
+              x={band.x}
+              y={padding.top}
+              width={band.width}
+              height={height - padding.top - padding.bottom}
+            />
+            <title>{band.title}</title>
+          </g>
+        ))}
 
         {baseline !== undefined ? (
           <g>

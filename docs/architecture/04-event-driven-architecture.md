@@ -17,6 +17,7 @@ match broker fault-tolerance requirements.
 | `telemetry.raw.v1` | `deviceId` | per device | `telemetry-service` | 1 |
 | `telemetry.validated.v1` | `deviceId` | per device | `analytics-service` | 1 |
 | `device-registry.changed.v1` | `accountId` when account ordering is intended, otherwise resource id | per account or resource | source-registry consumers | 1 |
+| `maintenance-window.changed.v1` | `deviceId` | per device | `analytics-service`, `alert-service` | 1 |
 | `identity.account-lifecycle.v1` | `userId` | per user | `device-service` | 1 |
 | `anomaly.detected.v1` | `deviceId` | per device | `alert-service` | 1 |
 | `risk-score.changed.v1` | `deviceId` | per device | `alert-service` | 1 |

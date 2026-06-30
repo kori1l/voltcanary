@@ -144,6 +144,94 @@ Example:
 }
 ```
 
+## Maintenance Windows
+
+Device-service is the source of truth for planned maintenance windows. Windows
+belong to one account and one device and are rejected for decommissioned
+devices. Telemetry remains immutable; maintenance policy is interpreted by
+downstream services through events and reconciliation APIs.
+
+Maintenance operations are the user-facing aggregate for calendar planning.
+One operation can target multiple devices; device-service creates one
+per-device maintenance window for each affected device so alert, analytics, and
+ML services can continue to reason on device-local intervals.
+
+Public endpoints:
+
+- `GET /maintenance-operations`: list account-level operations for the calendar.
+  Optional filters: `from`, `to`, repeated `deviceIds`, `locationId`, `status`,
+  `includeCancelled`, `limit`, and `offset`.
+- `POST /maintenance-operations`: create an operation for one or more devices.
+- `GET /maintenance-operations/{operationId}`: read one operation.
+- `PATCH /maintenance-operations/{operationId}`: replace operation details and
+  target device set. Removed devices have their unfinished child windows
+  cancelled; newly added devices get child windows.
+- `POST /maintenance-operations/{operationId}/cancel`: cancel an operation and
+  all unfinished child windows.
+- `POST /maintenance-operations/{operationId}/finish-now`: end an active
+  operation and all active child windows at the current time.
+- `GET /devices/{deviceId}/maintenance-windows`: list maintenance windows for
+  an owned device. Optional filters: `status`, `from`, `to`, `page`, and
+  `size`.
+- `POST /devices/{deviceId}/maintenance-windows`: create a window.
+- `GET /devices/{deviceId}/maintenance-windows/{windowId}`: read one window.
+- `PATCH /devices/{deviceId}/maintenance-windows/{windowId}`: update title,
+  description, time range, and policy flags.
+- `POST /devices/{deviceId}/maintenance-windows/{windowId}/cancel`: cancel a
+  scheduled or active window.
+- `POST /devices/{deviceId}/maintenance-windows/{windowId}/finish-now`: end an
+  active window at the current time.
+
+Create/update request:
+
+Operation request:
+
+```json
+{
+  "title": "Firmware upgrade",
+  "description": "Batch maintenance for kitchen devices.",
+  "deviceIds": [
+    "0b3ac2da-ea4e-4c65-a7ae-433cbec33420",
+    "68ec0d68-c9c9-4993-b527-efe2a67f965d"
+  ],
+  "startAt": "2026-06-30T08:00:00Z",
+  "endAt": "2026-06-30T09:00:00Z",
+  "suppressAlerts": true,
+  "excludeFromAnalytics": true,
+  "excludeFromMl": true
+}
+```
+
+Operation responses include `id`, account, title, time range, status, policy
+flags, audit fields, `version`, and a `devices` array with device id/name/type,
+location id/name, child `windowId`, and per-device status.
+
+Device-scoped window request:
+
+```json
+{
+  "title": "Firmware upgrade",
+  "description": "Expected telemetry gap while replacing the power module.",
+  "startAt": "2026-06-30T08:00:00Z",
+  "endAt": "2026-06-30T09:00:00Z",
+  "suppressAlerts": true,
+  "excludeFromAnalytics": true,
+  "excludeFromMl": true
+}
+```
+
+Response fields include `id`, `accountId`, `deviceId`, `status`, policy flags,
+`cancelledAt`, `cancellationReason`, audit actor fields, timestamps, and
+monotonic `version`.
+
+Internal reconciliation endpoints:
+
+- `GET /internal/devices/{deviceId}/maintenance-windows`
+- `GET /internal/maintenance-windows/changes?updatedAfter={instant}&limit=100`
+
+Every create/update/cancel/finish operation writes an outbox event to
+`maintenance-window.changed.v1` with the full window snapshot and version.
+
 ## Sensors
 
 - `GET /devices/{deviceId}/sensors`: list sensors for an owned device.

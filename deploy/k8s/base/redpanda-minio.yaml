@@ -95,7 +95,7 @@ spec:
             - -c
             - |
               set -eu
-              topics="telemetry.raw.v1 telemetry.validated.v1 anomaly.detected.v1 risk-score.changed.v1 alert.created.v1 telemetry.raw.v1.dlq telemetry.validated.v1.dlq anomaly.detected.v1.dlq risk-score.changed.v1.dlq alert.created.v1.dlq"
+              topics="telemetry.raw.v1 telemetry.validated.v1 device-registry.changed.v1 maintenance-window.changed.v1 anomaly.detected.v1 risk-score.changed.v1 alert.created.v1 telemetry.raw.v1.dlq telemetry.validated.v1.dlq device-registry.changed.v1.dlq maintenance-window.changed.v1.dlq anomaly.detected.v1.dlq risk-score.changed.v1.dlq alert.created.v1.dlq"
               until rpk -X brokers=redpanda:9092 topic list >/dev/null 2>&1; do sleep 3; done
               for topic in $topics; do
                 rpk -X brokers=redpanda:9092 topic create "$topic" -p 3 -r 1 || true

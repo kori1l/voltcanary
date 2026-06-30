@@ -5,15 +5,20 @@ import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.dto.AlertSummaryResponse;
 import com.voltcanary.alert.domain.AlertAnalyticsEventInboxStatus;
+import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.repository.AlertAnalyticsEventInboxRepository;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
+import com.voltcanary.alert.repository.AlertSuppressionRepository;
+import com.voltcanary.alert.repository.MaintenanceWindowReadModelRepository;
 import com.voltcanary.alert.service.AlertAnalyticsEventInboxService;
 import com.voltcanary.alert.service.AlertAnalyticsEventReconciliationService;
 import com.voltcanary.alert.service.AlertEscalationService;
 import com.voltcanary.alert.service.AlertService;
 import com.voltcanary.alert.service.AnalyticsAlertEventHandler;
+import com.voltcanary.alert.service.MaintenanceWindowProjectionService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
+import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.ArrayList;
@@ -45,7 +50,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.flyway.enabled=true",
                 "app.alert.authorization.enabled=false",
                 "app.alert.notifications.worker-enabled=false",
-                "app.alert.reconciliation.enabled=false"
+                "app.alert.reconciliation.enabled=false",
+                "app.maintenance.reconciliation.enabled=false"
         })
 class AlertServiceApiTest {
 
@@ -62,6 +68,12 @@ class AlertServiceApiTest {
     private AlertRepository alertRepository;
 
     @Autowired
+    private AlertSuppressionRepository alertSuppressionRepository;
+
+    @Autowired
+    private MaintenanceWindowReadModelRepository maintenanceWindowReadModelRepository;
+
+    @Autowired
     private AlertEscalationService alertEscalationService;
 
     @Autowired
@@ -72,6 +84,9 @@ class AlertServiceApiTest {
 
     @Autowired
     private AlertAnalyticsEventInboxRepository alertAnalyticsEventInboxRepository;
+
+    @Autowired
+    private MaintenanceWindowProjectionService maintenanceWindowProjectionService;
 
     @Test
     void staticAlertRoutesAreNotCapturedByAlertIdRoute() {
@@ -225,6 +240,112 @@ class AlertServiceApiTest {
         assertThat(alertRepository.findAll())
                 .filteredOn(alert -> event.eventId().equals(alert.getSourceEventId()))
                 .hasSize(1);
+    }
+
+    @Test
+    void maintenanceWindowSuppressesIncomingAnomalyAlertAndAuditsDecision() {
+        UUID deviceId = UUID.randomUUID();
+        UUID maintenanceWindowId = UUID.randomUUID();
+        Instant start = Instant.parse("2026-05-13T20:00:00Z");
+        Instant end = Instant.parse("2026-05-13T21:00:00Z");
+        maintenanceWindowProjectionService.project(maintenanceEvent(
+                maintenanceWindowId,
+                deviceId,
+                start,
+                end,
+                true,
+                1,
+                "MAINTENANCE_WINDOW_CREATED"));
+
+        UUID eventId = UUID.randomUUID();
+        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                eventId,
+                deviceId,
+                UUID.randomUUID(),
+                "power-spike-v2",
+                start.plusSeconds(600),
+                start.plusSeconds(900),
+                "input-hash-maintenance",
+                "POWER_SPIKE",
+                "MEDIUM",
+                30,
+                "Power spike during planned maintenance.",
+                start.plusSeconds(900)));
+
+        assertThat(alert).isNull();
+        assertThat(alertRepository.findFirstBySourceEventId(eventId)).isEmpty();
+        assertThat(alertSuppressionRepository.existsBySourceEventId(eventId)).isTrue();
+    }
+
+    @Test
+    void maintenanceProjectionIgnoresOlderVersions() {
+        UUID deviceId = UUID.randomUUID();
+        UUID maintenanceWindowId = UUID.randomUUID();
+        Instant start = Instant.parse("2026-05-13T22:00:00Z");
+        Instant end = Instant.parse("2026-05-13T23:00:00Z");
+
+        maintenanceWindowProjectionService.project(maintenanceEvent(
+                maintenanceWindowId,
+                deviceId,
+                start,
+                end,
+                true,
+                2,
+                "MAINTENANCE_WINDOW_UPDATED"));
+        maintenanceWindowProjectionService.project(maintenanceEvent(
+                maintenanceWindowId,
+                deviceId,
+                start,
+                end,
+                false,
+                1,
+                "MAINTENANCE_WINDOW_UPDATED"));
+
+        assertThat(maintenanceWindowReadModelRepository.findById(maintenanceWindowId))
+                .hasValueSatisfying(window -> {
+                    assertThat(window.getVersion()).isEqualTo(2);
+                    assertThat(window.isSuppressAlerts()).isTrue();
+                });
+    }
+
+    @Test
+    void maintenanceWindowAutoResolvesExistingOverlappingAlert() {
+        UUID deviceId = UUID.randomUUID();
+        UUID maintenanceWindowId = UUID.randomUUID();
+        Instant start = Instant.parse("2026-05-14T00:00:00Z");
+        Instant end = Instant.parse("2026-05-14T01:00:00Z");
+        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                UUID.randomUUID(),
+                deviceId,
+                UUID.randomUUID(),
+                "power-spike-v2",
+                start.plusSeconds(600),
+                start.plusSeconds(900),
+                "input-hash-before-maintenance",
+                "POWER_SPIKE",
+                "MEDIUM",
+                30,
+                "Power spike before maintenance projection arrived.",
+                start.plusSeconds(900)));
+
+        maintenanceWindowProjectionService.project(maintenanceEvent(
+                maintenanceWindowId,
+                deviceId,
+                start,
+                end,
+                true,
+                1,
+                "MAINTENANCE_WINDOW_CREATED"));
+
+        assertThat(alertRepository.findById(alert.getId()))
+                .hasValueSatisfying(stored -> {
+                    assertThat(stored.getStatus()).isEqualTo(AlertStatus.RESOLVED);
+                    assertThat(stored.getResolvedAt()).isNotNull();
+                    assertThat(stored.getResolutionReason()).contains("maintenance window");
+                });
+        assertThat(alertSuppressionRepository.existsByAlertIdAndMaintenanceWindowId(alert.getId(), maintenanceWindowId)).isTrue();
+        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
+                .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("AUTO_RESOLVED_BY_MAINTENANCE"));
     }
 
     @Test
@@ -472,5 +593,33 @@ class AlertServiceApiTest {
         assertThat(secondPage.getBody().totalPages()).isEqualTo(2);
         assertThat(secondPage.getBody().hasNext()).isFalse();
         assertThat(secondPage.getBody().content().getFirst().description()).isEqualTo("Page test alert 0");
+    }
+
+    private MaintenanceWindowChangedEvent maintenanceEvent(
+            UUID maintenanceWindowId,
+            UUID deviceId,
+            Instant start,
+            Instant end,
+            boolean suppressAlerts,
+            long version,
+            String eventType) {
+        return new MaintenanceWindowChangedEvent(
+                UUID.randomUUID(),
+                eventType,
+                maintenanceWindowId,
+                UUID.randomUUID(),
+                deviceId,
+                "Planned maintenance",
+                "Maintenance test window",
+                start,
+                end,
+                suppressAlerts,
+                true,
+                true,
+                null,
+                null,
+                version,
+                UUID.randomUUID(),
+                Instant.now());
     }
 }

@@ -101,6 +101,40 @@ The local Secret uses development values. Production must replace these values
 with externally managed secrets from a cloud secret manager, sealed secrets, or
 another controlled secret distribution mechanism.
 
+Maintenance-window rollout adds these operational settings:
+
+| Variable | Consumers | Purpose |
+| --- | --- | --- |
+| `ALERT_MAINTENANCE_RECONCILIATION_ENABLED` | `alert-service` | Enables maintenance projection reconciliation. |
+| `ALERT_MAINTENANCE_RECONCILIATION_INTERVAL` | `alert-service` | Delay between reconciliation scans. |
+| `ALERT_MAINTENANCE_RECONCILIATION_LOCK_LEASE` | `alert-service` | Scheduler lock lease for one active reconciler. |
+| `ALERT_MAINTENANCE_RECONCILIATION_BATCH_SIZE` | `alert-service` | Maximum device-service snapshots per fetch. |
+| `ALERT_KAFKA_MAINTENANCE_WINDOW_DLQ_TOPIC` | `alert-service` | Dead-letter topic for failed maintenance projection messages. |
+| `ANALYTICS_MAINTENANCE_RECONCILIATION_ENABLED` | `analytics-service` | Enables maintenance projection reconciliation. |
+| `ANALYTICS_MAINTENANCE_RECONCILIATION_INTERVAL` | `analytics-service` | Delay between reconciliation scans. |
+| `ANALYTICS_MAINTENANCE_RECONCILIATION_LOCK_LEASE` | `analytics-service` | Scheduler lock lease for one active reconciler. |
+| `ANALYTICS_MAINTENANCE_RECONCILIATION_BATCH_SIZE` | `analytics-service` | Maximum device-service snapshots per fetch. |
+
+The shared `DEVICE_SERVICE_URI` and `INTERNAL_SERVICE_TOKEN` must be configured
+for analytics-service and alert-service reconciliation calls.
+
+## Event Topics
+
+Redpanda initialization creates the maintenance topic:
+
+```text
+maintenance-window.changed.v1
+```
+
+Alert-service can dead-letter failed projection messages to:
+
+```text
+maintenance-window.changed.dlq.v1
+```
+
+The topic is keyed by `deviceId` so consumers preserve per-device maintenance
+ordering as much as the broker partitioning allows.
+
 ## Scaling Model
 
 The current local overlay configures stateless services with:

@@ -8,6 +8,7 @@ import com.voltcanary.analytics.dto.RecalculateResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.repository.AnalyticsJobRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
@@ -102,7 +103,7 @@ class AnalyticsRecalculationTest {
                 .thenReturn(
                         new TelemetryChartResponse(deviceId, "activePowerW", points),
                         new TelemetryChartResponse(deviceId, "activePowerW", nextPoints));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any()))
+        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
                 .thenReturn(new MlInferenceResponse(
                         deviceId,
                         "mock-model-v1",

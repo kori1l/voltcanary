@@ -3,6 +3,7 @@ package com.voltcanary.analytics.ml;
 import com.voltcanary.analytics.config.AnalyticsDownstreamProperties;
 import com.voltcanary.analytics.config.AnalyticsInternalProperties;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -30,6 +31,14 @@ public class MlClient {
         this.meterRegistry = meterRegistry;
     }
     public MlInferenceResponse requestPrediction(UUID deviceId, Instant timestamp, Map<String, Object> metrics) {
+        return requestPrediction(deviceId, timestamp, metrics, List.of());
+    }
+
+    public MlInferenceResponse requestPrediction(
+            UUID deviceId,
+            Instant timestamp,
+            Map<String, Object> metrics,
+            List<MlExcludedInterval> excludedIntervals) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             MlInferenceResponse response = restClient.post()
@@ -40,7 +49,7 @@ public class MlClient {
                             headers.set("X-Internal-Service-Token", internalServiceToken);
                         }
                     })
-                    .body(new MlInferenceRequest(deviceId, timestamp, metrics))
+                    .body(new MlInferenceRequest(deviceId, timestamp, metrics, excludedIntervals))
                     .retrieve()
                     .body(MlInferenceResponse.class);
             sample.stop(meterRegistry.timer("analytics.ml.inference.duration", "status", "success"));

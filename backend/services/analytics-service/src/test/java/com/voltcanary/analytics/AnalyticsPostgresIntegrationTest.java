@@ -2,6 +2,7 @@ package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
@@ -65,7 +66,7 @@ class AnalyticsPostgresIntegrationTest {
                 .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
                         new TelemetryChartResponse.Point(start, 100),
                         new TelemetryChartResponse.Point(start.plusSeconds(60), 400))));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any()))
+        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
                 .thenReturn(new MlInferenceResponse(deviceId, "mock-model-v1", 0.12, 0.08, "LOW", 0.5, List.of("Mock")));
 
         restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, String.class, deviceId);
