@@ -220,6 +220,11 @@ public class DeviceService {
                 });
     }
 
+    public Device findByIdForMaintenanceResponse(UUID id) {
+        return deviceRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Device not found"));
+    }
+
     private DeviceResponse toResponse(Device device) {
         DeviceType deviceType = deviceTypeRepository.findById(device.getDeviceTypeId())
                 .orElseThrow(() -> new NotFoundException("Device type not found"));

@@ -33,6 +33,7 @@ app:
       dlq:
         anomaly-topic: ${ALERT_KAFKA_ANOMALY_DLQ_TOPIC:anomaly.detected.dlq.v1}
         risk-score-topic: ${ALERT_KAFKA_RISK_SCORE_DLQ_TOPIC:risk-score.changed.dlq.v1}
+        maintenance-window-topic: ${ALERT_KAFKA_MAINTENANCE_WINDOW_DLQ_TOPIC:maintenance-window.changed.dlq.v1}
     notifications:
       enabled: ${ALERT_NOTIFICATIONS_ENABLED:true}
       worker-enabled: ${ALERT_NOTIFICATIONS_WORKER_ENABLED:true}
@@ -66,6 +67,15 @@ app:
   analytics-service:
     base-url: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
     timeout: ${ALERT_ANALYTICS_TIMEOUT:3s}
+  device-service:
+    base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    timeout: ${ALERT_DEVICE_TIMEOUT:3s}
+  maintenance:
+    reconciliation:
+      enabled: ${ALERT_MAINTENANCE_RECONCILIATION_ENABLED:true}
+      interval: ${ALERT_MAINTENANCE_RECONCILIATION_INTERVAL:1m}
+      lock-lease: ${ALERT_MAINTENANCE_RECONCILIATION_LOCK_LEASE:30s}
+      batch-size: ${ALERT_MAINTENANCE_RECONCILIATION_BATCH_SIZE:100}
 
 server:
   port: 8086

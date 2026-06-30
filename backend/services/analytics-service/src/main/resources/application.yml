@@ -86,6 +86,15 @@ app:
   alert-service:
     base-url: ${ALERT_SERVICE_URI:http://localhost:8086}
     timeout: ${ANALYTICS_ALERT_TIMEOUT:2s}
+  device-service:
+    base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    timeout: ${ANALYTICS_DEVICE_TIMEOUT:2s}
+  maintenance:
+    reconciliation:
+      enabled: ${ANALYTICS_MAINTENANCE_RECONCILIATION_ENABLED:true}
+      interval: ${ANALYTICS_MAINTENANCE_RECONCILIATION_INTERVAL:1m}
+      lock-lease: ${ANALYTICS_MAINTENANCE_RECONCILIATION_LOCK_LEASE:30s}
+      batch-size: ${ANALYTICS_MAINTENANCE_RECONCILIATION_BATCH_SIZE:100}
 
 server:
   port: 8085

@@ -8,6 +8,7 @@ class InferenceRequest(BaseModel):
     device_id: str = Field(alias="deviceId")
     timestamp: datetime | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
+    excluded_intervals: list[dict[str, Any]] = Field(default_factory=list, alias="excludedIntervals")
 
 
 class InferenceResponse(BaseModel):

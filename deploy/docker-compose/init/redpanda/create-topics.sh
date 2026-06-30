@@ -9,6 +9,7 @@ topics="
 telemetry.raw.v1
 telemetry.validated.v1
 device-registry.changed.v1
+maintenance-window.changed.v1
 identity.account-lifecycle.v1
 anomaly.detected.v1
 risk-score.changed.v1
@@ -16,6 +17,7 @@ alert.created.v1
 telemetry.raw.v1.dlq
 telemetry.validated.v1.dlq
 device-registry.changed.v1.dlq
+maintenance-window.changed.v1.dlq
 identity.account-lifecycle.v1.dlq
 anomaly.detected.v1.dlq
 risk-score.changed.v1.dlq

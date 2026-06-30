@@ -28,6 +28,8 @@ telemetry.validated.v1
         |
         v
 Analytics Service
+        ^ 
+        | maintenance-window.changed.v1
         |
         +----> ML Service
         |
@@ -36,6 +38,8 @@ anomaly.detected.v1 / risk-score.changed.v1
         |
         v
 Alert Service
+        ^ 
+        | maintenance-window.changed.v1
         |
         v
 Frontend Dashboard
@@ -219,6 +223,30 @@ The frontend displays:
 - explanations
 - recommendations
 - alerts
+
+## Maintenance Window Flow
+
+Planned maintenance starts in device-service:
+
+```text
+Frontend -> API Gateway -> device-service
+                         -> device_event_outbox
+                         -> maintenance-window.changed.v1
+                         -> analytics-service local read model
+                         -> alert-service local read model
+```
+
+Analytics-service excludes samples that overlap windows with
+`excludeFromAnalytics=true` and passes explicit excluded intervals to ml-service
+when `excludeFromMl=true`.
+
+Alert-service suppresses new alerts that overlap windows with
+`suppressAlerts=true` and auto-resolves unresolved existing alerts when a new or
+expanded maintenance window covers them.
+
+Both consumers reconcile with device-service internal APIs using
+`updatedAfter` checkpoints so projection lag or missed Kafka messages do not
+create permanent divergence.
 
 ## Failure Handling
 

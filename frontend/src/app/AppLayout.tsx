@@ -7,6 +7,7 @@ import { BrandLogo } from "../components/BrandLogo";
 
 const userNavigation = [
   { to: "/devices", label: "Devices" },
+  { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/settings", label: "Settings" },
 ];
@@ -14,6 +15,7 @@ const userNavigation = [
 const adminNavigation = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/devices", label: "Devices" },
+  { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/ai-agent", label: "AI Agent" },
   { to: "/ai-agent/settings", label: "AI Settings" },

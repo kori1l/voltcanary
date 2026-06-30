@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 public class AlertDownstreamProperties {
 
     private DownstreamService analyticsService = new DownstreamService("http://localhost:8085", Duration.ofSeconds(3));
+    private DownstreamService deviceService = new DownstreamService("http://localhost:8082", Duration.ofSeconds(3));
 
     public DownstreamService getAnalyticsService() {
         return analyticsService;
@@ -16,6 +17,14 @@ public class AlertDownstreamProperties {
 
     public void setAnalyticsService(DownstreamService analyticsService) {
         this.analyticsService = analyticsService;
+    }
+
+    public DownstreamService getDeviceService() {
+        return deviceService;
+    }
+
+    public void setDeviceService(DownstreamService deviceService) {
+        this.deviceService = deviceService;
     }
 
     public static class DownstreamService {

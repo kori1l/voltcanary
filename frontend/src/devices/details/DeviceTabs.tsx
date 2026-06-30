@@ -1,10 +1,11 @@
-export type DeviceDetailsTab = "overview" | "telemetry" | "analytics" | "alerts" | "configuration" | "simulation";
+export type DeviceDetailsTab = "overview" | "telemetry" | "analytics" | "alerts" | "maintenance" | "configuration" | "simulation";
 
 const tabs: { value: DeviceDetailsTab; label: string }[] = [
   { value: "overview", label: "Overview" },
   { value: "telemetry", label: "Telemetry" },
   { value: "analytics", label: "Analytics" },
   { value: "alerts", label: "Alerts" },
+  { value: "maintenance", label: "Maintenance" },
   { value: "configuration", label: "Configuration" },
   { value: "simulation", label: "Demo Tools" },
 ];

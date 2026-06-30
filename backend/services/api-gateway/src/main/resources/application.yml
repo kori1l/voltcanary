@@ -49,6 +49,10 @@ spring:
               uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
               predicates:
                 - Path=/devices/**
+            - id: device-service-maintenance-operations
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/maintenance-operations/**
             - id: device-service-types
               uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
               predicates:

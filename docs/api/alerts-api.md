@@ -328,6 +328,23 @@ If the matching alert was already `RESOLVED`, a new source event creates a new
 `OPEN` alert. Repeated events in the same hour then deduplicate into that new
 unresolved alert.
 
+Maintenance windows are applied before new alert creation. Alert-service
+consumes `maintenance-window.changed.v1` into a local read model and suppresses
+incoming `AnomalyDetectedEvent` or `RiskScoreChangedEvent` records when the
+event calculation window overlaps a non-cancelled maintenance window with
+`suppressAlerts=true`. Suppressed events are stored in `alert_suppressions` for
+audit and the analytics inbox entry is marked as `NO_ALERT`.
+
+When a new or expanded maintenance window overlaps existing unresolved alerts,
+alert-service auto-resolves those suppressible alerts with resolution reason:
+
+```text
+Auto-resolved because the device is in a maintenance window.
+```
+
+The auto-resolution is recorded in `alert_events` with event type
+`AUTO_RESOLVED_BY_MAINTENANCE` and in `alert_suppressions`.
+
 When device authorization is enabled, alert creation resolves `accountId` from
 the trusted device-service internal owner lookup:
 
