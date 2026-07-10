@@ -152,7 +152,7 @@ export interface MaintenanceWindowRequest {
   excludeFromMl: boolean;
 }
 
-function query(params: object) {
+function query<T extends object>(params: T) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "" && value !== "all") {
