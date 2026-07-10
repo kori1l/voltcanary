@@ -13,13 +13,17 @@ import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.repository.AnalyticsJobRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
+import com.voltcanary.analytics.repository.PredictionResultRepository;
 import com.voltcanary.analytics.repository.RecommendationRepository;
 import com.voltcanary.analytics.service.AnalyticsJobService;
+import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
+import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,10 +72,16 @@ class AnalyticsRecalculationTest {
     private RecommendationRepository recommendationRepository;
 
     @Autowired
+    private PredictionResultRepository predictionResultRepository;
+
+    @Autowired
     private AnalyticsJobService jobService;
 
     @Autowired
     private AnalyticsJobRepository jobRepository;
+
+    @Autowired
+    private MaintenanceWindowProjectionService maintenanceWindowProjectionService;
 
     @Test
     void recalculateCreatesBaselineAnomaliesRiskAndRecommendations() {
@@ -103,15 +113,29 @@ class AnalyticsRecalculationTest {
                 .thenReturn(
                         new TelemetryChartResponse(deviceId, "activePowerW", points),
                         new TelemetryChartResponse(deviceId, "activePowerW", nextPoints));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
                 .thenReturn(new MlInferenceResponse(
                         deviceId,
-                        "mock-model-v1",
+                        "voltcanary-baseline-heuristic",
+                        "baseline-heuristic-v1",
+                        "baseline_heuristic",
+                        "READY_HEURISTIC",
+                        "BASELINE_HEURISTIC",
                         0.12,
                         0.08,
                         "LOW",
                         0.5,
-                        List.of("Mock inference result")));
+                        List.of(Map.of("metric", "activePowerW", "score", 0.12, "severity", "LOW")),
+                        List.of("Mock inference result"),
+                        List.of("Continue normal monitoring."),
+                        "ml-input-hash"));
 
         Instant requestStartedAt = Instant.now();
         ResponseEntity<RecalculateResponse> recalculated = restTemplate.postForEntity(
@@ -187,8 +211,12 @@ class AnalyticsRecalculationTest {
                 deviceId);
         assertThat(prediction.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(prediction.getBody()).isNotNull();
-        assertThat(prediction.getBody().modelVersion()).isEqualTo("mock-model-v1");
+        assertThat(prediction.getBody().modelName()).isEqualTo("voltcanary-baseline-heuristic");
+        assertThat(prediction.getBody().modelVersion()).isEqualTo("baseline-heuristic-v1");
+        assertThat(prediction.getBody().predictionStatus()).isEqualTo("BASELINE_HEURISTIC");
         assertThat(prediction.getBody().confidence()).isEqualTo(0.5);
+        assertThat(prediction.getBody().inputHash()).isEqualTo("ml-input-hash");
+        assertThat(prediction.getBody().signals()).hasSize(1);
 
         restTemplate.postForEntity(
                 "/analytics/devices/{deviceId}/recalculate",
@@ -233,6 +261,89 @@ class AnalyticsRecalculationTest {
             assertThat(job.getWindowEnd()).isEqualTo(expectedWindowEnd);
             assertThat(job.getInputHash()).isNotBlank();
         });
+    }
+
+    @Test
+    void recalculatePersistsUnavailablePredictionWhenMlReturnsNull() {
+        UUID deviceId = UUID.randomUUID();
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 120))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(null);
+
+        ResponseEntity<RecalculateResponse> recalculated = restTemplate.postForEntity(
+                "/analytics/devices/{deviceId}/recalculate",
+                null,
+                RecalculateResponse.class,
+                deviceId);
+
+        assertThat(recalculated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(recalculated.getBody()).isNotNull();
+        assertThat(recalculated.getBody().status()).isEqualTo("completed");
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getModelName()).isEqualTo("ml-unavailable");
+                    assertThat(prediction.getStatus()).isEqualTo("UNAVAILABLE");
+                    assertThat(prediction.getInputHash()).isNotBlank();
+                });
+    }
+
+    @Test
+    void recalculatePassesMaintenanceExclusionsToMl() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        UUID maintenanceWindowId = UUID.randomUUID();
+        Instant start = Instant.now();
+        maintenanceWindowProjectionService.project(new MaintenanceWindowChangedEvent(
+                UUID.randomUUID(),
+                "v1",
+                "MAINTENANCE_WINDOW_CREATED",
+                maintenanceWindowId,
+                accountId,
+                deviceId,
+                "Planned work",
+                null,
+                start.minusSeconds(60),
+                start.plusSeconds(600),
+                true,
+                false,
+                true,
+                null,
+                null,
+                1,
+                null,
+                "device-service",
+                UUID.randomUUID(),
+                start.minusSeconds(120)));
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 120))));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        org.mockito.ArgumentCaptor<List<MlExcludedInterval>> exclusionsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(mlClient).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                exclusionsCaptor.capture(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        assertThat(exclusionsCaptor.getValue())
+                .extracting(MlExcludedInterval::maintenanceWindowId)
+                .containsExactly(maintenanceWindowId);
     }
 
     private TelemetryChartResponse.Point point(Instant timestamp, double value) {

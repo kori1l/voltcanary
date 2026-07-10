@@ -1,6 +1,6 @@
 import { apiRequest, apiTextRequest } from "../api/client";
 
-export type DeviceStatus = "ACTIVE" | "DISABLED" | "OFFLINE" | "DECOMMISSIONED";
+export type DeviceStatus = "ACTIVE" | "ONLINE" | "DISABLED" | "OFFLINE" | "DECOMMISSIONED";
 
 export interface Device {
   id: string;
@@ -152,7 +152,7 @@ export interface MaintenanceWindowRequest {
   excludeFromMl: boolean;
 }
 
-function query(params: Record<string, string | number | undefined>) {
+function query(params: object) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "" && value !== "all") {

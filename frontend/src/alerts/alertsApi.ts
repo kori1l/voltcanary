@@ -261,7 +261,7 @@ export function resolveAlert(alertId: string, reason: string) {
   });
 }
 
-function query(params: Record<string, string | number | undefined>) {
+function query(params: object) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== "" && value !== "all") {

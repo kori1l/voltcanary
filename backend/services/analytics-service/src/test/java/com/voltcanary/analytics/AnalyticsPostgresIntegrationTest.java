@@ -8,6 +8,7 @@ import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,8 +67,29 @@ class AnalyticsPostgresIntegrationTest {
                 .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
                         new TelemetryChartResponse.Point(start, 100),
                         new TelemetryChartResponse.Point(start.plusSeconds(60), 400))));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
-                .thenReturn(new MlInferenceResponse(deviceId, "mock-model-v1", 0.12, 0.08, "LOW", 0.5, List.of("Mock")));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(new MlInferenceResponse(
+                        deviceId,
+                        "voltcanary-baseline-heuristic",
+                        "baseline-heuristic-v1",
+                        "baseline_heuristic",
+                        "READY_HEURISTIC",
+                        "BASELINE_HEURISTIC",
+                        0.12,
+                        0.08,
+                        "LOW",
+                        0.5,
+                        List.of(Map.of("metric", "activePowerW", "score", 0.12)),
+                        List.of("Mock"),
+                        List.of("Continue normal monitoring."),
+                        "ml-input-hash"));
 
         restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, String.class, deviceId);
 
@@ -77,7 +99,10 @@ class AnalyticsPostgresIntegrationTest {
                 deviceId);
         assertThat(prediction.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(prediction.getBody()).isNotNull();
-        assertThat(prediction.getBody().modelVersion()).isEqualTo("mock-model-v1");
+        assertThat(prediction.getBody().modelName()).isEqualTo("voltcanary-baseline-heuristic");
+        assertThat(prediction.getBody().modelVersion()).isEqualTo("baseline-heuristic-v1");
+        assertThat(prediction.getBody().predictionStatus()).isEqualTo("BASELINE_HEURISTIC");
         assertThat(prediction.getBody().confidence()).isEqualTo(0.5);
+        assertThat(prediction.getBody().inputHash()).isEqualTo("ml-input-hash");
     }
 }

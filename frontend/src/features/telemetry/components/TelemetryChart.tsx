@@ -263,7 +263,7 @@ function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: 
       timestamp: new Date(timestampMs).toISOString(),
       metricKey: sorted[0]?.metricKey ?? "",
       value: null as number | null,
-      quality: "partial" as const,
+      quality: "partial" as TelemetrySample["quality"],
       synthetic: true,
       sourceCount: 0,
     };
@@ -283,7 +283,7 @@ function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: 
     }
     bucket.timestamp = sample.timestamp;
     bucket.metricKey = sample.metricKey;
-    bucket.quality = sample.quality;
+    bucket.quality = sample.quality ?? "partial";
     bucket.synthetic = false;
     bucket.sourceCount += 1;
   }

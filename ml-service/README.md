@@ -6,9 +6,13 @@ evaluation, inference, and model registry workflows.
 ## Run locally
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8090
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8090
 ```
+
+Use Python 3.12. Dependency versions are pinned in `requirements.txt` and
+mirrored in `pyproject.toml`.
 
 ## Endpoints
 

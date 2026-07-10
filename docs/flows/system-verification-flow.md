@@ -541,12 +541,16 @@
 - ML service доступен.
 - ML service недоступен.
 - ML inference возвращает низкую confidence.
+- ML inference получает maintenance `excludedIntervals`.
 
 Ожидаемо:
 
-- При доступном ML analytics использует inference/prediction.
-- При недоступном ML system degradation controlled: UI показывает fallback/insufficient prediction, backend не падает `500`.
-- Confidence отображается и влияет на формулировки, а не скрывается.
+- При доступном ML analytics сохраняет `modelName`, `modelVersion`, `predictionStatus`, scores, `signals`, explanations, recommended actions и `inputHash`.
+- При normal simulator telemetry prediction имеет `BASELINE_HEURISTIC` или `MODEL`, `LOW`/`MEDIUM` risk и читаемые explanations.
+- При power spike / voltage anomaly / current anomaly `anomalyScore` выше normal baseline, risk повышается до `MEDIUM`/`HIGH`/`CRITICAL`, а `signals` указывает метрику.
+- При недоступном ML system degradation controlled: analytics job завершается, persisted prediction получает `UNAVAILABLE`, rule-based anomaly/risk/recommendation logic продолжает работать, backend не падает `500`.
+- Confidence отображается и снижается при отсутствии baseline/recent window или при maintenance exclusions.
+- `excludeFromMl=true` windows доходят до ML как `excludedIntervals`; если useful ML input подавлен maintenance, prediction status отражает suppression/degraded behavior.
 
 ## 9. Alerts flow
 
@@ -795,7 +799,10 @@
 Сценарии:
 
 - `GET /health`.
-- `POST /inference` с валидным feature payload.
+- `POST /inference` с normal telemetry payload: voltage/current/power/energy в ожидаемых диапазонах.
+- `POST /inference` с anomalous telemetry payload: power spike, voltage anomaly или current anomaly.
+- `POST /inference` с пустыми metrics.
+- `POST /inference` с `NaN`/`Infinity`.
 - `POST /train`.
 - `GET /runs/{run_id}`.
 - `GET /models`.
@@ -804,7 +811,12 @@
 Ожидаемо:
 
 - Health отвечает быстро.
-- Inference возвращает anomaly/degradation/risk/confidence/modelVersion согласно текущему контракту.
+- Normal inference возвращает `predictionStatus=BASELINE_HEURISTIC` или `MODEL`, низкий/средний risk, explanations и `inputHash`.
+- Anomalous inference возвращает более высокий `anomalyScore`, risk не ниже `MEDIUM` для severe выбросов, и signal по влияющей метрике.
+- Empty metrics возвращает `INSUFFICIENT_DATA` с низкой confidence, а не fake low-risk success.
+- Non-finite metric values дают `400`, не `500`.
+- Inference сохраняет backward-compatible поля `deviceId`, `modelVersion`, `anomalyScore`, `degradationScore`, `riskLevel`, `confidence`, `explanations`.
+- `/models` показывает active baseline heuristic model name/version/type/status.
 - Train создает run или mock/stub run в текущем режиме.
 - Невалидный payload дает `422/400`, не `500`.
 

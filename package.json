@@ -3,11 +3,20 @@
   "version": "1.0.0",
   "description": "VoltCanary is a predictive IoT analytics platform for connected appliances and small physical assets.",
   "main": "index.js",
+  "private": true,
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "openspec": "node ./node_modules/@fission-ai/openspec/bin/openspec.js",
+    "openspec:init": "npm run openspec -- init . --tools codex",
+    "openspec:list": "npm run openspec -- list",
+    "openspec:show": "npm run openspec -- show",
+    "openspec:show:ml": "npm run openspec -- show ml-predictive-analytics-upgrade",
+    "openspec:show:deps": "npm run openspec -- show platform-dependency-upgrade-verification",
+    "openspec:apply": "powershell -ExecutionPolicy Bypass -File scripts/openspec-apply.ps1",
+    "openspec:validate": "npm run openspec -- validate --all --strict",
+    "test": "npm run openspec:validate"
   },
   "repository": {
     "type": "git",
@@ -19,5 +28,12 @@
   "bugs": {
     "url": "https://github.com/kori1l/voltcanary/issues"
   },
-  "homepage": "https://github.com/kori1l/voltcanary#readme"
+  "homepage": "https://github.com/kori1l/voltcanary#readme",
+  "engines": {
+    "node": ">=22.12.0 <23",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "1.6.0"
+  }
 }

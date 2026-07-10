@@ -46,7 +46,7 @@ class TelemetryKafkaTimescaleIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> timescale = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:latest-pg16").asCompatibleSubstituteFor("postgres"));
+            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"));
 
     @DynamicPropertySource
     static void infrastructureProperties(DynamicPropertyRegistry registry) {

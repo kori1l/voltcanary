@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactElement } from "react";
 import { AppLayout } from "./AppLayout";
 import { isAuthenticated } from "../api/client";
 import { AlertsPage } from "../pages/AlertsPage";
@@ -16,7 +17,7 @@ import { RegisterPage } from "../pages/RegisterPage";
 import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { VerifyEmailPage } from "../pages/VerifyEmailPage";
 
-function RequireAuth({ children }: { children: JSX.Element }) {
+function RequireAuth({ children }: { children: ReactElement }) {
   return isAuthenticated() ? children : <Navigate to="/login" replace />;
 }
 

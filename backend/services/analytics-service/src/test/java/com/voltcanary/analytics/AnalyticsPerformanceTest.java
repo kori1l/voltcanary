@@ -15,6 +15,7 @@ import com.voltcanary.analytics.telemetry.TelemetryClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,14 @@ class AnalyticsPerformanceTest {
         UUID deviceId = UUID.randomUUID();
         when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
                 .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", points(sampleCount)));
-        when(mlClient.requestPrediction(eq(deviceId), any(Instant.class), any(), org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any()))
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
                 .thenReturn(null);
 
         long baselinesBefore = baselineRepository.count();

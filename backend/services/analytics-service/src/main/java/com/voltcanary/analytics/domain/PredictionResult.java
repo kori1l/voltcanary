@@ -38,6 +38,9 @@ public class PredictionResult {
     @Column(name = "status")
     private String status;
 
+    @Column(name = "input_hash")
+    private String inputHash;
+
     @Column(name = "prediction_json", nullable = false, columnDefinition = "text")
     private String predictionJson;
 
@@ -114,6 +117,14 @@ public class PredictionResult {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getInputHash() {
+        return inputHash;
+    }
+
+    public void setInputHash(String inputHash) {
+        this.inputHash = inputHash;
     }
 
     public String getPredictionJson() {

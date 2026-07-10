@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-10
+goal: "Define frontend ML service settings: what operators can configure, what
+  is read-only status, and how settings affect analytics predictions."

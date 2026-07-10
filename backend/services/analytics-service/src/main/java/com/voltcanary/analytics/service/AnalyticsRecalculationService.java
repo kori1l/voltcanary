@@ -241,9 +241,20 @@ public class AnalyticsRecalculationService {
                 inputHash,
                 now));
         PredictionResult prediction = predictionResultRepository.save(
-                prediction(deviceId, primaryChart, primaryBaseline, risk, now, maintenanceWindows));
-        List<Recommendation> recommendations = recommendationRepository.saveAll(
+                prediction(
+                        deviceId,
+                        primaryChart,
+                        primaryBaseline,
+                        risk,
+                        now,
+                        maintenanceWindows,
+                        windowStart,
+                        windowEnd,
+                        inputHash));
+        List<Recommendation> generatedRecommendations = new ArrayList<>(
                 recommendationGenerator.generate(deviceId, anomalies, now));
+        generatedRecommendations.addAll(mlRecommendations(deviceId, prediction, now));
+        List<Recommendation> recommendations = recommendationRepository.saveAll(generatedRecommendations);
         anomalies.forEach(outboxService::enqueueAnomaly);
         outboxService.enqueueRiskScore(risk, previousRiskScore);
 
@@ -382,22 +393,46 @@ public class AnalyticsRecalculationService {
             BaselineStats baseline,
             RiskScore risk,
             Instant now,
-            List<MaintenanceWindowReadModel> maintenanceWindows) {
-        Map<String, Object> metrics = Map.of(
-                "metric", chart == null ? "" : chart.metric(),
+            List<MaintenanceWindowReadModel> maintenanceWindows,
+            Instant windowStart,
+            Instant windowEnd,
+            String inputHash) {
+        String metric = chart == null ? "" : chart.metric();
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("metric", metric);
+        metrics.put("sampleCount", baseline.sampleCount());
+        metrics.put("mean", baseline.mean());
+        metrics.put("median", baseline.median());
+        metrics.put("p90", baseline.p90());
+        metrics.put("min", baseline.min());
+        metrics.put("max", baseline.max());
+        metrics.put("riskScore", risk.getScore());
+        metrics.put("latestValue", latestValue(chart));
+        if (!metric.isBlank()) {
+            metrics.put(metric, latestValue(chart));
+        }
+        metrics.put("maintenanceExcludedWindowIds", maintenanceWindows.stream()
+                .filter(MaintenanceWindowReadModel::isExcludeFromMl)
+                .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
+                .map(UUID::toString)
+                .toList());
+        Map<String, Object> baselineContext = Map.of(
+                "metric", metric,
                 "sampleCount", baseline.sampleCount(),
                 "mean", baseline.mean(),
                 "median", baseline.median(),
                 "p90", baseline.p90(),
                 "min", baseline.min(),
-                "max", baseline.max(),
-                "riskScore", risk.getScore(),
-                "latestValue", latestValue(chart),
-                "maintenanceExcludedWindowIds", maintenanceWindows.stream()
+                "max", baseline.max());
+        Map<String, Object> recentWindow = Map.of(
+                "sampleCount", baseline.sampleCount(),
+                "excludedSampleCount", maintenanceWindows.stream()
                         .filter(MaintenanceWindowReadModel::isExcludeFromMl)
-                        .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
-                        .map(UUID::toString)
-                        .toList());
+                        .count(),
+                "windowStart", windowStart,
+                "windowEnd", windowEnd);
+        Map<String, Object> modelPreference = Map.of(
+                "allowBaselineHeuristic", true);
         boolean suppressMl = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl)
                 && (chart == null || chart.points().isEmpty());
         List<MlExcludedInterval> excludedIntervals = maintenanceWindows.stream()
@@ -408,27 +443,53 @@ public class AnalyticsRecalculationService {
                         window.getEndAt(),
                         "MAINTENANCE"))
                 .toList();
-        MlInferenceResponse response = suppressMl ? null : mlClient.requestPrediction(deviceId, now, metrics, excludedIntervals);
+        MlInferenceResponse response = suppressMl ? null : mlClient.requestPrediction(
+                deviceId,
+                now,
+                metrics,
+                excludedIntervals,
+                baselineContext,
+                recentWindow,
+                modelPreference);
         String status = suppressMl ? "SUPPRESSED_MAINTENANCE" : response == null ? "UNAVAILABLE" : "AVAILABLE";
+        String predictionStatus = response == null || response.predictionStatus() == null
+                ? status
+                : response.predictionStatus();
+        String responseInputHash = response == null || response.inputHash() == null || response.inputHash().isBlank()
+                ? inputHash
+                : response.inputHash();
         PredictionResult result = new PredictionResult();
         result.setId(UUID.randomUUID());
         result.setDeviceId(deviceId);
-        result.setModelName(response == null ? "ml-unavailable" : response.modelVersion());
+        result.setModelName(response == null ? "ml-unavailable" : response.modelName());
         result.setModelVersion(response == null ? "unknown" : response.modelVersion());
         result.setAnomalyScore(response == null ? 0 : response.anomalyScore());
         result.setDegradationScore(response == null ? 0 : response.degradationScore());
         result.setConfidence(response == null ? 0 : response.confidence());
         result.setRiskLevel(response == null ? "" : response.riskLevel());
-        result.setStatus(status);
-        result.setPredictionJson(writeJson(Map.of(
-                "status", status,
-                "modelVersion", response == null ? "unknown" : response.modelVersion(),
-                "anomalyScore", response == null ? 0 : response.anomalyScore(),
-                "degradationScore", response == null ? 0 : response.degradationScore(),
-                "riskLevel", response == null ? "" : response.riskLevel(),
-                "confidence", response == null ? 0 : response.confidence(),
-                "reason", suppressMl ? "maintenance" : "",
-                "explanations", response == null || response.explanations() == null ? List.of() : response.explanations())));
+        result.setStatus(predictionStatus);
+        result.setInputHash(responseInputHash);
+        result.setPredictionJson(writeJson(Map.ofEntries(
+                Map.entry("availabilityStatus", status),
+                Map.entry("predictionStatus", predictionStatus),
+                Map.entry("modelName", response == null ? "ml-unavailable" : response.modelName()),
+                Map.entry("modelVersion", response == null ? "unknown" : response.modelVersion()),
+                Map.entry("modelType", response == null || response.modelType() == null ? "" : response.modelType()),
+                Map.entry("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus()),
+                Map.entry("anomalyScore", response == null ? 0 : response.anomalyScore()),
+                Map.entry("degradationScore", response == null ? 0 : response.degradationScore()),
+                Map.entry("riskLevel", response == null ? "" : response.riskLevel()),
+                Map.entry("confidence", response == null ? 0 : response.confidence()),
+                Map.entry("reason", suppressMl ? "maintenance" : ""),
+                Map.entry("signals", response == null || response.signals() == null ? List.of() : response.signals()),
+                Map.entry("recommendedActions", response == null || response.recommendedActions() == null
+                        ? List.of()
+                        : response.recommendedActions()),
+                Map.entry("inputHash", responseInputHash),
+                Map.entry("status", status),
+                Map.entry("explanations", response == null || response.explanations() == null
+                        ? List.of()
+                        : response.explanations()))));
         result.setCreatedAt(now);
         return result;
     }
@@ -490,14 +551,74 @@ public class AnalyticsRecalculationService {
     private PredictionResponse toPredictionResponse(PredictionResult prediction) {
         Map<String, Object> values = readJson(prediction.getPredictionJson());
         Object explanations = values.get("explanations");
+        Object signals = values.get("signals");
+        Object recommendedActions = values.get("recommendedActions");
         return new PredictionResponse(
                 prediction.getDeviceId(),
+                prediction.getModelName() == null ? string(values.get("modelName")) : prediction.getModelName(),
                 prediction.getModelVersion() == null ? string(values.get("modelVersion")) : prediction.getModelVersion(),
+                prediction.getStatus() == null ? string(values.get("predictionStatus")) : prediction.getStatus(),
                 prediction.getAnomalyScore() == null ? number(values.get("anomalyScore")) : prediction.getAnomalyScore(),
                 prediction.getDegradationScore() == null ? number(values.get("degradationScore")) : prediction.getDegradationScore(),
                 prediction.getConfidence() == null ? number(values.get("confidence")) : prediction.getConfidence(),
+                prediction.getInputHash() == null ? string(values.get("inputHash")) : prediction.getInputHash(),
+                signals instanceof List<?> signalList
+                        ? signalList.stream()
+                                .filter(Map.class::isInstance)
+                                .map(item -> (Map<String, Object>) item)
+                                .toList()
+                        : List.of(),
                 explanations instanceof List<?> list ? list.stream().map(Object::toString).toList() : List.of(),
+                recommendedActions instanceof List<?> actionList
+                        ? actionList.stream().map(Object::toString).toList()
+                        : List.of(),
                 prediction.getCreatedAt());
+    }
+
+    private List<Recommendation> mlRecommendations(UUID deviceId, PredictionResult prediction, Instant now) {
+        if (prediction == null || prediction.getPredictionJson() == null) {
+            return List.of();
+        }
+        Map<String, Object> values = readJson(prediction.getPredictionJson());
+        String riskLevel = prediction.getRiskLevel() == null ? string(values.get("riskLevel")) : prediction.getRiskLevel();
+        if (!List.of("MEDIUM", "HIGH", "CRITICAL").contains(riskLevel)) {
+            return List.of();
+        }
+        Object actions = values.get("recommendedActions");
+        if (!(actions instanceof List<?> actionList) || actionList.isEmpty()) {
+            return List.of();
+        }
+        Object signals = values.get("signals");
+        List<String> signalDescriptions = signals instanceof List<?> signalList
+                ? signalList.stream()
+                        .map(Object::toString)
+                        .limit(3)
+                        .toList()
+                : List.of();
+        return actionList.stream()
+                .map(Object::toString)
+                .filter(action -> !action.isBlank())
+                .map(action -> mlRecommendation(deviceId, action, signalDescriptions, riskLevel, now))
+                .toList();
+    }
+
+    private Recommendation mlRecommendation(
+            UUID deviceId,
+            String action,
+            List<String> signalDescriptions,
+            String riskLevel,
+            Instant now) {
+        Recommendation recommendation = new Recommendation();
+        recommendation.setId(UUID.randomUUID());
+        recommendation.setDeviceId(deviceId);
+        recommendation.setTitle("Review ML prediction signal");
+        recommendation.setDescription(signalDescriptions.isEmpty()
+                ? action
+                : action + " Signals: " + String.join("; ", signalDescriptions));
+        recommendation.setPriority("CRITICAL".equals(riskLevel) || "HIGH".equals(riskLevel) ? "HIGH" : "MEDIUM");
+        recommendation.setStatus("ACTIVE");
+        recommendation.setCreatedAt(now);
+        return recommendation;
     }
 
     private String writeJson(Map<String, Object> values) {

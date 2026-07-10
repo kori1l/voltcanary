@@ -234,7 +234,7 @@ export function MaintenanceCalendarPage() {
           <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
             Refresh
           </button>
-          <button className="primary-button" type="button" onClick={openCreateDrawer}>
+          <button className="primary-button" type="button" onClick={() => openCreateDrawer()}>
             Schedule maintenance
           </button>
         </div>

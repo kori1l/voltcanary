@@ -108,7 +108,7 @@ spec:
     spec:
       containers:
         - name: timescaledb
-          image: timescale/timescaledb:latest-pg16
+          image: timescale/timescaledb:2.17.2-pg16
           ports:
             - containerPort: 5432
           env:
@@ -241,7 +241,7 @@ spec:
     spec:
       containers:
         - name: mosquitto
-          image: eclipse-mosquitto:2
+          image: eclipse-mosquitto:2.0.22
           command: ["/bin/sh", "-c"]
           args: ["printf 'listener 1883 0.0.0.0\nallow_anonymous true\n' > /mosquitto/config/mosquitto.conf && mosquitto -c /mosquitto/config/mosquitto.conf"]
           ports:

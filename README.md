@@ -52,6 +52,16 @@ It reports behavior changes, anomalies, confidence, and recommended checks.
 - Prometheus + Grafana
 - JUnit 5 + Testcontainers
 
+## Toolchain Baselines
+
+- Java 21
+- Node.js 22.12.0 or newer within the Node 22 line
+- npm 10 or newer
+- Python 3.12
+
+Local metadata and CI use these baselines. Older Node versions, including Node
+14, are not supported.
+
 ## Project Status
 
 Early development stage.
@@ -130,6 +140,8 @@ mvn -pl common/common-events -am install
 
 ```bash
 cd ml-service
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8090
 ```
 
@@ -149,7 +161,7 @@ http://localhost:8090/docs
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 

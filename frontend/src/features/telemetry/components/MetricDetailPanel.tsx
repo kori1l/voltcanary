@@ -33,6 +33,7 @@ export function MetricDetailPanel({
   onClose: () => void;
 }) {
   const [isBrushZoomEnabled, setIsBrushZoomEnabled] = useState(true);
+  const lastSample = detail.series[detail.series.length - 1];
 
   return (
     <div className="metric-detail-overlay" role="presentation" onMouseDown={onClose}>
@@ -52,7 +53,7 @@ export function MetricDetailPanel({
             <p>
               {detail.statistics.samplesCount} samples - {rangeLabel}
               {detail.series[0] ? ` - ${formatShortDateTime(detail.series[0].timestamp)}` : ""}
-              {detail.series.at(-1) ? ` to ${formatShortDateTime(detail.series.at(-1)!.timestamp)}` : ""}
+              {lastSample ? ` to ${formatShortDateTime(lastSample.timestamp)}` : ""}
             </p>
           </div>
           <button className="ghost-button icon-button-text" type="button" onClick={onClose}>

@@ -39,6 +39,17 @@ public class MlClient {
             Instant timestamp,
             Map<String, Object> metrics,
             List<MlExcludedInterval> excludedIntervals) {
+        return requestPrediction(deviceId, timestamp, metrics, excludedIntervals, null, null, null);
+    }
+
+    public MlInferenceResponse requestPrediction(
+            UUID deviceId,
+            Instant timestamp,
+            Map<String, Object> metrics,
+            List<MlExcludedInterval> excludedIntervals,
+            Map<String, Object> baseline,
+            Map<String, Object> recentWindow,
+            Map<String, Object> modelPreference) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             MlInferenceResponse response = restClient.post()
@@ -49,7 +60,14 @@ public class MlClient {
                             headers.set("X-Internal-Service-Token", internalServiceToken);
                         }
                     })
-                    .body(new MlInferenceRequest(deviceId, timestamp, metrics, excludedIntervals))
+                    .body(new MlInferenceRequest(
+                            deviceId,
+                            timestamp,
+                            metrics,
+                            excludedIntervals,
+                            baseline,
+                            recentWindow,
+                            modelPreference))
                     .retrieve()
                     .body(MlInferenceResponse.class);
             sample.stop(meterRegistry.timer("analytics.ml.inference.duration", "status", "success"));
