@@ -13,6 +13,7 @@ import { SettingsPage } from "../pages/SettingsPage";
 import { ForgotPasswordPage } from "../pages/ForgotPasswordPage";
 import { LoginPage } from "../pages/LoginPage";
 import { MaintenanceCalendarPage } from "../maintenance/MaintenanceCalendarPage";
+import { MlSettingsPage } from "../pages/MlSettingsPage";
 import { RegisterPage } from "../pages/RegisterPage";
 import { ResetPasswordPage } from "../pages/ResetPasswordPage";
 import { VerifyEmailPage } from "../pages/VerifyEmailPage";
@@ -43,6 +44,7 @@ export function App() {
         <Route path="/devices/:deviceId" element={<DeviceDetailsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/ml" element={<MlSettingsPage />} />
         <Route path="/ai-agent" element={<AiAgentPage />} />
         <Route path="/ai-agent/settings" element={<AiAgentSettingsPage />} />
         <Route path="/account" element={<AccountPage />} />

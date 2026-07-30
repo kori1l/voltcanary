@@ -17,6 +17,8 @@ import com.voltcanary.analytics.dto.FeatureSetResponse;
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
+import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
+import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
@@ -79,6 +81,8 @@ public class AnalyticsRecalculationService {
     private final RecommendationGenerator recommendationGenerator;
     private final MeterRegistry meterRegistry;
     private final MaintenanceWindowProjectionService maintenanceWindowProjectionService;
+    private final MlSettingsService mlSettingsService;
+    private final MlModelRegistryService mlModelRegistryService;
 
     public AnalyticsRecalculationService(
             TelemetryClient telemetryClient,
@@ -99,7 +103,9 @@ public class AnalyticsRecalculationService {
             RiskScoreCalculator riskScoreCalculator,
             RecommendationGenerator recommendationGenerator,
             MeterRegistry meterRegistry,
-            MaintenanceWindowProjectionService maintenanceWindowProjectionService) {
+            MaintenanceWindowProjectionService maintenanceWindowProjectionService,
+            MlSettingsService mlSettingsService,
+            MlModelRegistryService mlModelRegistryService) {
         this.telemetryClient = telemetryClient;
         this.baselineRepository = baselineRepository;
         this.featureSetRepository = featureSetRepository;
@@ -119,6 +125,8 @@ public class AnalyticsRecalculationService {
         this.recommendationGenerator = recommendationGenerator;
         this.meterRegistry = meterRegistry;
         this.maintenanceWindowProjectionService = maintenanceWindowProjectionService;
+        this.mlSettingsService = mlSettingsService;
+        this.mlModelRegistryService = mlModelRegistryService;
     }
 
     @Transactional
@@ -135,6 +143,12 @@ public class AnalyticsRecalculationService {
         List<String> metrics = metricProperties.getDefaultMetrics();
         List<MaintenanceWindowReadModel> maintenanceWindows =
                 maintenanceWindowProjectionService.activeOverlapping(deviceId, windowStart, windowEnd);
+        com.voltcanary.analytics.dto.MlSettingsResponse mlSettings = mlSettingsService.effectiveForAnalytics(
+                deviceId, maintenanceWindows.stream().map(MaintenanceWindowReadModel::getAccountId).filter(java.util.Objects::nonNull).findFirst().orElse(null));
+        UUID accountId = mlSettings.accountId();
+        MlResolvedDeploymentPolicyResponse policy = accountId == null
+                ? new MlResolvedDeploymentPolicyResponse(null, null, null, MlDeploymentMode.DISABLED, true, "ACCOUNT_UNKNOWN")
+                : mlModelRegistryService.resolvePolicy(accountId, deviceId, null);
         List<MaintenanceWindowReadModel> analyticsExclusions = maintenanceWindows.stream()
                 .filter(MaintenanceWindowReadModel::isExcludeFromAnalytics)
                 .toList();
@@ -250,7 +264,9 @@ public class AnalyticsRecalculationService {
                         maintenanceWindows,
                         windowStart,
                         windowEnd,
-                        inputHash));
+                        inputHash,
+                        mlSettings,
+                        policy));
         List<Recommendation> generatedRecommendations = new ArrayList<>(
                 recommendationGenerator.generate(deviceId, anomalies, now));
         generatedRecommendations.addAll(mlRecommendations(deviceId, prediction, now));
@@ -323,7 +339,7 @@ public class AnalyticsRecalculationService {
 
     @Transactional(readOnly = true)
     public Optional<PredictionResponse> latestPrediction(UUID deviceId) {
-        return predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId)
+        return predictionResultRepository.findFirstByDeviceIdAndShadowPredictionFalseOrderByCreatedAtDesc(deviceId)
                 .map(this::toPredictionResponse);
     }
 
@@ -396,7 +412,9 @@ public class AnalyticsRecalculationService {
             List<MaintenanceWindowReadModel> maintenanceWindows,
             Instant windowStart,
             Instant windowEnd,
-            String inputHash) {
+            String inputHash,
+            com.voltcanary.analytics.dto.MlSettingsResponse settings,
+            MlResolvedDeploymentPolicyResponse policy) {
         String metric = chart == null ? "" : chart.metric();
         Map<String, Object> metrics = new HashMap<>();
         metrics.put("metric", metric);
@@ -429,12 +447,21 @@ public class AnalyticsRecalculationService {
                 "excludedSampleCount", maintenanceWindows.stream()
                         .filter(MaintenanceWindowReadModel::isExcludeFromMl)
                         .count(),
-                "windowStart", windowStart,
-                "windowEnd", windowEnd);
-        Map<String, Object> modelPreference = Map.of(
-                "allowBaselineHeuristic", true);
-        boolean suppressMl = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl)
-                && (chart == null || chart.points().isEmpty());
+                "windowStart", windowStart.toString(),
+                "windowEnd", windowEnd.toString());
+        boolean allowBaseline = settings.predictionMode() == com.voltcanary.analytics.domain.PredictionMode.MODEL_OR_BASELINE_HEURISTIC
+                && policy.fallbackEnabled();
+        Map<String, Object> modelPreference = new HashMap<>();
+        modelPreference.put("allowBaselineHeuristic", allowBaseline);
+        modelPreference.put("predictionMode", settings.predictionMode().name());
+        modelPreference.put("deploymentMode", policy.mode().name());
+        modelPreference.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
+        modelPreference.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
+        modelPreference.put("modelVersionId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
+        boolean maintenanceOverlap = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl);
+        boolean disabled = !settings.mlEnabled() || settings.predictionMode() == com.voltcanary.analytics.domain.PredictionMode.RULE_BASED_ONLY;
+        boolean suppressMl = disabled || (maintenanceOverlap
+                && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.SUPPRESS_ML);
         List<MlExcludedInterval> excludedIntervals = maintenanceWindows.stream()
                 .filter(MaintenanceWindowReadModel::isExcludeFromMl)
                 .map(window -> new MlExcludedInterval(
@@ -451,27 +478,51 @@ public class AnalyticsRecalculationService {
                 baselineContext,
                 recentWindow,
                 modelPreference);
-        String status = suppressMl ? "SUPPRESSED_MAINTENANCE" : response == null ? "UNAVAILABLE" : "AVAILABLE";
+        if (!suppressMl && policy.mode() == MlDeploymentMode.SHADOW && response != null) {
+            predictionResultRepository.save(buildPredictionResult(
+                    deviceId,
+                    response,
+                    now,
+                    inputHash,
+                    "SHADOW",
+                    policy,
+                    true,
+                    ""));
+            response = policy.fallbackEnabled() ? null : response;
+        }
+        String fallbackReason = disabled
+                ? "ML_DISABLED"
+                : suppressMl
+                ? "MAINTENANCE_SUPPRESSED"
+                : response == null
+                ? (policy.fallbackReason() == null ? "ML_UNAVAILABLE_OR_BASELINE_FALLBACK" : policy.fallbackReason())
+                : "";
+        String status = disabled ? "DISABLED" : suppressMl ? "SUPPRESSED_MAINTENANCE" : response == null ? "UNAVAILABLE" : "AVAILABLE";
         String predictionStatus = response == null || response.predictionStatus() == null
                 ? status
                 : response.predictionStatus();
         String responseInputHash = response == null || response.inputHash() == null || response.inputHash().isBlank()
                 ? inputHash
                 : response.inputHash();
-        PredictionResult result = new PredictionResult();
-        result.setId(UUID.randomUUID());
-        result.setDeviceId(deviceId);
-        result.setModelName(response == null ? "ml-unavailable" : response.modelName());
-        result.setModelVersion(response == null ? "unknown" : response.modelVersion());
-        result.setAnomalyScore(response == null ? 0 : response.anomalyScore());
-        result.setDegradationScore(response == null ? 0 : response.degradationScore());
-        result.setConfidence(response == null ? 0 : response.confidence());
-        result.setRiskLevel(response == null ? "" : response.riskLevel());
+        PredictionResult result = buildPredictionResult(
+                deviceId,
+                response,
+                now,
+                responseInputHash,
+                predictionStatus,
+                policy,
+                false,
+                fallbackReason);
         result.setStatus(predictionStatus);
-        result.setInputHash(responseInputHash);
         result.setPredictionJson(writeJson(Map.ofEntries(
                 Map.entry("availabilityStatus", status),
                 Map.entry("predictionStatus", predictionStatus),
+                Map.entry("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString()),
+                Map.entry("policySource", policy.policySource() == null ? "" : policy.policySource().name()),
+                Map.entry("policyId", policy.policyId() == null ? "" : policy.policyId().toString()),
+                Map.entry("deploymentMode", policy.mode().name()),
+                Map.entry("fallbackReason", fallbackReason),
+                Map.entry("shadowPrediction", false),
                 Map.entry("modelName", response == null ? "ml-unavailable" : response.modelName()),
                 Map.entry("modelVersion", response == null ? "unknown" : response.modelVersion()),
                 Map.entry("modelType", response == null || response.modelType() == null ? "" : response.modelType()),
@@ -479,8 +530,8 @@ public class AnalyticsRecalculationService {
                 Map.entry("anomalyScore", response == null ? 0 : response.anomalyScore()),
                 Map.entry("degradationScore", response == null ? 0 : response.degradationScore()),
                 Map.entry("riskLevel", response == null ? "" : response.riskLevel()),
-                Map.entry("confidence", response == null ? 0 : response.confidence()),
-                Map.entry("reason", suppressMl ? "maintenance" : ""),
+                Map.entry("confidence", response == null ? 0 : (maintenanceOverlap && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.REDUCE_CONFIDENCE ? response.confidence() * settings.confidenceWarningThreshold() : response.confidence())),
+                Map.entry("reason", disabled ? "disabled" : suppressMl ? "maintenance" : ""),
                 Map.entry("signals", response == null || response.signals() == null ? List.of() : response.signals()),
                 Map.entry("recommendedActions", response == null || response.recommendedActions() == null
                         ? List.of()
@@ -490,6 +541,54 @@ public class AnalyticsRecalculationService {
                 Map.entry("explanations", response == null || response.explanations() == null
                         ? List.of()
                         : response.explanations()))));
+        return result;
+    }
+
+    private PredictionResult buildPredictionResult(
+            UUID deviceId,
+            MlInferenceResponse response,
+            Instant now,
+            String inputHash,
+            String predictionStatus,
+            MlResolvedDeploymentPolicyResponse policy,
+            boolean shadowPrediction,
+            String fallbackReason) {
+        PredictionResult result = new PredictionResult();
+        result.setId(UUID.randomUUID());
+        result.setDeviceId(deviceId);
+        result.setModelId(policy.modelVersionId());
+        result.setPolicySource(policy.policySource() == null ? null : policy.policySource().name());
+        result.setFeatureSchemaHash("");
+        result.setFallbackReason(fallbackReason);
+        result.setShadowPrediction(shadowPrediction);
+        result.setModelName(response == null ? "ml-unavailable" : response.modelName());
+        result.setModelVersion(response == null ? "unknown" : response.modelVersion());
+        result.setAnomalyScore(response == null ? 0 : response.anomalyScore());
+        result.setDegradationScore(response == null ? 0 : response.degradationScore());
+        result.setConfidence(response == null ? 0 : response.confidence());
+        result.setRiskLevel(response == null ? "" : response.riskLevel());
+        result.setStatus(predictionStatus);
+        result.setInputHash(inputHash);
+        result.setPredictionJson(writeJson(Map.ofEntries(
+                Map.entry("predictionStatus", predictionStatus),
+                Map.entry("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString()),
+                Map.entry("policySource", policy.policySource() == null ? "" : policy.policySource().name()),
+                Map.entry("policyId", policy.policyId() == null ? "" : policy.policyId().toString()),
+                Map.entry("deploymentMode", policy.mode().name()),
+                Map.entry("fallbackReason", fallbackReason),
+                Map.entry("shadowPrediction", shadowPrediction),
+                Map.entry("modelName", response == null ? "ml-unavailable" : response.modelName()),
+                Map.entry("modelVersion", response == null ? "unknown" : response.modelVersion()),
+                Map.entry("modelType", response == null || response.modelType() == null ? "" : response.modelType()),
+                Map.entry("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus()),
+                Map.entry("anomalyScore", response == null ? 0 : response.anomalyScore()),
+                Map.entry("degradationScore", response == null ? 0 : response.degradationScore()),
+                Map.entry("riskLevel", response == null ? "" : response.riskLevel()),
+                Map.entry("confidence", response == null ? 0 : response.confidence()),
+                Map.entry("signals", response == null || response.signals() == null ? List.of() : response.signals()),
+                Map.entry("recommendedActions", response == null || response.recommendedActions() == null ? List.of() : response.recommendedActions()),
+                Map.entry("inputHash", inputHash),
+                Map.entry("explanations", response == null || response.explanations() == null ? List.of() : response.explanations()))));
         result.setCreatedAt(now);
         return result;
     }
@@ -557,6 +656,8 @@ public class AnalyticsRecalculationService {
                 prediction.getDeviceId(),
                 prediction.getModelName() == null ? string(values.get("modelName")) : prediction.getModelName(),
                 prediction.getModelVersion() == null ? string(values.get("modelVersion")) : prediction.getModelVersion(),
+                string(values.get("modelType")),
+                string(values.get("modelStatus")),
                 prediction.getStatus() == null ? string(values.get("predictionStatus")) : prediction.getStatus(),
                 prediction.getAnomalyScore() == null ? number(values.get("anomalyScore")) : prediction.getAnomalyScore(),
                 prediction.getDegradationScore() == null ? number(values.get("degradationScore")) : prediction.getDegradationScore(),

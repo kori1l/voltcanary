@@ -62,6 +62,59 @@ public class AnalyticsOperationalMetrics {
                         where locked_until > ?
                         """, Timestamp.from(Instant.now())))
                 .register(meterRegistry);
+        for (String status : new String[] {"READY", "FAILED", "VALIDATING", "ARCHIVED"}) {
+            Gauge.builder("analytics.ml.dataset.versions", this, ignored -> count("""
+                            select count(*)
+                            from ml_dataset_versions
+                            where status = ?
+                            """, status))
+                    .tag("status", status)
+                    .register(meterRegistry);
+        }
+        Gauge.builder("analytics.ml.dataset.validation.rejected.rows", this, ignored -> count("""
+                        select coalesce(sum(rejected_rows), 0)
+                        from ml_validation_reports
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.feature.snapshots.generated", this, ignored -> count("""
+                        select count(*)
+                        from ml_feature_snapshots
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.feature.snapshots.rejected.rows", this, ignored -> count("""
+                        select coalesce(sum(rejected_row_count), 0)
+                        from ml_feature_snapshots
+                        """))
+                .register(meterRegistry);
+        for (String status : new String[] {"QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"}) {
+            Gauge.builder("analytics.ml.training.runs", this, ignored -> count("""
+                            select count(*)
+                            from ml_training_runs
+                            where status = ?
+                            """, status))
+                    .tag("status", status)
+                    .register(meterRegistry);
+        }
+        Gauge.builder("analytics.ml.inference.fallback.rate", this, ignored -> ratio("""
+                        select count(*)
+                        from prediction_results
+                        where shadow_prediction = false
+                          and fallback_reason is not null
+                          and fallback_reason <> ''
+                        """, """
+                        select count(*)
+                        from prediction_results
+                        where shadow_prediction = false
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.drift.active.feature_schema_hashes", this, ignored -> count("""
+                        select count(distinct feature_schema_hash)
+                        from ml_model_versions
+                        where status = 'ACTIVE'
+                          and feature_schema_hash is not null
+                          and feature_schema_hash <> ''
+                        """))
+                .register(meterRegistry);
     }
 
     private double count(String sql, Object... args) {
@@ -86,5 +139,13 @@ public class AnalyticsOperationalMetrics {
         } catch (RuntimeException ignored) {
             return 0;
         }
+    }
+
+    private double ratio(String numeratorSql, String denominatorSql) {
+        double denominator = count(denominatorSql);
+        if (denominator <= 0) {
+            return 0;
+        }
+        return count(numeratorSql) / denominator;
     }
 }

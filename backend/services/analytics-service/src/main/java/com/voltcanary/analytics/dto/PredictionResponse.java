@@ -9,6 +9,8 @@ public record PredictionResponse(
         UUID deviceId,
         String modelName,
         String modelVersion,
+        String modelType,
+        String modelStatus,
         String predictionStatus,
         double anomalyScore,
         double degradationScore,

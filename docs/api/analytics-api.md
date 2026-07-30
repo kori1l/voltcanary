@@ -80,3 +80,14 @@ GET /internal/maintenance-windows/changes?updatedAfter={instant}&limit={n}
 
 The fetch uses `X-Internal-Service-Token` and is guarded by a scheduler lock so
 analytics instances can scale independently.
+## ML prediction settings
+
+All endpoints are authenticated. `X-Account-Id` is supplied by the gateway; writes require an `ADMIN` or `OWNER` role. Public errors are sanitized and never contain ML-service URLs or stack traces.
+
+- `GET /analytics/ml-settings` reads account defaults; `PUT` updates them.
+- `GET /analytics/ml-settings/devices/{deviceId}` returns effective settings and `source` (`INHERITED` or `DEVICE_OVERRIDE`).
+- `PUT /analytics/ml-settings/devices/{deviceId}` saves an override; `DELETE` clears it.
+
+The request contains `mlEnabled`, `predictionMode` (`MODEL_ONLY`, `MODEL_OR_BASELINE_HEURISTIC`, or `RULE_BASED_ONLY`), `confidenceWarningThreshold` from `0` to `1`, `maintenanceBehavior` (`SUPPRESS_ML` or `REDUCE_CONFIDENCE`), and `explanationsVisible`. Disabled ML requires `RULE_BASED_ONLY`.
+
+Latest predictions distinguish `MODEL`, `BASELINE_HEURISTIC`, `DISABLED`, `UNAVAILABLE`, `INSUFFICIENT_DATA`, and `SUPPRESSED_MAINTENANCE`. Rule-based analytics continue for disabled or unavailable ML.

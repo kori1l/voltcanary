@@ -11,4 +11,6 @@ public interface PredictionResultRepository extends JpaRepository<PredictionResu
     List<PredictionResult> findTop100ByDeviceIdOrderByCreatedAtDesc(UUID deviceId);
 
     Optional<PredictionResult> findFirstByDeviceIdOrderByCreatedAtDesc(UUID deviceId);
+
+    Optional<PredictionResult> findFirstByDeviceIdAndShadowPredictionFalseOrderByCreatedAtDesc(UUID deviceId);
 }

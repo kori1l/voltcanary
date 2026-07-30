@@ -32,6 +32,11 @@ spec:
           workingDir: /workspace/ml-service
           command: ["/bin/sh", "-c"]
           args: ["pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8090"]
+          envFrom:
+            - configMapRef:
+                name: voltcanary-config
+            - secretRef:
+                name: voltcanary-secrets
           ports:
             - containerPort: 8090
           startupProbe:

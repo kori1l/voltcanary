@@ -1065,3 +1065,12 @@
 - Alert lifecycle, deduplication, reopen, escalation, notification settings и attempts соответствуют documented policy.
 - Логи и метрики позволяют найти проблему по service/path/correlationId.
 - Security edge cases не приводят к cross-tenant access или leakage secrets.
+## ML settings verification
+
+1. Open authenticated `/settings/ml`, save valid account defaults, refresh, and confirm the effective values and `ACCOUNT` source.
+2. Enter a device UUID, confirm `INHERITED`, save an override, then clear it and confirm inheritance returns.
+3. Verify `MODEL` and `BASELINE_HEURISTIC` metadata show model identity, confidence, signals, explanations, actions, and input hash as read-only.
+4. Stop ML-service and recalculate: the page must show `UNAVAILABLE` while the settings form remains usable and rule analytics continue.
+5. Recalculate with too little telemetry and confirm `INSUFFICIENT_DATA`; overlap an `excludeFromMl=true` maintenance window and confirm suppression or reduced confidence according to policy.
+
+Manual gap: browser and simulator end-to-end verification requires the full Docker Compose stack, authenticated seed account, device telemetry, and ML-service lifecycle control.

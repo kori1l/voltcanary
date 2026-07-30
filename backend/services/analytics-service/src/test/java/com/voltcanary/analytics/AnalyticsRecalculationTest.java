@@ -3,16 +3,27 @@ package com.voltcanary.analytics;
 import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.BaselineResponse;
 import com.voltcanary.analytics.dto.FeatureSetResponse;
+import com.voltcanary.analytics.dto.MlSettingsRequest;
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.dto.RecalculateResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
+import com.voltcanary.analytics.domain.MaintenanceMlBehavior;
+import com.voltcanary.analytics.domain.MlDeploymentMode;
+import com.voltcanary.analytics.domain.MlDeploymentPolicy;
+import com.voltcanary.analytics.domain.MlDeploymentScope;
+import com.voltcanary.analytics.domain.MlModelFamily;
+import com.voltcanary.analytics.domain.MlModelStatus;
+import com.voltcanary.analytics.domain.MlModelVersion;
+import com.voltcanary.analytics.domain.PredictionMode;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.repository.AnalyticsJobRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
+import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
+import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.PredictionResultRepository;
 import com.voltcanary.analytics.repository.RecommendationRepository;
 import com.voltcanary.analytics.service.AnalyticsJobService;
@@ -29,6 +40,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -37,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,6 +88,12 @@ class AnalyticsRecalculationTest {
 
     @Autowired
     private PredictionResultRepository predictionResultRepository;
+
+    @Autowired
+    private MlModelVersionRepository modelVersionRepository;
+
+    @Autowired
+    private MlDeploymentPolicyRepository deploymentPolicyRepository;
 
     @Autowired
     private AnalyticsJobService jobService;
@@ -344,6 +365,345 @@ class AnalyticsRecalculationTest {
         assertThat(exclusionsCaptor.getValue())
                 .extracting(MlExcludedInterval::maintenanceWindowId)
                 .containsExactly(maintenanceWindowId);
+    }
+
+    @Test
+    void recalculateSkipsMlWhenRuleBasedOnlyModeIsConfigured() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                false,
+                PredictionMode.RULE_BASED_ONLY,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 120))));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        verify(mlClient, never()).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> assertThat(prediction.getStatus()).isEqualTo("DISABLED"));
+    }
+
+    @Test
+    void recalculateSendsModelOnlyPreferenceWhenBaselineHeuristicIsDisallowed() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_ONLY,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 120))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(new MlInferenceResponse(
+                        deviceId,
+                        "trained-model",
+                        "v2",
+                        "gradient_boosted_tree",
+                        "READY",
+                        "MODEL",
+                        0.2,
+                        0.1,
+                        "LOW",
+                        0.9,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        "model-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        org.mockito.ArgumentCaptor<Map<String, Object>> preferenceCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(mlClient).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                preferenceCaptor.capture());
+        assertThat(preferenceCaptor.getValue())
+                .containsEntry("allowBaselineHeuristic", false)
+                .containsEntry("predictionMode", "MODEL_ONLY");
+    }
+
+    @Test
+    void recalculateRoutesInferenceToActiveDeploymentPolicy() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveModel(accountId, MlModelStatus.ACTIVE);
+        MlDeploymentPolicy policy = savePolicy(accountId, deviceId, model.getId(), MlDeploymentMode.ACTIVE, true);
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(deviceId, "trained-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        org.mockito.ArgumentCaptor<Map<String, Object>> preferenceCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(mlClient).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                preferenceCaptor.capture());
+        assertThat(preferenceCaptor.getValue())
+                .containsEntry("deploymentMode", "ACTIVE")
+                .containsEntry("policySource", "DEVICE")
+                .containsEntry("policyId", policy.getId().toString())
+                .containsEntry("modelVersionId", model.getId().toString());
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getModelId()).isEqualTo(model.getId());
+                    assertThat(prediction.getPolicySource()).isEqualTo("DEVICE");
+                    assertThat(prediction.getFallbackReason()).isBlank();
+                    assertThat(prediction.isShadowPrediction()).isFalse();
+                    assertThat(prediction.getInputHash()).isEqualTo("trained-input-hash");
+                    assertThat(prediction.getPredictionJson()).contains("\"deploymentMode\":\"ACTIVE\"");
+                });
+    }
+
+    @Test
+    void recalculatePersistsShadowPredictionWithoutReplacingActiveRiskScoring() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveModel(accountId, MlModelStatus.ACTIVE);
+        savePolicy(accountId, deviceId, model.getId(), MlDeploymentMode.SHADOW, true);
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(deviceId, "shadow-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        assertThat(predictionResultRepository.findTop100ByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .filteredOn(prediction -> prediction.getModelId().equals(model.getId()))
+                .hasSize(2)
+                .anySatisfy(prediction -> {
+                    assertThat(prediction.isShadowPrediction()).isTrue();
+                    assertThat(prediction.getStatus()).isEqualTo("SHADOW");
+                    assertThat(prediction.getInputHash()).isNotBlank();
+                    assertThat(prediction.getPredictionJson()).contains("\"shadowPrediction\":true");
+                })
+                .anySatisfy(prediction -> {
+                    assertThat(prediction.isShadowPrediction()).isFalse();
+                    assertThat(prediction.getModelName()).isEqualTo("ml-unavailable");
+                    assertThat(prediction.getFallbackReason()).isEqualTo("ML_UNAVAILABLE_OR_BASELINE_FALLBACK");
+                    assertThat(prediction.getPredictionJson()).contains("\"deploymentMode\":\"SHADOW\"");
+                });
+        ResponseEntity<PredictionResponse> latest = restTemplate.getForEntity(
+                "/analytics/devices/{deviceId}/predictions/latest",
+                PredictionResponse.class,
+                deviceId);
+        assertThat(latest.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(latest.getBody()).isNotNull();
+        assertThat(latest.getBody().modelName()).isEqualTo("ml-unavailable");
+    }
+
+    @Test
+    void recalculateSuppressesMlDuringMaintenanceWhenConfigured() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        UUID maintenanceWindowId = UUID.randomUUID();
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.SUPPRESS_ML,
+                true));
+        Instant start = Instant.now();
+        maintenanceWindowProjectionService.project(new MaintenanceWindowChangedEvent(
+                UUID.randomUUID(),
+                "v1",
+                "MAINTENANCE_WINDOW_CREATED",
+                maintenanceWindowId,
+                accountId,
+                deviceId,
+                "Planned work",
+                null,
+                start.minusSeconds(60),
+                start.plusSeconds(600),
+                true,
+                false,
+                true,
+                null,
+                null,
+                1,
+                null,
+                "device-service",
+                UUID.randomUUID(),
+                start.minusSeconds(120)));
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 120))));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        verify(mlClient, never()).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> assertThat(prediction.getStatus()).isEqualTo("SUPPRESSED_MAINTENANCE"));
+    }
+
+    @Test
+    void mlSettingsUpdateRejectsUsersWithoutWriteRole() {
+        HttpHeaders headers = mlSettingsHeaders(UUID.randomUUID());
+        headers.set("X-User-Role", "VIEWER");
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/analytics/ml-settings",
+                HttpMethod.PUT,
+                new HttpEntity<>(new MlSettingsRequest(
+                        true,
+                        PredictionMode.MODEL_ONLY,
+                        0.6,
+                        MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                        true), headers),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody()).doesNotContain("localhost").doesNotContain("Exception");
+    }
+
+    private void saveDeviceMlSettings(UUID accountId, UUID deviceId, MlSettingsRequest request) {
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/analytics/ml-settings/devices/{deviceId}",
+                HttpMethod.PUT,
+                new HttpEntity<>(request, mlSettingsHeaders(accountId)),
+                String.class,
+                deviceId);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    private HttpHeaders mlSettingsHeaders(UUID accountId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Account-Id", accountId.toString());
+        headers.set("X-User-Id", UUID.randomUUID().toString());
+        headers.set("X-User-Role", "ADMIN");
+        return headers;
+    }
+
+    private MlModelVersion saveModel(UUID accountId, MlModelStatus status) {
+        MlModelVersion model = new MlModelVersion();
+        model.setId(UUID.randomUUID());
+        model.setAccountId(accountId);
+        model.setModelKey("account-" + accountId + "-anomaly");
+        model.setVersion(1);
+        model.setFamily(MlModelFamily.ANOMALY_DETECTION);
+        model.setAlgorithm("gradient_boosted_tree");
+        model.setStatus(status);
+        model.setFeatureSchemaHash("feature-schema-hash");
+        model.setArtifactUri("s3://voltcanary-test/model.bin");
+        model.setArtifactHash("artifact-hash");
+        model.setCompatibleDeviceTypesJson("[\"washer\"]");
+        model.setSupportedMetricsJson("[\"activePowerW\"]");
+        model.setEvaluationMetricsJson("{\"auc\":0.93}");
+        model.setApprovedBy(UUID.randomUUID());
+        model.setApprovedAt(Instant.now());
+        model.setCreatedAt(Instant.now());
+        return modelVersionRepository.save(model);
+    }
+
+    private MlDeploymentPolicy savePolicy(
+            UUID accountId,
+            UUID deviceId,
+            UUID modelVersionId,
+            MlDeploymentMode mode,
+            boolean fallbackEnabled) {
+        MlDeploymentPolicy policy = new MlDeploymentPolicy();
+        policy.setId(UUID.randomUUID());
+        policy.setAccountId(accountId);
+        policy.setScope(MlDeploymentScope.DEVICE);
+        policy.setDeviceId(deviceId);
+        policy.setModelVersionId(modelVersionId);
+        policy.setMode(mode);
+        policy.setFallbackEnabled(fallbackEnabled);
+        policy.setUpdatedBy(UUID.randomUUID());
+        policy.setUpdatedAt(Instant.now());
+        return deploymentPolicyRepository.save(policy);
+    }
+
+    private MlInferenceResponse modelResponse(UUID deviceId, String inputHash) {
+        return new MlInferenceResponse(
+                deviceId,
+                "trained-model",
+                "v2",
+                "gradient_boosted_tree",
+                "READY",
+                "MODEL",
+                0.2,
+                0.1,
+                "LOW",
+                0.9,
+                List.of(Map.of("metric", "activePowerW", "score", 0.2, "severity", "LOW")),
+                List.of("Model explanation"),
+                List.of("Continue monitoring."),
+                inputHash);
     }
 
     private TelemetryChartResponse.Point point(Instant timestamp, double value) {

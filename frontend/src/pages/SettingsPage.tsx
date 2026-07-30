@@ -178,6 +178,30 @@ export function SettingsPage() {
             </button>
           </form>
         </section>
+
+        <section className="panel">
+          <div className="section-header">
+            <div>
+              <h2>Machine Learning</h2>
+              <p>Datasets, imports, labels, training runs, model registry, deployment policies, and monitoring.</p>
+            </div>
+          </div>
+          <div className="detail-list">
+            <div>
+              <dt>Workspace</dt>
+              <dd>Production ML module</dd>
+            </div>
+            <div>
+              <dt>Sections</dt>
+              <dd>Settings, Datasets, Import, Labels, Training, Models, Policies, Monitoring</dd>
+            </div>
+          </div>
+          <div className="action-row action-row-start">
+            <Link className="primary-button button-link" to="/settings/ml">
+              Open ML settings
+            </Link>
+          </div>
+        </section>
       </section>
 
       <section className="panel notification-channel-panel">

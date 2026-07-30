@@ -41,6 +41,21 @@ public class PredictionResult {
     @Column(name = "input_hash")
     private String inputHash;
 
+    @Column(name = "model_id")
+    private UUID modelId;
+
+    @Column(name = "policy_source")
+    private String policySource;
+
+    @Column(name = "feature_schema_hash")
+    private String featureSchemaHash;
+
+    @Column(name = "fallback_reason")
+    private String fallbackReason;
+
+    @Column(name = "shadow_prediction", nullable = false)
+    private boolean shadowPrediction;
+
     @Column(name = "prediction_json", nullable = false, columnDefinition = "text")
     private String predictionJson;
 
@@ -125,6 +140,46 @@ public class PredictionResult {
 
     public void setInputHash(String inputHash) {
         this.inputHash = inputHash;
+    }
+
+    public UUID getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(UUID modelId) {
+        this.modelId = modelId;
+    }
+
+    public String getPolicySource() {
+        return policySource;
+    }
+
+    public void setPolicySource(String policySource) {
+        this.policySource = policySource;
+    }
+
+    public String getFeatureSchemaHash() {
+        return featureSchemaHash;
+    }
+
+    public void setFeatureSchemaHash(String featureSchemaHash) {
+        this.featureSchemaHash = featureSchemaHash;
+    }
+
+    public String getFallbackReason() {
+        return fallbackReason;
+    }
+
+    public void setFallbackReason(String fallbackReason) {
+        this.fallbackReason = fallbackReason;
+    }
+
+    public boolean isShadowPrediction() {
+        return shadowPrediction;
+    }
+
+    public void setShadowPrediction(boolean shadowPrediction) {
+        this.shadowPrediction = shadowPrediction;
     }
 
     public String getPredictionJson() {

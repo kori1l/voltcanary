@@ -1,9 +1,8 @@
 from app.schemas.model import ModelSummary
-from app.services.model_registry_service import ModelRegistryService
+from app.services.model_registry_service import model_registry_service
 from fastapi import APIRouter
 
 router = APIRouter(tags=["models"])
-model_registry_service = ModelRegistryService()
 
 
 @router.get("/models")

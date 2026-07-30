@@ -1,0 +1,87 @@
+<div id="voltcanary-architecture">
+  <style>
+    #voltcanary-architecture{color:var(--foreground);font-family:inherit;display:grid;gap:18px}
+    #voltcanary-architecture .tabs{display:flex;gap:8px;flex-wrap:wrap}
+    #voltcanary-architecture .view{display:none;gap:16px}
+    #voltcanary-architecture .view.active{display:grid}
+    #voltcanary-architecture .map{position:relative;min-height:500px;display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:12px;align-items:center}
+    #voltcanary-architecture .node{padding:12px;text-align:center;background:color-mix(in srgb,var(--viz-series-1) 10%,transparent);border-radius:10px;min-height:54px;display:grid;place-items:center;cursor:pointer}
+    #voltcanary-architecture .node[data-kind="data"]{background:color-mix(in srgb,var(--viz-series-2) 13%,transparent)}
+    #voltcanary-architecture .node[data-kind="edge"]{background:color-mix(in srgb,var(--viz-series-3) 13%,transparent)}
+    #voltcanary-architecture .node.selected{outline:2px solid var(--primary)}
+    #voltcanary-architecture .arrow{text-align:center;color:var(--muted-foreground)}
+    #voltcanary-architecture .detail{min-height:72px;padding:14px;border-left:3px solid var(--viz-series-1)}
+    #voltcanary-architecture table{width:100%;border-collapse:collapse}
+    #voltcanary-architecture th,#voltcanary-architecture td{text-align:left;padding:9px;border-bottom:1px solid var(--border);vertical-align:top}
+    #voltcanary-architecture th{font-weight:500}
+    #voltcanary-architecture .flow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:center}
+    #voltcanary-architecture .step{padding:12px 8px;text-align:center;background:color-mix(in srgb,var(--viz-series-1) 9%,transparent);border-radius:8px}
+    #voltcanary-architecture .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted-foreground)}
+    #voltcanary-architecture .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;background:var(--viz-series-1)}
+    #voltcanary-architecture .dot.data{background:var(--viz-series-2)}
+    #voltcanary-architecture .dot.edge{background:var(--viz-series-3)}
+    @media(max-width:700px){#voltcanary-architecture .map{grid-template-columns:1fr 24px 1fr;min-height:auto}#voltcanary-architecture .flow{grid-template-columns:1fr}#voltcanary-architecture .flow .arrow{transform:rotate(90deg)}}
+  </style>
+  <div class="tabs" role="tablist" aria-label="Представление архитектуры">
+    <button class="btn btn-primary" role="tab" aria-selected="true" data-view="map">Карта системы</button>
+    <button class="btn" role="tab" aria-selected="false" data-view="flow">Поток телеметрии</button>
+    <button class="btn" role="tab" aria-selected="false" data-view="matrix">Связи сервисов</button>
+    <button class="btn" role="tab" aria-selected="false" data-view="tradeoffs">Решения</button>
+  </div>
+
+  <section class="view active" data-panel="map">
+    <div class="legend"><span><i class="dot"></i>сервис</span><span><i class="dot edge"></i>входная граница</span><span><i class="dot data"></i>данные/брокер</span></div>
+    <div class="map" aria-label="Карта компонентов VoltCanary">
+      <button class="node" data-id="frontend">React frontend</button><span class="arrow">→</span><button class="node" data-kind="edge" data-id="gateway">API Gateway</button><span class="arrow">→</span><button class="node" data-id="identity">Identity</button>
+      <button class="node" data-id="simulator">Simulator</button><span class="arrow">→</span><button class="node" data-id="ingestion">Ingestion</button><span class="arrow">→</span><button class="node" data-kind="data" data-id="redpanda">Redpanda</button>
+      <button class="node" data-id="device">Device</button><span class="arrow">↔</span><button class="node" data-id="telemetry">Telemetry</button><span class="arrow">→</span><button class="node" data-kind="data" data-id="timescale">TimescaleDB</button>
+      <button class="node" data-id="ml">ML / FastAPI</button><span class="arrow">↔</span><button class="node" data-id="analytics">Analytics</button><span class="arrow">→</span><button class="node" data-id="alert">Alert</button>
+      <button class="node" data-id="ai">AI Agent</button><span class="arrow">→</span><button class="node" data-id="tools">Device · Alert · Simulator</button><span class="arrow">↔</span><button class="node" data-kind="data" data-id="postgres">PostgreSQL по сервисам</button>
+    </div>
+    <div class="detail" aria-live="polite"><strong>Выберите компонент</strong><div class="text-muted">Появится его роль и ключевые связи.</div></div>
+  </section>
+
+  <section class="view" data-panel="flow">
+    <div class="flow" aria-label="Поток обработки телеметрии">
+      <div class="step"><strong>1. Источник</strong><br><span class="text-muted">REST, MQTT, CSV, Simulator</span></div><span class="arrow">→</span>
+      <div class="step"><strong>2. Ingestion</strong><br><span class="text-muted">auth, limits, idempotency</span></div><span class="arrow">→</span>
+      <div class="step"><strong>3. raw.v1</strong><br><span class="text-muted">key=deviceId</span></div><span class="arrow">→</span>
+      <div class="step"><strong>4. Telemetry</strong><br><span class="text-muted">validation + Timescale + outbox</span></div><span class="arrow">→</span>
+      <div class="step"><strong>5. Analytics</strong><br><span class="text-muted">baseline, ML, risk</span></div><span class="arrow">→</span>
+      <div class="step"><strong>6. Alert</strong><br><span class="text-muted">dedup, maintenance, delivery</span></div>
+    </div>
+    <div class="card"><strong>Модель согласованности</strong><p>Приём телеметрии завершается раньше аналитики. Kafka доставляет at-least-once; inbox, уникальные ключи и outbox делают повтор безопасным. UI может кратковременно видеть reading раньше risk score — это ожидаемая eventual consistency.</p></div>
+  </section>
+
+  <section class="view" data-panel="matrix">
+    <table><thead><tr><th>Откуда</th><th>Куда</th><th>Механизм</th><th>Назначение</th></tr></thead><tbody>
+      <tr><td>Frontend</td><td>Gateway</td><td>HTTP/JWT</td><td>Все пользовательские команды и запросы</td></tr>
+      <tr><td>Ingestion</td><td>Telemetry</td><td><code>telemetry.raw.v1</code></td><td>Развязать быстрый приём и хранение</td></tr>
+      <tr><td>Telemetry</td><td>Analytics</td><td><code>telemetry.validated.v1</code></td><td>Анализировать только сохранённые данные</td></tr>
+      <tr><td>Analytics</td><td>ML</td><td>HTTP</td><td>Синхронный inference</td></tr>
+      <tr><td>Analytics</td><td>Alert</td><td>anomaly/risk topics</td><td>Создание и дедупликация alerts</td></tr>
+      <tr><td>Device</td><td>Analytics, Alert</td><td><code>maintenance-window.changed.v1</code></td><td>Локальные read models без lookup в hot path</td></tr>
+      <tr><td>AI Agent</td><td>Device, Alert, Simulator</td><td>HTTP tools</td><td>Раздельные plan и execute</td></tr>
+    </tbody></table>
+  </section>
+
+  <section class="view" data-panel="tradeoffs">
+    <table><thead><tr><th>Решение</th><th>Что даёт</th><th>Цена</th></tr></thead><tbody>
+      <tr><td>Микросервисы</td><td>Независимое масштабирование telemetry и control plane</td><td>Сеть, deployment units, сложность эксплуатации</td></tr>
+      <tr><td>Kafka/Redpanda</td><td>Буфер bursts, replay, отказоизоляция</td><td>Eventual consistency, DLQ и schema evolution</td></tr>
+      <tr><td>Outbox/inbox</td><td>Надёжность без распределённой транзакции</td><td>Фоновые задержки и cleanup таблиц</td></tr>
+      <tr><td>БД по сервисам</td><td>Ясное владение и локальные транзакции</td><td>Проекции вместо cross-service JOIN</td></tr>
+      <tr><td>TimescaleDB</td><td>SQL и time-series оптимизации</td><td>Ещё одна специализация хранения</td></tr>
+      <tr><td>Python ML отдельно</td><td>ML-экосистема и независимые эксперименты</td><td>Сетевой hop и два toolchain</td></tr>
+      <tr><td>AI plan/execute</td><td>Контроль действий и human-in-the-loop</td><td>Дополнительный шаг UX и обязательный audit</td></tr>
+    </tbody></table>
+  </section>
+  <script>
+    (()=>{
+      const root=document.getElementById('voltcanary-architecture');
+      const info={frontend:['React frontend','Кабинет устройств, telemetry, analytics, alerts, maintenance и AI-agent.'],gateway:['API Gateway','JWT, CORS, correlation ID, request limits, rate limit и маршрутизация.'],identity:['Identity','Пользователи, роли, access/refresh JWT, sessions и lifecycle аккаунта.'],simulator:['Simulator','YAML-профили и генерация telemetry через HTTP или MQTT.'],ingestion:['Ingestion','Проверяет source, timestamp и размеры, применяет limits/idempotency и публикует raw.v1.'],redpanda:['Redpanda / Kafka','At-least-once события, порядок внутри deviceId, replay и DLQ.'],device:['Device','Источник истины для tenancy, inventory, sources, tokens и maintenance.'],telemetry:['Telemetry','Валидирует, сохраняет временные ряды и публикует validated.v1 через outbox.'],timescale:['TimescaleDB','Отдельное хранилище measurements и качества данных.'],ml:['ML / FastAPI','Inference, список моделей и базовые training runs; registry пока in-process.'],analytics:['Analytics','Baseline, features, anomalies, risk, recommendations и maintenance projection.'],alert:['Alert','Правила, dedup, lifecycle, maintenance suppression и доставка уведомлений.'],ai:['AI Agent','Строит plan и отдельно выполняет разрешённые tools.'],tools:['Tool surface','AI-agent обращается только к Device, Alert и Simulator.'],postgres:['PostgreSQL по сервисам','Каждый домен владеет своей схемой; прямых межсервисных JOIN нет.']};
+      root.querySelectorAll('[role="tab"]').forEach(btn=>btn.addEventListener('click',()=>{root.querySelectorAll('[role="tab"]').forEach(x=>{x.classList.remove('btn-primary');x.setAttribute('aria-selected','false')});btn.classList.add('btn-primary');btn.setAttribute('aria-selected','true');root.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.dataset.panel===btn.dataset.view))}));
+      root.querySelectorAll('.node').forEach(node=>node.addEventListener('click',()=>{root.querySelectorAll('.node').forEach(n=>n.classList.remove('selected'));node.classList.add('selected');const d=info[node.dataset.id];root.querySelector('.detail').innerHTML='<strong>'+d[0]+'</strong><div class="text-muted">'+d[1]+'</div>'}));
+    })();
+  </script>
+</div>

@@ -4,16 +4,19 @@ import math
 from typing import Any
 
 from app.schemas.inference import InferenceRequest, InferenceResponse, PredictionSignal
-
-
-MODEL_NAME = "voltcanary-baseline-heuristic"
-MODEL_VERSION = "baseline-heuristic-v1"
-MODEL_TYPE = "baseline_heuristic"
-MODEL_STATUS = "READY_HEURISTIC"
+from app.services.artifact_store import ArtifactStore
+from app.services.model_registry_service import MODEL_NAME, MODEL_STATUS, MODEL_TYPE, MODEL_VERSION, model_registry_service
 
 
 class InferenceService:
+    def __init__(self, artifact_store: ArtifactStore | None = None) -> None:
+        self.artifact_store = artifact_store or ArtifactStore()
+
     def predict(self, request: InferenceRequest) -> InferenceResponse:
+        routed_response = self._predict_with_trained_model(request)
+        if routed_response is not None:
+            return routed_response
+
         metric_values = self._numeric_metrics(request.metrics)
         input_hash = self._input_hash(request)
         if not metric_values:
@@ -185,3 +188,81 @@ class InferenceService:
         payload = request.model_dump(mode="json", by_alias=True)
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _predict_with_trained_model(self, request: InferenceRequest) -> InferenceResponse | None:
+        preference = request.model_preference
+        model = model_registry_service.get_model(preference.model_name if preference else None)
+        if model is None:
+            return None
+
+        metric_values = self._numeric_metrics(request.metrics)
+        if not metric_values:
+            return None
+
+        artifact = self.artifact_store.load_json(model["artifactUri"])
+        scores = []
+        signals: list[PredictionSignal] = []
+        for metric, value in metric_values.items():
+            stats = artifact.get("metricStats", {}).get(metric)
+            if stats is None:
+                continue
+            spread = stats["stddev"] or max((stats["max"] - stats["min"]) / 4.0, 1.0)
+            score = min(1.0, abs(value - stats["mean"]) / spread / 4.0)
+            scores.append(score)
+            if score >= 0.15:
+                signals.append(
+                    PredictionSignal(
+                        metric=metric,
+                        score=round(score, 4),
+                        severity=self._risk_level(score),
+                        explanation=f"{metric}={value:g} was scored against trained model {model['version']}.",
+                    )
+                )
+
+        if not scores:
+            if preference and not preference.allow_baseline_heuristic:
+                return InferenceResponse(
+                    deviceId=request.device_id,
+                    modelName=model["name"],
+                    modelVersion=model["version"],
+                    modelType=model["modelType"],
+                    modelStatus=model["status"],
+                    predictionStatus="MODEL_INCOMPATIBLE",
+                    anomalyScore=0.0,
+                    degradationScore=0.0,
+                    riskLevel="LOW",
+                    confidence=0.2,
+                    signals=[],
+                    explanations=["Selected trained model has no compatible metric statistics for this request."],
+                    recommendedActions=["Enable baseline fallback or select a compatible trained model."],
+                    inputHash=self._input_hash(request),
+                )
+            return None
+
+        anomaly_score = min(1.0, max(scores))
+        risk_level = self._risk_level(anomaly_score)
+        if not signals:
+            signals.append(
+                PredictionSignal(
+                    metric="telemetry",
+                    score=round(anomaly_score, 4),
+                    severity=risk_level,
+                    explanation=f"Telemetry matched trained model {model['version']} within expected range.",
+                )
+            )
+        return InferenceResponse(
+            deviceId=request.device_id,
+            modelName=model["name"],
+            modelVersion=model["version"],
+            modelType=model["modelType"],
+            modelStatus=model["status"],
+            predictionStatus="TRAINED_MODEL",
+            anomalyScore=round(anomaly_score, 4),
+            degradationScore=round(anomaly_score * 0.75, 4),
+            riskLevel=risk_level,
+            confidence=round(min(0.95, 0.7 + 0.04 * len(scores)), 4),
+            signals=signals,
+            explanations=[signal.explanation for signal in signals],
+            recommendedActions=self._recommended_actions(risk_level, signals),
+            inputHash=self._input_hash(request),
+        )

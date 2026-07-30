@@ -62,6 +62,67 @@ public class AnalyticsAccessService {
         }
     }
 
+    public UUID accountIdForUser(String userId, String correlationId) {
+        UUID parsedUserId = parseUserId(userId);
+        try {
+            AccountLifecycleResponse response = restClient.get()
+                    .uri("/internal/accounts/users/{userId}/lifecycle", parsedUserId)
+                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                    .header("X-Internal-Service-Token", internalServiceToken)
+                    .retrieve()
+                    .body(AccountLifecycleResponse.class);
+            if (response == null || response.accountId() == null) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account access denied");
+            }
+            return response.accountId();
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.warn(
+                    "analyticsAccountLookupFailed userId={} reason={}",
+                    userId,
+                    exception.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Account authorization unavailable");
+        }
+    }
+
+    public UUID accountIdForDevice(UUID deviceId, String correlationId) {
+        try {
+            DeviceOwnerResponse response = restClient.get()
+                    .uri("/internal/devices/{deviceId}/owner", deviceId)
+                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                    .header("X-Internal-Service-Token", internalServiceToken)
+                    .retrieve()
+                    .body(DeviceOwnerResponse.class);
+            if (response == null || response.accountId() == null) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
+            }
+            return response.accountId();
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.warn(
+                    "analyticsDeviceOwnerLookupFailed deviceId={} reason={}",
+                    deviceId,
+                    exception.getClass().getSimpleName());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device ownership unavailable");
+        }
+    }
+
+    private UUID parseUserId(String userId) {
+        try {
+            return UUID.fromString(userId);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+        }
+    }
+
     private record DeviceAccessResponse(boolean allowed) {
+    }
+
+    private record DeviceOwnerResponse(UUID deviceId, UUID accountId) {
+    }
+
+    private record AccountLifecycleResponse(UUID userId, UUID accountId, String status) {
     }
 }

@@ -109,6 +109,6 @@ public class InternalController {
         internalServiceAuth.require(internalToken);
         Account account = accountService.findByUserId(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
-        return new AccountLifecycleStatusResponse(account.getUserId(), account.getStatus().name());
+        return new AccountLifecycleStatusResponse(account.getUserId(), account.getId(), account.getStatus().name());
     }
 }

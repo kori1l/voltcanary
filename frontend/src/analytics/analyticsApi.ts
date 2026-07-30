@@ -42,11 +42,18 @@ export interface RecommendationResponse {
 
 export interface PredictionResponse {
   deviceId: string;
+  modelName: string;
   modelVersion: string;
+  modelType?: string;
+  modelStatus?: string;
+  predictionStatus: string;
   anomalyScore: number;
   degradationScore: number;
   confidence: number;
+  inputHash: string;
+  signals: Array<Record<string, unknown>>;
   explanations: string[];
+  recommendedActions: string[];
   createdAt: string;
 }
 

@@ -10,6 +10,7 @@ const userNavigation = [
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/settings", label: "Settings" },
+  { to: "/settings/ml", label: "ML Settings" },
 ];
 
 const adminNavigation = [
@@ -21,6 +22,7 @@ const adminNavigation = [
   { to: "/ai-agent/settings", label: "AI Settings" },
   { to: "/account", label: "Admin" },
   { to: "/settings", label: "Settings" },
+  { to: "/settings/ml", label: "ML Settings" },
 ];
 
 export function AppLayout() {
