@@ -36,6 +36,14 @@ public class MlLabel {
     private MlLabelSource source;
     @Column(name = "reason", columnDefinition = "text")
     private String reason;
+    @Column(name = "horizon_days")
+    private Integer horizonDays;
+    @Column(name = "generation_version")
+    private String generationVersion;
+    @Column(name = "source_outcome_ids_json", columnDefinition = "text")
+    private String sourceOutcomeIdsJson;
+    @Column(name = "lineage_hash")
+    private String lineageHash;
     @Column(name = "created_by")
     private UUID createdBy;
     @Column(name = "created_at", nullable = false)
@@ -65,6 +73,14 @@ public class MlLabel {
     public void setSource(MlLabelSource source) { this.source = source; }
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }
+    public Integer getHorizonDays() { return horizonDays; }
+    public void setHorizonDays(Integer horizonDays) { this.horizonDays = horizonDays; }
+    public String getGenerationVersion() { return generationVersion; }
+    public void setGenerationVersion(String generationVersion) { this.generationVersion = generationVersion; }
+    public String getSourceOutcomeIdsJson() { return sourceOutcomeIdsJson; }
+    public void setSourceOutcomeIdsJson(String sourceOutcomeIdsJson) { this.sourceOutcomeIdsJson = sourceOutcomeIdsJson; }
+    public String getLineageHash() { return lineageHash; }
+    public void setLineageHash(String lineageHash) { this.lineageHash = lineageHash; }
     public UUID getCreatedBy() { return createdBy; }
     public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
     public Instant getCreatedAt() { return createdAt; }

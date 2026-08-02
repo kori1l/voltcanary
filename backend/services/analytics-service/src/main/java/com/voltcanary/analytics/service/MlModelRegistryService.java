@@ -69,6 +69,7 @@ public class MlModelRegistryService {
         if (model.getStatus() != MlModelStatus.CANDIDATE && model.getStatus() != MlModelStatus.REJECTED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only candidate or rejected models can be approved");
         }
+        verifyArtifactMetadata(model);
         model.setStatus(MlModelStatus.APPROVED);
         model.setApprovedBy(actorId);
         model.setApprovedAt(Instant.now());
@@ -282,7 +283,9 @@ public class MlModelRegistryService {
         model.setStatus(status);
         model.setFeatureSchemaHash("sha256:demo-" + modelKeySuffix);
         model.setArtifactUri("artifact://demo/" + modelKeySuffix + "/model.json");
+        model.setArtifactManifestUri("artifact://demo/" + modelKeySuffix + "/manifest.json");
         model.setArtifactHash("sha256:demo-artifact-" + modelKeySuffix);
+        model.setArtifactSizeBytes((long) writeJson(evaluationMetrics).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
         model.setCompatibleDeviceTypesJson(writeJson(compatibleDeviceTypes));
         model.setSupportedMetricsJson(writeJson(supportedMetrics));
         model.setEvaluationMetricsJson(writeJson(evaluationMetrics));
@@ -336,6 +339,21 @@ public class MlModelRegistryService {
         return value == null ? "" : value;
     }
 
+    private void verifyArtifactMetadata(MlModelVersion model) {
+        if (model.getArtifactUri() == null || model.getArtifactUri().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact URI is required before approval");
+        }
+        if (model.getArtifactManifestUri() == null || model.getArtifactManifestUri().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact manifest URI is required before approval");
+        }
+        if (model.getArtifactHash() == null || !model.getArtifactHash().startsWith("sha256:")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact hash must be a sha256 value before approval");
+        }
+        if (model.getArtifactSizeBytes() == null || model.getArtifactSizeBytes() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact size must be recorded before approval");
+        }
+    }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -357,7 +375,9 @@ public class MlModelRegistryService {
                 model.getFeatureSnapshotId(),
                 model.getFeatureSchemaHash(),
                 model.getArtifactUri(),
+                model.getArtifactManifestUri(),
                 model.getArtifactHash(),
+                model.getArtifactSizeBytes(),
                 model.getCompatibleDeviceTypesJson(),
                 model.getSupportedMetricsJson(),
                 model.getEvaluationMetricsJson(),

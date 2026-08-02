@@ -7,12 +7,15 @@ import com.voltcanary.analytics.dto.MlDatasetSummaryDto;
 import com.voltcanary.analytics.dto.MlExternalImportResponse;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotRequest;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotResponse;
+import com.voltcanary.analytics.dto.MlHorizonLabelGenerationRequest;
+import com.voltcanary.analytics.dto.MlHorizonLabelGenerationResponse;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlDatasetService;
 import com.voltcanary.analytics.service.MlExternalDatasetImportService;
 import com.voltcanary.analytics.service.MlFeaturePipelineService;
+import com.voltcanary.analytics.service.MlHorizonLabelGenerationService;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
@@ -37,6 +40,7 @@ public class MlDatasetController {
     private final MlDatasetService service;
     private final MlExternalDatasetImportService importService;
     private final MlFeaturePipelineService featurePipelineService;
+    private final MlHorizonLabelGenerationService horizonLabelGenerationService;
     private final AnalyticsAccessService accessService;
     private final ObjectMapper objectMapper;
 
@@ -44,11 +48,13 @@ public class MlDatasetController {
             MlDatasetService service,
             MlExternalDatasetImportService importService,
             MlFeaturePipelineService featurePipelineService,
+            MlHorizonLabelGenerationService horizonLabelGenerationService,
             AnalyticsAccessService accessService,
             ObjectMapper objectMapper) {
         this.service = service;
         this.importService = importService;
         this.featurePipelineService = featurePipelineService;
+        this.horizonLabelGenerationService = horizonLabelGenerationService;
         this.accessService = accessService;
         this.objectMapper = objectMapper;
     }
@@ -140,6 +146,18 @@ public class MlDatasetController {
         UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         parseUserId(userId);
         return featurePipelineService.generate(resolvedAccountId, request);
+    }
+
+    @PostMapping("/horizon-labels")
+    public MlHorizonLabelGenerationResponse generateHorizonLabels(
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @Valid @RequestBody MlHorizonLabelGenerationRequest request) {
+        requireWrite(role);
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return horizonLabelGenerationService.generate(resolvedAccountId, parseUserId(userId), request);
     }
 
     private void requireWrite(String role) {

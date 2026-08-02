@@ -7,6 +7,8 @@ import java.util.UUID;
 
 public record PredictionResponse(
         UUID deviceId,
+        String modelVersionId,
+        String modelFamily,
         String modelName,
         String modelVersion,
         String modelType,
@@ -14,8 +16,14 @@ public record PredictionResponse(
         String predictionStatus,
         double anomalyScore,
         double degradationScore,
+        Double failureRiskScore,
+        Integer failureHorizonDays,
+        String failureRiskBand,
         double confidence,
         String inputHash,
+        List<Map<String, Object>> riskDrivers,
+        Double labelCoverage,
+        Map<String, Object> trainingDataWindow,
         List<Map<String, Object>> signals,
         List<String> explanations,
         List<String> recommendedActions,

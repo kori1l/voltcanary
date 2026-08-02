@@ -138,7 +138,11 @@ public class MlLabelService {
                 label.getSource(),
                 label.getCreatedBy(),
                 label.getCreatedAt(),
-                label.getReason());
+                label.getReason(),
+                label.getHorizonDays(),
+                label.getGenerationVersion(),
+                label.getSourceOutcomeIdsJson(),
+                label.getLineageHash());
     }
 
     private String blankToNull(String value) {

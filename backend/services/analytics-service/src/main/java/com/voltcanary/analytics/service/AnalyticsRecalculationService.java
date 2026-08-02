@@ -18,6 +18,7 @@ import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
+import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.ml.MlClient;
@@ -45,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -265,6 +267,7 @@ public class AnalyticsRecalculationService {
                         windowStart,
                         windowEnd,
                         inputHash,
+                        accountId,
                         mlSettings,
                         policy));
         List<Recommendation> generatedRecommendations = new ArrayList<>(
@@ -413,6 +416,7 @@ public class AnalyticsRecalculationService {
             Instant windowStart,
             Instant windowEnd,
             String inputHash,
+            UUID accountId,
             com.voltcanary.analytics.dto.MlSettingsResponse settings,
             MlResolvedDeploymentPolicyResponse policy) {
         String metric = chart == null ? "" : chart.metric();
@@ -458,6 +462,18 @@ public class AnalyticsRecalculationService {
         modelPreference.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
         modelPreference.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
         modelPreference.put("modelVersionId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
+        if (accountId != null && policy.modelVersionId() != null) {
+            MlModelVersionDto model = mlModelRegistryService.getModel(accountId, policy.modelVersionId());
+            modelPreference.put("requiredFeatureSchemaHash", model.featureSchemaHash() == null ? "" : model.featureSchemaHash());
+            modelPreference.put("modelFamily", model.family() == null ? "" : model.family().name());
+            modelPreference.put("modelVersion", model.version());
+            modelPreference.put("modelStatus", model.status() == null ? "" : model.status().name());
+            modelPreference.put("modelType", model.algorithm() == null ? "" : model.algorithm());
+            modelPreference.put("artifactUri", model.artifactUri() == null ? "" : model.artifactUri());
+            modelPreference.put("manifestUri", model.artifactManifestUri() == null ? "" : model.artifactManifestUri());
+            modelPreference.put("artifactHash", model.artifactHash() == null ? "" : model.artifactHash());
+            modelPreference.put("artifactSizeBytes", model.artifactSizeBytes() == null ? 0L : model.artifactSizeBytes());
+        }
         boolean maintenanceOverlap = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl);
         boolean disabled = !settings.mlEnabled() || settings.predictionMode() == com.voltcanary.analytics.domain.PredictionMode.RULE_BASED_ONLY;
         boolean suppressMl = disabled || (maintenanceOverlap
@@ -514,33 +530,22 @@ public class AnalyticsRecalculationService {
                 false,
                 fallbackReason);
         result.setStatus(predictionStatus);
-        result.setPredictionJson(writeJson(Map.ofEntries(
-                Map.entry("availabilityStatus", status),
-                Map.entry("predictionStatus", predictionStatus),
-                Map.entry("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString()),
-                Map.entry("policySource", policy.policySource() == null ? "" : policy.policySource().name()),
-                Map.entry("policyId", policy.policyId() == null ? "" : policy.policyId().toString()),
-                Map.entry("deploymentMode", policy.mode().name()),
-                Map.entry("fallbackReason", fallbackReason),
-                Map.entry("shadowPrediction", false),
-                Map.entry("modelName", response == null ? "ml-unavailable" : response.modelName()),
-                Map.entry("modelVersion", response == null ? "unknown" : response.modelVersion()),
-                Map.entry("modelType", response == null || response.modelType() == null ? "" : response.modelType()),
-                Map.entry("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus()),
-                Map.entry("anomalyScore", response == null ? 0 : response.anomalyScore()),
-                Map.entry("degradationScore", response == null ? 0 : response.degradationScore()),
-                Map.entry("riskLevel", response == null ? "" : response.riskLevel()),
-                Map.entry("confidence", response == null ? 0 : (maintenanceOverlap && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.REDUCE_CONFIDENCE ? response.confidence() * settings.confidenceWarningThreshold() : response.confidence())),
-                Map.entry("reason", disabled ? "disabled" : suppressMl ? "maintenance" : ""),
-                Map.entry("signals", response == null || response.signals() == null ? List.of() : response.signals()),
-                Map.entry("recommendedActions", response == null || response.recommendedActions() == null
-                        ? List.of()
-                        : response.recommendedActions()),
-                Map.entry("inputHash", responseInputHash),
-                Map.entry("status", status),
-                Map.entry("explanations", response == null || response.explanations() == null
-                        ? List.of()
-                        : response.explanations()))));
+        Map<String, Object> payload = predictionPayload(
+                response,
+                policy,
+                predictionStatus,
+                fallbackReason,
+                false,
+                responseInputHash);
+        payload.put("availabilityStatus", status);
+        payload.put("confidence", response == null
+                ? 0
+                : (maintenanceOverlap && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.REDUCE_CONFIDENCE
+                        ? response.confidence() * settings.confidenceWarningThreshold()
+                        : response.confidence()));
+        payload.put("reason", disabled ? "disabled" : suppressMl ? "maintenance" : "");
+        payload.put("status", status);
+        result.setPredictionJson(writeJson(payload));
         return result;
     }
 
@@ -569,28 +574,53 @@ public class AnalyticsRecalculationService {
         result.setRiskLevel(response == null ? "" : response.riskLevel());
         result.setStatus(predictionStatus);
         result.setInputHash(inputHash);
-        result.setPredictionJson(writeJson(Map.ofEntries(
-                Map.entry("predictionStatus", predictionStatus),
-                Map.entry("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString()),
-                Map.entry("policySource", policy.policySource() == null ? "" : policy.policySource().name()),
-                Map.entry("policyId", policy.policyId() == null ? "" : policy.policyId().toString()),
-                Map.entry("deploymentMode", policy.mode().name()),
-                Map.entry("fallbackReason", fallbackReason),
-                Map.entry("shadowPrediction", shadowPrediction),
-                Map.entry("modelName", response == null ? "ml-unavailable" : response.modelName()),
-                Map.entry("modelVersion", response == null ? "unknown" : response.modelVersion()),
-                Map.entry("modelType", response == null || response.modelType() == null ? "" : response.modelType()),
-                Map.entry("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus()),
-                Map.entry("anomalyScore", response == null ? 0 : response.anomalyScore()),
-                Map.entry("degradationScore", response == null ? 0 : response.degradationScore()),
-                Map.entry("riskLevel", response == null ? "" : response.riskLevel()),
-                Map.entry("confidence", response == null ? 0 : response.confidence()),
-                Map.entry("signals", response == null || response.signals() == null ? List.of() : response.signals()),
-                Map.entry("recommendedActions", response == null || response.recommendedActions() == null ? List.of() : response.recommendedActions()),
-                Map.entry("inputHash", inputHash),
-                Map.entry("explanations", response == null || response.explanations() == null ? List.of() : response.explanations()))));
+        result.setPredictionJson(writeJson(predictionPayload(
+                response,
+                policy,
+                predictionStatus,
+                fallbackReason,
+                shadowPrediction,
+                inputHash)));
         result.setCreatedAt(now);
         return result;
+    }
+
+    private Map<String, Object> predictionPayload(
+            MlInferenceResponse response,
+            MlResolvedDeploymentPolicyResponse policy,
+            String predictionStatus,
+            String fallbackReason,
+            boolean shadowPrediction,
+            String inputHash) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("predictionStatus", predictionStatus);
+        payload.put("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
+        payload.put("responseModelVersionId", response == null || response.modelVersionId() == null ? "" : response.modelVersionId());
+        payload.put("modelFamily", response == null || response.modelFamily() == null ? "" : response.modelFamily());
+        payload.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
+        payload.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
+        payload.put("deploymentMode", policy.mode().name());
+        payload.put("fallbackReason", fallbackReason);
+        payload.put("shadowPrediction", shadowPrediction);
+        payload.put("modelName", response == null ? "ml-unavailable" : response.modelName());
+        payload.put("modelVersion", response == null ? "unknown" : response.modelVersion());
+        payload.put("modelType", response == null || response.modelType() == null ? "" : response.modelType());
+        payload.put("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus());
+        payload.put("anomalyScore", response == null ? 0 : response.anomalyScore());
+        payload.put("degradationScore", response == null ? 0 : response.degradationScore());
+        payload.put("failureRiskScore", response == null ? null : response.failureRiskScore());
+        payload.put("failureHorizonDays", response == null ? null : response.failureHorizonDays());
+        payload.put("failureRiskBand", response == null ? null : response.failureRiskBand());
+        payload.put("riskLevel", response == null ? "" : response.riskLevel());
+        payload.put("confidence", response == null ? 0 : response.confidence());
+        payload.put("riskDrivers", response == null || response.riskDrivers() == null ? List.of() : response.riskDrivers());
+        payload.put("labelCoverage", response == null ? null : response.labelCoverage());
+        payload.put("trainingDataWindow", response == null || response.trainingDataWindow() == null ? Map.of() : response.trainingDataWindow());
+        payload.put("signals", response == null || response.signals() == null ? List.of() : response.signals());
+        payload.put("recommendedActions", response == null || response.recommendedActions() == null ? List.of() : response.recommendedActions());
+        payload.put("inputHash", inputHash);
+        payload.put("explanations", response == null || response.explanations() == null ? List.of() : response.explanations());
+        return payload;
     }
 
     private BaselineResponse toBaselineResponse(DeviceBaseline baseline) {
@@ -651,9 +681,13 @@ public class AnalyticsRecalculationService {
         Map<String, Object> values = readJson(prediction.getPredictionJson());
         Object explanations = values.get("explanations");
         Object signals = values.get("signals");
+        Object riskDrivers = values.get("riskDrivers");
         Object recommendedActions = values.get("recommendedActions");
+        Object trainingDataWindow = values.get("trainingDataWindow");
         return new PredictionResponse(
                 prediction.getDeviceId(),
+                prediction.getModelId() == null ? string(values.get("responseModelVersionId")) : prediction.getModelId().toString(),
+                string(values.get("modelFamily")),
                 prediction.getModelName() == null ? string(values.get("modelName")) : prediction.getModelName(),
                 prediction.getModelVersion() == null ? string(values.get("modelVersion")) : prediction.getModelVersion(),
                 string(values.get("modelType")),
@@ -661,8 +695,16 @@ public class AnalyticsRecalculationService {
                 prediction.getStatus() == null ? string(values.get("predictionStatus")) : prediction.getStatus(),
                 prediction.getAnomalyScore() == null ? number(values.get("anomalyScore")) : prediction.getAnomalyScore(),
                 prediction.getDegradationScore() == null ? number(values.get("degradationScore")) : prediction.getDegradationScore(),
+                nullableNumber(values.get("failureRiskScore")),
+                nullableInteger(values.get("failureHorizonDays")),
+                nullableString(values.get("failureRiskBand")),
                 prediction.getConfidence() == null ? number(values.get("confidence")) : prediction.getConfidence(),
                 prediction.getInputHash() == null ? string(values.get("inputHash")) : prediction.getInputHash(),
+                maps(riskDrivers),
+                nullableNumber(values.get("labelCoverage")),
+                trainingDataWindow instanceof Map<?, ?> window
+                        ? (Map<String, Object>) window
+                        : Map.of(),
                 signals instanceof List<?> signalList
                         ? signalList.stream()
                                 .filter(Map.class::isInstance)
@@ -674,6 +716,29 @@ public class AnalyticsRecalculationService {
                         ? actionList.stream().map(Object::toString).toList()
                         : List.of(),
                 prediction.getCreatedAt());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> maps(Object value) {
+        return value instanceof List<?> list
+                ? list.stream()
+                        .filter(Map.class::isInstance)
+                        .map(item -> (Map<String, Object>) item)
+                        .toList()
+                : List.of();
+    }
+
+    private Double nullableNumber(Object value) {
+        return value instanceof Number number ? number.doubleValue() : null;
+    }
+
+    private Integer nullableInteger(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private String nullableString(Object value) {
+        String result = string(value);
+        return result.isBlank() ? null : result;
     }
 
     private List<Recommendation> mlRecommendations(UUID deviceId, PredictionResult prediction, Instant now) {

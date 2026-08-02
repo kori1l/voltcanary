@@ -40,7 +40,11 @@ data:
   ANALYTICS_JOBS_WORKER_ENABLED: "true"
   APP_ML_TRAINING_WORKER_ENABLED: "true"
   APP_ML_TRAINING_WORKER_DELAY: "5000"
+  ML_ARTIFACT_STORE: s3
   ML_ARTIFACT_BUCKET: model-artifacts
+  AWS_REGION: us-east-1
+  S3_FORCE_PATH_STYLE: "true"
+  AWS_EC2_METADATA_DISABLED: "true"
   ALERT_SERVICE_URI: http://alert-service:8086
   SIMULATOR_SERVICE_URI: http://simulator-service:8087
   SIMULATOR_INGESTION_URL: http://ingestion-service:8083/ingestion/readings

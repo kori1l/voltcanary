@@ -489,10 +489,14 @@ services:
     ports:
       - "${ML_SERVICE_PORT:-8090}:8090"
     environment:
+      ML_ARTIFACT_STORE: ${ML_ARTIFACT_STORE:-s3}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
       ML_ARTIFACT_BUCKET: ${ML_ARTIFACT_BUCKET:-model-artifacts}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      AWS_EC2_METADATA_DISABLED: "true"
     volumes:
       - ./ml-service:/workspace/ml-service
     depends_on:

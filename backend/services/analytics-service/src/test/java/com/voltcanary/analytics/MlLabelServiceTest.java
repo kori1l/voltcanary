@@ -103,4 +103,28 @@ class MlLabelServiceTest {
                     assertThat(item.newLabel()).isEqualTo(MlLabelType.NORMAL);
                 });
     }
+
+    @Test
+    void supportsFailureOutcomeLabelTypesInAuditTrail() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        Instant start = Instant.parse("2026-07-01T00:00:00Z");
+        Instant end = Instant.parse("2026-07-01T01:00:00Z");
+
+        var created = service.create(accountId, actorId, new MlLabelRequest(
+                datasetVersionId,
+                UUID.randomUUID(),
+                null,
+                "activePowerW",
+                start,
+                end,
+                MlLabelType.CONFIRMED_FAILURE,
+                "outcome confirmed"));
+
+        assertThat(created.label()).isEqualTo(MlLabelType.CONFIRMED_FAILURE);
+        ArgumentCaptor<MlLabelAudit> auditCaptor = ArgumentCaptor.forClass(MlLabelAudit.class);
+        verify(auditRepository).save(auditCaptor.capture());
+        assertThat(auditCaptor.getValue().getNewLabel()).isEqualTo(MlLabelType.CONFIRMED_FAILURE);
+    }
 }

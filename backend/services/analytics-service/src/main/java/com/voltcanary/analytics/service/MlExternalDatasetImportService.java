@@ -5,14 +5,18 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
+import com.voltcanary.analytics.domain.MlDatasetStatus;
+import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.domain.MlExternalDeviceMapping;
 import com.voltcanary.analytics.domain.MlImportedFile;
 import com.voltcanary.analytics.domain.MlImportedMetricRow;
 import com.voltcanary.analytics.domain.MlLabelType;
+import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.domain.MlValidationReport;
 import com.voltcanary.analytics.dto.MlCsvSchemaMapping;
 import com.voltcanary.analytics.dto.MlExternalImportResponse;
 import com.voltcanary.analytics.repository.MlDatasetRepository;
+import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlExternalDeviceMappingRepository;
 import com.voltcanary.analytics.repository.MlImportedFileRepository;
 import com.voltcanary.analytics.repository.MlImportedMetricRowRepository;
@@ -29,6 +33,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Comparator;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,26 +51,33 @@ public class MlExternalDatasetImportService {
     private static final Logger log = LoggerFactory.getLogger(MlExternalDatasetImportService.class);
 
     private static final long MAX_CSV_BYTES = 10 * 1024 * 1024;
+    private static final String DEFAULT_EXTERNAL_SPLIT_CONFIG = "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}";
 
     private final MlDatasetRepository datasetRepository;
+    private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlImportedFileRepository importedFileRepository;
     private final MlImportedMetricRowRepository rowRepository;
     private final MlExternalDeviceMappingRepository deviceMappingRepository;
     private final MlValidationReportRepository validationReportRepository;
+    private final AnalyticsAccessService accessService;
     private final ObjectMapper objectMapper;
 
     public MlExternalDatasetImportService(
             MlDatasetRepository datasetRepository,
+            MlDatasetVersionRepository datasetVersionRepository,
             MlImportedFileRepository importedFileRepository,
             MlImportedMetricRowRepository rowRepository,
             MlExternalDeviceMappingRepository deviceMappingRepository,
             MlValidationReportRepository validationReportRepository,
+            AnalyticsAccessService accessService,
             ObjectMapper objectMapper) {
         this.datasetRepository = datasetRepository;
+        this.datasetVersionRepository = datasetVersionRepository;
         this.importedFileRepository = importedFileRepository;
         this.rowRepository = rowRepository;
         this.deviceMappingRepository = deviceMappingRepository;
         this.validationReportRepository = validationReportRepository;
+        this.accessService = accessService;
         this.objectMapper = objectMapper;
     }
 
@@ -87,7 +101,8 @@ public class MlExternalDatasetImportService {
 
         ImportResult result = parseRows(accountId, importedFile.getId(), content, mapping, now);
         persistImportResult(importedFile.getId(), result);
-        MlValidationReport report = createReport(importedFile.getId(), result, now, "CSV import");
+        MlDatasetVersion datasetVersion = createExternalDatasetVersion(accountId, userId, dataset.getId(), contentHash, mapping, result, now);
+        MlValidationReport report = createReport(datasetVersion.getId(), importedFile.getId(), result, now, "CSV import");
 
         if (Boolean.FALSE.equals(mapping.allowPartialAcceptance()) && result.rejectedRows() > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CSV import contains rejected rows and partial acceptance is disabled");
@@ -97,6 +112,7 @@ public class MlExternalDatasetImportService {
 
         return new MlExternalImportResponse(
                 dataset.getId(),
+                datasetVersion.getId(),
                 importedFile.getId(),
                 report.getId(),
                 contentHash,
@@ -126,8 +142,9 @@ public class MlExternalDatasetImportService {
         MlImportedFile importedFile = createImportedFile(accountId, userId, dataset.getId(), file, content, contentHash, mapping, "application/x-ndjson", now);
         ImportResult result = parseJsonlRows(accountId, importedFile.getId(), content, mapping, now);
         persistImportResult(importedFile.getId(), result);
+        MlDatasetVersion datasetVersion = createExternalDatasetVersion(accountId, userId, dataset.getId(), contentHash, mapping, result, now);
 
-        MlValidationReport report = createReport(importedFile.getId(), result, now, "JSONL import");
+        MlValidationReport report = createReport(datasetVersion.getId(), importedFile.getId(), result, now, "JSONL import");
         if (Boolean.FALSE.equals(mapping.allowPartialAcceptance()) && result.rejectedRows() > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "JSONL import contains rejected rows and partial acceptance is disabled");
         }
@@ -136,6 +153,7 @@ public class MlExternalDatasetImportService {
 
         return new MlExternalImportResponse(
                 dataset.getId(),
+                datasetVersion.getId(),
                 importedFile.getId(),
                 report.getId(),
                 contentHash,
@@ -252,6 +270,8 @@ public class MlExternalDatasetImportService {
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("NON_FINITE_METRIC_VALUE");
         }
+        String unit = mapping.unitColumn() == null ? null : blankToNull(cell(row, indexes, mapping.unitColumn()));
+        validateMetricUnit(metricName, unit);
 
         MlImportedMetricRow importedRow = new MlImportedMetricRow();
         importedRow.setId(UUID.randomUUID());
@@ -264,7 +284,7 @@ public class MlExternalDatasetImportService {
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
-        importedRow.setUnit(mapping.unitColumn() == null ? null : blankToNull(cell(row, indexes, mapping.unitColumn())));
+        importedRow.setUnit(unit);
         importedRow.setLabel(parseLabel(mapping.labelColumn() == null ? "" : cell(row, indexes, mapping.labelColumn())));
         importedRow.setMetadataJson(writeJson(metadata(row, indexes, mapping)));
         importedRow.setSourceRowNumber(rowNumber);
@@ -303,6 +323,8 @@ public class MlExternalDatasetImportService {
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("NON_FINITE_METRIC_VALUE");
         }
+        String unit = mapping.unitColumn() == null ? null : blankToNull(field(row, mapping.unitColumn()));
+        validateMetricUnit(metricName, unit);
 
         MlImportedMetricRow importedRow = new MlImportedMetricRow();
         importedRow.setId(UUID.randomUUID());
@@ -315,7 +337,7 @@ public class MlExternalDatasetImportService {
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
-        importedRow.setUnit(mapping.unitColumn() == null ? null : blankToNull(field(row, mapping.unitColumn())));
+        importedRow.setUnit(unit);
         importedRow.setLabel(parseLabel(mapping.labelColumn() == null ? "" : field(row, mapping.labelColumn())));
         importedRow.setMetadataJson(writeJson(metadata(row, mapping)));
         importedRow.setSourceRowNumber(rowNumber);
@@ -357,8 +379,17 @@ public class MlExternalDatasetImportService {
             return;
         }
         try {
-            row.setMatchedDeviceId(UUID.fromString(existingDeviceId.trim()));
+            UUID matchedDeviceId = UUID.fromString(existingDeviceId.trim());
+            UUID ownerAccountId = accessService.accountIdForDevice(matchedDeviceId, null);
+            if (!accountId.equals(ownerAccountId)) {
+                throw new IllegalArgumentException("DEVICE_OWNERSHIP_MISMATCH");
+            }
+            row.setMatchedDeviceId(matchedDeviceId);
         } catch (Exception exception) {
+            if (exception instanceof IllegalArgumentException illegalArgumentException
+                    && "DEVICE_OWNERSHIP_MISMATCH".equals(illegalArgumentException.getMessage())) {
+                throw illegalArgumentException;
+            }
             throw new IllegalArgumentException("INVALID_EXISTING_DEVICE_ID");
         }
     }
@@ -426,19 +457,126 @@ public class MlExternalDatasetImportService {
         return importedFile;
     }
 
-    private MlValidationReport createReport(UUID importedFileId, ImportResult result, Instant now, String source) {
+    private MlDatasetVersion createExternalDatasetVersion(
+            UUID accountId,
+            UUID userId,
+            UUID datasetId,
+            String contentHash,
+            MlCsvSchemaMapping mapping,
+            ImportResult result,
+            Instant now) {
+        MlDatasetVersion version = new MlDatasetVersion();
+        version.setId(UUID.randomUUID());
+        version.setDatasetId(datasetId);
+        version.setAccountId(accountId);
+        version.setVersion(1);
+        version.setSourceType(MlDatasetSourceType.EXTERNAL_IMPORT);
+        version.setStatus(result.acceptedRows().isEmpty() ? MlDatasetStatus.FAILED : MlDatasetStatus.VALIDATING);
+        version.setSplitStrategy(MlTrainingSplitStrategy.TIME_BASED);
+        version.setSplitConfigJson(DEFAULT_EXTERNAL_SPLIT_CONFIG);
+        version.setFeatureConfigVersion(mapping.mappingVersion() == null || mapping.mappingVersion().isBlank()
+                ? "external-mapping-v1"
+                : mapping.mappingVersion());
+        version.setArtifactHash(contentHash);
+        version.setCreatedBy(userId);
+        version.setCreatedAt(now);
+        version.setFailureReason(result.acceptedRows().isEmpty()
+                ? "External import produced no accepted rows."
+                : null);
+        datasetVersionRepository.save(version);
+        return version;
+    }
+
+    private MlValidationReport createReport(UUID datasetVersionId, UUID importedFileId, ImportResult result, Instant now, String source) {
         MlValidationReport report = new MlValidationReport();
         report.setId(UUID.randomUUID());
+        report.setDatasetVersionId(datasetVersionId);
         report.setImportedFileId(importedFileId);
         report.setAcceptedRows(result.acceptedRows().size());
         report.setRejectedRows(result.rejectedRows());
         report.setWarningCount(result.warningCount());
         report.setRejectedReasonsJson(writeJson(result.rejectedReasons()));
         report.setMappingStatsJson(writeJson(result.mappingStats()));
+        report.setQualityProfileJson(writeJson(qualityProfile(result)));
         report.setSummary(result.rejectedRows() == 0 ? source + " accepted all rows." : source + " accepted rows with validation rejects.");
         report.setCreatedAt(now);
         validationReportRepository.save(report);
         return report;
+    }
+
+    private Map<String, Object> qualityProfile(ImportResult result) {
+        List<MlImportedMetricRow> rows = result.acceptedRows();
+        Map<String, Long> coverageByDeviceMetric = new LinkedHashMap<>();
+        for (MlImportedMetricRow row : rows) {
+            increment(coverageByDeviceMetric, row.getExternalDeviceKey() + ":" + row.getMetricName());
+        }
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("rowCount", rows.size());
+        profile.put("rejectedRows", result.rejectedRows());
+        profile.put("deviceCount", rows.stream().map(MlImportedMetricRow::getExternalDeviceKey).distinct().count());
+        profile.put("metricCount", rows.stream().map(MlImportedMetricRow::getMetricName).distinct().count());
+        profile.put("timeRange", importTimeRange(rows));
+        profile.put("coverageByDeviceMetric", coverageByDeviceMetric);
+        profile.put("maxSamplingGapSeconds", maxSamplingGapSeconds(rows));
+        profile.put("duplicateTimestampRate", duplicateTimestampRate(rows));
+        profile.put("nonFiniteImpossibleValueCount",
+                result.rejectedReasons().getOrDefault("NON_FINITE_METRIC_VALUE", 0L) + impossibleValueCount(rows));
+        profile.put("unitNormalizationWarnings", result.rejectedReasons().getOrDefault("METRIC_UNIT_MISMATCH", 0L));
+        profile.put("maintenanceOverlapCount", 0L);
+        profile.put("labelCoverage", Map.of());
+        return profile;
+    }
+
+    private long maxSamplingGapSeconds(List<MlImportedMetricRow> rows) {
+        Map<String, List<MlImportedMetricRow>> groups = new LinkedHashMap<>();
+        for (MlImportedMetricRow row : rows) {
+            groups.computeIfAbsent(row.getExternalDeviceKey() + ":" + row.getMetricName(), ignored -> new ArrayList<>()).add(row);
+        }
+        long max = 0;
+        for (List<MlImportedMetricRow> group : groups.values()) {
+            List<MlImportedMetricRow> sorted = group.stream()
+                    .sorted(Comparator.comparing(MlImportedMetricRow::getTimestamp))
+                    .toList();
+            for (int index = 1; index < sorted.size(); index++) {
+                long gap = java.time.Duration.between(sorted.get(index - 1).getTimestamp(), sorted.get(index).getTimestamp()).abs().toSeconds();
+                max = Math.max(max, gap);
+            }
+        }
+        return max;
+    }
+
+    private double duplicateTimestampRate(List<MlImportedMetricRow> rows) {
+        if (rows.isEmpty()) {
+            return 0.0;
+        }
+        Set<String> seen = new HashSet<>();
+        long duplicates = 0;
+        for (MlImportedMetricRow row : rows) {
+            String key = row.getExternalDeviceKey() + "|" + row.getMetricName() + "|" + row.getTimestamp();
+            if (!seen.add(key)) {
+                duplicates++;
+            }
+        }
+        return (double) duplicates / rows.size();
+    }
+
+    private long impossibleValueCount(List<MlImportedMetricRow> rows) {
+        return rows.stream()
+                .filter(row -> isKnownNonNegativeMetric(row.getMetricName()) && row.getNumericValue() < 0.0)
+                .count();
+    }
+
+    private boolean isKnownNonNegativeMetric(String metricName) {
+        return expectedUnit(metricName) != null;
+    }
+
+    private Map<String, String> importTimeRange(List<MlImportedMetricRow> rows) {
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        Instant min = rows.stream().map(MlImportedMetricRow::getTimestamp).min(Instant::compareTo).orElseThrow();
+        Instant max = rows.stream().map(MlImportedMetricRow::getTimestamp).max(Instant::compareTo).orElseThrow();
+        return Map.of("from", min.toString(), "to", max.toString());
     }
 
     private MlLabelType parseLabel(String value) {
@@ -450,6 +588,27 @@ public class MlExternalDatasetImportService {
         } catch (Exception exception) {
             throw new IllegalArgumentException("INVALID_LABEL");
         }
+    }
+
+    private void validateMetricUnit(String metricName, String unit) {
+        if (unit == null || unit.isBlank()) {
+            return;
+        }
+        String expected = expectedUnit(metricName);
+        if (expected != null && !expected.equals(unit.trim())) {
+            throw new IllegalArgumentException("METRIC_UNIT_MISMATCH");
+        }
+    }
+
+    private String expectedUnit(String metricName) {
+        String metric = metricName == null ? "" : metricName.trim();
+        return switch (metric) {
+            case "activePowerW", "active_power_w", "active_power" -> "W";
+            case "voltage", "voltageV", "voltage_v" -> "V";
+            case "current", "currentA", "current_a" -> "A";
+            case "energyGrowth", "energy_growth", "energyGrowthWh", "energy_growth_wh" -> "Wh";
+            default -> null;
+        };
     }
 
     private void validateFile(MultipartFile file) {

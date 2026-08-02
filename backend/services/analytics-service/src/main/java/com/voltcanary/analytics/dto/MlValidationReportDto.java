@@ -13,6 +13,7 @@ public record MlValidationReportDto(
         long warningCount,
         Map<String, Long> rejectedReasons,
         Map<String, Long> mappingStats,
+        Map<String, Object> qualityProfile,
         String summary,
         Instant createdAt) {
 }

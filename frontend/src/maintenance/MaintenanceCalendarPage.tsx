@@ -4,8 +4,11 @@ import { Device, DeviceType, listDevices, listDeviceTypes, listLocations, Locati
 import {
   cancelMaintenanceOperation,
   createMaintenanceOperation,
+  createMaintenanceOutcome,
   finishMaintenanceOperationNow,
   listMaintenanceOperations,
+  MaintenanceOutcomeSeverity,
+  MaintenanceOutcomeType,
   MaintenanceOperation,
   updateMaintenanceOperation,
 } from "./maintenanceApi";
@@ -14,6 +17,16 @@ type CalendarView = "timeline" | "agenda";
 type DrawerMode = "create" | "edit" | null;
 
 const statusOptions = ["all", "SCHEDULED", "ACTIVE", "FINISHED", "CANCELLED"];
+const maintenanceOutcomeOptions: MaintenanceOutcomeType[] = [
+  "CONFIRMED_FAILURE",
+  "CORRECTIVE_MAINTENANCE",
+  "PREVENTIVE_MAINTENANCE",
+  "INSPECTION_NORMAL",
+  "FALSE_POSITIVE",
+  "SENSOR_FAULT",
+  "UNRESOLVED_ANOMALY",
+  "UNKNOWN",
+];
 
 interface CreateDefaults {
   startAt: string;
@@ -174,6 +187,20 @@ export function MaintenanceCalendarPage() {
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to finish maintenance operation");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function recordOutcome(operation: MaintenanceOperation, request: Parameters<typeof createMaintenanceOutcome>[1]) {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await createMaintenanceOutcome(operation.id, request);
+      setMessage("Maintenance outcome recorded.");
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Failed to record maintenance outcome");
     } finally {
       setIsBusy(false);
     }
@@ -347,6 +374,7 @@ export function MaintenanceCalendarPage() {
           onEdit={() => openEditDrawer(selectedOperation)}
           onCancel={() => void cancelOperation(selectedOperation)}
           onFinish={() => void finishOperation(selectedOperation)}
+          onRecordOutcome={(request) => void recordOutcome(selectedOperation, request)}
           isBusy={isBusy}
         />
       ) : null}
@@ -701,6 +729,7 @@ function MaintenanceOperationDetailsDrawer({
   onEdit,
   onCancel,
   onFinish,
+  onRecordOutcome,
   isBusy,
 }: {
   operation: MaintenanceOperation;
@@ -708,9 +737,40 @@ function MaintenanceOperationDetailsDrawer({
   onEdit: () => void;
   onCancel: () => void;
   onFinish: () => void;
+  onRecordOutcome: (request: Parameters<typeof createMaintenanceOutcome>[1]) => void;
   isBusy: boolean;
 }) {
   const canChange = operation.status === "ACTIVE" || operation.status === "SCHEDULED";
+  const [outcomeDeviceId, setOutcomeDeviceId] = useState(operation.devices[0]?.deviceId ?? "");
+  const [outcomeType, setOutcomeType] = useState<MaintenanceOutcomeType>("INSPECTION_NORMAL");
+  const [observedAt, setObservedAt] = useState(toDateTimeLocalValue(new Date()));
+  const [resolvedAt, setResolvedAt] = useState("");
+  const [component, setComponent] = useState("");
+  const [failureMode, setFailureMode] = useState("");
+  const [severity, setSeverity] = useState("");
+  const [downtimeMinutes, setDowntimeMinutes] = useState("");
+  const [technicianNotes, setTechnicianNotes] = useState("");
+  const selectedDevice = operation.devices.find((device) => device.deviceId === outcomeDeviceId) ?? operation.devices[0];
+
+  function submitOutcome(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDevice) return;
+    onRecordOutcome({
+      deviceId: selectedDevice.deviceId,
+      maintenanceWindowId: selectedDevice.windowId,
+      observedAt: toInstant(observedAt),
+      resolvedAt: resolvedAt ? toInstant(resolvedAt) : null,
+      outcomeType,
+      failureMode: failureMode.trim() || null,
+      component: component.trim() || null,
+      severity: severity ? severity as MaintenanceOutcomeSeverity : null,
+      downtimeMinutes: downtimeMinutes ? Number(downtimeMinutes) : null,
+      technicianNotes: technicianNotes.trim() || null,
+      source: "OPERATOR",
+      confidence: 1,
+    });
+  }
+
   return (
     <div className="modal-backdrop maintenance-drawer-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="maintenance-drawer maintenance-details-drawer" role="dialog" aria-modal="true" aria-labelledby="maintenance-details-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -749,6 +809,23 @@ function MaintenanceOperationDetailsDrawer({
               </Link>
             ))}
           </div>
+          <form className="ml-inline-panel" onSubmit={submitOutcome}>
+            <h3>Record outcome</h3>
+            <div className="ml-form-grid">
+              <label>Device<select value={outcomeDeviceId} onChange={(event) => setOutcomeDeviceId(event.target.value)}>{operation.devices.map((device) => <option key={device.windowId} value={device.deviceId}>{device.deviceName}</option>)}</select></label>
+              <label>Outcome<select value={outcomeType} onChange={(event) => setOutcomeType(event.target.value as MaintenanceOutcomeType)}>{maintenanceOutcomeOptions.map((value) => <option key={value} value={value}>{formatEnum(value)}</option>)}</select></label>
+              <label>Observed<input type="datetime-local" value={observedAt} onChange={(event) => setObservedAt(event.target.value)} /></label>
+              <label>Resolved<input type="datetime-local" value={resolvedAt} onChange={(event) => setResolvedAt(event.target.value)} /></label>
+              <label>Component<input value={component} onChange={(event) => setComponent(event.target.value)} placeholder="compressor" /></label>
+              <label>Failure mode<input value={failureMode} onChange={(event) => setFailureMode(event.target.value)} placeholder="overheat" /></label>
+              <label>Severity<select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="">Unset</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="CRITICAL">Critical</option></select></label>
+              <label>Downtime minutes<input min="0" type="number" value={downtimeMinutes} onChange={(event) => setDowntimeMinutes(event.target.value)} /></label>
+            </div>
+            <label>Technician notes<textarea className="ml-compact-editor" value={technicianNotes} onChange={(event) => setTechnicianNotes(event.target.value)} /></label>
+            <div className="action-row action-row-start">
+              <button className="ghost-button" disabled={isBusy || !selectedDevice} type="submit">Record outcome</button>
+            </div>
+          </form>
           <div className="action-row">
             {canChange ? (
               <button className="primary-button" type="button" onClick={onEdit} disabled={isBusy}>
@@ -1081,6 +1158,10 @@ function toDateInputValue(date: Date) {
 
 function toDateTimeLocalValue(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function toInstant(value: string) {
+  return new Date(value).toISOString();
 }
 
 function formatDateRange(start: Date, end: Date) {

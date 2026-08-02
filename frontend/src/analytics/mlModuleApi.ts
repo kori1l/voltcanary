@@ -7,7 +7,19 @@ export type MlTrainingRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" 
 export type MlModelStatus = "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED";
 export type MlDeploymentMode = "SHADOW" | "CANARY" | "ACTIVE" | "DISABLED";
 export type MlDeploymentScope = "SYSTEM" | "ACCOUNT" | "DEVICE_TYPE" | "DEVICE";
-export type MlLabelType = "NORMAL" | "ANOMALY" | "DEGRADATION" | "MAINTENANCE" | "UNKNOWN";
+export type MlLabelType =
+  | "NORMAL"
+  | "ANOMALY"
+  | "DEGRADATION"
+  | "MAINTENANCE"
+  | "CONFIRMED_FAILURE"
+  | "CORRECTIVE_MAINTENANCE"
+  | "PREVENTIVE_MAINTENANCE"
+  | "INSPECTION_NORMAL"
+  | "FALSE_POSITIVE"
+  | "SENSOR_FAULT"
+  | "UNRESOLVED_ANOMALY"
+  | "UNKNOWN";
 export type MlLabelSource = "MANUAL" | "ALERT_OUTCOME" | "MAINTENANCE_OUTCOME" | "IMPORTED";
 
 export interface MlDatasetSummary {
@@ -25,6 +37,10 @@ export interface MlDatasetSummary {
   createdAt: string;
   readyAt: string | null;
   failureReason: string | null;
+  artifactUri: string | null;
+  artifactHash: string | null;
+  immutableRowReference: string | null;
+  dataHash: string | null;
 }
 
 export interface MlValidationReport {
@@ -36,6 +52,7 @@ export interface MlValidationReport {
   warningCount: number;
   rejectedReasons: Record<string, number>;
   mappingStats: Record<string, number>;
+  qualityProfile: Record<string, unknown>;
   summary: string;
   createdAt: string;
 }
@@ -61,6 +78,7 @@ export interface MlDatasetDetail {
 
 export interface MlExternalImportResponse {
   datasetId: string;
+  datasetVersionId: string;
   importedFileId: string;
   validationReportId: string;
   contentHash: string;
@@ -71,6 +89,21 @@ export interface MlExternalImportResponse {
   importedAt: string;
 }
 
+export interface MlInternalDatasetResponse {
+  datasetId: string;
+  datasetVersionId: string;
+  accountId: string;
+  version: number;
+  status: MlDatasetStatus;
+  splitStrategy: MlTrainingSplitStrategy;
+  acceptedRows: number;
+  rejectedRows: number;
+  warningCount: number;
+  validationMessages: string[];
+  createdAt: string;
+  readyAt: string | null;
+}
+
 export interface MlFeatureSnapshotResponse {
   id: string;
   accountId: string;
@@ -78,10 +111,30 @@ export interface MlFeatureSnapshotResponse {
   featureSetVersion: string;
   codeConfigVersion: string;
   featureSchemaHash: string;
+  featureDataHash: string | null;
+  featureConfigHash: string | null;
   rowCount: number;
   rejectedRowCount: number;
   artifactUri: string;
+  immutableRowReference: string | null;
+  modelFamily: string | null;
+  horizonDays: number | null;
+  featureTemplateId: string | null;
+  featureTemplateVersion: string | null;
   createdAt: string;
+}
+
+export interface MlHorizonLabelGenerationResponse {
+  datasetVersionId: string;
+  horizonDays: number;
+  generationVersion: string;
+  lineageHash: string;
+  generatedLabels: number;
+  positiveLabels: number;
+  normalLabels: number;
+  maintenanceExcludedLabels: number;
+  unresolvedLabels: number;
+  unobservableRows: number;
 }
 
 export interface MlTrainingRun {
@@ -100,6 +153,12 @@ export interface MlTrainingRun {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  heartbeatAt?: string | null;
+  cancellationRequested?: boolean;
+  retryCount?: number;
+  staleRecoveredAt?: string | null;
 }
 
 export interface MlModelVersion {
@@ -115,7 +174,9 @@ export interface MlModelVersion {
   featureSnapshotId: string | null;
   featureSchemaHash: string | null;
   artifactUri: string | null;
+  artifactManifestUri: string | null;
   artifactHash: string | null;
+  artifactSizeBytes: number | null;
   compatibleDeviceTypes: string[];
   supportedMetrics: string[];
   evaluationMetrics: Record<string, unknown>;
@@ -161,6 +222,10 @@ export interface MlLabel {
   createdBy: string | null;
   createdAt: string;
   reason: string | null;
+  horizonDays: number | null;
+  generationVersion: string | null;
+  sourceOutcomeIdsJson: string | null;
+  lineageHash: string | null;
 }
 
 export interface MlLabelAudit {
@@ -179,6 +244,27 @@ export function listMlDatasets() {
 
 export function getMlDatasetVersion(datasetVersionId: string) {
   return apiRequest<MlDatasetDetail>(`/analytics/ml/datasets/versions/${datasetVersionId}`);
+}
+
+export function createInternalTelemetryDataset(body: {
+  name: string;
+  description?: string | null;
+  deviceIds: string[];
+  deviceType?: string | null;
+  deviceMetadata?: Record<string, string>;
+  metrics: string[];
+  from: string;
+  to: string;
+  splitStrategy: MlTrainingSplitStrategy;
+  splitConfigJson?: string | null;
+  featureConfigVersion: string;
+  minSamplesPerMetric: number;
+  maxSamplingGapSeconds: number;
+}) {
+  return apiRequest<MlInternalDatasetResponse>("/analytics/ml/datasets/internal-telemetry", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function importMlDataset(kind: "csv" | "jsonl", file: File, mapping: Record<string, unknown>, datasetName: string, description: string) {
@@ -204,8 +290,24 @@ export function generateFeatureSnapshot(body: {
   rollingWindowSize: number;
   missingGapSeconds: number;
   enabledFeatureFamilies: string[];
+  modelFamily?: string | null;
+  horizonDays?: number | null;
+  featureTemplateId?: string | null;
+  featureTemplateVersion?: string | null;
 }) {
   return apiRequest<MlFeatureSnapshotResponse>("/analytics/ml/datasets/feature-snapshots", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function generateHorizonLabels(body: {
+  datasetVersionId: string;
+  horizonDays: number;
+  generationVersion?: string | null;
+  includePreventiveMaintenance: boolean;
+}) {
+  return apiRequest<MlHorizonLabelGenerationResponse>("/analytics/ml/datasets/horizon-labels", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -220,6 +322,9 @@ export function createTrainingRun(body: {
   featureSnapshotId?: string | null;
   modelFamily: string;
   algorithm: string;
+  failureHorizonDays?: number | null;
+  minimumPositiveLabels?: number | null;
+  minimumLabelCoverage?: number | null;
   hyperparametersJson: string;
 }) {
   return apiRequest<MlTrainingRun>("/analytics/ml/training-runs", {

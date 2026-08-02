@@ -20,5 +20,9 @@ public record MlDatasetSummaryDto(
         Instant sourceWindowEnd,
         Instant createdAt,
         Instant readyAt,
-        String failureReason) {
+        String failureReason,
+        String artifactUri,
+        String artifactHash,
+        String immutableRowReference,
+        String dataHash) {
 }

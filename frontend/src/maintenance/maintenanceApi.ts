@@ -1,6 +1,17 @@
 import { apiRequest } from "../api/client";
 
 export type MaintenanceOperationStatus = "SCHEDULED" | "ACTIVE" | "FINISHED" | "CANCELLED";
+export type MaintenanceOutcomeType =
+  | "CONFIRMED_FAILURE"
+  | "CORRECTIVE_MAINTENANCE"
+  | "PREVENTIVE_MAINTENANCE"
+  | "INSPECTION_NORMAL"
+  | "FALSE_POSITIVE"
+  | "SENSOR_FAULT"
+  | "UNRESOLVED_ANOMALY"
+  | "UNKNOWN";
+export type MaintenanceOutcomeSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type MaintenanceOutcomeSource = "OPERATOR" | "TECHNICIAN" | "IMPORTED" | "SYSTEM";
 
 export interface MaintenanceOperationDevice {
   deviceId: string;
@@ -42,6 +53,44 @@ export interface MaintenanceOperationRequest {
   suppressAlerts: boolean;
   excludeFromAnalytics: boolean;
   excludeFromMl: boolean;
+}
+
+export interface MaintenanceOutcomeRequest {
+  deviceId: string;
+  maintenanceWindowId?: string | null;
+  observedAt: string;
+  resolvedAt?: string | null;
+  outcomeType: MaintenanceOutcomeType;
+  failureMode?: string | null;
+  component?: string | null;
+  severity?: MaintenanceOutcomeSeverity | null;
+  downtimeMinutes?: number | null;
+  technicianNotes?: string | null;
+  source?: MaintenanceOutcomeSource | null;
+  confidence?: number | null;
+}
+
+export interface MaintenanceOutcome {
+  id: string;
+  accountId: string;
+  deviceId: string;
+  operationId: string;
+  maintenanceWindowId: string | null;
+  observedAt: string;
+  resolvedAt: string | null;
+  outcomeType: MaintenanceOutcomeType;
+  failureMode: string | null;
+  component: string | null;
+  severity: MaintenanceOutcomeSeverity | null;
+  downtimeMinutes: number | null;
+  technicianNotes: string | null;
+  source: MaintenanceOutcomeSource;
+  confidence: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
 }
 
 export interface MaintenanceOperationListParams {
@@ -97,5 +146,12 @@ export function cancelMaintenanceOperation(operationId: string, reason: string) 
 export function finishMaintenanceOperationNow(operationId: string) {
   return apiRequest<MaintenanceOperation>(`/maintenance-operations/${operationId}/finish-now`, {
     method: "POST",
+  });
+}
+
+export function createMaintenanceOutcome(operationId: string, request: MaintenanceOutcomeRequest) {
+  return apiRequest<MaintenanceOutcome>(`/maintenance-operations/${operationId}/outcomes`, {
+    method: "POST",
+    body: JSON.stringify(request),
   });
 }

@@ -11,5 +11,9 @@ public record MlFeatureSnapshotRequest(
         String codeConfigVersion,
         @Positive Integer rollingWindowSize,
         @Positive Long missingGapSeconds,
-        List<String> enabledFeatureFamilies) {
+        List<String> enabledFeatureFamilies,
+        String modelFamily,
+        @Positive Integer horizonDays,
+        String featureTemplateId,
+        String featureTemplateVersion) {
 }

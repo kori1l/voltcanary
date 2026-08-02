@@ -3,6 +3,8 @@ import json
 import math
 from typing import Any
 
+from app.models.failure_prediction_model import FailurePredictionModel
+from app.models.tabular_anomaly_model import TabularAnomalyModel
 from app.schemas.inference import InferenceRequest, InferenceResponse, PredictionSignal
 from app.services.artifact_store import ArtifactStore
 from app.services.model_registry_service import MODEL_NAME, MODEL_STATUS, MODEL_TYPE, MODEL_VERSION, model_registry_service
@@ -13,6 +15,10 @@ class InferenceService:
         self.artifact_store = artifact_store or ArtifactStore()
 
     def predict(self, request: InferenceRequest) -> InferenceResponse:
+        feature_error_response = self._feature_error_response(request)
+        if feature_error_response is not None:
+            return feature_error_response
+
         routed_response = self._predict_with_trained_model(request)
         if routed_response is not None:
             return routed_response
@@ -22,6 +28,7 @@ class InferenceService:
         if not metric_values:
             return InferenceResponse(
                 deviceId=request.device_id,
+                modelVersionId=None,
                 modelName=MODEL_NAME,
                 modelVersion=MODEL_VERSION,
                 modelType=MODEL_TYPE,
@@ -46,6 +53,7 @@ class InferenceService:
 
         return InferenceResponse(
             deviceId=request.device_id,
+            modelVersionId=None,
             modelName=MODEL_NAME,
             modelVersion=MODEL_VERSION,
             modelType=MODEL_TYPE,
@@ -184,6 +192,54 @@ class InferenceService:
             return ["Monitor signaled metrics and compare against the next baseline window."]
         return ["Continue normal monitoring."]
 
+    def _feature_error_response(self, request: InferenceRequest) -> InferenceResponse | None:
+        preference = request.model_preference
+        if preference is None or preference.allow_baseline_heuristic:
+            return None
+
+        input_hash = self._input_hash(request)
+        if request.feature_generation_status and request.feature_generation_status != "READY":
+            details = request.feature_generation_errors or ["Online features are unavailable for the active prediction window."]
+            return InferenceResponse(
+                deviceId=request.device_id,
+                modelVersionId=None,
+                modelName=MODEL_NAME,
+                modelVersion=MODEL_VERSION,
+                modelType=MODEL_TYPE,
+                modelStatus=MODEL_STATUS,
+                predictionStatus="FEATURES_UNAVAILABLE",
+                anomalyScore=0.0,
+                degradationScore=0.0,
+                riskLevel="LOW",
+                confidence=0.1,
+                signals=[],
+                explanations=details,
+                recommendedActions=["Regenerate the active feature window or enable baseline fallback."],
+                inputHash=input_hash,
+            )
+
+        required_hash = preference.required_feature_schema_hash
+        generated_hash = str(request.feature_contract.get("featureSchemaHash") or "")
+        if required_hash and generated_hash and required_hash != generated_hash:
+            return InferenceResponse(
+                deviceId=request.device_id,
+                modelVersionId=None,
+                modelName=MODEL_NAME,
+                modelVersion=MODEL_VERSION,
+                modelType=MODEL_TYPE,
+                modelStatus=MODEL_STATUS,
+                predictionStatus="FEATURE_SCHEMA_MISMATCH",
+                anomalyScore=0.0,
+                degradationScore=0.0,
+                riskLevel="LOW",
+                confidence=0.1,
+                signals=[],
+                explanations=["Online feature schema does not match the selected model feature schema."],
+                recommendedActions=["Select a compatible model version or regenerate features with the model contract."],
+                inputHash=input_hash,
+            )
+        return None
+
     def _input_hash(self, request: InferenceRequest) -> str:
         payload = request.model_dump(mode="json", by_alias=True)
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -191,7 +247,7 @@ class InferenceService:
 
     def _predict_with_trained_model(self, request: InferenceRequest) -> InferenceResponse | None:
         preference = request.model_preference
-        model = model_registry_service.get_model(preference.model_name if preference else None)
+        model = self._resolve_model(preference)
         if model is None:
             return None
 
@@ -199,16 +255,52 @@ class InferenceService:
         if not metric_values:
             return None
 
-        artifact = self.artifact_store.load_json(model["artifactUri"])
-        scores = []
+        try:
+            bundle = self.artifact_store.load_model_bundle(model["manifestUri"], model.get("artifactHash"))
+        except (OSError, ValueError) as exc:
+            return self._model_unavailable_response(request, model, str(exc))
+        manifest_model_version_id = str(bundle["manifest"].get("modelVersionId") or "")
+        if model.get("modelVersionId") and manifest_model_version_id != model.get("modelVersionId"):
+            return self._model_unavailable_response(
+                request,
+                model,
+                "Selected model manifest does not match the requested modelVersionId.",
+            )
+        artifact = bundle["files"]["model.json"]
+        if model["name"].startswith("model-") and artifact.get("name"):
+            model["name"] = artifact["name"]
+        if model["version"] == model.get("modelVersionId") and artifact.get("version"):
+            model["version"] = artifact["version"]
+        if model["modelType"] == "trained_tabular_anomaly" and artifact.get("modelType"):
+            model["modelType"] = artifact["modelType"]
+        if model["modelType"] == "trained_failure_prediction" or artifact.get("modelType") == "trained_failure_prediction":
+            model["modelType"] = "trained_failure_prediction"
+        pipeline_payload = bundle["files"].get("model.joblib")
+        if not isinstance(pipeline_payload, bytes):
+            return self._model_unavailable_response(request, model, "Selected model bundle does not contain a serialized runtime model.")
+
+        if model["modelType"] == "trained_failure_prediction":
+            label_response = self._failure_label_gate_response(request, model, artifact)
+            if label_response is not None:
+                return label_response
+            feature_response = self._failure_feature_response(request, model, artifact, metric_values)
+            if feature_response is not None:
+                return feature_response
+            return self._predict_with_failure_model(request, model, artifact, pipeline_payload, metric_values)
+
+        try:
+            pipeline = TabularAnomalyModel.load_pipeline(pipeline_payload)
+        except (OSError, ValueError, ImportError) as exc:
+            return self._model_unavailable_response(request, model, str(exc))
+        model_scores = TabularAnomalyModel.score_with_pipeline(pipeline, metric_values)
+        metric_scores = model_scores["metricScores"]
+        scores = list(metric_scores.values())
         signals: list[PredictionSignal] = []
-        for metric, value in metric_values.items():
+        for metric, score in metric_scores.items():
+            value = metric_values[metric]
             stats = artifact.get("metricStats", {}).get(metric)
             if stats is None:
                 continue
-            spread = stats["stddev"] or max((stats["max"] - stats["min"]) / 4.0, 1.0)
-            score = min(1.0, abs(value - stats["mean"]) / spread / 4.0)
-            scores.append(score)
             if score >= 0.15:
                 signals.append(
                     PredictionSignal(
@@ -223,6 +315,7 @@ class InferenceService:
             if preference and not preference.allow_baseline_heuristic:
                 return InferenceResponse(
                     deviceId=request.device_id,
+                    modelVersionId=model.get("modelVersionId"),
                     modelName=model["name"],
                     modelVersion=model["version"],
                     modelType=model["modelType"],
@@ -252,6 +345,7 @@ class InferenceService:
             )
         return InferenceResponse(
             deviceId=request.device_id,
+            modelVersionId=model.get("modelVersionId"),
             modelName=model["name"],
             modelVersion=model["version"],
             modelType=model["modelType"],
@@ -264,5 +358,185 @@ class InferenceService:
             signals=signals,
             explanations=[signal.explanation for signal in signals],
             recommendedActions=self._recommended_actions(risk_level, signals),
+            inputHash=self._input_hash(request),
+        )
+
+    def _predict_with_failure_model(
+        self,
+        request: InferenceRequest,
+        model: dict[str, Any],
+        artifact: dict[str, Any],
+        pipeline_payload: bytes,
+        metric_values: dict[str, float],
+    ) -> InferenceResponse:
+        try:
+            pipeline = FailurePredictionModel.load_pipeline(pipeline_payload)
+        except (OSError, ValueError, ImportError) as exc:
+            return self._model_unavailable_response(request, model, str(exc))
+        score = FailurePredictionModel.score_with_pipeline(pipeline, metric_values)
+        failure_risk_score = round(float(score["failureRiskScore"]), 4)
+        failure_risk_band = str(score["failureRiskBand"])
+        risk_drivers = score["riskDrivers"]
+        metrics = artifact.get("metrics") or {}
+        algorithm = str(artifact.get("algorithm") or "supervised failure classifier")
+        return InferenceResponse(
+            deviceId=request.device_id,
+            modelVersionId=model.get("modelVersionId"),
+            modelFamily="FAILURE_PREDICTION",
+            modelName=model["name"],
+            modelVersion=model["version"],
+            modelType=model["modelType"],
+            modelStatus=model["status"],
+            predictionStatus="TRAINED_MODEL",
+            anomalyScore=0.0,
+            degradationScore=0.0,
+            failureRiskScore=failure_risk_score,
+            failureHorizonDays=artifact.get("failureHorizonDays"),
+            failureRiskBand=failure_risk_band,
+            riskLevel=failure_risk_band,
+            confidence=self._failure_confidence(artifact, metric_values),
+            riskDrivers=risk_drivers,
+            labelCoverage=metrics.get("labelCoverage"),
+            trainingDataWindow={
+                "datasetVersionId": artifact.get("datasetVersionId"),
+                "trainingSamples": artifact.get("trainingSamples"),
+                "positiveLabels": artifact.get("positiveLabels"),
+                "negativeLabels": artifact.get("negativeLabels"),
+                "evaluationStatus": (artifact.get("evaluation") or {}).get("status"),
+                "approvalStatus": (artifact.get("approvalGates") or {}).get("status"),
+            },
+            signals=[
+                PredictionSignal(
+                    metric=driver["feature"],
+                    score=min(1.0, abs(float(driver["contribution"]))),
+                    severity=failure_risk_band,
+                    explanation=f"{driver['feature']} contributed to {failure_risk_band} failure risk.",
+                )
+                for driver in risk_drivers[:3]
+            ],
+            explanations=[
+                f"Failure risk is estimated for the next {artifact.get('failureHorizonDays')} days using {algorithm}."
+            ],
+            recommendedActions=self._recommended_actions(failure_risk_band, []),
+            inputHash=self._input_hash(request),
+        )
+
+    def _failure_confidence(self, artifact: dict[str, Any], metric_values: dict[str, float]) -> float:
+        metrics = artifact.get("metrics") or {}
+        confidence = 0.55 + 0.03 * len(metric_values)
+        confidence += min(0.2, float(metrics.get("labelCoverage") or 0.0) * 0.2)
+        if (artifact.get("evaluation") or {}).get("status") == "EVALUATED":
+            confidence += 0.08
+        if (artifact.get("approvalGates") or {}).get("promotionEligible"):
+            confidence += 0.05
+        return round(min(0.95, max(0.35, confidence)), 4)
+
+    def _failure_label_gate_response(
+        self,
+        request: InferenceRequest,
+        model: dict[str, Any],
+        artifact: dict[str, Any],
+    ) -> InferenceResponse | None:
+        approval = artifact.get("approvalGates") or {}
+        failed_label_gates = [
+            gate
+            for gate in approval.get("criteria", [])
+            if gate.get("name") in {"minimum_positive_labels", "minimum_label_coverage"} and not gate.get("passed", False)
+        ]
+        if not failed_label_gates:
+            return None
+        reasons = [str(gate.get("reason") or gate["name"]) for gate in failed_label_gates]
+        return InferenceResponse(
+            deviceId=request.device_id,
+            modelVersionId=model.get("modelVersionId"),
+            modelFamily="FAILURE_PREDICTION",
+            modelName=model["name"],
+            modelVersion=model["version"],
+            modelType=model["modelType"],
+            modelStatus=model["status"],
+            predictionStatus="INSUFFICIENT_LABELS",
+            anomalyScore=0.0,
+            degradationScore=0.0,
+            riskLevel="LOW",
+            confidence=0.1,
+            labelCoverage=(artifact.get("metrics") or {}).get("labelCoverage"),
+            trainingDataWindow={
+                "datasetVersionId": artifact.get("datasetVersionId"),
+                "trainingSamples": artifact.get("trainingSamples"),
+                "positiveLabels": artifact.get("positiveLabels"),
+                "negativeLabels": artifact.get("negativeLabels"),
+                "approvalStatus": approval.get("status"),
+            },
+            signals=[],
+            explanations=reasons,
+            recommendedActions=["Retrain with sufficient outcome labels before serving this failure model."],
+            inputHash=self._input_hash(request),
+        )
+
+    def _failure_feature_response(
+        self,
+        request: InferenceRequest,
+        model: dict[str, Any],
+        artifact: dict[str, Any],
+        metric_values: dict[str, float],
+    ) -> InferenceResponse | None:
+        feature_columns = [str(column) for column in artifact.get("featureColumns", [])]
+        missing_features = sorted(column for column in feature_columns if column not in metric_values)
+        if not missing_features:
+            return None
+        return InferenceResponse(
+            deviceId=request.device_id,
+            modelVersionId=model.get("modelVersionId"),
+            modelFamily="FAILURE_PREDICTION",
+            modelName=model["name"],
+            modelVersion=model["version"],
+            modelType=model["modelType"],
+            modelStatus=model["status"],
+            predictionStatus="FEATURES_UNAVAILABLE",
+            anomalyScore=0.0,
+            degradationScore=0.0,
+            riskLevel="LOW",
+            confidence=0.1,
+            signals=[],
+            explanations=[f"Missing required failure model features: {', '.join(missing_features)}."],
+            recommendedActions=["Regenerate online features using the selected model feature contract."],
+            inputHash=self._input_hash(request),
+        )
+
+    def _resolve_model(self, preference: Any) -> dict[str, Any] | None:
+        if preference is None:
+            return None
+        if preference.model_version_id and preference.manifest_uri:
+            return {
+                "name": preference.model_name or f"model-{preference.model_version_id}",
+                "version": str(preference.model_version or preference.model_version_id),
+                "modelType": preference.model_type or "trained_tabular_anomaly",
+                "status": preference.model_status or "READY",
+                "modelVersionId": preference.model_version_id,
+                "artifactUri": preference.artifact_uri,
+                "manifestUri": preference.manifest_uri,
+                "artifactHash": preference.artifact_hash,
+            }
+        return model_registry_service.get_model(
+            name=preference.model_name,
+            model_version_id=preference.model_version_id,
+        )
+
+    def _model_unavailable_response(self, request: InferenceRequest, model: dict[str, Any], reason: str) -> InferenceResponse:
+        return InferenceResponse(
+            deviceId=request.device_id,
+            modelVersionId=model.get("modelVersionId"),
+            modelName=model["name"],
+            modelVersion=model["version"],
+            modelType=model["modelType"],
+            modelStatus=model["status"],
+            predictionStatus="MODEL_UNAVAILABLE",
+            anomalyScore=0.0,
+            degradationScore=0.0,
+            riskLevel="LOW",
+            confidence=0.1,
+            signals=[],
+            explanations=[reason],
+            recommendedActions=["Verify model artifact storage and select another model version if the artifact is unavailable."],
             inputHash=self._input_hash(request),
         )

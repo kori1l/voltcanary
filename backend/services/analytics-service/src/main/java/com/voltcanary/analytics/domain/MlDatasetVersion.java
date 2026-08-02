@@ -45,6 +45,14 @@ public class MlDatasetVersion {
     private Instant readyAt;
     @Column(name = "failure_reason", columnDefinition = "text")
     private String failureReason;
+    @Column(name = "artifact_uri")
+    private String artifactUri;
+    @Column(name = "artifact_hash")
+    private String artifactHash;
+    @Column(name = "immutable_row_reference")
+    private String immutableRowReference;
+    @Column(name = "data_hash")
+    private String dataHash;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -76,4 +84,12 @@ public class MlDatasetVersion {
     public void setReadyAt(Instant readyAt) { this.readyAt = readyAt; }
     public String getFailureReason() { return failureReason; }
     public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
+    public String getArtifactUri() { return artifactUri; }
+    public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
+    public String getArtifactHash() { return artifactHash; }
+    public void setArtifactHash(String artifactHash) { this.artifactHash = artifactHash; }
+    public String getImmutableRowReference() { return immutableRowReference; }
+    public void setImmutableRowReference(String immutableRowReference) { this.immutableRowReference = immutableRowReference; }
+    public String getDataHash() { return dataHash; }
+    public void setDataHash(String dataHash) { this.dataHash = dataHash; }
 }

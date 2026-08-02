@@ -28,7 +28,16 @@ class RecentWindowSummary(BaseModel):
 
 class ModelPreference(BaseModel):
     model_name: str | None = Field(default=None, alias="modelName")
+    model_version_id: str | None = Field(default=None, alias="modelVersionId")
+    model_family: str | None = Field(default=None, alias="modelFamily")
+    model_version: str | None = Field(default=None, alias="modelVersion")
+    model_type: str | None = Field(default=None, alias="modelType")
+    model_status: str | None = Field(default=None, alias="modelStatus")
+    artifact_uri: str | None = Field(default=None, alias="artifactUri")
+    manifest_uri: str | None = Field(default=None, alias="manifestUri")
+    artifact_hash: str | None = Field(default=None, alias="artifactHash")
     allow_baseline_heuristic: bool = Field(default=True, alias="allowBaselineHeuristic")
+    required_feature_schema_hash: str | None = Field(default=None, alias="requiredFeatureSchemaHash")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -48,6 +57,10 @@ class InferenceRequest(BaseModel):
     recent_window: RecentWindowSummary | None = Field(default=None, alias="recentWindow")
     excluded_intervals: list[dict[str, Any]] = Field(default_factory=list, alias="excludedIntervals")
     model_preference: ModelPreference | None = Field(default=None, alias="modelPreference")
+    feature_vector: dict[str, Any] = Field(default_factory=dict, alias="featureVector")
+    feature_contract: dict[str, Any] = Field(default_factory=dict, alias="featureContract")
+    feature_generation_status: str | None = Field(default=None, alias="featureGenerationStatus")
+    feature_generation_errors: list[str] = Field(default_factory=list, alias="featureGenerationErrors")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -70,6 +83,8 @@ class InferenceRequest(BaseModel):
 
 class InferenceResponse(BaseModel):
     device_id: str = Field(alias="deviceId")
+    model_version_id: str | None = Field(default=None, alias="modelVersionId")
+    model_family: str | None = Field(default=None, alias="modelFamily")
     model_name: str = Field(alias="modelName")
     model_version: str = Field(alias="modelVersion")
     model_type: str = Field(alias="modelType")
@@ -77,8 +92,14 @@ class InferenceResponse(BaseModel):
     prediction_status: str = Field(alias="predictionStatus")
     anomaly_score: float = Field(alias="anomalyScore")
     degradation_score: float = Field(alias="degradationScore")
+    failure_risk_score: float | None = Field(default=None, alias="failureRiskScore")
+    failure_horizon_days: int | None = Field(default=None, alias="failureHorizonDays")
+    failure_risk_band: str | None = Field(default=None, alias="failureRiskBand")
     risk_level: str = Field(alias="riskLevel")
     confidence: float
+    risk_drivers: list[dict[str, Any]] = Field(default_factory=list, alias="riskDrivers")
+    label_coverage: float | None = Field(default=None, alias="labelCoverage")
+    training_data_window: dict[str, Any] = Field(default_factory=dict, alias="trainingDataWindow")
     signals: list[PredictionSignal]
     explanations: list[str]
     recommended_actions: list[str] = Field(alias="recommendedActions")

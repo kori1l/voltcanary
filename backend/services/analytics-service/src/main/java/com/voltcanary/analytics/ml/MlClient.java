@@ -61,6 +61,37 @@ public class MlClient {
         return requestPrediction(deviceId, timestamp, metrics, List.of());
     }
 
+    public MlTrainingResponse requestTraining(MlTrainingRequest request) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            String body = objectMapper.writeValueAsString(request);
+            MlTrainingResponse response = restClient.post()
+                    .uri("/train")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .headers(headers -> {
+                        headers.set("X-Source-Service", internalServiceName);
+                        if (!internalServiceToken.isBlank()) {
+                            headers.set("X-Internal-Service-Token", internalServiceToken);
+                        }
+                    })
+                    .body(body)
+                    .retrieve()
+                    .body(MlTrainingResponse.class);
+            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "success"));
+            return response;
+        } catch (JsonProcessingException exception) {
+            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
+            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
+            log.warn("mlTrainingRequestFailed datasetVersionId={} reason={} phase=serialize", request.datasetVersionId(), exception.getClass().getSimpleName());
+            return null;
+        } catch (RestClientException exception) {
+            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
+            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
+            log.warn("mlTrainingRequestFailed datasetVersionId={} reason={} phase=request", request.datasetVersionId(), exception.getClass().getSimpleName());
+            return null;
+        }
+    }
+
     public MlInferenceResponse requestPrediction(
             UUID deviceId,
             Instant timestamp,

@@ -494,7 +494,11 @@ class AnalyticsRecalculationTest {
                 .containsEntry("deploymentMode", "ACTIVE")
                 .containsEntry("policySource", "DEVICE")
                 .containsEntry("policyId", policy.getId().toString())
-                .containsEntry("modelVersionId", model.getId().toString());
+                .containsEntry("modelVersionId", model.getId().toString())
+                .containsEntry("manifestUri", "s3://voltcanary-test/model-manifest.json")
+                .containsEntry("artifactUri", "s3://voltcanary-test/model.bin")
+                .containsEntry("artifactHash", "artifact-hash")
+                .containsEntry("artifactSizeBytes", 1234L);
         assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
                 .hasValueSatisfying(prediction -> {
                     assertThat(prediction.getModelId()).isEqualTo(model.getId());
@@ -504,6 +508,76 @@ class AnalyticsRecalculationTest {
                     assertThat(prediction.getInputHash()).isEqualTo("trained-input-hash");
                     assertThat(prediction.getPredictionJson()).contains("\"deploymentMode\":\"ACTIVE\"");
                 });
+    }
+
+    @Test
+    void recalculatePersistsFailurePredictionContractAndTraceability() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveFailureModel(accountId, MlModelStatus.ACTIVE);
+        savePolicy(accountId, deviceId, model.getId(), MlDeploymentMode.ACTIVE, true);
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(failureModelResponse(deviceId, model.getId().toString(), "failure-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getModelId()).isEqualTo(model.getId());
+                    assertThat(prediction.getStatus()).isEqualTo("MODEL");
+                    assertThat(prediction.getAnomalyScore()).isEqualTo(0.0);
+                    assertThat(prediction.getDegradationScore()).isEqualTo(0.0);
+                    assertThat(prediction.getPredictionJson())
+                            .contains("\"modelFamily\":\"FAILURE_PREDICTION\"")
+                            .contains("\"failureRiskScore\":0.37")
+                            .contains("\"failureHorizonDays\":30")
+                            .contains("\"failureRiskBand\":\"MEDIUM\"")
+                            .contains("\"riskDrivers\"")
+                            .contains("\"trainingDataWindow\"")
+                            .contains("\"labelCoverage\":0.86");
+                });
+        ResponseEntity<PredictionResponse> latest = restTemplate.getForEntity(
+                "/analytics/devices/{deviceId}/predictions/latest",
+                PredictionResponse.class,
+                deviceId);
+        assertThat(latest.getStatusCode()).isEqualTo(HttpStatus.OK);
+        PredictionResponse body = latest.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.modelVersionId()).isEqualTo(model.getId().toString());
+        assertThat(body.modelFamily()).isEqualTo("FAILURE_PREDICTION");
+        assertThat(body.failureRiskScore()).isEqualTo(0.37);
+        assertThat(body.failureHorizonDays()).isEqualTo(30);
+        assertThat(body.failureRiskBand()).isEqualTo("MEDIUM");
+        assertThat(body.labelCoverage()).isEqualTo(0.86);
+        assertThat(body.riskDrivers()).hasSize(2);
+        assertThat(body.riskDrivers().get(0))
+                .containsEntry("feature", "activePowerW_rolling_mean")
+                .containsEntry("direction", "increases_risk")
+                .containsEntry("contribution", 0.42);
+        assertThat(body.trainingDataWindow())
+                .containsEntry("datasetVersionId", "dataset-failure-known-outcomes-v1")
+                .containsEntry("approvalStatus", "PASSED");
+        assertThat(body.anomalyScore()).isEqualTo(0.0);
+        assertThat(body.degradationScore()).isEqualTo(0.0);
+        assertThat(body.inputHash()).isEqualTo("failure-input-hash");
     }
 
     @Test
@@ -659,13 +733,24 @@ class AnalyticsRecalculationTest {
         model.setStatus(status);
         model.setFeatureSchemaHash("feature-schema-hash");
         model.setArtifactUri("s3://voltcanary-test/model.bin");
+        model.setArtifactManifestUri("s3://voltcanary-test/model-manifest.json");
         model.setArtifactHash("artifact-hash");
+        model.setArtifactSizeBytes(1234L);
         model.setCompatibleDeviceTypesJson("[\"washer\"]");
         model.setSupportedMetricsJson("[\"activePowerW\"]");
         model.setEvaluationMetricsJson("{\"auc\":0.93}");
         model.setApprovedBy(UUID.randomUUID());
         model.setApprovedAt(Instant.now());
         model.setCreatedAt(Instant.now());
+        return modelVersionRepository.save(model);
+    }
+
+    private MlModelVersion saveFailureModel(UUID accountId, MlModelStatus status) {
+        MlModelVersion model = saveModel(accountId, status);
+        model.setModelKey("account-" + accountId + "-failure");
+        model.setFamily(MlModelFamily.FAILURE_PREDICTION);
+        model.setAlgorithm("sklearn-logistic-regression-failure-v1");
+        model.setEvaluationMetricsJson("{\"failureHorizonDays\":30,\"failurePrecision\":0.72,\"failureRecall\":0.61,\"labelCoverage\":0.86,\"failurePositiveLabels\":3}");
         return modelVersionRepository.save(model);
     }
 
@@ -686,6 +771,48 @@ class AnalyticsRecalculationTest {
         policy.setUpdatedBy(UUID.randomUUID());
         policy.setUpdatedAt(Instant.now());
         return deploymentPolicyRepository.save(policy);
+    }
+
+    private MlInferenceResponse failureModelResponse(UUID deviceId, String modelVersionId, String inputHash) {
+        return new MlInferenceResponse(
+                deviceId,
+                modelVersionId,
+                "FAILURE_PREDICTION",
+                "failure-model",
+                "v1",
+                "trained_failure_prediction",
+                "READY",
+                "MODEL",
+                0.0,
+                0.0,
+                0.37,
+                30,
+                "MEDIUM",
+                "MEDIUM",
+                0.91,
+                List.of(
+                        Map.of(
+                                "feature", "activePowerW_rolling_mean",
+                                "value", 212.4,
+                                "weight", 0.18,
+                                "contribution", 0.42,
+                                "direction", "increases_risk"),
+                        Map.of(
+                                "feature", "voltageV_stddev",
+                                "value", 2.1,
+                                "weight", -0.08,
+                                "contribution", -0.16,
+                                "direction", "decreases_risk")),
+                0.86,
+                Map.of(
+                        "datasetVersionId", "dataset-failure-known-outcomes-v1",
+                        "start", "2026-06-01T00:00:00Z",
+                        "end", "2026-07-01T00:00:00Z",
+                        "approvalStatus", "PASSED"),
+                List.of(Map.of("metric", "failureRiskScore", "score", 0.37, "severity", "MEDIUM")),
+                List.of("Failure probability is elevated by active power drift."),
+                List.of("Inspect washer load and motor temperature."),
+                inputHash);
     }
 
     private MlInferenceResponse modelResponse(UUID deviceId, String inputHash) {

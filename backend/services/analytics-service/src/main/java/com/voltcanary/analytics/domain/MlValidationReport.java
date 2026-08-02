@@ -26,6 +26,8 @@ public class MlValidationReport {
     private String rejectedReasonsJson;
     @Column(name = "mapping_stats_json", nullable = false, columnDefinition = "text")
     private String mappingStatsJson;
+    @Column(name = "quality_profile_json", nullable = false, columnDefinition = "text")
+    private String qualityProfileJson;
     @Column(name = "summary", columnDefinition = "text")
     private String summary;
     @Column(name = "created_at", nullable = false)
@@ -47,6 +49,8 @@ public class MlValidationReport {
     public void setRejectedReasonsJson(String rejectedReasonsJson) { this.rejectedReasonsJson = rejectedReasonsJson; }
     public String getMappingStatsJson() { return mappingStatsJson; }
     public void setMappingStatsJson(String mappingStatsJson) { this.mappingStatsJson = mappingStatsJson; }
+    public String getQualityProfileJson() { return qualityProfileJson; }
+    public void setQualityProfileJson(String qualityProfileJson) { this.qualityProfileJson = qualityProfileJson; }
     public String getSummary() { return summary; }
     public void setSummary(String summary) { this.summary = summary; }
     public Instant getCreatedAt() { return createdAt; }

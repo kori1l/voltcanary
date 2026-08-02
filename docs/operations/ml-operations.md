@@ -6,10 +6,58 @@ Operational procedures for the production ML module.
 
 1. Create or import a dataset version from `/settings/ml` -> `Datasets` or `Import`.
 2. Review validation warnings, rejected rows, and lineage hash before training.
-3. Generate a feature snapshot for a `READY` dataset version.
-4. Queue a training run from `Training`.
-5. Monitor `analytics.ml.training.runs`, `analytics.ml.training.duration`, and `analytics.ml.training.failures`.
-6. Inspect the generated candidate model metrics in `Models`.
+3. Record or reconcile maintenance outcomes for the dataset window, then
+   generate horizon labels in `Labels`. Confirm positive, normal, unresolved,
+   and unobservable counts before supervised failure training.
+4. Generate a feature snapshot for a `READY` dataset version. Select the
+   feature template that matches the model target, such as `generic-appliance`
+   or `fridge-freezer`, and confirm the rolling window and missing-gap
+   parameters before running generation.
+5. Queue a training run from `Training`.
+6. Monitor `analytics.ml.training.runs`, `analytics.ml.training.duration`, and `analytics.ml.training.failures`.
+7. Inspect the generated candidate model metrics in `Models`.
+
+Training run state is owned by analytics-service. The analytics worker claims
+queued runs, moves them through `RUNNING`, delegates fitting and artifact
+creation to ML-service, then performs a model-only smoke inference using the
+returned `modelVersionId`. A `CANDIDATE` model is registered only after
+ML-service returns a verified artifact manifest and the smoke inference loads
+and scores that exact model version.
+
+Model artifacts are stored through ML-service `ArtifactStore`. Production and
+Docker profiles use MinIO/S3 with:
+
+- `ML_ARTIFACT_STORE=s3`
+- `ML_ARTIFACT_BUCKET=model-artifacts`
+- `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY`
+- `S3_FORCE_PATH_STYLE=true` for local MinIO compatibility
+
+Local unit tests may use `ML_ARTIFACT_STORE=local`; that mode writes under
+`model_registry_path` and is not a production storage boundary. Production
+artifact URIs use `s3://<bucket>/<modelVersionId-like-bundle>/...`; inference
+loads by the persisted `manifestUri` and verifies `artifactHash` before scoring.
+
+Each claimed run records `leaseOwner`, `leaseExpiresAt`, and `heartbeatAt`.
+Workers refresh the lease between training phases. If a worker stops and the
+lease expires, the next worker pass returns the stale run to `QUEUED`, increments
+`retryCount`, and records `staleRecoveredAt`. Canceling a queued run completes
+it as `CANCELED`; canceling a running run sets `cancellationRequested`, and the
+worker cooperatively stops before registering a candidate model.
+
+Before training, confirm the feature snapshot shows a nonzero row count,
+`featureSchemaHash`, `featureDataHash`, `featureConfigHash`, artifact URI,
+immutable row reference, and the expected template id/version. If generation
+returns rejected rows or a failure status, use the displayed validation reasons
+to fix missing metrics, history windows, device type metadata, or template
+selection before queuing training.
+
+Failure-prediction datasets require structured outcome labels. Device-service
+owns maintenance outcomes and exposes `/internal/maintenance-outcomes/changes`;
+analytics-service projects them using the maintenance reconciliation scheduler
+and a separate `device-service-maintenance-outcomes` checkpoint. Generated
+labels store `horizonDays`, `generationVersion`, `sourceOutcomeIdsJson`, and
+`lineageHash`. Recent rows are intentionally unlabeled until the full horizon
+is observable.
 
 ## Promote
 
@@ -26,6 +74,18 @@ Operational procedures for the production ML module.
 3. Keep fallback enabled unless deterministic rule-only behavior is intentionally required.
 4. Verify latest predictions exclude shadow records and return baseline or unavailable statuses as expected.
 5. Check logs for `mlDeploymentPolicyRolledBack`.
+
+If model-only inference returns `FEATURES_UNAVAILABLE`, regenerate the active
+feature window or enable baseline fallback for the affected scope. If it returns
+`FEATURE_SCHEMA_MISMATCH`, switch the policy to a model trained with the current
+feature template/schema or regenerate features with the model's expected
+contract.
+
+If inference returns `MODEL_UNAVAILABLE`, first check `GET /health/artifacts`
+on ML-service and MinIO bucket access, then verify the model version has
+`artifactUri`, `artifactManifestUri`, `artifactHash`, and positive
+`artifactSizeBytes`. Roll back to the previous active policy or disable the
+policy with fallback enabled while restoring the missing object.
 
 ## Delete Imported Datasets
 
@@ -45,6 +105,7 @@ Prometheus metrics:
 - `analytics.ml.dataset.validation.rejected.rows`
 - `analytics.ml.feature.snapshots.generated`
 - `analytics.ml.feature.generation.completed`
+- `analytics.maintenance.outcome.reconciliation.projected`
 - `analytics.ml.training.runs`
 - `analytics.ml.training.duration`
 - `analytics.ml.training.failures`
@@ -52,6 +113,13 @@ Prometheus metrics:
 - `analytics.ml.inference.failures`
 - `analytics.ml.inference.fallback.rate`
 - `analytics.ml.drift.active.feature_schema_hashes`
+
+Health checks:
+
+- `GET /health` verifies ML-service process liveness.
+- `GET /health/artifacts` verifies the configured artifact provider can be
+  accessed. Kubernetes readiness uses this endpoint so a pod does not accept
+  trained-model traffic until MinIO/S3 is reachable.
 
 Structured log events:
 

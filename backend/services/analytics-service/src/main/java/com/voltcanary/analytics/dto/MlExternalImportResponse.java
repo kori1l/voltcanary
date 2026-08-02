@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record MlExternalImportResponse(
         UUID datasetId,
+        UUID datasetVersionId,
         UUID importedFileId,
         UUID validationReportId,
         String contentHash,

@@ -22,6 +22,9 @@ class TrainingRequest(BaseModel):
     source_type: str = Field(alias="sourceType")
     model_family: str = Field(default="ANOMALY_DETECTION", alias="modelFamily")
     algorithm: str = "baseline-statistical-anomaly-v1"
+    failure_horizon_days: int | None = Field(default=None, alias="failureHorizonDays")
+    minimum_positive_labels: int | None = Field(default=None, alias="minimumPositiveLabels")
+    minimum_label_coverage: float | None = Field(default=None, alias="minimumLabelCoverage")
     rows: list[MetricRow]
 
     model_config = ConfigDict(populate_by_name=True)
@@ -41,8 +44,12 @@ class TrainingRunResponse(BaseModel):
     run_id: str = Field(alias="runId")
     status: str
     dataset_version_id: str = Field(alias="datasetVersionId")
+    model_version_id: str | None = Field(default=None, alias="modelVersionId")
     model_version: str | None = Field(default=None, alias="modelVersion")
     artifact_uri: str | None = Field(default=None, alias="artifactUri")
+    manifest_uri: str | None = Field(default=None, alias="manifestUri")
+    artifact_hash: str | None = Field(default=None, alias="artifactHash")
+    artifact_size_bytes: int | None = Field(default=None, alias="artifactSizeBytes")
     metrics: dict[str, float] = Field(default_factory=dict)
     feature_snapshot: FeatureSnapshotResponse | None = Field(default=None, alias="featureSnapshot")
     logs_summary: list[str] = Field(default_factory=list, alias="logsSummary")

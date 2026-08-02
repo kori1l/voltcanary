@@ -14,6 +14,7 @@ import com.voltcanary.device.dto.DeviceAnalyticsConfigResponse;
 import com.voltcanary.device.dto.DeviceResponse;
 import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.dto.MaintenanceOperationResponse;
+import com.voltcanary.device.dto.MaintenanceOutcomeResponse;
 import com.voltcanary.device.dto.MaintenanceWindowResponse;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
@@ -612,6 +613,117 @@ class DeviceManagementTest {
                 MaintenanceOperationResponse.class);
         assertThat(finished.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(finished.getBody().status()).isEqualTo("FINISHED");
+    }
+
+    @Test
+    void managesMaintenanceOutcomesAndExposesInternalChanges() {
+        UUID userId = UUID.randomUUID();
+        UUID foreignUserId = UUID.randomUUID();
+        LocationResponse location = createLocation(userId, "Outcome lab");
+        DeviceResponse device = createDevice(userId, location.id(), "Outcome fridge");
+        Instant startAt = Instant.now().minusSeconds(3600);
+        Instant endAt = Instant.now().plusSeconds(3600);
+
+        ResponseEntity<MaintenanceOperationResponse> operation = restTemplate.exchange(
+                "/maintenance-operations",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "title", "Compressor repair",
+                                "deviceIds", List.of(device.id().toString()),
+                                "startAt", startAt.toString(),
+                                "endAt", endAt.toString()),
+                        headersFor(userId, "maintenance-outcome@example.com")),
+                MaintenanceOperationResponse.class);
+        assertThat(operation.getStatusCode()).isEqualTo(HttpStatus.OK);
+        UUID operationId = operation.getBody().id();
+        UUID windowId = operation.getBody().devices().get(0).windowId();
+
+        ResponseEntity<MaintenanceOutcomeResponse> created = restTemplate.exchange(
+                "/maintenance-operations/" + operationId + "/outcomes",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.ofEntries(
+                                Map.entry("deviceId", device.id().toString()),
+                                Map.entry("maintenanceWindowId", windowId.toString()),
+                                Map.entry("observedAt", startAt.plusSeconds(1200).toString()),
+                                Map.entry("resolvedAt", startAt.plusSeconds(2400).toString()),
+                                Map.entry("outcomeType", "CONFIRMED_FAILURE"),
+                                Map.entry("failureMode", "COMPRESSOR_OVERHEAT"),
+                                Map.entry("component", "compressor"),
+                                Map.entry("severity", "HIGH"),
+                                Map.entry("downtimeMinutes", 45),
+                                Map.entry("technicianNotes", "Compressor replaced"),
+                                Map.entry("source", "TECHNICIAN"),
+                                Map.entry("confidence", 0.95)),
+                        headersFor(userId, "maintenance-outcome@example.com")),
+                MaintenanceOutcomeResponse.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(created.getBody()).isNotNull();
+        assertThat(created.getBody().operationId()).isEqualTo(operationId);
+        assertThat(created.getBody().deviceId()).isEqualTo(device.id());
+        assertThat(created.getBody().outcomeType().name()).isEqualTo("CONFIRMED_FAILURE");
+        assertThat(created.getBody().source().name()).isEqualTo("TECHNICIAN");
+        assertThat(created.getBody().createdBy()).isEqualTo(userId);
+        assertThat(created.getBody().updatedBy()).isEqualTo(userId);
+        assertThat(created.getBody().version()).isEqualTo(1);
+
+        ResponseEntity<MaintenanceOutcomeResponse[]> listed = restTemplate.exchange(
+                "/maintenance-operations/" + operationId + "/outcomes",
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(userId, "maintenance-outcome@example.com")),
+                MaintenanceOutcomeResponse[].class);
+        assertThat(listed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(listed.getBody()).extracting(MaintenanceOutcomeResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<MaintenanceOutcomeResponse> updated = restTemplate.exchange(
+                "/maintenance-outcomes/" + created.getBody().id(),
+                HttpMethod.PATCH,
+                new HttpEntity<>(
+                        Map.of(
+                                "deviceId", device.id().toString(),
+                                "maintenanceWindowId", windowId.toString(),
+                                "observedAt", startAt.plusSeconds(1200).toString(),
+                                "resolvedAt", startAt.plusSeconds(2500).toString(),
+                                "outcomeType", "CORRECTIVE_MAINTENANCE",
+                                "component", "compressor",
+                                "severity", "MEDIUM",
+                                "downtimeMinutes", 50,
+                                "source", "OPERATOR",
+                                "confidence", 0.9),
+                        headersFor(userId, "maintenance-outcome@example.com")),
+                MaintenanceOutcomeResponse.class);
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().outcomeType().name()).isEqualTo("CORRECTIVE_MAINTENANCE");
+        assertThat(updated.getBody().version()).isEqualTo(2);
+
+        ResponseEntity<MaintenanceOutcomeResponse[]> changes = restTemplate.exchange(
+                "/internal/maintenance-outcomes/changes?updatedAfter=1970-01-01T00:00:00Z",
+                HttpMethod.GET,
+                new HttpEntity<>(internalHeaders()),
+                MaintenanceOutcomeResponse[].class);
+        assertThat(changes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(changes.getBody()).extracting(MaintenanceOutcomeResponse::id).contains(created.getBody().id());
+
+        ResponseEntity<String> invalid = restTemplate.exchange(
+                "/maintenance-operations/" + operationId + "/outcomes",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                        Map.of(
+                                "deviceId", device.id().toString(),
+                                "observedAt", endAt.toString(),
+                                "resolvedAt", startAt.toString(),
+                                "outcomeType", "INSPECTION_NORMAL"),
+                        headersFor(userId, "maintenance-outcome@example.com")),
+                String.class);
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        ResponseEntity<String> foreign = restTemplate.exchange(
+                "/maintenance-outcomes/" + created.getBody().id(),
+                HttpMethod.GET,
+                new HttpEntity<>(headersFor(foreignUserId, "foreign-outcome@example.com")),
+                String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

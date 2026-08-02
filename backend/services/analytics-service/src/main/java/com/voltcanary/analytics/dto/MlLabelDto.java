@@ -18,5 +18,9 @@ public record MlLabelDto(
         MlLabelSource source,
         UUID createdBy,
         Instant createdAt,
-        String reason) {
+        String reason,
+        Integer horizonDays,
+        String generationVersion,
+        String sourceOutcomeIdsJson,
+        String lineageHash) {
 }

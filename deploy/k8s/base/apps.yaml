@@ -484,6 +484,71 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: ml-service
+  namespace: voltcanary
+spec:
+  selector:
+    app: ml-service
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: voltcanary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-service
+  template:
+    metadata:
+      labels:
+        app: ml-service
+    spec:
+      containers:
+        - name: ml-service
+          image: voltcanary/ml-service:latest
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn"]
+          args: ["app.main:app", "--host", "0.0.0.0", "--port", "8090"]
+          envFrom:
+            - configMapRef:
+                name: voltcanary-config
+            - secretRef:
+                name: voltcanary-secrets
+          ports:
+            - containerPort: 8090
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/artifacts
+              port: 8090
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: alert-service
   namespace: voltcanary
 spec:

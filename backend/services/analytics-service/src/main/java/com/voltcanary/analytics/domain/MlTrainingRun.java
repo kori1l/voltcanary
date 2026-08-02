@@ -46,6 +46,18 @@ public class MlTrainingRun {
     private Instant startedAt;
     @Column(name = "completed_at")
     private Instant completedAt;
+    @Column(name = "lease_owner")
+    private String leaseOwner;
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+    @Column(name = "heartbeat_at")
+    private Instant heartbeatAt;
+    @Column(name = "cancellation_requested", nullable = false)
+    private boolean cancellationRequested;
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
+    @Column(name = "stale_recovered_at")
+    private Instant staleRecoveredAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -79,4 +91,16 @@ public class MlTrainingRun {
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public Instant getCompletedAt() { return completedAt; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
+    public String getLeaseOwner() { return leaseOwner; }
+    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
+    public Instant getLeaseExpiresAt() { return leaseExpiresAt; }
+    public void setLeaseExpiresAt(Instant leaseExpiresAt) { this.leaseExpiresAt = leaseExpiresAt; }
+    public Instant getHeartbeatAt() { return heartbeatAt; }
+    public void setHeartbeatAt(Instant heartbeatAt) { this.heartbeatAt = heartbeatAt; }
+    public boolean isCancellationRequested() { return cancellationRequested; }
+    public void setCancellationRequested(boolean cancellationRequested) { this.cancellationRequested = cancellationRequested; }
+    public int getRetryCount() { return retryCount; }
+    public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
+    public Instant getStaleRecoveredAt() { return staleRecoveredAt; }
+    public void setStaleRecoveredAt(Instant staleRecoveredAt) { this.staleRecoveredAt = staleRecoveredAt; }
 }

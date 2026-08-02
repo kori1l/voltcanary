@@ -42,7 +42,12 @@ Request:
     "deploymentMode": "ACTIVE",
     "policySource": "DEVICE",
     "policyId": "6db9a07f-9f03-4ba2-9c54-92bf641ef740",
-    "modelVersionId": "296cb424-2b9f-43e6-b6da-fcd175d7f469"
+    "modelVersionId": "296cb424-2b9f-43e6-b6da-fcd175d7f469",
+    "manifestUri": "s3://model-artifacts/model-296cb424/manifest.json",
+    "artifactUri": "s3://model-artifacts/model-296cb424/model.joblib",
+    "artifactHash": "sha256:...",
+    "artifactSizeBytes": 204800,
+    "requiredFeatureSchemaHash": "sha256:..."
   }
 }
 ```
@@ -79,10 +84,15 @@ Response:
 
 `predictionStatus` values:
 
-- `MODEL`: trained model output.
+- `TRAINED_MODEL`: trained model output loaded from a model artifact bundle.
 - `BASELINE_HEURISTIC`: deterministic heuristic scoring.
 - `FALLBACK`: emergency fallback output.
 - `INSUFFICIENT_DATA`: request had no useful numeric telemetry.
+- `MODEL_UNAVAILABLE`: selected model artifact cannot be loaded or verified.
+- `MODEL_INCOMPATIBLE`: selected model cannot score the request metrics.
+- `FEATURES_UNAVAILABLE`: model-only mode required online features that were not generated.
+- `FEATURE_SCHEMA_MISMATCH`: online feature schema does not match the selected model.
+- `INSUFFICIENT_LABELS`: selected failure model artifact is not servable because label approval gates failed.
 
 Validation and failure responses:
 
@@ -94,7 +104,27 @@ Validation and failure responses:
 
 `modelPreference` is owned by analytics-service. It passes the resolved
 deployment mode, policy source, policy id, selected model version id, prediction
-mode, and whether the ML-service may fall back to baseline heuristic scoring.
+mode, artifact manifest URI/hash metadata, and whether the ML-service may fall
+back to baseline heuristic scoring. Production trained-model requests must pass
+artifact metadata from analytics-service model registry; Python in-memory model
+registry state is only a compatibility/local path.
+
+## GET /health/artifacts
+
+Checks ML-service artifact store connectivity. With `ML_ARTIFACT_STORE=s3`, the
+service verifies access to `ML_ARTIFACT_BUCKET` using the configured
+MinIO/S3 credentials. Kubernetes readiness probes call this endpoint.
+
+Example response:
+
+```json
+{
+  "service": "ml-service",
+  "status": "ok",
+  "provider": "s3",
+  "bucket": "model-artifacts"
+}
+```
 
 ## GET /models
 
@@ -122,9 +152,11 @@ versions, and deployment policies as versioned metadata. Initial storage lives
 in analytics-service; ML-service can later consume these contracts through
 service APIs without scraping databases directly.
 
-Canonical metric rows include `accountId`, `deviceId` or `externalDeviceKey`,
-`timestamp`, `metricName`, numeric `value`, optional `unit`, optional `label`,
-and optional string metadata.
+Canonical metric rows include `accountId`, `datasetVersionId`, `sourceType`,
+`deviceId` or `externalDeviceKey` or `virtualDeviceKey`, `deviceType`,
+optional `sourceId` and `sensorId`, `timestamp`, `metricName`,
+`canonicalMetricName`, numeric `value`, `rawUnit`, `canonicalUnit`,
+`qualityFlags`, `metadataJson`, `sourceLineage`, and creation metadata.
 
 Dataset lifecycle:
 
@@ -140,12 +172,39 @@ Dataset source types:
 - `EXTERNAL_IMPORT`
 - `MIXED`
 
+`READY` means the dataset version is usable by feature generation and training.
+A `READY` version must have accepted canonical rows and must expose either an
+artifact URI/hash or an immutable row reference plus a data hash once
+materialization is complete. `FAILED` versions keep sanitized failure reasons
+and validation reports, but must not be selected for feature generation or
+training.
+
+Dataset version summaries and details expose these immutable-data fields:
+
+- `artifactUri`: object-store or service URI for a frozen dataset artifact.
+- `artifactHash`: hash of the artifact content when an artifact exists.
+- `immutableRowReference`: stable table/reference for frozen canonical rows.
+- `dataHash`: deterministic hash of canonical row content.
+
+Validation reports include `qualityProfile`, an object with row count, device
+count, metric count, time range, coverage by device/metric, maximum sampling
+gap, duplicate timestamp rate, non-finite or impossible value count, unit
+normalization warnings, maintenance overlap count, and label coverage when
+labels exist.
+
 Label values:
 
 - `NORMAL`
 - `ANOMALY`
 - `DEGRADATION`
 - `MAINTENANCE`
+- `CONFIRMED_FAILURE`
+- `CORRECTIVE_MAINTENANCE`
+- `PREVENTIVE_MAINTENANCE`
+- `INSPECTION_NORMAL`
+- `FALSE_POSITIVE`
+- `SENSOR_FAULT`
+- `UNRESOLVED_ANOMALY`
 - `UNKNOWN`
 
 Label sources:
@@ -165,6 +224,7 @@ Model families:
 
 - `ANOMALY_DETECTION`
 - `DEGRADATION_SCORING`
+- `FAILURE_PREDICTION`
 - `FORECASTING`
 
 Training run statuses:
@@ -186,6 +246,79 @@ Model registry statuses:
 Deployment scopes resolve in `DEVICE`, `DEVICE_TYPE`, `ACCOUNT`, `SYSTEM`,
 then baseline fallback order. Deployment modes are `SHADOW`, `CANARY`,
 `ACTIVE`, and `DISABLED`.
+
+## GET /analytics/ml/datasets
+
+Lists the latest dataset version for each account-scoped ML dataset. Each item
+includes status, split strategy, source window, failure reason, and immutable
+data metadata.
+
+Example item:
+
+```json
+{
+  "datasetId": "3e509cd3-dc0a-4904-af62-bfb877d9e4b7",
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "name": "Washer July active power",
+  "description": "Internal telemetry for anomaly training",
+  "sourceType": "INTERNAL_TELEMETRY",
+  "version": 1,
+  "status": "READY",
+  "splitStrategy": "TIME_BASED",
+  "featureConfigVersion": "feature-config-v1",
+  "sourceWindowStart": "2026-07-01T00:00:00Z",
+  "sourceWindowEnd": "2026-07-31T23:59:59Z",
+  "createdAt": "2026-07-30T00:00:00Z",
+  "readyAt": "2026-07-30T00:00:00Z",
+  "failureReason": null,
+  "artifactUri": "s3://voltcanary-ml/datasets/2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf/rows.jsonl",
+  "artifactHash": "sha256:...",
+  "immutableRowReference": "ml_canonical_metric_rows:dataset_version_id=2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "dataHash": "sha256:..."
+}
+```
+
+## GET /analytics/ml/datasets/versions/{datasetVersionId}
+
+Returns dataset summary metadata, validation reports, and lineage. Validation
+reports include `qualityProfile`.
+
+Example validation report:
+
+```json
+{
+  "id": "e93d690f-f2f0-4e48-9d93-9ff45c68dcf1",
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "importedFileId": null,
+  "acceptedRows": 744,
+  "rejectedRows": 0,
+  "warningCount": 1,
+  "rejectedReasons": {},
+  "mappingStats": {
+    "accepted:activePowerW": 744
+  },
+  "qualityProfile": {
+    "rowCount": 744,
+    "deviceCount": 1,
+    "metricCount": 1,
+    "timeRange": {
+      "from": "2026-07-01T00:00:00Z",
+      "to": "2026-07-31T23:59:59Z"
+    },
+    "coverageByDeviceMetric": {
+      "a0b7f4dc-2f4b-4d7a-9f9e-5d1f88a5bc16:activePowerW": 744
+    },
+    "maxSamplingGapSeconds": 3600,
+    "duplicateTimestampRate": 0.0,
+    "nonFiniteImpossibleValueCount": 0,
+    "unitNormalizationWarnings": 0,
+    "maintenanceOverlapCount": 1,
+    "labelCoverage": {}
+  },
+  "summary": "Telemetry selection is ready for training.",
+  "createdAt": "2026-07-30T00:00:00Z"
+}
+```
 
 ## POST /analytics/ml/datasets/internal-telemetry
 
@@ -277,6 +410,7 @@ Response:
 ```json
 {
   "datasetId": "3e509cd3-dc0a-4904-af62-bfb877d9e4b7",
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
   "importedFileId": "810a00cc-9853-4734-ac4b-07e7ab68ca0d",
   "validationReportId": "e93d690f-f2f0-4e48-9d93-9ff45c68dcf1",
   "contentHash": "sha256:...",
@@ -289,10 +423,19 @@ Response:
 ```
 
 Validation rejects rows with invalid timestamps, missing device keys, missing
-metric names, invalid or non-finite metric values, and invalid label values.
+metric names, invalid or non-finite metric values, invalid label values, and
+`existingDeviceId` values that do not belong to the importing account. Known
+metrics also enforce compatible units, for example `activePowerW` must use `W`,
+`voltage` must use `V`, `current` must use `A`, and `energyGrowth` must use
+`Wh` when a unit is supplied.
 Mappings reject credential-like field names such as password, secret, token,
 credential, and api_key. Accepted rows are stored as imported training rows
-linked to the imported file and validation report.
+linked to the imported file and validation report. CSV import creates an
+account-scoped `EXTERNAL_IMPORT` dataset version and returns its
+`datasetVersionId`. Imports with accepted rows remain `VALIDATING` until
+canonical rows are materialized; imports with no accepted rows are `FAILED`.
+The service must not mark an external dataset version `READY` until accepted
+canonical rows exist.
 
 If `existingDeviceIdColumn` is present and a row value is a UUID, the imported
 row is linked to that existing device id. Every accepted row also receives a
@@ -314,7 +457,9 @@ Example JSONL row:
 
 The response shape matches `POST /analytics/ml/datasets/external-csv`.
 Invalid JSON lines are rejected with `INVALID_JSONL`; valid lines can still be
-accepted when `allowPartialAcceptance` is true.
+accepted when `allowPartialAcceptance` is true. JSONL import also creates an
+account-scoped `EXTERNAL_IMPORT` dataset version and returns its
+`datasetVersionId`.
 
 ## POST /analytics/ml/datasets/feature-snapshots
 
@@ -329,6 +474,10 @@ Request:
   "codeConfigVersion": "analytics-feature-pipeline-v1",
   "rollingWindowSize": 6,
   "missingGapSeconds": 21600,
+  "modelFamily": "ANOMALY_DETECTION",
+  "horizonDays": null,
+  "featureTemplateId": "generic-appliance",
+  "featureTemplateVersion": "template-v1",
   "enabledFeatureFamilies": [
     "rolling_stats",
     "baseline_deviation",
@@ -349,24 +498,124 @@ Response:
   "featureSetVersion": "feature-set-v1",
   "codeConfigVersion": "analytics-feature-pipeline-v1",
   "featureSchemaHash": "sha256:...",
+  "featureDataHash": "sha256:...",
+  "featureConfigHash": "sha256:...",
   "rowCount": 1200,
   "rejectedRowCount": 0,
   "artifactUri": "db://ml_feature_snapshots/296cb424-2b9f-43e6-b6da-fcd175d7f469",
+  "immutableRowReference": "ml_feature_rows:feature_snapshot_id=296cb424-2b9f-43e6-b6da-fcd175d7f469",
+  "modelFamily": "ANOMALY_DETECTION",
+  "horizonDays": null,
+  "featureTemplateId": "generic-appliance",
+  "featureTemplateVersion": "template-v1",
   "createdAt": "2026-07-30T00:00:00Z"
 }
 ```
 
-The initial pipeline computes rolling mean/min/max/stddev, baseline deviation
-ratio, missing-gap indicators, hour/day time features, and labels for accepted
-external rows. Internal telemetry dataset versions produce deterministic
-snapshot metadata from their lineage until raw feature materialization is added.
-Repeating generation with the same dataset and feature config produces the same
-feature schema hash.
+The pipeline computes rolling mean/min/max/stddev, baseline deviation ratio,
+missing-gap indicators, hour/day time features, device context, labels for
+accepted external rows, and template-specific feature columns. Internal
+telemetry dataset versions materialize immutable feature rows from canonical
+metric rows. Repeating generation with the same dataset and feature config
+produces the same feature schema hash and feature data hash.
+
+## POST /analytics/ml/datasets/horizon-labels
+
+Generates deterministic failure-horizon labels for a selected dataset version
+from projected maintenance outcomes. Existing generated labels for the same
+dataset version and horizon are replaced. Manual labels are preserved.
+
+Request:
+
+```json
+{
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "horizonDays": 30,
+  "generationVersion": "failure-outcome-v1",
+  "includePreventiveMaintenance": false
+}
+```
+
+Rows before `CONFIRMED_FAILURE` or `CORRECTIVE_MAINTENANCE` outcomes within
+the horizon are positive labels. Preventive maintenance is excluded from
+positive labels unless explicitly included. Rows inside ML maintenance
+exclusions are flagged as `MAINTENANCE`. Rows with no positive outcome become
+`NORMAL` only when the future horizon is observable; recent rows are left
+unlabeled.
+
+Response:
+
+```json
+{
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "horizonDays": 30,
+  "generationVersion": "failure-outcome-v1",
+  "lineageHash": "sha256:...",
+  "generatedLabels": 1200,
+  "positiveLabels": 18,
+  "normalLabels": 1100,
+  "maintenanceExcludedLabels": 42,
+  "unresolvedLabels": 8,
+  "unobservableRows": 32
+}
+```
+
+Generated label responses include `horizonDays`, `generationVersion`,
+`sourceOutcomeIdsJson`, and `lineageHash` for auditability.
+
+Feature vector contracts are versioned separately from the implementation
+version. `feature-vector-contract-v1` defines common row identity columns
+(`deviceKey`, `metricName`, `timestamp`) plus canonical generated, required,
+optional, and label columns for each model family. `ANOMALY_DETECTION`
+contracts require anomaly-oriented rolling, baseline deviation, missing-data,
+and time features when those families are enabled. `DEGRADATION_SCORING`
+contracts add long-window trend, drift, runtime, and maintenance proximity
+columns when enabled. `FAILURE_PREDICTION` contracts require a positive
+`horizonDays` value and use horizon labels such as `failureWithinHorizon` and
+`failureOutcomeType`. The `featureSchemaHash` includes the ordered contract
+metadata and the `featureConfigHash`, so changing a contract version, template,
+model family, horizon, enabled family list, or required column set creates a new
+schema hash even when the persisted row shape is otherwise compatible.
+
+Supported template ids are:
+
+- `generic-appliance` / `template-v1`: adds `applianceLoadRatio` and
+  `applianceActivityFlag` for broad appliance models.
+- `fridge-freezer` / `template-v1`: adds `fridgeTemperatureBandC`,
+  `compressorDutyProxy`, and `defrostCycleRiskFlag` for fridge, freezer, and
+  refrigerator-like devices.
+
+Live inference requests include an online `featureVector`, `featureContract`,
+`featureGenerationStatus`, and `featureGenerationErrors`. When a selected model
+requires a schema that cannot be produced online, the ML-service returns
+`FEATURE_SCHEMA_MISMATCH`. When required live features are missing and baseline
+fallback is disabled, it returns `FEATURES_UNAVAILABLE` with explicit missing
+feature reasons. Failure models additionally return `INSUFFICIENT_LABELS` when
+the selected artifact's label approval gates fail.
 
 ## POST /analytics/ml/training-runs
 
-Creates an asynchronous training run. The first production slice supports
-`ANOMALY_DETECTION` with a deterministic baseline statistical algorithm.
+Creates an asynchronous training run. The production anomaly-detection path
+delegates fitting to ML-service, which trains a tabular sklearn IsolationForest
+pipeline from the materialized feature snapshot and returns a durable model
+bundle manifest.
+
+`FAILURE_PREDICTION` training requests add horizon and label-gate parameters:
+`failureHorizonDays`, `minimumPositiveLabels`, and `minimumLabelCoverage`.
+These fields are stored with the run hyperparameters and passed to ML-service
+for supervised target construction and approval gates.
+
+Failure-prediction training is rejected before fitting when usable labels do
+not include the configured minimum positive failure outcomes, at least one
+negative non-failure example, or the configured minimum label coverage. Failed
+responses include target-construction metrics such as `failurePositiveLabels`,
+`failureNegativeLabels`, `failureExcludedSamples`, `failurePositiveRate`, and
+`failureClassImbalanceRatio`.
+
+Supported initial `FAILURE_PREDICTION` algorithms:
+
+- `sklearn-logistic-regression-failure-v1`
+- `sklearn-random-forest-failure-v1`
 
 Request:
 
@@ -374,16 +623,67 @@ Request:
 {
   "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
   "featureSnapshotId": "296cb424-2b9f-43e6-b6da-fcd175d7f469",
-  "modelFamily": "ANOMALY_DETECTION",
-  "algorithm": "baseline-statistical-anomaly-v1",
+  "modelFamily": "FAILURE_PREDICTION",
+  "algorithm": "sklearn-logistic-regression-failure-v1",
+  "failureHorizonDays": 14,
+  "minimumPositiveLabels": 20,
+  "minimumLabelCoverage": 0.8,
   "hyperparametersJson": "{}"
 }
 ```
 
 Response status is initially `QUEUED`. A worker moves runs through `RUNNING`
-to `SUCCEEDED` or `FAILED`. Successful runs store evaluation metrics, an
-artifact URI, log summary, timestamps, and register a `CANDIDATE` model version.
+to `SUCCEEDED` or `FAILED`. Analytics-service owns these status transitions;
+ML-service owns fitting, model serialization, and artifact manifest creation.
+Successful runs store evaluation metrics, artifact URI/hash/manifest metadata,
+log summary, timestamps, and register a `CANDIDATE` model version only after a
+model-only smoke inference loads and scores the returned `modelVersionId`.
 Failure reasons are sanitized and stored without stack traces.
+
+Failure-prediction model bundles use
+`artifactContractVersion=failure-prediction-artifact-v1`. The manifest records
+the model family, algorithm, feature schema hash, runtime dependency versions,
+input contract, file list, file hashes, and bundle hash. Required bundle files
+are:
+
+- `model.json`: model metadata, classifier scoring type, feature columns,
+  horizon, label counts, metrics, and target contract.
+- `model.joblib`: serialized sklearn pipeline containing the dict vectorizer,
+  optional scaler, and fitted classifier.
+- `model-card.json`: model card with intended use, target, training data,
+  evaluation summary, baseline comparison, runtime details, and limitations.
+- `preprocessor.json`: runtime loader metadata, dataset version, feature schema
+  hash, ordered feature columns, horizon, label counts, and the same target
+  contract as `model.json`.
+
+Evaluation metadata uses a time-based holdout. Numeric metrics include
+precision, recall, F1, PR-AUC, false alerts per device-month, average lead time,
+and comparison against `training-positive-rate-baseline-v1` with baseline
+precision/recall/F1/PR-AUC plus candidate lift fields.
+
+Approval gate metadata is stored in `approvalGates` on the manifest,
+`model.json`, and `model-card.json`. `failure-approval-gates-v1` reports
+`promotionEligible`, overall status, and per-gate observed values, thresholds,
+pass/fail state, and reasons for minimum positives, label coverage, time-based
+evaluation availability, precision, recall, false-alert rate, artifact load
+test, and feature schema compatibility.
+
+Prediction responses preserve existing anomaly and degradation fields and may
+include failure-specific fields when a failure model scores the device:
+`modelVersionId`, `modelFamily`, `failureRiskScore`, `failureHorizonDays`,
+`failureRiskBand`, `riskDrivers`, `labelCoverage`, and `trainingDataWindow`.
+Risk drivers are structured objects suitable for traceability and UI display.
+When analytics-service supplies only `modelVersionId`, ML-service may resolve
+the model from its registry metadata; production requests should still include
+manifest and artifact hash metadata for durable object-store loading. Failure
+models report `anomalyScore=0.0` and `degradationScore=0.0` because those
+outputs remain separate model families.
+
+Training run responses include worker-control metadata: `leaseOwner`,
+`leaseExpiresAt`, `heartbeatAt`, `cancellationRequested`, `retryCount`, and
+`staleRecoveredAt`. Running cancellations are cooperative: the API sets
+`cancellationRequested`, and the worker transitions to `CANCELED` at the next
+checkpoint before candidate registration.
 
 ## GET /analytics/ml/training-runs
 

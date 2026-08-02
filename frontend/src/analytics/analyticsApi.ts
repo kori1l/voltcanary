@@ -42,6 +42,8 @@ export interface RecommendationResponse {
 
 export interface PredictionResponse {
   deviceId: string;
+  modelVersionId?: string | null;
+  modelFamily?: string | null;
   modelName: string;
   modelVersion: string;
   modelType?: string;
@@ -49,8 +51,14 @@ export interface PredictionResponse {
   predictionStatus: string;
   anomalyScore: number;
   degradationScore: number;
+  failureRiskScore?: number | null;
+  failureHorizonDays?: number | null;
+  failureRiskBand?: string | null;
   confidence: number;
   inputHash: string;
+  riskDrivers?: Array<Record<string, unknown>>;
+  labelCoverage?: number | null;
+  trainingDataWindow?: Record<string, unknown>;
   signals: Array<Record<string, unknown>>;
   explanations: string[];
   recommendedActions: string[];

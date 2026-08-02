@@ -3,6 +3,7 @@ package com.voltcanary.analytics.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
+import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetLineage;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
@@ -17,6 +18,7 @@ import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.dto.MlLineageDto;
 import com.voltcanary.analytics.dto.MlValidationReportDto;
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
+import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetLineageRepository;
 import com.voltcanary.analytics.repository.MlDatasetRepository;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
@@ -34,6 +36,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Comparator;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -53,6 +57,7 @@ public class MlDatasetService {
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlValidationReportRepository validationReportRepository;
     private final MlDatasetLineageRepository lineageRepository;
+    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository;
     private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
     private final TelemetryClient telemetryClient;
     private final ObjectMapper objectMapper;
@@ -62,6 +67,7 @@ public class MlDatasetService {
             MlDatasetVersionRepository datasetVersionRepository,
             MlValidationReportRepository validationReportRepository,
             MlDatasetLineageRepository lineageRepository,
+            MlCanonicalMetricRowRepository canonicalMetricRowRepository,
             MaintenanceWindowReadModelRepository maintenanceWindowRepository,
             TelemetryClient telemetryClient,
             ObjectMapper objectMapper) {
@@ -69,6 +75,7 @@ public class MlDatasetService {
         this.datasetVersionRepository = datasetVersionRepository;
         this.validationReportRepository = validationReportRepository;
         this.lineageRepository = lineageRepository;
+        this.canonicalMetricRowRepository = canonicalMetricRowRepository;
         this.maintenanceWindowRepository = maintenanceWindowRepository;
         this.telemetryClient = telemetryClient;
         this.objectMapper = objectMapper;
@@ -100,7 +107,7 @@ public class MlDatasetService {
         version.setAccountId(accountId);
         version.setVersion(1);
         version.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
-        version.setStatus(validation.ready() ? MlDatasetStatus.READY : MlDatasetStatus.FAILED);
+        version.setStatus(validation.ready() ? MlDatasetStatus.VALIDATING : MlDatasetStatus.FAILED);
         version.setSplitStrategy(request.splitStrategy() == null ? MlTrainingSplitStrategy.TIME_BASED : request.splitStrategy());
         version.setSplitConfigJson(blankToDefault(request.splitConfigJson(), "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}"));
         version.setFeatureConfigVersion(blankToDefault(request.featureConfigVersion(), "feature-config-v1"));
@@ -108,9 +115,26 @@ public class MlDatasetService {
         version.setSourceWindowEnd(request.to());
         version.setCreatedBy(userId);
         version.setCreatedAt(now);
-        version.setReadyAt(validation.ready() ? now : null);
+        version.setReadyAt(null);
         version.setFailureReason(validation.ready() ? null : String.join("; ", validation.messages()));
         datasetVersionRepository.save(version);
+        if (validation.ready()) {
+            try {
+                canonicalMetricRowRepository.saveAll(canonicalRows(accountId, version.getId(), request, validation.extractedRows(), now));
+                version.setStatus(MlDatasetStatus.READY);
+                version.setReadyAt(now);
+                version.setImmutableRowReference(immutableRowReference(version.getId()));
+                version.setDataHash(dataHash(validation.extractedRows()));
+                datasetVersionRepository.save(version);
+            } catch (RuntimeException exception) {
+                version.setStatus(MlDatasetStatus.FAILED);
+                version.setReadyAt(null);
+                version.setFailureReason("Internal telemetry materialization failed.");
+                version.setImmutableRowReference(null);
+                version.setDataHash(null);
+                datasetVersionRepository.save(version);
+            }
+        }
 
         MlValidationReport report = new MlValidationReport();
         report.setId(UUID.randomUUID());
@@ -120,7 +144,10 @@ public class MlDatasetService {
         report.setWarningCount(validation.warningCount());
         report.setRejectedReasonsJson(writeJson(validation.rejectedReasons()));
         report.setMappingStatsJson(writeJson(validation.mappingStats()));
-        report.setSummary(validation.ready() ? "Telemetry selection is ready for training." : "Telemetry selection failed validation.");
+        report.setQualityProfileJson(writeJson(validation.qualityProfile()));
+        report.setSummary(version.getStatus() == MlDatasetStatus.READY
+                ? "Telemetry selection is ready for training."
+                : "Telemetry selection failed validation.");
         report.setCreatedAt(now);
         validationReportRepository.save(report);
 
@@ -205,10 +232,13 @@ public class MlDatasetService {
         long acceptedRows = 0;
         long rejectedRows = 0;
         long warnings = 0;
+        long maxSamplingGapObserved = 0;
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
         Map<String, Long> mappingStats = new LinkedHashMap<>();
+        Map<String, Long> coverageByDeviceMetric = new LinkedHashMap<>();
         Map<UUID, List<UUID>> maintenanceWindowIdsByDevice = new LinkedHashMap<>();
+        List<ExtractedTelemetryRow> extractedRows = new ArrayList<>();
 
         for (UUID deviceId : request.deviceIds()) {
             List<MaintenanceWindowReadModel> maintenanceWindows =
@@ -258,13 +288,42 @@ public class MlDatasetService {
                     messages.add("Device " + deviceId + " metric " + metric + " max sampling gap is "
                             + maxGap + " seconds.");
                 }
+                maxSamplingGapObserved = Math.max(maxSamplingGapObserved, maxGap);
                 acceptedRows += points.size();
                 increment(mappingStats, "accepted:" + metric, points.size());
+                coverageByDeviceMetric.put(deviceId + ":" + metric, (long) points.size());
+                points.stream()
+                        .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+                        .map(point -> {
+                            NormalizedMetric normalized = normalizeMetric(metric);
+                            return new ExtractedTelemetryRow(
+                                    deviceId,
+                                    metric,
+                                    normalized.canonicalMetricName(),
+                                    normalized.rawUnit(),
+                                    normalized.canonicalUnit(),
+                                    point.timestamp(),
+                                    point.value());
+                        })
+                        .forEach(extractedRows::add);
             }
         }
         if (acceptedRows == 0 && messages.isEmpty()) {
             messages.add("No telemetry rows matched the requested dataset filters.");
         }
+        Map<String, Object> qualityProfile = new LinkedHashMap<>();
+        qualityProfile.put("rowCount", acceptedRows);
+        qualityProfile.put("rejectedRows", rejectedRows);
+        qualityProfile.put("deviceCount", request.deviceIds().stream().distinct().count());
+        qualityProfile.put("metricCount", request.metrics().stream().distinct().count());
+        qualityProfile.put("timeRange", Map.of("from", request.from().toString(), "to", request.to().toString()));
+        qualityProfile.put("coverageByDeviceMetric", coverageByDeviceMetric);
+        qualityProfile.put("maxSamplingGapSeconds", maxSamplingGapObserved);
+        qualityProfile.put("duplicateTimestampRate", 0.0);
+        qualityProfile.put("nonFiniteImpossibleValueCount", rejectedReasons.getOrDefault("NON_FINITE_VALUES", 0L));
+        qualityProfile.put("unitNormalizationWarnings", 0L);
+        qualityProfile.put("maintenanceOverlapCount", maintenanceWindowIdsByDevice.values().stream().mapToLong(List::size).sum());
+        qualityProfile.put("labelCoverage", Map.of());
         return new ValidationResult(acceptedRows > 0 && rejectedReasons.isEmpty(),
                 acceptedRows,
                 rejectedRows,
@@ -272,7 +331,14 @@ public class MlDatasetService {
                 List.copyOf(messages),
                 rejectedReasons,
                 mappingStats,
-                maintenanceWindowIdsByDevice);
+                maintenanceWindowIdsByDevice,
+                qualityProfile,
+                extractedRows.stream()
+                        .sorted(Comparator
+                                .comparing(ExtractedTelemetryRow::deviceId)
+                                .thenComparing(ExtractedTelemetryRow::metricName)
+                                .thenComparing(ExtractedTelemetryRow::timestamp))
+                        .toList());
     }
 
     private Map<String, Object> lineageFilter(MlInternalDatasetRequest request, ValidationResult validation) {
@@ -287,7 +353,103 @@ public class MlDatasetService {
                 ? DEFAULT_MAX_SAMPLING_GAP_SECONDS
                 : request.maxSamplingGapSeconds());
         value.put("validationMessages", validation.messages());
+        value.put("materializedRowCount", validation.extractedRows().size());
+        value.put("materializedRowPreview", validation.extractedRows().stream()
+                .limit(10)
+                .map(row -> Map.of(
+                        "deviceId", row.deviceId().toString(),
+                        "metricName", row.metricName(),
+                        "canonicalMetricName", row.canonicalMetricName(),
+                        "rawUnit", row.rawUnit() == null ? "" : row.rawUnit(),
+                        "canonicalUnit", row.canonicalUnit() == null ? "" : row.canonicalUnit(),
+                        "timestamp", row.timestamp().toString()))
+                .toList());
         return value;
+    }
+
+    private List<MlCanonicalMetricRow> canonicalRows(
+            UUID accountId,
+            UUID datasetVersionId,
+            MlInternalDatasetRequest request,
+            List<ExtractedTelemetryRow> rows,
+            Instant now) {
+        return rows.stream()
+                .map(row -> {
+                    MlCanonicalMetricRow canonical = new MlCanonicalMetricRow();
+                    canonical.setId(UUID.randomUUID());
+                    canonical.setAccountId(accountId);
+                    canonical.setDatasetVersionId(datasetVersionId);
+                    canonical.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
+                    canonical.setDeviceId(row.deviceId());
+                    canonical.setExternalDeviceKey(null);
+                    canonical.setVirtualDeviceKey("internal:" + accountId + ":" + row.deviceId());
+                    canonical.setDeviceType(request.deviceType());
+                    canonical.setSourceId("telemetry-service");
+                    canonical.setSensorId(row.metricName());
+                    canonical.setTimestamp(row.timestamp());
+                    canonical.setMetricName(row.metricName());
+                    canonical.setCanonicalMetricName(row.canonicalMetricName());
+                    canonical.setNumericValue(row.numericValue());
+                    canonical.setRawUnit(row.rawUnit());
+                    canonical.setCanonicalUnit(row.canonicalUnit());
+                    canonical.setQualityFlags("[]");
+                    canonical.setMetadataJson(writeJson(request.deviceMetadata() == null ? Map.of() : request.deviceMetadata()));
+                    canonical.setSourceLineage(writeJson(Map.of(
+                            "source", "internal_telemetry",
+                            "deviceId", row.deviceId().toString(),
+                            "metricName", row.metricName(),
+                            "timestamp", row.timestamp().toString())));
+                    canonical.setCreatedAt(now);
+                    return canonical;
+                })
+                .toList();
+    }
+
+    private String immutableRowReference(UUID datasetVersionId) {
+        return "ml_canonical_metric_rows:dataset_version_id=" + datasetVersionId;
+    }
+
+    private String dataHash(List<ExtractedTelemetryRow> rows) {
+        StringBuilder builder = new StringBuilder();
+        for (ExtractedTelemetryRow row : rows) {
+            builder.append(row.deviceId()).append('|')
+                    .append(row.metricName()).append('|')
+                    .append(row.canonicalMetricName()).append('|')
+                    .append(row.rawUnit() == null ? "" : row.rawUnit()).append('|')
+                    .append(row.canonicalUnit() == null ? "" : row.canonicalUnit()).append('|')
+                    .append(row.timestamp()).append('|')
+                    .append(Double.toString(row.numericValue()))
+                    .append('\n');
+        }
+        return sha256(builder.toString());
+    }
+
+    private NormalizedMetric normalizeMetric(String metricName) {
+        String metric = metricName == null ? "" : metricName.trim();
+        return switch (metric) {
+            case "activePowerW", "active_power_w", "active_power" -> new NormalizedMetric(metric, "active_power", "W");
+            case "voltage", "voltageV", "voltage_v" -> new NormalizedMetric(metric, "voltage", "V");
+            case "current", "currentA", "current_a" -> new NormalizedMetric(metric, "current", "A");
+            case "energyGrowth", "energy_growth", "energyGrowthWh", "energy_growth_wh" -> new NormalizedMetric(metric, "energy_growth", "Wh");
+            default -> new NormalizedMetric(metric, toSnakeCase(metric), null);
+        };
+    }
+
+    private String toSnakeCase(String value) {
+        StringBuilder builder = new StringBuilder();
+        char previous = 0;
+        for (char current : value.toCharArray()) {
+            if (Character.isUpperCase(current) && builder.length() > 0 && previous != '_' && previous != '-') {
+                builder.append('_');
+            }
+            if (current == '-' || current == ' ' || current == '.') {
+                builder.append('_');
+            } else {
+                builder.append(Character.toLowerCase(current));
+            }
+            previous = current;
+        }
+        return builder.toString().replaceAll("_+", "_").toLowerCase(Locale.ROOT);
     }
 
     private long maxGapSeconds(List<TelemetryChartResponse.Point> points) {
@@ -347,7 +509,11 @@ public class MlDatasetService {
                 version.getSourceWindowEnd(),
                 version.getCreatedAt(),
                 version.getReadyAt(),
-                version.getFailureReason());
+                version.getFailureReason(),
+                version.getArtifactUri(),
+                version.getArtifactHash(),
+                version.getImmutableRowReference(),
+                version.getDataHash());
     }
 
     private MlValidationReportDto validationReport(MlValidationReport report) {
@@ -360,6 +526,7 @@ public class MlDatasetService {
                 report.getWarningCount(),
                 readLongMap(report.getRejectedReasonsJson()),
                 readLongMap(report.getMappingStatsJson()),
+                readObjectMap(report.getQualityProfileJson()),
                 report.getSummary(),
                 report.getCreatedAt());
     }
@@ -391,6 +558,19 @@ public class MlDatasetService {
         }
     }
 
+    private Map<String, Object> readObjectMap(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(
+                    json,
+                    objectMapper.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class));
+        } catch (JsonProcessingException exception) {
+            return Map.of();
+        }
+    }
+
     private record ValidationResult(
             boolean ready,
             long acceptedRows,
@@ -399,6 +579,27 @@ public class MlDatasetService {
             List<String> messages,
             Map<String, Long> rejectedReasons,
             Map<String, Long> mappingStats,
-            Map<UUID, List<UUID>> maintenanceWindowIdsByDevice) {
+            Map<UUID, List<UUID>> maintenanceWindowIdsByDevice,
+            Map<String, Object> qualityProfile,
+            List<ExtractedTelemetryRow> extractedRows) {
+    }
+
+    private record ExtractedTelemetryRow(
+            UUID deviceId,
+            String metricName,
+            String canonicalMetricName,
+            String rawUnit,
+            String canonicalUnit,
+            Instant timestamp,
+            double numericValue) {
+    }
+
+    private record NormalizedMetric(
+            String rawMetricName,
+            String canonicalMetricName,
+            String canonicalUnit) {
+        String rawUnit() {
+            return canonicalUnit;
+        }
     }
 }

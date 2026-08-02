@@ -82,6 +82,42 @@ class MlServiceSmokeTest(unittest.TestCase):
         self.assertEqual(response.json()["predictionStatus"], "INSUFFICIENT_DATA")
         self.assertLess(response.json()["confidence"], 0.5)
 
+    def test_model_only_inference_returns_features_unavailable_when_online_features_are_missing(self) -> None:
+        response = self.client.post(
+            "/inference",
+            json={
+                "deviceId": "device-1",
+                "metrics": {},
+                "modelPreference": {"allowBaselineHeuristic": False},
+                "featureGenerationStatus": "FEATURES_UNAVAILABLE",
+                "featureGenerationErrors": ["MISSING_REQUIRED_FEATURE: metricName"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["predictionStatus"], "FEATURES_UNAVAILABLE")
+        self.assertIn("MISSING_REQUIRED_FEATURE: metricName", response.json()["explanations"])
+
+    def test_model_only_inference_returns_schema_mismatch_for_incompatible_online_features(self) -> None:
+        response = self.client.post(
+            "/inference",
+            json={
+                "deviceId": "device-1",
+                "metrics": {"activePowerW": 850.0},
+                "modelPreference": {
+                    "allowBaselineHeuristic": False,
+                    "requiredFeatureSchemaHash": "sha256:model-schema",
+                },
+                "featureGenerationStatus": "READY",
+                "featureContract": {"featureSchemaHash": "sha256:online-schema"},
+                "featureVector": {"metricName": "activePowerW"},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["predictionStatus"], "FEATURE_SCHEMA_MISMATCH")
+        self.assertIn("schema", response.json()["explanations"][0])
+
     def test_inference_rejects_non_finite_metric_values(self) -> None:
         response = self.client.post(
             "/inference",

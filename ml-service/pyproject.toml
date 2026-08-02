@@ -9,6 +9,11 @@ dependencies = [
   "pydantic==2.13.4",
   "pydantic-settings==2.14.2",
   "httpx==0.28.1",
+  "click==8.1.8",
+  "numpy==2.2.6",
+  "scikit-learn==1.7.1",
+  "joblib==1.5.2",
+  "boto3==1.43.62",
 ]
 
 [tool.uvicorn]

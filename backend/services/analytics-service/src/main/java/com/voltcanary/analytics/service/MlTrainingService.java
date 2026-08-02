@@ -1,5 +1,8 @@
 package com.voltcanary.analytics.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.domain.MlFeatureSnapshot;
@@ -12,7 +15,9 @@ import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,6 +30,7 @@ public class MlTrainingService {
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlTrainingRunRepository trainingRunRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public MlTrainingService(
             MlDatasetVersionRepository datasetVersionRepository,
@@ -62,11 +68,9 @@ public class MlTrainingService {
         run.setFeatureSnapshotId(featureSnapshot.getId());
         run.setModelFamily(request.modelFamily());
         run.setAlgorithm(request.algorithm() == null || request.algorithm().isBlank()
-                ? "baseline-statistical-anomaly-v1"
+                ? "sklearn-isolation-forest-v1"
                 : request.algorithm());
-        run.setHyperparametersJson(request.hyperparametersJson() == null || request.hyperparametersJson().isBlank()
-                ? "{}"
-                : request.hyperparametersJson());
+        run.setHyperparametersJson(trainingHyperparameters(request));
         run.setStatus(MlTrainingRunStatus.QUEUED);
         run.setCreatedBy(userId);
         run.setCreatedAt(now);
@@ -86,9 +90,14 @@ public class MlTrainingService {
         if (run.getStatus() != MlTrainingRunStatus.QUEUED && run.getStatus() != MlTrainingRunStatus.RUNNING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only queued or running training runs can be canceled");
         }
-        run.setStatus(MlTrainingRunStatus.CANCELED);
-        run.setCompletedAt(Instant.now());
-        run.setLogsSummary("Training run canceled by operator.");
+        if (run.getStatus() == MlTrainingRunStatus.RUNNING) {
+            run.setCancellationRequested(true);
+            run.setLogsSummary("Training run cancellation requested by operator.");
+        } else {
+            run.setStatus(MlTrainingRunStatus.CANCELED);
+            run.setCompletedAt(Instant.now());
+            run.setLogsSummary("Training run canceled by operator.");
+        }
         trainingRunRepository.save(run);
         return response(run);
     }
@@ -108,6 +117,7 @@ public class MlTrainingService {
         retry.setAlgorithm(failed.getAlgorithm());
         retry.setHyperparametersJson(failed.getHyperparametersJson());
         retry.setStatus(MlTrainingRunStatus.QUEUED);
+        retry.setRetryCount(failed.getRetryCount() + 1);
         retry.setCreatedBy(failed.getCreatedBy());
         retry.setCreatedAt(Instant.now());
         trainingRunRepository.save(retry);
@@ -140,6 +150,37 @@ public class MlTrainingService {
                 run.getCreatedBy(),
                 run.getCreatedAt(),
                 run.getStartedAt(),
-                run.getCompletedAt());
+                run.getCompletedAt(),
+                run.getLeaseOwner(),
+                run.getLeaseExpiresAt(),
+                run.getHeartbeatAt(),
+                run.isCancellationRequested(),
+                run.getRetryCount(),
+                run.getStaleRecoveredAt());
+    }
+
+    private String trainingHyperparameters(MlTrainingRunRequest request) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        if (request.hyperparametersJson() != null && !request.hyperparametersJson().isBlank()) {
+            try {
+                values.putAll(objectMapper.readValue(request.hyperparametersJson(), new TypeReference<>() {}));
+            } catch (JsonProcessingException exception) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "hyperparametersJson must be valid JSON object");
+            }
+        }
+        putIfPresent(values, "failureHorizonDays", request.failureHorizonDays());
+        putIfPresent(values, "minimumPositiveLabels", request.minimumPositiveLabels());
+        putIfPresent(values, "minimumLabelCoverage", request.minimumLabelCoverage());
+        try {
+            return objectMapper.writeValueAsString(values);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize training hyperparameters", exception);
+        }
+    }
+
+    private void putIfPresent(Map<String, Object> values, String key, Object value) {
+        if (value != null) {
+            values.put(key, value);
+        }
     }
 }

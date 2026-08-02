@@ -1,6 +1,9 @@
 package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
+import com.voltcanary.analytics.dto.MaintenanceOutcomeSnapshot;
+import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
+import com.voltcanary.analytics.service.MaintenanceOutcomeProjectionService;
 import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
 import com.voltcanary.analytics.service.AnalyticsJobService;
 import com.voltcanary.analytics.service.TelemetryValidatedEventHandler;
@@ -41,6 +44,12 @@ class AnalyticsConsumerReplayTest {
 
     @Autowired
     private MaintenanceWindowReadModelRepository maintenanceWindowRepository;
+
+    @Autowired
+    private MaintenanceOutcomeProjectionService maintenanceOutcomeProjectionService;
+
+    @Autowired
+    private MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository;
 
     @MockitoBean
     private AnalyticsJobService jobService;
@@ -165,5 +174,70 @@ class AnalyticsConsumerReplayTest {
             assertThat(window.getTitle()).isEqualTo("New title");
             assertThat(window.getVersion()).isEqualTo(2);
         });
+    }
+
+    @Test
+    void maintenanceOutcomeProjectionStoresOutcomeAndIgnoresOlderVersions() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        UUID outcomeId = UUID.randomUUID();
+        UUID operationId = UUID.randomUUID();
+        UUID windowId = UUID.randomUUID();
+        Instant observedAt = Instant.parse("2026-06-13T08:00:00Z");
+
+        maintenanceOutcomeProjectionService.upsertSnapshot(new MaintenanceOutcomeSnapshot(
+                outcomeId,
+                accountId,
+                deviceId,
+                operationId,
+                windowId,
+                observedAt,
+                observedAt.plusSeconds(1800),
+                "CONFIRMED_FAILURE",
+                "COMPRESSOR_OVERHEAT",
+                "compressor",
+                "HIGH",
+                30,
+                "Replaced compressor",
+                "TECHNICIAN",
+                0.95,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                observedAt.minusSeconds(60),
+                observedAt.plusSeconds(60),
+                2));
+        maintenanceOutcomeProjectionService.upsertSnapshot(new MaintenanceOutcomeSnapshot(
+                outcomeId,
+                accountId,
+                deviceId,
+                operationId,
+                windowId,
+                observedAt,
+                observedAt.plusSeconds(1200),
+                "UNKNOWN",
+                null,
+                null,
+                "LOW",
+                10,
+                null,
+                "OPERATOR",
+                0.5,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                observedAt.minusSeconds(120),
+                observedAt,
+                1));
+
+        assertThat(maintenanceOutcomeRepository.findById(outcomeId)).hasValueSatisfying(outcome -> {
+            assertThat(outcome.getOutcomeType()).isEqualTo("CONFIRMED_FAILURE");
+            assertThat(outcome.getFailureMode()).isEqualTo("COMPRESSOR_OVERHEAT");
+            assertThat(outcome.getVersion()).isEqualTo(2);
+        });
+        assertThat(maintenanceOutcomeProjectionService.observedForDevice(
+                deviceId,
+                observedAt.minusSeconds(1),
+                observedAt.plusSeconds(1)))
+                .extracting(outcome -> outcome.getMaintenanceOutcomeId())
+                .containsExactly(outcomeId);
     }
 }

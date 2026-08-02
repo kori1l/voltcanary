@@ -1,6 +1,7 @@
 import hashlib
 import json
 from statistics import mean, pstdev
+from typing import Any
 from uuid import uuid4
 
 from app.schemas.training import FeatureSnapshotResponse, MetricRow
@@ -33,6 +34,17 @@ class FeatureService:
             featureSchemaHash=schema_hash,
             artifactUri=artifact_uri,
         )
+
+    def load_snapshot_artifact(self, artifact_uri: str) -> dict[str, Any]:
+        artifact = self.artifact_store.load_json(artifact_uri)
+        features = artifact.get("features")
+        if not isinstance(features, dict) or not features:
+            raise ValueError("feature artifact does not contain a feature map")
+        expected_hash = artifact.get("featureSchemaHash")
+        actual_hash = self.schema_hash(features)
+        if expected_hash != actual_hash:
+            raise ValueError("feature artifact schema hash verification failed")
+        return artifact
 
     def _features(self, rows: list[MetricRow]) -> dict[str, float | int]:
         values_by_metric: dict[str, list[float]] = {}

@@ -38,8 +38,12 @@ public class MlModelVersion {
     private String featureSchemaHash;
     @Column(name = "artifact_uri")
     private String artifactUri;
+    @Column(name = "artifact_manifest_uri")
+    private String artifactManifestUri;
     @Column(name = "artifact_hash")
     private String artifactHash;
+    @Column(name = "artifact_size_bytes")
+    private Long artifactSizeBytes;
     @Column(name = "compatible_device_types_json", nullable = false, columnDefinition = "text")
     private String compatibleDeviceTypesJson;
     @Column(name = "supported_metrics_json", nullable = false, columnDefinition = "text")
@@ -77,8 +81,12 @@ public class MlModelVersion {
     public void setFeatureSchemaHash(String featureSchemaHash) { this.featureSchemaHash = featureSchemaHash; }
     public String getArtifactUri() { return artifactUri; }
     public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
+    public String getArtifactManifestUri() { return artifactManifestUri; }
+    public void setArtifactManifestUri(String artifactManifestUri) { this.artifactManifestUri = artifactManifestUri; }
     public String getArtifactHash() { return artifactHash; }
     public void setArtifactHash(String artifactHash) { this.artifactHash = artifactHash; }
+    public Long getArtifactSizeBytes() { return artifactSizeBytes; }
+    public void setArtifactSizeBytes(Long artifactSizeBytes) { this.artifactSizeBytes = artifactSizeBytes; }
     public String getCompatibleDeviceTypesJson() { return compatibleDeviceTypesJson; }
     public void setCompatibleDeviceTypesJson(String compatibleDeviceTypesJson) { this.compatibleDeviceTypesJson = compatibleDeviceTypesJson; }
     public String getSupportedMetricsJson() { return supportedMetricsJson; }

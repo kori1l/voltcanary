@@ -19,5 +19,9 @@ public record MlDatasetVersionDto(
         Instant sourceWindowStart,
         Instant sourceWindowEnd,
         Instant createdAt,
-        Instant readyAt) {
+        Instant readyAt,
+        String artifactUri,
+        String artifactHash,
+        String immutableRowReference,
+        String dataHash) {
 }

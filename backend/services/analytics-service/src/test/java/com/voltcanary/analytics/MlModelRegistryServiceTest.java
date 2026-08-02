@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.server.ResponseStatusException;
 
 class MlModelRegistryServiceTest {
 
@@ -88,6 +90,20 @@ class MlModelRegistryServiceTest {
     }
 
     @Test
+    void approvalRequiresVerifiedArtifactMetadata() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlModelVersion model = model(accountId, MlModelStatus.CANDIDATE);
+        model.setArtifactManifestUri("");
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+
+        assertThatThrownBy(() -> service.approve(accountId, actorId, model.getId(), new MlModelStatusRequest("reviewed")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("artifact manifest URI");
+    }
+
+
+    @Test
     void resolvesDeploymentPoliciesByDeviceDeviceTypeThenAccount() {
         UUID accountId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
@@ -145,7 +161,9 @@ class MlModelRegistryServiceTest {
         model.setFeatureSnapshotId(UUID.randomUUID());
         model.setFeatureSchemaHash("sha256:test");
         model.setArtifactUri("artifact://model");
+        model.setArtifactManifestUri("artifact://model/manifest.json");
         model.setArtifactHash("sha256:artifact");
+        model.setArtifactSizeBytes(128L);
         model.setCompatibleDeviceTypesJson("[]");
         model.setSupportedMetricsJson("[]");
         model.setEvaluationMetricsJson("{}");

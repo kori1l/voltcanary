@@ -9,6 +9,7 @@ import com.voltcanary.analytics.consumer.TelemetryValidatedConsumer;
 import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlInferenceRequest;
 import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.producer.AnalyticsEventPublisher;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
@@ -194,5 +195,47 @@ class AnalyticsPipelineTest {
         assertThat(client.requestPrediction(UUID.randomUUID(), Instant.now(), Map.of("metric", "activePowerW")))
                 .isNull();
         server.verify();
+    }
+
+    @Test
+    void mlInferenceRequestIncludesOnlineFeatureVectorAndExplicitMissingFeatureErrors() {
+        UUID deviceId = UUID.randomUUID();
+        MlInferenceRequest ready = new MlInferenceRequest(
+                deviceId,
+                Instant.parse("2026-07-30T12:00:00Z"),
+                Map.of(
+                        "metric", "activePowerW",
+                        "latestValue", 120.0,
+                        "mean", 100.0,
+                        "min", 90.0,
+                        "max", 130.0,
+                        "deviceType", "washer"),
+                List.of(),
+                Map.of("mean", 100.0),
+                Map.of("sampleCount", 6),
+                Map.of("requiredFeatureSchemaHash", "sha256:model", "modelFamily", "ANOMALY_DETECTION"));
+
+        assertThat(ready.featureGenerationStatus()).isEqualTo("READY");
+        assertThat(ready.featureVector())
+                .containsEntry("deviceKey", deviceId.toString())
+                .containsEntry("metricName", "activePowerW")
+                .containsEntry("baselineDeviationRatio", 1.2)
+                .containsEntry("deviceType", "washer");
+        assertThat(ready.featureContract())
+                .containsEntry("requiredFeatureSchemaHash", "sha256:model")
+                .containsKey("featureSchemaHash");
+
+        MlInferenceRequest unavailable = new MlInferenceRequest(
+                deviceId,
+                Instant.parse("2026-07-30T12:00:00Z"),
+                Map.of(),
+                List.of(),
+                Map.of(),
+                Map.of("sampleCount", 0),
+                Map.of());
+
+        assertThat(unavailable.featureGenerationStatus()).isEqualTo("FEATURES_UNAVAILABLE");
+        assertThat(unavailable.featureGenerationErrors())
+                .contains("MISSING_REQUIRED_FEATURE: metricName", "MISSING_REQUIRED_FEATURE: latestValue");
     }
 }

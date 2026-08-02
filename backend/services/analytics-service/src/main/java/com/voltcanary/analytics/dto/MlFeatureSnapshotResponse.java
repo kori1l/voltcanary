@@ -10,8 +10,15 @@ public record MlFeatureSnapshotResponse(
         String featureSetVersion,
         String codeConfigVersion,
         String featureSchemaHash,
+        String featureDataHash,
+        String featureConfigHash,
         long rowCount,
         long rejectedRowCount,
         String artifactUri,
+        String immutableRowReference,
+        String modelFamily,
+        Integer horizonDays,
+        String featureTemplateId,
+        String featureTemplateVersion,
         Instant createdAt) {
 }

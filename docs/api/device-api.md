@@ -170,6 +170,12 @@ Public endpoints:
   all unfinished child windows.
 - `POST /maintenance-operations/{operationId}/finish-now`: end an active
   operation and all active child windows at the current time.
+- `GET /maintenance-operations/{operationId}/outcomes`: list structured
+  outcomes recorded against an operation.
+- `POST /maintenance-operations/{operationId}/outcomes`: record an outcome for
+  an operation device/window.
+- `GET /maintenance-outcomes/{outcomeId}`: read one outcome.
+- `PATCH /maintenance-outcomes/{outcomeId}`: update structured outcome fields.
 - `GET /devices/{deviceId}/maintenance-windows`: list maintenance windows for
   an owned device. Optional filters: `status`, `from`, `to`, `page`, and
   `size`.
@@ -206,6 +212,31 @@ Operation responses include `id`, account, title, time range, status, policy
 flags, audit fields, `version`, and a `devices` array with device id/name/type,
 location id/name, child `windowId`, and per-device status.
 
+Outcome request:
+
+```json
+{
+  "deviceId": "0b3ac2da-ea4e-4c65-a7ae-433cbec33420",
+  "maintenanceWindowId": "c46b14cf-6399-4fa6-a8bc-ae95f7d7e7ed",
+  "observedAt": "2026-06-30T08:30:00Z",
+  "resolvedAt": "2026-06-30T09:15:00Z",
+  "outcomeType": "CONFIRMED_FAILURE",
+  "failureMode": "COMPRESSOR_OVERHEAT",
+  "component": "compressor",
+  "severity": "HIGH",
+  "downtimeMinutes": 45,
+  "technicianNotes": "Compressor replaced.",
+  "source": "TECHNICIAN",
+  "confidence": 0.95
+}
+```
+
+Outcome types are `CONFIRMED_FAILURE`, `CORRECTIVE_MAINTENANCE`,
+`PREVENTIVE_MAINTENANCE`, `INSPECTION_NORMAL`, `FALSE_POSITIVE`,
+`SENSOR_FAULT`, `UNRESOLVED_ANOMALY`, and `UNKNOWN`. Responses include account,
+device, operation/window ids, structured outcome fields, audit actor fields,
+timestamps, and monotonic `version`.
+
 Device-scoped window request:
 
 ```json
@@ -228,6 +259,7 @@ Internal reconciliation endpoints:
 
 - `GET /internal/devices/{deviceId}/maintenance-windows`
 - `GET /internal/maintenance-windows/changes?updatedAfter={instant}&limit=100`
+- `GET /internal/maintenance-outcomes/changes?updatedAfter={instant}&limit=100`
 
 Every create/update/cancel/finish operation writes an outbox event to
 `maintenance-window.changed.v1` with the full window snapshot and version.

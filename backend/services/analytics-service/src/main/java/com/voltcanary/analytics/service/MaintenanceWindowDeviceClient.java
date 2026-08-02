@@ -2,6 +2,7 @@ package com.voltcanary.analytics.service;
 
 import com.voltcanary.analytics.config.AnalyticsDownstreamProperties;
 import com.voltcanary.analytics.config.AnalyticsInternalProperties;
+import com.voltcanary.analytics.dto.MaintenanceOutcomeSnapshot;
 import com.voltcanary.analytics.dto.MaintenanceWindowSnapshot;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -53,6 +54,32 @@ public class MaintenanceWindowDeviceClient {
         } catch (RestClientException exception) {
             meterRegistry.counter("analytics.maintenance.reconciliation.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
             sample.stop(meterRegistry.timer("analytics.maintenance.reconciliation.fetch.duration", "status", "failure"));
+            return List.of();
+        }
+    }
+
+    public List<MaintenanceOutcomeSnapshot> outcomeChanges(Instant updatedAfter, int limit) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            MaintenanceOutcomeSnapshot[] response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/internal/maintenance-outcomes/changes")
+                            .queryParam("updatedAfter", updatedAfter)
+                            .queryParam("limit", limit)
+                            .build())
+                    .headers(headers -> {
+                        headers.set("X-Source-Service", internalServiceName);
+                        if (!internalServiceToken.isBlank()) {
+                            headers.set("X-Internal-Service-Token", internalServiceToken);
+                        }
+                    })
+                    .retrieve()
+                    .body(MaintenanceOutcomeSnapshot[].class);
+            sample.stop(meterRegistry.timer("analytics.maintenance.outcome.reconciliation.fetch.duration", "status", "success"));
+            return response == null ? List.of() : Arrays.asList(response);
+        } catch (RestClientException exception) {
+            meterRegistry.counter("analytics.maintenance.outcome.reconciliation.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
+            sample.stop(meterRegistry.timer("analytics.maintenance.outcome.reconciliation.fetch.duration", "status", "failure"));
             return List.of();
         }
     }

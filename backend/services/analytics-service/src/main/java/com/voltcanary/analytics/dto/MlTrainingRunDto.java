@@ -21,5 +21,11 @@ public record MlTrainingRunDto(
         UUID createdBy,
         Instant createdAt,
         Instant startedAt,
-        Instant completedAt) {
+        Instant completedAt,
+        String leaseOwner,
+        Instant leaseExpiresAt,
+        Instant heartbeatAt,
+        boolean cancellationRequested,
+        int retryCount,
+        Instant staleRecoveredAt) {
 }
