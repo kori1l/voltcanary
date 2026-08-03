@@ -78,7 +78,7 @@ public class MlLabelController {
     }
 
     private void requireWrite(String role) {
-        if (!("ADMIN".equals(role) || "OWNER".equals(role))) {
+        if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML label write access denied");
         }
     }

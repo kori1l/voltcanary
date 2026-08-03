@@ -835,7 +835,7 @@ function LabelsTab(props: {
 
   return (
     <div className="ml-workflow-grid">
-      <form className="panel" onSubmit={create}>
+      <form className="panel ml-workflow-form" onSubmit={create}>
         <div className="section-header">
           <div>
             <h2>Label review</h2>
@@ -902,8 +902,8 @@ function LabelsTab(props: {
         {props.labels.length === 0 ? <div className="empty-state">No labels loaded for the selected dataset.</div> : props.labels.map((item) => (
           <div className="ml-model-row" key={item.id}>
             <div>
-              <strong>{item.label} В· {item.metricName ?? "metric"}</strong>
-              <span>{item.deviceId ?? item.externalDeviceKey} В· {item.source} В· {item.reason ?? "No reason"}</span>
+              <strong>{item.label} / {item.metricName ?? "metric"}</strong>
+              <span>{item.deviceId ?? item.externalDeviceKey} / {item.source} / {item.reason ?? "No reason"}</span>
               <small>{new Date(item.labelStartAt).toLocaleString()} - {new Date(item.labelEndAt).toLocaleString()}</small>
               {item.lineageHash && <small className="mono-value">h{item.horizonDays} {item.generationVersion} {item.lineageHash}</small>}
             </div>
@@ -921,7 +921,7 @@ function LabelsTab(props: {
             {props.audit.map((item) => (
               <div className="ml-readout" key={item.id}>
                 <strong>{item.previousLabel ?? "NEW"} {"->"} {item.newLabel}</strong>
-                <span>{item.reason ?? "No reason"} В· {new Date(item.editedAt).toLocaleString()}</span>
+                <span>{item.reason ?? "No reason"} / {new Date(item.editedAt).toLocaleString()}</span>
               </div>
             ))}
           </>
@@ -991,7 +991,7 @@ function TrainingTab(props: {
 
   return (
     <div className="ml-workflow-grid">
-      <form className="panel" onSubmit={submit}>
+      <form className="panel ml-workflow-form" onSubmit={submit}>
         <div className="section-header">
           <div>
             <h2>Create training run</h2>
@@ -1018,17 +1018,19 @@ function TrainingTab(props: {
             {selectedTemplate.checklist.map((item) => <li key={item}>{item}</li>)}
           </ul>
         </section>
-        <label>Dataset version<select value={datasetVersionId} onChange={(e) => setDatasetVersionId(e.target.value)}>{readyDatasets.map((dataset) => <option key={dataset.datasetVersionId} value={dataset.datasetVersionId}>{dataset.name} v{dataset.version}</option>)}</select></label>
+        <div className="ml-control-grid">
+          <label>Dataset version<select value={datasetVersionId} onChange={(e) => setDatasetVersionId(e.target.value)}>{readyDatasets.map((dataset) => <option key={dataset.datasetVersionId} value={dataset.datasetVersionId}>{dataset.name} v{dataset.version}</option>)}</select></label>
+          <label>Feature snapshot id<input value={featureSnapshotId} onChange={(e) => setFeatureSnapshotId(e.target.value)} placeholder="Use the latest generated snapshot UUID" /></label>
+          <label>Algorithm<select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
+            {selectedTemplate.algorithms.map((value) => <option key={value} value={value}>{humanizeAlgorithm(value)}</option>)}
+          </select></label>
+        </div>
         {selectedDataset && (
           <div className="ml-readout">
             <strong>{selectedDataset.name} v{selectedDataset.version}</strong>
             <span>{selectedDataset.sourceType} / {selectedDataset.splitStrategy} / {selectedDataset.immutableRowReference ? "immutable rows ready" : "artifact-backed"}</span>
           </div>
         )}
-        <label>Feature snapshot id<input value={featureSnapshotId} onChange={(e) => setFeatureSnapshotId(e.target.value)} placeholder="Use the latest generated snapshot UUID" /></label>
-        <label>Algorithm<select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
-          {selectedTemplate.algorithms.map((value) => <option key={value} value={value}>{humanizeAlgorithm(value)}</option>)}
-        </select></label>
         {modelFamily === "FAILURE_PREDICTION" && (
           <section className="ml-inline-panel">
             <h3>Failure prediction gates</h3>
@@ -1050,7 +1052,7 @@ function TrainingTab(props: {
         {props.runs.length === 0 ? <div className="empty-state">No training runs yet.</div> : props.runs.map((run) => (
           <div className="ml-readout" key={run.id}>
             <strong>{run.modelFamily} / {run.algorithm}</strong>
-            <span>{run.status} В· {run.logSummary ?? run.failureReason ?? "Waiting for worker"}</span>
+            <span>{run.status} / {run.logSummary ?? run.failureReason ?? "Waiting for worker"}</span>
             <div className="action-row action-row-start">
               {["QUEUED", "RUNNING"].includes(run.status) && <button className="ghost-button" onClick={() => void cancelTrainingRun(run.id).then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Cancel</button>}
               {["FAILED", "CANCELED"].includes(run.status) && <button className="ghost-button" onClick={() => void retryTrainingRun(run.id).then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Retry</button>}
@@ -1074,7 +1076,7 @@ function ModelsTab(props: { models: MlModelVersion[]; onChanged: () => Promise<v
           <div className="ml-model-row" key={model.id}>
             <div className="ml-model-body">
               <strong>{modelLabel}</strong>
-              <span>{model.family} / {humanizeAlgorithm(model.algorithm)} / {model.status}</span>
+              <span>{model.family} / {humanizeAlgorithm(model.algorithm)} / {model.status} / {modelOriginLabel(model)}</span>
               {model.family === "FAILURE_PREDICTION" ? <FailureModelCard gates={gates} model={model} /> : <GenericModelMetrics model={model} />}
             </div>
             <div className="action-row">
@@ -1175,7 +1177,7 @@ function GenericModelMetrics({ model }: { model: MlModelVersion }) {
 }
 
 function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPolicy[]; onChanged: () => Promise<void>; setError: (value: string | null) => void }) {
-  const deployableModels = props.models.filter((model) => model.status === "APPROVED" || model.status === "ACTIVE");
+  const deployableModels = props.models.filter((model) => (model.status === "APPROVED" || model.status === "ACTIVE") && !model.demoModel);
   const [scope, setScope] = useState<MlDeploymentScope>("ACCOUNT");
   const [mode, setMode] = useState<MlDeploymentMode>("SHADOW");
   const [modelVersionId, setModelVersionId] = useState("");
@@ -1213,7 +1215,7 @@ function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPo
   async function resolve() {
     try {
       const policy = await resolveDeploymentPolicy(deviceId, deviceType);
-      setResolved(`${policy.policySource ?? "BASELINE"} В· ${policy.mode} В· ${policy.fallbackReason ?? "model selected"}`);
+      setResolved(`${policy.policySource ?? "BASELINE"} / ${policy.mode} / ${policy.fallbackReason ?? "model selected"}`);
     } catch (error) {
       props.setError(safeMlError(error));
     }
@@ -1221,15 +1223,17 @@ function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPo
 
   return (
     <div className="ml-workflow-grid">
-      <form className="panel" onSubmit={submit}>
+      <form className="panel ml-workflow-form" onSubmit={submit}>
         <h2>Deployment policy editor</h2>
-        <label>Scope<select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}><option value="ACCOUNT">Account</option><option value="DEVICE_TYPE">Device type</option><option value="DEVICE">Device</option></select></label>
-        {scope === "DEVICE" && <label>Device id<input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} /></label>}
-        {scope === "DEVICE_TYPE" && <label>Device type<input value={deviceType} onChange={(e) => setDeviceType(e.target.value)} /></label>}
-        <label>Mode<select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}><option value="SHADOW">Shadow</option><option value="CANARY">Canary</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select></label>
-        <label>Model<select value={modelVersionId} onChange={(e) => setModelVersionId(e.target.value)}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version}</option>)}</select></label>
-        {mode === "CANARY" && <label>Canary percent<input max="100" min="0" onChange={(e) => setCanaryPercent(Number(e.target.value))} type="number" value={canaryPercent} /></label>}
-        <label><input checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} type="checkbox" /> Baseline fallback enabled</label>
+        <div className="ml-control-grid">
+          <label>Scope<select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}><option value="ACCOUNT">Account</option><option value="DEVICE_TYPE">Device type</option><option value="DEVICE">Device</option></select></label>
+          <label>Mode<select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}><option value="SHADOW">Shadow</option><option value="CANARY">Canary</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select></label>
+          <label>Model<select value={modelVersionId} onChange={(e) => setModelVersionId(e.target.value)}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version} / {modelOriginLabel(model)}</option>)}</select></label>
+          {scope === "DEVICE" && <label>Device id<input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} /></label>}
+          {scope === "DEVICE_TYPE" && <label>Device type<input value={deviceType} onChange={(e) => setDeviceType(e.target.value)} /></label>}
+          {mode === "CANARY" && <label>Canary percent<input max="100" min="0" onChange={(e) => setCanaryPercent(Number(e.target.value))} type="number" value={canaryPercent} /></label>}
+        </div>
+        <label className="checkbox-label"><input checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} type="checkbox" /> Baseline fallback enabled</label>
         <div className="action-row action-row-start"><button className="primary-button">Save policy</button><button className="ghost-button" onClick={() => void resolve()} type="button">Resolve policy</button></div>
         {resolved && <div className="success-message">{resolved}</div>}
       </form>
@@ -1237,8 +1241,8 @@ function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPo
         <h2>Current policies</h2>
         {props.policies.length === 0 ? <div className="empty-state">No deployment policies yet.</div> : props.policies.map((policy) => (
           <div className="ml-readout" key={policy.id}>
-            <strong>{policy.scope} В· {policy.mode}</strong>
-            <span>{policy.modelVersionId ?? "baseline fallback"} В· fallback {policy.fallbackEnabled ? "on" : "off"}</span>
+            <strong>{policy.scope} / {policy.mode}</strong>
+            <span>{policy.modelVersionId ?? "baseline fallback"} / fallback {policy.fallbackEnabled ? "on" : "off"}</span>
           </div>
         ))}
       </section>
@@ -1265,8 +1269,14 @@ function MonitoringTab(props: {
     const predictionQuality = props.prediction ? Math.round(props.prediction.confidence * 100) : 0;
     const latencyStatus = props.prediction ? "Captured at prediction boundary" : "No recent prediction";
     const driftStatus = activeModels > 0 && readyDatasets > 0 ? "Watch feature hash changes" : "Insufficient model baseline";
-    return { activeModels, driftStatus, errorRate, failedRuns, fallbackPolicies, fallbackRate, latencyStatus, predictionQuality, readyDatasets };
-  }, [props.datasets, props.models, props.policies, props.trainingRuns]);
+    const deploymentPath = props.prediction?.predictionPath ?? props.prediction?.deploymentMode ?? "N/A";
+    const canaryState = props.prediction?.canaryIncluded === true
+      ? "Included"
+      : props.prediction?.canaryIncluded === false
+        ? "Excluded"
+        : "N/A";
+    return { activeModels, canaryState, deploymentPath, driftStatus, errorRate, failedRuns, fallbackPolicies, fallbackRate, latencyStatus, predictionQuality, readyDatasets };
+  }, [props.datasets, props.models, props.policies, props.prediction, props.trainingRuns]);
 
   return (
     <div className="ml-workflow-grid">
@@ -1279,11 +1289,20 @@ function MonitoringTab(props: {
           <article><span>Error rate</span><strong>{stats.errorRate}%</strong></article>
           <article><span>Prediction quality</span><strong>{stats.predictionQuality}%</strong></article>
           <article><span>Inference latency</span><strong>{props.prediction ? "OK" : "N/A"}</strong></article>
+          <article><span>Deployment path</span><strong>{stats.deploymentPath}</strong></article>
+          <article><span>Canary</span><strong>{stats.canaryState}</strong></article>
         </div>
         <div className="ml-readout"><strong>Drift</strong><span>{stats.driftStatus}</span></div>
         <div className="ml-readout"><strong>Latency</strong><span>{stats.latencyStatus}</span></div>
         <div className="ml-readout"><strong>Fallback policies</strong><span>{stats.fallbackPolicies} policy scopes have baseline fallback enabled</span></div>
         <div className="ml-readout"><strong>Training errors</strong><span>{stats.failedRuns} failed runs in the current list</span></div>
+        <h3>Deployment comparison</h3>
+        <dl className="ml-model-metric-grid">
+          <div><dt>Active</dt><dd>{props.prediction?.predictionPath === "ACTIVE" ? statusText(props.prediction.predictionStatus) : "No active path in latest trace"}</dd></div>
+          <div><dt>Shadow</dt><dd>{props.prediction?.shadowPrediction ? statusText(props.prediction.predictionStatus) : "Stored separately from latest active"}</dd></div>
+          <div><dt>Canary</dt><dd>{props.prediction?.deploymentMode === "CANARY" ? formatCanaryState(props.prediction) : "No canary policy in latest trace"}</dd></div>
+          <div><dt>Fallback</dt><dd>{props.prediction?.predictionPath === "FALLBACK" ? props.prediction.fallbackReason || "Fallback used" : "Not used"}</dd></div>
+        </dl>
       </section>
       <MlStatus deviceMode={Boolean(props.deviceId)} error={props.statusError} prediction={props.prediction} />
     </div>
@@ -1307,6 +1326,11 @@ function MlStatus({ prediction, error, deviceMode }: { prediction: PredictionRes
         <div><dt>Model</dt><dd>{prediction.modelName} / {prediction.modelVersion}</dd></div>
         <div><dt>Family / type</dt><dd>{prediction.modelFamily ?? "Unknown"} / {prediction.modelType ?? "Unknown"}</dd></div>
         <div><dt>Model status</dt><dd>{prediction.modelStatus ?? "Unknown"}</dd></div>
+        <div><dt>Policy</dt><dd>{prediction.policySource ?? "BASELINE"} / {prediction.deploymentMode ?? "DISABLED"}</dd></div>
+        <div><dt>Prediction path</dt><dd>{prediction.predictionPath ?? "Unknown"}</dd></div>
+        <div><dt>Device type</dt><dd>{prediction.resolvedDeviceType || "Unknown"}</dd></div>
+        <div><dt>Canary</dt><dd>{formatCanaryState(prediction)}</dd></div>
+        <div><dt>Fallback</dt><dd>{prediction.fallbackReason || "None"}</dd></div>
         <div><dt>Confidence</dt><dd>{Math.round(prediction.confidence * 100)}%</dd></div>
         <div><dt>Model version id</dt><dd className="mono-value">{prediction.modelVersionId ?? "Unavailable"}</dd></div>
         <div><dt>Input hash</dt><dd className="mono-value">{prediction.inputHash || "Unavailable"}</dd></div>
@@ -1373,6 +1397,29 @@ function RiskDriversList({ drivers }: { drivers: RiskDriverView[] }) {
 
 function statusText(v: string) {
   return ({ UNAVAILABLE: "ML unavailable; rule analytics continue", INSUFFICIENT_DATA: "More telemetry required", SUPPRESSED_MAINTENANCE: "Suppressed during maintenance" } as Record<string, string>)[v] ?? v;
+}
+
+function formatCanaryState(prediction: PredictionResponse) {
+  const percent = prediction.canaryPercent === null || prediction.canaryPercent === undefined
+    ? ""
+    : ` / ${prediction.canaryPercent}%`;
+  if (prediction.canaryIncluded === true) {
+    return `Included${percent}`;
+  }
+  if (prediction.canaryIncluded === false) {
+    return `Excluded${percent}`;
+  }
+  return percent ? percent.slice(3) : "N/A";
+}
+
+function modelOriginLabel(model: MlModelVersion) {
+  if (model.demoModel || model.modelOrigin === "DEMO") {
+    return "Demo";
+  }
+  if (model.systemHeuristic || model.modelOrigin === "SYSTEM_HEURISTIC") {
+    return "System heuristic";
+  }
+  return "Trained";
 }
 
 type TrainingTemplate = {

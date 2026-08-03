@@ -65,10 +65,14 @@ public record MlInferenceRequest(
             Map<String, Object> baseline,
             Map<String, Object> recentWindow,
             List<MlExcludedInterval> excludedIntervals) {
+        if (hasPrecomputedFeatureVector(metrics)) {
+            return new LinkedHashMap<>(metrics);
+        }
         Map<String, Object> features = new LinkedHashMap<>();
         String metricName = stringValue(metrics, "metric");
         double latestValue = numberValue(metrics, "latestValue");
         double baselineMean = numberValue(baseline, "mean");
+        double loadRatio = baselineMean == 0 ? 0 : latestValue / baselineMean;
         features.put("deviceKey", deviceId == null ? "" : deviceId.toString());
         features.put("metricName", metricName);
         features.put("timestamp", timestamp == null ? "" : timestamp.toString());
@@ -76,13 +80,15 @@ public record MlInferenceRequest(
         features.put("rollingMin", numberValue(metrics, "min"));
         features.put("rollingMax", numberValue(metrics, "max"));
         features.put("rollingStddev", 0.0);
-        features.put("baselineDeviationRatio", baselineMean == 0 ? 0 : latestValue / baselineMean);
+        features.put("baselineDeviationRatio", loadRatio);
         features.put("missingGapFlag", numberValue(recentWindow, "sampleCount") <= 0);
         features.put("samplingGapSeconds", 0);
         features.put("hourOfDay", timestamp == null ? null : timestamp.atZone(ZoneOffset.UTC).getHour());
         features.put("dayOfWeek", timestamp == null ? null : timestamp.atZone(ZoneOffset.UTC).getDayOfWeek().getValue());
         features.put("deviceType", stringValue(metrics, "deviceType"));
         features.put("metricSchemaId", metricName.isBlank() ? "" : metricName + ":" + stringValue(metrics, "metricUnit"));
+        features.put("applianceLoadRatio", loadRatio);
+        features.put("applianceActivityFlag", latestValue > baselineMean);
         features.put("maintenanceOverlapFlag", excludedIntervals != null && !excludedIntervals.isEmpty());
         features.put("qualityFlags", qualityFlags(metrics, recentWindow, excludedIntervals));
         return features;
@@ -105,6 +111,8 @@ public record MlInferenceRequest(
                 "dayOfWeek",
                 "deviceType",
                 "metricSchemaId",
+                "applianceLoadRatio",
+                "applianceActivityFlag",
                 "maintenanceOverlapFlag",
                 "qualityFlags");
         contract.put("contractVersion", "feature-vector-contract-v1");
@@ -123,6 +131,7 @@ public record MlInferenceRequest(
                 "timestamp",
                 "rollingMean",
                 "baselineDeviationRatio",
+                "applianceLoadRatio",
                 "samplingGapSeconds"));
         contract.put("metricSchemaId", stringValue(metrics, "metric").isBlank()
                 ? ""
@@ -131,6 +140,9 @@ public record MlInferenceRequest(
     }
 
     private static List<String> onlineFeatureErrors(Map<String, Object> metrics) {
+        if (hasPrecomputedFeatureVector(metrics)) {
+            return List.of();
+        }
         List<String> errors = new ArrayList<>();
         if (stringValue(metrics, "metric").isBlank()) {
             errors.add("MISSING_REQUIRED_FEATURE: metricName");
@@ -142,6 +154,12 @@ public record MlInferenceRequest(
             errors.add("MISSING_REQUIRED_FEATURE: rollingMean");
         }
         return List.copyOf(errors);
+    }
+
+    private static boolean hasPrecomputedFeatureVector(Map<String, Object> metrics) {
+        return hasNumber(metrics, "rollingMean")
+                && hasNumber(metrics, "baselineDeviationRatio")
+                && hasNumber(metrics, "applianceLoadRatio");
     }
 
     private static List<String> qualityFlags(

@@ -49,6 +49,14 @@ export interface PredictionResponse {
   modelType?: string;
   modelStatus?: string;
   predictionStatus: string;
+  policySource?: string | null;
+  deploymentMode?: string | null;
+  resolvedDeviceType?: string | null;
+  canaryPercent?: number | null;
+  canaryIncluded?: boolean | null;
+  predictionPath?: string | null;
+  fallbackReason?: string | null;
+  shadowPrediction?: boolean;
   anomalyScore: number;
   degradationScore: number;
   failureRiskScore?: number | null;

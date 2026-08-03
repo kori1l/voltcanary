@@ -380,6 +380,35 @@ describe("MlSettingsPage", () => {
     expect(screen.getByText("Degradation score")).toBeInTheDocument();
   });
 
+  it("shows ML backend JSON errors as readable operator messages", async () => {
+    mockFetch((url, init) => {
+      if (url.includes("/analytics/devices/device-1/predictions/latest")) return json(readyPrediction);
+      if (url.endsWith("/analytics/ml-settings/devices/device-1")) return json(inheritedSettings);
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models/model-failure-1/approve") && init?.method === "POST") {
+        return errorJson(400, {
+          timestamp: "2026-08-03T00:42:56.614+00:00",
+          status: 400,
+          error: "Bad Request",
+          path: "/analytics/ml/models/model-failure-1/approve",
+        });
+      }
+      if (url.endsWith("/analytics/ml/models")) return json([failureModelVersion]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await loadDevice();
+
+    await userEvent.click(screen.getByRole("button", { name: "Models" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Approve washer-failure v1/i }));
+
+    expect(await screen.findByText("Bad Request for /analytics/ml/models/model-failure-1/approve")).toBeInTheDocument();
+    expect(screen.queryByText(/timestamp/i)).not.toBeInTheDocument();
+  });
+
   it("supports dataset, import, training, registry, and deployment workflows", async () => {
     const requests: Request[] = [];
     let importedDatasetVisible = false;
@@ -669,6 +698,13 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
 function json(value: unknown) {
   return new Response(JSON.stringify(value), {
     status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function errorJson(status: number, value: unknown) {
+  return new Response(JSON.stringify(value), {
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }

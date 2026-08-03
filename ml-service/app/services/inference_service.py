@@ -251,7 +251,7 @@ class InferenceService:
         if model is None:
             return None
 
-        metric_values = self._numeric_metrics(request.metrics)
+        metric_values = self._trained_model_features(request)
         if not metric_values:
             return None
 
@@ -521,6 +521,10 @@ class InferenceService:
             name=preference.model_name,
             model_version_id=preference.model_version_id,
         )
+
+    def _trained_model_features(self, request: InferenceRequest) -> dict[str, float]:
+        feature_values = self._numeric_metrics(request.feature_vector)
+        return feature_values or self._numeric_metrics(request.metrics)
 
     def _model_unavailable_response(self, request: InferenceRequest, model: dict[str, Any], reason: str) -> InferenceResponse:
         return InferenceResponse(

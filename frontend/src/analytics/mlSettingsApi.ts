@@ -12,6 +12,33 @@ export const saveDeviceMlSettings = (deviceId: string, body: MlSettingsValues) =
 export const clearDeviceMlSettings = (deviceId: string) => apiRequest<void>(`/analytics/ml-settings/devices/${deviceId}`, { method: "DELETE" });
 
 export function safeMlError(error: unknown) {
-  const message = error instanceof Error ? error.message : "ML settings request failed";
+  const message = normalizeApiError(error instanceof Error ? error.message : "ML settings request failed");
   return /https?:|stack|exception|localhost/i.test(message) ? "ML settings are temporarily unavailable. Try again later." : message;
+}
+
+function normalizeApiError(message: string) {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "ML settings request failed";
+  }
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        error?: string;
+        message?: string;
+        path?: string;
+        status?: number;
+      };
+      const summary = parsed.message ?? parsed.error;
+      if (summary) {
+        return parsed.path ? `${summary} for ${parsed.path}` : summary;
+      }
+      if (parsed.status) {
+        return parsed.path ? `Request failed with status ${parsed.status} for ${parsed.path}` : `Request failed with status ${parsed.status}`;
+      }
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed.length > 220 ? `${trimmed.slice(0, 217)}...` : trimmed;
 }

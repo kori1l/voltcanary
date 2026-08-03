@@ -23,6 +23,9 @@ public record MlModelVersionDto(
         String compatibleDeviceTypesJson,
         String supportedMetricsJson,
         String evaluationMetricsJson,
+        String modelOrigin,
+        boolean demoModel,
+        boolean systemHeuristic,
         UUID approvedBy,
         Instant approvedAt,
         Instant createdAt) {

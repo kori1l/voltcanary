@@ -161,7 +161,7 @@ public class MlDatasetController {
     }
 
     private void requireWrite(String role) {
-        if (!("ADMIN".equals(role) || "OWNER".equals(role))) {
+        if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML dataset write access denied");
         }
     }

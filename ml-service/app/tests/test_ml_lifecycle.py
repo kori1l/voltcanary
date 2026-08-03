@@ -601,6 +601,53 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(response.training_data_window["datasetVersionId"], "dataset-failure-inference-v1")
             self.assertIn("sklearn-logistic-regression-failure-v1", response.explanations[0])
 
+    def test_failure_model_inference_scores_online_feature_vector(self) -> None:
+        start = datetime(2026, 7, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = ArtifactStore(directory)
+            training_service = TrainingService(artifact_store)
+            run = training_service.start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-failure-online-features-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "modelFamily": "FAILURE_PREDICTION",
+                        "failureHorizonDays": 14,
+                        "rows": [
+                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
+                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
+                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
+                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                        ],
+                    }
+                )
+            )
+
+            response = InferenceService(artifact_store).predict(
+                InferenceRequest.model_validate(
+                    {
+                        "deviceId": "device-1",
+                        "metrics": {"metric": "activePowerW", "latestValue": 118.0},
+                        "featureVector": {"rollingMean": 118.0, "baselineDeviationRatio": 1.7},
+                        "featureGenerationStatus": "READY",
+                        "modelPreference": {
+                            "modelVersionId": run.model_version_id,
+                            "manifestUri": run.manifest_uri,
+                            "artifactUri": run.artifact_uri,
+                            "artifactHash": run.artifact_hash,
+                            "modelStatus": "APPROVED",
+                            "allowBaselineHeuristic": False,
+                        },
+                    }
+                )
+            )
+
+            self.assertEqual(response.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(response.model_family, "FAILURE_PREDICTION")
+            self.assertEqual(response.model_version_id, run.model_version_id)
+            self.assertIsNotNone(response.failure_risk_score)
+
     def test_failure_model_inference_loads_by_model_version_id_from_registry(self) -> None:
         start = datetime(2026, 7, 30, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:

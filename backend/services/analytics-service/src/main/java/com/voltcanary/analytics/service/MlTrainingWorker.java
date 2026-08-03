@@ -132,7 +132,7 @@ public class MlTrainingWorker {
             heartbeat(run);
             assertNotCanceled(run);
             UUID modelVersionId = UUID.fromString(trainingResponse.modelVersionId());
-            Map<String, Object> smokeMetrics = smokeMetrics(trainingRows);
+            Map<String, Object> smokeMetrics = smokeMetrics(featureRows);
             MlInferenceResponse smokeResponse = mlClient.requestPrediction(
                     UUID.fromString(trainingRows.get(0).deviceId()),
                     Instant.parse(trainingRows.get(0).timestamp()),
@@ -146,8 +146,9 @@ public class MlTrainingWorker {
                             "manifestUri", trainingResponse.manifestUri() == null ? "" : trainingResponse.manifestUri(),
                             "artifactHash", trainingResponse.artifactHash() == null ? "" : trainingResponse.artifactHash(),
                             "artifactSizeBytes", trainingResponse.artifactSizeBytes() == null ? 0L : trainingResponse.artifactSizeBytes(),
+                            "modelFamily", run.getModelFamily().name(),
                             "modelVersion", trainingResponse.modelVersion() == null ? "" : trainingResponse.modelVersion(),
-                            "modelType", "trained_tabular_anomaly",
+                            "modelType", modelType(run),
                             "modelStatus", "READY",
                             "allowBaselineHeuristic", false));
             if (smokeResponse == null
@@ -346,11 +347,15 @@ public class MlTrainingWorker {
         }
     }
 
-    private Map<String, Object> smokeMetrics(List<MlTrainingMetricRow> trainingRows) {
+    private Map<String, Object> smokeMetrics(List<MlFeatureRow> featureRows) {
         Map<String, Object> metrics = new LinkedHashMap<>();
-        trainingRows.stream()
-                .limit(8)
-                .forEach(row -> metrics.put(row.metric(), row.value()));
+        for (MlFeatureRow row : featureRows) {
+            Map<String, Double> numeric = numericFeatures(row);
+            if (!numeric.isEmpty()) {
+                metrics.putAll(numeric);
+                break;
+            }
+        }
         return metrics;
     }
 
@@ -360,6 +365,12 @@ public class MlTrainingWorker {
                 .distinct()
                 .sorted()
                 .toList();
+    }
+
+    private String modelType(MlTrainingRun run) {
+        return run.getModelFamily() == com.voltcanary.analytics.domain.MlModelFamily.FAILURE_PREDICTION
+                ? "trained_failure_prediction"
+                : "trained_tabular_anomaly";
     }
 
     private Integer integerOption(String hyperparametersJson, String key) {

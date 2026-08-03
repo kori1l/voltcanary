@@ -9,6 +9,19 @@ public record MlResolvedDeploymentPolicyResponse(
         UUID policyId,
         UUID modelVersionId,
         MlDeploymentMode mode,
+        String resolvedDeviceType,
+        Integer canaryPercent,
+        Boolean canaryIncluded,
         boolean fallbackEnabled,
         String fallbackReason) {
+
+    public MlResolvedDeploymentPolicyResponse(
+            MlDeploymentScope policySource,
+            UUID policyId,
+            UUID modelVersionId,
+            MlDeploymentMode mode,
+            boolean fallbackEnabled,
+            String fallbackReason) {
+        this(policySource, policyId, modelVersionId, mode, null, null, null, fallbackEnabled, fallbackReason);
+    }
 }

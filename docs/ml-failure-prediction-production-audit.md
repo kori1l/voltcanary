@@ -34,6 +34,48 @@ different target: "probability of confirmed failure or corrective maintenance in
 the next N days", with a clear prediction horizon, event labels, feature windows,
 time-based evaluation, and feedback from maintenance outcomes.
 
+## Implementation Status As Of 2026-08-03
+
+This audit started as a gap analysis. Since then, the following OpenSpec changes
+have been completed and archived:
+
+- `2026-08-02-close-ml-dataset-lifecycle`
+- `2026-08-02-materialize-ml-feature-platform`
+- `2026-08-02-unify-ml-artifacts-runtime`
+- `2026-08-02-failure-outcome-labeling`
+- `2026-08-02-supervised-failure-prediction`
+- `2026-08-03-ml-deployment-runtime-monitoring`
+
+Status of the original production blockers:
+
+| Blocker | Current status | Evidence |
+| --- | --- | --- |
+| External import does not become a trainable dataset version | Implemented | `close-ml-dataset-lifecycle` tasks 2.1-2.5 |
+| Internal telemetry dataset does not freeze training rows | Implemented | `close-ml-dataset-lifecycle` tasks 3.1-3.5 |
+| Feature snapshot can have no usable rows | Implemented | `materialize-ml-feature-platform` tasks 2.1-2.5 |
+| Java registry selects models Python cannot resolve | Implemented | `unify-ml-artifacts-runtime` tasks 4.1-4.4 |
+| Training run succeeds without a real model artifact | Implemented | `unify-ml-artifacts-runtime` tasks 1.1-3.5 |
+| Deployment modes are not fully enforced | Implemented | `ml-deployment-runtime-monitoring` tasks 1.1-2.5 |
+| ML target is wrong for failure prediction | Implemented | `supervised-failure-prediction` tasks 1.1-2.5 |
+| Labels do not represent real failure outcomes | Implemented | `failure-outcome-labeling` tasks 1.1-4.5 |
+| Evaluation metrics are not meaningful | Implemented | `supervised-failure-prediction` tasks 3.1-3.5 |
+| Rule risk leakage is built into inference input | Implemented | `supervised-failure-prediction` tasks 4.2-4.4 |
+| Device type policy is not used in live recalculation | Implemented | `ml-deployment-runtime-monitoring` tasks 1.1-1.4 |
+| Canary deployment is metadata only | Implemented | `ml-deployment-runtime-monitoring` tasks 2.1-2.5 |
+| Demo models are created automatically | Implemented | `ml-deployment-runtime-monitoring` tasks 3.1-3.4 |
+| Artifact storage is not production-ready | Implemented | `unify-ml-artifacts-runtime` tasks 1.1-1.5 and 5.1-5.4 |
+| External device mapping does not verify ownership | Implemented | `close-ml-dataset-lifecycle` tasks 4.1-4.2 |
+| Metric semantics and units are too loose | Implemented for ML datasets | `close-ml-dataset-lifecycle` tasks 3.2 and 4.3 |
+| No data quality gates for real predictive maintenance | Implemented | `close-ml-dataset-lifecycle` tasks 1.3 and 4.4-4.5 |
+| Training cancellation is not real for running work | Implemented | `unify-ml-artifacts-runtime` tasks 3.4-3.5 |
+| Tests mostly prove metadata flow, not ML correctness | Implemented for the first production smoke gate | Unit and service tests exist across archived ML changes, and `docs/flows/ml-failure-prediction-docker-verification.md` defines a repeatable Docker scenario backed by `scripts/ml-failure-prediction-docker-smoke.ps1`. |
+
+Remaining work should not re-open the already archived implementation slices.
+The current hardening step is a repeatable production-readiness verification
+path that proves the full lifecycle in Docker with persisted data, model
+artifacts, deployment policy, live inference traceability, and monitoring
+signals.
+
 ## Critical Workflow Failures In The Current Code
 
 These are the concrete places where the current mechanism behaves like a demo

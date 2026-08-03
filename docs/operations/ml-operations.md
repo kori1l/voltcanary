@@ -2,6 +2,12 @@
 
 Operational procedures for the production ML module.
 
+For the repeatable Docker production-readiness path, run
+[`docs/flows/ml-failure-prediction-docker-verification.md`](../flows/ml-failure-prediction-docker-verification.md).
+That smoke scenario exercises dataset materialization, outcome labels, feature
+snapshots, ML-service artifacts, approval, deployment, live inference
+traceability, and exported monitoring signals without manual database changes.
+
 ## Retrain
 
 1. Create or import a dataset version from `/settings/ml` -> `Datasets` or `Import`.
@@ -63,9 +69,16 @@ is observable.
 
 1. Approve a `CANDIDATE` model in `Models`.
 2. Create a `SHADOW` policy first and verify shadow predictions do not change latest active risk.
-3. Move to `CANARY` for a limited percentage when supported by the selected scope.
+3. Move to `CANARY` for a limited percentage when supported by the selected scope. Canary inclusion is deterministic per account, device, and model version, so repeated recalculations for the same inputs stay in the same cohort.
 4. Promote to `ACTIVE` only after fallback rate, inference failures, and prediction quality remain acceptable.
 5. Confirm the selected model version is marked `ACTIVE` and audit logs contain `MODEL_APPROVED` and `POLICY_UPDATED`.
+
+For device-type rollouts, confirm device-service metadata returns the expected
+`type` through `/internal/devices/{deviceId}/metadata`. Analytics-service
+records the resolved type and policy source in prediction traceability. If a
+model's compatible device types or supported metrics do not match runtime
+metadata, analytics-service does not call ML-service and persists a fallback
+trace with `INCOMPATIBLE_DEVICE_TYPE` or `INCOMPATIBLE_FEATURE_SCHEMA`.
 
 ## Roll Back
 
@@ -112,7 +125,23 @@ Prometheus metrics:
 - `analytics.ml.inference.duration`
 - `analytics.ml.inference.failures`
 - `analytics.ml.inference.fallback.rate`
+- `analytics.ml.inference.fallback.count`
+- `analytics.ml.inference.feature_mismatch.count`
+- `analytics.ml.inference.missing_feature.count`
+- `analytics.ml.inference.shadow.count`
+- `analytics.ml.inference.canary.included.count`
+- `analytics.ml.inference.canary.excluded.count`
 - `analytics.ml.drift.active.feature_schema_hashes`
+- `analytics.ml.quality.false_alerts.count`
+- `analytics.ml.quality.false_alerts.per_device_month`
+- `analytics.ml.quality.lead_time.days.avg`
+
+Inference latency and failure metrics are tagged with `modelVersionId` when a
+policy selected a model version. Fallback count is tagged by reason for canary
+exclusion, incompatible model/device metadata, maintenance suppression, disabled
+policy, and ML unavailability.
+False-alert and lead-time gauges are populated only after labels/outcomes exist;
+empty label windows report `0` rather than failing metric collection.
 
 Health checks:
 

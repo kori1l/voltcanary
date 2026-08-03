@@ -442,7 +442,9 @@ class MlFeaturePipelineServiceTest {
                 .containsEntry("hourOfDay", offlineFeatures.get("hourOfDay"))
                 .containsEntry("dayOfWeek", offlineFeatures.get("dayOfWeek"))
                 .containsEntry("deviceType", offlineFeatures.get("deviceType"))
-                .containsEntry("metricSchemaId", offlineFeatures.get("metricSchemaId"));
+                .containsEntry("metricSchemaId", offlineFeatures.get("metricSchemaId"))
+                .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"))
+                .containsEntry("applianceActivityFlag", offlineFeatures.get("applianceActivityFlag"));
     }
 
     private MlDatasetVersion datasetVersion(UUID accountId, UUID datasetId, UUID versionId) {

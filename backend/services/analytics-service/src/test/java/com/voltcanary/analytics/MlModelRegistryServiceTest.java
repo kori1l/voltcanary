@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.config.MlRegistryProperties;
 import com.voltcanary.analytics.domain.MlDeploymentAuditEvent;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.MlDeploymentPolicy;
@@ -36,11 +37,58 @@ class MlModelRegistryServiceTest {
     private final MlModelVersionRepository modelRepository = mock(MlModelVersionRepository.class);
     private final MlDeploymentPolicyRepository policyRepository = mock(MlDeploymentPolicyRepository.class);
     private final MlDeploymentAuditEventRepository auditRepository = mock(MlDeploymentAuditEventRepository.class);
+    private final MlRegistryProperties registryProperties = new MlRegistryProperties();
     private final MlModelRegistryService service = new MlModelRegistryService(
             modelRepository,
             policyRepository,
             auditRepository,
-            new ObjectMapper());
+            new ObjectMapper(),
+            registryProperties);
+
+    @Test
+    void listModelsDoesNotSeedDemoModelsUnlessEnabled() {
+        UUID accountId = UUID.randomUUID();
+        when(modelRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of());
+
+        assertThat(service.listModels(accountId)).isEmpty();
+
+        verify(modelRepository, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void listModelsSeedsDemoModelsWhenExplicitlyEnabled() {
+        UUID accountId = UUID.randomUUID();
+        registryProperties.setDemoSeedingEnabled(true);
+        when(modelRepository.findByAccountIdOrderByCreatedAtDesc(accountId))
+                .thenReturn(List.of())
+                .thenReturn(List.of(model(accountId, MlModelStatus.APPROVED)));
+
+        service.listModels(accountId);
+
+        verify(modelRepository, org.mockito.Mockito.times(3)).save(org.mockito.ArgumentMatchers.any(MlModelVersion.class));
+    }
+
+    @Test
+    void modelResponseDistinguishesTrainedDemoAndSystemHeuristicModels() {
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion trained = model(accountId, MlModelStatus.APPROVED);
+        MlModelVersion demo = model(accountId, MlModelStatus.APPROVED);
+        demo.setModelKey("demo-" + accountId + "-anomaly");
+        demo.setArtifactUri("artifact://demo/anomaly/model.json");
+        MlModelVersion system = model(null, MlModelStatus.APPROVED);
+        system.setModelKey("system-baseline-heuristic");
+        system.setAlgorithm("baseline-heuristic-v1");
+        system.setArtifactUri("artifact://system/baseline/model.json");
+        when(modelRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of(trained, demo, system));
+
+        List<MlModelVersionDto> models = service.listModels(accountId);
+
+        assertThat(models).extracting(MlModelVersionDto::modelOrigin)
+                .containsExactly("TRAINED", "DEMO", "SYSTEM_HEURISTIC");
+        assertThat(models.get(0).demoModel()).isFalse();
+        assertThat(models.get(1).demoModel()).isTrue();
+        assertThat(models.get(2).systemHeuristic()).isTrue();
+    }
 
     @Test
     void approvesRejectsAndArchivesModelsWithAuditEvents() {
@@ -123,6 +171,7 @@ class MlModelRegistryServiceTest {
         MlResolvedDeploymentPolicyResponse type = service.resolvePolicy(accountId, deviceId, "washer");
         assertThat(type.policySource()).isEqualTo(MlDeploymentScope.DEVICE_TYPE);
         assertThat(type.modelVersionId()).isEqualTo(typeModelId);
+        assertThat(type.resolvedDeviceType()).isEqualTo("washer");
 
         when(policyRepository.findByAccountIdAndScopeAndDeviceType(accountId, MlDeploymentScope.DEVICE_TYPE, "washer")).thenReturn(Optional.empty());
         when(policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT))

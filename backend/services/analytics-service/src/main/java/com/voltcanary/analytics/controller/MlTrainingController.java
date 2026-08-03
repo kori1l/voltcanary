@@ -77,7 +77,7 @@ public class MlTrainingController {
     }
 
     private void requireWrite(String role) {
-        if (!("ADMIN".equals(role) || "OWNER".equals(role))) {
+        if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML training write access denied");
         }
     }

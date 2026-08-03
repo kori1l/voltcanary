@@ -82,6 +82,36 @@ class MlTrainingLifecycleTest {
     }
 
     @Test
+    void createsQueuedFailurePredictionTrainingRun() {
+        UUID accountId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        UUID featureSnapshotId = UUID.randomUUID();
+        MlFeatureSnapshot snapshot = featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10);
+        snapshot.setModelFamily("FAILURE_PREDICTION");
+        snapshot.setHorizonDays(14);
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(snapshot));
+
+        MlTrainingRunDto response = service.create(accountId, userId, new MlTrainingRunRequest(
+                datasetVersionId,
+                featureSnapshotId,
+                MlModelFamily.FAILURE_PREDICTION,
+                null,
+                14,
+                1,
+                0.5,
+                "{}"));
+
+        assertThat(response.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
+        assertThat(response.algorithm()).isEqualTo("sklearn-logistic-regression-failure-v1");
+        assertThat(response.hyperparametersJson())
+                .contains("\"failureHorizonDays\":14")
+                .contains("\"minimumPositiveLabels\":1")
+                .contains("\"minimumLabelCoverage\":0.5");
+    }
+
+    @Test
     void workerCompletesQueuedRunAndRegistersCandidateModel() {
         UUID accountId = UUID.randomUUID();
         UUID datasetVersionId = UUID.randomUUID();
@@ -303,6 +333,19 @@ class MlTrainingLifecycleTest {
                             .containsEntry("failureOutcomeType", "CONFIRMED_FAILURE")
                             .containsEntry("horizonDays", 14);
                 });
+        ArgumentCaptor<Map<String, Object>> smokeMetrics = ArgumentCaptor.forClass(Map.class);
+        verify(mlClient).requestPrediction(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                smokeMetrics.capture(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        assertThat(smokeMetrics.getValue())
+                .containsEntry("applianceLoadRatio", 0.92)
+                .containsEntry("dayOfWeek", 2.0)
+                .containsEntry("hourOfDay", 10.0);
     }
 
     @Test
@@ -427,6 +470,9 @@ class MlTrainingLifecycleTest {
     private MlFeatureRow labelledFeatureRow(UUID accountId, UUID datasetVersionId, UUID featureSnapshotId) {
         MlFeatureRow row = featureRow(accountId, datasetVersionId, featureSnapshotId);
         row.setHorizonDays(14);
+        row.setFeatureValuesJson("""
+                {"rollingMean":830.0,"rollingMin":805.0,"rollingMax":910.0,"rollingStddev":12.5,"baselineDeviationRatio":1.18,"samplingGapSeconds":14400,"hourOfDay":10,"dayOfWeek":2,"applianceLoadRatio":0.92}
+                """);
         row.setLabelValuesJson("""
                 {"label":"CONFIRMED_FAILURE","failureWithinHorizon":true,"failureOutcomeType":"CONFIRMED_FAILURE","horizonDays":14}
                 """);

@@ -27,12 +27,16 @@ import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.PredictionResultRepository;
 import com.voltcanary.analytics.repository.RecommendationRepository;
 import com.voltcanary.analytics.service.AnalyticsJobService;
+import com.voltcanary.analytics.service.DeviceMetadataClient;
 import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
 import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,6 +80,9 @@ class AnalyticsRecalculationTest {
 
     @MockitoBean
     private MlClient mlClient;
+
+    @MockitoBean
+    private DeviceMetadataClient deviceMetadataClient;
 
     @Autowired
     private DeviceBaselineRepository baselineRepository;
@@ -495,6 +502,8 @@ class AnalyticsRecalculationTest {
                 .containsEntry("policySource", "DEVICE")
                 .containsEntry("policyId", policy.getId().toString())
                 .containsEntry("modelVersionId", model.getId().toString())
+                .containsEntry("modelVersion", "1")
+                .containsEntry("modelType", "trained_tabular_anomaly")
                 .containsEntry("manifestUri", "s3://voltcanary-test/model-manifest.json")
                 .containsEntry("artifactUri", "s3://voltcanary-test/model.bin")
                 .containsEntry("artifactHash", "artifact-hash")
@@ -508,6 +517,208 @@ class AnalyticsRecalculationTest {
                     assertThat(prediction.getInputHash()).isEqualTo("trained-input-hash");
                     assertThat(prediction.getPredictionJson()).contains("\"deploymentMode\":\"ACTIVE\"");
                 });
+    }
+
+    @Test
+    void recalculateResolvesDeviceTypeDeploymentPolicyFromDeviceMetadata() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveModel(accountId, MlModelStatus.ACTIVE);
+        MlDeploymentPolicy policy = saveDeviceTypePolicy(accountId, "washer", model.getId(), MlDeploymentMode.ACTIVE, true, null);
+        when(deviceMetadataClient.metadata(deviceId))
+                .thenReturn(new DeviceMetadataClient.DeviceMetadata(deviceId, accountId, null, "washer", "ACTIVE"));
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+        when(mlClient.requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(deviceId, "device-type-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        org.mockito.ArgumentCaptor<Map<String, Object>> metricsCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        org.mockito.ArgumentCaptor<Map<String, Object>> preferenceCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(mlClient).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                metricsCaptor.capture(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                preferenceCaptor.capture());
+        assertThat(metricsCaptor.getValue()).containsEntry("deviceType", "washer");
+        assertThat(preferenceCaptor.getValue())
+                .containsEntry("policySource", "DEVICE_TYPE")
+                .containsEntry("policyId", policy.getId().toString())
+                .containsEntry("resolvedDeviceType", "washer");
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getPolicySource()).isEqualTo("DEVICE_TYPE");
+                    assertThat(prediction.getPredictionJson())
+                            .contains("\"resolvedDeviceType\":\"washer\"")
+                            .contains("\"predictionPath\":\"ACTIVE\"");
+                });
+    }
+
+    @Test
+    void recalculateResolvesAccountSystemAndFallbackPoliciesAtRuntime() {
+        UUID accountDeviceId = UUID.randomUUID();
+        UUID systemDeviceId = UUID.randomUUID();
+        UUID fallbackDeviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion accountModel = saveModel(accountId, MlModelStatus.ACTIVE);
+        MlModelVersion systemModel = saveModel(accountId, MlModelStatus.ACTIVE);
+        MlDeploymentPolicy accountPolicy = saveAccountPolicy(accountId, accountModel.getId(), MlDeploymentMode.ACTIVE, true);
+        MlDeploymentPolicy systemPolicy = saveSystemPolicy(systemModel.getId(), MlDeploymentMode.ACTIVE, true);
+        stubDevice(accountDeviceId, accountId, "washer");
+        stubDevice(systemDeviceId, accountId, "washer");
+        stubDevice(fallbackDeviceId, accountId, "washer");
+        saveDefaultDeviceMlSettings(accountId, accountDeviceId);
+        saveDefaultDeviceMlSettings(accountId, systemDeviceId);
+        saveDefaultDeviceMlSettings(accountId, fallbackDeviceId);
+        stubTelemetry(accountDeviceId);
+        stubTelemetry(systemDeviceId);
+        stubTelemetry(fallbackDeviceId);
+        when(mlClient.requestPrediction(
+                eq(accountDeviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(accountDeviceId, "account-policy-input-hash"));
+        when(mlClient.requestPrediction(
+                eq(systemDeviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(systemDeviceId, "system-policy-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, accountDeviceId);
+        deploymentPolicyRepository.delete(accountPolicy);
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, systemDeviceId);
+        deploymentPolicyRepository.delete(systemPolicy);
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, fallbackDeviceId);
+
+        assertLatestPolicyTrace(accountDeviceId, "ACCOUNT", "ACTIVE", "ACTIVE", "");
+        assertLatestPolicyTrace(systemDeviceId, "SYSTEM", "ACTIVE", "ACTIVE", "");
+        assertLatestPolicyTrace(fallbackDeviceId, "", "DISABLED", "FALLBACK", "BASELINE_HEURISTIC_FALLBACK");
+    }
+
+    @Test
+    void recalculateExcludesDeviceOutsideCanaryCohortDeterministically() {
+        UUID deviceId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveModel(accountId, MlModelStatus.ACTIVE);
+        saveDeviceTypePolicy(accountId, "washer", model.getId(), MlDeploymentMode.CANARY, true, 0);
+        when(deviceMetadataClient.metadata(deviceId))
+                .thenReturn(new DeviceMetadataClient.DeviceMetadata(deviceId, accountId, null, "washer", "ACTIVE"));
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
+
+        verify(mlClient, never()).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getStatus()).isEqualTo("CANARY_NOT_INCLUDED");
+                    assertThat(prediction.getFallbackReason()).isEqualTo("CANARY_NOT_INCLUDED");
+                    assertThat(prediction.getPredictionJson())
+                            .contains("\"deploymentMode\":\"CANARY\"")
+                            .contains("\"canaryPercent\":0")
+                            .contains("\"canaryIncluded\":false")
+                            .contains("\"predictionPath\":\"FALLBACK\"");
+                });
+    }
+
+    @Test
+    void recalculateIncludesOnlyDeterministicallySelectedCanaryDevices() {
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = saveModel(accountId, MlModelStatus.ACTIVE);
+        saveDeviceTypePolicy(accountId, "washer", model.getId(), MlDeploymentMode.CANARY, true, 50);
+        UUID includedDeviceId = deviceIdForCanaryBucket(accountId, model.getId(), 50, true);
+        UUID excludedDeviceId = deviceIdForCanaryBucket(accountId, model.getId(), 50, false);
+        stubDevice(includedDeviceId, accountId, "washer");
+        stubDevice(excludedDeviceId, accountId, "washer");
+        saveDefaultDeviceMlSettings(accountId, includedDeviceId);
+        saveDefaultDeviceMlSettings(accountId, excludedDeviceId);
+        stubTelemetry(includedDeviceId);
+        stubTelemetry(excludedDeviceId);
+        when(mlClient.requestPrediction(
+                eq(includedDeviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
+                .thenReturn(modelResponse(includedDeviceId, "canary-included-input-hash"));
+
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, includedDeviceId);
+        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, excludedDeviceId);
+
+        verify(mlClient).requestPrediction(
+                eq(includedDeviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        verify(mlClient, never()).requestPrediction(
+                eq(excludedDeviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any());
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(includedDeviceId))
+                .hasValueSatisfying(prediction -> assertThat(prediction.getPredictionJson())
+                        .contains("\"deploymentMode\":\"CANARY\"")
+                        .contains("\"canaryPercent\":50")
+                        .contains("\"canaryIncluded\":true")
+                        .contains("\"predictionPath\":\"CANARY\""));
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(excludedDeviceId))
+                .hasValueSatisfying(prediction -> assertThat(prediction.getPredictionJson())
+                        .contains("\"deploymentMode\":\"CANARY\"")
+                        .contains("\"canaryPercent\":50")
+                        .contains("\"canaryIncluded\":false")
+                        .contains("\"predictionPath\":\"FALLBACK\""));
     }
 
     @Test
@@ -539,6 +750,18 @@ class AnalyticsRecalculationTest {
 
         restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, RecalculateResponse.class, deviceId);
 
+        org.mockito.ArgumentCaptor<Map<String, Object>> preferenceCaptor = org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(mlClient).requestPrediction(
+                eq(deviceId),
+                any(Instant.class),
+                any(),
+                org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
+                preferenceCaptor.capture());
+        assertThat(preferenceCaptor.getValue())
+                .containsEntry("modelVersion", "1")
+                .containsEntry("modelType", "trained_failure_prediction");
         assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
                 .hasValueSatisfying(prediction -> {
                     assertThat(prediction.getModelId()).isEqualTo(model.getId());
@@ -722,11 +945,59 @@ class AnalyticsRecalculationTest {
         return headers;
     }
 
+    private void saveDefaultDeviceMlSettings(UUID accountId, UUID deviceId) {
+        saveDeviceMlSettings(accountId, deviceId, new MlSettingsRequest(
+                true,
+                PredictionMode.MODEL_OR_BASELINE_HEURISTIC,
+                0.6,
+                MaintenanceMlBehavior.REDUCE_CONFIDENCE,
+                true));
+    }
+
+    private void stubDevice(UUID deviceId, UUID accountId, String deviceType) {
+        when(deviceMetadataClient.metadata(deviceId))
+                .thenReturn(new DeviceMetadataClient.DeviceMetadata(deviceId, accountId, null, deviceType, "ACTIVE"));
+    }
+
+    private void stubTelemetry(UUID deviceId) {
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
+                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
+                        point(start, 100),
+                        point(start.plusSeconds(60), 180))));
+    }
+
+    private void assertLatestPolicyTrace(
+            UUID deviceId,
+            String policySource,
+            String deploymentMode,
+            String predictionPath,
+            String fallbackReason) {
+        assertThat(predictionResultRepository.findFirstByDeviceIdOrderByCreatedAtDesc(deviceId))
+                .hasValueSatisfying(prediction -> {
+                    assertThat(prediction.getPolicySource() == null ? "" : prediction.getPolicySource()).isEqualTo(policySource);
+                    assertThat(prediction.getFallbackReason() == null ? "" : prediction.getFallbackReason()).isEqualTo(fallbackReason);
+                    assertThat(prediction.getPredictionJson())
+                            .contains("\"deploymentMode\":\"" + deploymentMode + "\"")
+                            .contains("\"predictionPath\":\"" + predictionPath + "\"");
+                });
+        ResponseEntity<PredictionResponse> response = restTemplate.getForEntity(
+                "/analytics/devices/{deviceId}/predictions/latest",
+                PredictionResponse.class,
+                deviceId);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().policySource() == null ? "" : response.getBody().policySource()).isEqualTo(policySource);
+        assertThat(response.getBody().deploymentMode()).isEqualTo(deploymentMode);
+        assertThat(response.getBody().predictionPath()).isEqualTo(predictionPath);
+        assertThat(response.getBody().fallbackReason() == null ? "" : response.getBody().fallbackReason()).isEqualTo(fallbackReason);
+    }
+
     private MlModelVersion saveModel(UUID accountId, MlModelStatus status) {
         MlModelVersion model = new MlModelVersion();
         model.setId(UUID.randomUUID());
         model.setAccountId(accountId);
-        model.setModelKey("account-" + accountId + "-anomaly");
+        model.setModelKey("account-" + accountId + "-" + model.getId() + "-anomaly");
         model.setVersion(1);
         model.setFamily(MlModelFamily.ANOMALY_DETECTION);
         model.setAlgorithm("gradient_boosted_tree");
@@ -750,6 +1021,7 @@ class AnalyticsRecalculationTest {
         model.setModelKey("account-" + accountId + "-failure");
         model.setFamily(MlModelFamily.FAILURE_PREDICTION);
         model.setAlgorithm("sklearn-logistic-regression-failure-v1");
+        model.setSupportedMetricsJson("[\"rollingMean\",\"baselineDeviationRatio\",\"samplingGapSeconds\"]");
         model.setEvaluationMetricsJson("{\"failureHorizonDays\":30,\"failurePrecision\":0.72,\"failureRecall\":0.61,\"labelCoverage\":0.86,\"failurePositiveLabels\":3}");
         return modelVersionRepository.save(model);
     }
@@ -767,6 +1039,60 @@ class AnalyticsRecalculationTest {
         policy.setDeviceId(deviceId);
         policy.setModelVersionId(modelVersionId);
         policy.setMode(mode);
+        policy.setFallbackEnabled(fallbackEnabled);
+        policy.setUpdatedBy(UUID.randomUUID());
+        policy.setUpdatedAt(Instant.now());
+        return deploymentPolicyRepository.save(policy);
+    }
+
+    private MlDeploymentPolicy saveAccountPolicy(
+            UUID accountId,
+            UUID modelVersionId,
+            MlDeploymentMode mode,
+            boolean fallbackEnabled) {
+        MlDeploymentPolicy policy = new MlDeploymentPolicy();
+        policy.setId(UUID.randomUUID());
+        policy.setAccountId(accountId);
+        policy.setScope(MlDeploymentScope.ACCOUNT);
+        policy.setModelVersionId(modelVersionId);
+        policy.setMode(mode);
+        policy.setFallbackEnabled(fallbackEnabled);
+        policy.setUpdatedBy(UUID.randomUUID());
+        policy.setUpdatedAt(Instant.now());
+        return deploymentPolicyRepository.save(policy);
+    }
+
+    private MlDeploymentPolicy saveSystemPolicy(
+            UUID modelVersionId,
+            MlDeploymentMode mode,
+            boolean fallbackEnabled) {
+        MlDeploymentPolicy policy = new MlDeploymentPolicy();
+        policy.setId(UUID.randomUUID());
+        policy.setAccountId(null);
+        policy.setScope(MlDeploymentScope.SYSTEM);
+        policy.setModelVersionId(modelVersionId);
+        policy.setMode(mode);
+        policy.setFallbackEnabled(fallbackEnabled);
+        policy.setUpdatedBy(UUID.randomUUID());
+        policy.setUpdatedAt(Instant.now());
+        return deploymentPolicyRepository.save(policy);
+    }
+
+    private MlDeploymentPolicy saveDeviceTypePolicy(
+            UUID accountId,
+            String deviceType,
+            UUID modelVersionId,
+            MlDeploymentMode mode,
+            boolean fallbackEnabled,
+            Integer canaryPercent) {
+        MlDeploymentPolicy policy = new MlDeploymentPolicy();
+        policy.setId(UUID.randomUUID());
+        policy.setAccountId(accountId);
+        policy.setScope(MlDeploymentScope.DEVICE_TYPE);
+        policy.setDeviceType(deviceType);
+        policy.setModelVersionId(modelVersionId);
+        policy.setMode(mode);
+        policy.setCanaryPercent(canaryPercent);
         policy.setFallbackEnabled(fallbackEnabled);
         policy.setUpdatedBy(UUID.randomUUID());
         policy.setUpdatedAt(Instant.now());
@@ -835,5 +1161,30 @@ class AnalyticsRecalculationTest {
 
     private TelemetryChartResponse.Point point(Instant timestamp, double value) {
         return new TelemetryChartResponse.Point(timestamp, value);
+    }
+
+    private UUID deviceIdForCanaryBucket(UUID accountId, UUID modelVersionId, int percent, boolean included) {
+        for (int attempt = 0; attempt < 500; attempt++) {
+            UUID deviceId = UUID.randomUUID();
+            boolean candidateIncluded = canaryBucket(accountId, deviceId, modelVersionId) < percent;
+            if (candidateIncluded == included) {
+                return deviceId;
+            }
+        }
+        throw new IllegalStateException("Could not generate canary fixture device");
+    }
+
+    private int canaryBucket(UUID accountId, UUID deviceId, UUID modelVersionId) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest((accountId + "|" + deviceId + "|" + modelVersionId).getBytes(StandardCharsets.UTF_8));
+            int value = ((digest[0] & 0xff) << 24)
+                    | ((digest[1] & 0xff) << 16)
+                    | ((digest[2] & 0xff) << 8)
+                    | (digest[3] & 0xff);
+            return Math.floorMod(value, 100);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
+        }
     }
 }

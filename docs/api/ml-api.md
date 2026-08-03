@@ -703,7 +703,11 @@ hyperparameters.
 
 Lists account model versions with model key, version, family, algorithm,
 status, dataset version, feature snapshot, artifact hash/URI, compatibility,
-and evaluation metrics.
+evaluation metrics, and registry origin fields. `modelOrigin` is `TRAINED`,
+`DEMO`, or `SYSTEM_HEURISTIC`; `demoModel` and `systemHeuristic` are boolean
+shortcuts for frontend labeling and deployment filtering. Production demo
+model seeding is disabled by default and must be explicitly enabled for local
+or demo environments.
 
 ## GET /analytics/ml/models/{modelVersionId}
 
@@ -766,18 +770,31 @@ Query parameters:
 ## GET /analytics/ml/deployment-policies/resolve
 
 Resolves the effective model policy in order: `DEVICE`, `DEVICE_TYPE`,
-`ACCOUNT`, `SYSTEM`, then baseline heuristic fallback.
+`ACCOUNT`, `SYSTEM`, then baseline heuristic fallback. Live recalculation
+passes device metadata from device-service, so a device-type policy is selected
+when no device policy exists and the device metadata includes `type`.
+
+The response includes the selected `policySource`, `policyId`,
+`modelVersionId`, `mode`, `resolvedDeviceType`, `canaryPercent`,
+`canaryIncluded` when evaluated by runtime prediction, `fallbackEnabled`, and
+`fallbackReason`.
 
 ## Prediction traceability
 
 Analytics-service persists prediction traceability on every recalculation:
-model version id, policy source, policy id, deployment mode, input hash, feature
+model version id, policy source, policy id, deployment mode, resolved device
+type, canary percent, canary inclusion, prediction path, input hash, feature
 schema hash when available, fallback reason, confidence, signals, explanations,
-and recommended actions. `SHADOW` deployments create an additional shadow
-prediction record with `shadowPrediction=true`; latest prediction reads exclude
-shadow records so shadow scoring does not change active risk or user-facing
-recommendations.
+and recommended actions. Canary inclusion is deterministic using account id,
+device id, model version id, and configured percent; devices outside the cohort
+persist a fallback trace with `canaryIncluded=false`.
+
+`SHADOW` deployments create an additional shadow prediction record with
+`shadowPrediction=true`; latest prediction reads exclude shadow records so
+shadow scoring does not change active risk or user-facing recommendations.
+Fallback traces use `predictionPath=FALLBACK` and preserve the selected policy
+metadata for audit.
 
 ## Frontend status boundary
 
-The frontend does not call ML-service directly. It reads the latest persisted prediction through analytics-service. Model name, version, type, readiness status, prediction status, confidence, signals, explanations, recommended actions, input hash, model id, policy source, fallback reason, and shadow marker are read-only traceability fields. Missing or unavailable ML metadata is represented with controlled status values; internal endpoints and errors are not exposed.
+The frontend does not call ML-service directly. It reads the latest persisted prediction through analytics-service. Model name, version, type, readiness status, prediction status, confidence, signals, explanations, recommended actions, input hash, model id, policy source, resolved device type, canary fields, fallback reason, prediction path, and shadow marker are read-only traceability fields. Missing or unavailable ML metadata is represented with controlled status values; internal endpoints and errors are not exposed.

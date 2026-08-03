@@ -130,18 +130,52 @@ public class MlClient {
                     .body(body)
                     .retrieve()
                     .body(MlInferenceResponse.class);
-            sample.stop(meterRegistry.timer("analytics.ml.inference.duration", "status", "success"));
+            sample.stop(meterRegistry.timer(
+                    "analytics.ml.inference.duration",
+                    "status",
+                    response == null || response.predictionStatus() == null ? "success" : response.predictionStatus(),
+                    "modelVersionId",
+                    modelVersionId(modelPreference, response)));
             return response;
         } catch (JsonProcessingException exception) {
-            meterRegistry.counter("analytics.ml.inference.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.inference.duration", "status", "failure"));
+            meterRegistry.counter(
+                    "analytics.ml.inference.failures",
+                    "reason",
+                    exception.getClass().getSimpleName(),
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)).increment();
+            sample.stop(meterRegistry.timer(
+                    "analytics.ml.inference.duration",
+                    "status",
+                    "failure",
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)));
             log.warn("mlInferenceFailed deviceId={} reason={} phase=serialize", deviceId, exception.getClass().getSimpleName());
             return null;
         } catch (RestClientException exception) {
-            meterRegistry.counter("analytics.ml.inference.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.inference.duration", "status", "failure"));
+            meterRegistry.counter(
+                    "analytics.ml.inference.failures",
+                    "reason",
+                    exception.getClass().getSimpleName(),
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)).increment();
+            sample.stop(meterRegistry.timer(
+                    "analytics.ml.inference.duration",
+                    "status",
+                    "failure",
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)));
             log.warn("mlInferenceFailed deviceId={} reason={} phase=request", deviceId, exception.getClass().getSimpleName());
             return null;
         }
+    }
+
+    private String modelVersionId(Map<String, Object> modelPreference, MlInferenceResponse response) {
+        if (response != null && response.modelVersionId() != null && !response.modelVersionId().isBlank()) {
+            return response.modelVersionId();
+        }
+        Object value = modelPreference == null ? null : modelPreference.get("modelVersionId");
+        String result = value == null ? "" : value.toString();
+        return result.isBlank() ? "none" : result;
     }
 }

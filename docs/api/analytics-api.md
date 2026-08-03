@@ -18,6 +18,12 @@ response now includes traceability metadata:
   "degradationScore": 0.08,
   "confidence": 0.74,
   "inputHash": "sha256...",
+  "policySource": "DEVICE_TYPE",
+  "resolvedDeviceType": "washer",
+  "deploymentMode": "CANARY",
+  "canaryPercent": 10,
+  "canaryIncluded": true,
+  "predictionPath": "CANARY",
   "signals": [
     {
       "metric": "activePowerW",
@@ -42,6 +48,10 @@ response now includes traceability metadata:
   degraded trace instead of failing the recalculation job.
 - `SUPPRESSED_MAINTENANCE`: ML inference was skipped because maintenance
   exclusion removed the useful ML input.
+- `CANARY_NOT_INCLUDED`: deterministic canary selection excluded this device
+  for the selected policy/model version.
+- `INCOMPATIBLE_MODEL`: analytics-service skipped ML inference because runtime
+  device type or metric compatibility did not match the selected model.
 
 Risk and recommendation generation remains rule-based for this iteration, but
 persisted ML `signals`, `explanations`, `recommendedActions`, and `inputHash`
@@ -51,8 +61,10 @@ contributed to the prediction trace.
 ## Maintenance Exclusion Semantics
 
 Analytics-service consumes `maintenance-window.changed.v1` into a local read
-model and reconciles missed changes from device-service. It does not call
-device-service synchronously in telemetry or recalculation hot paths.
+model and reconciles missed changes from device-service. Recalculation also
+performs a bounded internal metadata lookup for device type so live ML policy
+resolution can select `DEVICE_TYPE` policies and record resolved type
+traceability.
 
 When a maintenance window overlaps analytics input:
 
@@ -82,7 +94,11 @@ The fetch uses `X-Internal-Service-Token` and is guarded by a scheduler lock so
 analytics instances can scale independently.
 ## ML prediction settings
 
-All endpoints are authenticated. `X-Account-Id` is supplied by the gateway; writes require an `ADMIN` or `OWNER` role. Public errors are sanitized and never contain ML-service URLs or stack traces.
+All endpoints are authenticated. `X-Account-Id` is resolved from the
+authenticated user when the gateway does not supply it. Account-scoped ML writes
+are allowed for authenticated `USER`, `ADMIN`, or legacy `OWNER` roles after
+the normal device/account ownership checks. Public errors are sanitized and
+never contain ML-service URLs or stack traces.
 
 - `GET /analytics/ml-settings` reads account defaults; `PUT` updates them.
 - `GET /analytics/ml-settings/devices/{deviceId}` returns effective settings and `source` (`INHERITED` or `DEVICE_OVERRIDE`).

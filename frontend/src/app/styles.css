@@ -4444,9 +4444,85 @@ code {
 .ml-table,
 .ml-import-form,
 .ml-form-grid,
+.ml-control-grid,
 .ml-settings-form {
   display: grid;
   gap: 12px;
+}
+
+.ml-workflow-form {
+  display: grid;
+  gap: 14px;
+}
+
+.ml-workflow-form label,
+.ml-import-form label,
+.ml-settings-form label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.ml-workflow-form input,
+.ml-workflow-form select,
+.ml-workflow-form textarea,
+.ml-import-form input,
+.ml-import-form select,
+.ml-import-form textarea,
+.ml-settings-form input,
+.ml-settings-form select,
+.ml-settings-form textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--text);
+  padding: 8px 10px;
+}
+
+.ml-workflow-form input:focus,
+.ml-workflow-form select:focus,
+.ml-workflow-form textarea:focus,
+.ml-import-form input:focus,
+.ml-import-form select:focus,
+.ml-import-form textarea:focus,
+.ml-settings-form input:focus,
+.ml-settings-form select:focus,
+.ml-settings-form textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(91, 92, 226, 0.14);
+  outline: none;
+}
+
+.ml-workflow-form input::placeholder,
+.ml-import-form input::placeholder,
+.ml-settings-form input::placeholder {
+  color: #9aa7b7;
+}
+
+.ml-control-grid {
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.ml-workflow-form .checkbox-label,
+.ml-settings-form .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ml-workflow-form .checkbox-label input,
+.ml-settings-form .checkbox-label input {
+  width: 16px;
+  min-height: 0;
+  height: 16px;
+  padding: 0;
 }
 
 .ml-panel-stack {
@@ -5302,6 +5378,7 @@ code {
   .ml-risk-context-grid,
   .ml-risk-driver-row,
   .ml-form-grid,
+  .ml-control-grid,
   .ml-quality-grid,
   .alerts-grid {
     grid-template-columns: 1fr;
@@ -5540,9 +5617,6 @@ code {
   gap: 10px;
 }
 }
-.ml-settings-form { display: grid; gap: 1rem; }
-.ml-settings-form label { display: grid; gap: .45rem; font-weight: 600; }
-.ml-settings-form label:has(input[type="checkbox"]) { grid-template-columns: auto 1fr; align-items: center; }
 .ml-settings-form small { color: var(--text-muted, #64748b); font-weight: 400; }
 .ml-scope { margin-bottom: 1rem; }
 .mono-value { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }

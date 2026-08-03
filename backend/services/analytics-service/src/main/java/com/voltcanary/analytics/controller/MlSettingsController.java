@@ -48,7 +48,7 @@ public class MlSettingsController {
         requireWrite(role); access.requireReadAccess(deviceId, userId, role, correlationId); service.clearDevice(resolveDeviceAccountId(accountId, deviceId, correlationId), deviceId);
     }
     private void requireWrite(String role) {
-        if (!("ADMIN".equals(role) || "OWNER".equals(role))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML settings write access denied");
+        if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML settings write access denied");
     }
     private UUID uuid(String value) {
         try { return UUID.fromString(value); } catch (Exception e) { throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user"); }

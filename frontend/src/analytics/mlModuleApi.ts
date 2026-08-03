@@ -180,6 +180,9 @@ export interface MlModelVersion {
   compatibleDeviceTypes: string[];
   supportedMetrics: string[];
   evaluationMetrics: Record<string, unknown>;
+  modelOrigin?: "TRAINED" | "DEMO" | "SYSTEM_HEURISTIC" | string;
+  demoModel?: boolean;
+  systemHeuristic?: boolean;
   approvedBy: string | null;
   approvedAt: string | null;
   createdAt: string;

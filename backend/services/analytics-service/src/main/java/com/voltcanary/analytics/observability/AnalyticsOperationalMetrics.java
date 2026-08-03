@@ -107,12 +107,76 @@ public class AnalyticsOperationalMetrics {
                         where shadow_prediction = false
                         """))
                 .register(meterRegistry);
+        for (String reason : new String[] {
+                "ML_UNAVAILABLE_OR_BASELINE_FALLBACK",
+                "CANARY_NOT_INCLUDED",
+                "INCOMPATIBLE_DEVICE_TYPE",
+                "INCOMPATIBLE_FEATURE_SCHEMA",
+                "MAINTENANCE_SUPPRESSED",
+                "POLICY_DISABLED"
+        }) {
+            Gauge.builder("analytics.ml.inference.fallback.count", this, ignored -> count("""
+                            select count(*)
+                            from prediction_results
+                            where shadow_prediction = false
+                              and fallback_reason = ?
+                            """, reason))
+                    .tag("reason", reason)
+                    .register(meterRegistry);
+        }
+        Gauge.builder("analytics.ml.inference.feature_mismatch.count", this, ignored -> count("""
+                        select count(*)
+                        from prediction_results
+                        where fallback_reason in ('INCOMPATIBLE_DEVICE_TYPE', 'INCOMPATIBLE_FEATURE_SCHEMA')
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.inference.missing_feature.count", this, ignored -> count("""
+                        select count(*)
+                        from prediction_results
+                        where prediction_json like '%MISSING_REQUIRED_FEATURE:%'
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.inference.shadow.count", this, ignored -> count("""
+                        select count(*)
+                        from prediction_results
+                        where shadow_prediction = true
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.inference.canary.included.count", this, ignored -> count("""
+                        select count(*)
+                        from prediction_results
+                        where prediction_json like '%"canaryIncluded":true%'
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.inference.canary.excluded.count", this, ignored -> count("""
+                        select count(*)
+                        from prediction_results
+                        where prediction_json like '%"canaryIncluded":false%'
+                          and prediction_json like '%"deploymentMode":"CANARY"%'
+                        """))
+                .register(meterRegistry);
         Gauge.builder("analytics.ml.drift.active.feature_schema_hashes", this, ignored -> count("""
                         select count(distinct feature_schema_hash)
                         from ml_model_versions
                         where status = 'ACTIVE'
                           and feature_schema_hash is not null
                           and feature_schema_hash <> ''
+                        """))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.quality.false_alerts.count", this, ignored -> count("""
+                        select count(*)
+                        from ml_labels
+                        where label = 'FALSE_POSITIVE'
+                          and label_start_at >= ?
+                        """, Timestamp.from(Instant.now().minus(Duration.ofDays(30)))))
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.quality.false_alerts.per_device_month", this, ignored -> falseAlertsPerDeviceMonth())
+                .register(meterRegistry);
+        Gauge.builder("analytics.ml.quality.lead_time.days.avg", this, ignored -> average("""
+                        select avg(horizon_days)
+                        from ml_labels
+                        where horizon_days is not null
+                          and label in ('CONFIRMED_FAILURE', 'CORRECTIVE_MAINTENANCE', 'PREVENTIVE_MAINTENANCE')
                         """))
                 .register(meterRegistry);
     }
@@ -147,5 +211,33 @@ public class AnalyticsOperationalMetrics {
             return 0;
         }
         return count(numeratorSql) / denominator;
+    }
+
+    private double falseAlertsPerDeviceMonth() {
+        Timestamp since = Timestamp.from(Instant.now().minus(Duration.ofDays(30)));
+        double devices = count("""
+                select count(distinct device_id)
+                from ml_labels
+                where device_id is not null
+                  and label_start_at >= ?
+                """, since);
+        if (devices <= 0) {
+            return 0;
+        }
+        return count("""
+                select count(*)
+                from ml_labels
+                where label = 'FALSE_POSITIVE'
+                  and label_start_at >= ?
+                """, since) / devices;
+    }
+
+    private double average(String sql, Object... args) {
+        try {
+            Number value = jdbcTemplate.queryForObject(sql, Number.class, args);
+            return value == null ? 0 : value.doubleValue();
+        } catch (RuntimeException ignored) {
+            return 0;
+        }
     }
 }

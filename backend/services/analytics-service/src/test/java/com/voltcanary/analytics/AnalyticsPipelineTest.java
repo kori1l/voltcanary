@@ -220,6 +220,8 @@ class AnalyticsPipelineTest {
                 .containsEntry("deviceKey", deviceId.toString())
                 .containsEntry("metricName", "activePowerW")
                 .containsEntry("baselineDeviationRatio", 1.2)
+                .containsEntry("applianceLoadRatio", 1.2)
+                .containsEntry("applianceActivityFlag", true)
                 .containsEntry("deviceType", "washer");
         assertThat(ready.featureContract())
                 .containsEntry("requiredFeatureSchemaHash", "sha256:model")
@@ -237,5 +239,30 @@ class AnalyticsPipelineTest {
         assertThat(unavailable.featureGenerationStatus()).isEqualTo("FEATURES_UNAVAILABLE");
         assertThat(unavailable.featureGenerationErrors())
                 .contains("MISSING_REQUIRED_FEATURE: metricName", "MISSING_REQUIRED_FEATURE: latestValue");
+    }
+
+    @Test
+    void mlInferenceRequestTreatsPrecomputedFeatureRowsAsReadyFeatureVectors() {
+        UUID deviceId = UUID.randomUUID();
+        MlInferenceRequest request = new MlInferenceRequest(
+                deviceId,
+                Instant.parse("2026-07-30T12:00:00Z"),
+                Map.of(
+                        "rollingMean", 830.0,
+                        "baselineDeviationRatio", 1.18,
+                        "samplingGapSeconds", 14400.0,
+                        "applianceLoadRatio", 0.92),
+                List.of(),
+                Map.of(),
+                Map.of("sampleCount", 169),
+                Map.of("modelFamily", "FAILURE_PREDICTION"));
+
+        assertThat(request.featureGenerationStatus()).isEqualTo("READY");
+        assertThat(request.featureGenerationErrors()).isEmpty();
+        assertThat(request.featureVector())
+                .containsEntry("rollingMean", 830.0)
+                .containsEntry("baselineDeviationRatio", 1.18)
+                .containsEntry("applianceLoadRatio", 0.92);
+        assertThat(request.featureContract()).containsEntry("modelFamily", "FAILURE_PREDICTION");
     }
 }

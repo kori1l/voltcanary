@@ -20,6 +20,7 @@ import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
+import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
@@ -85,6 +86,7 @@ public class AnalyticsRecalculationService {
     private final MaintenanceWindowProjectionService maintenanceWindowProjectionService;
     private final MlSettingsService mlSettingsService;
     private final MlModelRegistryService mlModelRegistryService;
+    private final DeviceMetadataClient deviceMetadataClient;
 
     public AnalyticsRecalculationService(
             TelemetryClient telemetryClient,
@@ -107,7 +109,8 @@ public class AnalyticsRecalculationService {
             MeterRegistry meterRegistry,
             MaintenanceWindowProjectionService maintenanceWindowProjectionService,
             MlSettingsService mlSettingsService,
-            MlModelRegistryService mlModelRegistryService) {
+            MlModelRegistryService mlModelRegistryService,
+            DeviceMetadataClient deviceMetadataClient) {
         this.telemetryClient = telemetryClient;
         this.baselineRepository = baselineRepository;
         this.featureSetRepository = featureSetRepository;
@@ -129,6 +132,7 @@ public class AnalyticsRecalculationService {
         this.maintenanceWindowProjectionService = maintenanceWindowProjectionService;
         this.mlSettingsService = mlSettingsService;
         this.mlModelRegistryService = mlModelRegistryService;
+        this.deviceMetadataClient = deviceMetadataClient;
     }
 
     @Transactional
@@ -145,12 +149,21 @@ public class AnalyticsRecalculationService {
         List<String> metrics = metricProperties.getDefaultMetrics();
         List<MaintenanceWindowReadModel> maintenanceWindows =
                 maintenanceWindowProjectionService.activeOverlapping(deviceId, windowStart, windowEnd);
+        DeviceMetadataClient.DeviceMetadata deviceMetadata = deviceMetadataClient.metadata(deviceId);
+        String deviceType = deviceMetadata == null ? "" : blankToEmpty(deviceMetadata.type());
         com.voltcanary.analytics.dto.MlSettingsResponse mlSettings = mlSettingsService.effectiveForAnalytics(
-                deviceId, maintenanceWindows.stream().map(MaintenanceWindowReadModel::getAccountId).filter(java.util.Objects::nonNull).findFirst().orElse(null));
-        UUID accountId = mlSettings.accountId();
+                deviceId,
+                maintenanceWindows.stream()
+                        .map(MaintenanceWindowReadModel::getAccountId)
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst()
+                        .orElse(deviceMetadata == null ? null : deviceMetadata.accountId()));
+        UUID accountId = mlSettings.accountId() == null && deviceMetadata != null
+                ? deviceMetadata.accountId()
+                : mlSettings.accountId();
         MlResolvedDeploymentPolicyResponse policy = accountId == null
                 ? new MlResolvedDeploymentPolicyResponse(null, null, null, MlDeploymentMode.DISABLED, true, "ACCOUNT_UNKNOWN")
-                : mlModelRegistryService.resolvePolicy(accountId, deviceId, null);
+                : mlModelRegistryService.resolvePolicy(accountId, deviceId, deviceType);
         List<MaintenanceWindowReadModel> analyticsExclusions = maintenanceWindows.stream()
                 .filter(MaintenanceWindowReadModel::isExcludeFromAnalytics)
                 .toList();
@@ -268,6 +281,7 @@ public class AnalyticsRecalculationService {
                         windowEnd,
                         inputHash,
                         accountId,
+                        deviceType,
                         mlSettings,
                         policy));
         List<Recommendation> generatedRecommendations = new ArrayList<>(
@@ -417,6 +431,7 @@ public class AnalyticsRecalculationService {
             Instant windowEnd,
             String inputHash,
             UUID accountId,
+            String deviceType,
             com.voltcanary.analytics.dto.MlSettingsResponse settings,
             MlResolvedDeploymentPolicyResponse policy) {
         String metric = chart == null ? "" : chart.metric();
@@ -430,6 +445,7 @@ public class AnalyticsRecalculationService {
         metrics.put("max", baseline.max());
         metrics.put("riskScore", risk.getScore());
         metrics.put("latestValue", latestValue(chart));
+        metrics.put("deviceType", blankToEmpty(deviceType));
         if (!metric.isBlank()) {
             metrics.put(metric, latestValue(chart));
         }
@@ -462,22 +478,31 @@ public class AnalyticsRecalculationService {
         modelPreference.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
         modelPreference.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
         modelPreference.put("modelVersionId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
+        modelPreference.put("resolvedDeviceType", blankToEmpty(deviceType));
+        modelPreference.put("canaryPercent", policy.canaryPercent() == null ? "" : policy.canaryPercent());
+        boolean canaryIncluded = policy.mode() != MlDeploymentMode.CANARY
+                || canaryIncluded(accountId, deviceId, policy.modelVersionId(), policy.canaryPercent());
+        modelPreference.put("canaryIncluded", canaryIncluded);
+        String compatibilityFallbackReason = "";
         if (accountId != null && policy.modelVersionId() != null) {
             MlModelVersionDto model = mlModelRegistryService.getModel(accountId, policy.modelVersionId());
             modelPreference.put("requiredFeatureSchemaHash", model.featureSchemaHash() == null ? "" : model.featureSchemaHash());
             modelPreference.put("modelFamily", model.family() == null ? "" : model.family().name());
-            modelPreference.put("modelVersion", model.version());
+            modelPreference.put("modelVersion", Integer.toString(model.version()));
             modelPreference.put("modelStatus", model.status() == null ? "" : model.status().name());
-            modelPreference.put("modelType", model.algorithm() == null ? "" : model.algorithm());
+            modelPreference.put("modelType", runtimeModelType(model));
             modelPreference.put("artifactUri", model.artifactUri() == null ? "" : model.artifactUri());
             modelPreference.put("manifestUri", model.artifactManifestUri() == null ? "" : model.artifactManifestUri());
             modelPreference.put("artifactHash", model.artifactHash() == null ? "" : model.artifactHash());
             modelPreference.put("artifactSizeBytes", model.artifactSizeBytes() == null ? 0L : model.artifactSizeBytes());
+            compatibilityFallbackReason = compatibilityFallbackReason(model, deviceType, metric);
         }
         boolean maintenanceOverlap = maintenanceWindows.stream().anyMatch(MaintenanceWindowReadModel::isExcludeFromMl);
         boolean disabled = !settings.mlEnabled() || settings.predictionMode() == com.voltcanary.analytics.domain.PredictionMode.RULE_BASED_ONLY;
         boolean suppressMl = disabled || (maintenanceOverlap
-                && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.SUPPRESS_ML);
+                && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.SUPPRESS_ML)
+                || !canaryIncluded
+                || !compatibilityFallbackReason.isBlank();
         List<MlExcludedInterval> excludedIntervals = maintenanceWindows.stream()
                 .filter(MaintenanceWindowReadModel::isExcludeFromMl)
                 .map(window -> new MlExcludedInterval(
@@ -503,17 +528,33 @@ public class AnalyticsRecalculationService {
                     "SHADOW",
                     policy,
                     true,
-                    ""));
+                    "",
+                    deviceType,
+                    canaryIncluded));
             response = policy.fallbackEnabled() ? null : response;
         }
         String fallbackReason = disabled
                 ? "ML_DISABLED"
+                : !canaryIncluded
+                ? "CANARY_NOT_INCLUDED"
+                : !compatibilityFallbackReason.isBlank()
+                ? compatibilityFallbackReason
                 : suppressMl
                 ? "MAINTENANCE_SUPPRESSED"
                 : response == null
                 ? (policy.fallbackReason() == null ? "ML_UNAVAILABLE_OR_BASELINE_FALLBACK" : policy.fallbackReason())
                 : "";
-        String status = disabled ? "DISABLED" : suppressMl ? "SUPPRESSED_MAINTENANCE" : response == null ? "UNAVAILABLE" : "AVAILABLE";
+        String status = disabled
+                ? "DISABLED"
+                : !canaryIncluded
+                ? "CANARY_NOT_INCLUDED"
+                : !compatibilityFallbackReason.isBlank()
+                ? "INCOMPATIBLE_MODEL"
+                : suppressMl
+                ? "SUPPRESSED_MAINTENANCE"
+                : response == null
+                ? "UNAVAILABLE"
+                : "AVAILABLE";
         String predictionStatus = response == null || response.predictionStatus() == null
                 ? status
                 : response.predictionStatus();
@@ -528,7 +569,9 @@ public class AnalyticsRecalculationService {
                 predictionStatus,
                 policy,
                 false,
-                fallbackReason);
+                fallbackReason,
+                deviceType,
+                canaryIncluded);
         result.setStatus(predictionStatus);
         Map<String, Object> payload = predictionPayload(
                 response,
@@ -536,7 +579,9 @@ public class AnalyticsRecalculationService {
                 predictionStatus,
                 fallbackReason,
                 false,
-                responseInputHash);
+                responseInputHash,
+                deviceType,
+                canaryIncluded);
         payload.put("availabilityStatus", status);
         payload.put("confidence", response == null
                 ? 0
@@ -557,7 +602,9 @@ public class AnalyticsRecalculationService {
             String predictionStatus,
             MlResolvedDeploymentPolicyResponse policy,
             boolean shadowPrediction,
-            String fallbackReason) {
+            String fallbackReason,
+            String deviceType,
+            boolean canaryIncluded) {
         PredictionResult result = new PredictionResult();
         result.setId(UUID.randomUUID());
         result.setDeviceId(deviceId);
@@ -580,7 +627,9 @@ public class AnalyticsRecalculationService {
                 predictionStatus,
                 fallbackReason,
                 shadowPrediction,
-                inputHash)));
+                inputHash,
+                deviceType,
+                canaryIncluded)));
         result.setCreatedAt(now);
         return result;
     }
@@ -591,7 +640,9 @@ public class AnalyticsRecalculationService {
             String predictionStatus,
             String fallbackReason,
             boolean shadowPrediction,
-            String inputHash) {
+            String inputHash,
+            String deviceType,
+            boolean canaryIncluded) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("predictionStatus", predictionStatus);
         payload.put("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
@@ -600,6 +651,10 @@ public class AnalyticsRecalculationService {
         payload.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
         payload.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
         payload.put("deploymentMode", policy.mode().name());
+        payload.put("resolvedDeviceType", blankToEmpty(deviceType));
+        payload.put("canaryPercent", policy.canaryPercent());
+        payload.put("canaryIncluded", canaryIncluded);
+        payload.put("predictionPath", shadowPrediction ? "SHADOW" : fallbackReason == null || fallbackReason.isBlank() ? policy.mode().name() : "FALLBACK");
         payload.put("fallbackReason", fallbackReason);
         payload.put("shadowPrediction", shadowPrediction);
         payload.put("modelName", response == null ? "ml-unavailable" : response.modelName());
@@ -693,6 +748,14 @@ public class AnalyticsRecalculationService {
                 string(values.get("modelType")),
                 string(values.get("modelStatus")),
                 prediction.getStatus() == null ? string(values.get("predictionStatus")) : prediction.getStatus(),
+                prediction.getPolicySource() == null ? string(values.get("policySource")) : prediction.getPolicySource(),
+                string(values.get("deploymentMode")),
+                string(values.get("resolvedDeviceType")),
+                nullableInteger(values.get("canaryPercent")),
+                nullableBoolean(values.get("canaryIncluded")),
+                string(values.get("predictionPath")),
+                prediction.getFallbackReason() == null ? string(values.get("fallbackReason")) : prediction.getFallbackReason(),
+                prediction.isShadowPrediction(),
                 prediction.getAnomalyScore() == null ? number(values.get("anomalyScore")) : prediction.getAnomalyScore(),
                 prediction.getDegradationScore() == null ? number(values.get("degradationScore")) : prediction.getDegradationScore(),
                 nullableNumber(values.get("failureRiskScore")),
@@ -734,6 +797,10 @@ public class AnalyticsRecalculationService {
 
     private Integer nullableInteger(Object value) {
         return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private Boolean nullableBoolean(Object value) {
+        return value instanceof Boolean bool ? bool : null;
     }
 
     private String nullableString(Object value) {
@@ -806,6 +873,80 @@ public class AnalyticsRecalculationService {
 
     private String string(Object value) {
         return value == null ? "" : value.toString();
+    }
+
+    private String blankToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private boolean canaryIncluded(UUID accountId, UUID deviceId, UUID modelVersionId, Integer canaryPercent) {
+        if (modelVersionId == null) {
+            return false;
+        }
+        int percent = canaryPercent == null ? 0 : Math.max(0, Math.min(100, canaryPercent));
+        if (percent >= 100) {
+            return true;
+        }
+        if (percent <= 0 || accountId == null || deviceId == null) {
+            return false;
+        }
+        String key = accountId + "|" + deviceId + "|" + modelVersionId;
+        return hashBucket(key) < percent;
+    }
+
+    private int hashBucket(String key) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            int value = ((digest[0] & 0xff) << 24)
+                    | ((digest[1] & 0xff) << 16)
+                    | ((digest[2] & 0xff) << 8)
+                    | (digest[3] & 0xff);
+            return Math.floorMod(value, 100);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
+        }
+    }
+
+    private String compatibilityFallbackReason(MlModelVersionDto model, String deviceType, String metric) {
+        List<String> compatibleDeviceTypes = stringList(model.compatibleDeviceTypesJson());
+        if (!compatibleDeviceTypes.isEmpty()
+                && !blankToEmpty(deviceType).isBlank()
+                && compatibleDeviceTypes.stream().noneMatch(type -> type.equalsIgnoreCase(blankToEmpty(deviceType)))) {
+            return "INCOMPATIBLE_DEVICE_TYPE";
+        }
+        List<String> supportedMetrics = stringList(model.supportedMetricsJson());
+        if (model.family() != MlModelFamily.FAILURE_PREDICTION
+                && !supportedMetrics.isEmpty()
+                && !blankToEmpty(metric).isBlank()
+                && supportedMetrics.stream().noneMatch(item -> item.equalsIgnoreCase(blankToEmpty(metric)))) {
+            return "INCOMPATIBLE_FEATURE_SCHEMA";
+        }
+        return "";
+    }
+
+    private String runtimeModelType(MlModelVersionDto model) {
+        return model.family() == MlModelFamily.FAILURE_PREDICTION
+                ? "trained_failure_prediction"
+                : "trained_tabular_anomaly";
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> stringList(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            Object value = objectMapper.readValue(json, Object.class);
+            if (!(value instanceof List<?> list)) {
+                return List.of();
+            }
+            return list.stream()
+                    .map(Object::toString)
+                    .filter(item -> !item.isBlank())
+                    .toList();
+        } catch (JsonProcessingException exception) {
+            return List.of();
+        }
     }
 
     private double number(Object value) {

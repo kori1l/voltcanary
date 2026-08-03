@@ -27,6 +27,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MlTrainingService {
 
+    private static final String DEFAULT_ANOMALY_ALGORITHM = "sklearn-isolation-forest-v1";
+    private static final String DEFAULT_FAILURE_ALGORITHM = "sklearn-logistic-regression-failure-v1";
+
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlTrainingRunRepository trainingRunRepository;
@@ -56,9 +59,7 @@ public class MlTrainingService {
         if (!datasetVersion.getId().equals(featureSnapshot.getDatasetVersionId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Feature snapshot must belong to the dataset version");
         }
-        if (request.modelFamily() != MlModelFamily.ANOMALY_DETECTION) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only ANOMALY_DETECTION training is implemented");
-        }
+        validateTrainingRequest(request, featureSnapshot);
 
         Instant now = Instant.now();
         MlTrainingRun run = new MlTrainingRun();
@@ -67,15 +68,41 @@ public class MlTrainingService {
         run.setDatasetVersionId(datasetVersion.getId());
         run.setFeatureSnapshotId(featureSnapshot.getId());
         run.setModelFamily(request.modelFamily());
-        run.setAlgorithm(request.algorithm() == null || request.algorithm().isBlank()
-                ? "sklearn-isolation-forest-v1"
-                : request.algorithm());
+        run.setAlgorithm(resolveAlgorithm(request));
         run.setHyperparametersJson(trainingHyperparameters(request));
         run.setStatus(MlTrainingRunStatus.QUEUED);
         run.setCreatedBy(userId);
         run.setCreatedAt(now);
         trainingRunRepository.save(run);
         return response(run);
+    }
+
+    private void validateTrainingRequest(MlTrainingRunRequest request, MlFeatureSnapshot featureSnapshot) {
+        if (request.modelFamily() != MlModelFamily.ANOMALY_DETECTION
+                && request.modelFamily() != MlModelFamily.FAILURE_PREDICTION) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only ANOMALY_DETECTION and FAILURE_PREDICTION training are implemented");
+        }
+        if (request.modelFamily() != MlModelFamily.FAILURE_PREDICTION) {
+            return;
+        }
+        if (request.failureHorizonDays() == null || request.failureHorizonDays() < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "FAILURE_PREDICTION training requires failureHorizonDays");
+        }
+        if (!MlModelFamily.FAILURE_PREDICTION.name().equals(featureSnapshot.getModelFamily())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failure prediction training requires a FAILURE_PREDICTION feature snapshot");
+        }
+        if (!request.failureHorizonDays().equals(featureSnapshot.getHorizonDays())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failure prediction training horizon must match the feature snapshot horizon");
+        }
+    }
+
+    private String resolveAlgorithm(MlTrainingRunRequest request) {
+        if (request.algorithm() != null && !request.algorithm().isBlank()) {
+            return request.algorithm();
+        }
+        return request.modelFamily() == MlModelFamily.FAILURE_PREDICTION
+                ? DEFAULT_FAILURE_ALGORITHM
+                : DEFAULT_ANOMALY_ALGORITHM;
     }
 
     public List<MlTrainingRunDto> list(UUID accountId) {

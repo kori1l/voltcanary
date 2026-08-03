@@ -2,6 +2,7 @@ package com.voltcanary.analytics.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.config.MlRegistryProperties;
 import com.voltcanary.analytics.domain.MlDeploymentAuditEvent;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.MlDeploymentPolicy;
@@ -39,21 +40,26 @@ public class MlModelRegistryService {
     private final MlDeploymentPolicyRepository policyRepository;
     private final MlDeploymentAuditEventRepository auditRepository;
     private final ObjectMapper objectMapper;
+    private final MlRegistryProperties registryProperties;
 
     public MlModelRegistryService(
             MlModelVersionRepository modelVersionRepository,
             MlDeploymentPolicyRepository policyRepository,
             MlDeploymentAuditEventRepository auditRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MlRegistryProperties registryProperties) {
         this.modelVersionRepository = modelVersionRepository;
         this.policyRepository = policyRepository;
         this.auditRepository = auditRepository;
         this.objectMapper = objectMapper;
+        this.registryProperties = registryProperties;
     }
 
     @Transactional
     public List<MlModelVersionDto> listModels(UUID accountId) {
-        ensureDemoModels(accountId);
+        if (registryProperties.isDemoSeedingEnabled()) {
+            ensureDemoModels(accountId);
+        }
         return modelVersionRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
                 .map(this::modelResponse)
                 .toList();
@@ -198,13 +204,31 @@ public class MlModelRegistryService {
             source = MlDeploymentScope.SYSTEM;
         }
         if (selected.isEmpty()) {
-            return new MlResolvedDeploymentPolicyResponse(null, null, null, MlDeploymentMode.DISABLED, true, "BASELINE_HEURISTIC_FALLBACK");
+            return new MlResolvedDeploymentPolicyResponse(null, null, null, MlDeploymentMode.DISABLED, deviceType, null, null, true, "BASELINE_HEURISTIC_FALLBACK");
         }
         MlDeploymentPolicy policy = selected.get();
         if (policy.getModelVersionId() == null || policy.getMode() == MlDeploymentMode.DISABLED) {
-            return new MlResolvedDeploymentPolicyResponse(source, policy.getId(), policy.getModelVersionId(), policy.getMode(), policy.isFallbackEnabled(), "POLICY_DISABLED");
+            return new MlResolvedDeploymentPolicyResponse(
+                    source,
+                    policy.getId(),
+                    policy.getModelVersionId(),
+                    policy.getMode(),
+                    deviceType,
+                    policy.getCanaryPercent(),
+                    null,
+                    policy.isFallbackEnabled(),
+                    "POLICY_DISABLED");
         }
-        return new MlResolvedDeploymentPolicyResponse(source, policy.getId(), policy.getModelVersionId(), policy.getMode(), policy.isFallbackEnabled(), null);
+        return new MlResolvedDeploymentPolicyResponse(
+                source,
+                policy.getId(),
+                policy.getModelVersionId(),
+                policy.getMode(),
+                deviceType,
+                policy.getCanaryPercent(),
+                null,
+                policy.isFallbackEnabled(),
+                null);
     }
 
     public List<MlDeploymentPolicyDto> listPolicies(UUID accountId) {
@@ -381,9 +405,40 @@ public class MlModelRegistryService {
                 model.getCompatibleDeviceTypesJson(),
                 model.getSupportedMetricsJson(),
                 model.getEvaluationMetricsJson(),
+                modelOrigin(model),
+                isDemoModel(model),
+                isSystemHeuristic(model),
                 model.getApprovedBy(),
                 model.getApprovedAt(),
                 model.getCreatedAt());
+    }
+
+    private String modelOrigin(MlModelVersion model) {
+        if (isDemoModel(model)) {
+            return "DEMO";
+        }
+        if (isSystemHeuristic(model)) {
+            return "SYSTEM_HEURISTIC";
+        }
+        return "TRAINED";
+    }
+
+    private boolean isDemoModel(MlModelVersion model) {
+        return startsWith(model.getModelKey(), "demo-") || startsWith(model.getArtifactUri(), "artifact://demo/");
+    }
+
+    private boolean isSystemHeuristic(MlModelVersion model) {
+        return model.getAccountId() == null
+                || startsWith(model.getArtifactUri(), "artifact://system/")
+                || contains(model.getAlgorithm(), "heuristic");
+    }
+
+    private boolean startsWith(String value, String prefix) {
+        return value != null && value.startsWith(prefix);
+    }
+
+    private boolean contains(String value, String fragment) {
+        return value != null && value.toLowerCase(java.util.Locale.ROOT).contains(fragment);
     }
 
     private MlDeploymentPolicyDto policyResponse(MlDeploymentPolicy policy) {
