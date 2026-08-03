@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoltCanary OpenSpec"
+  short_description: "Spec workflow for VoltCanary changes"
+  default_prompt: "Use $voltcanary-openspec to apply and validate a VoltCanary OpenSpec change."

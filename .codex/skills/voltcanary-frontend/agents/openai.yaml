@@ -1,0 +1,5 @@
+interface:
+  display_name: "VoltCanary Frontend"
+  short_description: "React console implementation workflow"
+  default_prompt: "Use $voltcanary-frontend to update the VoltCanary web console."
+

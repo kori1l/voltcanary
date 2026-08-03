@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoltCanary Backend"
+  short_description: "Java Spring service workflow"
+  default_prompt: "Use $voltcanary-backend to modify a VoltCanary Java service safely."

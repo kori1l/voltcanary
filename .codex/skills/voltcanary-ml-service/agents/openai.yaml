@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoltCanary ML Service"
+  short_description: "FastAPI ML lifecycle workflow"
+  default_prompt: "Use $voltcanary-ml-service to work on VoltCanary training, inference, or model artifacts."

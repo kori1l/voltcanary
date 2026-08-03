@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoltCanary Local Ops"
+  short_description: "Local infra and deployment checks"
+  default_prompt: "Use $voltcanary-local-ops to run or diagnose VoltCanary local infrastructure."

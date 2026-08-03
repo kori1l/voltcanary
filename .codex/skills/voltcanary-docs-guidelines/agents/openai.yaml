@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoltCanary Docs"
+  short_description: "Project documentation workflow guide"
+  default_prompt: "Use $voltcanary-docs-guidelines to update VoltCanary documentation and guidelines."
