@@ -43,6 +43,11 @@ from pages. Preserve auth and error behavior from `frontend/src/api/client.ts`.
 When a page visualizes ML, telemetry, alerts, maintenance, or device behavior,
 show status and uncertainty explicitly instead of implying exact diagnostics.
 
+For ML Settings feature-snapshot and training workflows, keep failure-prediction
+snapshot inputs explicit in the UI (`modelFamily` and positive `horizonDays`) and
+cover the submitted payload in tests. Training flows should reject snapshot
+family or horizon mismatches before submitting the run.
+
 ## Validation
 
 From `frontend/`:

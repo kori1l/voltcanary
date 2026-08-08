@@ -3,6 +3,8 @@ package com.voltcanary.analytics.controller;
 import com.voltcanary.analytics.domain.MlDeploymentScope;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyDto;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.dto.MlModelStatusRequest;
 import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
@@ -38,8 +40,9 @@ public class MlModelRegistryController {
     public List<MlModelVersionDto> listModels(
             @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        return service.listModels(resolveAccountId(accountId, userId, correlationId));
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
+        return service.listModels(resolveAccountId(accountId, userId, correlationId), statusFilter);
     }
 
     @GetMapping("/models/{modelVersionId}")
@@ -87,12 +90,35 @@ public class MlModelRegistryController {
         return service.archive(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
     }
 
+    @GetMapping("/models/{modelVersionId}/lifecycle-impact")
+    public MlLifecycleImpactResponse modelLifecycleImpact(
+            @PathVariable("modelVersionId") UUID modelVersionId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        return service.modelImpact(resolveAccountId(accountId, userId, correlationId), modelVersionId, action);
+    }
+
+    @PostMapping("/models/{modelVersionId}/delete")
+    public MlModelVersionDto deleteModel(
+            @PathVariable("modelVersionId") UUID modelVersionId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        return service.deleteModel(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
+    }
+
     @GetMapping("/deployment-policies")
     public List<MlDeploymentPolicyDto> listPolicies(
             @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        return service.listPolicies(resolveAccountId(accountId, userId, correlationId));
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
+        return service.listPolicies(resolveAccountId(accountId, userId, correlationId), statusFilter);
     }
 
     @PostMapping("/deployment-policies")
@@ -118,6 +144,40 @@ public class MlModelRegistryController {
             @RequestParam(value = "reason", required = false) String reason) {
         requireWrite(role);
         return service.rollbackPolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), scope, deviceId, deviceType, reason);
+    }
+
+    @PostMapping("/deployment-policies/{policyId}/disable")
+    public MlDeploymentPolicyDto disablePolicy(
+            @PathVariable("policyId") UUID policyId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        return service.disablePolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), policyId, request);
+    }
+
+    @GetMapping("/deployment-policies/{policyId}/lifecycle-impact")
+    public MlLifecycleImpactResponse policyLifecycleImpact(
+            @PathVariable("policyId") UUID policyId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        return service.policyImpact(resolveAccountId(accountId, userId, correlationId), policyId, action);
+    }
+
+    @PostMapping("/deployment-policies/{policyId}/delete")
+    public MlDeploymentPolicyDto deletePolicy(
+            @PathVariable("policyId") UUID policyId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        return service.deletePolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), policyId, request);
     }
 
     @GetMapping("/deployment-policies/resolve")

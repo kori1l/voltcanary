@@ -11,6 +11,8 @@ import com.voltcanary.analytics.dto.MlHorizonLabelGenerationRequest;
 import com.voltcanary.analytics.dto.MlHorizonLabelGenerationResponse;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlDatasetService;
 import com.voltcanary.analytics.service.MlExternalDatasetImportService;
@@ -63,9 +65,10 @@ public class MlDatasetController {
     public List<MlDatasetSummaryDto> listDatasets(
             @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
         UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return service.list(resolvedAccountId);
+        return service.list(resolvedAccountId, statusFilter);
     }
 
     @GetMapping("/versions/{datasetVersionId}")
@@ -76,6 +79,43 @@ public class MlDatasetController {
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
         UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.detail(resolvedAccountId, datasetVersionId);
+    }
+
+    @PostMapping("/versions/{datasetVersionId}/archive")
+    public MlDatasetSummaryDto archiveDatasetVersion(
+            @PathVariable("datasetVersionId") UUID datasetVersionId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return service.archive(resolvedAccountId, parseUserId(userId), datasetVersionId, request);
+    }
+
+    @GetMapping("/versions/{datasetVersionId}/lifecycle-impact")
+    public MlLifecycleImpactResponse datasetLifecycleImpact(
+            @PathVariable("datasetVersionId") UUID datasetVersionId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return service.impact(resolvedAccountId, datasetVersionId, action);
+    }
+
+    @PostMapping("/versions/{datasetVersionId}/delete")
+    public MlDatasetSummaryDto deleteDatasetVersion(
+            @PathVariable("datasetVersionId") UUID datasetVersionId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return service.delete(resolvedAccountId, parseUserId(userId), datasetVersionId, request);
     }
 
     @PostMapping("/internal-telemetry")
@@ -146,6 +186,43 @@ public class MlDatasetController {
         UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         parseUserId(userId);
         return featurePipelineService.generate(resolvedAccountId, request);
+    }
+
+    @PostMapping("/feature-snapshots/{featureSnapshotId}/archive")
+    public MlFeatureSnapshotResponse archiveFeatureSnapshot(
+            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.archive(resolvedAccountId, parseUserId(userId), featureSnapshotId, request);
+    }
+
+    @GetMapping("/feature-snapshots/{featureSnapshotId}/lifecycle-impact")
+    public MlLifecycleImpactResponse featureSnapshotLifecycleImpact(
+            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.impact(resolvedAccountId, featureSnapshotId, action);
+    }
+
+    @PostMapping("/feature-snapshots/{featureSnapshotId}/delete")
+    public MlFeatureSnapshotResponse deleteFeatureSnapshot(
+            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.delete(resolvedAccountId, parseUserId(userId), featureSnapshotId, request);
     }
 
     @PostMapping("/horizon-labels")

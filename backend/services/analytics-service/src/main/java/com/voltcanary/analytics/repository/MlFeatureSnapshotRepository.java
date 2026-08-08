@@ -8,5 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MlFeatureSnapshotRepository extends JpaRepository<MlFeatureSnapshot, UUID> {
     List<MlFeatureSnapshot> findByDatasetVersionIdOrderByCreatedAtDesc(UUID datasetVersionId);
+    long countByDatasetVersionId(UUID datasetVersionId);
     Optional<MlFeatureSnapshot> findFirstByDatasetVersionIdAndFeatureSchemaHashOrderByCreatedAtDesc(UUID datasetVersionId, String featureSchemaHash);
 }

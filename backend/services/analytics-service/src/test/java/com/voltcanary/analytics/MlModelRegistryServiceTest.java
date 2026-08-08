@@ -17,12 +17,15 @@ import com.voltcanary.analytics.domain.MlModelStatus;
 import com.voltcanary.analytics.domain.MlModelVersion;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyDto;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlModelStatusRequest;
 import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import com.voltcanary.analytics.repository.MlDeploymentAuditEventRepository;
 import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
+import com.voltcanary.analytics.repository.PredictionResultRepository;
+import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.service.MlModelRegistryService;
 import java.time.Instant;
 import java.util.List;
@@ -37,11 +40,13 @@ class MlModelRegistryServiceTest {
     private final MlModelVersionRepository modelRepository = mock(MlModelVersionRepository.class);
     private final MlDeploymentPolicyRepository policyRepository = mock(MlDeploymentPolicyRepository.class);
     private final MlDeploymentAuditEventRepository auditRepository = mock(MlDeploymentAuditEventRepository.class);
+    private final PredictionResultRepository predictionResultRepository = mock(PredictionResultRepository.class);
     private final MlRegistryProperties registryProperties = new MlRegistryProperties();
     private final MlModelRegistryService service = new MlModelRegistryService(
             modelRepository,
             policyRepository,
             auditRepository,
+            predictionResultRepository,
             new ObjectMapper(),
             registryProperties);
 
@@ -114,12 +119,47 @@ class MlModelRegistryServiceTest {
     }
 
     @Test
+    void blocksDeletingPolicyReferencedModel() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlModelVersion model = model(accountId, MlModelStatus.CANDIDATE);
+        MlDeploymentPolicy policy = policy(accountId, MlDeploymentScope.ACCOUNT, null, null, model.getId(), MlDeploymentMode.ACTIVE);
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+        when(policyRepository.findByModelVersionIdAndDeletedAtIsNull(model.getId())).thenReturn(List.of(policy));
+
+        assertThatThrownBy(() -> service.deleteModel(accountId, actorId, model.getId(), new MlLifecycleActionRequest("cleanup", false)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("referenced by deployment policies");
+    }
+
+    @Test
+    void modelImpactShowsPolicyReferencesBeforeDeletion() {
+        UUID accountId = UUID.randomUUID();
+        MlModelVersion model = model(accountId, MlModelStatus.CANDIDATE);
+        MlDeploymentPolicy policy = policy(accountId, MlDeploymentScope.ACCOUNT, null, null, model.getId(), MlDeploymentMode.ACTIVE);
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+        when(policyRepository.findByModelVersionIdAndDeletedAtIsNull(model.getId())).thenReturn(List.of(policy));
+
+        var impact = service.modelImpact(accountId, model.getId(), "delete");
+
+        assertThat(impact.blocked()).isTrue();
+        assertThat(impact.dependencies()).anySatisfy(dependency -> {
+            assertThat(dependency).containsEntry("type", "deploymentPolicy");
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> details = (java.util.Map<String, Object>) dependency.get("details");
+            assertThat(details)
+                    .containsEntry("scope", "ACCOUNT")
+                    .containsEntry("mode", "ACTIVE");
+        });
+    }
+
+    @Test
     void upsertsActiveDeploymentPolicyAndMarksModelActive() {
         UUID accountId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         MlModelVersion model = model(accountId, MlModelStatus.APPROVED);
         when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
-        when(policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT)).thenReturn(Optional.empty());
+        when(policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT)).thenReturn(Optional.empty());
 
         MlDeploymentPolicyDto policy = service.upsertPolicy(accountId, actorId, new MlDeploymentPolicyRequest(
                 MlDeploymentScope.ACCOUNT,
@@ -160,21 +200,21 @@ class MlModelRegistryServiceTest {
         UUID accountModelId = UUID.randomUUID();
 
         MlDeploymentPolicy devicePolicy = policy(accountId, MlDeploymentScope.DEVICE, deviceId, null, deviceModelId, MlDeploymentMode.SHADOW);
-        when(policyRepository.findByScopeAndDeviceId(MlDeploymentScope.DEVICE, deviceId)).thenReturn(Optional.of(devicePolicy));
+        when(policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, deviceId)).thenReturn(Optional.of(devicePolicy));
         MlResolvedDeploymentPolicyResponse device = service.resolvePolicy(accountId, deviceId, "washer");
         assertThat(device.policySource()).isEqualTo(MlDeploymentScope.DEVICE);
         assertThat(device.modelVersionId()).isEqualTo(deviceModelId);
 
-        when(policyRepository.findByScopeAndDeviceId(MlDeploymentScope.DEVICE, deviceId)).thenReturn(Optional.empty());
-        when(policyRepository.findByAccountIdAndScopeAndDeviceType(accountId, MlDeploymentScope.DEVICE_TYPE, "washer"))
+        when(policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, deviceId)).thenReturn(Optional.empty());
+        when(policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(accountId, MlDeploymentScope.DEVICE_TYPE, "washer"))
                 .thenReturn(Optional.of(policy(accountId, MlDeploymentScope.DEVICE_TYPE, null, "washer", typeModelId, MlDeploymentMode.CANARY)));
         MlResolvedDeploymentPolicyResponse type = service.resolvePolicy(accountId, deviceId, "washer");
         assertThat(type.policySource()).isEqualTo(MlDeploymentScope.DEVICE_TYPE);
         assertThat(type.modelVersionId()).isEqualTo(typeModelId);
         assertThat(type.resolvedDeviceType()).isEqualTo("washer");
 
-        when(policyRepository.findByAccountIdAndScopeAndDeviceType(accountId, MlDeploymentScope.DEVICE_TYPE, "washer")).thenReturn(Optional.empty());
-        when(policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT))
+        when(policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(accountId, MlDeploymentScope.DEVICE_TYPE, "washer")).thenReturn(Optional.empty());
+        when(policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT))
                 .thenReturn(Optional.of(policy(accountId, MlDeploymentScope.ACCOUNT, null, null, accountModelId, MlDeploymentMode.ACTIVE)));
         MlResolvedDeploymentPolicyResponse account = service.resolvePolicy(accountId, deviceId, "washer");
         assertThat(account.policySource()).isEqualTo(MlDeploymentScope.ACCOUNT);
@@ -187,7 +227,7 @@ class MlModelRegistryServiceTest {
         UUID actorId = UUID.randomUUID();
         UUID modelId = UUID.randomUUID();
         MlDeploymentPolicy policy = policy(accountId, MlDeploymentScope.ACCOUNT, null, null, modelId, MlDeploymentMode.ACTIVE);
-        when(policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT)).thenReturn(Optional.of(policy));
+        when(policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT)).thenReturn(Optional.of(policy));
 
         MlDeploymentPolicyDto response = service.rollbackPolicy(accountId, actorId, MlDeploymentScope.ACCOUNT, null, null, "rollback");
 
@@ -195,6 +235,29 @@ class MlModelRegistryServiceTest {
         assertThat(response.modelVersionId()).isNull();
         verify(auditRepository).save(org.mockito.ArgumentMatchers.argThat(event ->
                 "POLICY_ROLLED_BACK".equals(event.getAction()) && modelId.equals(event.getModelVersionId())));
+    }
+
+    @Test
+    void deletingDisabledDevicePolicyDoesNotBreakResolutionFallback() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID staleModelId = UUID.randomUUID();
+        UUID accountModelId = UUID.randomUUID();
+        MlDeploymentPolicy devicePolicy = policy(accountId, MlDeploymentScope.DEVICE, deviceId, null, staleModelId, MlDeploymentMode.DISABLED);
+        MlDeploymentPolicy accountPolicy = policy(accountId, MlDeploymentScope.ACCOUNT, null, null, accountModelId, MlDeploymentMode.ACTIVE);
+        when(policyRepository.findById(devicePolicy.getId())).thenReturn(Optional.of(devicePolicy));
+
+        MlDeploymentPolicyDto deleted = service.deletePolicy(accountId, actorId, devicePolicy.getId(), new MlLifecycleActionRequest("stale cleanup", false));
+        when(policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, deviceId)).thenReturn(Optional.empty());
+        when(policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT)).thenReturn(Optional.of(accountPolicy));
+
+        MlResolvedDeploymentPolicyResponse resolved = service.resolvePolicy(accountId, deviceId, null);
+
+        assertThat(deleted.mode()).isEqualTo(MlDeploymentMode.DISABLED);
+        assertThat(devicePolicy.getDeletedAt()).isNotNull();
+        assertThat(resolved.policySource()).isEqualTo(MlDeploymentScope.ACCOUNT);
+        assertThat(resolved.modelVersionId()).isEqualTo(accountModelId);
     }
 
     private MlModelVersion model(UUID accountId, MlModelStatus status) {

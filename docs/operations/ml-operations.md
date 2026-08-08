@@ -102,13 +102,20 @@ policy with fallback enabled while restoring the missing object.
 
 ## Delete Imported Datasets
 
-The first implementation retains imported datasets for auditability and does not expose a hard-delete API.
+Dataset cleanup is intentionally conservative. Use lifecycle actions from the
+ML console or API instead of direct database edits:
 
-1. Stop using the imported dataset in new training runs.
-2. Archive or reject models trained from the imported dataset.
-3. Roll back policies pointing to those models.
-4. Mark downstream operational records as retired in the tracking system.
-5. Remove object storage artifacts only after retention and audit requirements are satisfied.
+1. Disable deployment policies that point at models trained from the dataset.
+2. Reject or archive candidate and inactive models.
+3. Archive successful training runs, feature snapshots, and ready datasets when lineage must remain readable.
+4. Delete only failed or draft datasets, failed or canceled training runs, unreferenced snapshots, unreferenced candidate/rejected models, inactive policies, and manual labels.
+5. Check `GET .../lifecycle-impact?action=...` before destructive actions and use the dependency summary in the confirmation.
+6. When an API still returns `409`, treat it as a race with newly attached lineage and disable/archive dependent state first.
+
+All lifecycle actions require an operator reason. Generated labels should be
+regenerated or superseded for the same dataset/horizon/config; manual labels can
+be deleted with audit metadata. Do not remove object storage artifacts while a
+model, prediction, audit event, or training run still references them.
 
 ## Observability
 
@@ -161,6 +168,9 @@ Structured log events:
 - `mlModelPromoted`
 - `mlModelRejected`
 - `mlModelArchived`
+- `mlModelDeleted`
 - `mlDeploymentPolicyUpdated`
 - `mlDeploymentPolicyRolledBack`
+- `mlDeploymentPolicyDisabled`
+- `mlDeploymentPolicyDeleted`
 - `mlInferenceFailed`

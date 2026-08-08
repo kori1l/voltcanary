@@ -53,6 +53,12 @@ public class MlDatasetVersion {
     private String immutableRowReference;
     @Column(name = "data_hash")
     private String dataHash;
+    @Column(name = "lifecycle_reason", columnDefinition = "text")
+    private String lifecycleReason;
+    @Column(name = "lifecycle_actor_id")
+    private UUID lifecycleActorId;
+    @Column(name = "lifecycle_at")
+    private Instant lifecycleAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -92,4 +98,10 @@ public class MlDatasetVersion {
     public void setImmutableRowReference(String immutableRowReference) { this.immutableRowReference = immutableRowReference; }
     public String getDataHash() { return dataHash; }
     public void setDataHash(String dataHash) { this.dataHash = dataHash; }
+    public String getLifecycleReason() { return lifecycleReason; }
+    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
+    public UUID getLifecycleActorId() { return lifecycleActorId; }
+    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
+    public Instant getLifecycleAt() { return lifecycleAt; }
+    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

@@ -59,3 +59,67 @@ device-type-specific models.
 - **THEN** generated features SHALL include template-specific columns
 - **AND** the template version SHALL be stored in feature snapshot metadata.
 
+### Requirement: Feature snapshots support safe cleanup
+
+Feature snapshots SHALL support archive or delete actions with reference checks.
+
+#### Scenario: Operator archives an obsolete feature snapshot
+
+- **GIVEN** a feature snapshot is not needed in default selectors
+- **WHEN** an authorized operator archives it with a reason
+- **THEN** the snapshot SHALL be hidden from default feature snapshot selectors
+- **AND** row counts, hashes, artifact references, and training lineage SHALL
+  remain readable.
+
+#### Scenario: Operator attempts to delete a model-referenced snapshot
+
+- **GIVEN** a feature snapshot is referenced by a training run or model version
+- **WHEN** an operator requests hard deletion
+- **THEN** the system SHALL block deletion
+- **AND** return the referencing training run or model ids.
+
+#### Scenario: Operator deletes an unreferenced failed snapshot
+
+- **GIVEN** a feature snapshot failed or was never referenced
+- **WHEN** an authorized operator deletes it with a reason
+- **THEN** it SHALL be removed from default feature snapshot lists
+- **AND** the action SHALL be audit logged.
+
+### Requirement: Feature snapshot UI exposes model-family configuration
+
+The frontend SHALL expose the feature snapshot configuration required by each
+model family supported by the feature generation API.
+
+#### Scenario: Operator generates a failure-prediction feature snapshot
+
+- **GIVEN** a `READY` dataset version has generated failure horizon labels
+- **WHEN** the operator chooses model family `FAILURE_PREDICTION`
+- **THEN** the UI SHALL require a positive `horizonDays` value
+- **AND** include `modelFamily=FAILURE_PREDICTION` and that `horizonDays` value
+  in the feature snapshot request
+- **AND** show the created feature snapshot id, row count, rejected row count,
+  schema hash, data hash, template id, template version, and horizon.
+
+#### Scenario: Operator generates an anomaly feature snapshot
+
+- **GIVEN** a `READY` dataset version exists
+- **WHEN** the operator chooses model family `ANOMALY_DETECTION`
+- **THEN** the UI SHALL not require horizon labels
+- **AND** the created feature snapshot SHALL be labeled as anomaly-detection
+  compatible.
+
+### Requirement: Feature snapshot selectors expose compatibility
+
+Feature snapshot selectors SHALL show enough metadata to prevent choosing an
+incompatible snapshot for training.
+
+#### Scenario: Operator starts failure-prediction training
+
+- **GIVEN** both anomaly and failure feature snapshots exist for a dataset
+- **WHEN** the operator opens the training form for `FAILURE_PREDICTION`
+- **THEN** the feature snapshot selector SHALL prioritize snapshots with
+  `modelFamily=FAILURE_PREDICTION`
+- **AND** show the horizon, feature schema hash, row count, and created time
+- **AND** warn when the selected snapshot horizon differs from the training
+  horizon.
+

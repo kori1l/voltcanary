@@ -9,7 +9,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MlLabelRepository extends JpaRepository<MlLabel, UUID> {
+    List<MlLabel> findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(UUID accountId, UUID datasetVersionId);
     List<MlLabel> findByAccountIdAndDatasetVersionId(UUID accountId, UUID datasetVersionId);
+    long countByDatasetVersionIdAndDeletedAtIsNull(UUID datasetVersionId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

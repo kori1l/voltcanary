@@ -4,7 +4,8 @@ param(
     [string] $AnalyticsBaseUrl = "http://localhost:8085",
     [string] $MlBaseUrl = "http://localhost:8090",
     [int] $TimeoutSeconds = 420,
-    [switch] $StartStack
+    [switch] $StartStack,
+    [switch] $VerifyLifecycleCleanup
 )
 
 $ErrorActionPreference = "Stop"
@@ -432,6 +433,101 @@ Require-True ($metricsText -match "analytics_ml_training_runs") "Prometheus outp
 Require-True ($metricsText -match "analytics_ml_inference_duration") "Prometheus output missing inference duration metric"
 Require-True ($metricsText -match "analytics_ml_inference_fallback_rate") "Prometheus output missing inference fallback metric"
 
+if ($VerifyLifecycleCleanup) {
+    Write-Step "Verifying ML lifecycle previews, blocks, disable/delete, and archive paths"
+
+    $manualLabel = Invoke-Api -Method POST -Path "/analytics/ml/labels" -Headers $authHeaders -Body @{
+        datasetVersionId = "$($dataset.datasetVersionId)"
+        deviceId = "$($device.id)"
+        externalDeviceKey = $null
+        metricName = "activePowerW"
+        labelStartAt = To-IsoInstant $start
+        labelEndAt = To-IsoInstant ($start.AddHours(1))
+        label = "ANOMALY"
+        reason = "Docker lifecycle smoke manual review $RunId"
+    }
+    Require-Value $manualLabel.id "Manual label creation did not return id"
+
+    $manualLabelImpact = Invoke-Api -Method GET -Path "/analytics/ml/labels/$($manualLabel.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($manualLabelImpact.blocked -eq $false) "Manual label delete impact was unexpectedly blocked"
+    $deletedManualLabel = Invoke-Api -Method POST -Path "/analytics/ml/labels/$($manualLabel.id)/delete" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke manual label delete $RunId"
+        force = $false
+    }
+    Require-Value $deletedManualLabel.id "Manual label delete did not return label"
+
+    $generatedLabelList = @((Invoke-Api -Method GET -Path "/analytics/ml/labels?datasetVersionId=$($dataset.datasetVersionId)" -Headers $authHeaders) | ForEach-Object { $_ })
+    $generatedLabel = $null
+    foreach ($candidateLabel in $generatedLabelList) {
+        if ("$($candidateLabel.lineageHash)" -eq "$($labels.lineageHash)") {
+            $generatedLabel = $candidateLabel
+            break
+        }
+    }
+    if ($null -eq $generatedLabel) {
+        foreach ($candidateLabel in $generatedLabelList) {
+            if ("$($candidateLabel.source)" -ne "MANUAL" -and "$($candidateLabel.lineageHash)" -ne "") {
+                $generatedLabel = $candidateLabel
+                break
+            }
+        }
+    }
+    Require-Value $generatedLabel.id "Generated horizon label was not found for lifecycle check; labels returned=$(@($generatedLabelList).Count)"
+    $generatedLabelImpact = Invoke-Api -Method GET -Path "/analytics/ml/labels/$($generatedLabel.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($generatedLabelImpact.blocked -eq $true) "Generated label delete impact was not blocked"
+
+    $activePolicyImpact = Invoke-Api -Method GET -Path "/analytics/ml/deployment-policies/$($policy.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($activePolicyImpact.blocked -eq $true) "Active policy delete impact was not blocked"
+    $disabledPolicy = Invoke-Api -Method POST -Path "/analytics/ml/deployment-policies/$($policy.id)/disable" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke policy disable $RunId"
+        force = $false
+    }
+    Require-True ("$($disabledPolicy.mode)" -eq "DISABLED") "Policy disable did not set DISABLED mode"
+    $disabledPolicyImpact = Invoke-Api -Method GET -Path "/analytics/ml/deployment-policies/$($policy.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($disabledPolicyImpact.blocked -eq $false) "Disabled policy delete impact was blocked"
+    $deletedPolicy = Invoke-Api -Method POST -Path "/analytics/ml/deployment-policies/$($policy.id)/delete" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke policy delete $RunId"
+        force = $false
+    }
+    Require-Value $deletedPolicy.id "Policy delete did not return policy"
+
+    $modelDeleteImpact = Invoke-Api -Method GET -Path "/analytics/ml/models/$($model.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($modelDeleteImpact.blocked -eq $true) "Model delete impact was not blocked after prediction references"
+    $currentModel = Invoke-Api -Method GET -Path "/analytics/ml/models/$($model.id)" -Headers $authHeaders
+    if ("$($currentModel.status)" -ne "ACTIVE") {
+        $archivedModel = Invoke-Api -Method POST -Path "/analytics/ml/models/$($model.id)/archive" -Headers $authHeaders -Body @{
+            reason = "Docker lifecycle smoke model archive $RunId"
+        }
+        Require-True ("$($archivedModel.status)" -eq "ARCHIVED") "Model archive did not set ARCHIVED status"
+    } else {
+        Write-Step "Skipping model archive because deployed model is ACTIVE; delete impact block was verified"
+    }
+
+    $trainingDeleteImpact = Invoke-Api -Method GET -Path "/analytics/ml/training-runs/$($completedRun.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($trainingDeleteImpact.blocked -eq $true) "Training run delete impact was not blocked by model lineage"
+    $archivedTraining = Invoke-Api -Method POST -Path "/analytics/ml/training-runs/$($completedRun.id)/archive" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke training archive $RunId"
+        force = $false
+    }
+    Require-True ("$($archivedTraining.status)" -eq "ARCHIVED") "Training archive did not set ARCHIVED status"
+
+    $snapshotDeleteImpact = Invoke-Api -Method GET -Path "/analytics/ml/datasets/feature-snapshots/$($features.id)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($snapshotDeleteImpact.blocked -eq $true) "Feature snapshot delete impact was not blocked by lineage"
+    $archivedSnapshot = Invoke-Api -Method POST -Path "/analytics/ml/datasets/feature-snapshots/$($features.id)/archive" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke feature snapshot archive $RunId"
+        force = $false
+    }
+    Require-True ("$($archivedSnapshot.id)" -eq "$($features.id)") "Feature snapshot archive returned the wrong snapshot id"
+
+    $datasetDeleteImpact = Invoke-Api -Method GET -Path "/analytics/ml/datasets/versions/$($dataset.datasetVersionId)/lifecycle-impact?action=delete" -Headers $authHeaders
+    Require-True ($datasetDeleteImpact.blocked -eq $true) "Dataset delete impact was not blocked by lineage"
+    $archivedDataset = Invoke-Api -Method POST -Path "/analytics/ml/datasets/versions/$($dataset.datasetVersionId)/archive" -Headers $authHeaders -Body @{
+        reason = "Docker lifecycle smoke dataset archive $RunId"
+        force = $false
+    }
+    Require-True ("$($archivedDataset.status)" -eq "ARCHIVED") "Dataset archive did not set ARCHIVED status"
+}
+
 Write-Step "Docker smoke verification passed"
 [PSCustomObject]@{
     runId = $RunId
@@ -448,4 +544,5 @@ Write-Step "Docker smoke verification passed"
     predictionStatus = "$($prediction.predictionStatus)"
     failureRiskScore = $prediction.failureRiskScore
     inputHash = "$($prediction.inputHash)"
+    lifecycleCleanupVerified = [bool] $VerifyLifecycleCleanup
 } | ConvertTo-Json -Depth 8

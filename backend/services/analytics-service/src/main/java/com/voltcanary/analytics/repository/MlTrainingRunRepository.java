@@ -11,4 +11,6 @@ public interface MlTrainingRunRepository extends JpaRepository<MlTrainingRun, UU
     List<MlTrainingRun> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
     List<MlTrainingRun> findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus status);
     List<MlTrainingRun> findByStatusAndLeaseExpiresAtBeforeOrderByCreatedAtAsc(MlTrainingRunStatus status, Instant leaseExpiresAt);
+    long countByDatasetVersionId(UUID datasetVersionId);
+    long countByFeatureSnapshotId(UUID featureSnapshotId);
 }

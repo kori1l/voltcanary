@@ -11,12 +11,16 @@ import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
 import com.voltcanary.analytics.dto.MlTrainingRunDto;
 import com.voltcanary.analytics.dto.MlTrainingRunRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
+import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -33,15 +37,18 @@ public class MlTrainingService {
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlTrainingRunRepository trainingRunRepository;
+    private final MlModelVersionRepository modelVersionRepository;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public MlTrainingService(
             MlDatasetVersionRepository datasetVersionRepository,
             MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlTrainingRunRepository trainingRunRepository) {
+            MlTrainingRunRepository trainingRunRepository,
+            MlModelVersionRepository modelVersionRepository) {
         this.datasetVersionRepository = datasetVersionRepository;
         this.featureSnapshotRepository = featureSnapshotRepository;
         this.trainingRunRepository = trainingRunRepository;
+        this.modelVersionRepository = modelVersionRepository;
     }
 
     @Transactional
@@ -58,6 +65,9 @@ public class MlTrainingService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found"));
         if (!datasetVersion.getId().equals(featureSnapshot.getDatasetVersionId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Feature snapshot must belong to the dataset version");
+        }
+        if (!"ACTIVE".equals(featureSnapshot.getLifecycleStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Feature snapshot must be active");
         }
         validateTrainingRequest(request, featureSnapshot);
 
@@ -106,9 +116,32 @@ public class MlTrainingService {
     }
 
     public List<MlTrainingRunDto> list(UUID accountId) {
+        return list(accountId, "default");
+    }
+
+    public List<MlTrainingRunDto> list(UUID accountId, String statusFilter) {
+        String filter = normalizedFilter(statusFilter);
         return trainingRunRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
+                .filter(run -> matchesFilter(run.getStatus(), filter))
                 .map(this::response)
                 .toList();
+    }
+
+    private boolean matchesFilter(MlTrainingRunStatus status, String filter) {
+        return switch (filter) {
+            case "all" -> true;
+            case "failed" -> status == MlTrainingRunStatus.FAILED || status == MlTrainingRunStatus.CANCELED;
+            case "archived" -> status == MlTrainingRunStatus.ARCHIVED;
+            case "deleted" -> status == MlTrainingRunStatus.DELETED;
+            default -> status != MlTrainingRunStatus.ARCHIVED && status != MlTrainingRunStatus.DELETED;
+        };
+    }
+
+    private String normalizedFilter(String statusFilter) {
+        if (statusFilter == null || statusFilter.isBlank()) {
+            return "default";
+        }
+        return statusFilter.trim().toLowerCase(Locale.ROOT);
     }
 
     @Transactional
@@ -149,6 +182,65 @@ public class MlTrainingService {
         retry.setCreatedAt(Instant.now());
         trainingRunRepository.save(retry);
         return response(retry);
+    }
+
+    @Transactional
+    public MlTrainingRunDto archive(UUID accountId, UUID actorId, UUID runId, MlLifecycleActionRequest request) {
+        MlTrainingRun run = findOwned(accountId, runId);
+        String reason = requiredReason(request);
+        if (run.getStatus() == MlTrainingRunStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML training run not found");
+        }
+        if (run.getStatus() == MlTrainingRunStatus.QUEUED || run.getStatus() == MlTrainingRunStatus.RUNNING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Queued or running training runs must be canceled before archive");
+        }
+        run.setStatus(MlTrainingRunStatus.ARCHIVED);
+        stampLifecycle(run, actorId, reason);
+        trainingRunRepository.save(run);
+        return response(run);
+    }
+
+    @Transactional(readOnly = true)
+    public MlLifecycleImpactResponse impact(UUID accountId, UUID runId, String action) {
+        MlTrainingRun run = findOwned(accountId, runId);
+        String normalizedAction = normalizedAction(action);
+        long modelReferences = modelVersionRepository.countByTrainingRunId(runId);
+        boolean blocked = "delete".equals(normalizedAction)
+                && (modelReferences > 0 || run.getStatus() == MlTrainingRunStatus.SUCCEEDED);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("modelVersions", modelReferences);
+        details.put("status", run.getStatus().name());
+        String message = blocked
+                ? "Training run has model lineage and should be archived instead of deleted"
+                : "Training run action is allowed when submitted with an audit reason";
+        return new MlLifecycleImpactResponse(
+                normalizedAction,
+                blocked,
+                message,
+                List.of(dependency("trainingRun", runId, details)));
+    }
+
+    @Transactional
+    public MlTrainingRunDto delete(UUID accountId, UUID actorId, UUID runId, MlLifecycleActionRequest request) {
+        MlTrainingRun run = findOwned(accountId, runId);
+        String reason = requiredReason(request);
+        if (run.getStatus() == MlTrainingRunStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML training run not found");
+        }
+        long modelReferences = modelVersionRepository.countByTrainingRunId(runId);
+        if (modelReferences > 0 || run.getStatus() == MlTrainingRunStatus.SUCCEEDED) {
+            throw new MlLifecycleConflictException(
+                    "TRAINING_RUN_MODEL_REFERENCED",
+                    "Training run registered or is referenced by model lineage and must be archived instead of deleted",
+                    dependency("trainingRun", runId, Map.of("modelVersions", modelReferences, "status", run.getStatus().name())));
+        }
+        if (run.getStatus() != MlTrainingRunStatus.FAILED && run.getStatus() != MlTrainingRunStatus.CANCELED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only failed or canceled unreferenced training runs can be deleted");
+        }
+        run.setStatus(MlTrainingRunStatus.DELETED);
+        stampLifecycle(run, actorId, reason);
+        trainingRunRepository.save(run);
+        return response(run);
     }
 
     private MlTrainingRun findOwned(UUID accountId, UUID runId) {
@@ -209,5 +301,34 @@ public class MlTrainingService {
         if (value != null) {
             values.put(key, value);
         }
+    }
+
+    private String requiredReason(MlLifecycleActionRequest request) {
+        String value = request == null ? null : request.reason();
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+        }
+        return value.trim();
+    }
+
+    private String normalizedAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "delete";
+        }
+        return action.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void stampLifecycle(MlTrainingRun run, UUID actorId, String reason) {
+        run.setLifecycleActorId(actorId);
+        run.setLifecycleAt(Instant.now());
+        run.setLifecycleReason(reason);
+    }
+
+    private Map<String, Object> dependency(String type, UUID id, Map<String, Object> details) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("type", type);
+        value.put("id", id.toString());
+        value.put("details", details);
+        return value;
     }
 }

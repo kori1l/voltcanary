@@ -21,6 +21,7 @@ import com.voltcanary.analytics.domain.MlLabelType;
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotRequest;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotResponse;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.ml.FeatureTemplateCatalog;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
 import com.voltcanary.analytics.ml.MlInferenceRequest;
@@ -31,7 +32,10 @@ import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import com.voltcanary.analytics.repository.MlImportedFileRepository;
 import com.voltcanary.analytics.repository.MlImportedMetricRowRepository;
 import com.voltcanary.analytics.repository.MlLabelRepository;
+import com.voltcanary.analytics.repository.MlModelVersionRepository;
+import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import com.voltcanary.analytics.service.MlFeaturePipelineService;
+import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.Map;
@@ -51,6 +55,8 @@ class MlFeaturePipelineServiceTest {
     private final MlFeatureSnapshotRepository snapshotRepository = mock(MlFeatureSnapshotRepository.class);
     private final MlFeatureRowRepository featureRowRepository = mock(MlFeatureRowRepository.class);
     private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
+    private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
+    private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
     private final MlFeaturePipelineService service = new MlFeaturePipelineService(
             datasetVersionRepository,
             canonicalMetricRowRepository,
@@ -59,6 +65,8 @@ class MlFeaturePipelineServiceTest {
             snapshotRepository,
             featureRowRepository,
             labelRepository,
+            trainingRunRepository,
+            modelVersionRepository,
             new ObjectMapper(),
             new SimpleMeterRegistry());
 
@@ -92,6 +100,23 @@ class MlFeaturePipelineServiceTest {
         assertThat(first.featureDataHash()).isEqualTo(second.featureDataHash());
         assertThat(first.rowCount()).isEqualTo(3);
         assertThat(first.rejectedRowCount()).isZero();
+    }
+
+    @Test
+    void blocksDeletingReferencedFeatureSnapshot() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID snapshotId = UUID.randomUUID();
+        MlFeatureSnapshot snapshot = new MlFeatureSnapshot();
+        snapshot.setId(snapshotId);
+        snapshot.setAccountId(accountId);
+        snapshot.setLifecycleStatus("ACTIVE");
+        when(snapshotRepository.findById(snapshotId)).thenReturn(Optional.of(snapshot));
+        when(trainingRunRepository.countByFeatureSnapshotId(snapshotId)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.delete(accountId, actorId, snapshotId, new MlLifecycleActionRequest("cleanup", false)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("Feature snapshot is referenced");
     }
 
     @Test

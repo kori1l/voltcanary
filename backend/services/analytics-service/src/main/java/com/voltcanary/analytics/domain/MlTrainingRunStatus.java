@@ -5,5 +5,7 @@ public enum MlTrainingRunStatus {
     RUNNING,
     SUCCEEDED,
     FAILED,
-    CANCELED
+    CANCELED,
+    ARCHIVED,
+    DELETED
 }

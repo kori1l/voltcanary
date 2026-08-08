@@ -46,6 +46,14 @@ public class MlFeatureSnapshot {
     private String featureTemplateVersion;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+    @Column(name = "lifecycle_status", nullable = false)
+    private String lifecycleStatus = "ACTIVE";
+    @Column(name = "lifecycle_reason", columnDefinition = "text")
+    private String lifecycleReason;
+    @Column(name = "lifecycle_actor_id")
+    private UUID lifecycleActorId;
+    @Column(name = "lifecycle_at")
+    private Instant lifecycleAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -83,4 +91,12 @@ public class MlFeatureSnapshot {
     public void setFeatureTemplateVersion(String featureTemplateVersion) { this.featureTemplateVersion = featureTemplateVersion; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public String getLifecycleStatus() { return lifecycleStatus; }
+    public void setLifecycleStatus(String lifecycleStatus) { this.lifecycleStatus = lifecycleStatus; }
+    public String getLifecycleReason() { return lifecycleReason; }
+    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
+    public UUID getLifecycleActorId() { return lifecycleActorId; }
+    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
+    public Instant getLifecycleAt() { return lifecycleAt; }
+    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

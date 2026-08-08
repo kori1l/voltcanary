@@ -2,11 +2,21 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getLatestPrediction, PredictionResponse } from "../analytics/analyticsApi";
 import {
   approveMlModel,
+  archiveFeatureSnapshot,
+  archiveMlDatasetVersion,
   archiveMlModel,
+  archiveTrainingRun,
   cancelTrainingRun,
   createInternalTelemetryDataset,
   correctMlLabel,
   createTrainingRun,
+  deleteDeploymentPolicy,
+  deleteFeatureSnapshot,
+  deleteMlDatasetVersion,
+  deleteMlLabel,
+  deleteMlModel,
+  deleteTrainingRun,
+  disableDeploymentPolicy,
   createMlLabel,
   generateFeatureSnapshot,
   generateHorizonLabels,
@@ -28,8 +38,16 @@ import {
   MlLabel,
   MlLabelAudit,
   MlLabelType,
+  MlLifecycleImpact,
+  MlLifecycleStatusFilter,
   MlModelVersion,
   MlTrainingRun,
+  previewDeploymentPolicyLifecycle,
+  previewFeatureSnapshotLifecycle,
+  previewMlDatasetVersionLifecycle,
+  previewMlLabelLifecycle,
+  previewMlModelLifecycle,
+  previewTrainingRunLifecycle,
   rejectMlModel,
   resolveDeploymentPolicy,
   retryTrainingRun,
@@ -45,6 +63,7 @@ import {
   saveAccountMlSettings,
   saveDeviceMlSettings,
 } from "../analytics/mlSettingsApi";
+import { Device, DeviceType, listDevices, listDeviceTypes } from "../devices/devicesApi";
 
 const initial: MlSettingsValues = {
   mlEnabled: true,
@@ -56,6 +75,32 @@ const initial: MlSettingsValues = {
 
 type MlTab = "settings" | "datasets" | "import" | "labels" | "training" | "models" | "policies" | "monitoring";
 type FeatureSnapshotConfig = Parameters<typeof generateFeatureSnapshot>[0];
+type DatasetLifecycleKind = "dataset" | "snapshot";
+type ArchiveDeleteAction = "archive" | "delete";
+const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
+const defaultMlMetrics = ["activePowerW", "voltageV", "currentA", "temperatureC", "vibrationRms", "cycleDurationSeconds"];
+
+function requestLifecycleReason(action: string, label: string, impact?: MlLifecycleImpact) {
+  const summary = impact ? `\n\nImpact: ${impact.message}${formatImpactDependencies(impact)}` : "";
+  if (!window.confirm(`${humanizeKey(action)} ${label}?${summary}`)) {
+    return null;
+  }
+  const reason = window.prompt(`Reason for ${action} ${label}`);
+  return reason?.trim() || null;
+}
+
+function formatImpactDependencies(impact: MlLifecycleImpact) {
+  const details = impact.dependencies
+    .map((dependency) => {
+      const values = Object.entries(dependency.details ?? {})
+        .filter(([, value]) => value !== null && value !== "" && value !== undefined)
+        .map(([key, value]) => `${humanizeKey(key)} ${String(value)}`)
+        .join(", ");
+      return values ? `${dependency.type} ${values}` : dependency.type;
+    })
+    .filter(Boolean);
+  return details.length === 0 ? "" : ` (${details.join("; ")})`;
+}
 
 export function MlSettingsPage() {
   const [activeTab, setActiveTab] = useState<MlTab>("settings");
@@ -73,13 +118,20 @@ export function MlSettingsPage() {
   const [trainingRuns, setTrainingRuns] = useState<MlTrainingRun[]>([]);
   const [models, setModels] = useState<MlModelVersion[]>([]);
   const [policies, setPolicies] = useState<MlDeploymentPolicy[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
   const [featureSnapshot, setFeatureSnapshot] = useState<MlFeatureSnapshotResponse | null>(null);
   const [labels, setLabels] = useState<MlLabel[]>([]);
   const [labelAudit, setLabelAudit] = useState<MlLabelAudit[]>([]);
+  const [datasetStatusFilter, setDatasetStatusFilter] = useState<MlLifecycleStatusFilter>("default");
+  const [trainingStatusFilter, setTrainingStatusFilter] = useState<MlLifecycleStatusFilter>("default");
+  const [modelStatusFilter, setModelStatusFilter] = useState<MlLifecycleStatusFilter>("default");
+  const [policyStatusFilter, setPolicyStatusFilter] = useState<MlLifecycleStatusFilter>("default");
 
   useEffect(() => {
     void loadAccount();
     void refreshMlWorkspace();
+    void loadSelectors();
   }, []);
 
   function adopt(v: MlSettingsResponse) {
@@ -132,10 +184,10 @@ export function MlSettingsPage() {
 
   async function refreshMlWorkspace() {
     const [datasetResult, trainingResult, modelResult, policyResult] = await Promise.allSettled([
-      listMlDatasets(),
-      listTrainingRuns(),
-      listMlModels(),
-      listDeploymentPolicies(),
+      listMlDatasets(datasetStatusFilter),
+      listTrainingRuns(trainingStatusFilter),
+      listMlModels(modelStatusFilter),
+      listDeploymentPolicies(policyStatusFilter),
     ]);
     if (datasetResult.status === "fulfilled") {
       setDatasets(datasetResult.value);
@@ -148,6 +200,19 @@ export function MlSettingsPage() {
     }
     if (policyResult.status === "fulfilled") {
       setPolicies(policyResult.value);
+    }
+  }
+
+  async function loadSelectors() {
+    const [deviceResult, deviceTypeResult] = await Promise.allSettled([
+      listDevices({ limit: 100 }),
+      listDeviceTypes(),
+    ]);
+    if (deviceResult.status === "fulfilled") {
+      setDevices(deviceResult.value);
+    }
+    if (deviceTypeResult.status === "fulfilled") {
+      setDeviceTypes(deviceTypeResult.value);
     }
   }
 
@@ -237,6 +302,7 @@ export function MlSettingsPage() {
           clearOverride={clearOverride}
           deviceId={deviceId}
           deviceMode={deviceMode}
+          devices={devices}
           effective={effective}
           loadAccount={loadAccount}
           loadDevice={loadDevice}
@@ -251,8 +317,15 @@ export function MlSettingsPage() {
       {activeTab === "datasets" && (
         <DatasetsTab
           datasets={datasets}
+          devices={devices}
           detail={datasetDetail}
           featureSnapshot={featureSnapshot}
+          accountId={effective?.accountId ?? "unknown-account"}
+          statusFilter={datasetStatusFilter}
+          onFilterChange={async (value) => {
+            setDatasetStatusFilter(value);
+            setDatasets(await listMlDatasets(value));
+          }}
           onCreateInternalDataset={async (body) => {
             setBusy(true);
             setError(null);
@@ -274,6 +347,34 @@ export function MlSettingsPage() {
               setFeatureSnapshot(await generateFeatureSnapshot(body));
               setMessage("Feature snapshot generated");
               await refreshMlWorkspace();
+            } catch (e) {
+              setError(safeMlError(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+          onLifecycle={async (kind, id, action, label) => {
+            setBusy(true);
+            setError(null);
+            try {
+              const impact = kind === "dataset"
+                ? await previewMlDatasetVersionLifecycle(id, action)
+                : await previewFeatureSnapshotLifecycle(id, action);
+              if (impact.blocked) {
+                setError(`${impact.message}${formatImpactDependencies(impact)}`);
+                return;
+              }
+              const reason = requestLifecycleReason(action, label, impact);
+              if (!reason) return;
+              if (kind === "dataset") {
+                await (action === "archive" ? archiveMlDatasetVersion(id, reason) : deleteMlDatasetVersion(id, reason));
+                setDatasetDetail(null);
+              } else {
+                await (action === "archive" ? archiveFeatureSnapshot(id, reason) : deleteFeatureSnapshot(id, reason));
+                setFeatureSnapshot(null);
+              }
+              await refreshMlWorkspace();
+              setMessage(`${label} ${action}d`);
             } catch (e) {
               setError(safeMlError(e));
             } finally {
@@ -309,17 +410,55 @@ export function MlSettingsPage() {
             setLabels(await listMlLabels(datasetVersionId));
             setMessage("Label review updated");
           }}
+          onDelete={async (label) => {
+            try {
+              const impact = await previewMlLabelLifecycle(label.id, "delete");
+              if (impact.blocked) {
+                setError(`${impact.message}${formatImpactDependencies(impact)}`);
+                return;
+              }
+              const reason = requestLifecycleReason("delete", `${label.label} label`, impact);
+              if (!reason) return;
+              await deleteMlLabel(label.id, reason);
+              setLabels(await listMlLabels(label.datasetVersionId));
+              setMessage("Label deleted");
+            } catch (e) {
+              setError(safeMlError(e));
+            }
+          }}
           setError={setError}
         />
       )}
       {activeTab === "training" && (
         <TrainingTab
           datasets={datasets}
+          accountId={effective?.accountId ?? "unknown-account"}
           featureSnapshot={featureSnapshot}
           runs={trainingRuns}
+          statusFilter={trainingStatusFilter}
+          onFilterChange={async (value) => {
+            setTrainingStatusFilter(value);
+            setTrainingRuns(await listTrainingRuns(value));
+          }}
           onChanged={async () => {
             await refreshMlWorkspace();
             setMessage("Training workflow updated");
+          }}
+          onLifecycle={async (run, action) => {
+            try {
+              const impact = await previewTrainingRunLifecycle(run.id, action);
+              if (impact.blocked) {
+                setError(`${impact.message}${formatImpactDependencies(impact)}`);
+                return;
+              }
+              const reason = requestLifecycleReason(action, `${run.modelFamily} training run`, impact);
+              if (!reason) return;
+              await (action === "archive" ? archiveTrainingRun(run.id, reason) : deleteTrainingRun(run.id, reason));
+              await refreshMlWorkspace();
+              setMessage(`Training run ${action}d`);
+            } catch (e) {
+              setError(safeMlError(e));
+            }
           }}
           setError={setError}
         />
@@ -327,9 +466,30 @@ export function MlSettingsPage() {
       {activeTab === "models" && (
         <ModelsTab
           models={models}
+          statusFilter={modelStatusFilter}
+          onFilterChange={async (value) => {
+            setModelStatusFilter(value);
+            setModels(await listMlModels(value));
+          }}
           onChanged={async () => {
             await refreshMlWorkspace();
             setMessage("Model registry updated");
+          }}
+          onDelete={async (model) => {
+            try {
+              const impact = await previewMlModelLifecycle(model.id, "delete");
+              if (impact.blocked) {
+                setError(`${impact.message}${formatImpactDependencies(impact)}`);
+                return;
+              }
+              const reason = requestLifecycleReason("delete", `${model.modelKey} v${model.version}`, impact);
+              if (!reason) return;
+              await deleteMlModel(model.id, reason);
+              await refreshMlWorkspace();
+              setMessage("Model deleted");
+            } catch (e) {
+              setError(safeMlError(e));
+            }
           }}
           setError={setError}
         />
@@ -338,9 +498,32 @@ export function MlSettingsPage() {
         <PoliciesTab
           models={models}
           policies={policies}
+          devices={devices}
+          deviceTypes={deviceTypes}
+          statusFilter={policyStatusFilter}
+          onFilterChange={async (value) => {
+            setPolicyStatusFilter(value);
+            setPolicies(await listDeploymentPolicies(value));
+          }}
           onChanged={async () => {
             await refreshMlWorkspace();
             setMessage("Deployment policy saved");
+          }}
+          onLifecycle={async (policy, action) => {
+            try {
+              const impact = await previewDeploymentPolicyLifecycle(policy.id, action);
+              if (impact.blocked) {
+                setError(`${impact.message}${formatImpactDependencies(impact)}`);
+                return;
+              }
+              const reason = requestLifecycleReason(action, `${policy.scope} policy`, impact);
+              if (!reason) return;
+              await (action === "disable" ? disableDeploymentPolicy(policy.id, reason) : deleteDeploymentPolicy(policy.id, reason));
+              await refreshMlWorkspace();
+              setMessage(`Deployment policy ${action}d`);
+            } catch (e) {
+              setError(safeMlError(e));
+            }
           }}
           setError={setError}
         />
@@ -365,6 +548,7 @@ function SettingsTab(props: {
   clearOverride: () => Promise<void>;
   deviceId: string;
   deviceMode: boolean;
+  devices: Device[];
   effective: MlSettingsResponse | null;
   loadAccount: () => Promise<void>;
   loadDevice: () => Promise<void>;
@@ -387,7 +571,10 @@ function SettingsTab(props: {
         </div>
         <div className="action-row action-row-start">
           <button className="ghost-button" onClick={() => void props.loadAccount()} type="button">Account defaults</button>
-          <input aria-label="Device ID" placeholder="Device UUID" value={props.deviceId} onChange={(e) => props.setDeviceId(e.target.value)} />
+          <input aria-label="Device ID" list="ml-device-options" placeholder="Search or paste device UUID" value={props.deviceId} onChange={(e) => props.setDeviceId(e.target.value)} />
+          <datalist id="ml-device-options">
+            {props.devices.map((device) => <option key={device.id} value={device.id}>{deviceLabel(device)}</option>)}
+          </datalist>
           <button className="ghost-button" onClick={() => void props.loadDevice()} type="button">Load device</button>
         </div>
       </section>
@@ -454,23 +641,53 @@ function SettingsTab(props: {
   );
 }
 
+function StatusFilterSelect(props: {
+  label: string;
+  value: MlLifecycleStatusFilter;
+  onChange: (value: MlLifecycleStatusFilter) => Promise<void>;
+}) {
+  return (
+    <label className="compact-select">
+      {props.label}
+      <select value={props.value} onChange={(event) => void props.onChange(event.target.value as MlLifecycleStatusFilter)}>
+        {lifecycleStatusFilters.map((value) => <option key={value} value={value}>{humanizeKey(value)}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function DatasetsTab(props: {
+  accountId: string;
   datasets: MlDatasetSummary[];
+  devices: Device[];
   detail: MlDatasetDetail | null;
   featureSnapshot: MlFeatureSnapshotResponse | null;
+  statusFilter: MlLifecycleStatusFilter;
   onCreateInternalDataset: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<void>;
+  onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
   onGenerateFeatureSnapshot: (body: FeatureSnapshotConfig) => Promise<void>;
+  onLifecycle: (kind: DatasetLifecycleKind, id: string, action: ArchiveDeleteAction, label: string) => Promise<void>;
   onSelect: (datasetVersionId: string) => Promise<void>;
 }) {
+  const [modelFamily, setModelFamily] = useState<"ANOMALY_DETECTION" | "FAILURE_PREDICTION">("ANOMALY_DETECTION");
+  const [horizonDays, setHorizonDays] = useState(30);
   const [featureTemplateId, setFeatureTemplateId] = useState("generic-appliance");
   const [featureTemplateVersion, setFeatureTemplateVersion] = useState("template-v1");
   const [rollingWindowSize, setRollingWindowSize] = useState(6);
   const [missingGapSeconds, setMissingGapSeconds] = useState(21600);
-  const [featureFamiliesText, setFeatureFamiliesText] = useState("rolling_stats\nbaseline_deviation\nmissing_data\ntime\nlabel");
+  const [featureFamiliesText, setFeatureFamiliesText] = useState(defaultFeatureFamilies("ANOMALY_DETECTION").join("\n"));
   const selectedDatasetVersionId = props.detail?.dataset.datasetVersionId ?? "";
+
+  function chooseModelFamily(nextModelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
+    setModelFamily(nextModelFamily);
+    setFeatureFamiliesText(defaultFeatureFamilies(nextModelFamily).join("\n"));
+  }
 
   function generateSnapshot() {
     if (!selectedDatasetVersionId) return;
+    if (modelFamily === "FAILURE_PREDICTION" && (!horizonDays || horizonDays < 1)) {
+      return;
+    }
     void props.onGenerateFeatureSnapshot({
       datasetVersionId: selectedDatasetVersionId,
       featureSetVersion: "feature-set-v1",
@@ -478,8 +695,8 @@ function DatasetsTab(props: {
       rollingWindowSize,
       missingGapSeconds,
       enabledFeatureFamilies: splitList(featureFamiliesText),
-      modelFamily: "ANOMALY_DETECTION",
-      horizonDays: null,
+      modelFamily,
+      horizonDays: modelFamily === "FAILURE_PREDICTION" ? horizonDays : null,
       featureTemplateId,
       featureTemplateVersion,
     });
@@ -488,13 +705,14 @@ function DatasetsTab(props: {
   return (
     <div className="ml-workflow-grid">
       <div className="ml-panel-stack">
-        <InternalTelemetryDatasetForm onCreate={props.onCreateInternalDataset} />
+        <InternalTelemetryDatasetForm accountId={props.accountId} devices={props.devices} onCreate={props.onCreateInternalDataset} />
         <section className="panel">
           <div className="section-header">
             <div>
               <h2>Dataset versions</h2>
               <p>Validation status, lineage, and feature preparation.</p>
             </div>
+            <StatusFilterSelect label="Dataset status filter" value={props.statusFilter} onChange={props.onFilterChange} />
           </div>
           {props.datasets.length === 0 ? <div className="empty-state">No datasets have been created or imported yet.</div> : (
             <div className="ml-table">
@@ -529,6 +747,12 @@ function DatasetsTab(props: {
               <div><dt>Immutable rows</dt><dd className="mono-value">{props.detail.dataset.immutableRowReference ?? "Unavailable"}</dd></div>
               <div><dt>Failure reason</dt><dd>{props.detail.dataset.failureReason ?? "None"}</dd></div>
             </dl>
+            <div className="action-row action-row-start">
+              <button className="ghost-button" onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "archive", props.detail!.dataset.name)} type="button">Archive dataset</button>
+              {["DRAFT", "FAILED"].includes(props.detail.dataset.status) && (
+                <button className="ghost-button" onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "delete", props.detail!.dataset.name)} type="button">Delete dataset</button>
+              )}
+            </div>
             <h3>Validation</h3>
             {props.detail.validationReports.map((report) => (
               <div className="ml-readout" key={report.id}>
@@ -566,16 +790,32 @@ function DatasetsTab(props: {
             <section className="ml-inline-panel">
               <h3>Feature snapshot</h3>
               <div className="ml-form-grid">
+                <label>Model family<select value={modelFamily} onChange={(event) => chooseModelFamily(event.target.value as typeof modelFamily)}><option value="ANOMALY_DETECTION">Anomaly detection</option><option value="FAILURE_PREDICTION">Failure prediction</option></select></label>
                 <label>Feature template<select value={featureTemplateId} onChange={(event) => setFeatureTemplateId(event.target.value)}><option value="generic-appliance">Generic appliance</option><option value="fridge-freezer">Fridge/freezer</option></select></label>
                 <label>Template version<input value={featureTemplateVersion} onChange={(event) => setFeatureTemplateVersion(event.target.value)} /></label>
                 <label>Rolling window<input min="1" type="number" value={rollingWindowSize} onChange={(event) => setRollingWindowSize(Number(event.target.value))} /></label>
                 <label>Max gap seconds<input min="1" type="number" value={missingGapSeconds} onChange={(event) => setMissingGapSeconds(Number(event.target.value))} /></label>
+                {modelFamily === "FAILURE_PREDICTION" && <label>Snapshot horizon days<input min="1" max="365" type="number" value={horizonDays} onChange={(event) => setHorizonDays(Number(event.target.value))} required /></label>}
               </div>
+              {modelFamily === "FAILURE_PREDICTION" && (
+                <div className="ml-readout">
+                  <strong>Failure feature snapshot</strong>
+                  <span>Use the same horizon as generated labels and failure-prediction training.</span>
+                </div>
+              )}
               <label>Feature families<textarea className="ml-compact-editor" value={featureFamiliesText} onChange={(event) => setFeatureFamiliesText(event.target.value)} /></label>
               <div className="action-row action-row-start">
-                <button className="primary-button" onClick={generateSnapshot} type="button">Generate feature snapshot</button>
+                <button className="primary-button" disabled={modelFamily === "FAILURE_PREDICTION" && (!horizonDays || horizonDays < 1)} onClick={generateSnapshot} type="button">Generate feature snapshot</button>
               </div>
-              {props.featureSnapshot && <FeatureSnapshotSummary snapshot={props.featureSnapshot} />}
+              {props.featureSnapshot && (
+                <>
+                  <FeatureSnapshotSummary snapshot={props.featureSnapshot} />
+                  <div className="action-row action-row-start">
+                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", props.featureSnapshot!.id, "archive", "feature snapshot")} type="button">Archive snapshot</button>
+                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", props.featureSnapshot!.id, "delete", "feature snapshot")} type="button">Delete snapshot</button>
+                  </div>
+                </>
+              )}
             </section>
           </>
         )}
@@ -589,6 +829,8 @@ function FeatureSnapshotSummary({ snapshot }: { snapshot: MlFeatureSnapshotRespo
     <div className={snapshot.rejectedRowCount > 0 ? "warning-message" : "success-message"}>
       <dl className="detail-list">
         <div><dt>Snapshot id</dt><dd className="mono-value">{snapshot.id}</dd></div>
+        <div><dt>Family</dt><dd>{snapshot.modelFamily ?? "ANOMALY_DETECTION"}</dd></div>
+        <div><dt>Horizon</dt><dd>{snapshot.horizonDays ? `${snapshot.horizonDays} days` : "Not required"}</dd></div>
         <div><dt>Rows</dt><dd>{snapshot.rowCount} ready / {snapshot.rejectedRowCount} rejected</dd></div>
         <div><dt>Feature schema hash</dt><dd className="mono-value">{snapshot.featureSchemaHash}</dd></div>
         <div><dt>Feature data hash</dt><dd className="mono-value">{snapshot.featureDataHash ?? "Pending"}</dd></div>
@@ -622,50 +864,92 @@ function summarizeLabels(labels: MlLabel[]) {
   );
 }
 
-function InternalTelemetryDatasetForm(props: { onCreate: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<void> }) {
-  const [name, setName] = useState("Internal telemetry training set");
-  const [description, setDescription] = useState("");
-  const [deviceIdsText, setDeviceIdsText] = useState("");
-  const [metricsText, setMetricsText] = useState("activePowerW\nvoltageV\ncurrentA");
-  const [from, setFrom] = useState("2026-07-01T00:00");
-  const [to, setTo] = useState("2026-07-02T00:00");
-  const [splitStrategy, setSplitStrategy] = useState<"TIME_BASED" | "DEVICE_BASED" | "RANDOM">("TIME_BASED");
-  const [featureConfigVersion, setFeatureConfigVersion] = useState("feature-config-v1");
-  const [minSamplesPerMetric, setMinSamplesPerMetric] = useState(24);
-  const [maxSamplingGapSeconds, setMaxSamplingGapSeconds] = useState(21600);
+type DatasetDraft = {
+  name: string;
+  description: string;
+  deviceIds: string[];
+  metrics: string[];
+  from: string;
+  to: string;
+  splitStrategy: "TIME_BASED" | "DEVICE_BASED" | "RANDOM";
+  featureConfigVersion: string;
+  minSamplesPerMetric: number;
+  maxSamplingGapSeconds: number;
+  commonMetricsOnly: boolean;
+};
+
+const defaultDatasetDraft: DatasetDraft = {
+  name: "Internal telemetry training set",
+  description: "",
+  deviceIds: [],
+  metrics: ["activePowerW", "voltageV", "currentA"],
+  from: "2026-07-01T00:00",
+  to: "2026-07-02T00:00",
+  splitStrategy: "TIME_BASED",
+  featureConfigVersion: "feature-config-v1",
+  minSamplesPerMetric: 24,
+  maxSamplingGapSeconds: 21600,
+  commonMetricsOnly: true,
+};
+
+function InternalTelemetryDatasetForm(props: {
+  accountId: string;
+  devices: Device[];
+  onCreate: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<void>;
+}) {
+  const [draft, setDraft, clearDraft, restoredDraft] = usePersistedDraft(
+    `voltcanary.ml.${props.accountId}.datasets.ANOMALY_DETECTION.internal-dataset`,
+    defaultDatasetDraft,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
+  const availableMetrics = metricsForDevices(props.devices, draft.deviceIds, draft.commonMetricsOnly);
+  const staleDeviceIds = draft.deviceIds.filter((id) => props.devices.length > 0 && !props.devices.some((device) => device.id === id));
+  const selectedMetrics = draft.metrics.filter((metric) => availableMetrics.includes(metric));
+
+  useEffect(() => {
+    if (selectedMetrics.length !== draft.metrics.length) {
+      setDraft((current) => ({ ...current, metrics: selectedMetrics }));
+    }
+  }, [draft.metrics, selectedMetrics, setDraft]);
+
+  function update<K extends keyof DatasetDraft>(key: K, value: DatasetDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const deviceIds = splitList(deviceIdsText);
-    const metrics = splitList(metricsText);
-    if (!name.trim()) {
+    if (!draft.name.trim()) {
       setLocalError("Dataset name is required");
       return;
     }
-    if (deviceIds.length === 0) {
-      setLocalError("At least one device ID is required");
+    if (draft.deviceIds.length === 0) {
+      setLocalError("Select at least one device");
       return;
     }
-    if (metrics.length === 0) {
-      setLocalError("At least one metric is required");
+    if (draft.metrics.length === 0) {
+      setLocalError("Select at least one metric");
+      return;
+    }
+    if (new Date(draft.from).getTime() >= new Date(draft.to).getTime()) {
+      setLocalError("From must be before To");
       return;
     }
     setLocalError(null);
     await props.onCreate({
-      name: name.trim(),
-      description: description.trim() || null,
-      deviceIds,
+      name: draft.name.trim(),
+      description: draft.description.trim() || null,
+      deviceIds: draft.deviceIds,
       deviceMetadata: {},
-      metrics,
-      from: toInstant(from),
-      to: toInstant(to),
-      splitStrategy,
+      metrics: draft.metrics,
+      from: toInstant(draft.from),
+      to: toInstant(draft.to),
+      splitStrategy: draft.splitStrategy,
       splitConfigJson: "{}",
-      featureConfigVersion: featureConfigVersion.trim() || "feature-config-v1",
-      minSamplesPerMetric,
-      maxSamplingGapSeconds,
+      featureConfigVersion: draft.featureConfigVersion.trim() || "feature-config-v1",
+      minSamplesPerMetric: draft.minSamplesPerMetric,
+      maxSamplingGapSeconds: draft.maxSamplingGapSeconds,
     });
+    clearDraft();
   }
 
   return (
@@ -677,20 +961,47 @@ function InternalTelemetryDatasetForm(props: { onCreate: (body: Parameters<typeo
         </div>
       </div>
       {localError && <div className="error-message">{localError}</div>}
-      <label>Dataset name<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
-      <label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} /></label>
-      <label>Device IDs<textarea className="ml-compact-editor" value={deviceIdsText} onChange={(event) => setDeviceIdsText(event.target.value)} placeholder="One UUID per line or comma separated" required /></label>
-      <label>Metrics<textarea className="ml-compact-editor" value={metricsText} onChange={(event) => setMetricsText(event.target.value)} required /></label>
+      {restoredDraft && <div className="warning-message">Restored unsaved dataset draft.</div>}
+      {staleDeviceIds.length > 0 && <div className="warning-message">Unavailable devices in draft: {staleDeviceIds.join(", ")}</div>}
+      <label>Dataset name<input value={draft.name} onChange={(event) => update("name", event.target.value)} required /></label>
+      <label>Description<input value={draft.description} onChange={(event) => update("description", event.target.value)} /></label>
+      <label>
+        Devices
+        <select
+          aria-label="Device selector"
+          multiple
+          onChange={(event) => update("deviceIds", Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}
+          required
+          value={draft.deviceIds}
+        >
+          {props.devices.map((device) => <option key={device.id} value={device.id}>{deviceLabel(device)}</option>)}
+        </select>
+        <small>{props.devices.length === 0 ? "Device list unavailable; reload after device service is reachable." : "Use Ctrl or Shift to select multiple devices."}</small>
+      </label>
+      <label className="checkbox-label"><input checked={draft.commonMetricsOnly} onChange={(event) => update("commonMetricsOnly", event.target.checked)} type="checkbox" /> Common metrics only</label>
+      <div className="ml-checkbox-grid" aria-label="Metric selector">
+        {availableMetrics.map((metric) => (
+          <label className="checkbox-label" key={metric}>
+            <input
+              checked={draft.metrics.includes(metric)}
+              onChange={(event) => update("metrics", event.target.checked ? [...draft.metrics, metric] : draft.metrics.filter((item) => item !== metric))}
+              type="checkbox"
+            />
+            {humanizeFeatureName(metric)}
+          </label>
+        ))}
+      </div>
       <div className="ml-form-grid">
-        <label>From<input type="datetime-local" value={from} onChange={(event) => setFrom(event.target.value)} required /></label>
-        <label>To<input type="datetime-local" value={to} onChange={(event) => setTo(event.target.value)} required /></label>
-        <label>Split<select value={splitStrategy} onChange={(event) => setSplitStrategy(event.target.value as typeof splitStrategy)}><option value="TIME_BASED">Time based</option><option value="DEVICE_BASED">Device based</option><option value="RANDOM">Random</option></select></label>
-        <label>Feature config<input value={featureConfigVersion} onChange={(event) => setFeatureConfigVersion(event.target.value)} /></label>
-        <label>Min samples<input min="1" type="number" value={minSamplesPerMetric} onChange={(event) => setMinSamplesPerMetric(Number(event.target.value))} /></label>
-        <label>Max gap seconds<input min="1" type="number" value={maxSamplingGapSeconds} onChange={(event) => setMaxSamplingGapSeconds(Number(event.target.value))} /></label>
+        <label>From<input type="datetime-local" value={draft.from} onChange={(event) => update("from", event.target.value)} required /></label>
+        <label>To<input type="datetime-local" value={draft.to} onChange={(event) => update("to", event.target.value)} required /></label>
+        <label>Split<select value={draft.splitStrategy} onChange={(event) => update("splitStrategy", event.target.value as DatasetDraft["splitStrategy"])}><option value="TIME_BASED">Time based</option><option value="DEVICE_BASED">Device based</option><option value="RANDOM">Random</option></select></label>
+        <label>Feature config<input value={draft.featureConfigVersion} onChange={(event) => update("featureConfigVersion", event.target.value)} /></label>
+        <label>Min samples<input min="1" type="number" value={draft.minSamplesPerMetric} onChange={(event) => update("minSamplesPerMetric", Number(event.target.value))} /></label>
+        <label>Max gap seconds<input min="1" type="number" value={draft.maxSamplingGapSeconds} onChange={(event) => update("maxSamplingGapSeconds", Number(event.target.value))} /></label>
       </div>
       <div className="action-row action-row-start">
         <button className="primary-button">Create dataset version</button>
+        <button className="ghost-button" onClick={clearDraft} type="button">Reset draft</button>
       </div>
     </form>
   );
@@ -747,6 +1058,7 @@ function LabelsTab(props: {
   labels: MlLabel[];
   onAudit: (labelId: string) => Promise<void>;
   onChanged: (datasetVersionId: string) => Promise<void>;
+  onDelete: (label: MlLabel) => Promise<void>;
   setError: (value: string | null) => void;
 }) {
   const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY");
@@ -912,6 +1224,7 @@ function LabelsTab(props: {
                 {labelOptions.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
               <button className="ghost-button" onClick={() => void props.onAudit(item.id)} type="button">Audit</button>
+              <button className="ghost-button" onClick={() => void props.onDelete(item)} type="button">Delete</button>
             </div>
           </div>
         ))}
@@ -932,44 +1245,67 @@ function LabelsTab(props: {
 }
 
 function TrainingTab(props: {
+  accountId: string;
   datasets: MlDatasetSummary[];
   featureSnapshot: MlFeatureSnapshotResponse | null;
   runs: MlTrainingRun[];
+  statusFilter: MlLifecycleStatusFilter;
   onChanged: () => Promise<void>;
+  onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
+  onLifecycle: (run: MlTrainingRun, action: ArchiveDeleteAction) => Promise<void>;
   setError: (value: string | null) => void;
 }) {
   const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY");
-  const [datasetVersionId, setDatasetVersionId] = useState("");
-  const [featureSnapshotId, setFeatureSnapshotId] = useState("");
-  const [modelFamily, setModelFamily] = useState<"ANOMALY_DETECTION" | "FAILURE_PREDICTION">("ANOMALY_DETECTION");
-  const [algorithm, setAlgorithm] = useState("baseline-statistical-anomaly-v1");
-  const [failureHorizonDays, setFailureHorizonDays] = useState(14);
-  const [minimumPositiveLabels, setMinimumPositiveLabels] = useState(20);
-  const [minimumLabelCoverage, setMinimumLabelCoverage] = useState(0.8);
+  const [draft, setDraft, clearDraft] = usePersistedDraft(
+    `voltcanary.ml.${props.accountId}.training.ANOMALY_DETECTION.training-run`,
+    {
+      datasetVersionId: "",
+      featureSnapshotId: "",
+      modelFamily: "ANOMALY_DETECTION" as "ANOMALY_DETECTION" | "FAILURE_PREDICTION",
+      algorithm: "baseline-statistical-anomaly-v1",
+      failureHorizonDays: 14,
+      minimumPositiveLabels: 20,
+      minimumLabelCoverage: 0.8,
+    },
+  );
+  const { datasetVersionId, featureSnapshotId, modelFamily, algorithm, failureHorizonDays, minimumPositiveLabels, minimumLabelCoverage } = draft;
   const selectedTemplate = trainingTemplates[modelFamily];
   const selectedDataset = readyDatasets.find((dataset) => dataset.datasetVersionId === datasetVersionId);
+  const availableSnapshots = props.featureSnapshot ? [props.featureSnapshot] : [];
+  const selectedSnapshot = availableSnapshots.find((snapshot) => snapshot.id === featureSnapshotId);
 
   useEffect(() => {
     if (!datasetVersionId && readyDatasets[0]) {
-      setDatasetVersionId(readyDatasets[0].datasetVersionId);
+      setDraft((current) => ({ ...current, datasetVersionId: readyDatasets[0].datasetVersionId }));
     }
-  }, [datasetVersionId, readyDatasets]);
+  }, [datasetVersionId, readyDatasets, setDraft]);
 
   useEffect(() => {
     if (props.featureSnapshot?.id) {
-      setFeatureSnapshotId(props.featureSnapshot.id);
+      setDraft((current) => ({ ...current, featureSnapshotId: props.featureSnapshot!.id }));
     }
-  }, [props.featureSnapshot]);
+  }, [props.featureSnapshot, setDraft]);
 
   function chooseTemplate(nextModelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
-    setModelFamily(nextModelFamily);
-    setAlgorithm(trainingTemplates[nextModelFamily].defaultAlgorithm);
+    setDraft((current) => ({
+      ...current,
+      modelFamily: nextModelFamily,
+      algorithm: trainingTemplates[nextModelFamily].defaultAlgorithm,
+    }));
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (selectedSnapshot?.modelFamily && selectedSnapshot.modelFamily !== modelFamily) {
+      props.setError(`Feature snapshot family ${selectedSnapshot.modelFamily} must match training family ${modelFamily}.`);
+      return;
+    }
     if (modelFamily === "FAILURE_PREDICTION" && (!failureHorizonDays || failureHorizonDays < 1)) {
       props.setError("Failure prediction requires a positive horizon.");
+      return;
+    }
+    if (modelFamily === "FAILURE_PREDICTION" && selectedSnapshot?.horizonDays && selectedSnapshot.horizonDays !== failureHorizonDays) {
+      props.setError(`Feature snapshot horizon ${selectedSnapshot.horizonDays} must match training horizon ${failureHorizonDays}.`);
       return;
     }
     try {
@@ -984,6 +1320,7 @@ function TrainingTab(props: {
         hyperparametersJson: "{}",
       });
       await props.onChanged();
+      clearDraft();
     } catch (error) {
       props.setError(safeMlError(error));
     }
@@ -1019,9 +1356,15 @@ function TrainingTab(props: {
           </ul>
         </section>
         <div className="ml-control-grid">
-          <label>Dataset version<select value={datasetVersionId} onChange={(e) => setDatasetVersionId(e.target.value)}>{readyDatasets.map((dataset) => <option key={dataset.datasetVersionId} value={dataset.datasetVersionId}>{dataset.name} v{dataset.version}</option>)}</select></label>
-          <label>Feature snapshot id<input value={featureSnapshotId} onChange={(e) => setFeatureSnapshotId(e.target.value)} placeholder="Use the latest generated snapshot UUID" /></label>
-          <label>Algorithm<select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
+          <label>Dataset version<select value={datasetVersionId} onChange={(e) => setDraft((current) => ({ ...current, datasetVersionId: e.target.value }))}>{readyDatasets.map((dataset) => <option key={dataset.datasetVersionId} value={dataset.datasetVersionId}>{dataset.name} v{dataset.version}</option>)}</select></label>
+          <label>
+            Feature snapshot
+            <select value={featureSnapshotId} onChange={(e) => setDraft((current) => ({ ...current, featureSnapshotId: e.target.value }))}>
+              <option value="">No snapshot selected</option>
+              {availableSnapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshotLabel(snapshot)}</option>)}
+            </select>
+          </label>
+          <label>Algorithm<select value={algorithm} onChange={(e) => setDraft((current) => ({ ...current, algorithm: e.target.value }))}>
             {selectedTemplate.algorithms.map((value) => <option key={value} value={value}>{humanizeAlgorithm(value)}</option>)}
           </select></label>
         </div>
@@ -1035,10 +1378,16 @@ function TrainingTab(props: {
           <section className="ml-inline-panel">
             <h3>Failure prediction gates</h3>
             <div className="ml-form-grid">
-              <label>Prediction horizon<input min="1" max="365" type="number" value={failureHorizonDays} onChange={(e) => setFailureHorizonDays(Number(e.target.value))} /></label>
-              <label>Minimum positive labels<input min="1" type="number" value={minimumPositiveLabels} onChange={(e) => setMinimumPositiveLabels(Number(e.target.value))} /></label>
-              <label>Minimum label coverage<input max="1" min="0" step="0.01" type="number" value={minimumLabelCoverage} onChange={(e) => setMinimumLabelCoverage(Number(e.target.value))} /></label>
+              <label>Prediction horizon<input min="1" max="365" type="number" value={failureHorizonDays} onChange={(e) => setDraft((current) => ({ ...current, failureHorizonDays: Number(e.target.value) }))} /></label>
+              <label>Minimum positive labels<input min="1" type="number" value={minimumPositiveLabels} onChange={(e) => setDraft((current) => ({ ...current, minimumPositiveLabels: Number(e.target.value) }))} /></label>
+              <label>Minimum label coverage<input max="1" min="0" step="0.01" type="number" value={minimumLabelCoverage} onChange={(e) => setDraft((current) => ({ ...current, minimumLabelCoverage: Number(e.target.value) }))} /></label>
             </div>
+            {selectedSnapshot?.horizonDays && selectedSnapshot.horizonDays !== failureHorizonDays && (
+              <div className="warning-message">Feature snapshot horizon {selectedSnapshot.horizonDays} differs from training horizon {failureHorizonDays}.</div>
+            )}
+            {selectedSnapshot?.modelFamily && selectedSnapshot.modelFamily !== modelFamily && (
+              <div className="warning-message">Feature snapshot family {selectedSnapshot.modelFamily} differs from training family {modelFamily}.</div>
+            )}
             <div className="ml-readout">
               <strong>Before queueing</strong>
               <span>Generate horizon labels for {failureHorizonDays} days, then build a failure-prediction feature snapshot from the same dataset version.</span>
@@ -1048,7 +1397,12 @@ function TrainingTab(props: {
         <button className="primary-button" disabled={!datasetVersionId}>Queue training</button>
       </form>
       <section className="panel">
-        <h2>Training runs</h2>
+        <div className="section-header">
+          <div>
+            <h2>Training runs</h2>
+          </div>
+          <StatusFilterSelect label="Training status filter" value={props.statusFilter} onChange={props.onFilterChange} />
+        </div>
         {props.runs.length === 0 ? <div className="empty-state">No training runs yet.</div> : props.runs.map((run) => (
           <div className="ml-readout" key={run.id}>
             <strong>{run.modelFamily} / {run.algorithm}</strong>
@@ -1056,6 +1410,8 @@ function TrainingTab(props: {
             <div className="action-row action-row-start">
               {["QUEUED", "RUNNING"].includes(run.status) && <button className="ghost-button" onClick={() => void cancelTrainingRun(run.id).then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Cancel</button>}
               {["FAILED", "CANCELED"].includes(run.status) && <button className="ghost-button" onClick={() => void retryTrainingRun(run.id).then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Retry</button>}
+              {["SUCCEEDED", "FAILED", "CANCELED"].includes(run.status) && <button className="ghost-button" onClick={() => void props.onLifecycle(run, "archive")} type="button">Archive</button>}
+              {["FAILED", "CANCELED"].includes(run.status) && <button className="ghost-button" onClick={() => void props.onLifecycle(run, "delete")} type="button">Delete</button>}
             </div>
           </div>
         ))}
@@ -1064,10 +1420,15 @@ function TrainingTab(props: {
   );
 }
 
-function ModelsTab(props: { models: MlModelVersion[]; onChanged: () => Promise<void>; setError: (value: string | null) => void }) {
+function ModelsTab(props: { models: MlModelVersion[]; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
   return (
     <section className="panel">
-      <h2>Model registry</h2>
+      <div className="section-header">
+        <div>
+          <h2>Model registry</h2>
+        </div>
+        <StatusFilterSelect label="Model status filter" value={props.statusFilter} onChange={props.onFilterChange} />
+      </div>
       {props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((model) => {
         const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
         const approveBlocked = Boolean(gates && !gates.promotionEligible);
@@ -1094,6 +1455,7 @@ function ModelsTab(props: { models: MlModelVersion[]; onChanged: () => Promise<v
               )}
               {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" onClick={() => void rejectMlModel(model.id, "UI rejection").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Reject</button>}
               {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" onClick={() => void archiveMlModel(model.id, "UI archive").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Archive</button>}
+              {["CANDIDATE", "REJECTED"].includes(model.status) && <button aria-label={`Delete ${modelLabel}`} className="ghost-button" onClick={() => void props.onDelete(model)} type="button">Delete</button>}
             </div>
           </div>
         );
@@ -1176,7 +1538,17 @@ function GenericModelMetrics({ model }: { model: MlModelVersion }) {
   );
 }
 
-function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPolicy[]; onChanged: () => Promise<void>; setError: (value: string | null) => void }) {
+function PoliciesTab(props: {
+  devices: Device[];
+  deviceTypes: DeviceType[];
+  models: MlModelVersion[];
+  policies: MlDeploymentPolicy[];
+  statusFilter: MlLifecycleStatusFilter;
+  onChanged: () => Promise<void>;
+  onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
+  onLifecycle: (policy: MlDeploymentPolicy, action: "disable" | "delete") => Promise<void>;
+  setError: (value: string | null) => void;
+}) {
   const deployableModels = props.models.filter((model) => (model.status === "APPROVED" || model.status === "ACTIVE") && !model.demoModel);
   const [scope, setScope] = useState<MlDeploymentScope>("ACCOUNT");
   const [mode, setMode] = useState<MlDeploymentMode>("SHADOW");
@@ -1229,8 +1601,24 @@ function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPo
           <label>Scope<select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}><option value="ACCOUNT">Account</option><option value="DEVICE_TYPE">Device type</option><option value="DEVICE">Device</option></select></label>
           <label>Mode<select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}><option value="SHADOW">Shadow</option><option value="CANARY">Canary</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select></label>
           <label>Model<select value={modelVersionId} onChange={(e) => setModelVersionId(e.target.value)}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version} / {modelOriginLabel(model)}</option>)}</select></label>
-          {scope === "DEVICE" && <label>Device id<input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} /></label>}
-          {scope === "DEVICE_TYPE" && <label>Device type<input value={deviceType} onChange={(e) => setDeviceType(e.target.value)} /></label>}
+          {scope === "DEVICE" && (
+            <label>
+              Device
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                <option value="">Select device</option>
+                {props.devices.map((device) => <option key={device.id} value={device.id}>{deviceLabel(device)}</option>)}
+              </select>
+            </label>
+          )}
+          {scope === "DEVICE_TYPE" && (
+            <label>
+              Device type
+              <select value={deviceType} onChange={(e) => setDeviceType(e.target.value)}>
+                <option value="">Select device type</option>
+                {props.deviceTypes.map((type) => <option key={type.code} value={type.code}>{type.displayName} / {type.code}</option>)}
+              </select>
+            </label>
+          )}
           {mode === "CANARY" && <label>Canary percent<input max="100" min="0" onChange={(e) => setCanaryPercent(Number(e.target.value))} type="number" value={canaryPercent} /></label>}
         </div>
         <label className="checkbox-label"><input checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} type="checkbox" /> Baseline fallback enabled</label>
@@ -1238,11 +1626,20 @@ function PoliciesTab(props: { models: MlModelVersion[]; policies: MlDeploymentPo
         {resolved && <div className="success-message">{resolved}</div>}
       </form>
       <section className="panel">
-        <h2>Current policies</h2>
+        <div className="section-header">
+          <div>
+            <h2>Current policies</h2>
+          </div>
+          <StatusFilterSelect label="Policy status filter" value={props.statusFilter} onChange={props.onFilterChange} />
+        </div>
         {props.policies.length === 0 ? <div className="empty-state">No deployment policies yet.</div> : props.policies.map((policy) => (
           <div className="ml-readout" key={policy.id}>
             <strong>{policy.scope} / {policy.mode}</strong>
             <span>{policy.modelVersionId ?? "baseline fallback"} / fallback {policy.fallbackEnabled ? "on" : "off"}</span>
+            <div className="action-row action-row-start">
+              {policy.mode !== "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "disable")} type="button">Disable</button>}
+              {policy.mode === "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "delete")} type="button">Delete</button>}
+            </div>
           </div>
         ))}
       </section>
@@ -1519,6 +1916,95 @@ const labelOptions: MlLabelType[] = [
   "UNRESOLVED_ANOMALY",
   "UNKNOWN",
 ];
+
+function usePersistedDraft<T>(key: string, initialValue: T) {
+  const initialDraft = readDraft<T>(key);
+  const [restored, setRestored] = useState(Boolean(initialDraft));
+  const [value, setValue] = useState<T>(() => {
+    if (initialDraft) {
+      return { ...initialValue, ...initialDraft };
+    }
+    return initialValue;
+  });
+
+  useEffect(() => {
+    const stored = readDraft<T>(key);
+    setValue(stored ? { ...initialValue, ...stored } : initialValue);
+    setRestored(Boolean(stored));
+  }, [key]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // Draft persistence is best effort; server state remains authoritative.
+    }
+  }, [key, value]);
+
+  function clearDraft() {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage failures.
+    }
+    setValue(initialValue);
+    setRestored(false);
+  }
+
+  return [value, setValue, clearDraft, restored] as const;
+}
+
+function readDraft<T>(key: string): Partial<T> | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Partial<T>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function deviceLabel(device: Device) {
+  const location = device.locationId ? ` / ${device.locationId}` : "";
+  return `${device.name} / ${device.type} / ${device.status}${location} / ${device.id}`;
+}
+
+function snapshotLabel(snapshot: MlFeatureSnapshotResponse) {
+  const family = snapshot.modelFamily ?? "ANOMALY_DETECTION";
+  const horizon = snapshot.horizonDays ? ` / h${snapshot.horizonDays}` : "";
+  return `${family}${horizon} / ${snapshot.rowCount} rows / ${snapshot.featureSchemaHash} / ${snapshot.id}`;
+}
+
+function defaultFeatureFamilies(modelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
+  if (modelFamily === "FAILURE_PREDICTION") {
+    return ["rolling_stats", "baseline_deviation", "missing_data", "time", "device_context", "label"];
+  }
+  return ["rolling_stats", "baseline_deviation", "missing_data", "time", "label"];
+}
+
+function metricsForDevices(devices: Device[], selectedDeviceIds: string[], commonOnly: boolean) {
+  const selectedDevices = devices.filter((device) => selectedDeviceIds.includes(device.id));
+  const metricSets = selectedDevices
+    .map((device) => deviceMetrics(device))
+    .filter((metrics) => metrics.length > 0);
+  if (metricSets.length === 0) {
+    return defaultMlMetrics;
+  }
+  const metrics = commonOnly
+    ? metricSets.reduce((common, metrics) => common.filter((metric) => metrics.includes(metric)))
+    : Array.from(new Set(metricSets.flat()));
+  return metrics.length > 0 ? metrics : defaultMlMetrics;
+}
+
+function deviceMetrics(device: Device) {
+  const raw = device.metadata?.metrics ?? device.metadata?.mlMetrics ?? device.metadata?.telemetryMetrics;
+  if (Array.isArray(raw)) {
+    return raw.map(String).filter(Boolean);
+  }
+  if (typeof raw === "string") {
+    return splitList(raw);
+  }
+  return defaultMlMetrics;
+}
 
 function toInstant(value: string) {
   return new Date(value).toISOString();

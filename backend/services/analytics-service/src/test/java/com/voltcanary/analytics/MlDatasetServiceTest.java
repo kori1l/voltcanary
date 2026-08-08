@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -19,13 +20,19 @@ import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.domain.MlValidationReport;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
 import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetLineageRepository;
 import com.voltcanary.analytics.repository.MlDatasetRepository;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
+import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
+import com.voltcanary.analytics.repository.MlLabelRepository;
+import com.voltcanary.analytics.repository.MlModelVersionRepository;
+import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
 import com.voltcanary.analytics.service.MlDatasetService;
+import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
 import java.time.Instant;
@@ -41,6 +48,10 @@ class MlDatasetServiceTest {
     private final MlDatasetVersionRepository versionRepository = mock(MlDatasetVersionRepository.class);
     private final MlValidationReportRepository reportRepository = mock(MlValidationReportRepository.class);
     private final MlDatasetLineageRepository lineageRepository = mock(MlDatasetLineageRepository.class);
+    private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
+    private final MlFeatureSnapshotRepository featureSnapshotRepository = mock(MlFeatureSnapshotRepository.class);
+    private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
+    private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(MlCanonicalMetricRowRepository.class);
     private final MaintenanceWindowReadModelRepository maintenanceRepository = mock(MaintenanceWindowReadModelRepository.class);
     private final TelemetryClient telemetryClient = mock(TelemetryClient.class);
@@ -50,6 +61,10 @@ class MlDatasetServiceTest {
             versionRepository,
             reportRepository,
             lineageRepository,
+            labelRepository,
+            featureSnapshotRepository,
+            trainingRunRepository,
+            modelVersionRepository,
             canonicalMetricRowRepository,
             maintenanceRepository,
             telemetryClient,
@@ -296,7 +311,8 @@ class MlDatasetServiceTest {
         lineage.setContentHash("sha256:lineage");
         lineage.setCreatedAt(createdAt);
         when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of(dataset));
-        when(versionRepository.findByDatasetIdOrderByVersionDesc(datasetId)).thenReturn(List.of(version));
+        when(versionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(datasetId, MlDatasetStatus.DELETED))
+                .thenReturn(List.of(version));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
         when(datasetRepository.findById(datasetId)).thenReturn(Optional.of(dataset));
         when(reportRepository.findByDatasetVersionIdOrderByCreatedAtDesc(versionId)).thenReturn(List.of(report));
@@ -325,6 +341,66 @@ class MlDatasetServiceTest {
         });
     }
 
+    @Test
+    void defaultDatasetListHidesArchivedVersionsAndFilterShowsThem() {
+        UUID accountId = UUID.randomUUID();
+        UUID datasetId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-07-10T00:00:00Z");
+        MlDataset dataset = dataset(datasetId, accountId, createdAt);
+        MlDatasetVersion version = datasetVersion(datasetId, accountId, versionId, createdAt, MlDatasetStatus.ARCHIVED);
+        when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of(dataset));
+        when(versionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(datasetId, MlDatasetStatus.DELETED))
+                .thenReturn(List.of(version));
+        when(versionRepository.findByDatasetIdOrderByVersionDesc(datasetId)).thenReturn(List.of(version));
+
+        assertThat(service.list(accountId)).isEmpty();
+        assertThat(service.list(accountId, "archived")).singleElement()
+                .satisfies(item -> assertThat(item.status()).isEqualTo(MlDatasetStatus.ARCHIVED));
+    }
+
+    @Test
+    void datasetImpactIncludesReferenceCountsBeforeDeletion() {
+        UUID accountId = UUID.randomUUID();
+        UUID datasetId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        MlDatasetVersion version = datasetVersion(datasetId, accountId, versionId, Instant.parse("2026-07-10T00:00:00Z"), MlDatasetStatus.FAILED);
+        when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
+        when(labelRepository.countByDatasetVersionIdAndDeletedAtIsNull(versionId)).thenReturn(2L);
+        when(trainingRunRepository.countByDatasetVersionId(versionId)).thenReturn(1L);
+
+        var impact = service.impact(accountId, versionId, "delete");
+
+        assertThat(impact.blocked()).isTrue();
+        assertThat(impact.dependencies()).singleElement().satisfies(dependency -> {
+            assertThat(dependency).containsEntry("type", "datasetVersion");
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> details = (java.util.Map<String, Object>) dependency.get("details");
+            assertThat(details)
+                    .containsEntry("labels", 2L)
+                    .containsEntry("trainingRuns", 1L);
+        });
+    }
+
+    @Test
+    void blocksDeletingReferencedDatasetVersion() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID datasetId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        MlDatasetVersion version = new MlDatasetVersion();
+        version.setId(versionId);
+        version.setAccountId(accountId);
+        version.setDatasetId(datasetId);
+        version.setStatus(MlDatasetStatus.FAILED);
+        when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
+        when(labelRepository.countByDatasetVersionIdAndDeletedAtIsNull(versionId)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.delete(accountId, actorId, versionId, new MlLifecycleActionRequest("cleanup", false)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("Dataset version is referenced");
+    }
+
     private TelemetryChartResponse readings(UUID deviceId, String metric, Instant start, int count) {
         return new TelemetryChartResponse(deviceId, metric, java.util.stream.IntStream.range(0, count)
                 .mapToObj(index -> new TelemetryChartResponse.Point(start.plusSeconds(index * 3600L), 10.0 + index))
@@ -351,5 +427,32 @@ class MlDatasetServiceTest {
         java.util.ArrayList<MlCanonicalMetricRow> values = new java.util.ArrayList<>();
         rows.forEach(values::add);
         return values;
+    }
+
+    private MlDataset dataset(UUID datasetId, UUID accountId, Instant createdAt) {
+        MlDataset dataset = new MlDataset();
+        dataset.setId(datasetId);
+        dataset.setAccountId(accountId);
+        dataset.setName("Washer July");
+        dataset.setDescription("Training data");
+        dataset.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
+        dataset.setCreatedAt(createdAt);
+        dataset.setUpdatedAt(createdAt);
+        return dataset;
+    }
+
+    private MlDatasetVersion datasetVersion(UUID datasetId, UUID accountId, UUID versionId, Instant createdAt, MlDatasetStatus status) {
+        MlDatasetVersion version = new MlDatasetVersion();
+        version.setId(versionId);
+        version.setDatasetId(datasetId);
+        version.setAccountId(accountId);
+        version.setVersion(1);
+        version.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
+        version.setStatus(status);
+        version.setSplitStrategy(MlTrainingSplitStrategy.TIME_BASED);
+        version.setSplitConfigJson("{}");
+        version.setFeatureConfigVersion("feature-config-v1");
+        version.setCreatedAt(createdAt);
+        return version;
     }
 }

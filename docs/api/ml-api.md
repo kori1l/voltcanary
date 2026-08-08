@@ -165,6 +165,7 @@ Dataset lifecycle:
 - `READY`
 - `FAILED`
 - `ARCHIVED`
+- `DELETED`
 
 Dataset source types:
 
@@ -234,6 +235,8 @@ Training run statuses:
 - `SUCCEEDED`
 - `FAILED`
 - `CANCELED`
+- `ARCHIVED`
+- `DELETED`
 
 Model registry statuses:
 
@@ -242,6 +245,7 @@ Model registry statuses:
 - `ACTIVE`
 - `REJECTED`
 - `ARCHIVED`
+- `DELETED`
 
 Deployment scopes resolve in `DEVICE`, `DEVICE_TYPE`, `ACCOUNT`, `SYSTEM`,
 then baseline fallback order. Deployment modes are `SHADOW`, `CANARY`,
@@ -252,6 +256,13 @@ then baseline fallback order. Deployment modes are `SHADOW`, `CANARY`,
 Lists the latest dataset version for each account-scoped ML dataset. Each item
 includes status, split strategy, source window, failure reason, and immutable
 data metadata.
+
+Optional query:
+
+- `statusFilter=default|active|failed|archived|deleted|all`. `default`,
+  `active`, and `current` hide archived/deleted versions and return the latest
+  visible version per dataset. `failed`, `archived`, `deleted`, and `all` return
+  matching dataset versions for cleanup review.
 
 Example item:
 
@@ -443,6 +454,81 @@ stable `virtualDeviceKey` derived from the account id and external device key,
 so imported-only devices remain usable for training. Device mappings are stored
 per imported file and external device key.
 
+## ML lifecycle action contract
+
+Lifecycle mutation endpoints require ML write authorization and a JSON body with
+a non-empty `reason`:
+
+```json
+{
+  "reason": "Cleanup failed experiment",
+  "force": false
+}
+```
+
+`force` is reserved for future explicit-confirmation flows. The current backend
+does not use it to bypass lineage protection. Default list endpoints hide
+archived and deleted records; detail and audit records remain readable where
+lineage requires traceability.
+
+Before showing a destructive confirmation, clients can request an impact
+preview. Impact endpoints do not mutate state and use the same account ownership
+and reference checks as the matching lifecycle action:
+
+```json
+{
+  "action": "delete",
+  "blocked": true,
+  "message": "Dataset version is referenced and should be archived instead of deleted",
+  "dependencies": [
+    {
+      "type": "datasetVersion",
+      "id": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+      "details": {
+        "labels": 2,
+        "featureSnapshots": 1,
+        "trainingRuns": 0,
+        "modelVersions": 0
+      }
+    }
+  ]
+}
+```
+
+Unsafe operations return HTTP `409` with dependency details:
+
+```json
+{
+  "code": "MODEL_POLICY_REFERENCED",
+  "message": "Model is active or referenced by deployment policies",
+  "dependencies": [
+    {
+      "type": "deploymentPolicy",
+      "id": "6db9a07f-9f03-4ba2-9c54-92bf641ef740",
+      "details": {
+        "scope": "ACCOUNT",
+        "mode": "ACTIVE"
+      }
+    }
+  ]
+}
+```
+
+## POST /analytics/ml/datasets/versions/{datasetVersionId}/archive
+
+Marks a dataset version `ARCHIVED` and preserves validation reports, hashes,
+immutable row references, and lineage.
+
+## GET /analytics/ml/datasets/versions/{datasetVersionId}/lifecycle-impact
+
+Returns the impact preview for `action=archive` or `action=delete`.
+
+## POST /analytics/ml/datasets/versions/{datasetVersionId}/delete
+
+Marks only unreferenced `DRAFT` or `FAILED` dataset versions `DELETED`. Labels,
+feature snapshots, training runs, or model versions referencing the dataset
+produce `409 DATASET_REFERENCED`.
+
 ## POST /analytics/ml/datasets/external-jsonl
 
 Imports an account-scoped JSONL file with the same `multipart/form-data` parts
@@ -518,6 +604,20 @@ accepted external rows, and template-specific feature columns. Internal
 telemetry dataset versions materialize immutable feature rows from canonical
 metric rows. Repeating generation with the same dataset and feature config
 produces the same feature schema hash and feature data hash.
+
+## POST /analytics/ml/datasets/feature-snapshots/{featureSnapshotId}/archive
+
+Marks a feature snapshot `ARCHIVED` while keeping feature hashes, artifact URI,
+row counts, and immutable row references.
+
+## GET /analytics/ml/datasets/feature-snapshots/{featureSnapshotId}/lifecycle-impact
+
+Returns the impact preview for `action=archive` or `action=delete`.
+
+## POST /analytics/ml/datasets/feature-snapshots/{featureSnapshotId}/delete
+
+Marks only unreferenced snapshots `DELETED`. Training run or model references
+produce `409 FEATURE_SNAPSHOT_REFERENCED`.
 
 ## POST /analytics/ml/datasets/horizon-labels
 
@@ -689,6 +789,12 @@ checkpoint before candidate registration.
 
 Lists recent training runs for the current account.
 
+Optional query:
+
+- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+  archived/deleted runs. `failed` includes `FAILED` and `CANCELED` runs for
+  retry or cleanup workflows.
+
 ## POST /analytics/ml/training-runs/{runId}/cancel
 
 Cancels a `QUEUED` or `RUNNING` training run and stores completion metadata.
@@ -699,6 +805,22 @@ Creates a new `QUEUED` training run from a `FAILED` or `CANCELED` run using the
 same dataset version, feature snapshot, model family, algorithm, and
 hyperparameters.
 
+## POST /analytics/ml/training-runs/{runId}/archive
+
+Archives a completed, failed, or canceled training run. Queued or running runs
+must be canceled before archival. Model lineage and failure metadata remain
+readable.
+
+## GET /analytics/ml/training-runs/{runId}/lifecycle-impact
+
+Returns the impact preview for `action=archive` or `action=delete`.
+
+## POST /analytics/ml/training-runs/{runId}/delete
+
+Marks an unreferenced `FAILED` or `CANCELED` training run `DELETED`. Successful
+runs or runs referenced by model versions return `409
+TRAINING_RUN_MODEL_REFERENCED` and should be archived instead.
+
 ## GET /analytics/ml/models
 
 Lists account model versions with model key, version, family, algorithm,
@@ -708,6 +830,11 @@ evaluation metrics, and registry origin fields. `modelOrigin` is `TRAINED`,
 shortcuts for frontend labeling and deployment filtering. Production demo
 model seeding is disabled by default and must be explicitly enabled for local
 or demo environments.
+
+Optional query:
+
+- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+  archived/deleted model versions. `failed` maps to rejected model versions.
 
 ## GET /analytics/ml/models/{modelVersionId}
 
@@ -726,9 +853,27 @@ Moves a non-active model to `REJECTED` and writes an audit event.
 
 Moves a non-active model to `ARCHIVED` and writes an audit event.
 
+## GET /analytics/ml/models/{modelVersionId}/lifecycle-impact
+
+Returns the impact preview for `action=delete`, including deployment policy and
+historical prediction references.
+
+## POST /analytics/ml/models/{modelVersionId}/delete
+
+Marks an unreferenced `CANDIDATE` or `REJECTED` model version `DELETED` and
+writes an audit event. Active models, models referenced by non-disabled
+deployment policies, and models with historical prediction records are blocked
+with `409 MODEL_POLICY_REFERENCED` or `409 MODEL_PREDICTION_REFERENCED`.
+
 ## GET /analytics/ml/deployment-policies
 
 Lists deployment policies for the current account.
+
+Optional query:
+
+- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+  soft-deleted policies. `active` shows non-disabled policies, `failed` and
+  `archived` show disabled policies, and `deleted` shows soft-deleted policies.
 
 ## POST /analytics/ml/deployment-policies
 
@@ -766,6 +911,34 @@ Query parameters:
 - `deviceId`
 - `deviceType`
 - `reason`
+
+## POST /analytics/ml/deployment-policies/{policyId}/disable
+
+Disables the selected policy, enables fallback, and writes an audit event.
+Runtime policy resolution no longer selects disabled policies.
+
+## GET /analytics/ml/deployment-policies/{policyId}/lifecycle-impact
+
+Returns the impact preview for `action=disable` or `action=delete`, including
+scope, mode, selected model, fallback state, and soft-delete state.
+
+## POST /analytics/ml/deployment-policies/{policyId}/delete
+
+Soft-deletes a disabled deployment policy so it is removed from default policy
+lists while historical prediction traceability and deployment audit references
+remain readable. Non-disabled policies return `409 POLICY_ACTIVE`.
+
+## GET /analytics/ml/labels/{labelId}/lifecycle-impact
+
+Returns the impact preview for `action=delete`. Generated labels return
+`blocked=true` with source and lineage hash details.
+
+## POST /analytics/ml/labels/{labelId}/delete
+
+Soft-deletes a manual label with audit metadata. Deleted labels are excluded
+from future training label sets. Generated labels are blocked with `409
+GENERATED_LABEL_LINEAGE`; regenerate or supersede generated labels for the same
+dataset, horizon, and generation config instead of hard-deleting lineage.
 
 ## GET /analytics/ml/deployment-policies/resolve
 

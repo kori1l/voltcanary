@@ -3753,6 +3753,18 @@ code {
   margin-top: 14px;
 }
 
+.compact-select {
+  align-items: flex-start;
+  display: grid;
+  font-size: 0.82rem;
+  gap: 0.35rem;
+  min-width: 160px;
+}
+
+.compact-select select {
+  min-height: 2.25rem;
+}
+
 .risk-analysis-layout {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -4508,6 +4520,13 @@ code {
 .ml-control-grid {
   grid-template-columns: repeat(3, minmax(160px, 1fr));
   align-items: end;
+}
+
+.ml-checkbox-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin: 4px 0 12px;
 }
 
 .ml-workflow-form .checkbox-label,

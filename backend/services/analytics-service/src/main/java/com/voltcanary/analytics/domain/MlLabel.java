@@ -50,6 +50,12 @@ public class MlLabel {
     private Instant createdAt;
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+    @Column(name = "deleted_by")
+    private UUID deletedBy;
+    @Column(name = "deletion_reason", columnDefinition = "text")
+    private String deletionReason;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -87,4 +93,10 @@ public class MlLabel {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+    public UUID getDeletedBy() { return deletedBy; }
+    public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
+    public String getDeletionReason() { return deletionReason; }
+    public void setDeletionReason(String deletionReason) { this.deletionReason = deletionReason; }
 }

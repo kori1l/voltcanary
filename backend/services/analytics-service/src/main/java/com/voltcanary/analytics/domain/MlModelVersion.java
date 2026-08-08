@@ -56,6 +56,12 @@ public class MlModelVersion {
     private Instant approvedAt;
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+    @Column(name = "lifecycle_reason", columnDefinition = "text")
+    private String lifecycleReason;
+    @Column(name = "lifecycle_actor_id")
+    private UUID lifecycleActorId;
+    @Column(name = "lifecycle_at")
+    private Instant lifecycleAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -99,4 +105,10 @@ public class MlModelVersion {
     public void setApprovedAt(Instant approvedAt) { this.approvedAt = approvedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public String getLifecycleReason() { return lifecycleReason; }
+    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
+    public UUID getLifecycleActorId() { return lifecycleActorId; }
+    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
+    public Instant getLifecycleAt() { return lifecycleAt; }
+    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

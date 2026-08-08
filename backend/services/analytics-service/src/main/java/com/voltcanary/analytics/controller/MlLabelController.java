@@ -3,6 +3,8 @@ package com.voltcanary.analytics.controller;
 import com.voltcanary.analytics.dto.MlLabelAuditDto;
 import com.voltcanary.analytics.dto.MlLabelDto;
 import com.voltcanary.analytics.dto.MlLabelRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlLabelService;
 import jakarta.validation.Valid;
@@ -71,6 +73,28 @@ public class MlLabelController {
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
         return service.audit(resolveAccountId(accountId, userId, correlationId), labelId);
+    }
+
+    @GetMapping("/{labelId}/lifecycle-impact")
+    public MlLifecycleImpactResponse lifecycleImpact(
+            @PathVariable("labelId") UUID labelId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        return service.impact(resolveAccountId(accountId, userId, correlationId), labelId, action);
+    }
+
+    @PostMapping("/{labelId}/delete")
+    public MlLabelDto delete(
+            @PathVariable("labelId") UUID labelId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        requireWrite(role);
+        return service.delete(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), labelId, request);
     }
 
     private UUID resolveAccountId(UUID accountId, String userId, String correlationId) {

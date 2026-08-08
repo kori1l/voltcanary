@@ -55,6 +55,16 @@ const readyPrediction = {
   recommendedActions: ["Inspect washer load and motor temperature"],
   createdAt: "2026-07-10T00:00:00Z",
 };
+const testDevice = {
+  id: "00000000-0000-0000-0000-000000000001",
+  locationId: "line-1",
+  name: "Washer 001",
+  type: "washer",
+  manufacturer: "VoltCanary",
+  model: "W1",
+  status: "ONLINE",
+  metadata: { metrics: ["activePowerW", "voltageV", "currentA"] },
+};
 const datasetSummary = {
   datasetId: "dataset-1",
   datasetVersionId: "dataset-version-1",
@@ -195,9 +205,65 @@ const labelItem = {
   createdAt: "2026-07-10T00:00:00Z",
   reason: "Operator review",
 };
+const featureSnapshot = {
+  id: "feature-1",
+  accountId: "account-1",
+  datasetVersionId: "dataset-version-1",
+  featureSetVersion: "feature-set-v1",
+  codeConfigVersion: "analytics-feature-pipeline-v1",
+  featureSchemaHash: "sha256:feature",
+  featureDataHash: "sha256:feature-data",
+  featureConfigHash: "sha256:feature-config",
+  rowCount: 120,
+  rejectedRowCount: 0,
+  artifactUri: "db://feature",
+  immutableRowReference: "ml_feature_rows:feature_snapshot_id=feature-1",
+  modelFamily: "ANOMALY_DETECTION",
+  horizonDays: null,
+  featureTemplateId: "generic-appliance",
+  featureTemplateVersion: "template-v1",
+  createdAt: "2026-07-10T00:00:00Z",
+};
+const failureFeatureSnapshot = {
+  ...featureSnapshot,
+  id: "feature-failure-1",
+  modelFamily: "FAILURE_PREDICTION",
+  horizonDays: 30,
+};
+const failedTrainingRun = {
+  id: "run-failed-1",
+  accountId: "account-1",
+  datasetVersionId: "dataset-version-1",
+  featureSnapshotId: "feature-1",
+  modelFamily: "ANOMALY_DETECTION",
+  algorithm: "baseline-statistical-anomaly-v1",
+  status: "FAILED",
+  evaluationMetricsJson: null,
+  baselineMetricsJson: null,
+  artifactUri: null,
+  logSummary: null,
+  failureReason: "worker error",
+  createdAt: "2026-07-10T00:00:00Z",
+  startedAt: "2026-07-10T00:01:00Z",
+  completedAt: "2026-07-10T00:02:00Z",
+};
+const disabledPolicy = {
+  id: "policy-1",
+  accountId: "account-1",
+  scope: "ACCOUNT",
+  deviceId: null,
+  deviceType: null,
+  modelVersionId: null,
+  mode: "DISABLED",
+  canaryPercent: null,
+  fallbackEnabled: true,
+  updatedBy: "user-1",
+  updatedAt: "2026-07-10T00:00:00Z",
+};
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -409,6 +475,142 @@ describe("MlSettingsPage", () => {
     expect(screen.queryByText(/timestamp/i)).not.toBeInTheDocument();
   });
 
+  it("restores unsaved dataset drafts for the current account", async () => {
+    localStorage.setItem("voltcanary.ml.account-1.datasets.ANOMALY_DETECTION.internal-dataset", JSON.stringify({
+      name: "Restored washer draft",
+      deviceIds: [testDevice.id],
+      metrics: ["activePowerW"],
+      from: "2026-07-03T00:00",
+      to: "2026-07-04T00:00",
+    }));
+    mockFetch((url) => {
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+
+    expect(await screen.findByText("Restored unsaved dataset draft.")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Restored washer draft")).toBeInTheDocument();
+    const selector = screen.getByLabelText(/Device selector/i) as HTMLSelectElement;
+    expect(Array.from(selector.selectedOptions).map((option) => option.value)).toContain(testDevice.id);
+  });
+
+  it("runs lifecycle actions with reasons and renders dependency conflicts", async () => {
+    const requests: Request[] = [];
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue("cleanup reason");
+    let labelsVisible = true;
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml-settings")) return json(accountSettings);
+      if (url.includes("/analytics/ml/datasets?statusFilter=archived")) return json([{ ...datasetSummary, status: "ARCHIVED" }]);
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1")) return json(datasetDetail);
+      if (url.includes("/analytics/ml/datasets/versions/dataset-version-1/lifecycle-impact")) return json(impact("archive", "Dataset version action is allowed", { labels: 0, featureSnapshots: 0, trainingRuns: 0, modelVersions: 0 }));
+      if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1/archive") && init?.method === "POST") return json({ ...datasetSummary, status: "ARCHIVED" });
+      if (url.endsWith("/analytics/ml/datasets/feature-snapshots") && init?.method === "POST") return json(featureSnapshot);
+      if (url.includes("/analytics/ml/datasets/feature-snapshots/feature-1/lifecycle-impact")) return json(impact("delete", "Feature snapshot action is allowed", { trainingRuns: 0, modelVersions: 0 }));
+      if (url.endsWith("/analytics/ml/datasets/feature-snapshots/feature-1/delete") && init?.method === "POST") return json({ ...featureSnapshot, lifecycleStatus: "DELETED" });
+      if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json(labelsVisible ? [labelItem] : []);
+      if (url.includes("/analytics/ml/labels/label-1/lifecycle-impact")) return json(impact("delete", "Manual label deletion is allowed", { source: "MANUAL" }));
+      if (url.endsWith("/analytics/ml/labels/label-1/delete") && init?.method === "POST") {
+        labelsVisible = false;
+        return json(labelItem);
+      }
+      if (url.includes("/analytics/ml/training-runs?statusFilter=failed")) return json([failedTrainingRun]);
+      if (url.includes("/analytics/ml/training-runs/run-failed-1/lifecycle-impact")) return json(impact("delete", "Training run action is allowed", { modelVersions: 0, status: "FAILED" }));
+      if (url.endsWith("/analytics/ml/training-runs/run-failed-1/delete") && init?.method === "POST") return json({ ...failedTrainingRun, status: "DELETED" });
+      if (url.endsWith("/analytics/ml/training-runs")) return json([failedTrainingRun]);
+      if (url.includes("/analytics/ml/models?statusFilter=failed")) return json([failureModelVersion]);
+      if (url.includes("/analytics/ml/models/model-failure-1/lifecycle-impact")) return json(impact("delete", "Model action is allowed", { count: 0 }));
+      if (url.endsWith("/analytics/ml/models/model-failure-1/delete") && init?.method === "POST") return json({ ...failureModelVersion, status: "DELETED" });
+      if (url.endsWith("/analytics/ml/models")) return json([failureModelVersion]);
+      if (url.includes("/analytics/ml/deployment-policies?statusFilter=deleted")) return json([disabledPolicy]);
+      if (url.includes("/analytics/ml/deployment-policies/policy-1/lifecycle-impact")) return json(impact("delete", "Deployment policy action is allowed", { scope: "ACCOUNT", mode: "DISABLED" }));
+      if (url.endsWith("/analytics/ml/deployment-policies/policy-1/delete") && init?.method === "POST") return json(disabledPolicy);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([disabledPolicy]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.selectOptions(await screen.findByLabelText(/Dataset status filter/i), "archived");
+    expect(await screen.findByRole("button", { name: /ARCHIVED/i })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: /Washer July/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Archive dataset/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Washer July/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Generate feature snapshot/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Delete snapshot/i }));
+    await userEvent.selectOptions(screen.getByLabelText(/Dataset status filter/i), "default");
+
+    await userEvent.click(screen.getByRole("button", { name: "Labels" }));
+    await userEvent.click(screen.getByRole("button", { name: /Refresh labels/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Training" }));
+    await userEvent.selectOptions(await screen.findByLabelText(/Training status filter/i), "failed");
+    await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Models" }));
+    await userEvent.selectOptions(await screen.findByLabelText(/Model status filter/i), "failed");
+    await userEvent.click(await screen.findByRole("button", { name: /Delete washer-failure v1/i }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Policies" }));
+    await userEvent.selectOptions(await screen.findByLabelText(/Policy status filter/i), "deleted");
+    await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Impact:"));
+    expect(prompt).toHaveBeenCalled();
+    const lifecycleRequests = requests.filter((request) => request.method === "POST" && /(archive|delete)$/.test(request.url));
+    expect(lifecycleRequests.map((request) => new URL(request.url).pathname)).toEqual(expect.arrayContaining([
+      "/analytics/ml/datasets/versions/dataset-version-1/archive",
+      "/analytics/ml/datasets/feature-snapshots/feature-1/delete",
+      "/analytics/ml/labels/label-1/delete",
+      "/analytics/ml/training-runs/run-failed-1/delete",
+      "/analytics/ml/models/model-failure-1/delete",
+      "/analytics/ml/deployment-policies/policy-1/delete",
+    ]));
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets?statusFilter=archived"))).toBe(true);
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/training-runs?statusFilter=failed"))).toBe(true);
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/models?statusFilter=failed"))).toBe(true);
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/deployment-policies?statusFilter=deleted"))).toBe(true);
+    expect(await lifecycleRequests[0].json()).toMatchObject({ reason: "cleanup reason", force: false });
+  });
+
+  it("shows lifecycle dependency counts before blocked destructive actions", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(window, "prompt").mockReturnValue("cleanup reason");
+    const requests: Request[] = [];
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml-settings")) return json(accountSettings);
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1")) return json({ ...datasetDetail, dataset: { ...datasetSummary, status: "FAILED" } });
+      if (url.includes("/analytics/ml/datasets/versions/dataset-version-1/lifecycle-impact")) {
+        return json(impact("delete", "Dataset version is referenced and should be archived instead of deleted", { trainingRuns: 2, labels: 4 }, true));
+      }
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Washer July/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Delete dataset/i }));
+
+    expect(await screen.findByText("Dataset version is referenced and should be archived instead of deleted (datasetVersion Training runs 2, Labels 4)")).toBeInTheDocument();
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/versions/dataset-version-1/delete"))).toBe(false);
+  });
+
   it("supports dataset, import, training, registry, and deployment workflows", async () => {
     const requests: Request[] = [];
     let importedDatasetVisible = false;
@@ -432,25 +634,18 @@ describe("MlSettingsPage", () => {
         createdAt: "2026-07-10T00:00:00Z",
         readyAt: "2026-07-10T00:00:00Z",
       });
-      if (url.endsWith("/analytics/ml/datasets/feature-snapshots")) return json({
-        id: "feature-1",
-        accountId: "account-1",
-        datasetVersionId: "dataset-version-1",
-        featureSetVersion: "feature-set-v1",
-        codeConfigVersion: "analytics-feature-pipeline-v1",
-        featureSchemaHash: "sha256:feature",
-        featureDataHash: "sha256:feature-data",
-        featureConfigHash: "sha256:feature-config",
-        rowCount: 120,
-        rejectedRowCount: 0,
-        artifactUri: "db://feature",
-        immutableRowReference: "ml_feature_rows:feature_snapshot_id=feature-1",
-        modelFamily: "ANOMALY_DETECTION",
-        horizonDays: null,
-        featureTemplateId: "fridge-freezer",
-        featureTemplateVersion: "template-v1",
-        createdAt: "2026-07-10T00:00:00Z",
-      });
+      if (url.endsWith("/analytics/ml/datasets/feature-snapshots")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { modelFamily?: string; horizonDays?: number | null };
+        const id = body.modelFamily === "FAILURE_PREDICTION" ? "feature-failure-1" : "feature-1";
+        return json({
+          ...featureSnapshot,
+          id,
+          immutableRowReference: `ml_feature_rows:feature_snapshot_id=${id}`,
+          modelFamily: body.modelFamily ?? "ANOMALY_DETECTION",
+          horizonDays: body.horizonDays ?? null,
+          featureTemplateId: "fridge-freezer",
+        });
+      }
       if (url.endsWith("/analytics/ml/datasets/external-csv")) {
         importedDatasetVisible = true;
         return json({
@@ -551,7 +746,7 @@ describe("MlSettingsPage", () => {
     await loadDevice();
 
     await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
-    await userEvent.type(await screen.findByLabelText(/Device IDs/i), "00000000-0000-0000-0000-000000000001");
+    await userEvent.selectOptions(await screen.findByLabelText(/Device selector/i), "00000000-0000-0000-0000-000000000001");
     await userEvent.click(screen.getByRole("button", { name: /Create dataset version/i }));
     expect(await screen.findByText(/Internal telemetry dataset READY: 120 accepted \/ 0 rejected/i)).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: /Washer July/i }));
@@ -589,7 +784,17 @@ describe("MlSettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Training" }));
     await userEvent.click(screen.getByRole("button", { name: /Queue training/i }));
     expect(await screen.findByText("Training workflow updated")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.selectOptions(screen.getByLabelText(/Model family/i), "FAILURE_PREDICTION");
+    await userEvent.clear(screen.getByLabelText(/Snapshot horizon days/i));
+    await userEvent.type(screen.getByLabelText(/Snapshot horizon days/i), "30");
+    await userEvent.click(screen.getByRole("button", { name: /Generate feature snapshot/i }));
+    expect(await screen.findByText("FAILURE_PREDICTION")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Training" }));
     await userEvent.click(screen.getByRole("button", { name: /Failure prediction/i }));
+    await userEvent.selectOptions(screen.getByLabelText(/Feature snapshot/i), "feature-failure-1");
     await userEvent.clear(screen.getByLabelText(/Prediction horizon/i));
     await userEvent.type(screen.getByLabelText(/Prediction horizon/i), "30");
     await userEvent.clear(screen.getByLabelText(/Minimum positive labels/i));
@@ -643,14 +848,22 @@ describe("MlSettingsPage", () => {
       deviceIds: ["00000000-0000-0000-0000-000000000001"],
       metrics: ["activePowerW", "voltageV", "currentA"],
     });
-    const featureSnapshotRequest = requests.find((request) => request.url.endsWith("/analytics/ml/datasets/feature-snapshots") && request.method === "POST");
-    expect(featureSnapshotRequest).toBeDefined();
-    expect(await featureSnapshotRequest!.json()).toMatchObject({
+    const featureSnapshotRequests = requests.filter((request) => request.url.endsWith("/analytics/ml/datasets/feature-snapshots") && request.method === "POST");
+    expect(featureSnapshotRequests).toHaveLength(2);
+    expect(await featureSnapshotRequests[0].json()).toMatchObject({
       datasetVersionId: "dataset-version-1",
       rollingWindowSize: 3,
       featureTemplateId: "fridge-freezer",
       featureTemplateVersion: "template-v1",
       enabledFeatureFamilies: ["rolling_stats", "baseline_deviation", "missing_data", "time", "label"],
+      modelFamily: "ANOMALY_DETECTION",
+      horizonDays: null,
+    });
+    expect(await featureSnapshotRequests[1].json()).toMatchObject({
+      datasetVersionId: "dataset-version-1",
+      modelFamily: "FAILURE_PREDICTION",
+      horizonDays: 30,
+      enabledFeatureFamilies: ["rolling_stats", "baseline_deviation", "missing_data", "time", "device_context", "label"],
     });
     const trainingRequests = requests.filter((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST");
     expect(trainingRequests).toHaveLength(2);
@@ -662,7 +875,7 @@ describe("MlSettingsPage", () => {
     });
     expect(await trainingRequests[1].json()).toMatchObject({
       datasetVersionId: "dataset-version-1",
-      featureSnapshotId: "feature-1",
+      featureSnapshotId: "feature-failure-1",
       modelFamily: "FAILURE_PREDICTION",
       algorithm: "sklearn-logistic-regression-failure-v1",
       failureHorizonDays: 30,
@@ -691,6 +904,13 @@ async function loadDevice() {
 function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
   vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = input instanceof Request ? input.url : input.toString();
+    const pathname = new URL(url).pathname;
+    if (pathname.endsWith("/devices")) {
+      return Promise.resolve(json([testDevice]));
+    }
+    if (pathname.endsWith("/device-types")) {
+      return Promise.resolve(json([{ code: "washer", displayName: "Washer" }]));
+    }
     return Promise.resolve(handler(url, init));
   });
 }
@@ -707,4 +927,13 @@ function errorJson(status: number, value: unknown) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function impact(action: string, message: string, details: Record<string, unknown>, blocked = false) {
+  return {
+    action,
+    blocked,
+    message,
+    dependencies: [{ type: action === "delete" ? "datasetVersion" : "lifecycleTarget", id: "impact-1", details }],
+  };
 }

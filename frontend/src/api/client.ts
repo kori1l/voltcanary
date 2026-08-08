@@ -107,12 +107,22 @@ async function errorMessage(response: Response) {
   }
 
   try {
-    const parsed = JSON.parse(body) as { message?: string; code?: string };
+    const parsed = JSON.parse(body) as { message?: string; code?: string; dependencies?: Record<string, number> };
     if (parsed.message && parsed.code) {
-      return `${parsed.message} (${parsed.code})`;
+      const dependencies = formatDependencies(parsed.dependencies);
+      return dependencies ? `${parsed.message} (${parsed.code}): ${dependencies}` : `${parsed.message} (${parsed.code})`;
     }
     return parsed.message ?? parsed.code ?? body;
   } catch {
     return body;
   }
+}
+
+function formatDependencies(dependencies: Record<string, number> | undefined) {
+  if (!dependencies || Object.keys(dependencies).length === 0) {
+    return null;
+  }
+  return Object.entries(dependencies)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
 }

@@ -10,4 +10,7 @@ public interface MlModelVersionRepository extends JpaRepository<MlModelVersion, 
     List<MlModelVersion> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
     List<MlModelVersion> findByAccountIdAndStatusOrderByCreatedAtDesc(UUID accountId, MlModelStatus status);
     List<MlModelVersion> findByModelKeyOrderByVersionDesc(String modelKey);
+    long countByTrainingRunId(UUID trainingRunId);
+    long countByDatasetVersionId(UUID datasetVersionId);
+    long countByFeatureSnapshotId(UUID featureSnapshotId);
 }

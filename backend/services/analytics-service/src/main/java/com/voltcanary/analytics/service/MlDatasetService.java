@@ -15,6 +15,8 @@ import com.voltcanary.analytics.dto.MlDatasetDetailDto;
 import com.voltcanary.analytics.dto.MlDatasetSummaryDto;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.dto.MlLineageDto;
 import com.voltcanary.analytics.dto.MlValidationReportDto;
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
@@ -22,6 +24,10 @@ import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetLineageRepository;
 import com.voltcanary.analytics.repository.MlDatasetRepository;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
+import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
+import com.voltcanary.analytics.repository.MlLabelRepository;
+import com.voltcanary.analytics.repository.MlModelVersionRepository;
+import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
@@ -57,6 +63,10 @@ public class MlDatasetService {
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlValidationReportRepository validationReportRepository;
     private final MlDatasetLineageRepository lineageRepository;
+    private final MlLabelRepository labelRepository;
+    private final MlFeatureSnapshotRepository featureSnapshotRepository;
+    private final MlTrainingRunRepository trainingRunRepository;
+    private final MlModelVersionRepository modelVersionRepository;
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository;
     private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
     private final TelemetryClient telemetryClient;
@@ -67,6 +77,10 @@ public class MlDatasetService {
             MlDatasetVersionRepository datasetVersionRepository,
             MlValidationReportRepository validationReportRepository,
             MlDatasetLineageRepository lineageRepository,
+            MlLabelRepository labelRepository,
+            MlFeatureSnapshotRepository featureSnapshotRepository,
+            MlTrainingRunRepository trainingRunRepository,
+            MlModelVersionRepository modelVersionRepository,
             MlCanonicalMetricRowRepository canonicalMetricRowRepository,
             MaintenanceWindowReadModelRepository maintenanceWindowRepository,
             TelemetryClient telemetryClient,
@@ -75,6 +89,10 @@ public class MlDatasetService {
         this.datasetVersionRepository = datasetVersionRepository;
         this.validationReportRepository = validationReportRepository;
         this.lineageRepository = lineageRepository;
+        this.labelRepository = labelRepository;
+        this.featureSnapshotRepository = featureSnapshotRepository;
+        this.trainingRunRepository = trainingRunRepository;
+        this.modelVersionRepository = modelVersionRepository;
         this.canonicalMetricRowRepository = canonicalMetricRowRepository;
         this.maintenanceWindowRepository = maintenanceWindowRepository;
         this.telemetryClient = telemetryClient;
@@ -185,12 +203,43 @@ public class MlDatasetService {
 
     @Transactional(readOnly = true)
     public List<MlDatasetSummaryDto> list(UUID accountId) {
+        return list(accountId, "default");
+    }
+
+    @Transactional(readOnly = true)
+    public List<MlDatasetSummaryDto> list(UUID accountId, String statusFilter) {
+        String filter = normalizedFilter(statusFilter);
+        if (!"default".equals(filter) && !"active".equals(filter) && !"current".equals(filter)) {
+            return datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
+                    .flatMap(dataset -> datasetVersionRepository.findByDatasetIdOrderByVersionDesc(dataset.getId()).stream()
+                            .filter(version -> matchesFilter(version.getStatus(), filter))
+                            .map(version -> summary(dataset, version)))
+                    .toList();
+        }
         return datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
-                .map(dataset -> datasetVersionRepository.findByDatasetIdOrderByVersionDesc(dataset.getId()).stream()
+                .map(dataset -> datasetVersionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(dataset.getId(), MlDatasetStatus.DELETED).stream()
+                        .filter(version -> version.getStatus() != MlDatasetStatus.ARCHIVED)
                         .findFirst()
                         .map(version -> summary(dataset, version)))
                 .flatMap(Optional::stream)
                 .toList();
+    }
+
+    private boolean matchesFilter(MlDatasetStatus status, String filter) {
+        return switch (filter) {
+            case "all" -> true;
+            case "failed" -> status == MlDatasetStatus.FAILED;
+            case "archived" -> status == MlDatasetStatus.ARCHIVED;
+            case "deleted" -> status == MlDatasetStatus.DELETED;
+            default -> status != MlDatasetStatus.ARCHIVED && status != MlDatasetStatus.DELETED;
+        };
+    }
+
+    private String normalizedFilter(String statusFilter) {
+        if (statusFilter == null || statusFilter.isBlank()) {
+            return "default";
+        }
+        return statusFilter.trim().toLowerCase(Locale.ROOT);
     }
 
     @Transactional(readOnly = true)
@@ -210,6 +259,109 @@ public class MlDatasetService {
                 lineageRepository.findByDatasetVersionId(version.getId()).stream()
                         .map(this::lineage)
                         .toList());
+    }
+
+    @Transactional(readOnly = true)
+    public MlLifecycleImpactResponse impact(UUID accountId, UUID datasetVersionId, String action) {
+        MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
+        String normalizedAction = normalizedAction(action);
+        List<Map<String, Object>> dependencies = "delete".equals(normalizedAction)
+                ? List.of(dependency("datasetVersion", datasetVersionId, Map.copyOf(datasetDependencies(datasetVersionId))))
+                : List.of(dependency("datasetVersion", datasetVersionId, Map.of("status", version.getStatus().name())));
+        boolean blocked = "delete".equals(normalizedAction)
+                && datasetDependencies(datasetVersionId).values().stream().anyMatch(count -> count > 0);
+        String message = blocked
+                ? "Dataset version is referenced and should be archived instead of deleted"
+                : "Dataset version action is allowed when submitted with an audit reason";
+        return new MlLifecycleImpactResponse(normalizedAction, blocked, message, dependencies);
+    }
+
+    @Transactional
+    public MlDatasetSummaryDto archive(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+        MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
+        String reason = requiredReason(request);
+        if (version.getStatus() == MlDatasetStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
+        }
+        version.setStatus(MlDatasetStatus.ARCHIVED);
+        stampLifecycle(version, actorId, reason);
+        datasetVersionRepository.save(version);
+        return summary(dataset(version), version);
+    }
+
+    @Transactional
+    public MlDatasetSummaryDto delete(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+        MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
+        String reason = requiredReason(request);
+        if (version.getStatus() == MlDatasetStatus.DELETED) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
+        }
+        Map<String, Long> dependencies = datasetDependencies(datasetVersionId);
+        if (dependencies.values().stream().anyMatch(count -> count > 0)) {
+            throw new MlLifecycleConflictException(
+                    "DATASET_REFERENCED",
+                    "Dataset version is referenced by ML lineage and must be archived instead of deleted",
+                    dependency("datasetVersion", datasetVersionId, Map.copyOf(dependencies)));
+        }
+        if (version.getStatus() != MlDatasetStatus.FAILED && version.getStatus() != MlDatasetStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only failed or draft unreferenced dataset versions can be deleted");
+        }
+        version.setStatus(MlDatasetStatus.DELETED);
+        stampLifecycle(version, actorId, reason);
+        datasetVersionRepository.save(version);
+        return summary(dataset(version), version);
+    }
+
+    private MlDatasetVersion findOwnedVersion(UUID accountId, UUID datasetVersionId) {
+        MlDatasetVersion version = datasetVersionRepository.findById(datasetVersionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found"));
+        if (!accountId.equals(version.getAccountId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
+        }
+        return version;
+    }
+
+    private MlDataset dataset(MlDatasetVersion version) {
+        return datasetRepository.findById(version.getDatasetId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset not found"));
+    }
+
+    private Map<String, Long> datasetDependencies(UUID datasetVersionId) {
+        Map<String, Long> dependencies = new LinkedHashMap<>();
+        dependencies.put("labels", labelRepository.countByDatasetVersionIdAndDeletedAtIsNull(datasetVersionId));
+        dependencies.put("featureSnapshots", featureSnapshotRepository.countByDatasetVersionId(datasetVersionId));
+        dependencies.put("trainingRuns", trainingRunRepository.countByDatasetVersionId(datasetVersionId));
+        dependencies.put("modelVersions", modelVersionRepository.countByDatasetVersionId(datasetVersionId));
+        return dependencies;
+    }
+
+    private String requiredReason(MlLifecycleActionRequest request) {
+        String value = request == null ? null : request.reason();
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+        }
+        return value.trim();
+    }
+
+    private String normalizedAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "delete";
+        }
+        return action.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void stampLifecycle(MlDatasetVersion version, UUID actorId, String reason) {
+        version.setLifecycleActorId(actorId);
+        version.setLifecycleAt(Instant.now());
+        version.setLifecycleReason(reason);
+    }
+
+    private Map<String, Object> dependency(String type, UUID id, Map<String, ?> details) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("type", type);
+        value.put("id", id.toString());
+        value.put("details", details);
+        return value;
     }
 
     private void validateRequest(MlInternalDatasetRequest request) {

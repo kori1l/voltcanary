@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,6 +20,7 @@ import com.voltcanary.analytics.domain.MlTrainingRunStatus;
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.dto.MlTrainingRunDto;
 import com.voltcanary.analytics.dto.MlTrainingRunRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.ml.MlTrainingRequest;
@@ -28,6 +30,7 @@ import com.voltcanary.analytics.repository.MlFeatureRowRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
+import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.service.MlTrainingService;
 import com.voltcanary.analytics.service.MlTrainingWorker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -50,7 +53,8 @@ class MlTrainingLifecycleTest {
     private final MlTrainingService service = new MlTrainingService(
             datasetVersionRepository,
             featureSnapshotRepository,
-            trainingRunRepository);
+            trainingRunRepository,
+            modelVersionRepository);
     private final MlTrainingWorker worker = new MlTrainingWorker(
             trainingRunRepository,
             datasetVersionRepository,
@@ -79,6 +83,27 @@ class MlTrainingLifecycleTest {
 
         assertThat(response.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
         assertThat(response.algorithm()).isEqualTo("sklearn-isolation-forest-v1");
+    }
+
+    @Test
+    void archivedFeatureSnapshotsAreRejectedByDefaultTrainingSelector() {
+        UUID accountId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        UUID featureSnapshotId = UUID.randomUUID();
+        MlFeatureSnapshot snapshot = featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10);
+        snapshot.setLifecycleStatus("ARCHIVED");
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(snapshot));
+
+        assertThatThrownBy(() -> service.create(accountId, userId, new MlTrainingRunRequest(
+                datasetVersionId,
+                featureSnapshotId,
+                MlModelFamily.ANOMALY_DETECTION,
+                null,
+                null)))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Feature snapshot must be active");
     }
 
     @Test
@@ -361,6 +386,20 @@ class MlTrainingLifecycleTest {
         assertThat(retry.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
         assertThat(retry.id()).isNotEqualTo(run.getId());
         assertThat(retry.retryCount()).isEqualTo(1);
+    }
+
+    @Test
+    void blocksDeletingTrainingRunWithRegisteredModel() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlTrainingRun run = queuedRun(accountId, UUID.randomUUID(), UUID.randomUUID());
+        run.setStatus(MlTrainingRunStatus.SUCCEEDED);
+        when(trainingRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(modelVersionRepository.countByTrainingRunId(run.getId())).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.delete(accountId, actorId, run.getId(), new MlLifecycleActionRequest("cleanup", false)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("model lineage");
     }
 
     @Test

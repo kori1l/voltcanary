@@ -68,7 +68,7 @@ class MlMetadataPersistenceTest {
     @Test
     void contractEnumsExposeOpenSpecValues() {
         assertThat(MlDatasetStatus.values()).extracting(Enum::name)
-                .containsExactly("DRAFT", "VALIDATING", "READY", "FAILED", "ARCHIVED");
+                .containsExactly("DRAFT", "VALIDATING", "READY", "FAILED", "ARCHIVED", "DELETED");
         assertThat(MlLabelType.values()).extracting(Enum::name)
                 .containsExactly(
                         "NORMAL",
@@ -90,9 +90,9 @@ class MlMetadataPersistenceTest {
         assertThat(MlModelFamily.values()).extracting(Enum::name)
                 .containsExactly("ANOMALY_DETECTION", "DEGRADATION_SCORING", "FAILURE_PREDICTION", "FORECASTING");
         assertThat(MlTrainingRunStatus.values()).extracting(Enum::name)
-                .containsExactly("QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED");
+                .containsExactly("QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED", "ARCHIVED", "DELETED");
         assertThat(MlModelStatus.values()).extracting(Enum::name)
-                .containsExactly("CANDIDATE", "APPROVED", "ACTIVE", "REJECTED", "ARCHIVED");
+                .containsExactly("CANDIDATE", "APPROVED", "ACTIVE", "REJECTED", "ARCHIVED", "DELETED");
         assertThat(MlDeploymentMode.values()).extracting(Enum::name)
                 .containsExactly("SHADOW", "CANARY", "ACTIVE", "DISABLED");
         assertThat(MlDeploymentScope.values()).extracting(Enum::name)

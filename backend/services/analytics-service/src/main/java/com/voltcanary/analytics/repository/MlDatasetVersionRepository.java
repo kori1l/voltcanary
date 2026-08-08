@@ -9,4 +9,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface MlDatasetVersionRepository extends JpaRepository<MlDatasetVersion, UUID> {
     List<MlDatasetVersion> findByAccountIdAndStatusOrderByCreatedAtDesc(UUID accountId, MlDatasetStatus status);
     List<MlDatasetVersion> findByDatasetIdOrderByVersionDesc(UUID datasetId);
+    List<MlDatasetVersion> findByDatasetIdAndStatusNotOrderByVersionDesc(UUID datasetId, MlDatasetStatus status);
 }

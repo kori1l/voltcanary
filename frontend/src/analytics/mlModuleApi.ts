@@ -1,10 +1,10 @@
 import { apiRequest } from "../api/client";
 
-export type MlDatasetStatus = "DRAFT" | "VALIDATING" | "READY" | "FAILED" | "ARCHIVED";
+export type MlDatasetStatus = "DRAFT" | "VALIDATING" | "READY" | "FAILED" | "ARCHIVED" | "DELETED";
 export type MlDatasetSourceType = "INTERNAL_TELEMETRY" | "EXTERNAL_IMPORT" | "MIXED";
 export type MlTrainingSplitStrategy = "TIME_BASED" | "DEVICE_BASED" | "RANDOM";
-export type MlTrainingRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
-export type MlModelStatus = "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED";
+export type MlTrainingRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED" | "ARCHIVED" | "DELETED";
+export type MlModelStatus = "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED" | "DELETED";
 export type MlDeploymentMode = "SHADOW" | "CANARY" | "ACTIVE" | "DISABLED";
 export type MlDeploymentScope = "SYSTEM" | "ACCOUNT" | "DEVICE_TYPE" | "DEVICE";
 export type MlLabelType =
@@ -241,8 +241,30 @@ export interface MlLabelAudit {
   reason: string | null;
 }
 
-export function listMlDatasets() {
-  return apiRequest<MlDatasetSummary[]>("/analytics/ml/datasets");
+export interface MlLifecycleActionRequest {
+  reason: string;
+  force?: boolean;
+}
+
+export interface MlLifecycleImpact {
+  action: string;
+  blocked: boolean;
+  message: string;
+  dependencies: Array<{
+    type: string;
+    id: string;
+    details?: Record<string, unknown>;
+  }>;
+}
+
+export type MlLifecycleStatusFilter = "default" | "active" | "failed" | "archived" | "deleted" | "all";
+
+function statusFilterQuery(statusFilter: MlLifecycleStatusFilter = "default") {
+  return statusFilter === "default" ? "" : `?statusFilter=${encodeURIComponent(statusFilter)}`;
+}
+
+export function listMlDatasets(statusFilter: MlLifecycleStatusFilter = "default") {
+  return apiRequest<MlDatasetSummary[]>(`/analytics/ml/datasets${statusFilterQuery(statusFilter)}`);
 }
 
 export function getMlDatasetVersion(datasetVersionId: string) {
@@ -304,6 +326,44 @@ export function generateFeatureSnapshot(body: {
   });
 }
 
+export function archiveMlDatasetVersion(datasetVersionId: string, reason: string) {
+  return datasetVersionAction(datasetVersionId, "archive", reason);
+}
+
+export function previewMlDatasetVersionLifecycle(datasetVersionId: string, action: "archive" | "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/datasets/versions/${datasetVersionId}/lifecycle-impact?action=${action}`);
+}
+
+export function deleteMlDatasetVersion(datasetVersionId: string, reason: string) {
+  return datasetVersionAction(datasetVersionId, "delete", reason);
+}
+
+function datasetVersionAction(datasetVersionId: string, action: "archive" | "delete", reason: string) {
+  return apiRequest<MlDatasetSummary>(`/analytics/ml/datasets/versions/${datasetVersionId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+  });
+}
+
+export function archiveFeatureSnapshot(featureSnapshotId: string, reason: string) {
+  return featureSnapshotAction(featureSnapshotId, "archive", reason);
+}
+
+export function previewFeatureSnapshotLifecycle(featureSnapshotId: string, action: "archive" | "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/lifecycle-impact?action=${action}`);
+}
+
+export function deleteFeatureSnapshot(featureSnapshotId: string, reason: string) {
+  return featureSnapshotAction(featureSnapshotId, "delete", reason);
+}
+
+function featureSnapshotAction(featureSnapshotId: string, action: "archive" | "delete", reason: string) {
+  return apiRequest<MlFeatureSnapshotResponse>(`/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+  });
+}
+
 export function generateHorizonLabels(body: {
   datasetVersionId: string;
   horizonDays: number;
@@ -316,8 +376,8 @@ export function generateHorizonLabels(body: {
   });
 }
 
-export function listTrainingRuns() {
-  return apiRequest<MlTrainingRun[]>("/analytics/ml/training-runs");
+export function listTrainingRuns(statusFilter: MlLifecycleStatusFilter = "default") {
+  return apiRequest<MlTrainingRun[]>(`/analytics/ml/training-runs${statusFilterQuery(statusFilter)}`);
 }
 
 export function createTrainingRun(body: {
@@ -344,8 +404,27 @@ export function retryTrainingRun(runId: string) {
   return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/retry`, { method: "POST" });
 }
 
-export function listMlModels() {
-  return apiRequest<MlModelVersion[]>("/analytics/ml/models");
+export function archiveTrainingRun(runId: string, reason: string) {
+  return trainingRunAction(runId, "archive", reason);
+}
+
+export function previewTrainingRunLifecycle(runId: string, action: "archive" | "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/training-runs/${runId}/lifecycle-impact?action=${action}`);
+}
+
+export function deleteTrainingRun(runId: string, reason: string) {
+  return trainingRunAction(runId, "delete", reason);
+}
+
+function trainingRunAction(runId: string, action: "archive" | "delete", reason: string) {
+  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+  });
+}
+
+export function listMlModels(statusFilter: MlLifecycleStatusFilter = "default") {
+  return apiRequest<MlModelVersion[]>(`/analytics/ml/models${statusFilterQuery(statusFilter)}`);
 }
 
 export function approveMlModel(modelVersionId: string, reason: string) {
@@ -360,15 +439,23 @@ export function archiveMlModel(modelVersionId: string, reason: string) {
   return modelAction(modelVersionId, "archive", reason);
 }
 
-function modelAction(modelVersionId: string, action: "approve" | "reject" | "archive", reason: string) {
+export function deleteMlModel(modelVersionId: string, reason: string) {
+  return modelAction(modelVersionId, "delete", reason);
+}
+
+export function previewMlModelLifecycle(modelVersionId: string, action: "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/models/${modelVersionId}/lifecycle-impact?action=${action}`);
+}
+
+function modelAction(modelVersionId: string, action: "approve" | "reject" | "archive" | "delete", reason: string) {
   return apiRequest<MlModelVersion>(`/analytics/ml/models/${modelVersionId}/${action}`, {
     method: "POST",
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
   });
 }
 
-export function listDeploymentPolicies() {
-  return apiRequest<MlDeploymentPolicy[]>("/analytics/ml/deployment-policies");
+export function listDeploymentPolicies(statusFilter: MlLifecycleStatusFilter = "default") {
+  return apiRequest<MlDeploymentPolicy[]>(`/analytics/ml/deployment-policies${statusFilterQuery(statusFilter)}`);
 }
 
 export function saveDeploymentPolicy(body: {
@@ -397,6 +484,25 @@ export function resolveDeploymentPolicy(deviceId: string, deviceType: string) {
   }
   const query = params.toString();
   return apiRequest<MlResolvedPolicy>(`/analytics/ml/deployment-policies/resolve${query ? `?${query}` : ""}`);
+}
+
+export function disableDeploymentPolicy(policyId: string, reason: string) {
+  return deploymentPolicyAction(policyId, "disable", reason);
+}
+
+export function previewDeploymentPolicyLifecycle(policyId: string, action: "disable" | "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/deployment-policies/${policyId}/lifecycle-impact?action=${action}`);
+}
+
+export function deleteDeploymentPolicy(policyId: string, reason: string) {
+  return deploymentPolicyAction(policyId, "delete", reason);
+}
+
+function deploymentPolicyAction(policyId: string, action: "disable" | "delete", reason: string) {
+  return apiRequest<MlDeploymentPolicy>(`/analytics/ml/deployment-policies/${policyId}/${action}`, {
+    method: "POST",
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+  });
 }
 
 export function listMlLabels(datasetVersionId: string) {
@@ -428,4 +534,15 @@ export function correctMlLabel(labelId: string, body: { label: MlLabelType; reas
 
 export function getMlLabelAudit(labelId: string) {
   return apiRequest<MlLabelAudit[]>(`/analytics/ml/labels/${labelId}/audit`);
+}
+
+export function deleteMlLabel(labelId: string, reason: string) {
+  return apiRequest<MlLabel>(`/analytics/ml/labels/${labelId}/delete`, {
+    method: "POST",
+    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+  });
+}
+
+export function previewMlLabelLifecycle(labelId: string, action: "delete") {
+  return apiRequest<MlLifecycleImpact>(`/analytics/ml/labels/${labelId}/lifecycle-impact?action=${action}`);
 }

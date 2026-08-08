@@ -23,11 +23,20 @@ If the stack is already running, omit `-StartStack`:
 powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1
 ```
 
+For a broader destructive-lifecycle check, add `-VerifyLifecycleCleanup`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1 -VerifyLifecycleCleanup
+```
+
 The script creates a unique user, account, washer device, API data source,
 source token, backfilled telemetry, maintenance outcome, dataset version,
 horizon labels, feature snapshot, training run, candidate model, approval,
 active deployment policy, and live recalculation job. It uses only HTTP APIs and
-Actuator metrics.
+Actuator metrics. With `-VerifyLifecycleCleanup`, it also verifies lifecycle
+impact previews, blocked destructive actions, manual label deletion, policy
+disable/delete, and archive paths for training, feature snapshot, and dataset
+lineage.
 
 ## Verification Coverage
 
@@ -42,6 +51,7 @@ Actuator metrics.
 | Deployment policy | Creates an `ACTIVE` device policy with fallback enabled and asserts it selects the trained `modelVersionId`. |
 | Live inference trace | Runs analytics recalculation, waits for `COMPLETED`, then asserts latest prediction is `TRAINED_MODEL`, `FAILURE_PREDICTION`, uses the deployed `modelVersionId`, and includes `failureRiskScore`, `failureHorizonDays`, `riskDrivers`, and `inputHash`. |
 | Monitoring signals | Reads `analytics-service` `/actuator/prometheus` and asserts feature generation, training run, inference duration, and inference fallback metrics are exported. |
+| Lifecycle cleanup | Optional `-VerifyLifecycleCleanup` creates and deletes a manual label, checks generated-label delete is blocked, verifies active policy delete is blocked until disable, deletes the disabled policy, checks model delete is blocked by runtime or prediction lineage, and archives referenced training, snapshot, and dataset records. |
 
 ## Expected Output
 
@@ -61,7 +71,8 @@ On success, the script prints a JSON object similar to:
   "artifactManifestUri": "s3://model-artifacts/...",
   "predictionStatus": "TRAINED_MODEL",
   "failureRiskScore": 0.42,
-  "inputHash": "..."
+  "inputHash": "...",
+  "lifecycleCleanupVerified": true
 }
 ```
 

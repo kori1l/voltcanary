@@ -71,5 +71,20 @@ Use Grafana Explore with the Loki datasource for Compose logs. Query all local
 Compose logs with `{compose_project="voltcanary"}` or a single service with
 `{compose_service="<service-name>"}`.
 
+## ML Docker Smoke
+
+Use `scripts/ml-failure-prediction-docker-smoke.ps1` as the primary local
+Docker verification for the ML failure-prediction pipeline:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1 -StartStack
+```
+
+When the stack is already running, omit `-StartStack`. Add
+`-VerifyLifecycleCleanup` when the request asks to verify create/delete/archive
+or lifecycle-impact behavior; that mode checks blocked destructive actions,
+manual label delete, policy disable/delete, and archive paths for referenced ML
+lineage records.
+
 Never add secrets to tracked files. Put local values in `.env` and document
 new required keys in `.env.example`.

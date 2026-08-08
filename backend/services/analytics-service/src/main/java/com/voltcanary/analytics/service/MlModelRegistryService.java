@@ -12,15 +12,19 @@ import com.voltcanary.analytics.domain.MlModelStatus;
 import com.voltcanary.analytics.domain.MlModelVersion;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyDto;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.dto.MlModelStatusRequest;
 import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import com.voltcanary.analytics.repository.MlDeploymentAuditEventRepository;
 import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
+import com.voltcanary.analytics.repository.PredictionResultRepository;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +43,7 @@ public class MlModelRegistryService {
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDeploymentPolicyRepository policyRepository;
     private final MlDeploymentAuditEventRepository auditRepository;
+    private final PredictionResultRepository predictionResultRepository;
     private final ObjectMapper objectMapper;
     private final MlRegistryProperties registryProperties;
 
@@ -46,27 +51,121 @@ public class MlModelRegistryService {
             MlModelVersionRepository modelVersionRepository,
             MlDeploymentPolicyRepository policyRepository,
             MlDeploymentAuditEventRepository auditRepository,
+            PredictionResultRepository predictionResultRepository,
             ObjectMapper objectMapper,
             MlRegistryProperties registryProperties) {
         this.modelVersionRepository = modelVersionRepository;
         this.policyRepository = policyRepository;
         this.auditRepository = auditRepository;
+        this.predictionResultRepository = predictionResultRepository;
         this.objectMapper = objectMapper;
         this.registryProperties = registryProperties;
     }
 
     @Transactional
     public List<MlModelVersionDto> listModels(UUID accountId) {
+        return listModels(accountId, "default");
+    }
+
+    @Transactional
+    public List<MlModelVersionDto> listModels(UUID accountId, String statusFilter) {
         if (registryProperties.isDemoSeedingEnabled()) {
             ensureDemoModels(accountId);
         }
+        String filter = normalizedFilter(statusFilter);
         return modelVersionRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
+                .filter(model -> matchesModelFilter(model.getStatus(), filter))
                 .map(this::modelResponse)
                 .toList();
     }
 
+    private boolean matchesModelFilter(MlModelStatus status, String filter) {
+        return switch (filter) {
+            case "all" -> true;
+            case "failed" -> status == MlModelStatus.REJECTED;
+            case "archived" -> status == MlModelStatus.ARCHIVED;
+            case "deleted" -> status == MlModelStatus.DELETED;
+            default -> status != MlModelStatus.ARCHIVED && status != MlModelStatus.DELETED;
+        };
+    }
+
     public MlModelVersionDto getModel(UUID accountId, UUID modelVersionId) {
         return modelResponse(findOwnedModel(accountId, modelVersionId));
+    }
+
+    @Transactional(readOnly = true)
+    public MlLifecycleImpactResponse modelImpact(UUID accountId, UUID modelVersionId, String action) {
+        MlModelVersion model = findOwnedModel(accountId, modelVersionId);
+        String normalizedAction = normalizedAction(action);
+        List<Map<String, Object>> dependencies = modelDependencies(model);
+        boolean blocked = "delete".equals(normalizedAction)
+                && (model.getStatus() == MlModelStatus.ACTIVE
+                || dependencies.stream().anyMatch(dependency -> !"predictionResults".equals(dependency.get("type")) || predictionCount(dependency) > 0));
+        String message = blocked
+                ? "Model has runtime or prediction references and should be archived instead of deleted"
+                : "Model action is allowed when submitted with an audit reason";
+        return new MlLifecycleImpactResponse(normalizedAction, blocked, message, dependencies);
+    }
+
+    @Transactional
+    public MlModelVersionDto deleteModel(UUID accountId, UUID actorId, UUID modelVersionId, MlLifecycleActionRequest request) {
+        MlModelVersion model = findOwnedModel(accountId, modelVersionId);
+        String reason = requiredReason(request);
+        List<Map<String, Object>> dependencies = activeModelPolicyDependencies(modelVersionId);
+        if (model.getStatus() == MlModelStatus.ACTIVE || !dependencies.isEmpty()) {
+            throw new MlLifecycleConflictException(
+                    "MODEL_POLICY_REFERENCED",
+                    "Model is active or referenced by deployment policies",
+                    dependencies.isEmpty()
+                            ? List.of(dependency("modelVersion", model.getId(), Map.of("status", model.getStatus().name())))
+                            : dependencies);
+        }
+        long predictionReferences = predictionResultRepository.countByModelId(modelVersionId);
+        if (predictionReferences > 0) {
+            throw new MlLifecycleConflictException(
+                    "MODEL_PREDICTION_REFERENCED",
+                    "Model has historical prediction references and must be archived instead of deleted",
+                    dependency("predictionResults", model.getId(), Map.of("count", predictionReferences)));
+        }
+        if (model.getStatus() != MlModelStatus.CANDIDATE && model.getStatus() != MlModelStatus.REJECTED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only unreferenced candidate or rejected models can be deleted");
+        }
+        model.setStatus(MlModelStatus.DELETED);
+        stampLifecycle(model, actorId, reason);
+        modelVersionRepository.save(model);
+        audit(accountId, actorId, model.getId(), null, "MODEL_DELETED", Map.of("reason", reason));
+        log.info("mlModelDeleted modelVersionId={} accountId={} actorId={} reason={}",
+                model.getId(), accountId, actorId, reason);
+        return modelResponse(model);
+    }
+
+    private List<Map<String, Object>> modelDependencies(MlModelVersion model) {
+        List<Map<String, Object>> policies = activeModelPolicyDependencies(model.getId());
+        long predictionReferences = predictionResultRepository.countByModelId(model.getId());
+        List<Map<String, Object>> dependencies = new java.util.ArrayList<>(policies);
+        if (model.getStatus() == MlModelStatus.ACTIVE && policies.isEmpty()) {
+            dependencies.add(dependency("modelVersion", model.getId(), Map.of("status", model.getStatus().name())));
+        }
+        dependencies.add(dependency("predictionResults", model.getId(), Map.of("count", predictionReferences)));
+        return dependencies;
+    }
+
+    private List<Map<String, Object>> activeModelPolicyDependencies(UUID modelVersionId) {
+        return policyRepository.findByModelVersionIdAndDeletedAtIsNull(modelVersionId).stream()
+                .filter(policy -> policy.getMode() != MlDeploymentMode.DISABLED)
+                .map(policy -> dependency("deploymentPolicy", policy.getId(), Map.of(
+                        "scope", policy.getScope().name(),
+                        "mode", policy.getMode().name())))
+                .toList();
+    }
+
+    private long predictionCount(Map<String, Object> dependency) {
+        Object details = dependency.get("details");
+        if (!(details instanceof Map<?, ?> values)) {
+            return 0;
+        }
+        Object count = values.get("count");
+        return count instanceof Number number ? number.longValue() : 0;
     }
 
     @Transactional
@@ -107,11 +206,74 @@ public class MlModelRegistryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active models must be rolled back before archive");
         }
         model.setStatus(MlModelStatus.ARCHIVED);
+        stampLifecycle(model, actorId, reason(request));
         modelVersionRepository.save(model);
         audit(accountId, actorId, model.getId(), null, "MODEL_ARCHIVED", Map.of("reason", reason(request)));
         log.info("mlModelArchived modelVersionId={} accountId={} actorId={} reason={}",
                 model.getId(), accountId, actorId, reason(request));
         return modelResponse(model);
+    }
+
+    @Transactional
+    public MlDeploymentPolicyDto disablePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+        MlDeploymentPolicy policy = findOwnedPolicy(accountId, policyId);
+        String reason = requiredReason(request);
+        if (policy.getDeletedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found");
+        }
+        policy.setMode(MlDeploymentMode.DISABLED);
+        policy.setFallbackEnabled(true);
+        policy.setUpdatedBy(actorId);
+        policy.setUpdatedAt(Instant.now());
+        policyRepository.save(policy);
+        audit(accountId, actorId, policy.getModelVersionId(), policy.getId(), "POLICY_DISABLED", Map.of("reason", reason));
+        log.info("mlDeploymentPolicyDisabled policyId={} accountId={} actorId={} reason={}", policy.getId(), accountId, actorId, reason);
+        return policyResponse(policy);
+    }
+
+    @Transactional
+    public MlDeploymentPolicyDto deletePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+        MlDeploymentPolicy policy = findOwnedPolicy(accountId, policyId);
+        String reason = requiredReason(request);
+        if (policy.getDeletedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found");
+        }
+        if (policy.getMode() != MlDeploymentMode.DISABLED) {
+            throw new MlLifecycleConflictException(
+                    "POLICY_ACTIVE",
+                    "Deployment policy must be disabled before deletion",
+                    dependency("deploymentPolicy", policy.getId(), Map.of("scope", policy.getScope().name(), "mode", policy.getMode().name())));
+        }
+        policy.setDeletedAt(Instant.now());
+        policy.setDeletedBy(actorId);
+        policy.setDeletionReason(reason);
+        policy.setUpdatedBy(actorId);
+        policy.setUpdatedAt(policy.getDeletedAt());
+        policyRepository.save(policy);
+        audit(accountId, actorId, policy.getModelVersionId(), policy.getId(), "POLICY_DELETED", Map.of("reason", reason));
+        log.info("mlDeploymentPolicyDeleted policyId={} accountId={} actorId={} reason={}", policy.getId(), accountId, actorId, reason);
+        return policyResponse(policy);
+    }
+
+    @Transactional(readOnly = true)
+    public MlLifecycleImpactResponse policyImpact(UUID accountId, UUID policyId, String action) {
+        MlDeploymentPolicy policy = findOwnedPolicy(accountId, policyId);
+        String normalizedAction = normalizedAction(action);
+        boolean blocked = "delete".equals(normalizedAction) && policy.getMode() != MlDeploymentMode.DISABLED;
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("scope", policy.getScope().name());
+        details.put("mode", policy.getMode().name());
+        details.put("modelVersionId", policy.getModelVersionId() == null ? null : policy.getModelVersionId().toString());
+        details.put("fallbackEnabled", policy.isFallbackEnabled());
+        details.put("deleted", policy.getDeletedAt() != null);
+        String message = blocked
+                ? "Deployment policy must be disabled before deletion"
+                : "Deployment policy action is allowed when submitted with an audit reason";
+        return new MlLifecycleImpactResponse(
+                normalizedAction,
+                blocked,
+                message,
+                List.of(dependency("deploymentPolicy", policy.getId(), details)));
     }
 
     @Transactional
@@ -188,19 +350,19 @@ public class MlModelRegistryService {
         Optional<MlDeploymentPolicy> selected = Optional.empty();
         MlDeploymentScope source = null;
         if (deviceId != null) {
-            selected = policyRepository.findByScopeAndDeviceId(MlDeploymentScope.DEVICE, deviceId);
+            selected = policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, deviceId);
             source = MlDeploymentScope.DEVICE;
         }
         if (selected.isEmpty() && deviceType != null && !deviceType.isBlank()) {
-            selected = policyRepository.findByAccountIdAndScopeAndDeviceType(accountId, MlDeploymentScope.DEVICE_TYPE, deviceType);
+            selected = policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(accountId, MlDeploymentScope.DEVICE_TYPE, deviceType);
             source = MlDeploymentScope.DEVICE_TYPE;
         }
         if (selected.isEmpty()) {
-            selected = policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT);
+            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT);
             source = MlDeploymentScope.ACCOUNT;
         }
         if (selected.isEmpty()) {
-            selected = policyRepository.findByAccountIdAndScope(null, MlDeploymentScope.SYSTEM);
+            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(null, MlDeploymentScope.SYSTEM);
             source = MlDeploymentScope.SYSTEM;
         }
         if (selected.isEmpty()) {
@@ -232,9 +394,41 @@ public class MlModelRegistryService {
     }
 
     public List<MlDeploymentPolicyDto> listPolicies(UUID accountId) {
+        return listPolicies(accountId, "default");
+    }
+
+    public List<MlDeploymentPolicyDto> listPolicies(UUID accountId, String statusFilter) {
+        String filter = normalizedFilter(statusFilter);
         return policyRepository.findByAccountIdOrderByUpdatedAtDesc(accountId).stream()
+                .filter(policy -> matchesPolicyFilter(policy, filter))
                 .map(this::policyResponse)
                 .toList();
+    }
+
+    private boolean matchesPolicyFilter(MlDeploymentPolicy policy, String filter) {
+        return switch (filter) {
+            case "all" -> true;
+            case "active", "current" -> policy.getDeletedAt() == null && policy.getMode() != MlDeploymentMode.DISABLED;
+            case "failed", "archived" -> policy.getDeletedAt() == null && policy.getMode() == MlDeploymentMode.DISABLED;
+            case "deleted" -> policy.getDeletedAt() != null;
+            default -> policy.getDeletedAt() == null;
+        };
+    }
+
+    private String normalizedFilter(String statusFilter) {
+        if (statusFilter == null || statusFilter.isBlank()) {
+            return "default";
+        }
+        return statusFilter.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private MlDeploymentPolicy findOwnedPolicy(UUID accountId, UUID policyId) {
+        MlDeploymentPolicy policy = policyRepository.findById(policyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found"));
+        if (policy.getAccountId() != null && !accountId.equals(policy.getAccountId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found");
+        }
+        return policy;
     }
 
     private MlModelVersion findOwnedModel(UUID accountId, UUID modelVersionId) {
@@ -319,10 +513,10 @@ public class MlModelRegistryService {
 
     private Optional<MlDeploymentPolicy> findExistingPolicy(UUID accountId, MlDeploymentPolicyRequest request) {
         return switch (request.scope()) {
-            case DEVICE -> policyRepository.findByScopeAndDeviceId(MlDeploymentScope.DEVICE, request.deviceId());
-            case DEVICE_TYPE -> policyRepository.findByAccountIdAndScopeAndDeviceType(accountId, MlDeploymentScope.DEVICE_TYPE, request.deviceType());
-            case ACCOUNT -> policyRepository.findByAccountIdAndScope(accountId, MlDeploymentScope.ACCOUNT);
-            case SYSTEM -> policyRepository.findByAccountIdAndScope(null, MlDeploymentScope.SYSTEM);
+            case DEVICE -> policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, request.deviceId());
+            case DEVICE_TYPE -> policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(accountId, MlDeploymentScope.DEVICE_TYPE, request.deviceType());
+            case ACCOUNT -> policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT);
+            case SYSTEM -> policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(null, MlDeploymentScope.SYSTEM);
         };
     }
 
@@ -361,6 +555,35 @@ public class MlModelRegistryService {
 
     private String reason(String value) {
         return value == null ? "" : value;
+    }
+
+    private String requiredReason(MlLifecycleActionRequest request) {
+        String value = request == null ? null : request.reason();
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+        }
+        return value.trim();
+    }
+
+    private void stampLifecycle(MlModelVersion model, UUID actorId, String reason) {
+        model.setLifecycleActorId(actorId);
+        model.setLifecycleAt(Instant.now());
+        model.setLifecycleReason(reason);
+    }
+
+    private Map<String, Object> dependency(String type, UUID id, Map<String, ?> details) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("type", type);
+        value.put("id", id == null ? "" : id.toString());
+        value.put("details", details);
+        return value;
+    }
+
+    private String normalizedAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "delete";
+        }
+        return action.trim().toLowerCase(Locale.ROOT);
     }
 
     private void verifyArtifactMetadata(MlModelVersion model) {

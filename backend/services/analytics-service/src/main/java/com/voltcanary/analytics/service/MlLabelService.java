@@ -7,6 +7,8 @@ import com.voltcanary.analytics.domain.MlLabelType;
 import com.voltcanary.analytics.dto.MlLabelAuditDto;
 import com.voltcanary.analytics.dto.MlLabelDto;
 import com.voltcanary.analytics.dto.MlLabelRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.repository.MlLabelAuditRepository;
 import com.voltcanary.analytics.repository.MlLabelRepository;
 import java.time.Instant;
@@ -33,7 +35,7 @@ public class MlLabelService {
         if (datasetVersionId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "datasetVersionId is required");
         }
-        return labelRepository.findByAccountIdAndDatasetVersionId(accountId, datasetVersionId).stream()
+        return labelRepository.findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(accountId, datasetVersionId).stream()
                 .map(this::dto)
                 .toList();
     }
@@ -100,6 +102,48 @@ public class MlLabelService {
                 .toList();
     }
 
+    @Transactional
+    public MlLabelDto delete(UUID accountId, UUID actorId, UUID labelId, MlLifecycleActionRequest request) {
+        MlLabel label = labelRepository.findById(labelId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+        if (!accountId.equals(label.getAccountId()) || label.getDeletedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
+        }
+        String reason = requiredReason(request);
+        if (label.getSource() != MlLabelSource.MANUAL) {
+            throw new MlLifecycleConflictException(
+                    "GENERATED_LABEL_LINEAGE",
+                    "Generated labels must be regenerated or superseded instead of hard-deleted",
+                    dependency("label", labelId, label.getSource().name(), label.getLineageHash()));
+        }
+        Instant now = Instant.now();
+        label.setDeletedAt(now);
+        label.setDeletedBy(actorId);
+        label.setDeletionReason(reason);
+        label.setUpdatedAt(now);
+        labelRepository.save(label);
+        audit(label.getId(), label.getLabel(), label.getLabel(), actorId, "DELETE: " + reason, now);
+        return dto(label);
+    }
+
+    @Transactional(readOnly = true)
+    public MlLifecycleImpactResponse impact(UUID accountId, UUID labelId, String action) {
+        MlLabel label = labelRepository.findById(labelId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+        if (!accountId.equals(label.getAccountId()) || label.getDeletedAt() != null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
+        }
+        boolean blocked = label.getSource() != MlLabelSource.MANUAL;
+        String message = blocked
+                ? "Generated labels must be regenerated or superseded instead of hard-deleted"
+                : "Manual label deletion is allowed when submitted with an audit reason";
+        return new MlLifecycleImpactResponse(
+                normalizedAction(action),
+                blocked,
+                message,
+                List.of(dependency("label", labelId, label.getSource().name(), label.getLineageHash())));
+    }
+
     private void validate(MlLabelRequest request) {
         if (request.datasetVersionId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "datasetVersionId is required");
@@ -122,6 +166,32 @@ public class MlLabelService {
         audit.setEditedAt(now);
         audit.setReason(reason);
         auditRepository.save(audit);
+    }
+
+    private String requiredReason(MlLifecycleActionRequest request) {
+        String value = request == null ? null : request.reason();
+        if (value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+        }
+        return value.trim();
+    }
+
+    private java.util.Map<String, Object> dependency(String type, UUID id, String source, String lineageHash) {
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("source", source);
+        details.put("lineageHash", lineageHash == null ? "" : lineageHash);
+        java.util.Map<String, Object> value = new java.util.LinkedHashMap<>();
+        value.put("type", type);
+        value.put("id", id.toString());
+        value.put("details", details);
+        return value;
+    }
+
+    private String normalizedAction(String action) {
+        if (action == null || action.isBlank()) {
+            return "delete";
+        }
+        return action.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     private MlLabelDto dto(MlLabel label) {

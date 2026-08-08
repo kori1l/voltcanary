@@ -58,6 +58,12 @@ public class MlTrainingRun {
     private int retryCount;
     @Column(name = "stale_recovered_at")
     private Instant staleRecoveredAt;
+    @Column(name = "lifecycle_reason", columnDefinition = "text")
+    private String lifecycleReason;
+    @Column(name = "lifecycle_actor_id")
+    private UUID lifecycleActorId;
+    @Column(name = "lifecycle_at")
+    private Instant lifecycleAt;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -103,4 +109,10 @@ public class MlTrainingRun {
     public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
     public Instant getStaleRecoveredAt() { return staleRecoveredAt; }
     public void setStaleRecoveredAt(Instant staleRecoveredAt) { this.staleRecoveredAt = staleRecoveredAt; }
+    public String getLifecycleReason() { return lifecycleReason; }
+    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
+    public UUID getLifecycleActorId() { return lifecycleActorId; }
+    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
+    public Instant getLifecycleAt() { return lifecycleAt; }
+    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

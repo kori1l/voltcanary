@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -11,8 +12,10 @@ import com.voltcanary.analytics.domain.MlLabelAudit;
 import com.voltcanary.analytics.domain.MlLabelSource;
 import com.voltcanary.analytics.domain.MlLabelType;
 import com.voltcanary.analytics.dto.MlLabelRequest;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.repository.MlLabelAuditRepository;
 import com.voltcanary.analytics.repository.MlLabelRepository;
+import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.service.MlLabelService;
 import java.time.Instant;
 import java.util.List;
@@ -91,7 +94,8 @@ class MlLabelServiceTest {
         audit.setNewLabel(MlLabelType.NORMAL);
         audit.setEditedAt(Instant.parse("2026-07-01T03:00:00Z"));
         audit.setReason("false positive");
-        when(labelRepository.findByAccountIdAndDatasetVersionId(accountId, datasetVersionId)).thenReturn(List.of(label));
+        when(labelRepository.findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(accountId, datasetVersionId))
+                .thenReturn(List.of(label));
         when(labelRepository.findById(labelId)).thenReturn(Optional.of(label));
         when(auditRepository.findByLabelIdOrderByEditedAtDesc(labelId)).thenReturn(List.of(audit));
 
@@ -126,5 +130,23 @@ class MlLabelServiceTest {
         ArgumentCaptor<MlLabelAudit> auditCaptor = ArgumentCaptor.forClass(MlLabelAudit.class);
         verify(auditRepository).save(auditCaptor.capture());
         assertThat(auditCaptor.getValue().getNewLabel()).isEqualTo(MlLabelType.CONFIRMED_FAILURE);
+    }
+
+    @Test
+    void blocksDeletingGeneratedLabelsWithoutRegeneration() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID labelId = UUID.randomUUID();
+        MlLabel label = new MlLabel();
+        label.setId(labelId);
+        label.setAccountId(accountId);
+        label.setSource(MlLabelSource.MAINTENANCE_OUTCOME);
+        label.setLabel(MlLabelType.CONFIRMED_FAILURE);
+        label.setLineageHash("sha256:labels");
+        when(labelRepository.findById(labelId)).thenReturn(Optional.of(label));
+
+        assertThatThrownBy(() -> service.delete(accountId, actorId, labelId, new MlLifecycleActionRequest("cleanup", false)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("Generated labels");
     }
 }
