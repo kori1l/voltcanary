@@ -13,6 +13,8 @@ import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlDatasetService;
 import com.voltcanary.analytics.service.MlExternalDatasetImportService;
@@ -131,6 +133,20 @@ public class MlDatasetController {
             accessService.requireReadAccess(deviceId, userId, role, correlationId);
         }
         return service.createFromInternalTelemetry(resolvedAccountId, parseUserId(userId), request);
+    }
+
+    @PostMapping("/internal-telemetry/preview")
+    public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @Valid @RequestBody MlDatasetWorkbenchPreviewRequest request) {
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        for (UUID deviceId : request.deviceIds()) {
+            accessService.requireReadAccess(deviceId, userId, role, correlationId);
+        }
+        return service.previewInternalTelemetryDataset(resolvedAccountId, request);
     }
 
     @PostMapping(value = "/external-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

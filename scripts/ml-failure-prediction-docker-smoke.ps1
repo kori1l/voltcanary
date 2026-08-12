@@ -283,6 +283,40 @@ $outcome = Invoke-Api -Method POST -Path "/maintenance-operations/$($operation.i
 }
 Require-Value $outcome.id "Maintenance outcome was not created"
 
+Write-Step "Previewing internal telemetry dataset workbench selection"
+$previewBody = @{
+    modelFamily = "FAILURE_PREDICTION"
+    deviceIds = @("$($device.id)")
+    deviceType = "washer"
+    deviceMetadata = @{
+        verificationRunId = $RunId
+        manufacturer = "VoltCanary"
+    }
+    metricSelectionMode = "COMMON"
+    selectedMetrics = @("activePowerW")
+    from = To-IsoInstant $start
+    to = To-IsoInstant $end
+    horizonDays = $horizonDays
+    splitStrategy = "TIME_BASED"
+    splitConfigJson = '{"train":0.7,"validation":0.15,"test":0.15}'
+    featureConfigVersion = "docker-smoke-feature-config-v1"
+    minSamplesPerMetric = 24
+    maxSamplingGapSeconds = 21600
+    candidateLimit = 4
+}
+$preview = Wait-For "dataset workbench preview with failure readiness" {
+    $candidate = Invoke-Api -Method POST -Path "/analytics/ml/datasets/internal-telemetry/preview" -Headers $authHeaders -Body $previewBody
+    $activePowerMetric = @($candidate.availableMetrics | Where-Object { "$($_.metricName)" -eq "activePowerW" })
+    if ($candidate.previewHash -and @($activePowerMetric).Count -eq 1 -and "$($candidate.status)" -ne "BLOCKED" -and $candidate.labelReadiness.positiveLabels -gt 0) {
+        return $candidate
+    }
+    return $false
+}
+Require-Value $preview.previewId "Preview did not include previewId"
+Require-True ("$($preview.previewHash)".StartsWith("sha256:")) "Preview hash is not sha256"
+Require-True (@($preview.candidateWindows).Count -gt 0) "Preview did not include candidate windows"
+Require-True ($preview.labelReadiness.positiveLabels -gt 0) "Preview did not include positive failure labels"
+
 Write-Step "Creating READY internal telemetry dataset"
 $dataset = Invoke-Api -Method POST -Path "/analytics/ml/datasets/internal-telemetry" -Headers $authHeaders -Body @{
     name = "Docker failure prediction dataset $RunId"
@@ -301,6 +335,11 @@ $dataset = Invoke-Api -Method POST -Path "/analytics/ml/datasets/internal-teleme
     featureConfigVersion = "docker-smoke-feature-config-v1"
     minSamplesPerMetric = 24
     maxSamplingGapSeconds = 21600
+    previewId = "$($preview.previewId)"
+    previewHash = "$($preview.previewHash)"
+    modelFamily = "FAILURE_PREDICTION"
+    horizonDays = $horizonDays
+    metricSelectionMode = "COMMON"
 }
 Require-True ("$($dataset.status)" -eq "READY") "Dataset version was not READY: $($dataset.status)"
 Require-True ($dataset.acceptedRows -ge 24) "Dataset did not materialize enough canonical rows"

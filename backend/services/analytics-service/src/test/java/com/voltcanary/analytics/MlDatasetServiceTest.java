@@ -10,17 +10,23 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetLineage;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
+import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.domain.MlValidationReport;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
+import com.voltcanary.analytics.dto.MlMetricSelectionMode;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
+import com.voltcanary.analytics.dto.MlWorkbenchStatus;
+import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
 import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetLineageRepository;
@@ -35,12 +41,15 @@ import com.voltcanary.analytics.service.MlDatasetService;
 import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
+import com.voltcanary.analytics.telemetry.TelemetryMetricResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 class MlDatasetServiceTest {
 
@@ -53,6 +62,7 @@ class MlDatasetServiceTest {
     private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
     private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(MlCanonicalMetricRowRepository.class);
+    private final MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository = mock(MaintenanceOutcomeReadModelRepository.class);
     private final MaintenanceWindowReadModelRepository maintenanceRepository = mock(MaintenanceWindowReadModelRepository.class);
     private final TelemetryClient telemetryClient = mock(TelemetryClient.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -66,6 +76,7 @@ class MlDatasetServiceTest {
             trainingRunRepository,
             modelVersionRepository,
             canonicalMetricRowRepository,
+            maintenanceOutcomeRepository,
             maintenanceRepository,
             telemetryClient,
             objectMapper);
@@ -95,7 +106,12 @@ class MlDatasetServiceTest {
                         null,
                         null,
                         4,
-                        7200L));
+                        7200L,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null));
 
         assertThat(response.status()).isEqualTo(MlDatasetStatus.READY);
         assertThat(response.acceptedRows()).isEqualTo(4);
@@ -166,7 +182,12 @@ class MlDatasetServiceTest {
                         null,
                         null,
                         4,
-                        7200L));
+                        7200L,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null));
 
         assertThat(response.status()).isEqualTo(MlDatasetStatus.FAILED);
         assertThat(response.readyAt()).isNull();
@@ -209,6 +230,11 @@ class MlDatasetServiceTest {
                         null,
                         null,
                         4,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null));
 
         assertThat(response.status()).isEqualTo(MlDatasetStatus.FAILED);
@@ -240,7 +266,12 @@ class MlDatasetServiceTest {
                 null,
                 null,
                 4,
-                7200L);
+                7200L,
+                null,
+                null,
+                null,
+                null,
+                null);
         when(maintenanceRepository.findActiveOverlapping(deviceId, from, to)).thenReturn(List.of());
         when(telemetryClient.readings(deviceId, "activePowerW", from, to))
                 .thenReturn(unsortedReadings(deviceId, "activePowerW", from))
@@ -257,6 +288,187 @@ class MlDatasetServiceTest {
         assertThat(firstFinalVersion.getDataHash()).startsWith("sha256:");
         assertThat(firstFinalVersion.getDataHash()).isEqualTo(secondFinalVersion.getDataHash());
         assertThat(firstFinalVersion.getId()).isNotEqualTo(secondFinalVersion.getId());
+    }
+
+    @Test
+    void previewCommonMetricModeReturnsOnlyMetricsPresentOnEverySelectedDevice() {
+        UUID accountId = UUID.randomUUID();
+        UUID firstDevice = UUID.randomUUID();
+        UUID secondDevice = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        when(telemetryClient.metrics(firstDevice)).thenReturn(List.of(
+                metric("activePowerW", "W", "Active power"),
+                metric("voltageV", "V", "Voltage")));
+        when(telemetryClient.metrics(secondDevice)).thenReturn(List.of(
+                metric("activePowerW", "W", "Active power"),
+                metric("currentA", "A", "Current")));
+        when(maintenanceRepository.findActiveOverlapping(firstDevice, from, to)).thenReturn(List.of());
+        when(maintenanceRepository.findActiveOverlapping(secondDevice, from, to)).thenReturn(List.of());
+        when(telemetryClient.readings(firstDevice, "activePowerW", from, to))
+                .thenReturn(readings(firstDevice, "activePowerW", from, 4));
+        when(telemetryClient.readings(secondDevice, "activePowerW", from, to))
+                .thenReturn(readings(secondDevice, "activePowerW", from, 4));
+
+        var response = service.previewInternalTelemetryDataset(accountId, new MlDatasetWorkbenchPreviewRequest(
+                MlModelFamily.ANOMALY_DETECTION,
+                List.of(firstDevice, secondDevice),
+                "washer",
+                null,
+                MlMetricSelectionMode.COMMON,
+                List.of("activePowerW"),
+                from,
+                to,
+                null,
+                null,
+                MlTrainingSplitStrategy.TIME_BASED,
+                null,
+                "feature-config-v1",
+                4,
+                7200L,
+                1));
+
+        assertThat(response.status()).isEqualTo(MlWorkbenchStatus.READY);
+        assertThat(response.previewHash()).startsWith("sha256:");
+        assertThat(response.availableMetrics()).extracting("metricName")
+                .containsExactly("activePowerW");
+        assertThat(response.createRequestDefaults().metrics()).containsExactly("activePowerW");
+        assertThat(response.candidateWindows()).singleElement()
+                .satisfies(candidate -> assertThat(candidate.kind().name()).isEqualTo("USER_SELECTED"));
+    }
+
+    @Test
+    void previewAllAvailableMetricModeReturnsUnionWithPartialCoverageWarnings() {
+        UUID accountId = UUID.randomUUID();
+        UUID firstDevice = UUID.randomUUID();
+        UUID secondDevice = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        when(telemetryClient.metrics(firstDevice)).thenReturn(List.of(
+                metric("activePowerW", "W", "Active power"),
+                metric("voltageV", "V", "Voltage")));
+        when(telemetryClient.metrics(secondDevice)).thenReturn(List.of(
+                metric("activePowerW", "W", "Active power"),
+                metric("currentA", "A", "Current")));
+        when(maintenanceRepository.findActiveOverlapping(firstDevice, from, to)).thenReturn(List.of());
+        when(maintenanceRepository.findActiveOverlapping(secondDevice, from, to)).thenReturn(List.of());
+        when(telemetryClient.readings(firstDevice, "activePowerW", from, to))
+                .thenReturn(readings(firstDevice, "activePowerW", from, 4));
+        when(telemetryClient.readings(secondDevice, "activePowerW", from, to))
+                .thenReturn(readings(secondDevice, "activePowerW", from, 4));
+        when(telemetryClient.readings(firstDevice, "voltageV", from, to))
+                .thenReturn(readings(firstDevice, "voltageV", from, 4));
+        when(telemetryClient.readings(firstDevice, "currentA", from, to))
+                .thenReturn(readings(firstDevice, "currentA", from, 4));
+        when(telemetryClient.readings(secondDevice, "currentA", from, to))
+                .thenReturn(readings(secondDevice, "currentA", from, 4));
+        when(telemetryClient.readings(secondDevice, "voltageV", from, to))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Telemetry not found"));
+
+        var response = service.previewInternalTelemetryDataset(accountId, new MlDatasetWorkbenchPreviewRequest(
+                MlModelFamily.ANOMALY_DETECTION,
+                List.of(firstDevice, secondDevice),
+                "washer",
+                null,
+                MlMetricSelectionMode.ALL_AVAILABLE,
+                List.of("activePowerW", "voltageV"),
+                from,
+                to,
+                null,
+                null,
+                MlTrainingSplitStrategy.TIME_BASED,
+                null,
+                "feature-config-v1",
+                4,
+                7200L,
+                1));
+
+        assertThat(response.status()).isEqualTo(MlWorkbenchStatus.READY_WITH_WARNINGS);
+        assertThat(response.availableMetrics()).extracting("metricName")
+                .containsExactly("activePowerW", "currentA", "voltageV");
+        assertThat(response.availableMetrics()).filteredOn(metric -> metric.metricName().equals("voltageV"))
+                .singleElement()
+                .satisfies(metric -> {
+                    assertThat(metric.devicesWithMetric()).isEqualTo(1);
+                    assertThat(metric.warningReasons()).anySatisfy(reason -> assertThat(reason).contains("only 1 of 2"));
+                });
+        assertThat(response.warningReasons()).anySatisfy(reason -> assertThat(reason).contains("partial device coverage"));
+    }
+
+    @Test
+    void previewFailureReadinessCountsPositiveAndNormalRowsWithoutMutatingLabels() {
+        UUID accountId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-16T00:00:00Z");
+        Instant outcomeAt = Instant.parse("2026-07-08T12:00:00Z");
+        when(telemetryClient.metrics(deviceId)).thenReturn(List.of(metric("activePowerW", "W", "Active power")));
+        when(maintenanceRepository.findActiveOverlapping(deviceId, from, to)).thenReturn(List.of());
+        when(telemetryClient.readings(deviceId, "activePowerW", from, to))
+                .thenReturn(dailyReadings(deviceId, "activePowerW", from, 15));
+        when(maintenanceOutcomeRepository.findByAccountAndObservedRange(any(), any(), any()))
+                .thenReturn(List.of(outcome(deviceId, outcomeAt, "CORRECTIVE_MAINTENANCE")));
+
+        var response = service.previewInternalTelemetryDataset(accountId, new MlDatasetWorkbenchPreviewRequest(
+                MlModelFamily.FAILURE_PREDICTION,
+                List.of(deviceId),
+                "washer",
+                null,
+                MlMetricSelectionMode.COMMON,
+                List.of("activePowerW"),
+                from,
+                to,
+                null,
+                2,
+                MlTrainingSplitStrategy.TIME_BASED,
+                null,
+                "feature-config-v1",
+                4,
+                172800L,
+                1));
+
+        assertThat(response.labelReadiness()).isNotNull();
+        assertThat(response.labelReadiness().positiveLabels()).isGreaterThan(0);
+        assertThat(response.labelReadiness().normalLabels()).isGreaterThan(0);
+        assertThat(response.status()).isIn(MlWorkbenchStatus.READY, MlWorkbenchStatus.READY_WITH_WARNINGS);
+        verify(labelRepository, times(0)).saveAll(any());
+    }
+
+    @Test
+    void createWithStalePreviewHashReturnsConflictBeforePersistence() {
+        UUID accountId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        when(maintenanceRepository.findActiveOverlapping(deviceId, from, to)).thenReturn(List.of());
+        when(telemetryClient.readings(deviceId, "activePowerW", from, to))
+                .thenReturn(readings(deviceId, "activePowerW", from, 4));
+
+        assertThatThrownBy(() -> service.createFromInternalTelemetry(accountId, userId,
+                new MlInternalDatasetRequest(
+                        "July training",
+                        null,
+                        List.of(deviceId),
+                        "washer",
+                        null,
+                        List.of("activePowerW"),
+                        from,
+                        to,
+                        MlTrainingSplitStrategy.TIME_BASED,
+                        null,
+                        "feature-config-v1",
+                        4,
+                        7200L,
+                        "prev_stale",
+                        "sha256:stale",
+                        MlModelFamily.ANOMALY_DETECTION,
+                        null,
+                        MlMetricSelectionMode.COMMON)))
+                .isInstanceOf(MlLifecycleConflictException.class)
+                .hasMessageContaining("Dataset preview is stale");
+        verify(datasetRepository, times(0)).save(any());
+        verify(versionRepository, times(0)).save(any());
     }
 
     @Test
@@ -407,12 +619,36 @@ class MlDatasetServiceTest {
                 .toList());
     }
 
+    private TelemetryChartResponse dailyReadings(UUID deviceId, String metric, Instant start, int count) {
+        return new TelemetryChartResponse(deviceId, metric, java.util.stream.IntStream.range(0, count)
+                .mapToObj(index -> new TelemetryChartResponse.Point(start.plusSeconds(index * 24L * 3600L), 10.0 + index))
+                .toList());
+    }
+
     private TelemetryChartResponse unsortedReadings(UUID deviceId, String metric, Instant start) {
         return new TelemetryChartResponse(deviceId, metric, List.of(
                 new TelemetryChartResponse.Point(start.plusSeconds(2 * 3600L), 12.0),
                 new TelemetryChartResponse.Point(start, 10.0),
                 new TelemetryChartResponse.Point(start.plusSeconds(3 * 3600L), 13.0),
                 new TelemetryChartResponse.Point(start.plusSeconds(3600L), 11.0)));
+    }
+
+    private TelemetryMetricResponse metric(String name, String unit, String displayName) {
+        return new TelemetryMetricResponse(name, unit, "number", 0.0, 10000.0, displayName);
+    }
+
+    private MaintenanceOutcomeReadModel outcome(UUID deviceId, Instant observedAt, String outcomeType) {
+        MaintenanceOutcomeReadModel outcome = new MaintenanceOutcomeReadModel();
+        outcome.setMaintenanceOutcomeId(UUID.randomUUID());
+        outcome.setAccountId(UUID.randomUUID());
+        outcome.setDeviceId(deviceId);
+        outcome.setObservedAt(observedAt);
+        outcome.setOutcomeType(outcomeType);
+        outcome.setSource("TEST");
+        outcome.setConfidence(0.95);
+        outcome.setVersion(1);
+        outcome.setUpdatedAt(observedAt);
+        return outcome;
     }
 
     private JsonNode readTree(String json) {

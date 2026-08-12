@@ -2,6 +2,7 @@ package com.voltcanary.analytics.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
@@ -9,16 +10,32 @@ import com.voltcanary.analytics.domain.MlDatasetLineage;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
+import com.voltcanary.analytics.domain.MlLabelType;
+import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
 import com.voltcanary.analytics.domain.MlValidationReport;
+import com.voltcanary.analytics.dto.MlCandidateWindowKind;
+import com.voltcanary.analytics.dto.MlDatasetCandidateWindowDto;
 import com.voltcanary.analytics.dto.MlDatasetDetailDto;
+import com.voltcanary.analytics.dto.MlDatasetLabelReadinessDto;
+import com.voltcanary.analytics.dto.MlDatasetMetricCoverageDto;
+import com.voltcanary.analytics.dto.MlDatasetPreviewCreateDefaultsDto;
+import com.voltcanary.analytics.dto.MlDatasetQualityGateDto;
 import com.voltcanary.analytics.dto.MlDatasetSummaryDto;
+import com.voltcanary.analytics.dto.MlDatasetTimelineBucketDto;
+import com.voltcanary.analytics.dto.MlDatasetWindowDto;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewResponse;
 import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.dto.MlLineageDto;
+import com.voltcanary.analytics.dto.MlMetricSelectionMode;
 import com.voltcanary.analytics.dto.MlValidationReportDto;
+import com.voltcanary.analytics.dto.MlWorkbenchGateStatus;
+import com.voltcanary.analytics.dto.MlWorkbenchStatus;
+import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
 import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetLineageRepository;
@@ -31,16 +48,20 @@ import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
+import com.voltcanary.analytics.telemetry.TelemetryMetricResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.Comparator;
 import java.util.Locale;
@@ -58,6 +79,8 @@ public class MlDatasetService {
 
     private static final int DEFAULT_MIN_SAMPLES_PER_METRIC = 24;
     private static final long DEFAULT_MAX_SAMPLING_GAP_SECONDS = 6 * 60 * 60;
+    private static final Duration PREVIEW_TTL = Duration.ofMinutes(15);
+    private static final String PREVIEW_ALGORITHM_VERSION = "ml-dataset-workbench-preview-v1";
 
     private final MlDatasetRepository datasetRepository;
     private final MlDatasetVersionRepository datasetVersionRepository;
@@ -68,6 +91,7 @@ public class MlDatasetService {
     private final MlTrainingRunRepository trainingRunRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository;
+    private final MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository;
     private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
     private final TelemetryClient telemetryClient;
     private final ObjectMapper objectMapper;
@@ -82,6 +106,7 @@ public class MlDatasetService {
             MlTrainingRunRepository trainingRunRepository,
             MlModelVersionRepository modelVersionRepository,
             MlCanonicalMetricRowRepository canonicalMetricRowRepository,
+            MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository,
             MaintenanceWindowReadModelRepository maintenanceWindowRepository,
             TelemetryClient telemetryClient,
             ObjectMapper objectMapper) {
@@ -94,9 +119,95 @@ public class MlDatasetService {
         this.trainingRunRepository = trainingRunRepository;
         this.modelVersionRepository = modelVersionRepository;
         this.canonicalMetricRowRepository = canonicalMetricRowRepository;
+        this.maintenanceOutcomeRepository = maintenanceOutcomeRepository;
         this.maintenanceWindowRepository = maintenanceWindowRepository;
         this.telemetryClient = telemetryClient;
         this.objectMapper = objectMapper;
+    }
+
+    @Transactional(readOnly = true)
+    public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
+            UUID accountId,
+            MlDatasetWorkbenchPreviewRequest request) {
+        validatePreviewRequest(request);
+        MlMetricSelectionMode metricSelectionMode = normalizedMetricSelectionMode(request.metricSelectionMode());
+        MlModelFamily modelFamily = normalizedModelFamily(request.modelFamily());
+        List<String> selectedMetrics = normalizedMetrics(request.selectedMetrics());
+        List<UUID> deviceIds = normalizedDeviceIds(request.deviceIds());
+        int minSamples = minSamplesPerMetric(request.minSamplesPerMetric());
+        long maxGapSeconds = maxSamplingGapSeconds(request.maxSamplingGapSeconds());
+
+        List<MlDatasetMetricCoverageDto> availableMetrics = availableMetrics(
+                deviceIds,
+                request.from(),
+                request.to(),
+                metricSelectionMode,
+                minSamples,
+                maxGapSeconds);
+
+        MlInternalDatasetRequest validationRequest = internalRequestFromPreview(request, selectedMetrics);
+        ValidationResult validation = validateTelemetry(validationRequest);
+        MlDatasetLabelReadinessDto labelReadiness = labelReadiness(
+                accountId,
+                modelFamily,
+                request.horizonDays(),
+                request.from(),
+                request.to(),
+                validation);
+        PreviewDecision decision = previewDecision(
+                validationRequest,
+                modelFamily,
+                request.horizonDays(),
+                metricSelectionMode,
+                availableMetrics,
+                validation,
+                labelReadiness);
+
+        String previewHash = previewHash(accountId, validationRequest, validation, labelReadiness);
+        List<MlDatasetCandidateWindowDto> candidates = candidateWindows(
+                accountId,
+                request,
+                selectedMetrics,
+                modelFamily,
+                metricSelectionMode,
+                availableMetrics,
+                minSamples,
+                maxGapSeconds,
+                validation,
+                labelReadiness,
+                decision,
+                candidateLimit(request.candidateLimit()));
+        String recommendedCandidateId = candidates.stream()
+                .filter(MlDatasetCandidateWindowDto::recommended)
+                .map(MlDatasetCandidateWindowDto::id)
+                .findFirst()
+                .orElse(null);
+
+        return new MlDatasetWorkbenchPreviewResponse(
+                previewId(previewHash),
+                previewHash,
+                Instant.now().plus(PREVIEW_TTL),
+                decision.status(),
+                recommendedCandidateId,
+                new MlDatasetWindowDto(request.from(), request.to(), MlCandidateWindowKind.USER_SELECTED),
+                availableMetrics,
+                candidates,
+                timeline(request.from(), request.to(), validation),
+                labelReadiness,
+                decision.qualityGates(),
+                decision.blockingReasons(),
+                decision.warningReasons(),
+                new MlDatasetPreviewCreateDefaultsDto(
+                        selectedMetrics,
+                        request.from(),
+                        request.to(),
+                        normalizedSplitStrategy(request.splitStrategy()),
+                        featureConfigVersion(request.featureConfigVersion()),
+                        minSamples,
+                        maxGapSeconds,
+                        modelFamily,
+                        request.horizonDays(),
+                        metricSelectionMode));
     }
 
     @Transactional
@@ -105,6 +216,8 @@ public class MlDatasetService {
             UUID userId,
             MlInternalDatasetRequest request) {
         validateRequest(request);
+        ValidationResult validation = validateTelemetry(request);
+        assertPreviewFresh(accountId, request, validation);
 
         Instant now = Instant.now();
         MlDataset dataset = new MlDataset();
@@ -118,7 +231,6 @@ public class MlDatasetService {
         dataset.setUpdatedAt(now);
         datasetRepository.save(dataset);
 
-        ValidationResult validation = validateTelemetry(request);
         MlDatasetVersion version = new MlDatasetVersion();
         version.setId(UUID.randomUUID());
         version.setDatasetId(dataset.getId());
@@ -162,7 +274,7 @@ public class MlDatasetService {
         report.setWarningCount(validation.warningCount());
         report.setRejectedReasonsJson(writeJson(validation.rejectedReasons()));
         report.setMappingStatsJson(writeJson(validation.mappingStats()));
-        report.setQualityProfileJson(writeJson(validation.qualityProfile()));
+        report.setQualityProfileJson(writeJson(qualityProfileWithPreview(accountId, request, validation)));
         report.setSummary(version.getStatus() == MlDatasetStatus.READY
                 ? "Telemetry selection is ready for training."
                 : "Telemetry selection failed validation.");
@@ -381,10 +493,13 @@ public class MlDatasetService {
         long maxGapSeconds = request.maxSamplingGapSeconds() == null
                 ? DEFAULT_MAX_SAMPLING_GAP_SECONDS
                 : request.maxSamplingGapSeconds();
+        MlMetricSelectionMode metricSelectionMode = normalizedMetricSelectionMode(request.metricSelectionMode());
         long acceptedRows = 0;
         long rejectedRows = 0;
         long warnings = 0;
         long maxSamplingGapObserved = 0;
+        long duplicateTimestamps = 0;
+        long inspectedPoints = 0;
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
         Map<String, Long> mappingStats = new LinkedHashMap<>();
@@ -392,7 +507,7 @@ public class MlDatasetService {
         Map<UUID, List<UUID>> maintenanceWindowIdsByDevice = new LinkedHashMap<>();
         List<ExtractedTelemetryRow> extractedRows = new ArrayList<>();
 
-        for (UUID deviceId : request.deviceIds()) {
+        for (UUID deviceId : normalizedDeviceIds(request.deviceIds())) {
             List<MaintenanceWindowReadModel> maintenanceWindows =
                     maintenanceWindowRepository.findActiveOverlapping(deviceId, request.from(), request.to());
             if (!maintenanceWindows.isEmpty()) {
@@ -410,6 +525,12 @@ public class MlDatasetService {
                     if (exception.getStatusCode().value() != HttpStatus.NOT_FOUND.value()) {
                         throw exception;
                     }
+                    if (metricSelectionMode == MlMetricSelectionMode.ALL_AVAILABLE) {
+                        warnings++;
+                        messages.add("Device " + deviceId + " metric " + metric
+                                + " is unavailable in all-available metric mode.");
+                        continue;
+                    }
                     rejectedRows += minSamples;
                     increment(rejectedReasons, "UNSUPPORTED_OR_UNAVAILABLE_METRIC");
                     messages.add("Device " + deviceId + " metric " + metric
@@ -418,7 +539,11 @@ public class MlDatasetService {
                 }
                 List<TelemetryChartResponse.Point> points = readings == null || readings.points() == null
                         ? List.of()
-                        : readings.points();
+                        : readings.points().stream()
+                                .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+                                .toList();
+                inspectedPoints += points.size();
+                duplicateTimestamps += duplicateTimestampCount(points);
                 long nonFiniteValues = points.stream().filter(point -> !Double.isFinite(point.value())).count();
                 if (nonFiniteValues > 0) {
                     rejectedRows += nonFiniteValues;
@@ -460,7 +585,9 @@ public class MlDatasetService {
                         .forEach(extractedRows::add);
             }
         }
-        if (acceptedRows == 0 && messages.isEmpty()) {
+        if (acceptedRows == 0 && rejectedReasons.isEmpty()) {
+            increment(rejectedReasons, "NO_MATCHING_TELEMETRY");
+            rejectedRows += minSamples;
             messages.add("No telemetry rows matched the requested dataset filters.");
         }
         Map<String, Object> qualityProfile = new LinkedHashMap<>();
@@ -471,11 +598,12 @@ public class MlDatasetService {
         qualityProfile.put("timeRange", Map.of("from", request.from().toString(), "to", request.to().toString()));
         qualityProfile.put("coverageByDeviceMetric", coverageByDeviceMetric);
         qualityProfile.put("maxSamplingGapSeconds", maxSamplingGapObserved);
-        qualityProfile.put("duplicateTimestampRate", 0.0);
+        qualityProfile.put("duplicateTimestampRate", inspectedPoints == 0 ? 0.0 : (double) duplicateTimestamps / inspectedPoints);
         qualityProfile.put("nonFiniteImpossibleValueCount", rejectedReasons.getOrDefault("NON_FINITE_VALUES", 0L));
         qualityProfile.put("unitNormalizationWarnings", 0L);
         qualityProfile.put("maintenanceOverlapCount", maintenanceWindowIdsByDevice.values().stream().mapToLong(List::size).sum());
         qualityProfile.put("labelCoverage", Map.of());
+        qualityProfile.put("metricSelectionMode", metricSelectionMode.name());
         return new ValidationResult(acceptedRows > 0 && rejectedReasons.isEmpty(),
                 acceptedRows,
                 rejectedRows,
@@ -493,6 +621,945 @@ public class MlDatasetService {
                         .toList());
     }
 
+    private void validatePreviewRequest(MlDatasetWorkbenchPreviewRequest request) {
+        if (!request.to().isAfter(request.from())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dataset preview time window must end after it starts");
+        }
+        if (normalizedDeviceIds(request.deviceIds()).size() != request.deviceIds().size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Device ids must be unique");
+        }
+    }
+
+    private MlInternalDatasetRequest internalRequestFromPreview(
+            MlDatasetWorkbenchPreviewRequest request,
+            List<String> selectedMetrics) {
+        return new MlInternalDatasetRequest(
+                "preview",
+                null,
+                normalizedDeviceIds(request.deviceIds()),
+                request.deviceType(),
+                request.deviceMetadata(),
+                selectedMetrics,
+                request.from(),
+                request.to(),
+                normalizedSplitStrategy(request.splitStrategy()),
+                request.splitConfigJson(),
+                featureConfigVersion(request.featureConfigVersion()),
+                minSamplesPerMetric(request.minSamplesPerMetric()),
+                maxSamplingGapSeconds(request.maxSamplingGapSeconds()),
+                null,
+                null,
+                normalizedModelFamily(request.modelFamily()),
+                request.horizonDays(),
+                normalizedMetricSelectionMode(request.metricSelectionMode()));
+    }
+
+    private List<MlDatasetMetricCoverageDto> availableMetrics(
+            List<UUID> deviceIds,
+            Instant from,
+            Instant to,
+            MlMetricSelectionMode metricSelectionMode,
+            int minSamples,
+            long maxGapSeconds) {
+        Map<UUID, Map<String, MetricMetadata>> metricsByDevice = metricMetadataByDevice(deviceIds);
+        Set<String> metricNames = metricNamesForMode(metricsByDevice.values(), metricSelectionMode);
+        return metricNames.stream()
+                .sorted()
+                .map(metricName -> metricCoverage(metricName, deviceIds, metricsByDevice, from, to, metricSelectionMode, minSamples, maxGapSeconds))
+                .toList();
+    }
+
+    private Map<UUID, Map<String, MetricMetadata>> metricMetadataByDevice(List<UUID> deviceIds) {
+        Map<UUID, Map<String, MetricMetadata>> value = new LinkedHashMap<>();
+        for (UUID deviceId : deviceIds) {
+            Map<String, MetricMetadata> metrics = new LinkedHashMap<>();
+            for (TelemetryMetricResponse metric : telemetryClient.metrics(deviceId)) {
+                if (metric.name() == null || metric.name().isBlank()) {
+                    continue;
+                }
+                NormalizedMetric normalized = normalizeMetric(metric.name());
+                metrics.put(metric.name(), new MetricMetadata(
+                        metric.name(),
+                        blankToDefault(metric.displayName(), metric.name()),
+                        normalized.canonicalMetricName(),
+                        metric.unit() == null || metric.unit().isBlank() ? normalized.canonicalUnit() : metric.unit()));
+            }
+            value.put(deviceId, metrics);
+        }
+        return value;
+    }
+
+    private Set<String> metricNamesForMode(
+            Collection<Map<String, MetricMetadata>> metricsByDevice,
+            MlMetricSelectionMode metricSelectionMode) {
+        LinkedHashSet<String> metricNames = new LinkedHashSet<>();
+        boolean first = true;
+        for (Map<String, MetricMetadata> deviceMetrics : metricsByDevice) {
+            if (metricSelectionMode == MlMetricSelectionMode.COMMON) {
+                if (first) {
+                    metricNames.addAll(deviceMetrics.keySet());
+                    first = false;
+                } else {
+                    metricNames.retainAll(deviceMetrics.keySet());
+                }
+            } else {
+                metricNames.addAll(deviceMetrics.keySet());
+            }
+        }
+        return metricNames;
+    }
+
+    private MlDatasetMetricCoverageDto metricCoverage(
+            String metricName,
+            List<UUID> deviceIds,
+            Map<UUID, Map<String, MetricMetadata>> metricsByDevice,
+            Instant from,
+            Instant to,
+            MlMetricSelectionMode metricSelectionMode,
+            int minSamples,
+            long maxGapSeconds) {
+        MetricMetadata metadata = metricsByDevice.values().stream()
+                .map(metrics -> metrics.get(metricName))
+                .filter(item -> item != null)
+                .findFirst()
+                .orElseGet(() -> {
+                    NormalizedMetric normalized = normalizeMetric(metricName);
+                    return new MetricMetadata(metricName, metricName, normalized.canonicalMetricName(), normalized.canonicalUnit());
+                });
+        int devicesWithMetric = 0;
+        long sampleCount = 0;
+        long maxGapObserved = 0;
+        long duplicateTimestamps = 0;
+        long nonFinite = 0;
+        List<String> blockingReasons = new ArrayList<>();
+        List<String> warningReasons = new ArrayList<>();
+        for (UUID deviceId : deviceIds) {
+            if (!metricsByDevice.getOrDefault(deviceId, Map.of()).containsKey(metricName)) {
+                continue;
+            }
+            devicesWithMetric++;
+            TelemetryChartResponse readings = telemetryClient.readings(deviceId, metricName, from, to);
+            List<TelemetryChartResponse.Point> points = readings == null || readings.points() == null
+                    ? List.of()
+                    : readings.points().stream()
+                            .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+                            .toList();
+            sampleCount += points.size();
+            maxGapObserved = Math.max(maxGapObserved, maxGapSeconds(points));
+            duplicateTimestamps += duplicateTimestampCount(points);
+            nonFinite += points.stream().filter(point -> !Double.isFinite(point.value())).count();
+        }
+        double coverageRatio = deviceIds.isEmpty() ? 0.0 : (double) devicesWithMetric / deviceIds.size();
+        double duplicateRate = sampleCount == 0 ? 0.0 : (double) duplicateTimestamps / sampleCount;
+        if (devicesWithMetric == 0) {
+            blockingReasons.add("Metric is not available on selected devices.");
+        }
+        if (metricSelectionMode == MlMetricSelectionMode.COMMON && devicesWithMetric < deviceIds.size()) {
+            blockingReasons.add("Metric is not present on every selected device.");
+        } else if (metricSelectionMode == MlMetricSelectionMode.ALL_AVAILABLE && devicesWithMetric < deviceIds.size()) {
+            warningReasons.add("Metric is available on only " + devicesWithMetric + " of " + deviceIds.size() + " selected devices.");
+        }
+        if (sampleCount == 0) {
+            warningReasons.add("Metric has no samples in the selected window.");
+        }
+        if (sampleCount > 0 && sampleCount < (long) minSamples * Math.max(1, devicesWithMetric)) {
+            blockingReasons.add("Metric has fewer than " + minSamples + " samples per covered device.");
+        }
+        if (maxGapObserved > maxGapSeconds) {
+            warningReasons.add("Metric max sampling gap exceeds " + maxGapSeconds + " seconds.");
+        }
+        if (nonFinite > 0) {
+            blockingReasons.add("Metric contains non-finite values.");
+        }
+        MlWorkbenchStatus status = blockingReasons.isEmpty()
+                ? warningReasons.isEmpty() ? MlWorkbenchStatus.READY : MlWorkbenchStatus.READY_WITH_WARNINGS
+                : sampleCount == 0 ? MlWorkbenchStatus.NO_DATA : MlWorkbenchStatus.BLOCKED;
+        return new MlDatasetMetricCoverageDto(
+                metricName,
+                metadata.displayName(),
+                metadata.canonicalMetricName(),
+                metadata.unit(),
+                devicesWithMetric,
+                deviceIds.size(),
+                coverageRatio,
+                sampleCount,
+                maxGapObserved,
+                duplicateRate,
+                nonFinite,
+                0,
+                status,
+                List.copyOf(blockingReasons),
+                List.copyOf(warningReasons));
+    }
+
+    private MlDatasetLabelReadinessDto labelReadiness(
+            UUID accountId,
+            MlModelFamily modelFamily,
+            Integer horizonDays,
+            Instant from,
+            Instant to,
+            ValidationResult validation) {
+        if (modelFamily != MlModelFamily.FAILURE_PREDICTION) {
+            return null;
+        }
+        if (horizonDays == null || horizonDays < 1) {
+            return new MlDatasetLabelReadinessDto(
+                    horizonDays,
+                    0,
+                    0,
+                    0,
+                    validation.extractedRows().size(),
+                    0,
+                    0.0,
+                    MlWorkbenchStatus.BLOCKED);
+        }
+        List<ExtractedTelemetryRow> rows = validation.extractedRows();
+        if (rows.isEmpty()) {
+            return new MlDatasetLabelReadinessDto(
+                    horizonDays,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    MlWorkbenchStatus.BLOCKED);
+        }
+        Map<UUID, Instant> observedThroughByDevice = new LinkedHashMap<>();
+        for (ExtractedTelemetryRow row : rows) {
+            observedThroughByDevice.merge(
+                    row.deviceId(),
+                    row.timestamp(),
+                    (left, right) -> left.isAfter(right) ? left : right);
+        }
+        Instant horizonEnd = to.plus(Duration.ofDays(horizonDays));
+        Map<UUID, List<MaintenanceOutcomeReadModel>> outcomesByDevice = new LinkedHashMap<>();
+        for (MaintenanceOutcomeReadModel outcome : maintenanceOutcomeRepository.findByAccountAndObservedRange(accountId, from, horizonEnd)) {
+            outcomesByDevice.computeIfAbsent(outcome.getDeviceId(), ignored -> new ArrayList<>()).add(outcome);
+        }
+        Map<UUID, List<MaintenanceWindowReadModel>> windowsByDevice = new LinkedHashMap<>();
+        for (ExtractedTelemetryRow row : rows) {
+            windowsByDevice.computeIfAbsent(row.deviceId(), deviceId ->
+                    maintenanceWindowRepository.findActiveOverlapping(deviceId, from, to));
+        }
+
+        long positive = 0;
+        long normal = 0;
+        long unresolved = 0;
+        long unobservable = 0;
+        long maintenanceExcluded = 0;
+        for (ExtractedTelemetryRow row : rows) {
+            if (isMlExcluded(row, windowsByDevice.getOrDefault(row.deviceId(), List.of()))) {
+                maintenanceExcluded++;
+                continue;
+            }
+            Instant rowHorizonEnd = row.timestamp().plus(Duration.ofDays(horizonDays));
+            List<MaintenanceOutcomeReadModel> outcomes = outcomesByDevice.getOrDefault(row.deviceId(), List.of());
+            MaintenanceOutcomeReadModel positiveOutcome = outcomes.stream()
+                    .filter(outcome -> outcome.getObservedAt().isAfter(row.timestamp()) && !outcome.getObservedAt().isAfter(rowHorizonEnd))
+                    .filter(outcome -> isPositive(labelType(outcome)))
+                    .findFirst()
+                    .orElse(null);
+            if (positiveOutcome != null) {
+                positive++;
+                continue;
+            }
+            boolean unresolvedOutcome = outcomes.stream()
+                    .filter(outcome -> outcome.getObservedAt().isAfter(row.timestamp()) && !outcome.getObservedAt().isAfter(rowHorizonEnd))
+                    .map(this::labelType)
+                    .anyMatch(label -> label == MlLabelType.UNRESOLVED_ANOMALY || label == MlLabelType.SENSOR_FAULT || label == MlLabelType.UNKNOWN);
+            if (unresolvedOutcome) {
+                unresolved++;
+                continue;
+            }
+            Instant observedThrough = observedThroughByDevice.get(row.deviceId());
+            if (observedThrough == null || rowHorizonEnd.isAfter(observedThrough)) {
+                unobservable++;
+                continue;
+            }
+            normal++;
+        }
+        long labeled = positive + normal + unresolved + maintenanceExcluded;
+        double coverageRatio = rows.isEmpty() ? 0.0 : (double) labeled / rows.size();
+        MlWorkbenchStatus status = positive == 0
+                ? MlWorkbenchStatus.BLOCKED
+                : coverageRatio < 0.8 || normal == 0
+                        ? MlWorkbenchStatus.READY_WITH_WARNINGS
+                        : MlWorkbenchStatus.READY;
+        return new MlDatasetLabelReadinessDto(
+                horizonDays,
+                positive,
+                normal,
+                unresolved,
+                unobservable,
+                maintenanceExcluded,
+                coverageRatio,
+                status);
+    }
+
+    private PreviewDecision previewDecision(
+            MlInternalDatasetRequest request,
+            MlModelFamily modelFamily,
+            Integer horizonDays,
+            MlMetricSelectionMode metricSelectionMode,
+            List<MlDatasetMetricCoverageDto> availableMetrics,
+            ValidationResult validation,
+            MlDatasetLabelReadinessDto labelReadiness) {
+        List<String> blockingReasons = new ArrayList<>();
+        List<String> warningReasons = new ArrayList<>();
+        List<MlDatasetQualityGateDto> qualityGates = new ArrayList<>();
+        Map<String, MlDatasetMetricCoverageDto> coverageByMetric = new LinkedHashMap<>();
+        for (MlDatasetMetricCoverageDto metric : availableMetrics) {
+            coverageByMetric.put(metric.metricName(), metric);
+        }
+
+        if (request.metrics().isEmpty()) {
+            blockingReasons.add("Select at least one telemetry metric.");
+        }
+        if (availableMetrics.isEmpty()) {
+            blockingReasons.add("Selected devices expose no telemetry metrics.");
+        }
+        long selectedMetricsWithCoverage = request.metrics().stream()
+                .filter(metric -> coverageByMetric.containsKey(metric))
+                .count();
+        for (String metric : request.metrics()) {
+            MlDatasetMetricCoverageDto coverage = coverageByMetric.get(metric);
+            if (coverage == null) {
+                blockingReasons.add("Selected metric " + metric + " is not available for the selected scope.");
+                continue;
+            }
+            if (metricSelectionMode == MlMetricSelectionMode.COMMON && coverage.devicesWithMetric() < coverage.selectedDeviceCount()) {
+                blockingReasons.add("Selected metric " + metric + " is not common to every selected device.");
+            }
+            if (metricSelectionMode == MlMetricSelectionMode.ALL_AVAILABLE && coverage.devicesWithMetric() < coverage.selectedDeviceCount()) {
+                warningReasons.add("Selected metric " + metric + " has partial device coverage.");
+            }
+            blockingReasons.addAll(coverage.blockingReasons());
+            warningReasons.addAll(coverage.warningReasons());
+        }
+        if (!validation.ready()) {
+            blockingReasons.addAll(validation.messages());
+        } else if (validation.warningCount() > 0) {
+            warningReasons.addAll(validation.messages());
+        }
+
+        qualityGates.add(new MlDatasetQualityGateDto(
+                "selectedMetrics",
+                "Selected metrics",
+                request.metrics().isEmpty() ? MlWorkbenchGateStatus.BLOCK : MlWorkbenchGateStatus.PASS,
+                request.metrics().size(),
+                1,
+                true,
+                request.metrics().isEmpty() ? "Select at least one telemetry metric." : "Metrics are selected."));
+        qualityGates.add(new MlDatasetQualityGateDto(
+                "metricCoverage",
+                "Metric coverage",
+                selectedMetricsWithCoverage == request.metrics().size()
+                        ? metricSelectionMode == MlMetricSelectionMode.ALL_AVAILABLE
+                                && request.metrics().stream()
+                                        .map(coverageByMetric::get)
+                                        .filter(metric -> metric != null)
+                                        .anyMatch(metric -> metric.devicesWithMetric() < metric.selectedDeviceCount())
+                                        ? MlWorkbenchGateStatus.WARN
+                                        : MlWorkbenchGateStatus.PASS
+                        : MlWorkbenchGateStatus.BLOCK,
+                selectedMetricsWithCoverage,
+                request.metrics().size(),
+                true,
+                selectedMetricsWithCoverage == request.metrics().size()
+                        ? "Selected metrics have telemetry coverage."
+                        : "One or more selected metrics are unavailable."));
+        qualityGates.add(new MlDatasetQualityGateDto(
+                "minSamplesPerMetric",
+                "Minimum samples per metric",
+                validation.ready() ? MlWorkbenchGateStatus.PASS : MlWorkbenchGateStatus.BLOCK,
+                validation.acceptedRows(),
+                (long) minSamplesPerMetric(request.minSamplesPerMetric()) * Math.max(1, request.metrics().size()),
+                true,
+                validation.ready() ? "Selected metrics have enough samples." : "Selected metrics do not meet minimum sample gates."));
+        long observedGap = longQualityValue(validation.qualityProfile(), "maxSamplingGapSeconds");
+        qualityGates.add(new MlDatasetQualityGateDto(
+                "maxSamplingGapSeconds",
+                "Maximum sampling gap",
+                observedGap > maxSamplingGapSeconds(request.maxSamplingGapSeconds()) ? MlWorkbenchGateStatus.WARN : MlWorkbenchGateStatus.PASS,
+                observedGap,
+                maxSamplingGapSeconds(request.maxSamplingGapSeconds()),
+                false,
+                observedGap > maxSamplingGapSeconds(request.maxSamplingGapSeconds())
+                        ? "Selected telemetry has sampling gaps above the warning threshold."
+                        : "Sampling gaps are within the configured threshold."));
+        if (modelFamily == MlModelFamily.FAILURE_PREDICTION) {
+            MlWorkbenchGateStatus labelGateStatus;
+            String labelMessage;
+            if (horizonDays == null || horizonDays < 1) {
+                labelGateStatus = MlWorkbenchGateStatus.BLOCK;
+                labelMessage = "Failure prediction horizonDays must be positive.";
+                blockingReasons.add(labelMessage);
+            } else if (labelReadiness == null || labelReadiness.positiveLabels() == 0) {
+                labelGateStatus = MlWorkbenchGateStatus.BLOCK;
+                labelMessage = "Failure prediction preview has no confirmed failure or corrective maintenance labels.";
+                blockingReasons.add(labelMessage);
+            } else if (labelReadiness.status() == MlWorkbenchStatus.READY_WITH_WARNINGS) {
+                labelGateStatus = MlWorkbenchGateStatus.WARN;
+                labelMessage = "Failure label readiness has weak coverage or class balance.";
+                warningReasons.add(labelMessage);
+            } else {
+                labelGateStatus = MlWorkbenchGateStatus.PASS;
+                labelMessage = "Failure label readiness meets preview gates.";
+            }
+            qualityGates.add(new MlDatasetQualityGateDto(
+                    "failureLabelReadiness",
+                    "Failure label readiness",
+                    labelGateStatus,
+                    labelReadiness == null ? 0 : labelReadiness.positiveLabels(),
+                    1,
+                    true,
+                    labelMessage));
+        }
+
+        List<String> distinctBlocks = distinct(blockingReasons);
+        List<String> distinctWarnings = distinct(warningReasons);
+        MlWorkbenchStatus status = distinctBlocks.isEmpty()
+                ? distinctWarnings.isEmpty() ? MlWorkbenchStatus.READY : MlWorkbenchStatus.READY_WITH_WARNINGS
+                : MlWorkbenchStatus.BLOCKED;
+        return new PreviewDecision(status, distinctBlocks, distinctWarnings, List.copyOf(qualityGates));
+    }
+
+    private List<MlDatasetCandidateWindowDto> candidateWindows(
+            UUID accountId,
+            MlDatasetWorkbenchPreviewRequest request,
+            List<String> selectedMetrics,
+            MlModelFamily modelFamily,
+            MlMetricSelectionMode metricSelectionMode,
+            List<MlDatasetMetricCoverageDto> availableMetrics,
+            int minSamples,
+            long maxGapSeconds,
+            ValidationResult selectedValidation,
+            MlDatasetLabelReadinessDto selectedLabelReadiness,
+            PreviewDecision selectedDecision,
+            int candidateLimit) {
+        List<CandidateDraft> drafts = new ArrayList<>();
+        drafts.add(candidateDraft(
+                accountId,
+                request,
+                selectedMetrics,
+                modelFamily,
+                metricSelectionMode,
+                availableMetrics,
+                minSamples,
+                maxGapSeconds,
+                MlCandidateWindowKind.USER_SELECTED,
+                request.from(),
+                request.to(),
+                selectedValidation,
+                selectedLabelReadiness,
+                selectedDecision,
+                "User selected window."));
+        if (!selectedMetrics.isEmpty() && drafts.size() < candidateLimit) {
+            drafts.add(candidateDraft(
+                    accountId,
+                    request,
+                    selectedMetrics,
+                    modelFamily,
+                    metricSelectionMode,
+                    availableMetrics,
+                    minSamples,
+                    maxGapSeconds,
+                    MlCandidateWindowKind.BEST_COVERAGE,
+                    request.from(),
+                    request.to(),
+                    null,
+                    null,
+                    null,
+                    "Highest coverage in the searched range."));
+            Instant recentFrom = recentWindowStart(request.from(), request.to());
+            if (recentFrom.isBefore(request.to()) && drafts.size() < candidateLimit) {
+                drafts.add(candidateDraft(
+                        accountId,
+                        request,
+                        selectedMetrics,
+                        modelFamily,
+                        metricSelectionMode,
+                        availableMetrics,
+                        minSamples,
+                        maxGapSeconds,
+                        MlCandidateWindowKind.RECENT_STABLE,
+                        recentFrom,
+                        request.to(),
+                        null,
+                        null,
+                        null,
+                        "Most recent stable telemetry window."));
+            }
+            if (modelFamily == MlModelFamily.FAILURE_PREDICTION && drafts.size() < candidateLimit) {
+                TimeWindow failureWindow = failureRichWindow(accountId, request, selectedMetrics);
+                drafts.add(candidateDraft(
+                        accountId,
+                        request,
+                        selectedMetrics,
+                        modelFamily,
+                        metricSelectionMode,
+                        availableMetrics,
+                        minSamples,
+                        maxGapSeconds,
+                        MlCandidateWindowKind.FAILURE_RICH,
+                        failureWindow.from(),
+                        failureWindow.to(),
+                        null,
+                        null,
+                        null,
+                        failureWindow.explanation()));
+            }
+        }
+        double bestScore = drafts.stream()
+                .filter(draft -> draft.status() != MlWorkbenchStatus.BLOCKED)
+                .mapToDouble(CandidateDraft::score)
+                .max()
+                .orElse(drafts.stream().mapToDouble(CandidateDraft::score).max().orElse(0.0));
+        return drafts.stream()
+                .limit(candidateLimit)
+                .map(draft -> new MlDatasetCandidateWindowDto(
+                        candidateId(draft.kind()),
+                        draft.kind(),
+                        draft.from(),
+                        draft.to(),
+                        draft.score(),
+                        draft.status(),
+                        Double.compare(draft.score(), bestScore) == 0 && draft.status() != MlWorkbenchStatus.BLOCKED,
+                        draft.sampleCount(),
+                        request.deviceIds().size(),
+                        selectedMetrics.size(),
+                        draft.coverageRatio(),
+                        draft.maxSamplingGapSeconds(),
+                        draft.positiveLabels(),
+                        draft.normalLabels(),
+                        draft.unobservableLabels(),
+                        draft.maintenanceExcludedLabels(),
+                        draft.blockingReasons(),
+                        draft.warningReasons(),
+                        draft.explanation()))
+                .toList();
+    }
+
+    private CandidateDraft candidateDraft(
+            UUID accountId,
+            MlDatasetWorkbenchPreviewRequest request,
+            List<String> selectedMetrics,
+            MlModelFamily modelFamily,
+            MlMetricSelectionMode metricSelectionMode,
+            List<MlDatasetMetricCoverageDto> availableMetrics,
+            int minSamples,
+            long maxGapSeconds,
+            MlCandidateWindowKind kind,
+            Instant from,
+            Instant to,
+            ValidationResult existingValidation,
+            MlDatasetLabelReadinessDto existingLabelReadiness,
+            PreviewDecision existingDecision,
+            String explanation) {
+        MlInternalDatasetRequest candidateRequest = new MlInternalDatasetRequest(
+                "preview",
+                null,
+                normalizedDeviceIds(request.deviceIds()),
+                request.deviceType(),
+                request.deviceMetadata(),
+                selectedMetrics,
+                from,
+                to,
+                normalizedSplitStrategy(request.splitStrategy()),
+                request.splitConfigJson(),
+                featureConfigVersion(request.featureConfigVersion()),
+                minSamples,
+                maxGapSeconds,
+                null,
+                null,
+                modelFamily,
+                request.horizonDays(),
+                metricSelectionMode);
+        ValidationResult validation = existingValidation == null ? validateTelemetry(candidateRequest) : existingValidation;
+        MlDatasetLabelReadinessDto labelReadiness = existingLabelReadiness == null
+                ? labelReadiness(accountId, modelFamily, request.horizonDays(), from, to, validation)
+                : existingLabelReadiness;
+        PreviewDecision decision = existingDecision == null
+                ? previewDecision(candidateRequest, modelFamily, request.horizonDays(), metricSelectionMode, availableMetrics, validation, labelReadiness)
+                : existingDecision;
+        double coverageRatio = coverageRatio(validation, request.deviceIds().size(), selectedMetrics.size());
+        return new CandidateDraft(
+                kind,
+                from,
+                to,
+                candidateScore(validation, labelReadiness, request.deviceIds().size(), selectedMetrics.size(), minSamples, maxGapSeconds),
+                decision.status(),
+                validation.acceptedRows(),
+                coverageRatio,
+                longQualityValue(validation.qualityProfile(), "maxSamplingGapSeconds"),
+                labelReadiness == null ? 0 : labelReadiness.positiveLabels(),
+                labelReadiness == null ? 0 : labelReadiness.normalLabels(),
+                labelReadiness == null ? 0 : labelReadiness.unobservableRows(),
+                labelReadiness == null ? 0 : labelReadiness.maintenanceExcludedLabels(),
+                decision.blockingReasons(),
+                decision.warningReasons(),
+                explanation);
+    }
+
+    private TimeWindow failureRichWindow(UUID accountId, MlDatasetWorkbenchPreviewRequest request, List<String> selectedMetrics) {
+        int horizonDays = request.horizonDays() == null || request.horizonDays() < 1 ? 1 : request.horizonDays();
+        Set<UUID> selectedDevices = new LinkedHashSet<>(request.deviceIds());
+        MaintenanceOutcomeReadModel positive = maintenanceOutcomeRepository
+                .findByAccountAndObservedRange(accountId, request.from(), request.to().plus(Duration.ofDays(horizonDays)))
+                .stream()
+                .filter(outcome -> selectedDevices.contains(outcome.getDeviceId()))
+                .filter(outcome -> isPositive(labelType(outcome)))
+                .findFirst()
+                .orElse(null);
+        if (positive == null || selectedMetrics.isEmpty()) {
+            return new TimeWindow(request.from(), request.to(), "No failure-rich outcome was found in the searched range.");
+        }
+        Instant from = maxInstant(request.from(), positive.getObservedAt().minus(Duration.ofDays(horizonDays)));
+        Instant to = minInstant(request.to(), positive.getObservedAt().plusSeconds(1));
+        if (!to.isAfter(from)) {
+            return new TimeWindow(request.from(), request.to(), "Failure-rich outcome exists, but it does not produce a valid candidate range.");
+        }
+        return new TimeWindow(from, to, "Window includes confirmed failure or corrective maintenance evidence.");
+    }
+
+    private Instant recentWindowStart(Instant from, Instant to) {
+        Duration range = Duration.between(from, to);
+        Duration recent = range.compareTo(Duration.ofDays(7)) > 0 ? Duration.ofDays(7) : range.dividedBy(2);
+        return maxInstant(from, to.minus(recent));
+    }
+
+    private List<MlDatasetTimelineBucketDto> timeline(Instant from, Instant to, ValidationResult validation) {
+        if (!to.isAfter(from)) {
+            return List.of();
+        }
+        int bucketCount = 12;
+        long totalMillis = Math.max(1, Duration.between(from, to).toMillis());
+        long bucketMillis = Math.max(1, totalMillis / bucketCount);
+        List<MlDatasetTimelineBucketDto> buckets = new ArrayList<>();
+        for (int index = 0; index < bucketCount; index++) {
+            Instant bucketStart = from.plusMillis(bucketMillis * index);
+            Instant bucketEnd = index == bucketCount - 1 ? to : from.plusMillis(bucketMillis * (index + 1));
+            long samples = validation.extractedRows().stream()
+                    .filter(row -> !row.timestamp().isBefore(bucketStart) && row.timestamp().isBefore(bucketEnd))
+                    .count();
+            buckets.add(new MlDatasetTimelineBucketDto(
+                    bucketStart,
+                    bucketEnd,
+                    samples,
+                    samples == 0 ? 0.0 : 1.0,
+                    samples == 0 ? MlWorkbenchStatus.NO_DATA : MlWorkbenchStatus.READY,
+                    List.of()));
+        }
+        return buckets;
+    }
+
+    private void assertPreviewFresh(UUID accountId, MlInternalDatasetRequest request, ValidationResult validation) {
+        if (isBlank(request.previewHash()) && isBlank(request.previewId())) {
+            return;
+        }
+        if (isBlank(request.previewHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "previewHash is required when previewId is supplied");
+        }
+        MlDatasetLabelReadinessDto labelReadiness = labelReadiness(
+                accountId,
+                normalizedModelFamily(request.modelFamily()),
+                request.horizonDays(),
+                request.from(),
+                request.to(),
+                validation);
+        String currentHash = previewHash(accountId, request, validation, labelReadiness);
+        if (!request.previewHash().equals(currentHash)) {
+            Map<String, Object> dependency = new LinkedHashMap<>();
+            dependency.put("type", "preview");
+            dependency.put("id", isBlank(request.previewId()) ? previewId(request.previewHash()) : request.previewId());
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("code", "PREVIEW_STALE");
+            details.put("submittedPreviewHash", request.previewHash());
+            details.put("currentPreviewHash", currentHash);
+            details.put("validationMessages", validation.messages());
+            dependency.put("details", details);
+            throw new MlLifecycleConflictException(
+                    "PREVIEW_STALE",
+                    "Dataset preview is stale; request a fresh preview before creating.",
+                    dependency);
+        }
+    }
+
+    private Map<String, Object> qualityProfileWithPreview(
+            UUID accountId,
+            MlInternalDatasetRequest request,
+            ValidationResult validation) {
+        Map<String, Object> qualityProfile = new LinkedHashMap<>(validation.qualityProfile());
+        MlDatasetLabelReadinessDto labelReadiness = labelReadiness(
+                accountId,
+                normalizedModelFamily(request.modelFamily()),
+                request.horizonDays(),
+                request.from(),
+                request.to(),
+                validation);
+        if (labelReadiness != null) {
+            qualityProfile.put("labelCoverage", labelReadinessMap(labelReadiness));
+        }
+        if (!isBlank(request.previewHash()) || !isBlank(request.previewId())) {
+            Map<String, Object> preview = new LinkedHashMap<>();
+            preview.put("previewId", isBlank(request.previewId()) ? previewId(request.previewHash()) : request.previewId());
+            preview.put("previewHash", request.previewHash());
+            preview.put("currentPreviewHash", previewHash(accountId, request, validation, labelReadiness));
+            preview.put("modelFamily", normalizedModelFamily(request.modelFamily()).name());
+            preview.put("horizonDays", request.horizonDays());
+            preview.put("metricSelectionMode", normalizedMetricSelectionMode(request.metricSelectionMode()).name());
+            preview.put("expiresMatchedAtCreate", true);
+            if (labelReadiness != null) {
+                preview.put("labelReadiness", labelReadinessMap(labelReadiness));
+            }
+            qualityProfile.put("selectedPreview", preview);
+        }
+        return qualityProfile;
+    }
+
+    private String previewHash(
+            UUID accountId,
+            MlInternalDatasetRequest request,
+            ValidationResult validation,
+            MlDatasetLabelReadinessDto labelReadiness) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("algorithmVersion", PREVIEW_ALGORITHM_VERSION);
+        payload.put("accountId", accountId.toString());
+        payload.put("deviceIds", normalizedDeviceIds(request.deviceIds()).stream().map(UUID::toString).sorted().toList());
+        payload.put("metrics", normalizedMetrics(request.metrics()).stream().sorted().toList());
+        payload.put("modelFamily", normalizedModelFamily(request.modelFamily()).name());
+        payload.put("horizonDays", request.horizonDays());
+        payload.put("metricSelectionMode", normalizedMetricSelectionMode(request.metricSelectionMode()).name());
+        payload.put("from", request.from().toString());
+        payload.put("to", request.to().toString());
+        payload.put("splitStrategy", normalizedSplitStrategy(request.splitStrategy()).name());
+        payload.put("splitConfigJson", blankToDefault(request.splitConfigJson(), "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}"));
+        payload.put("featureConfigVersion", featureConfigVersion(request.featureConfigVersion()));
+        payload.put("minSamplesPerMetric", minSamplesPerMetric(request.minSamplesPerMetric()));
+        payload.put("maxSamplingGapSeconds", maxSamplingGapSeconds(request.maxSamplingGapSeconds()));
+        Map<String, Object> validationPayload = new LinkedHashMap<>();
+        validationPayload.put("acceptedRows", validation.acceptedRows());
+        validationPayload.put("rejectedRows", validation.rejectedRows());
+        validationPayload.put("warningCount", validation.warningCount());
+        validationPayload.put("rejectedReasons", sortedLongMap(validation.rejectedReasons()));
+        validationPayload.put("mappingStats", sortedLongMap(validation.mappingStats()));
+        validationPayload.put("coverageByDeviceMetric", sortedLongMap(longMapFromQualityProfile(validation.qualityProfile(), "coverageByDeviceMetric")));
+        validationPayload.put("maxSamplingGapSeconds", longQualityValue(validation.qualityProfile(), "maxSamplingGapSeconds"));
+        validationPayload.put("duplicateTimestampRate", validation.qualityProfile().getOrDefault("duplicateTimestampRate", 0.0));
+        validationPayload.put("nonFiniteImpossibleValueCount", validation.qualityProfile().getOrDefault("nonFiniteImpossibleValueCount", 0L));
+        validationPayload.put("maintenanceOverlapCount", validation.qualityProfile().getOrDefault("maintenanceOverlapCount", 0L));
+        payload.put("validation", validationPayload);
+        payload.put("maintenanceWindowIdsByDevice", sortedUuidListMap(validation.maintenanceWindowIdsByDevice()));
+        payload.put("labelReadiness", labelReadiness == null ? Map.of() : labelReadinessMap(labelReadiness));
+        return sha256(writeJson(payload));
+    }
+
+    private double candidateScore(
+            ValidationResult validation,
+            MlDatasetLabelReadinessDto labelReadiness,
+            int deviceCount,
+            int metricCount,
+            int minSamples,
+            long maxGapSeconds) {
+        double coverageScore = coverageRatio(validation, deviceCount, metricCount);
+        long expectedRows = (long) Math.max(1, deviceCount) * Math.max(1, metricCount) * minSamples;
+        double densityScore = Math.min(1.0, (double) validation.acceptedRows() / expectedRows);
+        long gap = longQualityValue(validation.qualityProfile(), "maxSamplingGapSeconds");
+        double gapScore = gap <= maxGapSeconds || gap == 0 ? 1.0 : Math.max(0.0, (double) maxGapSeconds / gap);
+        double qualityScore = validation.rejectedRows() == 0 ? 1.0 : 0.25;
+        double labelScore = labelReadiness == null
+                ? 1.0
+                : labelReadiness.positiveLabels() > 0
+                        ? Math.min(1.0, labelReadiness.coverageRatio())
+                        : 0.0;
+        return Math.round((0.30 * coverageScore
+                + 0.20 * densityScore
+                + 0.15 * gapScore
+                + 0.15 * qualityScore
+                + 0.20 * labelScore) * 100.0) / 100.0;
+    }
+
+    private double coverageRatio(ValidationResult validation, int deviceCount, int metricCount) {
+        if (deviceCount == 0 || metricCount == 0) {
+            return 0.0;
+        }
+        Map<String, Long> coverageByDeviceMetric = longMapFromQualityProfile(validation.qualityProfile(), "coverageByDeviceMetric");
+        long coveredPairs = coverageByDeviceMetric.values().stream().filter(value -> value > 0).count();
+        return Math.min(1.0, (double) coveredPairs / ((long) deviceCount * metricCount));
+    }
+
+    private MlMetricSelectionMode normalizedMetricSelectionMode(MlMetricSelectionMode value) {
+        return value == null ? MlMetricSelectionMode.COMMON : value;
+    }
+
+    private MlModelFamily normalizedModelFamily(MlModelFamily value) {
+        return value == null ? MlModelFamily.ANOMALY_DETECTION : value;
+    }
+
+    private MlTrainingSplitStrategy normalizedSplitStrategy(MlTrainingSplitStrategy value) {
+        return value == null ? MlTrainingSplitStrategy.TIME_BASED : value;
+    }
+
+    private List<String> normalizedMetrics(List<String> metrics) {
+        if (metrics == null) {
+            return List.of();
+        }
+        return metrics.stream()
+                .filter(metric -> metric != null && !metric.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private List<UUID> normalizedDeviceIds(List<UUID> deviceIds) {
+        if (deviceIds == null) {
+            return List.of();
+        }
+        return deviceIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+    }
+
+    private int minSamplesPerMetric(Integer value) {
+        return value == null ? DEFAULT_MIN_SAMPLES_PER_METRIC : value;
+    }
+
+    private long maxSamplingGapSeconds(Long value) {
+        return value == null ? DEFAULT_MAX_SAMPLING_GAP_SECONDS : value;
+    }
+
+    private String featureConfigVersion(String value) {
+        return blankToDefault(value, "feature-config-v1");
+    }
+
+    private int candidateLimit(Integer value) {
+        if (value == null) {
+            return 4;
+        }
+        return Math.max(1, Math.min(8, value));
+    }
+
+    private String previewId(String previewHash) {
+        if (previewHash == null || previewHash.length() <= "sha256:".length()) {
+            return "prev_unknown";
+        }
+        return "prev_" + previewHash.substring("sha256:".length(), Math.min(previewHash.length(), "sha256:".length() + 16));
+    }
+
+    private String candidateId(MlCandidateWindowKind kind) {
+        return "candidate-" + kind.name().toLowerCase(Locale.ROOT).replace('_', '-');
+    }
+
+    private List<String> distinct(List<String> values) {
+        return values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private long duplicateTimestampCount(List<TelemetryChartResponse.Point> points) {
+        Set<Instant> seen = new LinkedHashSet<>();
+        long duplicates = 0;
+        for (TelemetryChartResponse.Point point : points) {
+            if (!seen.add(point.timestamp())) {
+                duplicates++;
+            }
+        }
+        return duplicates;
+    }
+
+    private boolean isMlExcluded(ExtractedTelemetryRow row, List<MaintenanceWindowReadModel> windows) {
+        return windows.stream()
+                .filter(MaintenanceWindowReadModel::isExcludeFromMl)
+                .anyMatch(window -> !row.timestamp().isBefore(window.getStartAt()) && row.timestamp().isBefore(window.getEndAt()));
+    }
+
+    private MlLabelType labelType(MaintenanceOutcomeReadModel outcome) {
+        return switch (outcome.getOutcomeType()) {
+            case "CONFIRMED_FAILURE" -> MlLabelType.CONFIRMED_FAILURE;
+            case "CORRECTIVE_MAINTENANCE" -> MlLabelType.CORRECTIVE_MAINTENANCE;
+            case "PREVENTIVE_MAINTENANCE" -> MlLabelType.PREVENTIVE_MAINTENANCE;
+            case "INSPECTION_NORMAL" -> MlLabelType.INSPECTION_NORMAL;
+            case "FALSE_POSITIVE" -> MlLabelType.FALSE_POSITIVE;
+            case "SENSOR_FAULT" -> MlLabelType.SENSOR_FAULT;
+            case "UNRESOLVED_ANOMALY" -> MlLabelType.UNRESOLVED_ANOMALY;
+            default -> MlLabelType.UNKNOWN;
+        };
+    }
+
+    private boolean isPositive(MlLabelType label) {
+        return label == MlLabelType.CONFIRMED_FAILURE || label == MlLabelType.CORRECTIVE_MAINTENANCE;
+    }
+
+    private long longQualityValue(Map<String, Object> qualityProfile, String key) {
+        Object value = qualityProfile.get(key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Long> longMapFromQualityProfile(Map<String, Object> qualityProfile, String key) {
+        Object value = qualityProfile.get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Long> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() instanceof String stringKey && entry.getValue() instanceof Number numberValue) {
+                result.put(stringKey, numberValue.longValue());
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Long> sortedLongMap(Map<String, Long> values) {
+        Map<String, Long> sorted = new LinkedHashMap<>();
+        values.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
+        return sorted;
+    }
+
+    private Map<String, List<String>> sortedUuidListMap(Map<UUID, List<UUID>> values) {
+        Map<String, List<String>> sorted = new LinkedHashMap<>();
+        values.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> sorted.put(
+                        entry.getKey().toString(),
+                        entry.getValue().stream().map(UUID::toString).sorted().toList()));
+        return sorted;
+    }
+
+    private Map<String, Object> labelReadinessMap(MlDatasetLabelReadinessDto labelReadiness) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("horizonDays", labelReadiness.horizonDays());
+        value.put("positiveLabels", labelReadiness.positiveLabels());
+        value.put("normalLabels", labelReadiness.normalLabels());
+        value.put("unresolvedLabels", labelReadiness.unresolvedLabels());
+        value.put("unobservableRows", labelReadiness.unobservableRows());
+        value.put("maintenanceExcludedLabels", labelReadiness.maintenanceExcludedLabels());
+        value.put("coverageRatio", labelReadiness.coverageRatio());
+        value.put("status", labelReadiness.status().name());
+        return value;
+    }
+
+    private Instant maxInstant(Instant left, Instant right) {
+        return left.isAfter(right) ? left : right;
+    }
+
+    private Instant minInstant(Instant left, Instant right) {
+        return left.isBefore(right) ? left : right;
+    }
+
     private Map<String, Object> lineageFilter(MlInternalDatasetRequest request, ValidationResult validation) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("from", request.from().toString());
@@ -504,6 +1571,11 @@ public class MlDatasetService {
         value.put("maxSamplingGapSeconds", request.maxSamplingGapSeconds() == null
                 ? DEFAULT_MAX_SAMPLING_GAP_SECONDS
                 : request.maxSamplingGapSeconds());
+        value.put("previewId", request.previewId());
+        value.put("previewHash", request.previewHash());
+        value.put("modelFamily", normalizedModelFamily(request.modelFamily()).name());
+        value.put("horizonDays", request.horizonDays());
+        value.put("metricSelectionMode", normalizedMetricSelectionMode(request.metricSelectionMode()).name());
         value.put("validationMessages", validation.messages());
         value.put("materializedRowCount", validation.extractedRows().size());
         value.put("materializedRowPreview", validation.extractedRows().stream()
@@ -721,6 +1793,44 @@ public class MlDatasetService {
         } catch (JsonProcessingException exception) {
             return Map.of();
         }
+    }
+
+    private record MetricMetadata(
+            String metricName,
+            String displayName,
+            String canonicalMetricName,
+            String unit) {
+    }
+
+    private record PreviewDecision(
+            MlWorkbenchStatus status,
+            List<String> blockingReasons,
+            List<String> warningReasons,
+            List<MlDatasetQualityGateDto> qualityGates) {
+    }
+
+    private record CandidateDraft(
+            MlCandidateWindowKind kind,
+            Instant from,
+            Instant to,
+            double score,
+            MlWorkbenchStatus status,
+            long sampleCount,
+            double coverageRatio,
+            long maxSamplingGapSeconds,
+            long positiveLabels,
+            long normalLabels,
+            long unobservableLabels,
+            long maintenanceExcludedLabels,
+            List<String> blockingReasons,
+            List<String> warningReasons,
+            String explanation) {
+    }
+
+    private record TimeWindow(
+            Instant from,
+            Instant to,
+            String explanation) {
     }
 
     private record ValidationResult(

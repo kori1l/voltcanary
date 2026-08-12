@@ -1,8 +1,13 @@
 # ML Dataset Workbench
 
-Status: target architecture, not implemented.
+Status: backend preview contract implemented; frontend workbench target pending.
 
 Date: 2026-08-08
+
+OpenSpec changes:
+
+- `openspec/changes/build-ml-dataset-workbench`
+- `openspec/changes/build-ml-dataset-workbench-frontend`
 
 This document defines the production-ready target for the VoltCanary internal
 telemetry dataset creation workflow. It replaces the current backend-shaped
@@ -877,8 +882,9 @@ Empty states should say what is missing and which control can resolve it.
 
 ## API Contract Additions
 
-The API docs should be updated when implementation starts. Until then, these are
-target contracts, not live endpoints.
+The analytics-service preview and preview-bound create contracts are live in
+the backend. The frontend workbench components remain the target delivery under
+`build-ml-dataset-workbench-frontend`.
 
 ### Preview Request Types
 

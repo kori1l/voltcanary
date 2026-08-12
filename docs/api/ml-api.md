@@ -331,6 +331,152 @@ Example validation report:
 }
 ```
 
+## POST /analytics/ml/datasets/internal-telemetry/preview
+
+Previews an internal telemetry dataset selection without mutating ML lifecycle
+state. The endpoint authorizes the selected devices, discovers real
+telemetry-service metrics for those devices, evaluates dataset quality gates,
+returns candidate windows, and previews failure-prediction label readiness when
+requested. It does not create dataset versions, canonical rows, labels, feature
+snapshots, training runs, model versions, or deployment policies.
+
+Request:
+
+```json
+{
+  "modelFamily": "FAILURE_PREDICTION",
+  "deviceIds": ["a0b7f4dc-2f4b-4d7a-9f9e-5d1f88a5bc16"],
+  "deviceType": "washer",
+  "deviceMetadata": {
+    "firmware": "2.4.1"
+  },
+  "metricSelectionMode": "COMMON",
+  "selectedMetrics": ["activePowerW"],
+  "from": "2026-07-01T00:00:00Z",
+  "to": "2026-07-31T23:59:59Z",
+  "horizonDays": 30,
+  "splitStrategy": "TIME_BASED",
+  "splitConfigJson": "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}",
+  "featureConfigVersion": "feature-config-v1",
+  "minSamplesPerMetric": 24,
+  "maxSamplingGapSeconds": 21600,
+  "candidateLimit": 4
+}
+```
+
+`metricSelectionMode` values are `COMMON` and `ALL_AVAILABLE`. `COMMON`
+returns only metrics present on every selected device. `ALL_AVAILABLE` returns
+the metric union with coverage ratios and partial-coverage warnings. No default
+fallback or phantom metrics are selectable.
+
+Response:
+
+```json
+{
+  "previewId": "prev_4c59c3e0d62d8f12",
+  "previewHash": "sha256:4c59c3e0d62d8f12...",
+  "expiresAt": "2026-07-30T00:15:00Z",
+  "status": "READY_WITH_WARNINGS",
+  "recommendedCandidateId": "candidate-user-selected",
+  "selectedWindow": {
+    "from": "2026-07-01T00:00:00Z",
+    "to": "2026-07-31T23:59:59Z",
+    "source": "USER_SELECTED"
+  },
+  "availableMetrics": [
+    {
+      "metricName": "activePowerW",
+      "displayName": "Active power",
+      "canonicalMetricName": "active_power",
+      "unit": "W",
+      "devicesWithMetric": 1,
+      "selectedDeviceCount": 1,
+      "coverageRatio": 1.0,
+      "sampleCount": 744,
+      "maxSamplingGapSeconds": 3600,
+      "duplicateTimestampRate": 0.0,
+      "nonFiniteImpossibleValueCount": 0,
+      "unitNormalizationWarnings": 0,
+      "status": "READY",
+      "blockingReasons": [],
+      "warningReasons": []
+    }
+  ],
+  "candidateWindows": [
+    {
+      "id": "candidate-user-selected",
+      "kind": "USER_SELECTED",
+      "from": "2026-07-01T00:00:00Z",
+      "to": "2026-07-31T23:59:59Z",
+      "score": 0.93,
+      "status": "READY_WITH_WARNINGS",
+      "recommended": true,
+      "sampleCount": 744,
+      "deviceCount": 1,
+      "metricCount": 1,
+      "coverageRatio": 1.0,
+      "maxSamplingGapSeconds": 3600,
+      "positiveLabels": 14,
+      "normalLabels": 610,
+      "unobservableLabels": 12,
+      "maintenanceExcludedLabels": 8,
+      "blockingReasons": [],
+      "warningReasons": ["Window overlaps excluded maintenance periods."],
+      "explanation": "User selected window."
+    }
+  ],
+  "timeline": [
+    {
+      "bucketStart": "2026-07-01T00:00:00Z",
+      "bucketEnd": "2026-07-03T13:59:59Z",
+      "sampleCount": 60,
+      "coverageRatio": 1.0,
+      "status": "READY",
+      "events": []
+    }
+  ],
+  "labelReadiness": {
+    "horizonDays": 30,
+    "positiveLabels": 14,
+    "normalLabels": 610,
+    "unresolvedLabels": 3,
+    "unobservableRows": 12,
+    "maintenanceExcludedLabels": 8,
+    "coverageRatio": 0.97,
+    "status": "READY"
+  },
+  "qualityGates": [
+    {
+      "key": "minSamplesPerMetric",
+      "label": "Minimum samples per metric",
+      "status": "PASS",
+      "actual": 744,
+      "threshold": 24,
+      "blocking": true,
+      "message": "Selected metrics have enough samples."
+    }
+  ],
+  "blockingReasons": [],
+  "warningReasons": ["Window overlaps excluded maintenance periods."],
+  "createRequestDefaults": {
+    "metrics": ["activePowerW"],
+    "from": "2026-07-01T00:00:00Z",
+    "to": "2026-07-31T23:59:59Z",
+    "splitStrategy": "TIME_BASED",
+    "featureConfigVersion": "feature-config-v1",
+    "minSamplesPerMetric": 24,
+    "maxSamplingGapSeconds": 21600,
+    "modelFamily": "FAILURE_PREDICTION",
+    "horizonDays": 30,
+    "metricSelectionMode": "COMMON"
+  }
+}
+```
+
+Preview response status values are `READY`, `READY_WITH_WARNINGS`, and
+`BLOCKED`. Metric and timeline rows may also use `NO_DATA`. Quality gate status
+values are `PASS`, `WARN`, and `BLOCK`.
+
 ## POST /analytics/ml/datasets/internal-telemetry
 
 Creates a dataset version from stored telemetry. The frontend calls this through
@@ -355,9 +501,19 @@ Request:
   "splitConfigJson": "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}",
   "featureConfigVersion": "feature-config-v1",
   "minSamplesPerMetric": 24,
-  "maxSamplingGapSeconds": 21600
+  "maxSamplingGapSeconds": 21600,
+  "previewId": "prev_4c59c3e0d62d8f12",
+  "previewHash": "sha256:4c59c3e0d62d8f12...",
+  "modelFamily": "FAILURE_PREDICTION",
+  "horizonDays": 30,
+  "metricSelectionMode": "COMMON"
 }
 ```
+
+`previewId`, `previewHash`, `modelFamily`, `horizonDays`, and
+`metricSelectionMode` are optional and additive. Existing callers may omit them.
+Workbench callers should send them when creating from a fresh preview so the
+backend can detect drift between preview and immutable materialization.
 
 Response:
 
@@ -385,6 +541,30 @@ Insufficient samples, unsupported or unavailable metrics, and non-finite values
 produce `FAILED` dataset versions with rejected row counts and reason summaries.
 Telemetry-service unavailability returns a dependency error and does not create
 a partially validated dataset.
+When `previewHash` is supplied, analytics-service revalidates the request and
+compares the current stateless preview fingerprint. A mismatch returns HTTP
+`409`:
+
+```json
+{
+  "code": "PREVIEW_STALE",
+  "message": "Dataset preview is stale; request a fresh preview before creating.",
+  "dependencies": [
+    {
+      "type": "preview",
+      "id": "prev_4c59c3e0d62d8f12",
+      "details": {
+        "code": "PREVIEW_STALE",
+        "submittedPreviewHash": "sha256:old",
+        "currentPreviewHash": "sha256:new",
+        "validationMessages": ["Selected metric activePowerW has partial device coverage."]
+      }
+    }
+  ]
+}
+```
+Fresh workbench creates store the selected preview summary under
+`qualityProfile.selectedPreview`.
 
 ## POST /analytics/ml/datasets/external-csv
 

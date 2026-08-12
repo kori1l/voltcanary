@@ -7,6 +7,11 @@ export type MlTrainingRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" 
 export type MlModelStatus = "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED" | "DELETED";
 export type MlDeploymentMode = "SHADOW" | "CANARY" | "ACTIVE" | "DISABLED";
 export type MlDeploymentScope = "SYSTEM" | "ACCOUNT" | "DEVICE_TYPE" | "DEVICE";
+export type MlModelFamily = "ANOMALY_DETECTION" | "DEGRADATION_SCORING" | "FAILURE_PREDICTION" | "FORECASTING";
+export type MlMetricSelectionMode = "COMMON" | "ALL_AVAILABLE";
+export type MlWorkbenchStatus = "READY" | "READY_WITH_WARNINGS" | "BLOCKED" | "NO_DATA";
+export type MlWorkbenchGateStatus = "PASS" | "WARN" | "BLOCK";
+export type MlCandidateWindowKind = "BEST_COVERAGE" | "RECENT_STABLE" | "FAILURE_RICH" | "USER_SELECTED";
 export type MlLabelType =
   | "NORMAL"
   | "ANOMALY"
@@ -102,6 +107,127 @@ export interface MlInternalDatasetResponse {
   validationMessages: string[];
   createdAt: string;
   readyAt: string | null;
+}
+
+export interface MlDatasetWorkbenchPreviewRequest {
+  modelFamily?: MlModelFamily | null;
+  deviceIds: string[];
+  deviceType?: string | null;
+  deviceMetadata?: Record<string, string> | null;
+  metricSelectionMode?: MlMetricSelectionMode | null;
+  selectedMetrics?: string[];
+  from: string;
+  to: string;
+  quickRange?: string | null;
+  horizonDays?: number | null;
+  splitStrategy?: MlTrainingSplitStrategy | null;
+  splitConfigJson?: string | null;
+  featureConfigVersion?: string | null;
+  minSamplesPerMetric?: number | null;
+  maxSamplingGapSeconds?: number | null;
+  candidateLimit?: number | null;
+}
+
+export interface MlDatasetMetricCoverage {
+  metricName: string;
+  displayName: string;
+  canonicalMetricName: string;
+  unit: string | null;
+  devicesWithMetric: number;
+  selectedDeviceCount: number;
+  coverageRatio: number;
+  sampleCount: number;
+  maxSamplingGapSeconds: number;
+  duplicateTimestampRate: number;
+  nonFiniteImpossibleValueCount: number;
+  unitNormalizationWarnings: number;
+  status: MlWorkbenchStatus;
+  blockingReasons: string[];
+  warningReasons: string[];
+}
+
+export interface MlDatasetCandidateWindow {
+  id: string;
+  kind: MlCandidateWindowKind;
+  from: string;
+  to: string;
+  score: number;
+  status: MlWorkbenchStatus;
+  recommended: boolean;
+  sampleCount: number;
+  deviceCount: number;
+  metricCount: number;
+  coverageRatio: number;
+  maxSamplingGapSeconds: number;
+  positiveLabels: number;
+  normalLabels: number;
+  unobservableLabels: number;
+  maintenanceExcludedLabels: number;
+  blockingReasons: string[];
+  warningReasons: string[];
+  explanation: string;
+}
+
+export interface MlDatasetTimelineBucket {
+  bucketStart: string;
+  bucketEnd: string;
+  sampleCount: number;
+  coverageRatio: number;
+  status: MlWorkbenchStatus;
+  events: string[];
+}
+
+export interface MlDatasetLabelReadiness {
+  horizonDays: number | null;
+  positiveLabels: number;
+  normalLabels: number;
+  unresolvedLabels: number;
+  unobservableRows: number;
+  maintenanceExcludedLabels: number;
+  coverageRatio: number;
+  status: MlWorkbenchStatus;
+}
+
+export interface MlDatasetQualityGate {
+  key: string;
+  label: string;
+  status: MlWorkbenchGateStatus;
+  actual: unknown;
+  threshold: unknown;
+  blocking: boolean;
+  message: string;
+}
+
+export interface MlDatasetWorkbenchPreviewResponse {
+  previewId: string;
+  previewHash: string;
+  expiresAt: string;
+  status: MlWorkbenchStatus;
+  recommendedCandidateId: string | null;
+  selectedWindow: {
+    from: string;
+    to: string;
+    source: MlCandidateWindowKind;
+  };
+  availableMetrics: MlDatasetMetricCoverage[];
+  candidateWindows: MlDatasetCandidateWindow[];
+  timeline: MlDatasetTimelineBucket[];
+  labelReadiness: MlDatasetLabelReadiness | null;
+  qualityGates: MlDatasetQualityGate[];
+  blockingReasons: string[];
+  warningReasons: string[];
+  createRequestDefaults: {
+    metrics: string[];
+    from: string;
+    to: string;
+    splitStrategy: MlTrainingSplitStrategy;
+    featureConfigVersion: string;
+    minSamplesPerMetric: number;
+    maxSamplingGapSeconds: number;
+    modelFamily: MlModelFamily;
+    horizonDays: number | null;
+    metricSelectionMode: MlMetricSelectionMode;
+  };
 }
 
 export interface MlFeatureSnapshotResponse {
@@ -285,8 +411,20 @@ export function createInternalTelemetryDataset(body: {
   featureConfigVersion: string;
   minSamplesPerMetric: number;
   maxSamplingGapSeconds: number;
+  previewId?: string | null;
+  previewHash?: string | null;
+  modelFamily?: MlModelFamily | null;
+  horizonDays?: number | null;
+  metricSelectionMode?: MlMetricSelectionMode | null;
 }) {
   return apiRequest<MlInternalDatasetResponse>("/analytics/ml/datasets/internal-telemetry", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function previewInternalTelemetryDataset(body: MlDatasetWorkbenchPreviewRequest) {
+  return apiRequest<MlDatasetWorkbenchPreviewResponse>("/analytics/ml/datasets/internal-telemetry/preview", {
     method: "POST",
     body: JSON.stringify(body),
   });

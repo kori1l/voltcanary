@@ -1,6 +1,7 @@
 package com.voltcanary.analytics.dto;
 
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
+import com.voltcanary.analytics.domain.MlModelFamily;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -23,5 +24,10 @@ public record MlInternalDatasetRequest(
         String splitConfigJson,
         String featureConfigVersion,
         @Positive Integer minSamplesPerMetric,
-        @Positive Long maxSamplingGapSeconds) {
+        @Positive Long maxSamplingGapSeconds,
+        String previewId,
+        String previewHash,
+        MlModelFamily modelFamily,
+        @Positive Integer horizonDays,
+        MlMetricSelectionMode metricSelectionMode) {
 }
