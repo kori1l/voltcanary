@@ -1,19 +1,20 @@
 # ML Dataset Workbench
 
-Status: backend preview contract implemented; frontend workbench target pending.
+Status: backend preview contract and pipeline-first frontend Dataset Workbench implemented.
 
-Date: 2026-08-08
+Date: 2026-08-13
 
 OpenSpec changes:
 
 - `openspec/changes/build-ml-dataset-workbench`
 - `openspec/changes/build-ml-dataset-workbench-frontend`
+- `openspec/changes/repair-ml-workbench-pipeline-ux`
 
-This document defines the production-ready target for the VoltCanary internal
-telemetry dataset creation workflow. It replaces the current backend-shaped
-"Create internal dataset" form with a data engineering workbench that discovers
-real telemetry, recommends valid time windows, previews quality gates, and only
-then creates immutable ML dataset versions.
+This document defines the production-ready VoltCanary internal telemetry
+dataset creation workflow. It replaces the previous backend-shaped "Create
+internal dataset" form with a data engineering workbench that discovers real
+telemetry, recommends valid time windows, previews quality gates, and only then
+creates immutable ML dataset versions.
 
 The intended reader is a data engineer, ML engineer, frontend engineer, or
 backend engineer implementing the next ML console iteration.
@@ -32,20 +33,28 @@ VoltCanary already has the main lifecycle building blocks:
 - A frontend ML Settings page in `frontend/src/pages/MlSettingsPage.tsx`.
 - Docker verification through `scripts/ml-failure-prediction-docker-smoke.ps1`.
 
-The current internal telemetry dataset UI is still too close to a raw backend
-form:
+The previous internal telemetry dataset UI was too close to a raw backend form:
 
-- Device selection uses a native multi-select that is hard to scan and hard to
-  use for cohorts.
-- Metric selection is a plain checkbox grid.
-- Metric availability falls back to default ML metrics when selected device
-  metadata has no metric list.
-- The operator must enter `from` and `to` manually without seeing telemetry
+- Device selection relied on a native multi-select without search and cohort
+  summary.
+- Metric selection was a plain checkbox grid.
+- Metric availability could fall back to default ML metrics when selected
+  device metadata had no metric list.
+- The operator had to enter `from` and `to` manually without seeing telemetry
   density, gaps, or label distribution.
-- Quality feedback appears after dataset creation, not before the operator
-  submits the request.
-- Failure-prediction readiness is split across dataset creation, horizon label
+- Quality feedback appeared after dataset creation, not before the operator
+  submitted the request.
+- Failure-prediction readiness was split across dataset creation, horizon label
   generation, feature snapshot generation, and training forms.
+
+The frontend workbench is now implemented under
+`frontend/src/features/ml-datasets/` and mounted from
+`frontend/src/pages/MlSettingsPage.tsx`. ML Settings shows the workflow mode and
+pipeline rail before the detailed tabs so operators can see dataset, labels,
+feature snapshot, training, model approval, policy, and monitoring readiness in
+the first viewport. It keeps existing dataset list/detail, external import,
+label, feature snapshot, training, registry, policy, and monitoring flows
+available in ML Settings.
 
 The existing backend creation endpoint is valuable and must remain supported:
 
@@ -131,6 +140,11 @@ select model family -> select device scope -> backend recommends windows
 -> user creates immutable dataset
 ```
 
+The frontend automatically requests preview after the selected scope, time
+range, model family, and failure horizon are valid. The explicit preview button
+remains available for retry or manual refresh, but operators do not need to
+discover that button before seeing metrics, candidate windows, and readiness.
+
 ### Backend Owns Truth
 
 The frontend SHALL not independently decide that a dataset is valid. It may
@@ -204,13 +218,15 @@ Behavior:
 
 ### Scope Builder
 
-Device selection SHALL be a searchable selector, not a native multi-select.
+Device selection SHALL be a searchable checklist, not a native multi-select.
 
 Required behaviors:
 
 - Search by device name, id, type, status, location when available.
 - Filter by device type and status.
 - Support single-device and multi-device cohort selection.
+- Show each row with name, type, status, telemetry state, location context, and
+  shortened id context.
 - Show selected cohort summary: device count, active count, inactive count,
   telemetry-present count, and missing-telemetry count.
 - Mark stale restored draft devices as unavailable and block create until they
@@ -268,13 +284,14 @@ The timeline SHALL visualize the selected scope and explain candidate windows.
 
 Required layers:
 
-- Primary metric line for the currently focused metric.
 - Density or coverage band across the full queried range.
 - Candidate window overlays.
 - Selected window overlay.
 - Maintenance exclusion overlays.
 - Failure/corrective-maintenance event markers in failure-prediction mode.
 - Gap markers for intervals exceeding `maxSamplingGapSeconds`.
+- Legend entries for selected range, candidate windows, gaps, maintenance, and
+  failure evidence.
 
 Color semantics:
 
@@ -520,7 +537,7 @@ Response:
       "sampleCount": 60,
       "coverageRatio": 1.0,
       "status": "READY",
-      "events": []
+      "events": ["MAINTENANCE_EXCLUDED", "CORRECTIVE_MAINTENANCE"]
     }
   ],
   "labelReadiness": {
@@ -821,9 +838,9 @@ frontend/src/features/ml-datasets/
   model/datasetWorkbench.utils.ts
 ```
 
-The page may initially keep the workbench inside `MlSettingsPage.tsx`, but the
-target should move this workflow into feature components because the current
-page is already large and combines many unrelated ML workflows.
+The workbench container and view components live under
+`frontend/src/features/ml-datasets/`. `MlSettingsPage.tsx` owns tab composition,
+existing lifecycle actions, and downstream feature snapshot defaults.
 
 ### State Model
 
@@ -832,10 +849,14 @@ Workbench state:
 - `modelFamily`
 - `horizonDays`
 - `deviceScope`
+- `deviceQuery`
+- `deviceTypeFilter`
+- `deviceStatusFilter`
 - `metricSelectionMode`
 - `selectedMetrics`
 - `focusedMetric`
 - `range`
+- `quickRange`
 - `selectedCandidateId`
 - `datasetDraft`
 - `preview`
@@ -843,23 +864,24 @@ Workbench state:
 
 Rules:
 
-- Any change to scope, metrics, range, model family, horizon, or gates marks
-  preview stale.
+- Any change to scope, metrics, range, model family, horizon, split strategy,
+  feature config, or quality gates marks preview stale.
 - Create is enabled only when preview status is `ready` and preview decision is
   not `BLOCKED`.
-- Restored drafts must be reconciled against current device and metric
-  availability before preview.
+- Restored drafts are reconciled against current devices and preview metrics.
+  Unavailable restored devices or metrics remain visible and block create until
+  removed.
+- A preview request version guards against out-of-order responses overwriting
+  newer workbench state.
 
 ### Chart Behavior
 
-The chart should use an existing proven chart implementation if available in
-the repository. If no charting library exists, the first iteration may use the
-existing lightweight telemetry SVG/canvas components, but interactions must be
-tested with pointer events.
+The current frontend uses a lightweight SVG timeline because no external chart
+library is present in `frontend/package.json`.
 
 Required interactions:
 
-- Hover shows timestamp, value, and quality status.
+- Hover/title text shows timestamp, sample count, coverage, and quality status.
 - Drag creates or updates selected range.
 - Candidate bands can be clicked to select that window.
 - Keyboard users can choose candidates from the candidate list and edit exact
@@ -883,8 +905,14 @@ Empty states should say what is missing and which control can resolve it.
 ## API Contract Additions
 
 The analytics-service preview and preview-bound create contracts are live in
-the backend. The frontend workbench components remain the target delivery under
-`build-ml-dataset-workbench-frontend`.
+the backend. The frontend workbench consumes those contracts through
+`frontend/src/analytics/mlModuleApi.ts`.
+
+Timeline bucket `events` remains a backward-compatible string array. Buckets
+without maintenance or failure evidence return an empty array. Buckets with
+evidence may include `MAINTENANCE_EXCLUDED`, `MAINTENANCE_OVERLAP`,
+`CONFIRMED_FAILURE`, `CORRECTIVE_MAINTENANCE`, `UNRESOLVED_ANOMALY`,
+`SENSOR_FAULT`, or `UNKNOWN_OUTCOME`.
 
 ### Preview Request Types
 

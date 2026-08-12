@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
+import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetLineage;
@@ -435,6 +436,87 @@ class MlDatasetServiceTest {
     }
 
     @Test
+    void previewTimelineIncludesMaintenanceAndFailureEventMarkers() {
+        UUID accountId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        MaintenanceWindowReadModel window = maintenanceWindow(
+                accountId,
+                deviceId,
+                Instant.parse("2026-07-01T04:00:00Z"),
+                Instant.parse("2026-07-01T08:00:00Z"),
+                true);
+        MaintenanceOutcomeReadModel outcome = outcome(
+                deviceId,
+                Instant.parse("2026-07-01T12:00:00Z"),
+                "CORRECTIVE_MAINTENANCE");
+        outcome.setAccountId(accountId);
+        when(telemetryClient.metrics(deviceId)).thenReturn(List.of(metric("activePowerW", "W", "Active power")));
+        when(maintenanceRepository.findActiveOverlapping(deviceId, from, to)).thenReturn(List.of(window));
+        when(maintenanceOutcomeRepository.findByAccountAndObservedRange(accountId, from, to)).thenReturn(List.of(outcome));
+        when(telemetryClient.readings(deviceId, "activePowerW", from, to))
+                .thenReturn(readings(deviceId, "activePowerW", from, 12));
+
+        var response = service.previewInternalTelemetryDataset(accountId, new MlDatasetWorkbenchPreviewRequest(
+                MlModelFamily.ANOMALY_DETECTION,
+                List.of(deviceId),
+                "washer",
+                null,
+                MlMetricSelectionMode.COMMON,
+                List.of("activePowerW"),
+                from,
+                to,
+                null,
+                null,
+                MlTrainingSplitStrategy.TIME_BASED,
+                null,
+                "feature-config-v1",
+                4,
+                7200L,
+                1));
+
+        List<String> events = response.timeline().stream()
+                .flatMap(bucket -> bucket.events().stream())
+                .toList();
+        assertThat(events).contains("MAINTENANCE_EXCLUDED", "CORRECTIVE_MAINTENANCE");
+    }
+
+    @Test
+    void previewTimelineKeepsEmptyEventArraysWhenNoMaintenanceOrFailureEvidenceExists() {
+        UUID accountId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        when(telemetryClient.metrics(deviceId)).thenReturn(List.of(metric("activePowerW", "W", "Active power")));
+        when(maintenanceRepository.findActiveOverlapping(deviceId, from, to)).thenReturn(List.of());
+        when(maintenanceOutcomeRepository.findByAccountAndObservedRange(accountId, from, to)).thenReturn(List.of());
+        when(telemetryClient.readings(deviceId, "activePowerW", from, to))
+                .thenReturn(readings(deviceId, "activePowerW", from, 12));
+
+        var response = service.previewInternalTelemetryDataset(accountId, new MlDatasetWorkbenchPreviewRequest(
+                MlModelFamily.ANOMALY_DETECTION,
+                List.of(deviceId),
+                "washer",
+                null,
+                MlMetricSelectionMode.COMMON,
+                List.of("activePowerW"),
+                from,
+                to,
+                null,
+                null,
+                MlTrainingSplitStrategy.TIME_BASED,
+                null,
+                "feature-config-v1",
+                4,
+                7200L,
+                1));
+
+        assertThat(response.timeline()).isNotEmpty();
+        assertThat(response.timeline()).allSatisfy(bucket -> assertThat(bucket.events()).isEmpty());
+    }
+
+    @Test
     void createWithStalePreviewHashReturnsConflictBeforePersistence() {
         UUID accountId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -649,6 +731,25 @@ class MlDatasetServiceTest {
         outcome.setVersion(1);
         outcome.setUpdatedAt(observedAt);
         return outcome;
+    }
+
+    private MaintenanceWindowReadModel maintenanceWindow(
+            UUID accountId,
+            UUID deviceId,
+            Instant startAt,
+            Instant endAt,
+            boolean excludeFromMl) {
+        MaintenanceWindowReadModel window = new MaintenanceWindowReadModel();
+        window.setMaintenanceWindowId(UUID.randomUUID());
+        window.setAccountId(accountId);
+        window.setDeviceId(deviceId);
+        window.setTitle("Maintenance window");
+        window.setStartAt(startAt);
+        window.setEndAt(endAt);
+        window.setExcludeFromMl(excludeFromMl);
+        window.setVersion(1);
+        window.setUpdatedAt(startAt);
+        return window;
     }
 
     private JsonNode readTree(String json) {

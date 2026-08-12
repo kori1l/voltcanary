@@ -48,6 +48,13 @@ snapshot inputs explicit in the UI (`modelFamily` and positive `horizonDays`) an
 cover the submitted payload in tests. Training flows should reject snapshot
 family or horizon mismatches before submitting the run.
 
+For the ML Dataset Workbench, render selectable metrics only from the backend
+preview response. Do not reintroduce device-metadata/default metric fallbacks.
+Changes to scope, metrics, range, model family, horizon, split, feature config,
+or quality gates must mark preview stale and keep create disabled until a fresh
+preview succeeds. Keep out-of-order preview response guards covered by tests
+when changing the workbench state flow.
+
 ## Validation
 
 From `frontend/`:

@@ -107,14 +107,35 @@ async function errorMessage(response: Response) {
   }
 
   try {
-    const parsed = JSON.parse(body) as { message?: string; code?: string; dependencies?: Record<string, number> };
+    const parsed = JSON.parse(body) as {
+      message?: string;
+      code?: string;
+      error?: string;
+      status?: number;
+      path?: string;
+      dependencies?: Record<string, number>;
+    };
     if (parsed.message && parsed.code) {
       const dependencies = formatDependencies(parsed.dependencies);
       return dependencies ? `${parsed.message} (${parsed.code}): ${dependencies}` : `${parsed.message} (${parsed.code})`;
     }
-    return parsed.message ?? parsed.code ?? body;
+    if (parsed.message) {
+      return parsed.message;
+    }
+    if (parsed.code) {
+      return parsed.code;
+    }
+    if (parsed.error) {
+      return parsed.path ? `${parsed.error} for ${parsed.path}` : parsed.error;
+    }
+    if (parsed.status) {
+      return parsed.path
+        ? `API request failed: ${parsed.status} for ${parsed.path}`
+        : `API request failed: ${parsed.status}`;
+    }
+    return body.length > 220 ? `${body.slice(0, 217)}...` : body;
   } catch {
-    return body;
+    return body.length > 220 ? `${body.slice(0, 217)}...` : body;
   }
 }
 

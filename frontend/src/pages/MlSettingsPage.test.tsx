@@ -125,6 +125,147 @@ const datasetDetail = {
     contentHash: "sha256:lineage",
   }],
 };
+const workbenchPreview = {
+  previewId: "prev-test-1",
+  previewHash: "sha256:preview-test-1",
+  expiresAt: "2026-07-10T00:15:00Z",
+  status: "READY_WITH_WARNINGS",
+  recommendedCandidateId: "candidate-best",
+  selectedWindow: {
+    from: "2026-07-01T00:00:00Z",
+    to: "2026-07-02T00:00:00Z",
+    source: "USER_SELECTED",
+  },
+  availableMetrics: [
+    {
+      metricName: "activePowerW",
+      displayName: "Active power",
+      canonicalMetricName: "active_power",
+      unit: "W",
+      devicesWithMetric: 1,
+      selectedDeviceCount: 1,
+      coverageRatio: 1,
+      sampleCount: 120,
+      maxSamplingGapSeconds: 3600,
+      duplicateTimestampRate: 0,
+      nonFiniteImpossibleValueCount: 0,
+      unitNormalizationWarnings: 0,
+      status: "READY",
+      blockingReasons: [],
+      warningReasons: [],
+    },
+    {
+      metricName: "voltageV",
+      displayName: "Voltage",
+      canonicalMetricName: "voltage",
+      unit: "V",
+      devicesWithMetric: 1,
+      selectedDeviceCount: 1,
+      coverageRatio: 0.96,
+      sampleCount: 118,
+      maxSamplingGapSeconds: 3600,
+      duplicateTimestampRate: 0,
+      nonFiniteImpossibleValueCount: 0,
+      unitNormalizationWarnings: 0,
+      status: "READY_WITH_WARNINGS",
+      blockingReasons: [],
+      warningReasons: ["Minor telemetry gaps detected."],
+    },
+    {
+      metricName: "currentA",
+      displayName: "Current",
+      canonicalMetricName: "current",
+      unit: "A",
+      devicesWithMetric: 1,
+      selectedDeviceCount: 1,
+      coverageRatio: 0.95,
+      sampleCount: 114,
+      maxSamplingGapSeconds: 7200,
+      duplicateTimestampRate: 0,
+      nonFiniteImpossibleValueCount: 0,
+      unitNormalizationWarnings: 0,
+      status: "READY",
+      blockingReasons: [],
+      warningReasons: [],
+    },
+  ],
+  candidateWindows: [
+    {
+      id: "candidate-best",
+      kind: "BEST_COVERAGE",
+      from: "2026-07-01T00:00:00Z",
+      to: "2026-07-02T00:00:00Z",
+      score: 0.93,
+      status: "READY_WITH_WARNINGS",
+      recommended: true,
+      sampleCount: 120,
+      deviceCount: 1,
+      metricCount: 3,
+      coverageRatio: 0.97,
+      maxSamplingGapSeconds: 3600,
+      positiveLabels: 4,
+      normalLabels: 100,
+      unobservableLabels: 2,
+      maintenanceExcludedLabels: 1,
+      blockingReasons: [],
+      warningReasons: ["Window overlaps excluded maintenance periods."],
+      explanation: "Highest coverage with manageable gaps.",
+    },
+  ],
+  timeline: [
+    {
+      bucketStart: "2026-07-01T00:00:00Z",
+      bucketEnd: "2026-07-01T12:00:00Z",
+      sampleCount: 60,
+      coverageRatio: 1,
+      status: "READY",
+      events: [],
+    },
+    {
+      bucketStart: "2026-07-01T12:00:00Z",
+      bucketEnd: "2026-07-02T00:00:00Z",
+      sampleCount: 58,
+      coverageRatio: 0.93,
+      status: "READY_WITH_WARNINGS",
+      events: ["corrective maintenance label"],
+    },
+  ],
+  labelReadiness: {
+    horizonDays: 30,
+    positiveLabels: 4,
+    normalLabels: 100,
+    unresolvedLabels: 2,
+    unobservableRows: 2,
+    maintenanceExcludedLabels: 1,
+    coverageRatio: 0.97,
+    status: "READY",
+  },
+  qualityGates: [
+    {
+      key: "minSamplesPerMetric",
+      label: "Minimum samples per metric",
+      status: "PASS",
+      actual: 114,
+      threshold: 24,
+      blocking: true,
+      message: "Selected metrics have enough samples.",
+    },
+  ],
+  blockingReasons: [],
+  warningReasons: ["Window overlaps excluded maintenance periods."],
+  createRequestDefaults: {
+    metrics: ["activePowerW", "voltageV", "currentA"],
+    from: "2026-07-01T00:00:00Z",
+    to: "2026-07-02T00:00:00Z",
+    splitStrategy: "TIME_BASED",
+    featureConfigVersion: "feature-config-v1",
+    minSamplesPerMetric: 24,
+    maxSamplingGapSeconds: 21600,
+    modelFamily: "ANOMALY_DETECTION",
+    horizonDays: null,
+    metricSelectionMode: "COMMON",
+  },
+};
 const modelVersion = {
   id: "model-1",
   accountId: "account-1",
@@ -352,7 +493,7 @@ describe("MlSettingsPage", () => {
     render(<MlSettingsPage />);
     await loadDevice();
 
-    expect(await screen.findByText(expectedText)).toBeInTheDocument();
+    expect(await screen.findAllByText(expectedText)).not.toHaveLength(0);
     expect(screen.getByText("input-hash-1")).toBeInTheDocument();
   });
 
@@ -411,7 +552,8 @@ describe("MlSettingsPage", () => {
     await loadDevice();
 
     await userEvent.click(screen.getByRole("button", { name: "Training" }));
-    await userEvent.click(await screen.findByRole("button", { name: /Failure prediction/i }));
+    const failureTemplateButtons = await screen.findAllByRole("button", { name: /Failure prediction/i });
+    await userEvent.click(failureTemplateButtons[failureTemplateButtons.length - 1]);
     expect(screen.getByText("Outcome supervised")).toBeInTheDocument();
     expect(screen.getByText(/Generate horizon labels for the same dataset and horizon/i)).toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText(/Prediction horizon/i));
@@ -496,8 +638,174 @@ describe("MlSettingsPage", () => {
 
     expect(await screen.findByText("Restored unsaved dataset draft.")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Restored washer draft")).toBeInTheDocument();
-    const selector = screen.getByLabelText(/Device selector/i) as HTMLSelectElement;
-    expect(Array.from(selector.selectedOptions).map((option) => option.value)).toContain(testDevice.id);
+    expect(screen.getByRole("checkbox", { name: /Washer 001/i })).toBeChecked();
+  });
+
+  it("previews workbench metrics from backend coverage only and keeps stale preview from creating", async () => {
+    const requests: Request[] = [];
+    const pressurePreview = {
+      ...workbenchPreview,
+      availableMetrics: [{
+        ...workbenchPreview.availableMetrics[0],
+        metricName: "linePressurePa",
+        displayName: "Line pressure",
+        canonicalMetricName: "line_pressure",
+        unit: "Pa",
+      }],
+      createRequestDefaults: {
+        ...workbenchPreview.createRequestDefaults,
+        metrics: ["linePressurePa"],
+      },
+    };
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) return json(pressurePreview);
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await selectWorkbenchDevice();
+
+    expect(await screen.findAllByText("Line pressure")).toHaveLength(2);
+    expect(screen.queryByText("Active power")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/All available with coverage/i));
+    expect(screen.getByRole("button", { name: /Refresh preview/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Refresh preview/i }));
+    await screen.findAllByText("Line pressure");
+    const previewRequests = requests.filter((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry/preview"));
+    expect(await previewRequests[previewRequests.length - 1].json()).toMatchObject({ metricSelectionMode: "ALL_AVAILABLE" });
+    await userEvent.clear(screen.getByLabelText(/Workbench range from/i));
+    await userEvent.type(screen.getByLabelText(/Workbench range from/i), "2026-07-01T01:00");
+    expect(screen.getByRole("button", { name: /Create dataset version/i })).toBeDisabled();
+    await waitFor(() => expect(requests.filter((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")).length).toBeGreaterThanOrEqual(3));
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry") && request.method === "POST")).toBe(false);
+  });
+
+  it("blocks stale restored metrics until the preview selection is corrected", async () => {
+    localStorage.setItem("voltcanary.ml.account-1.datasets.ANOMALY_DETECTION.internal-dataset", JSON.stringify({
+      name: "Stale metric draft",
+      deviceIds: [testDevice.id],
+      selectedMetrics: ["legacyMetric"],
+      from: "2026-07-01T00:00",
+      to: "2026-07-02T00:00",
+    }));
+    mockFetch((url) => {
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) return json(workbenchPreview);
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Preview dataset/i }));
+
+    expect(await screen.findByText(/Unavailable metrics in draft: legacyMetric/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create dataset version/i })).toBeDisabled();
+  });
+
+  it("renders preview dependency errors and blocked readiness reasons", async () => {
+    let failPreview = true;
+    const blockedPreview = {
+      ...workbenchPreview,
+      status: "BLOCKED",
+      blockingReasons: ["Minimum samples per metric is below the required threshold."],
+      warningReasons: [],
+      qualityGates: [{
+        ...workbenchPreview.qualityGates[0],
+        status: "BLOCK",
+        actual: 3,
+        message: "Minimum samples per metric is below the required threshold.",
+      }],
+    };
+    mockFetch((url) => {
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) {
+        if (failPreview) {
+          failPreview = false;
+          return errorJson(503, { message: "Telemetry service unavailable" });
+        }
+        return json(blockedPreview);
+      }
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await selectWorkbenchDevice();
+    expect(await screen.findByText(/Dataset preview is temporarily unavailable/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview dataset/i }));
+    expect(await screen.findAllByText(/Minimum samples per metric is below the required threshold/i)).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: /Create dataset version/i })).toBeDisabled();
+  });
+
+  it("does not render raw Spring error JSON for preview warmup failures", async () => {
+    mockFetch((url) => {
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) {
+        return errorJson(503, {
+          timestamp: "2026-08-12T23:41:00.212+00:00",
+          status: 503,
+          error: "Service Unavailable",
+          path: "/analytics/ml/datasets/internal-telemetry/preview",
+        });
+      }
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await selectWorkbenchDevice();
+
+    expect(await screen.findByText(/Dataset preview is temporarily unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/"timestamp"/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\/analytics\/ml\/datasets\/internal-telemetry\/preview/i)).not.toBeInTheDocument();
+  });
+
+  it("shows failure horizon readiness and syncs candidate range selection", async () => {
+    mockFetch((url) => {
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) return json({
+        ...workbenchPreview,
+        status: "READY",
+        warningReasons: [],
+        createRequestDefaults: {
+          ...workbenchPreview.createRequestDefaults,
+          modelFamily: "FAILURE_PREDICTION",
+          horizonDays: 30,
+        },
+      });
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.selectOptions(screen.getByLabelText(/Model family/i), "FAILURE_PREDICTION");
+    await selectWorkbenchDevice();
+
+    expect(await screen.findByText(/30-day horizon readiness/i)).toBeInTheDocument();
+    expect(screen.getByText(/4 positive \/ 100 normal \/ 2 unresolved/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Use window/i }));
+    expect((screen.getByLabelText(/Workbench range from/i) as HTMLInputElement).value).toMatch(/^2026-07-0?1T/);
+    expect(screen.getByRole("button", { name: /Create dataset version/i })).toBeDisabled();
+    await waitFor(() => expect(screen.queryByText(/Preview is stale; refresh preview first/i)).not.toBeInTheDocument());
   });
 
   it("runs lifecycle actions with reasons and renders dependency conflicts", async () => {
@@ -620,6 +928,7 @@ describe("MlSettingsPage", () => {
       if (url.endsWith("/analytics/ml-settings/devices/device-1")) return json(inheritedSettings);
       if (url.endsWith("/analytics/ml/datasets")) return json(importedDatasetVisible ? [importedDatasetSummary, datasetSummary] : [datasetSummary]);
       if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1")) return json(datasetDetail);
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview") && init?.method === "POST") return json(workbenchPreview);
       if (url.endsWith("/analytics/ml/datasets/internal-telemetry") && init?.method === "POST") return json({
         datasetId: "dataset-1",
         datasetVersionId: "dataset-version-1",
@@ -746,7 +1055,8 @@ describe("MlSettingsPage", () => {
     await loadDevice();
 
     await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
-    await userEvent.selectOptions(await screen.findByLabelText(/Device selector/i), "00000000-0000-0000-0000-000000000001");
+    await selectWorkbenchDevice();
+    expect(await screen.findAllByText("Active power")).not.toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: /Create dataset version/i }));
     expect(await screen.findByText(/Internal telemetry dataset READY: 120 accepted \/ 0 rejected/i)).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: /Washer July/i }));
@@ -786,14 +1096,15 @@ describe("MlSettingsPage", () => {
     expect(await screen.findByText("Training workflow updated")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
-    await userEvent.selectOptions(screen.getByLabelText(/Model family/i), "FAILURE_PREDICTION");
+    await userEvent.selectOptions(screen.getAllByLabelText(/Model family/i)[1], "FAILURE_PREDICTION");
     await userEvent.clear(screen.getByLabelText(/Snapshot horizon days/i));
     await userEvent.type(screen.getByLabelText(/Snapshot horizon days/i), "30");
     await userEvent.click(screen.getByRole("button", { name: /Generate feature snapshot/i }));
     expect(await screen.findByText("FAILURE_PREDICTION")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Training" }));
-    await userEvent.click(screen.getByRole("button", { name: /Failure prediction/i }));
+    const failureTrainingButtons = screen.getAllByRole("button", { name: /Failure prediction/i });
+    await userEvent.click(failureTrainingButtons[failureTrainingButtons.length - 1]);
     await userEvent.selectOptions(screen.getByLabelText(/Feature snapshot/i), "feature-failure-1");
     await userEvent.clear(screen.getByLabelText(/Prediction horizon/i));
     await userEvent.type(screen.getByLabelText(/Prediction horizon/i), "30");
@@ -847,6 +1158,11 @@ describe("MlSettingsPage", () => {
       name: "Internal telemetry training set",
       deviceIds: ["00000000-0000-0000-0000-000000000001"],
       metrics: ["activePowerW", "voltageV", "currentA"],
+      previewId: "prev-test-1",
+      previewHash: "sha256:preview-test-1",
+      modelFamily: "ANOMALY_DETECTION",
+      horizonDays: null,
+      metricSelectionMode: "COMMON",
     });
     const featureSnapshotRequests = requests.filter((request) => request.url.endsWith("/analytics/ml/datasets/feature-snapshots") && request.method === "POST");
     expect(featureSnapshotRequests).toHaveLength(2);
@@ -899,6 +1215,10 @@ async function loadDevice() {
   await userEvent.type(screen.getByLabelText(/Device ID/i), "device-1");
   await userEvent.click(screen.getByRole("button", { name: /Load device/i }));
   await waitFor(() => expect(screen.getByDisplayValue("device-1")).toBeInTheDocument());
+}
+
+async function selectWorkbenchDevice() {
+  await userEvent.click(await screen.findByRole("checkbox", { name: /Washer 001/i }));
 }
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {

@@ -192,7 +192,7 @@ public class MlDatasetService {
                 new MlDatasetWindowDto(request.from(), request.to(), MlCandidateWindowKind.USER_SELECTED),
                 availableMetrics,
                 candidates,
-                timeline(request.from(), request.to(), validation),
+                timeline(accountId, request, validation),
                 labelReadiness,
                 decision.qualityGates(),
                 decision.blockingReasons(),
@@ -1229,10 +1229,26 @@ public class MlDatasetService {
         return maxInstant(from, to.minus(recent));
     }
 
-    private List<MlDatasetTimelineBucketDto> timeline(Instant from, Instant to, ValidationResult validation) {
+    private List<MlDatasetTimelineBucketDto> timeline(
+            UUID accountId,
+            MlDatasetWorkbenchPreviewRequest request,
+            ValidationResult validation) {
+        Instant from = request.from();
+        Instant to = request.to();
         if (!to.isAfter(from)) {
             return List.of();
         }
+        List<UUID> selectedDeviceIds = normalizedDeviceIds(request.deviceIds());
+        Map<UUID, List<MaintenanceWindowReadModel>> windowsByDevice = new LinkedHashMap<>();
+        for (UUID deviceId : selectedDeviceIds) {
+            List<MaintenanceWindowReadModel> windows = maintenanceWindowRepository.findActiveOverlapping(deviceId, from, to);
+            windowsByDevice.put(deviceId, windows == null ? List.of() : windows);
+        }
+        Set<UUID> selectedDevices = new LinkedHashSet<>(selectedDeviceIds);
+        List<MaintenanceOutcomeReadModel> outcomeRows = maintenanceOutcomeRepository.findByAccountAndObservedRange(accountId, from, to);
+        List<MaintenanceOutcomeReadModel> outcomes = (outcomeRows == null ? List.<MaintenanceOutcomeReadModel>of() : outcomeRows).stream()
+                .filter(outcome -> selectedDevices.contains(outcome.getDeviceId()))
+                .toList();
         int bucketCount = 12;
         long totalMillis = Math.max(1, Duration.between(from, to).toMillis());
         long bucketMillis = Math.max(1, totalMillis / bucketCount);
@@ -1243,15 +1259,46 @@ public class MlDatasetService {
             long samples = validation.extractedRows().stream()
                     .filter(row -> !row.timestamp().isBefore(bucketStart) && row.timestamp().isBefore(bucketEnd))
                     .count();
+            List<String> events = timelineEvents(bucketStart, bucketEnd, index == bucketCount - 1, windowsByDevice, outcomes);
             buckets.add(new MlDatasetTimelineBucketDto(
                     bucketStart,
                     bucketEnd,
                     samples,
                     samples == 0 ? 0.0 : 1.0,
                     samples == 0 ? MlWorkbenchStatus.NO_DATA : MlWorkbenchStatus.READY,
-                    List.of()));
+                    events));
         }
         return buckets;
+    }
+
+    private List<String> timelineEvents(
+            Instant bucketStart,
+            Instant bucketEnd,
+            boolean lastBucket,
+            Map<UUID, List<MaintenanceWindowReadModel>> windowsByDevice,
+            List<MaintenanceOutcomeReadModel> outcomes) {
+        List<String> events = new ArrayList<>();
+        for (List<MaintenanceWindowReadModel> windows : windowsByDevice.values()) {
+            for (MaintenanceWindowReadModel window : windows) {
+                if (windowOverlaps(bucketStart, bucketEnd, window)) {
+                    events.add(window.isExcludeFromMl() ? "MAINTENANCE_EXCLUDED" : "MAINTENANCE_OVERLAP");
+                }
+            }
+        }
+        for (MaintenanceOutcomeReadModel outcome : outcomes) {
+            Instant observedAt = outcome.getObservedAt();
+            boolean inBucket = lastBucket
+                    ? !observedAt.isBefore(bucketStart) && !observedAt.isAfter(bucketEnd)
+                    : !observedAt.isBefore(bucketStart) && observedAt.isBefore(bucketEnd);
+            if (inBucket) {
+                events.add(labelType(outcome).name());
+            }
+        }
+        return distinct(events);
+    }
+
+    private boolean windowOverlaps(Instant bucketStart, Instant bucketEnd, MaintenanceWindowReadModel window) {
+        return window.getStartAt().isBefore(bucketEnd) && window.getEndAt().isAfter(bucketStart);
     }
 
     private void assertPreviewFresh(UUID accountId, MlInternalDatasetRequest request, ValidationResult validation) {

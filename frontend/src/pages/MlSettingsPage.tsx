@@ -35,6 +35,7 @@ import {
   MlDeploymentScope,
   MlFeatureSnapshotResponse,
   MlHorizonLabelGenerationResponse,
+  MlInternalDatasetResponse,
   MlLabel,
   MlLabelAudit,
   MlLabelType,
@@ -64,6 +65,8 @@ import {
   saveDeviceMlSettings,
 } from "../analytics/mlSettingsApi";
 import { Device, DeviceType, listDevices, listDeviceTypes } from "../devices/devicesApi";
+import { DatasetWorkbench } from "../features/ml-datasets/components/DatasetWorkbench";
+import type { DatasetPipelineStep, DatasetWorkbenchDefaults, DatasetWorkbenchModelFamily } from "../features/ml-datasets/model/datasetWorkbench.types";
 
 const initial: MlSettingsValues = {
   mlEnabled: true,
@@ -78,7 +81,7 @@ type FeatureSnapshotConfig = Parameters<typeof generateFeatureSnapshot>[0];
 type DatasetLifecycleKind = "dataset" | "snapshot";
 type ArchiveDeleteAction = "archive" | "delete";
 const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
-const defaultMlMetrics = ["activePowerW", "voltageV", "currentA", "temperatureC", "vibrationRms", "cycleDurationSeconds"];
+type WorkflowMode = DatasetWorkbenchModelFamily;
 
 function requestLifecycleReason(action: string, label: string, impact?: MlLifecycleImpact) {
   const summary = impact ? `\n\nImpact: ${impact.message}${formatImpactDependencies(impact)}` : "";
@@ -102,8 +105,78 @@ function formatImpactDependencies(impact: MlLifecycleImpact) {
   return details.length === 0 ? "" : ` (${details.join("; ")})`;
 }
 
+function buildPipelineSteps(
+  mode: WorkflowMode,
+  datasets: MlDatasetSummary[],
+  labels: MlLabel[],
+  featureSnapshot: MlFeatureSnapshotResponse | null,
+  trainingRuns: MlTrainingRun[],
+  models: MlModelVersion[],
+  policies: MlDeploymentPolicy[],
+  prediction: PredictionResponse | null,
+): DatasetPipelineStep[] {
+  const datasetItems = Array.isArray(datasets) ? datasets : [];
+  const labelItems = Array.isArray(labels) ? labels : [];
+  const trainingItems = Array.isArray(trainingRuns) ? trainingRuns : [];
+  const modelItems = Array.isArray(models) ? models : [];
+  const policyItems = Array.isArray(policies) ? policies : [];
+  const readyDatasets = datasetItems.filter((dataset) => dataset.status === "READY");
+  const matchingSnapshot = Boolean(featureSnapshot && featureSnapshot.modelFamily === mode);
+  const matchingRuns = trainingItems.filter((run) => run.modelFamily === mode && ["QUEUED", "RUNNING", "SUCCEEDED"].includes(run.status));
+  const approvedModels = modelItems.filter((model) => model.family === mode && ["APPROVED", "ACTIVE"].includes(model.status));
+  const activePolicies = policyItems.filter((policy) => policy.mode !== "DISABLED" && Boolean(policy.modelVersionId));
+  const hasPositiveFailureLabels = labelItems.some((label) => ["CONFIRMED_FAILURE", "CORRECTIVE_MAINTENANCE"].includes(label.label));
+  const labelsRequired = mode === "FAILURE_PREDICTION";
+
+  return [
+    {
+      id: "dataset",
+      label: "Dataset",
+      status: readyDatasets.length > 0 ? "ready" : datasetItems.length > 0 ? "review" : "blocked",
+      detail: readyDatasets.length > 0 ? `${readyDatasets.length} ready` : "Create a previewed dataset",
+    },
+    {
+      id: "labels",
+      label: "Labels",
+      status: labelsRequired ? (hasPositiveFailureLabels ? "ready" : labelItems.length > 0 ? "review" : "blocked") : "ready",
+      detail: labelsRequired ? `${labelItems.length} loaded / failure positives ${hasPositiveFailureLabels ? "present" : "missing"}` : "Not required",
+    },
+    {
+      id: "snapshot",
+      label: "Feature snapshot",
+      status: matchingSnapshot ? "ready" : featureSnapshot ? "review" : "blocked",
+      detail: matchingSnapshot ? `${featureSnapshot?.rowCount ?? 0} rows` : `Need ${humanizeKey(mode)} snapshot`,
+    },
+    {
+      id: "training",
+      label: "Training",
+      status: matchingRuns.length > 0 ? "ready" : trainingItems.length > 0 ? "review" : "blocked",
+      detail: matchingRuns.length > 0 ? `${matchingRuns.length} matching runs` : "Queue a matching run",
+    },
+    {
+      id: "model",
+      label: "Model",
+      status: approvedModels.length > 0 ? "ready" : modelItems.some((model) => model.family === mode) ? "review" : "blocked",
+      detail: approvedModels.length > 0 ? `${approvedModels.length} approved` : "Approve a matching model",
+    },
+    {
+      id: "policy",
+      label: "Policy",
+      status: activePolicies.length > 0 ? "ready" : policyItems.length > 0 ? "review" : "blocked",
+      detail: activePolicies.length > 0 ? `${activePolicies.length} active` : "Enable deployment policy",
+    },
+    {
+      id: "monitoring",
+      label: "Monitoring",
+      status: prediction ? "ready" : "review",
+      detail: prediction ? statusText(prediction.predictionStatus) : "Load device prediction",
+    },
+  ];
+}
+
 export function MlSettingsPage() {
   const [activeTab, setActiveTab] = useState<MlTab>("settings");
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("ANOMALY_DETECTION");
   const [values, setValues] = useState(initial);
   const [effective, setEffective] = useState<MlSettingsResponse | null>(null);
   const [deviceId, setDeviceId] = useState("");
@@ -265,6 +338,10 @@ export function MlSettingsPage() {
 
   const set = <K extends keyof MlSettingsValues>(key: K, value: MlSettingsValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
+  const pipelineSteps = useMemo(
+    () => buildPipelineSteps(workflowMode, datasets, labels, featureSnapshot, trainingRuns, models, policies, prediction),
+    [datasets, featureSnapshot, labels, models, policies, prediction, trainingRuns, workflowMode],
+  );
 
   return (
     <>
@@ -274,6 +351,7 @@ export function MlSettingsPage() {
       </header>
       {message && <div className="success-message">{message}</div>}
       {error && <div className="error-message">{error}</div>}
+      <WorkflowPipelineRail mode={workflowMode} onModeChange={setWorkflowMode} steps={pipelineSteps} />
       <nav className="tab-row" aria-label="ML workflow tabs">
         {[
           ["settings", "Settings"],
@@ -320,6 +398,7 @@ export function MlSettingsPage() {
           devices={devices}
           detail={datasetDetail}
           featureSnapshot={featureSnapshot}
+          workflowMode={workflowMode}
           accountId={effective?.accountId ?? "unknown-account"}
           statusFilter={datasetStatusFilter}
           onFilterChange={async (value) => {
@@ -334,8 +413,10 @@ export function MlSettingsPage() {
               await refreshMlWorkspace();
               await loadDatasetDetail(response.datasetVersionId);
               setMessage(`Internal telemetry dataset ${response.status}: ${response.acceptedRows} accepted / ${response.rejectedRows} rejected`);
+              return response;
             } catch (e) {
               setError(safeMlError(e));
+              throw e;
             } finally {
               setBusy(false);
             }
@@ -382,6 +463,7 @@ export function MlSettingsPage() {
             }
           }}
           onSelect={loadDatasetDetail}
+          onWorkflowModeChange={setWorkflowMode}
         />
       )}
       {activeTab === "import" && (
@@ -656,20 +738,58 @@ function StatusFilterSelect(props: {
   );
 }
 
+function WorkflowPipelineRail(props: {
+  mode: WorkflowMode;
+  onModeChange: (mode: WorkflowMode) => void;
+  steps: DatasetPipelineStep[];
+}) {
+  return (
+    <section className="ml-pipeline-rail" aria-label="ML lifecycle pipeline">
+      <div className="ml-pipeline-mode" role="group" aria-label="Workflow mode">
+        <button
+          className={props.mode === "ANOMALY_DETECTION" ? "ml-pipeline-mode-active" : ""}
+          onClick={() => props.onModeChange("ANOMALY_DETECTION")}
+          type="button"
+        >
+          Anomaly detection
+        </button>
+        <button
+          className={props.mode === "FAILURE_PREDICTION" ? "ml-pipeline-mode-active" : ""}
+          onClick={() => props.onModeChange("FAILURE_PREDICTION")}
+          type="button"
+        >
+          Failure prediction
+        </button>
+      </div>
+      <ol className="ml-pipeline-steps">
+        {props.steps.map((step) => (
+          <li className={`ml-pipeline-step ml-pipeline-step-${step.status}`} key={step.id}>
+            <strong>{step.label}</strong>
+            <span>{step.status}</span>
+            <small>{step.detail}</small>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function DatasetsTab(props: {
   accountId: string;
   datasets: MlDatasetSummary[];
   devices: Device[];
   detail: MlDatasetDetail | null;
   featureSnapshot: MlFeatureSnapshotResponse | null;
+  workflowMode: WorkflowMode;
   statusFilter: MlLifecycleStatusFilter;
-  onCreateInternalDataset: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<void>;
+  onCreateInternalDataset: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<MlInternalDatasetResponse>;
   onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
   onGenerateFeatureSnapshot: (body: FeatureSnapshotConfig) => Promise<void>;
   onLifecycle: (kind: DatasetLifecycleKind, id: string, action: ArchiveDeleteAction, label: string) => Promise<void>;
   onSelect: (datasetVersionId: string) => Promise<void>;
+  onWorkflowModeChange: (mode: WorkflowMode) => void;
 }) {
-  const [modelFamily, setModelFamily] = useState<"ANOMALY_DETECTION" | "FAILURE_PREDICTION">("ANOMALY_DETECTION");
+  const [modelFamily, setModelFamily] = useState<WorkflowMode>(props.workflowMode);
   const [horizonDays, setHorizonDays] = useState(30);
   const [featureTemplateId, setFeatureTemplateId] = useState("generic-appliance");
   const [featureTemplateVersion, setFeatureTemplateVersion] = useState("template-v1");
@@ -678,8 +798,21 @@ function DatasetsTab(props: {
   const [featureFamiliesText, setFeatureFamiliesText] = useState(defaultFeatureFamilies("ANOMALY_DETECTION").join("\n"));
   const selectedDatasetVersionId = props.detail?.dataset.datasetVersionId ?? "";
 
-  function chooseModelFamily(nextModelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
+  useEffect(() => {
+    setModelFamily(props.workflowMode);
+    setFeatureFamiliesText(defaultFeatureFamilies(props.workflowMode).join("\n"));
+  }, [props.workflowMode]);
+
+  function applyWorkbenchDefaults(defaults: DatasetWorkbenchDefaults) {
+    setModelFamily(defaults.modelFamily);
+    props.onWorkflowModeChange(defaults.modelFamily);
+    setHorizonDays(defaults.horizonDays ?? 30);
+    setFeatureFamiliesText(defaultFeatureFamilies(defaults.modelFamily).join("\n"));
+  }
+
+  function chooseModelFamily(nextModelFamily: WorkflowMode) {
     setModelFamily(nextModelFamily);
+    props.onWorkflowModeChange(nextModelFamily);
     setFeatureFamiliesText(defaultFeatureFamilies(nextModelFamily).join("\n"));
   }
 
@@ -703,9 +836,16 @@ function DatasetsTab(props: {
   }
 
   return (
-    <div className="ml-workflow-grid">
-      <div className="ml-panel-stack">
-        <InternalTelemetryDatasetForm accountId={props.accountId} devices={props.devices} onCreate={props.onCreateInternalDataset} />
+    <div className="ml-datasets-workspace">
+      <DatasetWorkbench
+        accountId={props.accountId}
+        devices={props.devices}
+        workflowMode={props.workflowMode}
+        onCreate={props.onCreateInternalDataset}
+        onCreatedFromWorkbench={applyWorkbenchDefaults}
+        onWorkflowModeChange={props.onWorkflowModeChange}
+      />
+      <div className="ml-datasets-secondary-grid">
         <section className="panel">
           <div className="section-header">
             <div>
@@ -727,8 +867,7 @@ function DatasetsTab(props: {
             </div>
           )}
         </section>
-      </div>
-      <section className="panel">
+        <section className="panel ml-datasets-detail-panel">
         <div className="section-header">
           <div>
             <h2>Dataset detail</h2>
@@ -820,6 +959,7 @@ function DatasetsTab(props: {
           </>
         )}
       </section>
+      </div>
     </div>
   );
 }
@@ -861,149 +1001,6 @@ function summarizeLabels(labels: MlLabel[]) {
       return summary;
     },
     { positive: 0, outcome: 0, unresolved: 0, falsePositive: 0 },
-  );
-}
-
-type DatasetDraft = {
-  name: string;
-  description: string;
-  deviceIds: string[];
-  metrics: string[];
-  from: string;
-  to: string;
-  splitStrategy: "TIME_BASED" | "DEVICE_BASED" | "RANDOM";
-  featureConfigVersion: string;
-  minSamplesPerMetric: number;
-  maxSamplingGapSeconds: number;
-  commonMetricsOnly: boolean;
-};
-
-const defaultDatasetDraft: DatasetDraft = {
-  name: "Internal telemetry training set",
-  description: "",
-  deviceIds: [],
-  metrics: ["activePowerW", "voltageV", "currentA"],
-  from: "2026-07-01T00:00",
-  to: "2026-07-02T00:00",
-  splitStrategy: "TIME_BASED",
-  featureConfigVersion: "feature-config-v1",
-  minSamplesPerMetric: 24,
-  maxSamplingGapSeconds: 21600,
-  commonMetricsOnly: true,
-};
-
-function InternalTelemetryDatasetForm(props: {
-  accountId: string;
-  devices: Device[];
-  onCreate: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<void>;
-}) {
-  const [draft, setDraft, clearDraft, restoredDraft] = usePersistedDraft(
-    `voltcanary.ml.${props.accountId}.datasets.ANOMALY_DETECTION.internal-dataset`,
-    defaultDatasetDraft,
-  );
-  const [localError, setLocalError] = useState<string | null>(null);
-  const availableMetrics = metricsForDevices(props.devices, draft.deviceIds, draft.commonMetricsOnly);
-  const staleDeviceIds = draft.deviceIds.filter((id) => props.devices.length > 0 && !props.devices.some((device) => device.id === id));
-  const selectedMetrics = draft.metrics.filter((metric) => availableMetrics.includes(metric));
-
-  useEffect(() => {
-    if (selectedMetrics.length !== draft.metrics.length) {
-      setDraft((current) => ({ ...current, metrics: selectedMetrics }));
-    }
-  }, [draft.metrics, selectedMetrics, setDraft]);
-
-  function update<K extends keyof DatasetDraft>(key: K, value: DatasetDraft[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!draft.name.trim()) {
-      setLocalError("Dataset name is required");
-      return;
-    }
-    if (draft.deviceIds.length === 0) {
-      setLocalError("Select at least one device");
-      return;
-    }
-    if (draft.metrics.length === 0) {
-      setLocalError("Select at least one metric");
-      return;
-    }
-    if (new Date(draft.from).getTime() >= new Date(draft.to).getTime()) {
-      setLocalError("From must be before To");
-      return;
-    }
-    setLocalError(null);
-    await props.onCreate({
-      name: draft.name.trim(),
-      description: draft.description.trim() || null,
-      deviceIds: draft.deviceIds,
-      deviceMetadata: {},
-      metrics: draft.metrics,
-      from: toInstant(draft.from),
-      to: toInstant(draft.to),
-      splitStrategy: draft.splitStrategy,
-      splitConfigJson: "{}",
-      featureConfigVersion: draft.featureConfigVersion.trim() || "feature-config-v1",
-      minSamplesPerMetric: draft.minSamplesPerMetric,
-      maxSamplingGapSeconds: draft.maxSamplingGapSeconds,
-    });
-    clearDraft();
-  }
-
-  return (
-    <form className="panel ml-settings-form" onSubmit={submit}>
-      <div className="section-header">
-        <div>
-          <h2>Create internal dataset</h2>
-          <p>Freeze selected telemetry rows into a dataset version.</p>
-        </div>
-      </div>
-      {localError && <div className="error-message">{localError}</div>}
-      {restoredDraft && <div className="warning-message">Restored unsaved dataset draft.</div>}
-      {staleDeviceIds.length > 0 && <div className="warning-message">Unavailable devices in draft: {staleDeviceIds.join(", ")}</div>}
-      <label>Dataset name<input value={draft.name} onChange={(event) => update("name", event.target.value)} required /></label>
-      <label>Description<input value={draft.description} onChange={(event) => update("description", event.target.value)} /></label>
-      <label>
-        Devices
-        <select
-          aria-label="Device selector"
-          multiple
-          onChange={(event) => update("deviceIds", Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}
-          required
-          value={draft.deviceIds}
-        >
-          {props.devices.map((device) => <option key={device.id} value={device.id}>{deviceLabel(device)}</option>)}
-        </select>
-        <small>{props.devices.length === 0 ? "Device list unavailable; reload after device service is reachable." : "Use Ctrl or Shift to select multiple devices."}</small>
-      </label>
-      <label className="checkbox-label"><input checked={draft.commonMetricsOnly} onChange={(event) => update("commonMetricsOnly", event.target.checked)} type="checkbox" /> Common metrics only</label>
-      <div className="ml-checkbox-grid" aria-label="Metric selector">
-        {availableMetrics.map((metric) => (
-          <label className="checkbox-label" key={metric}>
-            <input
-              checked={draft.metrics.includes(metric)}
-              onChange={(event) => update("metrics", event.target.checked ? [...draft.metrics, metric] : draft.metrics.filter((item) => item !== metric))}
-              type="checkbox"
-            />
-            {humanizeFeatureName(metric)}
-          </label>
-        ))}
-      </div>
-      <div className="ml-form-grid">
-        <label>From<input type="datetime-local" value={draft.from} onChange={(event) => update("from", event.target.value)} required /></label>
-        <label>To<input type="datetime-local" value={draft.to} onChange={(event) => update("to", event.target.value)} required /></label>
-        <label>Split<select value={draft.splitStrategy} onChange={(event) => update("splitStrategy", event.target.value as DatasetDraft["splitStrategy"])}><option value="TIME_BASED">Time based</option><option value="DEVICE_BASED">Device based</option><option value="RANDOM">Random</option></select></label>
-        <label>Feature config<input value={draft.featureConfigVersion} onChange={(event) => update("featureConfigVersion", event.target.value)} /></label>
-        <label>Min samples<input min="1" type="number" value={draft.minSamplesPerMetric} onChange={(event) => update("minSamplesPerMetric", Number(event.target.value))} /></label>
-        <label>Max gap seconds<input min="1" type="number" value={draft.maxSamplingGapSeconds} onChange={(event) => update("maxSamplingGapSeconds", Number(event.target.value))} /></label>
-      </div>
-      <div className="action-row action-row-start">
-        <button className="primary-button">Create dataset version</button>
-        <button className="ghost-button" onClick={clearDraft} type="button">Reset draft</button>
-      </div>
-    </form>
   );
 }
 
@@ -1282,7 +1279,16 @@ function TrainingTab(props: {
 
   useEffect(() => {
     if (props.featureSnapshot?.id) {
-      setDraft((current) => ({ ...current, featureSnapshotId: props.featureSnapshot!.id }));
+      const snapshotFamily = props.featureSnapshot.modelFamily === "FAILURE_PREDICTION" ? "FAILURE_PREDICTION" : "ANOMALY_DETECTION";
+      setDraft((current) => ({
+        ...current,
+        featureSnapshotId: props.featureSnapshot!.id,
+        modelFamily: snapshotFamily,
+        algorithm: trainingTemplates[snapshotFamily].defaultAlgorithm,
+        failureHorizonDays: snapshotFamily === "FAILURE_PREDICTION"
+          ? props.featureSnapshot!.horizonDays ?? current.failureHorizonDays
+          : current.failureHorizonDays,
+      }));
     }
   }, [props.featureSnapshot, setDraft]);
 
@@ -1979,31 +1985,6 @@ function defaultFeatureFamilies(modelFamily: "ANOMALY_DETECTION" | "FAILURE_PRED
     return ["rolling_stats", "baseline_deviation", "missing_data", "time", "device_context", "label"];
   }
   return ["rolling_stats", "baseline_deviation", "missing_data", "time", "label"];
-}
-
-function metricsForDevices(devices: Device[], selectedDeviceIds: string[], commonOnly: boolean) {
-  const selectedDevices = devices.filter((device) => selectedDeviceIds.includes(device.id));
-  const metricSets = selectedDevices
-    .map((device) => deviceMetrics(device))
-    .filter((metrics) => metrics.length > 0);
-  if (metricSets.length === 0) {
-    return defaultMlMetrics;
-  }
-  const metrics = commonOnly
-    ? metricSets.reduce((common, metrics) => common.filter((metric) => metrics.includes(metric)))
-    : Array.from(new Set(metricSets.flat()));
-  return metrics.length > 0 ? metrics : defaultMlMetrics;
-}
-
-function deviceMetrics(device: Device) {
-  const raw = device.metadata?.metrics ?? device.metadata?.mlMetrics ?? device.metadata?.telemetryMetrics;
-  if (Array.isArray(raw)) {
-    return raw.map(String).filter(Boolean);
-  }
-  if (typeof raw === "string") {
-    return splitList(raw);
-  }
-  return defaultMlMetrics;
 }
 
 function toInstant(value: string) {

@@ -123,3 +123,63 @@ incompatible snapshot for training.
 - **AND** warn when the selected snapshot horizon differs from the training
   horizon.
 
+### Requirement: Dataset Workbench preserves feature and training compatibility
+
+The Dataset Workbench SHALL carry selected model family, horizon, metrics, and
+window intent into downstream feature snapshot and training defaults without
+weakening existing compatibility checks.
+
+#### Scenario: Workbench creates a failure-prediction dataset
+
+- **GIVEN** the operator creates a dataset from a failure-prediction workbench
+  preview
+- **WHEN** the operator proceeds to feature snapshot generation
+- **THEN** the UI SHALL default the feature snapshot model family to
+  `FAILURE_PREDICTION`
+- **AND** default `horizonDays` to the previewed horizon
+- **AND** keep the horizon editable only when a fresh preview or label
+  readiness check confirms compatibility.
+
+#### Scenario: Workbench creates an anomaly dataset
+
+- **GIVEN** the operator creates a dataset from an anomaly-detection workbench
+  preview
+- **WHEN** the operator proceeds to feature snapshot generation
+- **THEN** the UI SHALL default the feature snapshot model family to
+  `ANOMALY_DETECTION`
+- **AND** not require horizon labels for anomaly feature snapshots.
+
+#### Scenario: Training selector uses workbench lineage metadata
+
+- **GIVEN** a dataset version and feature snapshot were created from workbench
+  selections
+- **WHEN** the operator opens training
+- **THEN** feature snapshot selectors SHALL prioritize snapshots matching the
+  selected dataset version, model family, horizon, and feature schema metadata
+- **AND** block or warn on family or horizon mismatch before submitting the
+  training run.
+
+### Requirement: Workbench pipeline exposes downstream readiness
+
+The Dataset Workbench and ML Settings pipeline SHALL make downstream feature
+snapshot and training readiness visible before operators create or train from a
+dataset.
+
+#### Scenario: Failure-prediction workbench is selected
+
+- **GIVEN** the operator chooses failure prediction
+- **WHEN** the workbench renders readiness
+- **THEN** downstream readiness SHALL show whether horizon labels, failure
+  feature snapshots, matching training runs, model approval, deployment policy,
+  and monitoring traces exist
+- **AND** missing required steps SHALL be shown as blocked or review states
+  rather than hidden behind later tabs.
+
+#### Scenario: Anomaly workflow is selected
+
+- **GIVEN** the operator chooses anomaly detection
+- **WHEN** the workbench renders readiness
+- **THEN** downstream readiness SHALL not require horizon labels
+- **AND** feature snapshot and training readiness SHALL be scoped to anomaly
+  model-family defaults.
+
