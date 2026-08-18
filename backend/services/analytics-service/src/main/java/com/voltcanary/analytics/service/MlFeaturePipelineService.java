@@ -154,6 +154,14 @@ public class MlFeaturePipelineService {
         return response(snapshot);
     }
 
+    @Transactional(readOnly = true)
+    public List<MlFeatureSnapshotResponse> list(UUID accountId, UUID datasetVersionId) {
+        List<MlFeatureSnapshot> snapshots = datasetVersionId == null
+                ? featureSnapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE")
+                : featureSnapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE");
+        return snapshots.stream().map(this::response).toList();
+    }
+
     @Transactional
     public MlFeatureSnapshotResponse archive(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {
         MlFeatureSnapshot snapshot = findOwnedSnapshot(accountId, featureSnapshotId);
@@ -610,6 +618,7 @@ public class MlFeaturePipelineService {
                 snapshot.getHorizonDays(),
                 snapshot.getFeatureTemplateId(),
                 snapshot.getFeatureTemplateVersion(),
+                snapshot.getLifecycleStatus(),
                 snapshot.getCreatedAt());
     }
 

@@ -14,6 +14,7 @@ import type {
 
 const hourMs = 60 * 60 * 1000;
 const dayMs = 24 * hourMs;
+export const maxPreviewRangeDays = 30;
 
 export const defaultDatasetWorkbenchDraft: DatasetWorkbenchDraft = {
   name: "Internal telemetry training set",
@@ -179,6 +180,8 @@ export function validateWorkbench(
     createDisabledReason = "Select at least one preview metric.";
   } else if (!isValidRange(draft.from, draft.to)) {
     createDisabledReason = "From must be before To.";
+  } else if (!isSupportedPreviewRange(draft.from, draft.to)) {
+    createDisabledReason = `Preview range must be ${maxPreviewRangeDays} days or less.`;
   } else if (previewStatus === "idle") {
     createDisabledReason = "Run preview before creating a dataset.";
   } else if (previewStatus === "loading") {
@@ -221,6 +224,20 @@ export function isValidRange(from: string, to: string) {
   const fromMs = new Date(from).getTime();
   const toMs = new Date(to).getTime();
   return Number.isFinite(fromMs) && Number.isFinite(toMs) && fromMs < toMs;
+}
+
+export function previewRangeDays(from: string, to: string) {
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to).getTime();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return null;
+  }
+  return (toMs - fromMs) / dayMs;
+}
+
+export function isSupportedPreviewRange(from: string, to: string) {
+  const days = previewRangeDays(from, to);
+  return days !== null && days <= maxPreviewRangeDays;
 }
 
 export function formatPercent(value: number | null | undefined) {

@@ -20,9 +20,11 @@ import {
   createMlLabel,
   generateFeatureSnapshot,
   generateHorizonLabels,
+  getHorizonLabelGenerationStatus,
   getMlLabelAudit,
   getMlDatasetVersion,
   importMlDataset,
+  listFeatureSnapshots,
   listMlLabels,
   listDeploymentPolicies,
   listMlDatasets,
@@ -109,7 +111,7 @@ function buildPipelineSteps(
   mode: WorkflowMode,
   datasets: MlDatasetSummary[],
   labels: MlLabel[],
-  featureSnapshot: MlFeatureSnapshotResponse | null,
+  featureSnapshots: MlFeatureSnapshotResponse[],
   trainingRuns: MlTrainingRun[],
   models: MlModelVersion[],
   policies: MlDeploymentPolicy[],
@@ -120,8 +122,9 @@ function buildPipelineSteps(
   const trainingItems = Array.isArray(trainingRuns) ? trainingRuns : [];
   const modelItems = Array.isArray(models) ? models : [];
   const policyItems = Array.isArray(policies) ? policies : [];
+  const snapshotItems = Array.isArray(featureSnapshots) ? featureSnapshots : [];
   const readyDatasets = datasetItems.filter((dataset) => dataset.status === "READY");
-  const matchingSnapshot = Boolean(featureSnapshot && featureSnapshot.modelFamily === mode);
+  const matchingSnapshots = snapshotItems.filter((snapshot) => (snapshot.modelFamily ?? "ANOMALY_DETECTION") === mode);
   const matchingRuns = trainingItems.filter((run) => run.modelFamily === mode && ["QUEUED", "RUNNING", "SUCCEEDED"].includes(run.status));
   const approvedModels = modelItems.filter((model) => model.family === mode && ["APPROVED", "ACTIVE"].includes(model.status));
   const activePolicies = policyItems.filter((policy) => policy.mode !== "DISABLED" && Boolean(policy.modelVersionId));
@@ -144,8 +147,8 @@ function buildPipelineSteps(
     {
       id: "snapshot",
       label: "Feature snapshot",
-      status: matchingSnapshot ? "ready" : featureSnapshot ? "review" : "blocked",
-      detail: matchingSnapshot ? `${featureSnapshot?.rowCount ?? 0} rows` : `Need ${humanizeKey(mode)} snapshot`,
+      status: matchingSnapshots.length > 0 ? "ready" : snapshotItems.length > 0 ? "review" : "blocked",
+      detail: matchingSnapshots.length > 0 ? `${matchingSnapshots.length} snapshots` : `Need ${humanizeKey(mode)} snapshot`,
     },
     {
       id: "training",
@@ -193,7 +196,7 @@ export function MlSettingsPage() {
   const [policies, setPolicies] = useState<MlDeploymentPolicy[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-  const [featureSnapshot, setFeatureSnapshot] = useState<MlFeatureSnapshotResponse | null>(null);
+  const [featureSnapshots, setFeatureSnapshots] = useState<MlFeatureSnapshotResponse[]>([]);
   const [labels, setLabels] = useState<MlLabel[]>([]);
   const [labelAudit, setLabelAudit] = useState<MlLabelAudit[]>([]);
   const [datasetStatusFilter, setDatasetStatusFilter] = useState<MlLifecycleStatusFilter>("default");
@@ -256,8 +259,9 @@ export function MlSettingsPage() {
   }
 
   async function refreshMlWorkspace() {
-    const [datasetResult, trainingResult, modelResult, policyResult] = await Promise.allSettled([
+    const [datasetResult, snapshotResult, trainingResult, modelResult, policyResult] = await Promise.allSettled([
       listMlDatasets(datasetStatusFilter),
+      listFeatureSnapshots(),
       listTrainingRuns(trainingStatusFilter),
       listMlModels(modelStatusFilter),
       listDeploymentPolicies(policyStatusFilter),
@@ -267,6 +271,11 @@ export function MlSettingsPage() {
     }
     if (trainingResult.status === "fulfilled") {
       setTrainingRuns(trainingResult.value);
+    }
+    if (snapshotResult.status === "fulfilled") {
+      if (Array.isArray(snapshotResult.value)) {
+        setFeatureSnapshots(snapshotResult.value);
+      }
     }
     if (modelResult.status === "fulfilled") {
       setModels(modelResult.value);
@@ -339,8 +348,8 @@ export function MlSettingsPage() {
   const set = <K extends keyof MlSettingsValues>(key: K, value: MlSettingsValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
   const pipelineSteps = useMemo(
-    () => buildPipelineSteps(workflowMode, datasets, labels, featureSnapshot, trainingRuns, models, policies, prediction),
-    [datasets, featureSnapshot, labels, models, policies, prediction, trainingRuns, workflowMode],
+    () => buildPipelineSteps(workflowMode, datasets, labels, featureSnapshots, trainingRuns, models, policies, prediction),
+    [datasets, featureSnapshots, labels, models, policies, prediction, trainingRuns, workflowMode],
   );
 
   return (
@@ -397,7 +406,7 @@ export function MlSettingsPage() {
           datasets={datasets}
           devices={devices}
           detail={datasetDetail}
-          featureSnapshot={featureSnapshot}
+          featureSnapshots={featureSnapshots}
           workflowMode={workflowMode}
           accountId={effective?.accountId ?? "unknown-account"}
           statusFilter={datasetStatusFilter}
@@ -425,7 +434,8 @@ export function MlSettingsPage() {
             setBusy(true);
             setError(null);
             try {
-              setFeatureSnapshot(await generateFeatureSnapshot(body));
+              const snapshot = await generateFeatureSnapshot(body);
+              setFeatureSnapshots((current) => upsertFeatureSnapshot(current, snapshot));
               setMessage("Feature snapshot generated");
               await refreshMlWorkspace();
             } catch (e) {
@@ -452,7 +462,7 @@ export function MlSettingsPage() {
                 setDatasetDetail(null);
               } else {
                 await (action === "archive" ? archiveFeatureSnapshot(id, reason) : deleteFeatureSnapshot(id, reason));
-                setFeatureSnapshot(null);
+                setFeatureSnapshots((current) => current.filter((snapshot) => snapshot.id !== id));
               }
               await refreshMlWorkspace();
               setMessage(`${label} ${action}d`);
@@ -515,7 +525,7 @@ export function MlSettingsPage() {
         <TrainingTab
           datasets={datasets}
           accountId={effective?.accountId ?? "unknown-account"}
-          featureSnapshot={featureSnapshot}
+          featureSnapshots={featureSnapshots}
           runs={trainingRuns}
           statusFilter={trainingStatusFilter}
           onFilterChange={async (value) => {
@@ -779,7 +789,7 @@ function DatasetsTab(props: {
   datasets: MlDatasetSummary[];
   devices: Device[];
   detail: MlDatasetDetail | null;
-  featureSnapshot: MlFeatureSnapshotResponse | null;
+  featureSnapshots: MlFeatureSnapshotResponse[];
   workflowMode: WorkflowMode;
   statusFilter: MlLifecycleStatusFilter;
   onCreateInternalDataset: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<MlInternalDatasetResponse>;
@@ -797,6 +807,7 @@ function DatasetsTab(props: {
   const [missingGapSeconds, setMissingGapSeconds] = useState(21600);
   const [featureFamiliesText, setFeatureFamiliesText] = useState(defaultFeatureFamilies("ANOMALY_DETECTION").join("\n"));
   const selectedDatasetVersionId = props.detail?.dataset.datasetVersionId ?? "";
+  const detailSnapshots = props.featureSnapshots.filter((snapshot) => snapshot.datasetVersionId === selectedDatasetVersionId);
 
   useEffect(() => {
     setModelFamily(props.workflowMode);
@@ -946,15 +957,17 @@ function DatasetsTab(props: {
               <div className="action-row action-row-start">
                 <button className="primary-button" disabled={modelFamily === "FAILURE_PREDICTION" && (!horizonDays || horizonDays < 1)} onClick={generateSnapshot} type="button">Generate feature snapshot</button>
               </div>
-              {props.featureSnapshot && (
-                <>
-                  <FeatureSnapshotSummary snapshot={props.featureSnapshot} />
+              {detailSnapshots.length === 0 ? (
+                <div className="empty-state">No feature snapshots generated for this dataset yet.</div>
+              ) : detailSnapshots.map((snapshot) => (
+                <div className="ml-readout" key={snapshot.id}>
+                  <FeatureSnapshotSummary snapshot={snapshot} />
                   <div className="action-row action-row-start">
-                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", props.featureSnapshot!.id, "archive", "feature snapshot")} type="button">Archive snapshot</button>
-                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", props.featureSnapshot!.id, "delete", "feature snapshot")} type="button">Delete snapshot</button>
+                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", snapshot.id, "archive", "feature snapshot")} type="button">Archive snapshot</button>
+                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", snapshot.id, "delete", "feature snapshot")} type="button">Delete snapshot</button>
                   </div>
-                </>
-              )}
+                </div>
+              ))}
             </section>
           </>
         )}
@@ -1049,6 +1062,60 @@ function ImportTab({ onImported, setError }: { onImported: (summary: string) => 
   );
 }
 
+function isGatewayTimeout(error: unknown) {
+  return error instanceof Error && /gateway timeout|504|timeout/i.test(error.message);
+}
+
+function trainingBlockReason(
+  datasetVersionId: string,
+  featureSnapshotId: string,
+  selectedSnapshot: MlFeatureSnapshotResponse | undefined,
+  modelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION",
+  failureHorizonDays: number,
+) {
+  if (!datasetVersionId) {
+    return "Select a READY dataset before queueing training.";
+  }
+  if (!featureSnapshotId) {
+    return "Select or generate a feature snapshot before queueing training.";
+  }
+  if (!selectedSnapshot) {
+    return "Selected feature snapshot is unavailable. Generate or select a current feature snapshot.";
+  }
+  if (selectedSnapshot.modelFamily && selectedSnapshot.modelFamily !== modelFamily) {
+    return `Feature snapshot family ${selectedSnapshot.modelFamily} must match training family ${modelFamily}.`;
+  }
+  if (modelFamily === "FAILURE_PREDICTION" && (!failureHorizonDays || failureHorizonDays < 1)) {
+    return "Failure prediction requires a positive horizon.";
+  }
+  if (modelFamily === "FAILURE_PREDICTION" && selectedSnapshot.horizonDays && selectedSnapshot.horizonDays !== failureHorizonDays) {
+    return `Feature snapshot horizon ${selectedSnapshot.horizonDays} must match training horizon ${failureHorizonDays}.`;
+  }
+  return null;
+}
+
+function upsertFeatureSnapshot(snapshots: MlFeatureSnapshotResponse[], snapshot: MlFeatureSnapshotResponse) {
+  return [snapshot, ...snapshots.filter((item) => item.id !== snapshot.id)];
+}
+
+function isActiveHorizonJob(job: MlHorizonLabelGenerationResponse | null) {
+  return job?.status === "QUEUED" || job?.status === "RUNNING";
+}
+
+function horizonJobStorageKey(datasetVersionId: string, horizonDays: number, includePreventiveMaintenance: boolean) {
+  return `voltcanary.horizonLabelJob.${datasetVersionId}.${horizonDays}.failure-outcome-v1.${includePreventiveMaintenance}`;
+}
+
+function horizonJobStatusMessage(job: MlHorizonLabelGenerationResponse) {
+  if (job.status === "COMPLETED" && job.result) {
+    return `Generated ${job.result.generatedLabels} labels. Review coverage before training.`;
+  }
+  if (job.status === "FAILED") {
+    return job.failureReason ? `Generation failed: ${job.failureReason}` : "Generation failed.";
+  }
+  return `${humanizeKey(job.status)} horizon label generation${job.progress !== null ? ` (${job.progress}%)` : ""}.`;
+}
+
 function LabelsTab(props: {
   audit: MlLabelAudit[];
   datasets: MlDatasetSummary[];
@@ -1069,13 +1136,43 @@ function LabelsTab(props: {
   const [reason, setReason] = useState("Operator review");
   const [horizonDays, setHorizonDays] = useState(30);
   const [includePreventiveMaintenance, setIncludePreventiveMaintenance] = useState(false);
-  const [generationResult, setGenerationResult] = useState<MlHorizonLabelGenerationResponse | null>(null);
+  const [generationJob, setGenerationJob] = useState<MlHorizonLabelGenerationResponse | null>(null);
+  const [generationStatusMessage, setGenerationStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!datasetVersionId && readyDatasets[0]) {
       setDatasetVersionId(readyDatasets[0].datasetVersionId);
     }
   }, [datasetVersionId, readyDatasets]);
+
+  useEffect(() => {
+    if (!isActiveHorizonJob(generationJob)) {
+      return undefined;
+    }
+    const intervalId = window.setInterval(() => {
+      void refreshGenerationStatus(false);
+    }, 2500);
+    return () => window.clearInterval(intervalId);
+  }, [generationJob?.jobId, generationJob?.status]);
+
+  useEffect(() => {
+    if (!datasetVersionId) {
+      return;
+    }
+    const stored = localStorage.getItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
+    if (!stored) {
+      return;
+    }
+    try {
+      const job = JSON.parse(stored) as MlHorizonLabelGenerationResponse;
+      if (job.datasetVersionId === datasetVersionId) {
+        setGenerationJob(job);
+        setGenerationStatusMessage(horizonJobStatusMessage(job));
+      }
+    } catch {
+      localStorage.removeItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
+    }
+  }, [datasetVersionId, horizonDays, includePreventiveMaintenance]);
 
   async function loadLabels(nextDatasetVersionId = datasetVersionId) {
     if (!nextDatasetVersionId) {
@@ -1126,21 +1223,60 @@ function LabelsTab(props: {
       props.setError("Select a dataset version before generating labels");
       return;
     }
+    setGenerationStatusMessage("Starting horizon label generation.");
+    props.setError(null);
     try {
-      const result = await generateHorizonLabels({
+      const job = await generateHorizonLabels({
         datasetVersionId,
         horizonDays,
         generationVersion: "failure-outcome-v1",
         includePreventiveMaintenance,
       });
-      setGenerationResult(result);
-      await props.onChanged(datasetVersionId);
+      await applyGenerationJob(job);
     } catch (error) {
+      if (isGatewayTimeout(error)) {
+        setGenerationStatusMessage("Label generation start timed out before a job id was returned. Retry start or refresh labels before training.");
+        return;
+      }
+      setGenerationStatusMessage(null);
       props.setError(safeMlError(error));
     }
   }
 
+  async function refreshGenerationStatus(manual = true) {
+    if (!generationJob?.jobId) {
+      if (manual) {
+        setGenerationStatusMessage("Start label generation before checking status.");
+      }
+      return;
+    }
+    try {
+      const job = await getHorizonLabelGenerationStatus(generationJob.jobId);
+      await applyGenerationJob(job);
+    } catch {
+      if (manual) {
+        setGenerationStatusMessage("Status refresh failed. Last known generation state is still shown.");
+      }
+    }
+  }
+
+  async function applyGenerationJob(job: MlHorizonLabelGenerationResponse) {
+    setGenerationJob(job);
+    localStorage.setItem(
+      horizonJobStorageKey(job.datasetVersionId, job.horizonDays, job.includePreventiveMaintenance),
+      JSON.stringify(job),
+    );
+    if (job.status === "COMPLETED" && job.result) {
+      setGenerationStatusMessage(horizonJobStatusMessage(job));
+      await props.onChanged(job.datasetVersionId);
+      return;
+    }
+    setGenerationStatusMessage(horizonJobStatusMessage(job));
+  }
+
   const coverage = summarizeLabels(props.labels);
+  const generationResult = generationJob?.result ?? null;
+  const generationActive = isActiveHorizonJob(generationJob);
 
   return (
     <div className="ml-workflow-grid">
@@ -1184,8 +1320,22 @@ function LabelsTab(props: {
             <label className="checkbox-label"><input checked={includePreventiveMaintenance} onChange={(event) => setIncludePreventiveMaintenance(event.target.checked)} type="checkbox" /> Include preventive maintenance</label>
           </div>
           <div className="action-row action-row-start">
-            <button className="ghost-button" onClick={() => void generateLabels()} type="button">Generate horizon labels</button>
+            <button className="ghost-button" disabled={generationActive} onClick={() => void generateLabels()} type="button">
+              {generationActive ? "Generation active" : generationJob?.status === "FAILED" ? "Retry horizon labels" : "Generate horizon labels"}
+            </button>
+            {generationJob && <button className="ghost-button" onClick={() => void refreshGenerationStatus()} type="button">Check generation status</button>}
           </div>
+          {generationStatusMessage && (
+            <div className={generationJob?.status === "COMPLETED" ? "success-message" : "warning-message"}>{generationStatusMessage}</div>
+          )}
+          {generationJob && (
+            <dl className="ml-quality-grid">
+              <div><dt>Status</dt><dd>{generationJob.status}</dd></div>
+              <div><dt>Job</dt><dd className="mono-value">{generationJob.jobId}</dd></div>
+              <div><dt>Submitted</dt><dd>{new Date(generationJob.submittedAt).toLocaleString()}</dd></div>
+              <div><dt>Progress</dt><dd>{generationJob.progress ?? 0}%</dd></div>
+            </dl>
+          )}
           {generationResult && (
             <dl className="ml-quality-grid">
               <div><dt>Generated</dt><dd>{generationResult.generatedLabels}</dd></div>
@@ -1244,7 +1394,7 @@ function LabelsTab(props: {
 function TrainingTab(props: {
   accountId: string;
   datasets: MlDatasetSummary[];
-  featureSnapshot: MlFeatureSnapshotResponse | null;
+  featureSnapshots: MlFeatureSnapshotResponse[];
   runs: MlTrainingRun[];
   statusFilter: MlLifecycleStatusFilter;
   onChanged: () => Promise<void>;
@@ -1268,8 +1418,16 @@ function TrainingTab(props: {
   const { datasetVersionId, featureSnapshotId, modelFamily, algorithm, failureHorizonDays, minimumPositiveLabels, minimumLabelCoverage } = draft;
   const selectedTemplate = trainingTemplates[modelFamily];
   const selectedDataset = readyDatasets.find((dataset) => dataset.datasetVersionId === datasetVersionId);
-  const availableSnapshots = props.featureSnapshot ? [props.featureSnapshot] : [];
+  const availableSnapshots = props.featureSnapshots.filter((snapshot) => snapshot.datasetVersionId === datasetVersionId);
+  const compatibleSnapshots = availableSnapshots.filter((snapshot) => (snapshot.modelFamily ?? "ANOMALY_DETECTION") === modelFamily);
   const selectedSnapshot = availableSnapshots.find((snapshot) => snapshot.id === featureSnapshotId);
+  const trainingDisabledReason = trainingBlockReason(
+    datasetVersionId,
+    featureSnapshotId,
+    selectedSnapshot,
+    modelFamily,
+    failureHorizonDays,
+  );
 
   useEffect(() => {
     if (!datasetVersionId && readyDatasets[0]) {
@@ -1278,30 +1436,42 @@ function TrainingTab(props: {
   }, [datasetVersionId, readyDatasets, setDraft]);
 
   useEffect(() => {
-    if (props.featureSnapshot?.id) {
-      const snapshotFamily = props.featureSnapshot.modelFamily === "FAILURE_PREDICTION" ? "FAILURE_PREDICTION" : "ANOMALY_DETECTION";
+    if (datasetVersionId && featureSnapshotId && !availableSnapshots.some((snapshot) => snapshot.id === featureSnapshotId)) {
+      setDraft((current) => ({ ...current, featureSnapshotId: "" }));
+    }
+  }, [availableSnapshots, datasetVersionId, featureSnapshotId, setDraft]);
+
+  useEffect(() => {
+    if (datasetVersionId && !featureSnapshotId && compatibleSnapshots[0]) {
       setDraft((current) => ({
         ...current,
-        featureSnapshotId: props.featureSnapshot!.id,
-        modelFamily: snapshotFamily,
-        algorithm: trainingTemplates[snapshotFamily].defaultAlgorithm,
-        failureHorizonDays: snapshotFamily === "FAILURE_PREDICTION"
-          ? props.featureSnapshot!.horizonDays ?? current.failureHorizonDays
+        featureSnapshotId: compatibleSnapshots[0].id,
+        failureHorizonDays: modelFamily === "FAILURE_PREDICTION"
+          ? compatibleSnapshots[0].horizonDays ?? current.failureHorizonDays
           : current.failureHorizonDays,
       }));
     }
-  }, [props.featureSnapshot, setDraft]);
+  }, [compatibleSnapshots, datasetVersionId, featureSnapshotId, modelFamily, setDraft]);
 
   function chooseTemplate(nextModelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
+    const nextSnapshot = availableSnapshots.find((snapshot) => (snapshot.modelFamily ?? "ANOMALY_DETECTION") === nextModelFamily);
     setDraft((current) => ({
       ...current,
       modelFamily: nextModelFamily,
+      featureSnapshotId: nextSnapshot?.id ?? "",
       algorithm: trainingTemplates[nextModelFamily].defaultAlgorithm,
+      failureHorizonDays: nextModelFamily === "FAILURE_PREDICTION"
+        ? nextSnapshot?.horizonDays ?? current.failureHorizonDays
+        : current.failureHorizonDays,
     }));
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (trainingDisabledReason) {
+      props.setError(trainingDisabledReason);
+      return;
+    }
     if (selectedSnapshot?.modelFamily && selectedSnapshot.modelFamily !== modelFamily) {
       props.setError(`Feature snapshot family ${selectedSnapshot.modelFamily} must match training family ${modelFamily}.`);
       return;
@@ -1380,6 +1550,12 @@ function TrainingTab(props: {
             <span>{selectedDataset.sourceType} / {selectedDataset.splitStrategy} / {selectedDataset.immutableRowReference ? "immutable rows ready" : "artifact-backed"}</span>
           </div>
         )}
+        {compatibleSnapshots.length > 0 && (
+          <div className="ml-readout">
+            <strong>{compatibleSnapshots.length} compatible feature snapshots</strong>
+            <span>{compatibleSnapshots.map(snapshotLabel).join(" | ")}</span>
+          </div>
+        )}
         {modelFamily === "FAILURE_PREDICTION" && (
           <section className="ml-inline-panel">
             <h3>Failure prediction gates</h3>
@@ -1400,7 +1576,8 @@ function TrainingTab(props: {
             </div>
           </section>
         )}
-        <button className="primary-button" disabled={!datasetVersionId}>Queue training</button>
+        {trainingDisabledReason && <div className="warning-message">{trainingDisabledReason}</div>}
+        <button className="primary-button" disabled={Boolean(trainingDisabledReason)} title={trainingDisabledReason ?? undefined}>Queue training</button>
       </form>
       <section className="panel">
         <div className="section-header">

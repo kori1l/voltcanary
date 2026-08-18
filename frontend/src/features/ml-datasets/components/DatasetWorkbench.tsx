@@ -23,7 +23,9 @@ import {
   dateTimeLocalToIso,
   defaultDatasetWorkbenchDraft,
   humanizeModelFamily,
+  isSupportedPreviewRange,
   isValidRange,
+  maxPreviewRangeDays,
   reconcileDraftWithPreview,
   validateWorkbench,
 } from "../model/datasetWorkbench.utils";
@@ -139,6 +141,10 @@ export function DatasetWorkbench({
     }
     if (!isValidRange(draft.from, draft.to)) {
       setLocalError("From must be before To.");
+      return;
+    }
+    if (!isSupportedPreviewRange(draft.from, draft.to)) {
+      setLocalError(`Preview range must be ${maxPreviewRangeDays} days or less. Narrow the timeline range before previewing.`);
       return;
     }
     if (draft.modelFamily === "FAILURE_PREDICTION" && (!draft.horizonDays || draft.horizonDays < 1)) {
@@ -273,26 +279,27 @@ export function DatasetWorkbench({
         </div>
       </section>
 
-      <div className="workbench-layout">
-        <div className="workbench-left">
+      <div className="workbench-scope-grid">
+        <div className="workbench-scope-devices">
           <DeviceScopeSelector devices={devices} draft={draft} preview={previewState.preview} onPatch={patchDraft} />
         </div>
-        <div className="workbench-center">
-          <TelemetryWindowChart draft={draft} preview={previewState.preview} previewStatus={previewState.status} onPatch={patchDraft} />
-          <CandidateWindowList draft={draft} preview={previewState.preview} onPatch={patchDraft} />
-        </div>
-        <div className="workbench-right">
-          <DatasetReadinessPanel draft={draft} preview={previewState.preview} previewStatus={previewState.status} validation={validation} />
+        <div className="workbench-scope-metrics">
+          <MetricCoverageMatrix
+            draft={draft}
+            preview={previewState.preview}
+            previewStatus={previewState.status}
+            staleMetrics={validation.staleMetrics}
+            onPatch={patchDraft}
+          />
         </div>
       </div>
 
-      <MetricCoverageMatrix
-        draft={draft}
-        preview={previewState.preview}
-        previewStatus={previewState.status}
-        staleMetrics={validation.staleMetrics}
-        onPatch={patchDraft}
-      />
+      <TelemetryWindowChart draft={draft} preview={previewState.preview} previewStatus={previewState.status} onPatch={patchDraft} />
+
+      <div className="workbench-review-grid">
+        <CandidateWindowList draft={draft} preview={previewState.preview} onPatch={patchDraft} />
+        <DatasetReadinessPanel draft={draft} preview={previewState.preview} previewStatus={previewState.status} validation={validation} />
+      </div>
 
       <section className="workbench-section" aria-label="Dataset commit controls">
         <div className="workbench-control-grid">
@@ -338,7 +345,7 @@ function readDraft<T>(key: string): Partial<T> | null {
 function readableError(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     if (/service unavailable|503|temporarily unavailable/i.test(error.message)) {
-      return "Dataset preview is temporarily unavailable while services warm up. Refresh preview in a few seconds.";
+      return `Dataset preview is temporarily unavailable. If the selected range is broad, narrow it to ${maxPreviewRangeDays} days or less and refresh preview.`;
     }
     return error.message;
   }
@@ -346,7 +353,7 @@ function readableError(error: unknown) {
 }
 
 function canAutoPreview(draft: DatasetWorkbenchDraft) {
-  if (draft.deviceIds.length === 0 || !isValidRange(draft.from, draft.to)) {
+  if (draft.deviceIds.length === 0 || !isValidRange(draft.from, draft.to) || !isSupportedPreviewRange(draft.from, draft.to)) {
     return false;
   }
   return draft.modelFamily !== "FAILURE_PREDICTION" || Boolean(draft.horizonDays && draft.horizonDays > 0);

@@ -4796,11 +4796,11 @@ code {
   grid-template-columns: minmax(220px, 1.3fr) minmax(180px, 1fr) minmax(160px, 0.8fr) minmax(130px, 0.6fr) minmax(130px, 0.6fr);
 }
 
-.workbench-left .workbench-control-grid {
+.workbench-scope-devices .workbench-control-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.workbench-left .workbench-control-grid label:first-child {
+.workbench-scope-devices .workbench-control-grid label:first-child {
   grid-column: 1 / -1;
 }
 
@@ -4815,16 +4815,23 @@ code {
   padding-top: 10px;
 }
 
-.workbench-layout {
+.workbench-scope-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 360px) minmax(680px, 1fr) minmax(340px, 390px);
+  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.5fr);
   gap: 16px;
   align-items: start;
 }
 
-.workbench-left,
-.workbench-center,
-.workbench-right {
+.workbench-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 390px);
+  gap: 16px;
+  align-items: start;
+}
+
+.workbench-scope-devices,
+.workbench-scope-metrics,
+.workbench-review-grid > * {
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -5160,13 +5167,18 @@ code {
   padding: 0;
 }
 
+.workbench-scope-metrics .workbench-metric-section {
+  min-height: 100%;
+}
+
 .workbench-metric-section {
+  min-width: 0;
   overflow: hidden;
 }
 
 .workbench-metric-table {
   display: grid;
-  min-width: 960px;
+  min-width: 0;
   overflow-x: auto;
 }
 
@@ -5176,6 +5188,7 @@ code {
   grid-template-columns: minmax(240px, 1.7fr) 86px 86px 90px 86px minmax(150px, 1fr) 130px;
   gap: 10px;
   align-items: center;
+  min-width: 900px;
   border-bottom: 1px solid var(--border-soft);
   padding: 9px 10px;
 }
@@ -5223,14 +5236,6 @@ code {
 }
 
 @media (max-width: 1680px) {
-  .workbench-layout {
-    grid-template-columns: minmax(300px, 380px) minmax(720px, 1fr);
-  }
-
-  .workbench-right {
-    grid-column: 1 / -1;
-  }
-
   .workbench-readiness .workbench-summary-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -5245,7 +5250,8 @@ code {
     grid-template-columns: repeat(4, minmax(118px, 1fr));
   }
 
-  .workbench-layout,
+  .workbench-scope-grid,
+  .workbench-review-grid,
   .workbench-control-grid-wide,
   .ml-datasets-secondary-grid {
     grid-template-columns: 1fr;
@@ -5258,7 +5264,8 @@ code {
 }
 
 @container dataset-workbench (max-width: 1180px) {
-  .workbench-layout,
+  .workbench-scope-grid,
+  .workbench-review-grid,
   .workbench-control-grid-wide {
     grid-template-columns: 1fr;
   }

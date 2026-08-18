@@ -20,5 +20,6 @@ public record MlFeatureSnapshotResponse(
         Integer horizonDays,
         String featureTemplateId,
         String featureTemplateVersion,
+        String lifecycleStatus,
         Instant createdAt) {
 }

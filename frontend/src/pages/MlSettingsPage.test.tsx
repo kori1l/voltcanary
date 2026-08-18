@@ -363,6 +363,7 @@ const featureSnapshot = {
   horizonDays: null,
   featureTemplateId: "generic-appliance",
   featureTemplateVersion: "template-v1",
+  lifecycleStatus: "ACTIVE",
   createdAt: "2026-07-10T00:00:00Z",
 };
 const failureFeatureSnapshot = {
@@ -562,16 +563,9 @@ describe("MlSettingsPage", () => {
     await userEvent.type(screen.getByLabelText(/Minimum positive labels/i), "4");
     await userEvent.clear(screen.getByLabelText(/Minimum label coverage/i));
     await userEvent.type(screen.getByLabelText(/Minimum label coverage/i), "0.75");
-    await userEvent.click(screen.getByRole("button", { name: /Queue training/i }));
-
-    const trainingRequest = requests.find((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST");
-    expect(trainingRequest).toBeDefined();
-    expect(await trainingRequest!.json()).toMatchObject({
-      modelFamily: "FAILURE_PREDICTION",
-      failureHorizonDays: 30,
-      minimumPositiveLabels: 4,
-      minimumLabelCoverage: 0.75,
-    });
+    expect(screen.getByText(/Select or generate a feature snapshot before queueing training/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Queue training/i })).toBeDisabled();
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST")).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: "Models" }));
     expect(await screen.findByText("Promotion gates passed")).toBeInTheDocument();
@@ -586,6 +580,86 @@ describe("MlSettingsPage", () => {
     expect(screen.getByText("Failure risk")).toBeInTheDocument();
     expect(screen.getByText("Anomaly score")).toBeInTheDocument();
     expect(screen.getByText("Degradation score")).toBeInTheDocument();
+  });
+
+  it("queues training with an older compatible feature snapshot from inventory", async () => {
+    const requests: Request[] = [];
+    const olderFailureSnapshot = {
+      ...failureFeatureSnapshot,
+      id: "feature-failure-older",
+      rowCount: 88,
+      featureSchemaHash: "sha256:older-failure-schema",
+      featureDataHash: "sha256:older-failure-data",
+      createdAt: "2026-07-09T00:00:00Z",
+    };
+    const newerFailureSnapshot = {
+      ...failureFeatureSnapshot,
+      id: "feature-failure-newer",
+      horizonDays: 14,
+      rowCount: 144,
+      featureSchemaHash: "sha256:newer-failure-schema",
+      featureDataHash: "sha256:newer-failure-data",
+      createdAt: "2026-07-11T00:00:00Z",
+    };
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.endsWith("/analytics/ml/datasets/feature-snapshots") && init?.method !== "POST") {
+        return json([newerFailureSnapshot, olderFailureSnapshot, featureSnapshot]);
+      }
+      if (url.endsWith("/analytics/ml/training-runs") && init?.method === "POST") {
+        return json({
+          id: "run-failure-older",
+          accountId: "account-1",
+          datasetVersionId: "dataset-version-1",
+          featureSnapshotId: "feature-failure-older",
+          modelFamily: "FAILURE_PREDICTION",
+          algorithm: "sklearn-logistic-regression-failure-v1",
+          status: "QUEUED",
+          evaluationMetricsJson: null,
+          baselineMetricsJson: null,
+          artifactUri: null,
+          logSummary: null,
+          failureReason: null,
+          createdAt: "2026-07-10T00:00:00Z",
+          startedAt: null,
+          completedAt: null,
+        });
+      }
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Training" }));
+    const failureTemplateButtons = await screen.findAllByRole("button", { name: /Failure prediction/i });
+    await userEvent.click(failureTemplateButtons[failureTemplateButtons.length - 1]);
+    expect(await screen.findByText("2 compatible feature snapshots")).toBeInTheDocument();
+    expect(screen.getAllByText(/sha256:older-failure-schema/i)).not.toHaveLength(0);
+
+    await userEvent.selectOptions(screen.getByLabelText(/Feature snapshot/i), "feature-failure-older");
+    await userEvent.clear(screen.getByLabelText(/Prediction horizon/i));
+    await userEvent.type(screen.getByLabelText(/Prediction horizon/i), "30");
+    await userEvent.clear(screen.getByLabelText(/Minimum positive labels/i));
+    await userEvent.type(screen.getByLabelText(/Minimum positive labels/i), "4");
+    await userEvent.clear(screen.getByLabelText(/Minimum label coverage/i));
+    await userEvent.type(screen.getByLabelText(/Minimum label coverage/i), "0.75");
+    await userEvent.click(screen.getByRole("button", { name: /Queue training/i }));
+
+    expect(await screen.findByText("Training workflow updated")).toBeInTheDocument();
+    const trainingRequest = requests.find((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST");
+    expect(trainingRequest).toBeDefined();
+    expect(await trainingRequest!.json()).toMatchObject({
+      datasetVersionId: "dataset-version-1",
+      featureSnapshotId: "feature-failure-older",
+      modelFamily: "FAILURE_PREDICTION",
+      failureHorizonDays: 30,
+      minimumPositiveLabels: 4,
+      minimumLabelCoverage: 0.75,
+    });
   });
 
   it("shows ML backend JSON errors as readable operator messages", async () => {
@@ -684,6 +758,30 @@ describe("MlSettingsPage", () => {
     expect(screen.getByRole("button", { name: /Create dataset version/i })).toBeDisabled();
     await waitFor(() => expect(requests.filter((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")).length).toBeGreaterThanOrEqual(3));
     expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry") && request.method === "POST")).toBe(false);
+  });
+
+  it("blocks oversized workbench preview ranges before calling the preview API", async () => {
+    const requests: Request[] = [];
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview")) return json(workbenchPreview);
+      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
+    await userEvent.clear(screen.getByLabelText(/Workbench range from/i));
+    await userEvent.type(screen.getByLabelText(/Workbench range from/i), "2026-06-01T00:00");
+    await selectWorkbenchDevice();
+
+    await userEvent.click(screen.getByRole("button", { name: /Preview dataset/i }));
+
+    expect(await screen.findAllByText(/Preview range must be 30 days or less/i)).not.toHaveLength(0);
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/internal-telemetry/preview"))).toBe(false);
   });
 
   it("blocks stale restored metrics until the preview selection is corrected", async () => {
@@ -972,16 +1070,28 @@ describe("MlSettingsPage", () => {
       }
       if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json([labelItem]);
       if (url.endsWith("/analytics/ml/datasets/horizon-labels") && init?.method === "POST") return json({
+        jobId: "label-job-1",
         datasetVersionId: "dataset-version-1",
+        status: "COMPLETED",
+        submittedAt: "2026-07-10T00:00:00Z",
+        startedAt: "2026-07-10T00:00:01Z",
+        completedAt: "2026-07-10T00:00:10Z",
+        progress: 100,
+        message: "Horizon label generation completed",
+        failureReason: null,
         horizonDays: 30,
         generationVersion: "failure-outcome-v1",
-        lineageHash: "sha256:labels",
-        generatedLabels: 120,
-        positiveLabels: 4,
-        normalLabels: 100,
-        maintenanceExcludedLabels: 6,
-        unresolvedLabels: 2,
-        unobservableRows: 8,
+        includePreventiveMaintenance: false,
+        inputLineageHash: "sha256:data",
+        result: {
+          lineageHash: "sha256:labels",
+          generatedLabels: 120,
+          positiveLabels: 4,
+          normalLabels: 100,
+          maintenanceExcludedLabels: 6,
+          unresolvedLabels: 2,
+          unobservableRows: 8,
+        },
       });
       if (url.endsWith("/analytics/ml/labels") && init?.method === "POST") return json(labelItem);
       if (url.endsWith("/analytics/ml/labels/label-1") && init?.method === "PUT") return json({ ...labelItem, label: "NORMAL", reason: "Corrected during label review" });
@@ -1207,6 +1317,154 @@ describe("MlSettingsPage", () => {
       generationVersion: "failure-outcome-v1",
       includePreventiveMaintenance: false,
     });
+  });
+
+  it("keeps horizon label generation in processing status when the gateway times out", async () => {
+    const requests: Request[] = [];
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json([]);
+      if (url.endsWith("/analytics/ml/datasets/horizon-labels") && init?.method === "POST") {
+        return errorJson(504, { error: "Gateway Timeout", path: "/analytics/ml/datasets/horizon-labels" });
+      }
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Labels" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Generate horizon labels/i }));
+
+    expect(await screen.findByText(/Label generation start timed out before a job id was returned/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Gateway Timeout for \/analytics\/ml\/datasets\/horizon-labels/i)).not.toBeInTheDocument();
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/horizon-labels") && request.method === "POST")).toBe(true);
+  });
+
+  it("checks active horizon label generation status and refreshes labels after completion", async () => {
+    const requests: Request[] = [];
+    mockFetch((url, init) => {
+      requests.push(new Request(url, init));
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json([labelItem]);
+      if (url.endsWith("/analytics/ml/datasets/horizon-labels") && init?.method === "POST") return json({
+        jobId: "label-job-1",
+        datasetVersionId: "dataset-version-1",
+        status: "RUNNING",
+        submittedAt: "2026-07-10T00:00:00Z",
+        startedAt: "2026-07-10T00:00:01Z",
+        completedAt: null,
+        progress: 40,
+        message: "Generating horizon labels",
+        failureReason: null,
+        horizonDays: 30,
+        generationVersion: "failure-outcome-v1",
+        includePreventiveMaintenance: false,
+        inputLineageHash: "sha256:data",
+        result: null,
+      });
+      if (url.endsWith("/analytics/ml/datasets/horizon-labels/label-job-1")) return json({
+        jobId: "label-job-1",
+        datasetVersionId: "dataset-version-1",
+        status: "COMPLETED",
+        submittedAt: "2026-07-10T00:00:00Z",
+        startedAt: "2026-07-10T00:00:01Z",
+        completedAt: "2026-07-10T00:00:10Z",
+        progress: 100,
+        message: "Horizon label generation completed",
+        failureReason: null,
+        horizonDays: 30,
+        generationVersion: "failure-outcome-v1",
+        includePreventiveMaintenance: false,
+        inputLineageHash: "sha256:data",
+        result: {
+          lineageHash: "sha256:labels",
+          generatedLabels: 120,
+          positiveLabels: 4,
+          normalLabels: 100,
+          maintenanceExcludedLabels: 6,
+          unresolvedLabels: 2,
+          unobservableRows: 8,
+        },
+      });
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Labels" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Generate horizon labels/i }));
+
+    expect(await screen.findByText(/Running horizon label generation/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Check generation status/i }));
+    expect(await screen.findByText(/Generated 120 labels/i)).toBeInTheDocument();
+    expect(await screen.findByText("sha256:labels")).toBeInTheDocument();
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/horizon-labels/label-job-1") && request.method === "GET")).toBe(true);
+  });
+
+  it("recovers the last active horizon label job after page refresh", async () => {
+    localStorage.setItem("voltcanary.horizonLabelJob.dataset-version-1.30.failure-outcome-v1.false", JSON.stringify({
+      jobId: "label-job-1",
+      datasetVersionId: "dataset-version-1",
+      status: "RUNNING",
+      submittedAt: "2026-07-10T00:00:00Z",
+      startedAt: "2026-07-10T00:00:01Z",
+      completedAt: null,
+      progress: 40,
+      message: "Generating horizon labels",
+      failureReason: null,
+      horizonDays: 30,
+      generationVersion: "failure-outcome-v1",
+      includePreventiveMaintenance: false,
+      inputLineageHash: "sha256:data",
+      result: null,
+    }));
+    const requests: Request[] = [];
+    mockFetch((url) => {
+      requests.push(new Request(url));
+      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json([labelItem]);
+      if (url.endsWith("/analytics/ml/datasets/horizon-labels/label-job-1")) return json({
+        jobId: "label-job-1",
+        datasetVersionId: "dataset-version-1",
+        status: "COMPLETED",
+        submittedAt: "2026-07-10T00:00:00Z",
+        startedAt: "2026-07-10T00:00:01Z",
+        completedAt: "2026-07-10T00:00:10Z",
+        progress: 100,
+        message: "Horizon label generation completed",
+        failureReason: null,
+        horizonDays: 30,
+        generationVersion: "failure-outcome-v1",
+        includePreventiveMaintenance: false,
+        inputLineageHash: "sha256:data",
+        result: {
+          lineageHash: "sha256:labels",
+          generatedLabels: 120,
+          positiveLabels: 4,
+          normalLabels: 100,
+          maintenanceExcludedLabels: 6,
+          unresolvedLabels: 2,
+          unobservableRows: 8,
+        },
+      });
+      if (url.endsWith("/analytics/ml/training-runs")) return json([]);
+      if (url.endsWith("/analytics/ml/models")) return json([]);
+      if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
+      return json(accountSettings);
+    });
+
+    render(<MlSettingsPage />);
+    await userEvent.click(screen.getByRole("button", { name: "Labels" }));
+
+    expect(await screen.findByText(/Running horizon label generation \(40%\)/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Check generation status/i }));
+    expect(await screen.findByText(/Generated 120 labels/i)).toBeInTheDocument();
+    expect(requests.some((request) => request.url.endsWith("/analytics/ml/datasets/horizon-labels/label-job-1"))).toBe(true);
   });
 });
 

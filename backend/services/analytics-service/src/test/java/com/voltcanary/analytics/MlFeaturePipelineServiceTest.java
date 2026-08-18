@@ -120,6 +120,42 @@ class MlFeaturePipelineServiceTest {
     }
 
     @Test
+    void listsActiveFeatureSnapshotsForDataset() {
+        UUID accountId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        MlFeatureSnapshot newest = featureSnapshot(accountId, datasetVersionId, UUID.randomUUID(), "FAILURE_PREDICTION", 30, 20);
+        MlFeatureSnapshot older = featureSnapshot(accountId, datasetVersionId, UUID.randomUUID(), "ANOMALY_DETECTION", null, 12);
+        when(snapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE"))
+                .thenReturn(List.of(newest, older));
+
+        List<MlFeatureSnapshotResponse> response = service.list(accountId, datasetVersionId);
+
+        assertThat(response).extracting(MlFeatureSnapshotResponse::id).containsExactly(newest.getId(), older.getId());
+        assertThat(response.getFirst().modelFamily()).isEqualTo("FAILURE_PREDICTION");
+        assertThat(response.getFirst().horizonDays()).isEqualTo(30);
+        assertThat(response.getFirst().lifecycleStatus()).isEqualTo("ACTIVE");
+        verify(snapshotRepository).findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE");
+    }
+
+    @Test
+    void listsActiveFeatureSnapshotsForAccountNewestFirst() {
+        UUID accountId = UUID.randomUUID();
+        UUID firstDatasetVersionId = UUID.randomUUID();
+        UUID secondDatasetVersionId = UUID.randomUUID();
+        MlFeatureSnapshot newest = featureSnapshot(accountId, secondDatasetVersionId, UUID.randomUUID(), "FAILURE_PREDICTION", 30, 20);
+        MlFeatureSnapshot older = featureSnapshot(accountId, firstDatasetVersionId, UUID.randomUUID(), "ANOMALY_DETECTION", null, 12);
+        when(snapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE"))
+                .thenReturn(List.of(newest, older));
+
+        List<MlFeatureSnapshotResponse> response = service.list(accountId, null);
+
+        assertThat(response).extracting(MlFeatureSnapshotResponse::id).containsExactly(newest.getId(), older.getId());
+        assertThat(response).extracting(MlFeatureSnapshotResponse::datasetVersionId)
+                .containsExactly(secondDatasetVersionId, firstDatasetVersionId);
+        verify(snapshotRepository).findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE");
+    }
+
+    @Test
     void featureDataHashChangesWhenFeatureValuesChangeButSchemaDoesNot() {
         UUID accountId = UUID.randomUUID();
         UUID datasetId = UUID.randomUUID();
@@ -571,6 +607,36 @@ class MlFeaturePipelineServiceTest {
         row.setSourceLineage("{}");
         row.setCreatedAt(Instant.parse("2026-07-30T00:00:00Z"));
         return row;
+    }
+
+    private MlFeatureSnapshot featureSnapshot(
+            UUID accountId,
+            UUID datasetVersionId,
+            UUID snapshotId,
+            String modelFamily,
+            Integer horizonDays,
+            long rowCount) {
+        MlFeatureSnapshot snapshot = new MlFeatureSnapshot();
+        snapshot.setId(snapshotId);
+        snapshot.setAccountId(accountId);
+        snapshot.setDatasetVersionId(datasetVersionId);
+        snapshot.setFeatureSetVersion("feature-set-v1");
+        snapshot.setCodeConfigVersion("analytics-feature-pipeline-v1");
+        snapshot.setFeatureConfigJson("{}");
+        snapshot.setFeatureSchemaHash("sha256:schema:" + snapshotId);
+        snapshot.setFeatureDataHash("sha256:data:" + snapshotId);
+        snapshot.setFeatureConfigHash("sha256:config:" + snapshotId);
+        snapshot.setRowCount(rowCount);
+        snapshot.setRejectedRowCount(0);
+        snapshot.setArtifactUri("db://ml_feature_snapshots/" + snapshotId);
+        snapshot.setImmutableRowReference("ml_feature_rows:feature_snapshot_id=" + snapshotId);
+        snapshot.setModelFamily(modelFamily);
+        snapshot.setHorizonDays(horizonDays);
+        snapshot.setFeatureTemplateId("generic-appliance");
+        snapshot.setFeatureTemplateVersion("template-v1");
+        snapshot.setCreatedAt(Instant.parse("2026-07-30T00:00:00Z"));
+        snapshot.setLifecycleStatus("ACTIVE");
+        return snapshot;
     }
 
     private MlLabel horizonLabel(

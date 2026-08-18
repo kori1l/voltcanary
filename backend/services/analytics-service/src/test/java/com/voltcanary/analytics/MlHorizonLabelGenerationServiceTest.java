@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.voltcanary.analytics.domain.MlHorizonLabelGenerationJob;
+import com.voltcanary.analytics.domain.MlHorizonLabelGenerationStatus;
 import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
@@ -18,6 +21,7 @@ import com.voltcanary.analytics.dto.MlHorizonLabelGenerationRequest;
 import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
 import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
+import com.voltcanary.analytics.repository.MlHorizonLabelGenerationJobRepository;
 import com.voltcanary.analytics.repository.MlLabelRepository;
 import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
 import com.voltcanary.analytics.service.MlHorizonLabelGenerationService;
@@ -28,6 +32,11 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class MlHorizonLabelGenerationServiceTest {
 
@@ -36,12 +45,30 @@ class MlHorizonLabelGenerationServiceTest {
     private final MaintenanceOutcomeReadModelRepository outcomeRepository = mock(MaintenanceOutcomeReadModelRepository.class);
     private final MaintenanceWindowProjectionService maintenanceWindowProjectionService = mock(MaintenanceWindowProjectionService.class);
     private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
+    private final MlHorizonLabelGenerationJobRepository jobRepository = mock(MlHorizonLabelGenerationJobRepository.class);
+    private final PlatformTransactionManager transactionManager = new PlatformTransactionManager() {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+            return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {
+        }
+
+        @Override
+        public void rollback(TransactionStatus status) {
+        }
+    };
     private final MlHorizonLabelGenerationService service = new MlHorizonLabelGenerationService(
             datasetVersionRepository,
             canonicalMetricRowRepository,
             outcomeRepository,
             maintenanceWindowProjectionService,
-            labelRepository);
+            labelRepository,
+            jobRepository,
+            new SyncTaskExecutor(),
+            transactionManager);
 
     @Test
     void generatesAuditableHorizonLabelsFromOutcomes() {
@@ -84,20 +111,22 @@ class MlHorizonLabelGenerationServiceTest {
             return List.of(window);
         });
 
-        var request = new MlHorizonLabelGenerationRequest(datasetVersionId, 7, "test-v1", false);
-        var first = service.generate(accountId, actorId, request);
-        var second = service.generate(accountId, actorId, request);
+        UUID jobId = UUID.randomUUID();
+        MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
 
-        assertThat(first.generatedLabels()).isEqualTo(4);
-        assertThat(first.positiveLabels()).isEqualTo(1);
-        assertThat(first.normalLabels()).isEqualTo(1);
-        assertThat(first.maintenanceExcludedLabels()).isEqualTo(1);
-        assertThat(first.unresolvedLabels()).isEqualTo(1);
-        assertThat(first.unobservableRows()).isEqualTo(3);
-        assertThat(second.lineageHash()).isEqualTo(first.lineageHash());
+        service.runJob(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(MlHorizonLabelGenerationStatus.COMPLETED);
+        assertThat(job.getGeneratedLabels()).isEqualTo(4);
+        assertThat(job.getPositiveLabels()).isEqualTo(1);
+        assertThat(job.getNormalLabels()).isEqualTo(1);
+        assertThat(job.getMaintenanceExcludedLabels()).isEqualTo(1);
+        assertThat(job.getUnresolvedLabels()).isEqualTo(1);
+        assertThat(job.getUnobservableRows()).isEqualTo(3);
 
         ArgumentCaptor<Iterable<MlLabel>> labelsCaptor = ArgumentCaptor.forClass(Iterable.class);
-        org.mockito.Mockito.verify(labelRepository, org.mockito.Mockito.times(2)).saveAll(labelsCaptor.capture());
+        verify(labelRepository).saveAll(labelsCaptor.capture());
         List<MlLabel> labels = new ArrayList<>();
         labelsCaptor.getValue().forEach(labels::add);
         assertThat(labels).extracting(MlLabel::getLabel)
@@ -109,13 +138,56 @@ class MlHorizonLabelGenerationServiceTest {
         assertThat(labels).allSatisfy(label -> {
             assertThat(label.getHorizonDays()).isEqualTo(7);
             assertThat(label.getGenerationVersion()).isEqualTo("test-v1");
-            assertThat(label.getLineageHash()).isEqualTo(first.lineageHash());
+            assertThat(label.getLineageHash()).isEqualTo(job.getLineageHash());
         });
         assertThat(labels.stream()
                 .filter(label -> label.getLabel() == MlLabelType.CONFIRMED_FAILURE)
                 .findFirst()
                 .orElseThrow()
                 .getSourceOutcomeIdsJson()).contains(failureOutcomeId.toString());
+    }
+
+    @Test
+    void startReturnsExistingActiveOrCompletedJobForSameIdempotencyKey() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        Instant base = Instant.parse("2026-07-01T00:00:00Z");
+        MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
+        datasetVersion.setDataHash("sha256:dataset");
+        MlCanonicalMetricRow row = row(datasetVersionId, UUID.randomUUID(), base);
+        MlHorizonLabelGenerationJob existing = job(accountId, actorId, datasetVersionId, UUID.randomUUID(), "test-v1", 7, false);
+        existing.setStatus(MlHorizonLabelGenerationStatus.RUNNING);
+
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
+        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(List.of(row));
+        when(jobRepository.findFirstByAccountIdAndIdempotencyKeyAndStatusInOrderBySubmittedAtDesc(eq(accountId), any(), any()))
+                .thenReturn(Optional.of(existing));
+
+        var response = service.start(accountId, actorId, new MlHorizonLabelGenerationRequest(datasetVersionId, 7, "test-v1", false));
+
+        assertThat(response.jobId()).isEqualTo(existing.getId());
+        assertThat(response.status()).isEqualTo(MlHorizonLabelGenerationStatus.RUNNING);
+    }
+
+    @Test
+    void runJobMarksFailedWithSanitizedReasonWhenGenerationFailsAfterAcceptance() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID datasetVersionId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
+        MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
+
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
+        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(List.of());
+
+        service.runJob(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(MlHorizonLabelGenerationStatus.FAILED);
+        assertThat(job.getFailureReason()).isEqualTo("Dataset version has no canonical rows");
+        assertThat(job.getCompletedAt()).isNotNull();
     }
 
     private MlDatasetVersion datasetVersion(UUID accountId, UUID datasetVersionId) {
@@ -130,6 +202,29 @@ class MlHorizonLabelGenerationServiceTest {
         version.setFeatureConfigVersion("test");
         version.setCreatedAt(Instant.parse("2026-07-01T00:00:00Z"));
         return version;
+    }
+
+    private MlHorizonLabelGenerationJob job(
+            UUID accountId,
+            UUID actorId,
+            UUID datasetVersionId,
+            UUID jobId,
+            String generationVersion,
+            int horizonDays,
+            boolean includePreventiveMaintenance) {
+        MlHorizonLabelGenerationJob job = new MlHorizonLabelGenerationJob();
+        job.setId(jobId);
+        job.setAccountId(accountId);
+        job.setDatasetVersionId(datasetVersionId);
+        job.setSubmittedBy(actorId);
+        job.setHorizonDays(horizonDays);
+        job.setGenerationVersion(generationVersion);
+        job.setIncludePreventiveMaintenance(includePreventiveMaintenance);
+        job.setInputLineageHash("sha256:dataset");
+        job.setIdempotencyKey("sha256:idempotency");
+        job.setStatus(MlHorizonLabelGenerationStatus.QUEUED);
+        job.setSubmittedAt(Instant.parse("2026-07-01T00:00:00Z"));
+        return job;
     }
 
     private MlCanonicalMetricRow row(UUID datasetVersionId, UUID deviceId, Instant timestamp) {

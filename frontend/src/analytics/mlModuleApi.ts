@@ -247,13 +247,13 @@ export interface MlFeatureSnapshotResponse {
   horizonDays: number | null;
   featureTemplateId: string | null;
   featureTemplateVersion: string | null;
+  lifecycleStatus: string | null;
   createdAt: string;
 }
 
-export interface MlHorizonLabelGenerationResponse {
-  datasetVersionId: string;
-  horizonDays: number;
-  generationVersion: string;
+export type MlHorizonLabelGenerationStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface MlHorizonLabelGenerationResult {
   lineageHash: string;
   generatedLabels: number;
   positiveLabels: number;
@@ -261,6 +261,23 @@ export interface MlHorizonLabelGenerationResponse {
   maintenanceExcludedLabels: number;
   unresolvedLabels: number;
   unobservableRows: number;
+}
+
+export interface MlHorizonLabelGenerationResponse {
+  jobId: string;
+  datasetVersionId: string;
+  status: MlHorizonLabelGenerationStatus;
+  submittedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  progress: number | null;
+  message: string | null;
+  failureReason: string | null;
+  horizonDays: number;
+  generationVersion: string;
+  includePreventiveMaintenance: boolean;
+  inputLineageHash: string;
+  result: MlHorizonLabelGenerationResult | null;
 }
 
 export interface MlTrainingRun {
@@ -464,6 +481,11 @@ export function generateFeatureSnapshot(body: {
   });
 }
 
+export function listFeatureSnapshots(datasetVersionId?: string) {
+  const query = datasetVersionId ? `?datasetVersionId=${encodeURIComponent(datasetVersionId)}` : "";
+  return apiRequest<MlFeatureSnapshotResponse[]>(`/analytics/ml/datasets/feature-snapshots${query}`);
+}
+
 export function archiveMlDatasetVersion(datasetVersionId: string, reason: string) {
   return datasetVersionAction(datasetVersionId, "archive", reason);
 }
@@ -512,6 +534,10 @@ export function generateHorizonLabels(body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function getHorizonLabelGenerationStatus(jobId: string) {
+  return apiRequest<MlHorizonLabelGenerationResponse>(`/analytics/ml/datasets/horizon-labels/${jobId}`);
 }
 
 export function listTrainingRuns(statusFilter: MlLifecycleStatusFilter = "default") {

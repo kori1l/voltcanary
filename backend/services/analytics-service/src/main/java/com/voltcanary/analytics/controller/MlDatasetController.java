@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -204,6 +205,16 @@ public class MlDatasetController {
         return featurePipelineService.generate(resolvedAccountId, request);
     }
 
+    @GetMapping("/feature-snapshots")
+    public List<MlFeatureSnapshotResponse> listFeatureSnapshots(
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+            @RequestParam(value = "datasetVersionId", required = false) UUID datasetVersionId) {
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.list(resolvedAccountId, datasetVersionId);
+    }
+
     @PostMapping("/feature-snapshots/{featureSnapshotId}/archive")
     public MlFeatureSnapshotResponse archiveFeatureSnapshot(
             @PathVariable("featureSnapshotId") UUID featureSnapshotId,
@@ -242,7 +253,7 @@ public class MlDatasetController {
     }
 
     @PostMapping("/horizon-labels")
-    public MlHorizonLabelGenerationResponse generateHorizonLabels(
+    public ResponseEntity<MlHorizonLabelGenerationResponse> generateHorizonLabels(
             @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -250,7 +261,17 @@ public class MlDatasetController {
             @Valid @RequestBody MlHorizonLabelGenerationRequest request) {
         requireWrite(role);
         UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return horizonLabelGenerationService.generate(resolvedAccountId, parseUserId(userId), request);
+        return ResponseEntity.accepted().body(horizonLabelGenerationService.start(resolvedAccountId, parseUserId(userId), request));
+    }
+
+    @GetMapping("/horizon-labels/{jobId}")
+    public MlHorizonLabelGenerationResponse getHorizonLabelGenerationStatus(
+            @PathVariable("jobId") UUID jobId,
+            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return horizonLabelGenerationService.status(resolvedAccountId, jobId);
     }
 
     private void requireWrite(String role) {

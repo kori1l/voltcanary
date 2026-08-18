@@ -785,6 +785,21 @@ telemetry dataset versions materialize immutable feature rows from canonical
 metric rows. Repeating generation with the same dataset and feature config
 produces the same feature schema hash and feature data hash.
 
+## GET /analytics/ml/datasets/feature-snapshots
+
+Returns account-owned active feature snapshots newest first. Archived and
+deleted snapshots are excluded from default results so training selectors only
+show usable snapshots.
+
+Optional query parameters:
+
+- `datasetVersionId` filters results to one dataset version.
+
+Each item has the same response shape as `POST /analytics/ml/datasets/feature-snapshots`
+and includes `datasetVersionId`, `modelFamily`, `horizonDays`,
+`featureTemplateId`, `featureTemplateVersion`, row counts, hashes,
+`lifecycleStatus`, and `createdAt` for training compatibility checks.
+
 ## POST /analytics/ml/datasets/feature-snapshots/{featureSnapshotId}/archive
 
 Marks a feature snapshot `ARCHIVED` while keeping feature hashes, artifact URI,
@@ -801,9 +816,11 @@ produce `409 FEATURE_SNAPSHOT_REFERENCED`.
 
 ## POST /analytics/ml/datasets/horizon-labels
 
-Generates deterministic failure-horizon labels for a selected dataset version
-from projected maintenance outcomes. Existing generated labels for the same
-dataset version and horizon are replaced. Manual labels are preserved.
+Starts deterministic failure-horizon label generation for a selected READY
+dataset version. The endpoint returns `202 Accepted` with a durable generation
+job instead of waiting for labels to finish inside the gateway request. Existing
+generated labels for the same dataset version and horizon are replaced when the
+job completes. Manual labels are preserved.
 
 Request:
 
@@ -827,16 +844,60 @@ Response:
 
 ```json
 {
+  "jobId": "6ec3f36d-d1f9-4b21-a442-b7ee0d0385c1",
   "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "status": "QUEUED",
+  "submittedAt": "2026-07-10T00:00:00Z",
+  "startedAt": null,
+  "completedAt": null,
+  "progress": 0,
+  "message": "Queued horizon label generation",
+  "failureReason": null,
   "horizonDays": 30,
   "generationVersion": "failure-outcome-v1",
-  "lineageHash": "sha256:...",
-  "generatedLabels": 1200,
-  "positiveLabels": 18,
-  "normalLabels": 1100,
-  "maintenanceExcludedLabels": 42,
-  "unresolvedLabels": 8,
-  "unobservableRows": 32
+  "includePreventiveMaintenance": false,
+  "inputLineageHash": "sha256:...",
+  "result": null
+}
+```
+
+Repeated requests with the same account, dataset version, horizon,
+generation version, preventive-maintenance flag, and input lineage hash return
+the existing `QUEUED`, `RUNNING`, or `COMPLETED` job. Failed jobs are not reused,
+so operators can retry after fixing the failure condition.
+
+## GET /analytics/ml/datasets/horizon-labels/{jobId}
+
+Returns the current horizon label generation job status for the caller account.
+`status` is one of `QUEUED`, `RUNNING`, `COMPLETED`, or `FAILED`. `failureReason`
+is present only for `FAILED` jobs and is sanitized for operator display.
+
+Completed response:
+
+```json
+{
+  "jobId": "6ec3f36d-d1f9-4b21-a442-b7ee0d0385c1",
+  "datasetVersionId": "2aa8e81d-f3f5-48af-9f2d-6f7fef48b7cf",
+  "status": "COMPLETED",
+  "submittedAt": "2026-07-10T00:00:00Z",
+  "startedAt": "2026-07-10T00:00:02Z",
+  "completedAt": "2026-07-10T00:00:32Z",
+  "progress": 100,
+  "message": "Horizon label generation completed",
+  "failureReason": null,
+  "horizonDays": 30,
+  "generationVersion": "failure-outcome-v1",
+  "includePreventiveMaintenance": false,
+  "inputLineageHash": "sha256:...",
+  "result": {
+    "lineageHash": "sha256:...",
+    "generatedLabels": 1200,
+    "positiveLabels": 18,
+    "normalLabels": 1100,
+    "maintenanceExcludedLabels": 42,
+    "unresolvedLabels": 8,
+    "unobservableRows": 32
+  }
 }
 ```
 
