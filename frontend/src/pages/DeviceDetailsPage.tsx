@@ -1,278 +1,211 @@
-import { type PointerEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { acknowledgeAlert, AlertResponse, listAlerts, resolveAlert } from "../alerts/alertsApi";
-import {
-  AnomalyResponse,
-  AnalyticsJobResponse,
-  BaselineResponse,
-  getDeviceAnomalies,
-  getDeviceBaseline,
-  getDeviceRecommendations,
-  getDeviceRisk,
-  getAnalyticsJob,
-  getLatestPrediction,
-  PredictionResponse,
-  recalculateAnalytics,
-  RecommendationResponse,
-  RiskResponse,
-} from "../analytics/analyticsApi";
-import {
-  AnalyticsConfig,
-  cancelMaintenanceWindow,
-  createDataSource,
-  createMaintenanceWindow,
-  createDataSourceToken,
-  createSensor,
-  DataSource,
-  decommissionDevice,
-  deleteSensor,
-  disableDataSource,
-  disableDevice,
-  enableDevice,
-  exportDataSourcesCsv,
-  getAnalyticsConfig,
-  Device,
-  finishMaintenanceWindowNow,
-  getDevice,
-  importDataSourcesCsv,
-  listDataSources,
-  listLocations,
-  listMaintenanceWindows,
-  listSensors,
-  Location,
-  MaintenanceWindow,
-  revokeDataSourceToken,
-  Sensor,
-  updateAnalyticsConfig,
-  updateDataSource,
-} from "../devices/devicesApi";
-import {
-  getLatestTelemetry,
-  getTelemetryReadings,
-  LatestTelemetry,
-  TelemetryChart,
-} from "../telemetry/telemetryApi";
-import {
-  getSimulationConfig,
-  getSimulationRuns,
-  getSimulationStatus,
-  resetSimulationTemplate,
-  saveSimulationConfig,
-  SimulationConfig,
-  SimulationRun,
-  startSimulation,
-  stopSimulation,
-  validateSimulationConfig,
-} from "../simulation/simulationApi";
+import { AnomalyResponse, PredictionResponse, RecommendationResponse, RiskResponse } from "../analytics/analyticsApi";
 import { TelemetryOverviewPage } from "../features/telemetry/pages/TelemetryOverviewPage";
 import { mapTelemetryOverview } from "../features/telemetry/model/telemetry.mappers";
 import { TelemetryOverviewResponse } from "../features/telemetry/model/telemetry.types";
 import { formatMetricValue as formatTelemetryMetricValue } from "../features/telemetry/model/telemetry.utils";
+import { DeviceMetricChart as MetricChart } from "../devices/details/DeviceMetricChart";
+import { DurationInput } from "../devices/details/DurationInput";
 import { DeviceIncidentSummary } from "../devices/details/DeviceIncidentSummary";
 import { DeviceDetailsTab, DeviceTabs } from "../devices/details/DeviceTabs";
-
-type ChartPoint = { timestamp: string; value: number };
-type RenderChartPoint = ChartPoint & { synthetic?: boolean };
-type ChartMetricConfig = { key: string; label: string; unit: string };
-type ChartDensity = "compact" | "balanced" | "detailed";
-type ChartTimeRange = "15m" | "1h" | "6h" | "24h" | "7d" | "custom";
-const MIN_CUSTOM_CHART_RANGE_MS = 60 * 1000;
-type DashboardChartPreferences = {
-  selectedMetricKeys: string[];
-  showChartPoints: boolean;
-  chartDensity: ChartDensity;
-  chartTimeRange: ChartTimeRange;
-  customChartFrom: string;
-  customChartTo: string;
-  expandedChartMetricKey: string | null;
-};
-type SimulationSettings = {
-  name: string;
-  sourceId: string;
-  interval: string;
-  duration: string;
-  speed: string;
-  voltageV: string;
-  rssi: string;
-  idlePowerW: string;
-  activePowerW: string;
-  activeNoiseW: string;
-  onMin: string;
-  onMax: string;
-  offMin: string;
-  offMax: string;
-  powerSpikeEnabled: boolean;
-  powerSpikeAfter: string;
-  powerSpikeDuration: string;
-  powerSpikeWatts: string;
-  offlineEnabled: boolean;
-  offlineAfter: string;
-  offlineDuration: string;
-  growthEnabled: boolean;
-  growthAfter: string;
-  growthPercent: string;
-  growthRamp: string;
-};
-
-const CHART_METRICS: ChartMetricConfig[] = [
-  { key: "activePowerW", label: "Active power", unit: "W" },
-  { key: "voltageV", label: "Voltage", unit: "V" },
-  { key: "currentA", label: "Current", unit: "A" },
-  { key: "energyWh", label: "Energy", unit: "Wh" },
-  { key: "rssi", label: "Signal strength", unit: "dBm" },
-];
-
-const CHART_METRIC_LOOKUP = new Map(CHART_METRICS.map((metric) => [metric.key, metric]));
-const DEFAULT_CHART_METRICS = ["activePowerW", "voltageV", "currentA", "energyWh"];
-const CHART_DENSITY_LIMITS: Record<ChartDensity, number> = {
-  compact: 50,
-  balanced: 90,
-  detailed: 160,
-};
-const CHART_TIME_RANGES: { value: ChartTimeRange; label: string; durationMs?: number }[] = [
-  { value: "15m", label: "15m", durationMs: 15 * 60 * 1000 },
-  { value: "1h", label: "1h", durationMs: 60 * 60 * 1000 },
-  { value: "6h", label: "6h", durationMs: 6 * 60 * 60 * 1000 },
-  { value: "24h", label: "24h", durationMs: 24 * 60 * 60 * 1000 },
-  { value: "7d", label: "7d", durationMs: 7 * 24 * 60 * 60 * 1000 },
-  { value: "custom", label: "Custom" },
-];
-
-const DEFAULT_DASHBOARD_CHART_PREFERENCES: DashboardChartPreferences = {
-  selectedMetricKeys: DEFAULT_CHART_METRICS,
-  showChartPoints: false,
-  chartDensity: "balanced",
-  chartTimeRange: "24h",
-  customChartFrom: toDateTimeLocalValue(new Date(Date.now() - 24 * 60 * 60 * 1000)),
-  customChartTo: toDateTimeLocalValue(new Date()),
-  expandedChartMetricKey: null,
-};
+import { CHART_DENSITY_LIMITS, CHART_TIME_RANGES, ChartTimeRange } from "../devices/details/deviceTelemetryModel";
+import { formatCompactNumber, formatEnum, formatNumber, formatShortDateTime, formatShortTime } from "../devices/details/deviceDetailsFormatting";
+import { useDeviceAlertsWorkspace } from "../devices/details/useDeviceAlertsWorkspace";
+import { useDeviceAnalyticsWorkspace } from "../devices/details/useDeviceAnalyticsWorkspace";
+import { useDeviceDetailsData } from "../devices/details/useDeviceDetailsData";
+import { useDeviceMaintenanceActions } from "../devices/details/useDeviceMaintenanceActions";
+import { useDeviceRegistryActions } from "../devices/details/useDeviceRegistryActions";
+import { useDeviceSimulationWorkspace } from "../devices/details/useDeviceSimulationWorkspace";
+import { useDeviceTelemetryWorkspace } from "../devices/details/useDeviceTelemetryWorkspace";
 
 export function DeviceDetailsPage() {
   const { deviceId } = useParams();
-  const initialChartPreferences = readDashboardChartPreferences(deviceId);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = normalizeDeviceTab(searchParams.get("tab"));
-  const [device, setDevice] = useState<Device | null>(null);
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [latest, setLatest] = useState<LatestTelemetry | null>(null);
-  const [charts, setCharts] = useState<Record<string, TelemetryChart>>({});
-  const [selectedChartMetricKeys, setSelectedChartMetricKeys] = useState<string[]>(initialChartPreferences.selectedMetricKeys);
-  const [showChartPoints, setShowChartPoints] = useState(initialChartPreferences.showChartPoints);
-  const [chartDensity, setChartDensity] = useState<ChartDensity>(initialChartPreferences.chartDensity);
-  const [chartTimeRange, setChartTimeRange] = useState<ChartTimeRange>(initialChartPreferences.chartTimeRange);
-  const [customChartFrom, setCustomChartFrom] = useState(initialChartPreferences.customChartFrom);
-  const [customChartTo, setCustomChartTo] = useState(initialChartPreferences.customChartTo);
-  const [metricSearch, setMetricSearch] = useState("");
-  const [expandedChartMetricKey, setExpandedChartMetricKey] = useState<string | null>(initialChartPreferences.expandedChartMetricKey);
-  const [selectedTelemetryEventId, setSelectedTelemetryEventId] = useState<string | null>(null);
-  const [deviceAlertStatusFilter, setDeviceAlertStatusFilter] = useState("all");
-  const [showAllDeviceAlerts, setShowAllDeviceAlerts] = useState(false);
-  const [isTelemetryLoading, setIsTelemetryLoading] = useState(false);
-  const [baseline, setBaseline] = useState<BaselineResponse | null>(null);
-  const [risk, setRisk] = useState<RiskResponse | null>(null);
-  const [anomalies, setAnomalies] = useState<AnomalyResponse[]>([]);
-  const [deviceAlerts, setDeviceAlerts] = useState<AlertResponse[]>([]);
-  const [recommendations, setRecommendations] = useState<RecommendationResponse[]>([]);
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
-  const [analyticsJob, setAnalyticsJob] = useState<AnalyticsJobResponse | null>(null);
-  const [maintenanceWindows, setMaintenanceWindows] = useState<MaintenanceWindow[]>([]);
-  const [maintenanceTitle, setMaintenanceTitle] = useState("Planned maintenance");
-  const [maintenanceDescription, setMaintenanceDescription] = useState("");
-  const [maintenanceStartAt, setMaintenanceStartAt] = useState(toDateTimeLocalValue(new Date()));
-  const [maintenanceEndAt, setMaintenanceEndAt] = useState(toDateTimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)));
-  const [maintenanceSuppressAlerts, setMaintenanceSuppressAlerts] = useState(true);
-  const [maintenanceExcludeAnalytics, setMaintenanceExcludeAnalytics] = useState(true);
-  const [maintenanceExcludeMl, setMaintenanceExcludeMl] = useState(true);
-  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
-  const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [analyticsConfig, setAnalyticsConfig] = useState<AnalyticsConfig | null>(null);
-  const [analyticsConfigText, setAnalyticsConfigText] = useState("{\n  \"baselineWindowDays\": 14\n}");
-  const [dataSourceExternalId, setDataSourceExternalId] = useState("");
-  const [dataSourceType, setDataSourceType] = useState("SMART_PLUG");
-  const [dataSourceProtocol, setDataSourceProtocol] = useState("REST");
-  const [sourceCsvText, setSourceCsvText] = useState("externalId,sourceType,protocol\n");
-  const [sourceCsvMessage, setSourceCsvMessage] = useState<string | null>(null);
-  const [lastSourceToken, setLastSourceToken] = useState<string | null>(null);
-  const [sensorName, setSensorName] = useState("");
-  const [sensorType, setSensorType] = useState("");
-  const [sensorUnit, setSensorUnit] = useState("");
-  const [sensorMetricMapping, setSensorMetricMapping] = useState("");
-  const [sensorMetadataText, setSensorMetadataText] = useState("{}");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRegistryBusy, setIsRegistryBusy] = useState(false);
-  const [isRecalculating, setIsRecalculating] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [simulationConfig, setSimulationConfig] = useState<SimulationConfig | null>(null);
-  const [simulationStatus, setSimulationStatus] = useState<SimulationRun | null>(null);
-  const [simulationRuns, setSimulationRuns] = useState<SimulationRun[]>([]);
-  const [simulationYaml, setSimulationYaml] = useState("");
-  const [simulationProfile, setSimulationProfile] = useState("FRIDGE");
-  const [simulationProtocol, setSimulationProtocol] = useState("HTTP");
-  const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
-  const [simulationValidation, setSimulationValidation] = useState<{ valid: boolean; message: string }>({ valid: true, message: "YAML is valid" });
-  const [isSimulationBusy, setIsSimulationBusy] = useState(false);
+  const [simulationSourceToken, setSimulationSourceToken] = useState<string | null>(null);
+  const details = useDeviceDetailsData(deviceId);
+  const telemetry = useDeviceTelemetryWorkspace({ deviceId, activeTab, searchParams });
+  const analytics = useDeviceAnalyticsWorkspace(deviceId);
+  const maintenance = useDeviceMaintenanceActions(deviceId);
+  const alerts = useDeviceAlertsWorkspace(deviceId);
+  const simulation = useDeviceSimulationWorkspace({
+    deviceId,
+    activeTab,
+    onSourceTokenGenerated: setSimulationSourceToken,
+  });
+  const registry = useDeviceRegistryActions({
+    deviceId,
+    onSourceTokenRotated: simulation.syncSourceToken,
+  });
 
-  async function loadAnalytics(currentDeviceId: string) {
-    const [baselineResponse, riskResponse, anomaliesResponse, recommendationsResponse, predictionResponse] = await Promise.all([
-      getDeviceBaseline(currentDeviceId).catch(() => null),
-      getDeviceRisk(currentDeviceId).catch(() => null),
-      getDeviceAnomalies(currentDeviceId).catch(() => []),
-      getDeviceRecommendations(currentDeviceId).catch(() => []),
-      getLatestPrediction(currentDeviceId).catch(() => null),
-    ]);
-    setBaseline(baselineResponse);
-    setRisk(riskResponse);
-    setAnomalies(anomaliesResponse);
-    setRecommendations(recommendationsResponse);
-    setPrediction(predictionResponse);
-    return riskResponse;
-  }
-
-  async function loadTelemetry(currentDeviceId: string) {
-    const timeWindow = getChartTimeWindow(chartTimeRange, customChartFrom, customChartTo);
-    if (!timeWindow) {
-      return false;
-    }
-
-    setIsTelemetryLoading(true);
-    try {
-      const latestResponse = await getLatestTelemetry(currentDeviceId);
-      setLatest(latestResponse);
-      const numericMetrics = buildChartMetrics(latestResponse.readings);
-      const chartResponses = await Promise.all(
-        numericMetrics.map(async (metric) => [metric.key, await getTelemetryReadings(currentDeviceId, metric.key, timeWindow.from, timeWindow.to)] as const),
-      );
-      setCharts(Object.fromEntries(chartResponses));
-      return true;
-    } catch {
-      setLatest(null);
-      setCharts({});
-      return false;
-    } finally {
-      setIsTelemetryLoading(false);
-    }
-  }
+  const {
+    device,
+    locationName,
+    isLoading,
+    setIsLoading,
+    loadDeviceContext,
+    changeDeviceStatus,
+  } = details;
+  const {
+    latest,
+    charts,
+    selectedChartMetricKeys,
+    setSelectedChartMetricKeys,
+    showChartPoints,
+    setShowChartPoints,
+    chartDensity,
+    chartTimeRange,
+    setChartTimeRange,
+    customChartFrom,
+    setCustomChartFrom,
+    customChartTo,
+    setCustomChartTo,
+    metricSearch,
+    setMetricSearch,
+    expandedChartMetricKey,
+    setExpandedChartMetricKey,
+    selectedTelemetryEventId,
+    setSelectedTelemetryEventId,
+    isTelemetryLoading,
+    chartTimeWindow,
+    availableChartMetrics,
+    chartMetrics,
+    expandedChartMetric,
+    loadTelemetry,
+    toggleChartMetric,
+    selectAllChartMetrics,
+    resetChartMetrics,
+  } = telemetry;
+  const {
+    baseline,
+    risk,
+    anomalies,
+    recommendations,
+    prediction,
+    analyticsJob,
+    isRecalculating,
+    loadAnalytics,
+    enqueueAndWaitForAnalyticsJob,
+    recalculateDeviceAnalytics,
+  } = analytics;
+  const {
+    maintenanceWindows,
+    maintenanceTitle,
+    setMaintenanceTitle,
+    maintenanceDescription,
+    setMaintenanceDescription,
+    maintenanceStartAt,
+    setMaintenanceStartAt,
+    maintenanceEndAt,
+    setMaintenanceEndAt,
+    maintenanceSuppressAlerts,
+    setMaintenanceSuppressAlerts,
+    maintenanceExcludeAnalytics,
+    setMaintenanceExcludeAnalytics,
+    maintenanceExcludeMl,
+    setMaintenanceExcludeMl,
+    maintenanceMessage,
+    isMaintenanceBusy,
+    sortedMaintenanceWindows,
+    activeMaintenanceWindows,
+    upcomingMaintenanceWindows,
+    suppressingMaintenanceWindow,
+    refreshMaintenanceWindows,
+    submitMaintenanceWindow,
+    cancelWindow,
+    finishWindowNow,
+  } = maintenance;
+  const {
+    deviceAlerts,
+    deviceAlertStatusFilter,
+    setDeviceAlertStatusFilter,
+    setShowAllDeviceAlerts,
+    filteredDeviceAlerts,
+    visibleDeviceAlerts,
+    loadDeviceAlerts,
+    updateDeviceAlert,
+  } = alerts;
+  const {
+    simulationConfig,
+    simulationStatus,
+    simulationRuns,
+    simulationYaml,
+    setSimulationYaml,
+    simulationProfile,
+    simulationProtocol,
+    simulationMessage,
+    simulationValidation,
+    isSimulationBusy,
+    simulationSettings,
+    simulationSourceId,
+    loadSimulation,
+    validateYaml,
+    saveYaml,
+    updateSimulationField,
+    changeSimulationProfile,
+    changeSimulationProtocol,
+    toggleSimulation,
+    resetYamlTemplate,
+  } = simulation;
+  const {
+    dataSources,
+    sensors,
+    analyticsConfig,
+    setAnalyticsConfig,
+    analyticsConfigText,
+    setAnalyticsConfigText,
+    dataSourceExternalId,
+    setDataSourceExternalId,
+    dataSourceType,
+    setDataSourceType,
+    dataSourceProtocol,
+    setDataSourceProtocol,
+    sourceCsvText,
+    setSourceCsvText,
+    sourceCsvMessage,
+    lastSourceToken: registryLastSourceToken,
+    sensorName,
+    setSensorName,
+    sensorType,
+    setSensorType,
+    sensorUnit,
+    setSensorUnit,
+    sensorMetricMapping,
+    setSensorMetricMapping,
+    sensorMetadataText,
+    setSensorMetadataText,
+    isRegistryBusy,
+    loadRegistry,
+    addDataSource,
+    rotateSourceToken,
+    revokeSourceToken,
+    disableSource,
+    importSourcesCsv,
+    exportSourcesCsv,
+    addSensor,
+    removeSensor,
+    saveAnalyticsConfig,
+  } = registry;
+  const lastSourceToken = registryLastSourceToken ?? simulationSourceToken;
+  const error = details.error ?? analytics.error ?? alerts.error ?? registry.error;
 
   async function load() {
     if (!deviceId) {
       return;
     }
     setIsLoading(true);
-    setError(null);
+    details.setError(null);
+    analytics.setError(null);
+    alerts.setError(null);
+    registry.setError(null);
     try {
-      const [deviceResponse, locationsResponse, maintenanceResponse] = await Promise.all([
-        getDevice(deviceId),
-        listLocations().catch(() => []),
-        listMaintenanceWindows(deviceId).catch(() => []),
+      await Promise.all([
+        loadDeviceContext(deviceId),
+        refreshMaintenanceWindows(deviceId),
       ]);
-      setDevice(deviceResponse);
-      setLocations(locationsResponse);
-      setMaintenanceWindows(maintenanceResponse);
-      setDeviceAlerts((await listAlerts().catch(() => [])).filter((alert) => alert.deviceId === deviceId));
+      await loadDeviceAlerts(deviceId);
       const hasTelemetry = await loadTelemetry(deviceId);
       const loadedRisk = await loadAnalytics(deviceId);
       if (hasTelemetry && !loadedRisk) {
@@ -282,186 +215,17 @@ export function DeviceDetailsPage() {
       await loadRegistry(deviceId);
       await loadSimulation(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load device");
+      details.setError(requestError instanceof Error ? requestError.message : "Failed to load device");
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function loadRegistry(currentDeviceId: string) {
-    const [sourcesResponse, sensorsResponse, analyticsConfigResponse] = await Promise.all([
-      listDataSources(currentDeviceId).catch(() => []),
-      listSensors(currentDeviceId).catch(() => []),
-      getAnalyticsConfig(currentDeviceId).catch(() => null),
-    ]);
-    setDataSources(sourcesResponse);
-    setSensors(sensorsResponse);
-    setAnalyticsConfig(analyticsConfigResponse);
-    if (analyticsConfigResponse) {
-      setAnalyticsConfigText(JSON.stringify(analyticsConfigResponse.config ?? {}, null, 2));
-    }
-  }
-
-  async function loadSimulation(currentDeviceId: string) {
-    try {
-      const [configResponse, statusResponse, runsResponse] = await Promise.all([
-        getSimulationConfig(currentDeviceId),
-        getSimulationStatus(currentDeviceId).catch(() => null),
-        getSimulationRuns(currentDeviceId).catch(() => []),
-      ]);
-      setSimulationConfig(configResponse);
-      setSimulationYaml(configResponse.yamlConfig);
-      setSimulationProfile(configResponse.profile);
-      setSimulationProtocol(configResponse.protocol);
-      setSimulationStatus(statusResponse);
-      setSimulationRuns(runsResponse);
-    } catch {
-      setSimulationConfig(null);
-      setSimulationYaml("");
-      setSimulationStatus(null);
-      setSimulationRuns([]);
-      setSimulationProfile("FRIDGE");
-      setSimulationProtocol("HTTP");
-    }
-  }
-
-  async function refreshSimulationRuntime(currentDeviceId: string) {
-    try {
-      const [statusResponse, runsResponse] = await Promise.all([
-        getSimulationStatus(currentDeviceId).catch(() => null),
-        getSimulationRuns(currentDeviceId).catch(() => []),
-      ]);
-      setSimulationStatus(statusResponse);
-      setSimulationRuns(runsResponse);
-    } catch {
-      setSimulationStatus(null);
-      setSimulationRuns([]);
     }
   }
 
   useEffect(() => {
     void load();
   }, [deviceId]);
-
-  useEffect(() => {
-    const preferences = readDashboardChartPreferences(deviceId);
-    setSelectedChartMetricKeys(preferences.selectedMetricKeys);
-    setShowChartPoints(preferences.showChartPoints);
-    setChartDensity(preferences.chartDensity);
-    setChartTimeRange(preferences.chartTimeRange);
-    setCustomChartFrom(preferences.customChartFrom);
-    setCustomChartTo(preferences.customChartTo);
-    setExpandedChartMetricKey(preferences.expandedChartMetricKey);
-  }, [deviceId]);
-
-  useEffect(() => {
-    const metric = searchParams.get("metric");
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
-    if (activeTab !== "telemetry" || !metric) {
-      return;
-    }
-    setSelectedChartMetricKeys([metric]);
-    setExpandedChartMetricKey(metric);
-    if (from && to) {
-      setChartTimeRange("custom");
-      setCustomChartFrom(toDateTimeLocalValue(new Date(from)));
-      setCustomChartTo(toDateTimeLocalValue(new Date(to)));
-    }
-  }, [activeTab, searchParams]);
-
-  useEffect(() => {
-    if (!deviceId) return;
-    writeDashboardChartPreferences(deviceId, {
-      selectedMetricKeys: selectedChartMetricKeys,
-      showChartPoints,
-      chartDensity,
-      chartTimeRange,
-      customChartFrom,
-      customChartTo,
-      expandedChartMetricKey,
-    });
-  }, [deviceId, selectedChartMetricKeys, showChartPoints, chartDensity, chartTimeRange, customChartFrom, customChartTo, expandedChartMetricKey]);
-
-  useEffect(() => {
-    if (!deviceId) {
-      return;
-    }
-    void loadTelemetry(deviceId);
-  }, [chartTimeRange, customChartFrom, customChartTo]);
-
-  useEffect(() => {
-    if (!deviceId || !simulationConfig || !simulationYaml) {
-      return;
-    }
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      validateSimulationConfig(deviceId, simulationYaml)
-        .then((result) => {
-          if (cancelled) {
-            return;
-          }
-          setSimulationValidation({
-            valid: result.valid,
-            message: result.valid ? "YAML is valid" : result.errors.map((item) => `${item.path}: ${item.message}`).join("; "),
-          });
-        })
-        .catch((requestError) => {
-          if (cancelled) {
-            return;
-          }
-          setSimulationValidation({
-            valid: false,
-            message: requestError instanceof Error ? requestError.message : "YAML validation failed",
-          });
-        });
-    }, 350);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [deviceId, simulationConfig, simulationYaml]);
-
-  useEffect(() => {
-    if (!deviceId || activeTab !== "simulation") {
-      return;
-    }
-    if (simulationConfig) {
-      void refreshSimulationRuntime(deviceId);
-    } else {
-      void loadSimulation(deviceId);
-    }
-  }, [deviceId, activeTab, simulationConfig?.id]);
-
-  useEffect(() => {
-    if (!deviceId || simulationStatus?.status !== "RUNNING") {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      void refreshSimulationRuntime(deviceId);
-    }, 5000);
-    return () => window.clearInterval(intervalId);
-  }, [deviceId, simulationStatus?.status]);
-
-  const readings = latest?.readings ?? {};
-  const locationById = useMemo(() => new Map(locations.map((location) => [location.id, locationLabel(location)])), [locations]);
-  const locationName = device ? locationById.get(device.locationId ?? "") ?? "No location" : "No location";
   const riskInsight = getRiskInsight(risk, anomalies, recommendations);
   const latestAnomaly = anomalies[0] ?? null;
-  const availableChartMetrics = Object.keys(charts)
-    .map((key) => CHART_METRIC_LOOKUP.get(key) ?? createMetricConfig(key))
-    .filter((metric) => charts[metric.key]?.points.length > 0)
-    .sort((first, second) => metricSortWeight(first.key) - metricSortWeight(second.key) || first.label.localeCompare(second.label));
-  const availableChartKeySignature = availableChartMetrics.map((metric) => metric.key).join("|");
-  const chartMetrics = availableChartMetrics.filter((metric) => selectedChartMetricKeys.includes(metric.key));
-  const filteredAvailableChartMetrics = availableChartMetrics.filter((metric) => {
-    const query = metricSearch.trim().toLowerCase();
-    return !query || metric.key.toLowerCase().includes(query) || metric.label.toLowerCase().includes(query);
-  });
-  const expandedChartMetric = availableChartMetrics.find((metric) => metric.key === expandedChartMetricKey) ?? null;
-  const simulationSettings = useMemo(() => readSimulationSettings(simulationYaml), [simulationYaml]);
-  const simulationSourceId = simulationSettings.sourceId || (deviceId ? localStorage.getItem(`voltcanary.deviceSource.${deviceId}`) ?? "plug-001" : "plug-001");
-  const chartTimeWindow = getChartTimeWindow(chartTimeRange, customChartFrom, customChartTo);
   const telemetryOverview = useMemo(() => {
     if (!deviceId || !chartTimeWindow) {
       return null;
@@ -492,457 +256,9 @@ export function DeviceDetailsPage() {
   const configureAlertRoute = deviceId && analyticsFocusedMetric && chartTimeWindow
     ? `/alerts?view=rules&deviceId=${encodeURIComponent(deviceId)}&metric=${encodeURIComponent(analyticsFocusedMetric.key)}&from=${encodeURIComponent(chartTimeWindow.from)}&to=${encodeURIComponent(chartTimeWindow.to)}`
     : null;
-  const filteredDeviceAlerts = deviceAlerts
-    .filter((alert) => {
-      if (deviceAlertStatusFilter === "active") return alert.status !== "RESOLVED";
-      return deviceAlertStatusFilter === "all" || alert.status === deviceAlertStatusFilter;
-    })
-    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  const visibleDeviceAlerts = showAllDeviceAlerts ? filteredDeviceAlerts : filteredDeviceAlerts.slice(0, 12);
-  const sortedMaintenanceWindows = [...maintenanceWindows].sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime());
-  const activeMaintenanceWindows = maintenanceWindows.filter((window) => window.status === "ACTIVE");
-  const upcomingMaintenanceWindows = maintenanceWindows.filter((window) => window.status === "SCHEDULED");
-  const suppressingMaintenanceWindow = activeMaintenanceWindows.find((window) => window.suppressAlerts || window.excludeFromAnalytics || window.excludeFromMl) ?? null;
 
   function changeTab(tab: DeviceDetailsTab) {
     setSearchParams(tab === "overview" ? {} : { tab });
-  }
-
-  async function refreshMaintenanceWindows(currentDeviceId = deviceId) {
-    if (!currentDeviceId) return;
-    setMaintenanceWindows(await listMaintenanceWindows(currentDeviceId).catch(() => []));
-  }
-
-  async function submitMaintenanceWindow() {
-    if (!deviceId) return;
-    setIsMaintenanceBusy(true);
-    setMaintenanceMessage(null);
-    try {
-      const start = new Date(maintenanceStartAt);
-      const end = new Date(maintenanceEndAt);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-        setMaintenanceMessage("Maintenance end must be after start.");
-        return;
-      }
-      await createMaintenanceWindow(deviceId, {
-        title: maintenanceTitle.trim() || "Planned maintenance",
-        description: maintenanceDescription.trim() || null,
-        startAt: start.toISOString(),
-        endAt: end.toISOString(),
-        suppressAlerts: maintenanceSuppressAlerts,
-        excludeFromAnalytics: maintenanceExcludeAnalytics,
-        excludeFromMl: maintenanceExcludeMl,
-      });
-      setMaintenanceMessage("Maintenance window created.");
-      setMaintenanceTitle("Planned maintenance");
-      setMaintenanceDescription("");
-      setMaintenanceStartAt(toDateTimeLocalValue(new Date()));
-      setMaintenanceEndAt(toDateTimeLocalValue(new Date(Date.now() + 60 * 60 * 1000)));
-      await refreshMaintenanceWindows(deviceId);
-    } catch (requestError) {
-      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to create maintenance window");
-    } finally {
-      setIsMaintenanceBusy(false);
-    }
-  }
-
-  async function cancelWindow(windowId: string) {
-    if (!deviceId) return;
-    setIsMaintenanceBusy(true);
-    setMaintenanceMessage(null);
-    try {
-      await cancelMaintenanceWindow(deviceId, windowId, "Cancelled from device maintenance panel.");
-      await refreshMaintenanceWindows(deviceId);
-    } catch (requestError) {
-      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to cancel maintenance window");
-    } finally {
-      setIsMaintenanceBusy(false);
-    }
-  }
-
-  async function finishWindowNow(windowId: string) {
-    if (!deviceId) return;
-    setIsMaintenanceBusy(true);
-    setMaintenanceMessage(null);
-    try {
-      await finishMaintenanceWindowNow(deviceId, windowId);
-      await refreshMaintenanceWindows(deviceId);
-    } catch (requestError) {
-      setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to finish maintenance window");
-    } finally {
-      setIsMaintenanceBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    const availableKeys = availableChartKeySignature ? availableChartKeySignature.split("|") : [];
-    if (availableKeys.length === 0) {
-      return;
-    }
-    setSelectedChartMetricKeys((current) => {
-      const currentAvailable = current.filter((key) => availableKeys.includes(key));
-      const defaultAvailable = DEFAULT_CHART_METRICS.filter((key) => availableKeys.includes(key));
-      const next = currentAvailable.length > 0 ? currentAvailable : defaultAvailable;
-      return arraysEqual(current, next) ? current : next;
-    });
-  }, [availableChartKeySignature]);
-
-  function toggleChartMetric(metricKey: string) {
-    setSelectedChartMetricKeys((current) =>
-      current.includes(metricKey) ? current.filter((key) => key !== metricKey) : [...current, metricKey],
-    );
-  }
-
-  function selectAllChartMetrics() {
-    setSelectedChartMetricKeys(availableChartMetrics.map((metric) => metric.key));
-  }
-
-  function resetChartMetrics() {
-    const defaults = DEFAULT_CHART_METRICS.filter((key) => availableChartMetrics.some((metric) => metric.key === key));
-    setSelectedChartMetricKeys(defaults.length > 0 ? defaults : availableChartMetrics.slice(0, 4).map((metric) => metric.key));
-  }
-
-  async function recalculateDeviceAnalytics() {
-    if (!deviceId) {
-      return;
-    }
-    setIsRecalculating(true);
-    setError(null);
-    try {
-      await enqueueAndWaitForAnalyticsJob(deviceId);
-      await loadAnalytics(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to recalculate risk");
-    } finally {
-      setIsRecalculating(false);
-    }
-  }
-
-  async function enqueueAndWaitForAnalyticsJob(currentDeviceId: string) {
-    const response = await recalculateAnalytics(currentDeviceId);
-    if (!response.jobId) {
-      return null;
-    }
-    let job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => null);
-    if (job) {
-      setAnalyticsJob(job);
-    }
-    for (let attempt = 0; attempt < 12 && job && ["PENDING", "RUNNING"].includes(job.status); attempt += 1) {
-      await delay(1000);
-      job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => job);
-      if (job) {
-        setAnalyticsJob(job);
-      }
-    }
-    if (job?.status === "FAILED") {
-      throw new Error(job.errorMessage ?? "Analytics recalculation failed");
-    }
-    return job;
-  }
-
-  async function updateDeviceAlert(alertId: string, action: "ack" | "resolve") {
-    setError(null);
-    try {
-      if (action === "ack") {
-        await acknowledgeAlert(alertId);
-      } else {
-        const reason = window.prompt("Resolution reason");
-        if (reason === null) {
-          return;
-        }
-        await resolveAlert(alertId, reason);
-      }
-      if (deviceId) {
-        setDeviceAlerts((await listAlerts().catch(() => [])).filter((alert) => alert.deviceId === deviceId));
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to update alert");
-    }
-  }
-
-  async function validateYaml() {
-    if (!deviceId) return;
-    setIsSimulationBusy(true);
-    setSimulationMessage(null);
-    try {
-      const result = await validateSimulationConfig(deviceId, simulationYaml);
-      const message = result.valid ? "YAML is valid" : result.errors.map((item) => `${item.path}: ${item.message}`).join("; ");
-      setSimulationValidation({ valid: result.valid, message });
-      setSimulationMessage(message);
-    } finally {
-      setIsSimulationBusy(false);
-    }
-  }
-
-  async function saveYaml() {
-    if (!deviceId || !simulationConfig) return;
-    setIsSimulationBusy(true);
-    setSimulationMessage(null);
-    try {
-      const saved = await saveCurrentSimulationConfig(false);
-      setSimulationConfig(saved);
-      setSimulationProfile(saved.profile);
-      setSimulationProtocol(saved.protocol);
-      setSimulationMessage("Config saved");
-    } finally {
-      setIsSimulationBusy(false);
-    }
-  }
-
-  function updateSimulationField(field: keyof SimulationSettings, value: string | boolean) {
-    setSimulationYaml((current) => updateSimulationYaml(current, field, value));
-  }
-
-  function changeSimulationProfile(profile: string) {
-    setSimulationProfile(profile);
-    setSimulationYaml((current) => updateSimulationYaml(current, "profile", profile));
-  }
-
-  function changeSimulationProtocol(protocol: string) {
-    setSimulationProtocol(protocol);
-    setSimulationYaml((current) => updateSimulationYaml(current, "protocol", protocol));
-  }
-
-  async function toggleSimulation() {
-    if (!deviceId || !simulationConfig) return;
-    setIsSimulationBusy(true);
-    setSimulationMessage(null);
-    try {
-      if (simulationStatus?.status === "RUNNING") {
-        setSimulationStatus(await stopSimulation(deviceId));
-      } else {
-        const saved = await saveCurrentSimulationConfig(simulationProtocol === "HTTP");
-        setSimulationConfig(saved);
-        setSimulationStatus(await startSimulation(deviceId));
-      }
-      await loadSimulation(deviceId);
-    } catch (requestError) {
-      setSimulationMessage(requestError instanceof Error ? requestError.message : "Simulation action failed");
-    } finally {
-      setIsSimulationBusy(false);
-    }
-  }
-
-  async function resetYamlTemplate() {
-    if (!deviceId || !simulationConfig) return;
-    setIsSimulationBusy(true);
-    setSimulationMessage(null);
-    try {
-      const template = await resetSimulationTemplate(deviceId, simulationProfile, simulationSourceId);
-      setSimulationYaml(template.yamlConfig.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`));
-      setSimulationMessage("Template loaded");
-    } finally {
-      setIsSimulationBusy(false);
-    }
-  }
-
-  async function changeDeviceStatus(action: "enable" | "disable" | "decommission") {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      const nextDevice =
-        action === "enable"
-          ? await enableDevice(deviceId)
-          : action === "disable"
-            ? await disableDevice(deviceId)
-            : await decommissionDevice(deviceId);
-      setDevice(nextDevice);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to update device status");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function addDataSource() {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      await createDataSource(deviceId, {
-        externalId: dataSourceExternalId,
-        sourceType: dataSourceType,
-        protocol: dataSourceProtocol,
-      });
-      setDataSourceExternalId("");
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create data source");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function rotateSourceToken(dataSourceId: string) {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      const response = await createDataSourceToken(deviceId, dataSourceId);
-      setLastSourceToken(response.token);
-      if (simulationConfig?.dataSourceId === dataSourceId) {
-        const saved = await saveSimulationConfig(deviceId, {
-          dataSourceId: simulationConfig.dataSourceId,
-          name: simulationConfig.name,
-          profile: simulationProfile,
-          protocol: simulationProtocol,
-          yamlConfig: simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
-          sourceToken: response.token,
-        });
-        setSimulationConfig(saved);
-      }
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to rotate source token");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function saveCurrentSimulationConfig(rotateToken: boolean) {
-    if (!deviceId || !simulationConfig) {
-      throw new Error("Simulation config is not loaded");
-    }
-
-    const yamlConfig = updateSimulationYaml(
-      simulationYaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${simulationProtocol}`),
-      "sourceId",
-      simulationSourceId,
-    );
-    await updateDataSource(deviceId, simulationConfig.dataSourceId, {
-      sourceType: "SIMULATOR",
-      protocol: simulationProtocol === "MQTT" ? "MQTT" : "REST",
-      externalId: simulationSourceId,
-    }).catch(() => undefined);
-    const token = rotateToken ? await createDataSourceToken(deviceId, simulationConfig.dataSourceId) : null;
-    if (token) {
-      setLastSourceToken(token.token);
-    }
-    localStorage.setItem(`voltcanary.deviceSource.${deviceId}`, simulationSourceId);
-    return saveSimulationConfig(deviceId, {
-      dataSourceId: simulationConfig.dataSourceId,
-      name: simulationConfig.name,
-      profile: simulationProfile,
-      protocol: simulationProtocol,
-      yamlConfig,
-      ...(token ? { sourceToken: token.token } : {}),
-    });
-  }
-
-  async function revokeSourceToken(dataSourceId: string) {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      await revokeDataSourceToken(deviceId, dataSourceId);
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to revoke source token");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function disableSource(dataSourceId: string) {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      await disableDataSource(deviceId, dataSourceId);
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to disable data source");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function importSourcesCsv() {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setSourceCsvMessage(null);
-    setError(null);
-    try {
-      const response = await importDataSourcesCsv(deviceId, sourceCsvText);
-      setSourceCsvMessage(
-        response.errors.length > 0
-          ? `Imported ${response.importedCount}; ${response.errors.join("; ")}`
-          : `Imported ${response.importedCount} data sources`,
-      );
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to import data sources");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function exportSourcesCsv() {
-    if (!deviceId) return;
-    setError(null);
-    try {
-      downloadText(await exportDataSourcesCsv(deviceId), `device-${deviceId}-sources.csv`, "text/csv");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to export data sources");
-    }
-  }
-
-  async function addSensor() {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      await createSensor(deviceId, {
-        name: sensorName,
-        type: sensorType,
-        unit: sensorUnit || null,
-        metricMapping: sensorMetricMapping || null,
-        metadata: parseJsonObject(sensorMetadataText),
-      });
-      setSensorName("");
-      setSensorType("");
-      setSensorUnit("");
-      setSensorMetricMapping("");
-      setSensorMetadataText("{}");
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create sensor");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function removeSensor(sensorId: string) {
-    if (!deviceId) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      await deleteSensor(deviceId, sensorId);
-      await loadRegistry(deviceId);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to delete sensor");
-    } finally {
-      setIsRegistryBusy(false);
-    }
-  }
-
-  async function saveAnalyticsConfig() {
-    if (!deviceId || !analyticsConfig) return;
-    setIsRegistryBusy(true);
-    setError(null);
-    try {
-      const saved = await updateAnalyticsConfig(deviceId, {
-        enabled: analyticsConfig.enabled,
-        config: parseJsonObject(analyticsConfigText) ?? {},
-      });
-      setAnalyticsConfig(saved);
-      setAnalyticsConfigText(JSON.stringify(saved.config ?? {}, null, 2));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to save analytics config");
-    } finally {
-      setIsRegistryBusy(false);
-    }
   }
 
   return (
@@ -2237,714 +1553,6 @@ function normalizeRiskTone(value: string) {
   return "neutral";
 }
 
-function severityRank(value: string) {
-  const normalized = value.toUpperCase();
-  if (normalized === "CRITICAL") return 4;
-  if (normalized === "HIGH") return 3;
-  if (normalized === "MEDIUM" || normalized === "WARNING") return 2;
-  if (normalized === "LOW") return 1;
-  return 0;
-}
-
-function ChartTimeControls({
-  range,
-  customFrom,
-  customTo,
-  onRangeChange,
-  onCustomFromChange,
-  onCustomToChange,
-}: {
-  range: ChartTimeRange;
-  customFrom: string;
-  customTo: string;
-  onRangeChange: (range: ChartTimeRange) => void;
-  onCustomFromChange: (value: string) => void;
-  onCustomToChange: (value: string) => void;
-}) {
-  return (
-    <div className="chart-time-controls">
-      <div className="chart-range-buttons" aria-label="Chart time range">
-        {CHART_TIME_RANGES.map((item) => (
-          <button
-            className={`chart-range-button${range === item.value ? " chart-range-button-active" : ""}`}
-            type="button"
-            key={item.value}
-            onClick={() => onRangeChange(item.value)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      {range === "custom" ? (
-        <div className="chart-custom-range">
-          <label>
-            <span>From</span>
-            <input type="datetime-local" value={customFrom} onChange={(event) => onCustomFromChange(event.target.value)} />
-          </label>
-          <label>
-            <span>To</span>
-            <input type="datetime-local" value={customTo} onChange={(event) => onCustomToChange(event.target.value)} />
-          </label>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function DurationInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const parsed = parseDurationInput(value);
-  const [amount, setAmount] = useState(parsed.amount);
-  const [unit, setUnit] = useState(parsed.unit);
-
-  useEffect(() => {
-    const next = parseDurationInput(value);
-    setAmount(next.amount);
-    setUnit(next.unit);
-  }, [value]);
-
-  function emit(nextAmount: string, nextUnit: string) {
-    setAmount(nextAmount);
-    setUnit(nextUnit);
-    onChange(nextAmount === "" ? "" : `${nextAmount}${nextUnit}`);
-  }
-
-  return (
-    <div className="duration-input">
-      <input
-        min="0"
-        step="1"
-        type="number"
-        value={amount}
-        onChange={(event) => emit(event.target.value, unit)}
-      />
-      <select value={unit} onChange={(event) => emit(amount, event.target.value)}>
-        <option value="s">sec</option>
-        <option value="m">min</option>
-        <option value="h">hr</option>
-      </select>
-    </div>
-  );
-}
-
-function parseDurationInput(value: string) {
-  const match = value.trim().match(/^(\d+(?:\.\d+)?)(ms|s|m|h)?$/);
-  return {
-    amount: match?.[1] ?? "",
-    unit: match?.[2] && match[2] !== "ms" ? match[2] : "s",
-  };
-}
-
-function readSimulationSettings(yaml: string): SimulationSettings {
-  return {
-    name: readYamlString(yaml, /name:[ \t]*"?([^"\n]*)"?/),
-    sourceId: readYamlString(yaml, /sourceId:[ \t]*"?([^"\n]*)"?/),
-    interval: readYamlString(yaml, /interval:[ \t]*([^\n]*)/),
-    duration: readYamlString(yaml, /duration:[ \t]*([^\n]*)/),
-    speed: readYamlString(yaml, /speed:[ \t]*([^\n]*)/),
-    voltageV: readYamlString(yaml, /voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
-    rssi: readYamlString(yaml, /rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
-    idlePowerW: readYamlString(yaml, /offValue:[ \t]*\n[ \t]+mean:[ \t]*([^\n]*)/),
-    activePowerW: readYamlString(yaml, /onValue:[ \t]*\n[ \t]+mean:[ \t]*([^\n]*)/),
-    activeNoiseW: readYamlString(yaml, /onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*([^\n]*)/),
-    onMin: readYamlString(yaml, /onDuration:[ \t]*\n[ \t]+min:[ \t]*([^\n]*)/),
-    onMax: readYamlString(yaml, /onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/),
-    offMin: readYamlString(yaml, /offDuration:[ \t]*\n[ \t]+min:[ \t]*([^\n]*)/),
-    offMax: readYamlString(yaml, /offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/),
-    powerSpikeEnabled: readAnomalyBoolean(yaml, "POWER_SPIKE", "enabled"),
-    powerSpikeAfter: readAnomalyString(yaml, "POWER_SPIKE", "startAfter"),
-    powerSpikeDuration: readAnomalyString(yaml, "POWER_SPIKE", "duration"),
-    powerSpikeWatts: readAnomalyString(yaml, "POWER_SPIKE", "powerW"),
-    offlineEnabled: readAnomalyBoolean(yaml, "OFFLINE", "enabled"),
-    offlineAfter: readAnomalyString(yaml, "OFFLINE", "startAfter"),
-    offlineDuration: readAnomalyString(yaml, "OFFLINE", "duration"),
-    growthEnabled: readAnomalyBoolean(yaml, "CONSUMPTION_GROWTH", "enabled"),
-    growthAfter: readAnomalyString(yaml, "CONSUMPTION_GROWTH", "startAfter"),
-    growthPercent: readAnomalyString(yaml, "CONSUMPTION_GROWTH", "growthPercent"),
-    growthRamp: readAnomalyString(yaml, "CONSUMPTION_GROWTH", "rampDuration"),
-  };
-}
-
-function readYamlString(yaml: string, pattern: RegExp) {
-  return yaml.match(pattern)?.[1]?.trim() ?? "";
-}
-
-function readAnomalyString(yaml: string, type: string, field: string) {
-  const block = anomalyBlock(yaml, type);
-  return block.match(new RegExp(`${field}:[ \\t]*([^\\n]*)`))?.[1]?.trim() ?? "";
-}
-
-function readAnomalyBoolean(yaml: string, type: string, field: string) {
-  return readAnomalyString(yaml, type, field).toLowerCase() === "true";
-}
-
-function updateSimulationYaml(yaml: string, field: keyof SimulationSettings | "profile" | "protocol", value: string | boolean) {
-  const textValue = typeof value === "boolean" ? String(value) : value;
-  switch (field) {
-    case "name":
-      return replaceYaml(yaml, /(name:[ \t]*)"?([^"\n]*)"?/, `$1${textValue}`);
-    case "profile":
-      return replaceYaml(yaml, /(profile:[ \t]*)[A-Z_]*/, `$1${textValue}`);
-    case "protocol":
-      return replaceYaml(yaml, /(protocol:[ \t]*)[A-Z_]*/, `$1${textValue}`);
-    case "sourceId":
-      return replaceYaml(yaml, /(sourceId:[ \t]*)"?([^"\n]*)"?/, `$1"${textValue}"`);
-    case "interval":
-      return replaceYaml(yaml, /(interval:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "duration":
-      return replaceYaml(yaml, /(duration:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "speed":
-      return replaceYaml(yaml, /(speed:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "voltageV":
-      return replaceYaml(yaml, /(voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "rssi":
-      return replaceYaml(yaml, /(rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "idlePowerW":
-      return replaceYaml(yaml, /(offValue:[ \t]*\n[ \t]+mean:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "activePowerW":
-      return replaceYaml(yaml, /(onValue:[ \t]*\n[ \t]+mean:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "activeNoiseW":
-      return replaceYaml(yaml, /(onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "onMin":
-      return replaceYaml(yaml, /(onDuration:[ \t]*\n[ \t]+min:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "onMax":
-      return replaceYaml(yaml, /(onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "offMin":
-      return replaceYaml(yaml, /(offDuration:[ \t]*\n[ \t]+min:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "offMax":
-      return replaceYaml(yaml, /(offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/, `$1${textValue}`);
-    case "powerSpikeEnabled":
-      return updateAnomalyYaml(yaml, "POWER_SPIKE", "enabled", textValue);
-    case "powerSpikeAfter":
-      return updateAnomalyYaml(yaml, "POWER_SPIKE", "startAfter", textValue);
-    case "powerSpikeDuration":
-      return updateAnomalyYaml(yaml, "POWER_SPIKE", "duration", textValue);
-    case "powerSpikeWatts":
-      return updateAnomalyYaml(yaml, "POWER_SPIKE", "powerW", textValue);
-    case "offlineEnabled":
-      return updateAnomalyYaml(yaml, "OFFLINE", "enabled", textValue);
-    case "offlineAfter":
-      return updateAnomalyYaml(yaml, "OFFLINE", "startAfter", textValue);
-    case "offlineDuration":
-      return updateAnomalyYaml(yaml, "OFFLINE", "duration", textValue);
-    case "growthEnabled":
-      return updateAnomalyYaml(yaml, "CONSUMPTION_GROWTH", "enabled", textValue);
-    case "growthAfter":
-      return updateAnomalyYaml(yaml, "CONSUMPTION_GROWTH", "startAfter", textValue);
-    case "growthPercent":
-      return updateAnomalyYaml(yaml, "CONSUMPTION_GROWTH", "growthPercent", textValue);
-    case "growthRamp":
-      return updateAnomalyYaml(yaml, "CONSUMPTION_GROWTH", "rampDuration", textValue);
-    default:
-      return yaml;
-  }
-}
-
-function replaceYaml(yaml: string, pattern: RegExp, replacement: string) {
-  if (!pattern.test(yaml)) {
-    return yaml;
-  }
-  if (replacement.startsWith("$1")) {
-    const value = replacement.slice(2);
-    return yaml.replace(pattern, (_match, prefix: string) => `${prefix}${value}`);
-  }
-  return yaml.replace(pattern, replacement);
-}
-
-function anomalyBlock(yaml: string, type: string) {
-  const match = yaml.match(new RegExp(`  - type: ${type}[\\s\\S]*?(?=\\n  - type:|\\n?$)`));
-  return match?.[0] ?? "";
-}
-
-function updateAnomalyYaml(yaml: string, type: string, field: string, value: string) {
-  const block = anomalyBlock(yaml, type);
-  if (!block) {
-    return yaml;
-  }
-  const updatedBlock = new RegExp(`(\\n[ \\t]+${field}:[ \\t]*)[^\\n]*`).test(block)
-    ? block.replace(new RegExp(`(\\n[ \\t]+${field}:[ \\t]*)[^\\n]*`), (_match, prefix: string) => `${prefix}${value}`)
-    : block.replace(new RegExp(`(  - type: ${type})`), `$1\n    ${field}: ${value}`);
-  return yaml.replace(block, updatedBlock);
-}
-
-function arraysEqual(first: string[], second: string[]) {
-  return first.length === second.length && first.every((item, index) => item === second[index]);
-}
-
-function buildChartMetrics(readings: Record<string, number>): ChartMetricConfig[] {
-  return Object.entries(readings)
-    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
-    .map(([key]) => CHART_METRIC_LOOKUP.get(key) ?? createMetricConfig(key))
-    .sort((first, second) => metricSortWeight(first.key) - metricSortWeight(second.key) || first.label.localeCompare(second.label));
-}
-
-function createMetricConfig(key: string): ChartMetricConfig {
-  return {
-    key,
-    label: humanizeMetricKey(key),
-    unit: inferMetricUnit(key),
-  };
-}
-
-function metricSortWeight(key: string) {
-  const index = DEFAULT_CHART_METRICS.indexOf(key);
-  return index >= 0 ? index : DEFAULT_CHART_METRICS.length + 1;
-}
-
-function humanizeMetricKey(key: string) {
-  return key
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function inferMetricUnit(key: string) {
-  const normalized = key.toLowerCase();
-  if (normalized.endsWith("w") || normalized.includes("power")) return "W";
-  if (normalized.endsWith("v") || normalized.includes("voltage")) return "V";
-  if (normalized.endsWith("a") || normalized.includes("current")) return "A";
-  if (normalized.includes("energy") || normalized.endsWith("wh")) return "Wh";
-  if (normalized.includes("rssi") || normalized.includes("signal")) return "dBm";
-  if (normalized.includes("percent") || normalized.endsWith("pct")) return "%";
-  if (normalized.includes("temperature") || normalized.endsWith("c")) return "C";
-  return "";
-}
-
-function dashboardChartPreferencesKey(deviceId: string) {
-  return `voltcanary.dashboardCharts.${deviceId}`;
-}
-
-function readDashboardChartPreferences(deviceId: string | undefined): DashboardChartPreferences {
-  if (!deviceId) {
-    return DEFAULT_DASHBOARD_CHART_PREFERENCES;
-  }
-  try {
-    const raw = localStorage.getItem(dashboardChartPreferencesKey(deviceId));
-    if (!raw) {
-      return DEFAULT_DASHBOARD_CHART_PREFERENCES;
-    }
-    const parsed = JSON.parse(raw) as Partial<DashboardChartPreferences>;
-    return {
-      selectedMetricKeys: Array.isArray(parsed.selectedMetricKeys) && parsed.selectedMetricKeys.length > 0
-        ? parsed.selectedMetricKeys.filter((key): key is string => typeof key === "string")
-        : DEFAULT_DASHBOARD_CHART_PREFERENCES.selectedMetricKeys,
-      showChartPoints: typeof parsed.showChartPoints === "boolean" ? parsed.showChartPoints : DEFAULT_DASHBOARD_CHART_PREFERENCES.showChartPoints,
-      chartDensity: isChartDensity(parsed.chartDensity) ? parsed.chartDensity : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartDensity,
-      chartTimeRange: isChartTimeRange(parsed.chartTimeRange) ? parsed.chartTimeRange : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartTimeRange,
-      customChartFrom: typeof parsed.customChartFrom === "string" && parsed.customChartFrom ? parsed.customChartFrom : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartFrom,
-      customChartTo: typeof parsed.customChartTo === "string" && parsed.customChartTo ? parsed.customChartTo : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartTo,
-      expandedChartMetricKey: typeof parsed.expandedChartMetricKey === "string" ? parsed.expandedChartMetricKey : null,
-    };
-  } catch {
-    return DEFAULT_DASHBOARD_CHART_PREFERENCES;
-  }
-}
-
-function writeDashboardChartPreferences(deviceId: string, preferences: DashboardChartPreferences) {
-  localStorage.setItem(dashboardChartPreferencesKey(deviceId), JSON.stringify(preferences));
-}
-
-function isChartDensity(value: unknown): value is ChartDensity {
-  return value === "compact" || value === "balanced" || value === "detailed";
-}
-
-function isChartTimeRange(value: unknown): value is ChartTimeRange {
-  return value === "15m" || value === "1h" || value === "6h" || value === "24h" || value === "7d" || value === "custom";
-}
-
-function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo: string) {
-  if (range === "custom") {
-    const fromDate = new Date(customFrom);
-    const toDate = new Date(customTo);
-    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate >= toDate) {
-      return null;
-    }
-    const normalized = ensureMinimumChartRange(fromDate, toDate);
-    return { from: normalized.from.toISOString(), to: normalized.to.toISOString() };
-  }
-
-  const preset = CHART_TIME_RANGES.find((item) => item.value === range);
-  const to = new Date();
-  const from = new Date(to.getTime() - (preset?.durationMs ?? 24 * 60 * 60 * 1000));
-  return { from: from.toISOString(), to: to.toISOString() };
-}
-
-function toDateTimeLocalValue(date: Date) {
-  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 19);
-}
-
-function ensureMinimumChartRange(from: Date, to: Date) {
-  const spanMs = to.getTime() - from.getTime();
-  if (spanMs >= MIN_CUSTOM_CHART_RANGE_MS) {
-    return { from, to };
-  }
-  const midpoint = from.getTime() + spanMs / 2;
-  return {
-    from: new Date(midpoint - MIN_CUSTOM_CHART_RANGE_MS / 2),
-    to: new Date(midpoint + MIN_CUSTOM_CHART_RANGE_MS / 2),
-  };
-}
-
-function buildChartRenderPoints(points: ChartPoint[], maxPoints: number, timeRange?: { from: string; to: string } | null): RenderChartPoint[] {
-  const sortedPoints = [...points].sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
-  if (!timeRange) {
-    return sampleChartPoints(sortedPoints, maxPoints);
-  }
-
-  const fromMs = new Date(timeRange.from).getTime();
-  const toMs = new Date(timeRange.to).getTime();
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-    return sampleChartPoints(sortedPoints, maxPoints);
-  }
-
-  const bucketCount = Math.max(2, maxPoints);
-  const bucketSizeMs = (toMs - fromMs) / (bucketCount - 1);
-  const buckets = Array.from({ length: bucketCount }, (_, index) => {
-    const timestampMs = index === bucketCount - 1 ? toMs : fromMs + index * bucketSizeMs;
-    return {
-      timestamp: new Date(timestampMs).toISOString(),
-      value: 0,
-      synthetic: true,
-      sourceCount: 0,
-    };
-  });
-
-  for (const point of sortedPoints) {
-    const pointMs = new Date(point.timestamp).getTime();
-    if (!Number.isFinite(pointMs) || pointMs < fromMs || pointMs > toMs) {
-      continue;
-    }
-    const index = Math.min(bucketCount - 1, Math.max(0, Math.round((pointMs - fromMs) / bucketSizeMs)));
-    const bucket = buckets[index];
-    if (bucket.sourceCount === 0) {
-      bucket.value = point.value;
-    } else {
-      bucket.value = (bucket.value * bucket.sourceCount + point.value) / (bucket.sourceCount + 1);
-    }
-    bucket.timestamp = point.timestamp;
-    bucket.synthetic = false;
-    bucket.sourceCount += 1;
-  }
-
-  return buckets.map(({ sourceCount: _sourceCount, ...point }) => point);
-}
-
-function sampleChartPoints(points: ChartPoint[], maxPoints: number): RenderChartPoint[] {
-  if (points.length <= maxPoints) {
-    return points;
-  }
-
-  const lastIndex = points.length - 1;
-  const maxIndex = points.reduce((currentIndex, point, index) => (point.value > points[currentIndex].value ? index : currentIndex), 0);
-  const indexes = new Set<number>([0, lastIndex, maxIndex]);
-  for (let index = 1; index < maxPoints - 1; index += 1) {
-    indexes.add(Math.round((index / (maxPoints - 1)) * lastIndex));
-  }
-
-  return [...indexes].sort((first, second) => first - second).map((sourceIndex) => points[sourceIndex]);
-}
-
-function metricChartRangeTicks(timeRange: { from: string; to: string } | null | undefined, left: number, right: number) {
-  if (!timeRange) {
-    return [];
-  }
-  const fromMs = new Date(timeRange.from).getTime();
-  const toMs = new Date(timeRange.to).getTime();
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-    return [];
-  }
-  return [
-    { timestamp: new Date(fromMs).toISOString(), x: left },
-    { timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(), x: left + (right - left) / 2 },
-    { timestamp: new Date(toMs).toISOString(), x: right },
-  ];
-}
-
-function formatMetricChartTimeLabel(timeRange: { from: string; to: string } | null | undefined, timestamp: string) {
-  if (!timeRange) {
-    return [formatShortTime(timestamp)];
-  }
-  const fromMs = new Date(timeRange.from).getTime();
-  const toMs = new Date(timeRange.to).getTime();
-  const value = new Date(timestamp);
-  if (Number.isFinite(toMs - fromMs) && toMs - fromMs >= 24 * 60 * 60 * 1000) {
-    return [
-      value.toLocaleDateString([], { month: "short", day: "numeric" }),
-      value.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
-    ];
-  }
-  return [formatShortTime(timestamp)];
-}
-
-function MetricChart({
-  points,
-  label,
-  unit,
-  timeRange,
-  baseline,
-  threshold,
-  anomaly,
-  maintenanceWindows = [],
-  showPoints,
-  maxDisplayPoints,
-  interactive = true,
-  enableRangeSelection = false,
-  onRangeSelect,
-  size = "normal",
-}: {
-  points: ChartPoint[];
-  label: string;
-  unit: string;
-  timeRange?: { from: string; to: string } | null;
-  baseline?: number;
-  threshold?: number;
-  anomaly?: AnomalyResponse | null;
-  maintenanceWindows?: MaintenanceWindow[];
-  showPoints: boolean;
-  maxDisplayPoints: number;
-  interactive?: boolean;
-  enableRangeSelection?: boolean;
-  onRangeSelect?: (from: string, to: string) => void;
-  size?: "normal" | "large";
-}) {
-  const [hovered, setHovered] = useState<{ point: RenderChartPoint; x: number; y: number } | null>(null);
-  const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
-  const renderPoints = buildChartRenderPoints(points, maxDisplayPoints, timeRange);
-  if (renderPoints.length === 0) {
-    return (
-      <div className={`chart-wrap annotated-chart chart-${size}`}>
-        <div className="empty-state">
-          <strong>No samples</strong>
-          <span>Try a wider time range.</span>
-        </div>
-      </div>
-    );
-  }
-
-  const width = 820;
-  const height = 330;
-  const padding = { top: 28, right: 28, bottom: 54, left: 58 };
-  const values = [...renderPoints.map((point) => point.value), baseline, threshold].filter((value): value is number => value !== undefined);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const rawRange = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
-  const paddingValue = rawRange * 0.08;
-  const includeZero = ["W", "Wh", "A"].includes(unit) && rawMin >= 0;
-  const minValue = includeZero ? Math.min(0, rawMin - paddingValue) : rawMin - paddingValue;
-  const maxValue = rawMax + paddingValue;
-  const range = maxValue - minValue || 1;
-  const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / range) * (height - padding.top - padding.bottom);
-  const timeStart = timeRange ? new Date(timeRange.from).getTime() : new Date(renderPoints[0].timestamp).getTime();
-  const timeEnd = timeRange ? new Date(timeRange.to).getTime() : new Date(renderPoints[renderPoints.length - 1].timestamp).getTime();
-  const timeSpan = Math.max(timeEnd - timeStart, 1);
-  const xForTime = (timestamp: string) => {
-    const time = new Date(timestamp).getTime();
-    if (!Number.isFinite(time)) {
-      return padding.left;
-    }
-    return padding.left + ((time - timeStart) / timeSpan) * (width - padding.left - padding.right);
-  };
-  const chartLeft = padding.left;
-  const chartRight = width - padding.right;
-  const clampChartX = (value: number) => Math.min(chartRight, Math.max(chartLeft, value));
-  const timeForX = (x: number) => {
-    const ratio = (clampChartX(x) - chartLeft) / Math.max(chartRight - chartLeft, 1);
-    return timeStart + ratio * timeSpan;
-  };
-  const chartXFromPointer = (event: PointerEvent<SVGSVGElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const scale = width / Math.max(bounds.width, 1);
-    return clampChartX((event.clientX - bounds.left) * scale);
-  };
-  const canSelectRange = enableRangeSelection && Boolean(onRangeSelect) && Number.isFinite(timeStart) && Number.isFinite(timeEnd) && timeEnd > timeStart;
-  const startRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
-    if (!canSelectRange || event.button !== 0) return;
-    const x = chartXFromPointer(event);
-    setHovered(null);
-    setSelection({ startX: x, currentX: x });
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const updateRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
-    if (!selection) return;
-    setSelection({ ...selection, currentX: chartXFromPointer(event) });
-  };
-  const finishRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
-    if (!selection) return;
-    const endX = chartXFromPointer(event);
-    const startX = selection.startX;
-    setSelection(null);
-    if (Math.abs(endX - startX) < 10 || !onRangeSelect) return;
-    const fromMs = Math.min(timeForX(startX), timeForX(endX));
-    const toMs = Math.max(timeForX(startX), timeForX(endX));
-    onRangeSelect(new Date(fromMs).toISOString(), new Date(toMs).toISOString());
-  };
-  const coordinates = renderPoints.map((point) => ({
-    point,
-    x: xForTime(point.timestamp),
-    y: yForValue(point.value),
-  }));
-  const spike = coordinates.reduce((current, next) => (next.point.value > current.point.value ? next : current), coordinates[0]);
-  const visiblePointCoordinates = showPoints
-    ? coordinates
-    : threshold !== undefined && spike.point.value >= threshold
-      ? [spike]
-      : [];
-  const yTicks = [minValue, minValue + range / 2, maxValue];
-  const xTicks = metricChartRangeTicks(timeRange, padding.left, width - padding.right);
-  const maintenanceBands = maintenanceWindows
-    .filter((window) => window.status === "ACTIVE" || window.status === "SCHEDULED")
-    .map((window) => {
-      const start = Math.max(new Date(window.startAt).getTime(), timeStart);
-      const end = Math.min(new Date(window.endAt).getTime(), timeEnd);
-      return Number.isFinite(start) && Number.isFinite(end) && end > start
-        ? {
-            id: window.id,
-            title: window.title,
-            status: window.status,
-            x: padding.left + ((start - timeStart) / timeSpan) * (width - padding.left - padding.right),
-            width: ((end - start) / timeSpan) * (width - padding.left - padding.right),
-          }
-        : null;
-    })
-    .filter((band): band is { id: string; title: string; status: MaintenanceWindow["status"]; x: number; width: number } => band !== null);
-
-  return (
-    <div className={`chart-wrap annotated-chart chart-${size}`}>
-      <svg
-        className={canSelectRange ? "chart-range-selectable" : undefined}
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`${label} chart`}
-        onPointerDown={startRangeSelection}
-        onPointerMove={updateRangeSelection}
-        onPointerUp={finishRangeSelection}
-        onPointerCancel={() => setSelection(null)}
-      >
-        {yTicks.map((tick) => {
-          const y = yForValue(tick);
-          return (
-            <g key={tick}>
-              <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
-              <text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
-                {formatCompactNumber(tick)} {unit}
-              </text>
-            </g>
-          );
-        })}
-
-        <line className="chart-axis" x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
-        <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
-
-        <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
-
-        {maintenanceBands.map((band) => (
-          <g key={band.id}>
-            <rect
-              className={`chart-maintenance-band chart-maintenance-band-${band.status.toLowerCase()}`}
-              x={band.x}
-              y={padding.top}
-              width={band.width}
-              height={height - padding.top - padding.bottom}
-            />
-            <title>{band.title}</title>
-          </g>
-        ))}
-
-        {baseline !== undefined ? (
-          <g>
-            <line className="chart-baseline" x1={padding.left} y1={yForValue(baseline)} x2={width - padding.right} y2={yForValue(baseline)} />
-            <text className="chart-line-label" x={width - padding.right - 8} y={yForValue(baseline) - 6} textAnchor="end">
-              Typical range
-            </text>
-          </g>
-        ) : null}
-
-        {threshold !== undefined ? (
-          <g>
-            <line className="chart-threshold" x1={padding.left} y1={yForValue(threshold)} x2={width - padding.right} y2={yForValue(threshold)} />
-            <text className="chart-line-label threshold-label" x={width - padding.right - 8} y={yForValue(threshold) - 6} textAnchor="end">
-              Alert threshold
-            </text>
-          </g>
-        ) : null}
-
-        <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} />
-
-        {selection ? (
-          <rect
-            className="chart-range-selection"
-            x={Math.min(selection.startX, selection.currentX)}
-            y={padding.top}
-            width={Math.abs(selection.currentX - selection.startX)}
-            height={height - padding.top - padding.bottom}
-          />
-        ) : null}
-
-        {visiblePointCoordinates.map((coordinate, index) => {
-          const isSpike = coordinate === spike && (threshold === undefined || coordinate.point.value >= threshold);
-          return (
-            <circle
-              key={`visible-${coordinate.point.timestamp}-${index}`}
-              className={isSpike ? "chart-spike-point" : undefined}
-              cx={coordinate.x}
-              cy={coordinate.y}
-              r={isSpike ? 6 : 4}
-              onMouseEnter={interactive ? () => setHovered(coordinate) : undefined}
-              onMouseLeave={interactive ? () => setHovered(null) : undefined}
-              onFocus={interactive ? () => setHovered(coordinate) : undefined}
-              tabIndex={interactive ? 0 : -1}
-            >
-              <title>{`${formatShortTime(coordinate.point.timestamp)} - ${formatMetricValue(coordinate.point.value, unit)}`}</title>
-            </circle>
-          );
-        })}
-
-        {coordinates.map((coordinate, index) => (
-          <circle
-            key={`hit-${coordinate.point.timestamp}-${index}`}
-            className="chart-hit-point"
-            cx={coordinate.x}
-            cy={coordinate.y}
-            r={8}
-            onMouseEnter={interactive ? () => setHovered(coordinate) : undefined}
-            onMouseLeave={interactive ? () => setHovered(null) : undefined}
-            onFocus={interactive ? () => setHovered(coordinate) : undefined}
-            tabIndex={interactive ? 0 : -1}
-          >
-            <title>{`${formatShortTime(coordinate.point.timestamp)} - ${formatMetricValue(coordinate.point.value, unit)}`}</title>
-          </circle>
-        ))}
-
-        {anomaly && spike ? (
-          <text className="chart-spike-label" x={spike.x} y={Math.max(spike.y - 14, 16)} textAnchor="middle">
-            Power spike
-          </text>
-        ) : null}
-
-        {xTicks.map((tick) => {
-          const lines = formatMetricChartTimeLabel(timeRange, tick.timestamp);
-          return (
-            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - 28} textAnchor="middle">
-              {lines.map((line, index) => (
-                <tspan key={line} x={tick.x} dy={index === 0 ? 0 : 14}>
-                  {line}
-                </tspan>
-              ))}
-            </text>
-          );
-        })}
-      </svg>
-      {hovered ? (
-        <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
-          <strong>{formatShortTime(hovered.point.timestamp)}</strong>
-          <span>{hovered.point.synthetic ? "No data - 0" : formatMetricValue(hovered.point.value, unit)}</span>
-          {threshold !== undefined && hovered.point.value >= threshold ? <em>Above threshold</em> : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function getRiskInsight(
   risk: RiskResponse | null,
   anomalies: AnomalyResponse[],
@@ -2991,68 +1599,4 @@ function formatInsightText(value: string) {
     .replace("Ml", "ML")
     .replace("Power Spike", "Power spike")
     .replace("Consumption Growth", "Consumption growth");
-}
-
-function formatEnum(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function delay(milliseconds: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
-
-function formatNumber(value: number) {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function formatCompactNumber(value: number) {
-  const abs = Math.abs(value);
-  const maximumFractionDigits = abs < 10 ? 2 : abs < 100 ? 1 : 0;
-  return value.toLocaleString(undefined, { maximumFractionDigits });
-}
-
-function formatMetricValue(value: unknown, unit: string) {
-  return typeof value === "number" ? `${formatCompactNumber(value)} ${unit}` : "No data";
-}
-
-function formatShortTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-function formatShortDateTime(value: string) {
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function locationLabel(location: Location) {
-  const hierarchy = [location.building, location.floor ? `Floor ${location.floor}` : null, location.room, location.zone]
-    .filter(Boolean)
-    .join(" / ");
-  return hierarchy ? `${location.name} - ${hierarchy}` : location.name;
-}
-
-function parseJsonObject(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "{}") {
-    return null;
-  }
-  return JSON.parse(trimmed) as Record<string, unknown>;
-}
-
-function downloadText(text: string, filename: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { getLatestPrediction, PredictionResponse } from "../analytics/analyticsApi";
+import { PredictionResponse } from "../analytics/analyticsApi";
 import {
   approveMlModel,
   archiveFeatureSnapshot,
@@ -21,7 +21,6 @@ import {
   generateFeatureSnapshot,
   generateHorizonLabels,
   getHorizonLabelGenerationStatus,
-  getMlLabelAudit,
   getMlDatasetVersion,
   importMlDataset,
   listFeatureSnapshots,
@@ -57,26 +56,18 @@ import {
   saveDeploymentPolicy,
 } from "../analytics/mlModuleApi";
 import {
-  clearDeviceMlSettings,
-  getAccountMlSettings,
-  getDeviceMlSettings,
   MlSettingsResponse,
   MlSettingsValues,
   safeMlError,
-  saveAccountMlSettings,
-  saveDeviceMlSettings,
 } from "../analytics/mlSettingsApi";
-import { Device, DeviceType, listDevices, listDeviceTypes } from "../devices/devicesApi";
+import { Device, DeviceType } from "../devices/devicesApi";
 import { DatasetWorkbench } from "../features/ml-datasets/components/DatasetWorkbench";
 import type { DatasetPipelineStep, DatasetWorkbenchDefaults, DatasetWorkbenchModelFamily } from "../features/ml-datasets/model/datasetWorkbench.types";
-
-const initial: MlSettingsValues = {
-  mlEnabled: true,
-  predictionMode: "MODEL_OR_BASELINE_HEURISTIC",
-  confidenceWarningThreshold: 0.6,
-  maintenanceBehavior: "REDUCE_CONFIDENCE",
-  explanationsVisible: true,
-};
+import { useHorizonLabelGeneration } from "../features/ml-settings/hooks/useHorizonLabelGeneration";
+import { useMlWorkspaceData } from "../features/ml-settings/hooks/useMlWorkspaceData";
+import { trainingBlockReason, useTrainingDraft } from "../features/ml-settings/hooks/useTrainingDraft";
+import { formatImpactDependencies, requestLifecycleReason } from "../features/ml-settings/model/mlLifecycleActions";
+import { MlModelsTab, MlMonitoringTab, MlPoliciesTab } from "../features/ml-settings/components/MlOperationalTabs";
 
 type MlTab = "settings" | "datasets" | "import" | "labels" | "training" | "models" | "policies" | "monitoring";
 type FeatureSnapshotConfig = Parameters<typeof generateFeatureSnapshot>[0];
@@ -84,28 +75,6 @@ type DatasetLifecycleKind = "dataset" | "snapshot";
 type ArchiveDeleteAction = "archive" | "delete";
 const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
 type WorkflowMode = DatasetWorkbenchModelFamily;
-
-function requestLifecycleReason(action: string, label: string, impact?: MlLifecycleImpact) {
-  const summary = impact ? `\n\nImpact: ${impact.message}${formatImpactDependencies(impact)}` : "";
-  if (!window.confirm(`${humanizeKey(action)} ${label}?${summary}`)) {
-    return null;
-  }
-  const reason = window.prompt(`Reason for ${action} ${label}`);
-  return reason?.trim() || null;
-}
-
-function formatImpactDependencies(impact: MlLifecycleImpact) {
-  const details = impact.dependencies
-    .map((dependency) => {
-      const values = Object.entries(dependency.details ?? {})
-        .filter(([, value]) => value !== null && value !== "" && value !== undefined)
-        .map(([key, value]) => `${humanizeKey(key)} ${String(value)}`)
-        .join(", ");
-      return values ? `${dependency.type} ${values}` : dependency.type;
-    })
-    .filter(Boolean);
-  return details.length === 0 ? "" : ` (${details.join("; ")})`;
-}
 
 function buildPipelineSteps(
   mode: WorkflowMode,
@@ -180,173 +149,57 @@ function buildPipelineSteps(
 export function MlSettingsPage() {
   const [activeTab, setActiveTab] = useState<MlTab>("settings");
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("ANOMALY_DETECTION");
-  const [values, setValues] = useState(initial);
-  const [effective, setEffective] = useState<MlSettingsResponse | null>(null);
-  const [deviceId, setDeviceId] = useState("");
-  const [deviceMode, setDeviceMode] = useState(false);
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [datasets, setDatasets] = useState<MlDatasetSummary[]>([]);
-  const [datasetDetail, setDatasetDetail] = useState<MlDatasetDetail | null>(null);
-  const [trainingRuns, setTrainingRuns] = useState<MlTrainingRun[]>([]);
-  const [models, setModels] = useState<MlModelVersion[]>([]);
-  const [policies, setPolicies] = useState<MlDeploymentPolicy[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-  const [featureSnapshots, setFeatureSnapshots] = useState<MlFeatureSnapshotResponse[]>([]);
-  const [labels, setLabels] = useState<MlLabel[]>([]);
-  const [labelAudit, setLabelAudit] = useState<MlLabelAudit[]>([]);
   const [datasetStatusFilter, setDatasetStatusFilter] = useState<MlLifecycleStatusFilter>("default");
   const [trainingStatusFilter, setTrainingStatusFilter] = useState<MlLifecycleStatusFilter>("default");
   const [modelStatusFilter, setModelStatusFilter] = useState<MlLifecycleStatusFilter>("default");
   const [policyStatusFilter, setPolicyStatusFilter] = useState<MlLifecycleStatusFilter>("default");
-
-  useEffect(() => {
-    void loadAccount();
-    void refreshMlWorkspace();
-    void loadSelectors();
-  }, []);
-
-  function adopt(v: MlSettingsResponse) {
-    setEffective(v);
-    setValues({
-      mlEnabled: v.mlEnabled,
-      predictionMode: v.predictionMode,
-      confidenceWarningThreshold: v.confidenceWarningThreshold,
-      maintenanceBehavior: v.maintenanceBehavior,
-      explanationsVisible: v.explanationsVisible,
-    });
-  }
-
-  async function loadAccount() {
-    setBusy(true);
-    setError(null);
-    try {
-      adopt(await getAccountMlSettings());
-      setDeviceMode(false);
-    } catch (e) {
-      setError(safeMlError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadDevice() {
-    if (!deviceId.trim()) {
-      setError("Device ID is required");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    setStatusError(null);
-    try {
-      adopt(await getDeviceMlSettings(deviceId.trim()));
-      setDeviceMode(true);
-      getLatestPrediction(deviceId.trim())
-        .then(setPrediction)
-        .catch((e) => {
-          setPrediction(null);
-          setStatusError(safeMlError(e));
-        });
-    } catch (e) {
-      setError(safeMlError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function refreshMlWorkspace() {
-    const [datasetResult, snapshotResult, trainingResult, modelResult, policyResult] = await Promise.allSettled([
-      listMlDatasets(datasetStatusFilter),
-      listFeatureSnapshots(),
-      listTrainingRuns(trainingStatusFilter),
-      listMlModels(modelStatusFilter),
-      listDeploymentPolicies(policyStatusFilter),
-    ]);
-    if (datasetResult.status === "fulfilled") {
-      setDatasets(datasetResult.value);
-    }
-    if (trainingResult.status === "fulfilled") {
-      setTrainingRuns(trainingResult.value);
-    }
-    if (snapshotResult.status === "fulfilled") {
-      if (Array.isArray(snapshotResult.value)) {
-        setFeatureSnapshots(snapshotResult.value);
-      }
-    }
-    if (modelResult.status === "fulfilled") {
-      setModels(modelResult.value);
-    }
-    if (policyResult.status === "fulfilled") {
-      setPolicies(policyResult.value);
-    }
-  }
-
-  async function loadSelectors() {
-    const [deviceResult, deviceTypeResult] = await Promise.allSettled([
-      listDevices({ limit: 100 }),
-      listDeviceTypes(),
-    ]);
-    if (deviceResult.status === "fulfilled") {
-      setDevices(deviceResult.value);
-    }
-    if (deviceTypeResult.status === "fulfilled") {
-      setDeviceTypes(deviceTypeResult.value);
-    }
-  }
-
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (values.confidenceWarningThreshold < 0 || values.confidenceWarningThreshold > 1) {
-      setError("Confidence threshold must be between 0 and 1");
-      return;
-    }
-    if (!values.mlEnabled && values.predictionMode !== "RULE_BASED_ONLY") {
-      setError("Disabled ML requires Rule based only mode");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      adopt(deviceMode ? await saveDeviceMlSettings(deviceId, values) : await saveAccountMlSettings(values));
-      setMessage("ML settings saved");
-    } catch (x) {
-      setError(safeMlError(x));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function clearOverride() {
-    setBusy(true);
-    try {
-      await clearDeviceMlSettings(deviceId);
-      adopt(await getDeviceMlSettings(deviceId));
-      setMessage("Device now inherits account defaults");
-    } catch (e) {
-      setError(safeMlError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function loadDatasetDetail(datasetVersionId: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      setDatasetDetail(await getMlDatasetVersion(datasetVersionId));
-    } catch (e) {
-      setError(safeMlError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const set = <K extends keyof MlSettingsValues>(key: K, value: MlSettingsValues[K]) =>
-    setValues((v) => ({ ...v, [key]: value }));
+  const workspace = useMlWorkspaceData({
+    datasetStatusFilter,
+    trainingStatusFilter,
+    modelStatusFilter,
+    policyStatusFilter,
+  });
+  const {
+    values,
+    effective,
+    deviceId,
+    setDeviceId,
+    deviceMode,
+    prediction,
+    statusError,
+    error,
+    setError,
+    message,
+    setMessage,
+    busy,
+    setBusy,
+    datasets,
+    setDatasets,
+    datasetDetail,
+    setDatasetDetail,
+    trainingRuns,
+    setTrainingRuns,
+    models,
+    setModels,
+    policies,
+    setPolicies,
+    devices,
+    deviceTypes,
+    featureSnapshots,
+    setFeatureSnapshots,
+    labels,
+    setLabels,
+    labelAudit,
+    loadAccount,
+    loadDevice,
+    refreshMlWorkspace,
+    save,
+    clearOverride,
+    loadDatasetDetail,
+    loadLabelAudit,
+    refreshLabels,
+    set,
+  } = workspace;
   const pipelineSteps = useMemo(
     () => buildPipelineSteps(workflowMode, datasets, labels, featureSnapshots, trainingRuns, models, policies, prediction),
     [datasets, featureSnapshots, labels, models, policies, prediction, trainingRuns, workflowMode],
@@ -490,16 +343,9 @@ export function MlSettingsPage() {
           audit={labelAudit}
           datasets={datasets}
           labels={labels}
-          onAudit={async (labelId) => {
-            setError(null);
-            try {
-              setLabelAudit(await getMlLabelAudit(labelId));
-            } catch (e) {
-              setError(safeMlError(e));
-            }
-          }}
+          onAudit={loadLabelAudit}
           onChanged={async (datasetVersionId) => {
-            setLabels(await listMlLabels(datasetVersionId));
+            await refreshLabels(datasetVersionId);
             setMessage("Label review updated");
           }}
           onDelete={async (label) => {
@@ -556,7 +402,7 @@ export function MlSettingsPage() {
         />
       )}
       {activeTab === "models" && (
-        <ModelsTab
+        <MlModelsTab
           models={models}
           statusFilter={modelStatusFilter}
           onFilterChange={async (value) => {
@@ -587,7 +433,7 @@ export function MlSettingsPage() {
         />
       )}
       {activeTab === "policies" && (
-        <PoliciesTab
+        <MlPoliciesTab
           models={models}
           policies={policies}
           devices={devices}
@@ -621,7 +467,7 @@ export function MlSettingsPage() {
         />
       )}
       {activeTab === "monitoring" && (
-        <MonitoringTab
+        <MlMonitoringTab
           datasets={datasets}
           deviceId={deviceId}
           models={models}
@@ -1062,58 +908,8 @@ function ImportTab({ onImported, setError }: { onImported: (summary: string) => 
   );
 }
 
-function isGatewayTimeout(error: unknown) {
-  return error instanceof Error && /gateway timeout|504|timeout/i.test(error.message);
-}
-
-function trainingBlockReason(
-  datasetVersionId: string,
-  featureSnapshotId: string,
-  selectedSnapshot: MlFeatureSnapshotResponse | undefined,
-  modelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION",
-  failureHorizonDays: number,
-) {
-  if (!datasetVersionId) {
-    return "Select a READY dataset before queueing training.";
-  }
-  if (!featureSnapshotId) {
-    return "Select or generate a feature snapshot before queueing training.";
-  }
-  if (!selectedSnapshot) {
-    return "Selected feature snapshot is unavailable. Generate or select a current feature snapshot.";
-  }
-  if (selectedSnapshot.modelFamily && selectedSnapshot.modelFamily !== modelFamily) {
-    return `Feature snapshot family ${selectedSnapshot.modelFamily} must match training family ${modelFamily}.`;
-  }
-  if (modelFamily === "FAILURE_PREDICTION" && (!failureHorizonDays || failureHorizonDays < 1)) {
-    return "Failure prediction requires a positive horizon.";
-  }
-  if (modelFamily === "FAILURE_PREDICTION" && selectedSnapshot.horizonDays && selectedSnapshot.horizonDays !== failureHorizonDays) {
-    return `Feature snapshot horizon ${selectedSnapshot.horizonDays} must match training horizon ${failureHorizonDays}.`;
-  }
-  return null;
-}
-
 function upsertFeatureSnapshot(snapshots: MlFeatureSnapshotResponse[], snapshot: MlFeatureSnapshotResponse) {
   return [snapshot, ...snapshots.filter((item) => item.id !== snapshot.id)];
-}
-
-function isActiveHorizonJob(job: MlHorizonLabelGenerationResponse | null) {
-  return job?.status === "QUEUED" || job?.status === "RUNNING";
-}
-
-function horizonJobStorageKey(datasetVersionId: string, horizonDays: number, includePreventiveMaintenance: boolean) {
-  return `voltcanary.horizonLabelJob.${datasetVersionId}.${horizonDays}.failure-outcome-v1.${includePreventiveMaintenance}`;
-}
-
-function horizonJobStatusMessage(job: MlHorizonLabelGenerationResponse) {
-  if (job.status === "COMPLETED" && job.result) {
-    return `Generated ${job.result.generatedLabels} labels. Review coverage before training.`;
-  }
-  if (job.status === "FAILED") {
-    return job.failureReason ? `Generation failed: ${job.failureReason}` : "Generation failed.";
-  }
-  return `${humanizeKey(job.status)} horizon label generation${job.progress !== null ? ` (${job.progress}%)` : ""}.`;
 }
 
 function LabelsTab(props: {
@@ -1136,43 +932,26 @@ function LabelsTab(props: {
   const [reason, setReason] = useState("Operator review");
   const [horizonDays, setHorizonDays] = useState(30);
   const [includePreventiveMaintenance, setIncludePreventiveMaintenance] = useState(false);
-  const [generationJob, setGenerationJob] = useState<MlHorizonLabelGenerationResponse | null>(null);
-  const [generationStatusMessage, setGenerationStatusMessage] = useState<string | null>(null);
+  const {
+    generationJob,
+    generationStatusMessage,
+    generationResult,
+    generationActive,
+    generateLabels,
+    refreshGenerationStatus,
+  } = useHorizonLabelGeneration({
+    datasetVersionId,
+    horizonDays,
+    includePreventiveMaintenance,
+    onChanged: props.onChanged,
+    setError: props.setError,
+  });
 
   useEffect(() => {
     if (!datasetVersionId && readyDatasets[0]) {
       setDatasetVersionId(readyDatasets[0].datasetVersionId);
     }
   }, [datasetVersionId, readyDatasets]);
-
-  useEffect(() => {
-    if (!isActiveHorizonJob(generationJob)) {
-      return undefined;
-    }
-    const intervalId = window.setInterval(() => {
-      void refreshGenerationStatus(false);
-    }, 2500);
-    return () => window.clearInterval(intervalId);
-  }, [generationJob?.jobId, generationJob?.status]);
-
-  useEffect(() => {
-    if (!datasetVersionId) {
-      return;
-    }
-    const stored = localStorage.getItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
-    if (!stored) {
-      return;
-    }
-    try {
-      const job = JSON.parse(stored) as MlHorizonLabelGenerationResponse;
-      if (job.datasetVersionId === datasetVersionId) {
-        setGenerationJob(job);
-        setGenerationStatusMessage(horizonJobStatusMessage(job));
-      }
-    } catch {
-      localStorage.removeItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
-    }
-  }, [datasetVersionId, horizonDays, includePreventiveMaintenance]);
 
   async function loadLabels(nextDatasetVersionId = datasetVersionId) {
     if (!nextDatasetVersionId) {
@@ -1218,65 +997,7 @@ function LabelsTab(props: {
     }
   }
 
-  async function generateLabels() {
-    if (!datasetVersionId) {
-      props.setError("Select a dataset version before generating labels");
-      return;
-    }
-    setGenerationStatusMessage("Starting horizon label generation.");
-    props.setError(null);
-    try {
-      const job = await generateHorizonLabels({
-        datasetVersionId,
-        horizonDays,
-        generationVersion: "failure-outcome-v1",
-        includePreventiveMaintenance,
-      });
-      await applyGenerationJob(job);
-    } catch (error) {
-      if (isGatewayTimeout(error)) {
-        setGenerationStatusMessage("Label generation start timed out before a job id was returned. Retry start or refresh labels before training.");
-        return;
-      }
-      setGenerationStatusMessage(null);
-      props.setError(safeMlError(error));
-    }
-  }
-
-  async function refreshGenerationStatus(manual = true) {
-    if (!generationJob?.jobId) {
-      if (manual) {
-        setGenerationStatusMessage("Start label generation before checking status.");
-      }
-      return;
-    }
-    try {
-      const job = await getHorizonLabelGenerationStatus(generationJob.jobId);
-      await applyGenerationJob(job);
-    } catch {
-      if (manual) {
-        setGenerationStatusMessage("Status refresh failed. Last known generation state is still shown.");
-      }
-    }
-  }
-
-  async function applyGenerationJob(job: MlHorizonLabelGenerationResponse) {
-    setGenerationJob(job);
-    localStorage.setItem(
-      horizonJobStorageKey(job.datasetVersionId, job.horizonDays, job.includePreventiveMaintenance),
-      JSON.stringify(job),
-    );
-    if (job.status === "COMPLETED" && job.result) {
-      setGenerationStatusMessage(horizonJobStatusMessage(job));
-      await props.onChanged(job.datasetVersionId);
-      return;
-    }
-    setGenerationStatusMessage(horizonJobStatusMessage(job));
-  }
-
   const coverage = summarizeLabels(props.labels);
-  const generationResult = generationJob?.result ?? null;
-  const generationActive = isActiveHorizonJob(generationJob);
 
   return (
     <div className="ml-workflow-grid">
@@ -1403,18 +1124,7 @@ function TrainingTab(props: {
   setError: (value: string | null) => void;
 }) {
   const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY");
-  const [draft, setDraft, clearDraft] = usePersistedDraft(
-    `voltcanary.ml.${props.accountId}.training.ANOMALY_DETECTION.training-run`,
-    {
-      datasetVersionId: "",
-      featureSnapshotId: "",
-      modelFamily: "ANOMALY_DETECTION" as "ANOMALY_DETECTION" | "FAILURE_PREDICTION",
-      algorithm: "baseline-statistical-anomaly-v1",
-      failureHorizonDays: 14,
-      minimumPositiveLabels: 20,
-      minimumLabelCoverage: 0.8,
-    },
-  );
+  const [draft, setDraft, clearDraft] = useTrainingDraft(props.accountId);
   const { datasetVersionId, featureSnapshotId, modelFamily, algorithm, failureHorizonDays, minimumPositiveLabels, minimumLabelCoverage } = draft;
   const selectedTemplate = trainingTemplates[modelFamily];
   const selectedDataset = readyDatasets.find((dataset) => dataset.datasetVersionId === datasetVersionId);
@@ -1599,295 +1309,6 @@ function TrainingTab(props: {
           </div>
         ))}
       </section>
-    </div>
-  );
-}
-
-function ModelsTab(props: { models: MlModelVersion[]; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
-  return (
-    <section className="panel">
-      <div className="section-header">
-        <div>
-          <h2>Model registry</h2>
-        </div>
-        <StatusFilterSelect label="Model status filter" value={props.statusFilter} onChange={props.onFilterChange} />
-      </div>
-      {props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((model) => {
-        const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
-        const approveBlocked = Boolean(gates && !gates.promotionEligible);
-        const modelLabel = `${model.modelKey} v${model.version}`;
-        return (
-          <div className="ml-model-row" key={model.id}>
-            <div className="ml-model-body">
-              <strong>{modelLabel}</strong>
-              <span>{model.family} / {humanizeAlgorithm(model.algorithm)} / {model.status} / {modelOriginLabel(model)}</span>
-              {model.family === "FAILURE_PREDICTION" ? <FailureModelCard gates={gates} model={model} /> : <GenericModelMetrics model={model} />}
-            </div>
-            <div className="action-row">
-              {model.status !== "APPROVED" && model.status !== "ACTIVE" && (
-                <button
-                  aria-label={`Approve ${modelLabel}`}
-                  className="ghost-button"
-                  disabled={approveBlocked}
-                  onClick={() => void approveMlModel(model.id, "UI approval").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))}
-                  title={approveBlocked ? "Promotion gates must pass before approval." : undefined}
-                  type="button"
-                >
-                  Approve
-                </button>
-              )}
-              {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" onClick={() => void rejectMlModel(model.id, "UI rejection").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Reject</button>}
-              {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" onClick={() => void archiveMlModel(model.id, "UI archive").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Archive</button>}
-              {["CANDIDATE", "REJECTED"].includes(model.status) && <button aria-label={`Delete ${modelLabel}`} className="ghost-button" onClick={() => void props.onDelete(model)} type="button">Delete</button>}
-            </div>
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
-function FailureModelCard({ gates, model }: { gates: ApprovalGateSummary | null; model: MlModelVersion }) {
-  const metrics = model.evaluationMetrics ?? {};
-  const horizonDays = metricNumber(metrics, "failureHorizonDays");
-  const precision = metricNumber(metrics, "failurePrecision");
-  const recall = metricNumber(metrics, "failureRecall");
-  const prAuc = metricNumber(metrics, "failurePrAuc");
-  const prAucLift = metricNumber(metrics, "failurePrAucLift");
-  const falseAlerts = metricNumber(metrics, "failureFalseAlertsPerDeviceMonth");
-  const leadTime = metricNumber(metrics, "failureAverageLeadTimeDays");
-  const labelCoverage = metricNumber(metrics, "labelCoverage") ?? metricNumber(metrics, "failureLabelCoverage");
-  const positives = metricNumber(metrics, "failurePositiveLabels");
-  const negatives = metricNumber(metrics, "failureNegativeLabels");
-
-  return (
-    <div className="ml-model-card-summary">
-      <div>
-        <h3>{horizonDays ? `${horizonDays}-day failure horizon` : "Failure model card"}</h3>
-        <p>Predicts confirmed failure or corrective-maintenance risk for operator review. Use alongside rule alerts and maintenance context.</p>
-      </div>
-      <dl className="ml-model-metric-grid">
-        <div><dt>Precision</dt><dd>{formatPercentMetric(precision)}</dd></div>
-        <div><dt>Recall</dt><dd>{formatPercentMetric(recall)}</dd></div>
-        <div><dt>PR-AUC</dt><dd>{formatDecimalMetric(prAuc)}</dd></div>
-        <div><dt>PR-AUC lift</dt><dd>{formatSignedMetric(prAucLift)}</dd></div>
-        <div><dt>False alerts</dt><dd>{falseAlerts === null ? "N/A" : `${formatDecimalMetric(falseAlerts)} / device-month`}</dd></div>
-        <div><dt>Lead time</dt><dd>{leadTime === null ? "N/A" : `${formatDecimalMetric(leadTime)} days`}</dd></div>
-      </dl>
-      <dl className="ml-model-lineage">
-        <div><dt>Labels</dt><dd>{positives === null ? "N/A" : `${positives} positive${negatives === null ? "" : ` / ${negatives} negative`}`}</dd></div>
-        <div><dt>Coverage</dt><dd>{formatPercentMetric(labelCoverage)}</dd></div>
-        <div><dt>Dataset</dt><dd className="mono-value">{model.datasetVersionId ?? "Unavailable"}</dd></div>
-        <div><dt>Feature hash</dt><dd className="mono-value">{model.featureSchemaHash ?? "Unavailable"}</dd></div>
-        <div><dt>Artifact</dt><dd className="mono-value">{model.artifactHash ?? model.artifactManifestUri ?? model.artifactUri ?? "Unavailable"}</dd></div>
-      </dl>
-      {gates && <ApprovalGatePanel gates={gates} />}
-    </div>
-  );
-}
-
-function ApprovalGatePanel({ gates }: { gates: ApprovalGateSummary }) {
-  return (
-    <section className={gates.promotionEligible ? "ml-gate-panel ml-gate-panel-pass" : "ml-gate-panel ml-gate-panel-blocked"} aria-label="Promotion gates">
-      <div>
-        <strong>{gates.promotionEligible ? "Promotion gates passed" : "Promotion blocked"}</strong>
-        <span>
-          {gates.profileId ? `${gates.profileId}${gates.profileVersion ? ` / ${gates.profileVersion}` : ""}` : gates.promotionEligible ? "This candidate is eligible for approval." : "Resolve failed gates before approval."}
-          {gates.thresholdSource ? ` / ${gates.thresholdSource}` : ""}
-        </span>
-      </div>
-      {gates.criteria.length > 0 && (
-        <dl className="ml-gate-list">
-          {gates.criteria.map((gate) => (
-            <div key={gate.name}>
-              <dt>{humanizeFeatureName(gate.name)} / {gate.passed ? "Pass" : "Fail"}</dt>
-              <dd>{gate.reason} Observed {formatGateValue(gate)} / required {formatGateThreshold(gate)}.</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
-  );
-}
-
-function GenericModelMetrics({ model }: { model: MlModelVersion }) {
-  const entries = Object.entries(model.evaluationMetrics ?? {});
-  if (entries.length === 0) {
-    return <small>No evaluation metrics captured yet.</small>;
-  }
-  return (
-    <dl className="ml-model-lineage">
-      {entries.slice(0, 6).map(([key, value]) => (
-        <div key={key}><dt>{humanizeKey(key)}</dt><dd>{formatQualityValue(value)}</dd></div>
-      ))}
-    </dl>
-  );
-}
-
-function PoliciesTab(props: {
-  devices: Device[];
-  deviceTypes: DeviceType[];
-  models: MlModelVersion[];
-  policies: MlDeploymentPolicy[];
-  statusFilter: MlLifecycleStatusFilter;
-  onChanged: () => Promise<void>;
-  onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
-  onLifecycle: (policy: MlDeploymentPolicy, action: "disable" | "delete") => Promise<void>;
-  setError: (value: string | null) => void;
-}) {
-  const deployableModels = props.models.filter((model) => (model.status === "APPROVED" || model.status === "ACTIVE") && !model.demoModel);
-  const [scope, setScope] = useState<MlDeploymentScope>("ACCOUNT");
-  const [mode, setMode] = useState<MlDeploymentMode>("SHADOW");
-  const [modelVersionId, setModelVersionId] = useState("");
-  const [deviceId, setDeviceId] = useState("");
-  const [deviceType, setDeviceType] = useState("");
-  const [canaryPercent, setCanaryPercent] = useState(10);
-  const [fallbackEnabled, setFallbackEnabled] = useState(true);
-  const [resolved, setResolved] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!modelVersionId && deployableModels[0]) {
-      setModelVersionId(deployableModels[0].id);
-    }
-  }, [deployableModels, modelVersionId]);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    try {
-      await saveDeploymentPolicy({
-        scope,
-        deviceId: scope === "DEVICE" ? deviceId || null : null,
-        deviceType: scope === "DEVICE_TYPE" ? deviceType || null : null,
-        modelVersionId: mode === "DISABLED" ? null : modelVersionId || null,
-        mode,
-        canaryPercent: mode === "CANARY" ? canaryPercent : null,
-        fallbackEnabled,
-        reason: "Updated from ML console",
-      });
-      await props.onChanged();
-    } catch (error) {
-      props.setError(safeMlError(error));
-    }
-  }
-
-  async function resolve() {
-    try {
-      const policy = await resolveDeploymentPolicy(deviceId, deviceType);
-      setResolved(`${policy.policySource ?? "BASELINE"} / ${policy.mode} / ${policy.fallbackReason ?? "model selected"}`);
-    } catch (error) {
-      props.setError(safeMlError(error));
-    }
-  }
-
-  return (
-    <div className="ml-workflow-grid">
-      <form className="panel ml-workflow-form" onSubmit={submit}>
-        <h2>Deployment policy editor</h2>
-        <div className="ml-control-grid">
-          <label>Scope<select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}><option value="ACCOUNT">Account</option><option value="DEVICE_TYPE">Device type</option><option value="DEVICE">Device</option></select></label>
-          <label>Mode<select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}><option value="SHADOW">Shadow</option><option value="CANARY">Canary</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select></label>
-          <label>Model<select value={modelVersionId} onChange={(e) => setModelVersionId(e.target.value)}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version} / {modelOriginLabel(model)}</option>)}</select></label>
-          {scope === "DEVICE" && (
-            <label>
-              Device
-              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-                <option value="">Select device</option>
-                {props.devices.map((device) => <option key={device.id} value={device.id}>{deviceLabel(device)}</option>)}
-              </select>
-            </label>
-          )}
-          {scope === "DEVICE_TYPE" && (
-            <label>
-              Device type
-              <select value={deviceType} onChange={(e) => setDeviceType(e.target.value)}>
-                <option value="">Select device type</option>
-                {props.deviceTypes.map((type) => <option key={type.code} value={type.code}>{type.displayName} / {type.code}</option>)}
-              </select>
-            </label>
-          )}
-          {mode === "CANARY" && <label>Canary percent<input max="100" min="0" onChange={(e) => setCanaryPercent(Number(e.target.value))} type="number" value={canaryPercent} /></label>}
-        </div>
-        <label className="checkbox-label"><input checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} type="checkbox" /> Baseline fallback enabled</label>
-        <div className="action-row action-row-start"><button className="primary-button">Save policy</button><button className="ghost-button" onClick={() => void resolve()} type="button">Resolve policy</button></div>
-        {resolved && <div className="success-message">{resolved}</div>}
-      </form>
-      <section className="panel">
-        <div className="section-header">
-          <div>
-            <h2>Current policies</h2>
-          </div>
-          <StatusFilterSelect label="Policy status filter" value={props.statusFilter} onChange={props.onFilterChange} />
-        </div>
-        {props.policies.length === 0 ? <div className="empty-state">No deployment policies yet.</div> : props.policies.map((policy) => (
-          <div className="ml-readout" key={policy.id}>
-            <strong>{policy.scope} / {policy.mode}</strong>
-            <span>{policy.modelVersionId ?? "baseline fallback"} / fallback {policy.fallbackEnabled ? "on" : "off"}</span>
-            <div className="action-row action-row-start">
-              {policy.mode !== "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "disable")} type="button">Disable</button>}
-              {policy.mode === "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "delete")} type="button">Delete</button>}
-            </div>
-          </div>
-        ))}
-      </section>
-    </div>
-  );
-}
-
-function MonitoringTab(props: {
-  datasets: MlDatasetSummary[];
-  deviceId: string;
-  models: MlModelVersion[];
-  policies: MlDeploymentPolicy[];
-  prediction: PredictionResponse | null;
-  statusError: string | null;
-  trainingRuns: MlTrainingRun[];
-}) {
-  const stats = useMemo(() => {
-    const failedRuns = props.trainingRuns.filter((run) => run.status === "FAILED").length;
-    const fallbackPolicies = props.policies.filter((policy) => policy.fallbackEnabled).length;
-    const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY").length;
-    const activeModels = props.models.filter((model) => model.status === "ACTIVE").length;
-    const fallbackRate = props.policies.length === 0 ? 0 : Math.round((fallbackPolicies / props.policies.length) * 100);
-    const errorRate = props.trainingRuns.length === 0 ? 0 : Math.round((failedRuns / props.trainingRuns.length) * 100);
-    const predictionQuality = props.prediction ? Math.round(props.prediction.confidence * 100) : 0;
-    const latencyStatus = props.prediction ? "Captured at prediction boundary" : "No recent prediction";
-    const driftStatus = activeModels > 0 && readyDatasets > 0 ? "Watch feature hash changes" : "Insufficient model baseline";
-    const deploymentPath = props.prediction?.predictionPath ?? props.prediction?.deploymentMode ?? "N/A";
-    const canaryState = props.prediction?.canaryIncluded === true
-      ? "Included"
-      : props.prediction?.canaryIncluded === false
-        ? "Excluded"
-        : "N/A";
-    return { activeModels, canaryState, deploymentPath, driftStatus, errorRate, failedRuns, fallbackPolicies, fallbackRate, latencyStatus, predictionQuality, readyDatasets };
-  }, [props.datasets, props.models, props.policies, props.prediction, props.trainingRuns]);
-
-  return (
-    <div className="ml-workflow-grid">
-      <section className="panel">
-        <h2>ML operations snapshot</h2>
-        <div className="ml-stat-grid">
-          <article><span>Ready datasets</span><strong>{stats.readyDatasets}</strong></article>
-          <article><span>Active models</span><strong>{stats.activeModels}</strong></article>
-          <article><span>Fallback rate</span><strong>{stats.fallbackRate}%</strong></article>
-          <article><span>Error rate</span><strong>{stats.errorRate}%</strong></article>
-          <article><span>Prediction quality</span><strong>{stats.predictionQuality}%</strong></article>
-          <article><span>Inference latency</span><strong>{props.prediction ? "OK" : "N/A"}</strong></article>
-          <article><span>Deployment path</span><strong>{stats.deploymentPath}</strong></article>
-          <article><span>Canary</span><strong>{stats.canaryState}</strong></article>
-        </div>
-        <div className="ml-readout"><strong>Drift</strong><span>{stats.driftStatus}</span></div>
-        <div className="ml-readout"><strong>Latency</strong><span>{stats.latencyStatus}</span></div>
-        <div className="ml-readout"><strong>Fallback policies</strong><span>{stats.fallbackPolicies} policy scopes have baseline fallback enabled</span></div>
-        <div className="ml-readout"><strong>Training errors</strong><span>{stats.failedRuns} failed runs in the current list</span></div>
-        <h3>Deployment comparison</h3>
-        <dl className="ml-model-metric-grid">
-          <div><dt>Active</dt><dd>{props.prediction?.predictionPath === "ACTIVE" ? statusText(props.prediction.predictionStatus) : "No active path in latest trace"}</dd></div>
-          <div><dt>Shadow</dt><dd>{props.prediction?.shadowPrediction ? statusText(props.prediction.predictionStatus) : "Stored separately from latest active"}</dd></div>
-          <div><dt>Canary</dt><dd>{props.prediction?.deploymentMode === "CANARY" ? formatCanaryState(props.prediction) : "No canary policy in latest trace"}</dd></div>
-          <div><dt>Fallback</dt><dd>{props.prediction?.predictionPath === "FALLBACK" ? props.prediction.fallbackReason || "Fallback used" : "Not used"}</dd></div>
-        </dl>
-      </section>
-      <MlStatus deviceMode={Boolean(props.deviceId)} error={props.statusError} prediction={props.prediction} />
     </div>
   );
 }
@@ -2106,52 +1527,6 @@ const labelOptions: MlLabelType[] = [
   "UNRESOLVED_ANOMALY",
   "UNKNOWN",
 ];
-
-function usePersistedDraft<T>(key: string, initialValue: T) {
-  const initialDraft = readDraft<T>(key);
-  const [restored, setRestored] = useState(Boolean(initialDraft));
-  const [value, setValue] = useState<T>(() => {
-    if (initialDraft) {
-      return { ...initialValue, ...initialDraft };
-    }
-    return initialValue;
-  });
-
-  useEffect(() => {
-    const stored = readDraft<T>(key);
-    setValue(stored ? { ...initialValue, ...stored } : initialValue);
-    setRestored(Boolean(stored));
-  }, [key]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Draft persistence is best effort; server state remains authoritative.
-    }
-  }, [key, value]);
-
-  function clearDraft() {
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // Ignore storage failures.
-    }
-    setValue(initialValue);
-    setRestored(false);
-  }
-
-  return [value, setValue, clearDraft, restored] as const;
-}
-
-function readDraft<T>(key: string): Partial<T> | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Partial<T>) : null;
-  } catch {
-    return null;
-  }
-}
 
 function deviceLabel(device: Device) {
   const location = device.locationId ? ` / ${device.locationId}` : "";
