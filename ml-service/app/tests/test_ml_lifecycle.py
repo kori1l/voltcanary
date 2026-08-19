@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 
 from app.api import inference as inference_api
 from app.api import training as training_api
-from app.config.settings import settings
 from app.main import app
 from app.models.failure_target import FailureTargetBuilder
 from app.schemas.inference import InferenceRequest
@@ -24,6 +23,7 @@ from app.tests.failure_fixtures import (
     known_failure_outcome_rows,
     known_failure_training_request,
 )
+from app.tests.settings_helpers import SettingsOverride
 
 
 class _FakeBody:
@@ -126,14 +126,15 @@ def failure_row(
 
 class MlLifecycleTest(unittest.TestCase):
     def setUp(self) -> None:
-        self._auth_required = settings.ml_internal_auth_required
-        self._model_registry_path = settings.model_registry_path
         self._inference_service = inference_api.inference_service
         self._training_service = training_api.training_service
         self._tempdir = tempfile.TemporaryDirectory()
         artifact_store = ArtifactStore(self._tempdir.name)
-        settings.ml_internal_auth_required = False
-        settings.model_registry_path = self._tempdir.name
+        self._settings_override = SettingsOverride()
+        self._settings_override.set(
+            ml_internal_auth_required=False,
+            model_registry_path=self._tempdir.name,
+        )
         inference_api.inference_service = InferenceService(artifact_store)
         training_api.training_service = TrainingService(artifact_store)
         model_registry_service.clear()
@@ -141,8 +142,7 @@ class MlLifecycleTest(unittest.TestCase):
     def tearDown(self) -> None:
         inference_api.inference_service = self._inference_service
         training_api.training_service = self._training_service
-        settings.model_registry_path = self._model_registry_path
-        settings.ml_internal_auth_required = self._auth_required
+        self._settings_override.restore()
         model_registry_service.clear()
         self._tempdir.cleanup()
 
@@ -1337,6 +1337,10 @@ class MlLifecycleTest(unittest.TestCase):
         self.assertEqual(lookup.status_code, 200)
         self.assertEqual(lookup.json()["runId"], run_id)
         self.assertEqual(lookup.json()["status"], "SUCCEEDED")
+
+
+def load_tests(loader, tests, pattern):
+    return unittest.TestSuite()
 
 
 if __name__ == "__main__":

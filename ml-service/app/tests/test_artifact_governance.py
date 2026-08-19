@@ -4,9 +4,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config.settings import settings
 from app.main import app
 from app.services.artifact_store import ArtifactReferenceSet, ArtifactStore, ArtifactStoreHealthError
+from app.tests.settings_helpers import SettingsOverride
 
 
 class _FakeBody:
@@ -51,30 +51,21 @@ class _FakeS3Client:
 
 class ArtifactGovernanceTest(unittest.TestCase):
     def setUp(self) -> None:
-        self._settings = {
-            "model_registry_path": settings.model_registry_path,
-            "ml_runtime_profile": settings.ml_runtime_profile,
-            "ml_production_like_profiles": settings.ml_production_like_profiles,
-            "ml_artifact_store": settings.ml_artifact_store,
-            "ml_artifact_bucket": settings.ml_artifact_bucket,
-            "minio_endpoint": settings.minio_endpoint,
-            "minio_access_key": settings.minio_access_key,
-            "minio_secret_key": settings.minio_secret_key,
-        }
         self._tempdir = tempfile.TemporaryDirectory()
-        settings.model_registry_path = self._tempdir.name
-        settings.minio_endpoint = None
-        settings.minio_access_key = None
-        settings.minio_secret_key = None
+        self._settings_override = SettingsOverride()
+        self._settings_override.set(
+            model_registry_path=self._tempdir.name,
+            minio_endpoint=None,
+            minio_access_key=None,
+            minio_secret_key=None,
+        )
 
     def tearDown(self) -> None:
-        for key, value in self._settings.items():
-            setattr(settings, key, value)
+        self._settings_override.restore()
         self._tempdir.cleanup()
 
     def test_local_artifact_store_is_allowed_for_test_profile(self) -> None:
-        settings.ml_runtime_profile = "test"
-        settings.ml_artifact_store = "local"
+        self._settings_override.set(ml_runtime_profile="test", ml_artifact_store="local")
 
         health = ArtifactStore(self._tempdir.name).health()
 
@@ -82,8 +73,7 @@ class ArtifactGovernanceTest(unittest.TestCase):
         self.assertEqual(health["provider"], "local")
 
     def test_production_like_profile_rejects_local_artifact_store_readiness(self) -> None:
-        settings.ml_runtime_profile = "production"
-        settings.ml_artifact_store = "local"
+        self._settings_override.set(ml_runtime_profile="production", ml_artifact_store="local")
         client = TestClient(app)
 
         response = client.get("/health/artifacts")
@@ -94,8 +84,7 @@ class ArtifactGovernanceTest(unittest.TestCase):
         self.assertNotIn("secret", response.text.lower())
 
     def test_s3_artifact_store_health_reports_available_bucket(self) -> None:
-        settings.ml_runtime_profile = "production"
-        settings.ml_artifact_store = "s3"
+        self._settings_override.set(ml_runtime_profile="production", ml_artifact_store="s3")
         fake = _FakeS3Client()
         fake.create_bucket("model-artifacts")
         store = ArtifactStore(self._tempdir.name)
@@ -110,8 +99,7 @@ class ArtifactGovernanceTest(unittest.TestCase):
         self.assertEqual(health["bucket"], "model-artifacts")
 
     def test_s3_artifact_store_health_sanitizes_unavailable_bucket(self) -> None:
-        settings.ml_runtime_profile = "production"
-        settings.ml_artifact_store = "s3"
+        self._settings_override.set(ml_runtime_profile="production", ml_artifact_store="s3")
         store = ArtifactStore(self._tempdir.name)
         store.store = "s3"
         store.bucket = "model-artifacts"

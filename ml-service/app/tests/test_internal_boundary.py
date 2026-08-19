@@ -5,36 +5,30 @@ from unittest.mock import Mock
 from fastapi.testclient import TestClient
 
 from app.api import training as training_api
-from app.config.settings import settings
 from app.main import app
 from app.schemas.training import TrainingRunResponse
+from app.tests.settings_helpers import SettingsOverride
 
 
 class MlInternalBoundaryTest(unittest.TestCase):
     def setUp(self) -> None:
-        self._settings = {
-            "model_registry_path": settings.model_registry_path,
-            "ml_artifact_store": settings.ml_artifact_store,
-            "ml_internal_auth_required": settings.ml_internal_auth_required,
-            "ml_internal_service_token": settings.ml_internal_service_token,
-            "ml_allowed_source_services": settings.ml_allowed_source_services,
-            "ml_max_request_bytes": settings.ml_max_request_bytes,
-        }
         self._training_service = training_api.training_service
         self._tempdir = tempfile.TemporaryDirectory()
-        settings.model_registry_path = self._tempdir.name
-        settings.ml_artifact_store = "local"
-        settings.ml_internal_auth_required = True
-        settings.ml_internal_service_token = "test-internal-token"
-        settings.ml_allowed_source_services = "analytics-service"
-        settings.ml_max_request_bytes = 4096
+        self._settings_override = SettingsOverride()
+        self._settings_override.set(
+            model_registry_path=self._tempdir.name,
+            ml_artifact_store="local",
+            ml_internal_auth_required=True,
+            ml_internal_service_token="test-internal-token",
+            ml_allowed_source_services="analytics-service",
+            ml_max_request_bytes=4096,
+        )
         training_api.training_service = Mock()
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
         training_api.training_service = self._training_service
-        for key, value in self._settings.items():
-            setattr(settings, key, value)
+        self._settings_override.restore()
         self._tempdir.cleanup()
 
     def test_probe_endpoints_remain_open_without_internal_headers(self) -> None:
@@ -108,7 +102,7 @@ class MlInternalBoundaryTest(unittest.TestCase):
         self.assertGreaterEqual(len(response.json()), 1)
 
     def test_oversized_training_body_is_rejected_before_training_runs(self) -> None:
-        settings.ml_max_request_bytes = 24
+        self._settings_override.set(ml_max_request_bytes=24)
         response = self.client.post(
             "/train",
             data="x" * 25,
