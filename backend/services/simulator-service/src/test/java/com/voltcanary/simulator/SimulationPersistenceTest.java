@@ -10,7 +10,7 @@ import com.voltcanary.simulator.repository.SimulationRunEventRepository;
 import com.voltcanary.simulator.repository.SimulationRunRepository;
 import com.voltcanary.simulator.runner.SimulationRunManager;
 import com.voltcanary.simulator.runner.SimulationRunner;
-import com.voltcanary.simulator.service.SimulationConfigService;
+import com.voltcanary.simulator.service.SimulationProfileService;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.verify;
 class SimulationPersistenceTest {
 
     @Autowired
-    private SimulationConfigService configService;
+    private SimulationProfileService profileService;
 
     @Autowired
     private SimulationRunManager runManager;
@@ -65,10 +65,10 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
 
-        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v1"));
-        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v2"));
+        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v1"));
+        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v2"));
 
-        assertThat(configService.versions(deviceId))
+        assertThat(profileService.versions(deviceId))
                 .extracting("version")
                 .containsExactly(2, 1);
 
@@ -92,7 +92,7 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
 
-        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-active-lease", "active-lease"));
+        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-active-lease", "active-lease"));
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
         SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
         run.setLeaseUntil(Instant.now().plusSeconds(300));
@@ -109,7 +109,7 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
 
-        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-expired-lease", "expired-lease"));
+        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-expired-lease", "expired-lease"));
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
         SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
         run.setLeaseUntil(Instant.now().minusSeconds(1));
@@ -130,7 +130,7 @@ class SimulationPersistenceTest {
         UUID runId = UUID.randomUUID();
         Instant leaseUntil = Instant.now().plusSeconds(120).truncatedTo(ChronoUnit.MICROS);
 
-        configService.save(userId, deviceId, request(dataSourceId, "sim-fridge-lease-extension", "lease-extension"));
+        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-lease-extension", "lease-extension"));
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
         SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
         run.setId(runId);

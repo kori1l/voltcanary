@@ -1,7 +1,5 @@
 package com.voltcanary.device.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceAnalyticsConfig;
@@ -18,23 +16,23 @@ import org.springframework.transaction.annotation.Transactional;
 
 
 @Service
-public class DeviceAnalyticsConfigService {
+public class DeviceAnalyticsPolicyService {
 
     private final DeviceService deviceService;
     private final DeviceAnalyticsConfigRepository repository;
-    private final ObjectMapper objectMapper;
+    private final DeviceAnalyticsPolicyMapper mapper;
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
 
-    public DeviceAnalyticsConfigService(
+    public DeviceAnalyticsPolicyService(
             DeviceService deviceService,
             DeviceAnalyticsConfigRepository repository,
-            ObjectMapper objectMapper,
+            DeviceAnalyticsPolicyMapper mapper,
             DeviceRegistryEventPublisher eventPublisher,
             DeviceAuditService auditService) {
         this.deviceService = deviceService;
         this.repository = repository;
-        this.objectMapper = objectMapper;
+        this.mapper = mapper;
         this.eventPublisher = eventPublisher;
         this.auditService = auditService;
     }
@@ -43,8 +41,8 @@ public class DeviceAnalyticsConfigService {
     public DeviceAnalyticsConfigResponse get(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
         return repository.findByDeviceId(device.getId())
-                .map(this::toResponse)
-                .orElseGet(() -> new DeviceAnalyticsConfigResponse(device.getId(), true, Map.of(), null));
+                .map(mapper::toResponse)
+                .orElseGet(() -> mapper.defaults(device.getId()));
     }
 
     @Transactional
@@ -61,7 +59,7 @@ public class DeviceAnalyticsConfigService {
             return created;
         });
         entity.setEnabled(request.enabled());
-        entity.setConfigJson(toJson(config));
+        entity.setConfigJson(mapper.toJson(config));
         entity.setUpdatedAt(Instant.now());
         DeviceAnalyticsConfig saved = repository.save(entity);
         auditService.record(user, device.getAccountId(), "ANALYTICS_CONFIG_UPDATED", "ANALYTICS_CONFIG", saved.getId());
@@ -72,34 +70,6 @@ public class DeviceAnalyticsConfigService {
                 device.getId(),
                 saved.getId(),
                 saved.isEnabled() ? "ENABLED" : "DISABLED");
-        return toResponse(saved);
-    }
-
-    private DeviceAnalyticsConfigResponse toResponse(DeviceAnalyticsConfig entity) {
-        return new DeviceAnalyticsConfigResponse(
-                entity.getDeviceId(),
-                entity.isEnabled(),
-                fromJson(entity.getConfigJson()),
-                entity.getUpdatedAt());
-    }
-
-    private String toJson(Map<String, Object> config) {
-        try {
-            return objectMapper.writeValueAsString(config);
-        } catch (Exception exception) {
-            throw new IllegalArgumentException("Invalid analytics config");
-        }
-    }
-
-    private Map<String, Object> fromJson(String json) {
-        if (json == null || json.isBlank()) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
-        } catch (Exception exception) {
-            return Map.of();
-        }
+        return mapper.toResponse(saved);
     }
 }

@@ -50,6 +50,7 @@ Use the narrowest meaningful validation first, then broaden when the blast
 radius justifies it:
 
 - Repository/OpenSpec: `npm run openspec:validate`
+- Repository structure: `npm run structure:check`
 - Backend all modules: `cd backend; mvn test`
 - Backend one service: `cd backend; mvn -pl services/<service-name> -am test`
 - ML service: `cd ml-service; .\.venv\Scripts\python.exe -m unittest discover -s app/tests`

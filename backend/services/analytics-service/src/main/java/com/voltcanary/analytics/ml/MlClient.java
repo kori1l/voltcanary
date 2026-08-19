@@ -12,7 +12,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -29,7 +28,7 @@ public class MlClient {
     private final String internalServiceToken;
     private final String internalServiceName;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-    @Autowired
+
     public MlClient(
             RestClient.Builder restClientBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
@@ -41,7 +40,14 @@ public class MlClient {
                 meterRegistry);
     }
 
-    public MlClient(RestClient restClient, AnalyticsInternalProperties internalProperties, MeterRegistry meterRegistry) {
+    public static MlClient forRestClient(
+            RestClient restClient,
+            AnalyticsInternalProperties internalProperties,
+            MeterRegistry meterRegistry) {
+        return new MlClient(restClient, internalProperties, meterRegistry);
+    }
+
+    private MlClient(RestClient restClient, AnalyticsInternalProperties internalProperties, MeterRegistry meterRegistry) {
         this.restClient = restClient;
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();

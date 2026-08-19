@@ -188,7 +188,7 @@ class AnalyticsPipelineTest {
         downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
                 "http://ml-service",
                 Duration.ofSeconds(1)));
-        MlClient client = new MlClient(
+        MlClient client = MlClient.forRestClient(
                 builder.baseUrl(downstreamProperties.getMlService().getBaseUrl()).build(),
                 new AnalyticsInternalProperties(),
                 new SimpleMeterRegistry());
@@ -208,7 +208,7 @@ class AnalyticsPipelineTest {
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");
         internalProperties.setServiceToken("test-internal-token");
-        MlClient client = new MlClient(
+        MlClient client = MlClient.forRestClient(
                 builder.baseUrl("http://ml-service").build(),
                 internalProperties,
                 new SimpleMeterRegistry());
@@ -248,7 +248,7 @@ class AnalyticsPipelineTest {
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");
         internalProperties.setServiceToken("test-internal-token");
-        MlClient client = new MlClient(
+        MlClient client = MlClient.forRestClient(
                 builder.baseUrl("http://ml-service").build(),
                 internalProperties,
                 new SimpleMeterRegistry());

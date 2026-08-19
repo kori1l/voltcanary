@@ -16,7 +16,8 @@
     "openspec:show:deps": "npm run openspec -- show platform-dependency-upgrade-verification",
     "openspec:apply": "powershell -ExecutionPolicy Bypass -File scripts/openspec-apply.ps1",
     "openspec:validate": "npm run openspec -- validate --all --strict",
-    "test": "npm run openspec:validate"
+    "structure:check": "powershell -ExecutionPolicy Bypass -File scripts/check-project-structure.ps1",
+    "test": "npm run structure:check && npm run openspec:validate"
   },
   "repository": {
     "type": "git",

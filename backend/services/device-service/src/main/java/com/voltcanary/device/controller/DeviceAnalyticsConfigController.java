@@ -4,7 +4,7 @@ import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigRequest;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigResponse;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
-import com.voltcanary.device.service.DeviceAnalyticsConfigService;
+import com.voltcanary.device.service.DeviceAnalyticsPolicyService;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
@@ -21,10 +21,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/devices/{deviceId}/analytics-config")
 public class DeviceAnalyticsConfigController {
 
-    private final DeviceAnalyticsConfigService service;
+    private final DeviceAnalyticsPolicyService service;
     private final AuthenticatedUserResolver userResolver;
 
-    public DeviceAnalyticsConfigController(DeviceAnalyticsConfigService service, AuthenticatedUserResolver userResolver) {
+    public DeviceAnalyticsConfigController(DeviceAnalyticsPolicyService service, AuthenticatedUserResolver userResolver) {
         this.service = service;
         this.userResolver = userResolver;
     }

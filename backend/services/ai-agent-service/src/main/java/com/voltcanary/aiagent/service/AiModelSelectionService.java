@@ -19,11 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 
 @Service
-public class AiModelConfigService {
+public class AiModelSelectionService {
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelRepository;
 
-    public AiModelConfigService(AiModelProviderRepository providerRepository, AiModelConfigRepository modelRepository) {
+    public AiModelSelectionService(AiModelProviderRepository providerRepository, AiModelConfigRepository modelRepository) {
         this.providerRepository = providerRepository;
         this.modelRepository = modelRepository;
     }

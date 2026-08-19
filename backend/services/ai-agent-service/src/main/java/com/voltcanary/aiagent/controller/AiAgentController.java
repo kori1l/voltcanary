@@ -21,7 +21,7 @@ import com.voltcanary.aiagent.repository.AiModelProviderRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AiAgentOrchestrator;
-import com.voltcanary.aiagent.service.AiModelConfigService;
+import com.voltcanary.aiagent.service.AiModelSelectionService;
 import com.voltcanary.aiagent.service.AiModelProviderCapabilityRegistry;
 import com.voltcanary.aiagent.service.AiModelProviderService;
 import jakarta.validation.Valid;
@@ -48,7 +48,7 @@ public class AiAgentController {
     private final AiAgentProperties aiAgentProperties;
     private final AiModelProviderCapabilityRegistry capabilityRegistry;
     private final AiModelProviderService providerService;
-    private final AiModelConfigService modelConfigService;
+    private final AiModelSelectionService modelSelectionService;
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelConfigRepository;
 
@@ -58,7 +58,7 @@ public class AiAgentController {
             AiAgentProperties aiAgentProperties,
             AiModelProviderCapabilityRegistry capabilityRegistry,
             AiModelProviderService providerService,
-            AiModelConfigService modelConfigService,
+            AiModelSelectionService modelSelectionService,
             AiModelProviderRepository providerRepository,
             AiModelConfigRepository modelConfigRepository) {
         this.jwtIdentityService = jwtIdentityService;
@@ -66,7 +66,7 @@ public class AiAgentController {
         this.aiAgentProperties = aiAgentProperties;
         this.capabilityRegistry = capabilityRegistry;
         this.providerService = providerService;
-        this.modelConfigService = modelConfigService;
+        this.modelSelectionService = modelSelectionService;
         this.providerRepository = providerRepository;
         this.modelConfigRepository = modelConfigRepository;
     }
@@ -175,7 +175,7 @@ public class AiAgentController {
     public List<ModelConfigResponse> modelConfigs(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("providerId") UUID providerId) {
-        return modelConfigService.list(jwtIdentityService.parseBearerToken(authorization), providerId);
+        return modelSelectionService.list(jwtIdentityService.parseBearerToken(authorization), providerId);
     }
 
     @PostMapping("/model-providers/{providerId}/models")
@@ -183,7 +183,7 @@ public class AiAgentController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("providerId") UUID providerId,
             @Valid @RequestBody CreateModelConfigRequest request) {
-        return modelConfigService.create(jwtIdentityService.parseBearerToken(authorization), providerId, request);
+        return modelSelectionService.create(jwtIdentityService.parseBearerToken(authorization), providerId, request);
     }
 
     @PutMapping("/model-providers/{providerId}/models/{modelConfigId}")
@@ -192,7 +192,7 @@ public class AiAgentController {
             @PathVariable("providerId") UUID providerId,
             @PathVariable("modelConfigId") UUID modelConfigId,
             @Valid @RequestBody UpdateModelConfigRequest request) {
-        return modelConfigService.update(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId, request);
+        return modelSelectionService.update(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId, request);
     }
 
     @DeleteMapping("/model-providers/{providerId}/models/{modelConfigId}")
@@ -200,7 +200,7 @@ public class AiAgentController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("providerId") UUID providerId,
             @PathVariable("modelConfigId") UUID modelConfigId) {
-        modelConfigService.delete(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
+        modelSelectionService.delete(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
     }
 
     @PostMapping("/model-providers/{providerId}/models/{modelConfigId}/set-default")
@@ -208,6 +208,6 @@ public class AiAgentController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("providerId") UUID providerId,
             @PathVariable("modelConfigId") UUID modelConfigId) {
-        return modelConfigService.setDefault(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
+        return modelSelectionService.setDefault(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
     }
 }

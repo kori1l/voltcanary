@@ -5,15 +5,20 @@ import static org.mockito.Mockito.*;
 import com.voltcanary.analytics.domain.*;
 import com.voltcanary.analytics.dto.*;
 import com.voltcanary.analytics.repository.MlSettingsRepository;
-import com.voltcanary.analytics.service.MlSettingsService;
+import com.voltcanary.analytics.service.MlPolicyMapper;
+import com.voltcanary.analytics.service.MlPolicyService;
+import com.voltcanary.analytics.service.MlPolicyValidator;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
-class MlSettingsServiceTest {
+class MlPolicyServiceTest {
     private final MlSettingsRepository repository = mock(MlSettingsRepository.class);
-    private final MlSettingsService service = new MlSettingsService(repository);
+    private final MlPolicyService service = new MlPolicyService(
+            repository,
+            new MlPolicyMapper(),
+            new MlPolicyValidator());
 
     @Test void deviceWithoutOverrideInheritsAccountDefaults() {
         UUID account = UUID.randomUUID(), device = UUID.randomUUID(); MlSettings value = settings(account, null);

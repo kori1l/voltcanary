@@ -34,6 +34,19 @@ Preserve the hexagonal boundary described in `openspec/project.md` and
 - Keep analytics resilient when ML service is unavailable.
 - Preserve maintenance exclusion semantics: `excludeFromAnalytics` affects
   analytics input; `excludeFromMl` is sent to ML as `excludedIntervals`.
+- Keep runtime configuration in `config` packages as typed
+  `@ConfigurationProperties` or bean wiring. Do not add new generic
+  `*ConfigService` or `*SettingsService` classes in `service` packages for
+  user-managed policy, preferences, simulator YAML, or model-selection behavior;
+  use business names such as policy, preferences, profile, selection, or
+  lifecycle use cases.
+- Keep application services focused on one use case or closely related
+  workflow. When a production `@Service` is already large, has many constructor
+  collaborators, or owns validation, defaults, serialization, persistence,
+  external I/O, and DTO mapping together, extract focused collaborators before
+  adding more behavior.
+- Avoid wildcard imports and compressed multi-statement one-line methods in
+  production Java code; they make boundary drift harder to review.
 
 ## Implementation Notes
 

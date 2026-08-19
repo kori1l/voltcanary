@@ -9,6 +9,8 @@ OpenSpec source: `openspec/changes/define-ml-full-verification-and-incident-gate
 Machine summary schema:
 `docs/flows/ml-full-verification-summary.schema.json`. Human report template:
 `docs/flows/ml-full-verification-report-template.md`.
+Operator frontend walkthrough:
+`docs/flows/ml-model-training-alert-guide.md`.
 
 ## Gate Levels
 

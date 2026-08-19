@@ -2,7 +2,6 @@ package com.voltcanary.simulator.service;
 
 import com.voltcanary.simulator.domain.SimulationConfig;
 import com.voltcanary.simulator.domain.SimulationConfigStatus;
-import com.voltcanary.simulator.domain.SimulationConfigVersion;
 import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.dto.SaveSimulationConfigRequest;
 import com.voltcanary.simulator.dto.SimulationConfigResponse;
@@ -10,7 +9,6 @@ import com.voltcanary.simulator.dto.SimulationConfigVersionResponse;
 import com.voltcanary.simulator.dto.SimulationPresetResponse;
 import com.voltcanary.simulator.dto.ValidateConfigResponse;
 import com.voltcanary.simulator.repository.SimulationConfigRepository;
-import com.voltcanary.simulator.repository.SimulationConfigVersionRepository;
 import com.voltcanary.simulator.yaml.SimulationTemplates;
 import com.voltcanary.simulator.yaml.SimulationYamlValidator;
 import com.voltcanary.simulator.yaml.ValidationError;
@@ -23,27 +21,30 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 @Service
-public class SimulationConfigService {
+public class SimulationProfileService {
 
     private final SimulationConfigRepository configRepository;
-    private final SimulationConfigVersionRepository versionRepository;
+    private final SimulationProfileVersionWriter versionWriter;
+    private final SimulationProfileMapper mapper;
     private final SimulationYamlValidator validator;
     private final SimulationTemplates templates;
 
-    public SimulationConfigService(
+    public SimulationProfileService(
             SimulationConfigRepository configRepository,
-            SimulationConfigVersionRepository versionRepository,
+            SimulationProfileVersionWriter versionWriter,
+            SimulationProfileMapper mapper,
             SimulationYamlValidator validator,
             SimulationTemplates templates) {
         this.configRepository = configRepository;
-        this.versionRepository = versionRepository;
+        this.versionWriter = versionWriter;
+        this.mapper = mapper;
         this.validator = validator;
         this.templates = templates;
     }
 
     @Transactional(readOnly = true)
     public SimulationConfigResponse get(UUID deviceId) {
-        return configRepository.findByDeviceId(deviceId).map(this::toResponse)
+        return configRepository.findByDeviceId(deviceId).map(mapper::toResponse)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
     }
 
@@ -74,8 +75,8 @@ public class SimulationConfigService {
         config.setUpdatedAt(now);
         config.setUpdatedBy(userId);
         SimulationConfig saved = configRepository.save(config);
-        saveVersion(saved, userId);
-        return toResponse(saved);
+        versionWriter.save(saved, userId);
+        return mapper.toResponse(saved);
     }
 
     public ValidateConfigResponse validate(String yaml) {
@@ -99,40 +100,6 @@ public class SimulationConfigService {
     public List<SimulationConfigVersionResponse> versions(UUID deviceId) {
         SimulationConfig config = configRepository.findByDeviceId(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        return versionRepository.findByConfigIdOrderByVersionDesc(config.getId()).stream()
-                .map(version -> new SimulationConfigVersionResponse(
-                        version.getId(),
-                        version.getVersion(),
-                        version.getYamlConfig(),
-                        version.getChangeNote(),
-                        version.getCreatedAt(),
-                        version.getCreatedBy()))
-                .toList();
-    }
-
-    private void saveVersion(SimulationConfig config, UUID userId) {
-        SimulationConfigVersion version = new SimulationConfigVersion();
-        version.setId(UUID.randomUUID());
-        version.setConfigId(config.getId());
-        version.setVersion(config.getYamlVersion());
-        version.setYamlConfig(config.getYamlConfig());
-        version.setCreatedAt(Instant.now());
-        version.setCreatedBy(userId);
-        versionRepository.save(version);
-    }
-
-    private SimulationConfigResponse toResponse(SimulationConfig config) {
-        return new SimulationConfigResponse(
-                config.getId(),
-                config.getDeviceId(),
-                config.getDataSourceId(),
-                config.getName(),
-                config.getProfile(),
-                config.getProtocol(),
-                config.getYamlConfig(),
-                config.getYamlVersion(),
-                config.getStatus(),
-                config.getUpdatedAt(),
-                config.getSourceToken() != null && !config.getSourceToken().isBlank());
+        return versionWriter.versions(config.getId());
     }
 }

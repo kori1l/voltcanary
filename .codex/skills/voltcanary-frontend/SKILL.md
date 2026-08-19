@@ -40,6 +40,17 @@ overlap.
 Keep API access in the existing domain API modules instead of calling `fetch`
 from pages. Preserve auth and error behavior from `frontend/src/api/client.ts`.
 
+Keep route pages as shells for route params, top-level data composition, and
+layout. Do not append new independent workflows to large pages such as
+`DeviceDetailsPage.tsx`, `MlSettingsPage.tsx`, `MaintenanceCalendarPage.tsx`,
+`AlertsPage.tsx`, or `DevicesPage.tsx`; extract focused feature components,
+hooks, and model helpers first. Wrap localStorage/sessionStorage usage in typed
+helpers or hooks for drafts, chart preferences, source ids, and async job state.
+Do not introduce generic `*ConfigService`, `*SettingsService`, or catch-all
+settings modules for user-managed choices; name helpers for the business
+decision they own, such as chart preferences, training drafts, deployment
+policy, simulator profile state, or model selection.
+
 When a page visualizes ML, telemetry, alerts, maintenance, or device behavior,
 show status and uncertainty explicitly instead of implying exact diagnostics.
 

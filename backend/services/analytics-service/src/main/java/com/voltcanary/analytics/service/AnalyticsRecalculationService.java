@@ -85,7 +85,7 @@ public class AnalyticsRecalculationService {
     private final RecommendationGenerator recommendationGenerator;
     private final MeterRegistry meterRegistry;
     private final MaintenanceWindowProjectionService maintenanceWindowProjectionService;
-    private final MlSettingsService mlSettingsService;
+    private final MlPolicyService mlPolicyService;
     private final MlModelRegistryService mlModelRegistryService;
     private final DeviceMetadataClient deviceMetadataClient;
 
@@ -109,7 +109,7 @@ public class AnalyticsRecalculationService {
             RecommendationGenerator recommendationGenerator,
             MeterRegistry meterRegistry,
             MaintenanceWindowProjectionService maintenanceWindowProjectionService,
-            MlSettingsService mlSettingsService,
+            MlPolicyService mlPolicyService,
             MlModelRegistryService mlModelRegistryService,
             DeviceMetadataClient deviceMetadataClient) {
         this.telemetryClient = telemetryClient;
@@ -131,7 +131,7 @@ public class AnalyticsRecalculationService {
         this.recommendationGenerator = recommendationGenerator;
         this.meterRegistry = meterRegistry;
         this.maintenanceWindowProjectionService = maintenanceWindowProjectionService;
-        this.mlSettingsService = mlSettingsService;
+        this.mlPolicyService = mlPolicyService;
         this.mlModelRegistryService = mlModelRegistryService;
         this.deviceMetadataClient = deviceMetadataClient;
     }
@@ -152,7 +152,7 @@ public class AnalyticsRecalculationService {
                 maintenanceWindowProjectionService.activeOverlapping(deviceId, windowStart, windowEnd);
         DeviceMetadataClient.DeviceMetadata deviceMetadata = deviceMetadataClient.metadata(deviceId);
         String deviceType = deviceMetadata == null ? "" : blankToEmpty(deviceMetadata.type());
-        com.voltcanary.analytics.dto.MlSettingsResponse mlSettings = mlSettingsService.effectiveForAnalytics(
+        com.voltcanary.analytics.dto.MlSettingsResponse mlSettings = mlPolicyService.effectiveForAnalytics(
                 deviceId,
                 maintenanceWindows.stream()
                         .map(MaintenanceWindowReadModel::getAccountId)

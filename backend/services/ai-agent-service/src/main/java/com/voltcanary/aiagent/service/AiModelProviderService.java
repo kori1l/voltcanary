@@ -34,7 +34,7 @@ public class AiModelProviderService {
     private final AiModelProviderRepository providerRepository;
     private final AiModelProviderSecretRepository secretRepository;
     private final AiModelConfigRepository modelRepository;
-    private final AiModelConfigService modelConfigService;
+    private final AiModelSelectionService modelSelectionService;
     private final AiModelProviderCapabilityRegistry capabilityRegistry;
     private final AiSecretEncryptionService encryptionService;
 
@@ -42,13 +42,13 @@ public class AiModelProviderService {
             AiModelProviderRepository providerRepository,
             AiModelProviderSecretRepository secretRepository,
             AiModelConfigRepository modelRepository,
-            AiModelConfigService modelConfigService,
+            AiModelSelectionService modelSelectionService,
             AiModelProviderCapabilityRegistry capabilityRegistry,
             AiSecretEncryptionService encryptionService) {
         this.providerRepository = providerRepository;
         this.secretRepository = secretRepository;
         this.modelRepository = modelRepository;
-        this.modelConfigService = modelConfigService;
+        this.modelSelectionService = modelSelectionService;
         this.capabilityRegistry = capabilityRegistry;
         this.encryptionService = encryptionService;
     }
@@ -91,7 +91,7 @@ public class AiModelProviderService {
         if (request.apiKey() != null && !request.apiKey().isBlank()) {
             saveSecret(saved, request.apiKey(), now, false);
         }
-        modelConfigService.create(user, saved.getId(), new CreateModelConfigRequest(
+        modelSelectionService.create(user, saved.getId(), new CreateModelConfigRequest(
                 request.modelDisplayName() == null || request.modelDisplayName().isBlank() ? request.modelId() : request.modelDisplayName(),
                 request.modelId(),
                 true,

@@ -10,7 +10,7 @@ import com.voltcanary.simulator.dto.SimulationRunResponse;
 import com.voltcanary.simulator.dto.ValidateConfigRequest;
 import com.voltcanary.simulator.dto.ValidateConfigResponse;
 import com.voltcanary.simulator.runner.SimulationRunManager;
-import com.voltcanary.simulator.service.SimulationConfigService;
+import com.voltcanary.simulator.service.SimulationProfileService;
 import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
@@ -30,17 +30,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/simulation")
 public class SimulationController {
 
-    private final SimulationConfigService configService;
+    private final SimulationProfileService profileService;
     private final SimulationRunManager runManager;
 
-    public SimulationController(SimulationConfigService configService, SimulationRunManager runManager) {
-        this.configService = configService;
+    public SimulationController(SimulationProfileService profileService, SimulationRunManager runManager) {
+        this.profileService = profileService;
         this.runManager = runManager;
     }
 
     @GetMapping("/devices/{deviceId}/config")
     public SimulationConfigResponse getConfig(@PathVariable("deviceId") UUID deviceId) {
-        return configService.get(deviceId);
+        return profileService.get(deviceId);
     }
 
     @PutMapping("/devices/{deviceId}/config")
@@ -48,14 +48,14 @@ public class SimulationController {
             @RequestHeader(value = "X-User-Id", required = false) UUID userId,
             @PathVariable("deviceId") UUID deviceId,
             @Valid @RequestBody SaveSimulationConfigRequest request) {
-        return configService.save(userIdOrFallback(userId), deviceId, request);
+        return profileService.save(userIdOrFallback(userId), deviceId, request);
     }
 
     @PostMapping("/devices/{deviceId}/config/validate")
     public ValidateConfigResponse validateConfig(
             @PathVariable("deviceId") UUID deviceId,
             @Valid @RequestBody ValidateConfigRequest request) {
-        return configService.validate(request.yamlConfig());
+        return profileService.validate(request.yamlConfig());
     }
 
     @PostMapping("/devices/{deviceId}/config/reset-template")
@@ -64,12 +64,12 @@ public class SimulationController {
             @RequestParam(value = "profile", defaultValue = "FRIDGE") SimulationProfile profile,
             @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
             @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
-        return Map.of("yamlConfig", configService.template(profile, sourceId, preset));
+        return Map.of("yamlConfig", profileService.template(profile, sourceId, preset));
     }
 
     @GetMapping("/devices/{deviceId}/config/versions")
     public List<SimulationConfigVersionResponse> configVersions(@PathVariable("deviceId") UUID deviceId) {
-        return configService.versions(deviceId);
+        return profileService.versions(deviceId);
     }
 
     @GetMapping("/templates")
@@ -79,7 +79,7 @@ public class SimulationController {
 
     @GetMapping("/presets")
     public List<SimulationPresetResponse> presets() {
-        return configService.presets();
+        return profileService.presets();
     }
 
     @GetMapping("/templates/{profile}")
@@ -87,7 +87,7 @@ public class SimulationController {
             @PathVariable("profile") SimulationProfile profile,
             @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
             @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
-        return Map.of("yamlConfig", configService.template(profile, sourceId, preset));
+        return Map.of("yamlConfig", profileService.template(profile, sourceId, preset));
     }
 
     @PostMapping("/devices/{deviceId}/start")

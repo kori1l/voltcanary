@@ -47,6 +47,17 @@ through FastAPI `TestClient`. Use temporary directories or fakes for artifact
 store tests instead of mutating checked-in generated files under
 `ml-service/models/`.
 
+Keep ML runtime modules split by responsibility. Do not add more training,
+inference, artifact-provider, approval-gate, model-card, cache, and response
+assembly behavior to already broad service modules; extract focused runners,
+scorers, providers, verifiers, or response factories first. Tests should use
+fixture-scoped settings instances or explicit settings providers instead of
+mutating the global `settings` singleton directly.
+Keep runtime configuration in typed settings objects and infrastructure wiring.
+Do not add generic `*ConfigService`, `*SettingsService`, or catch-all settings
+modules for persisted or operator-managed choices; use names that describe the
+business decision, policy, profile, artifact provider, or lifecycle use case.
+
 When changing dependencies, keep `requirements.txt` and `pyproject.toml`
 aligned.
 
