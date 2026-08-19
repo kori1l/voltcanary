@@ -1,0 +1,115 @@
+﻿{
+    "schemaVersion":  "2026-08-19",
+    "status":  "PASSED",
+    "runId":  "97f82f2b6d",
+    "startedAt":  "2026-08-19T20:10:33.6208204Z",
+    "completedAt":  "2026-08-19T20:14:41.2962485Z",
+    "failedStep":  "",
+    "failureMessage":  "",
+    "serviceHealth":  {
+
+                      },
+    "resources":  {
+                      "datasetVersionIds":  [
+
+                                            ],
+                      "predictionIds":  [
+
+                                        ],
+                      "alertIds":  [
+
+                                   ],
+                      "featureSnapshotIds":  [
+
+                                             ],
+                      "accountIds":  [
+
+                                     ],
+                      "notificationAttemptIds":  [
+
+                                                 ],
+                      "deviceIds":  [
+
+                                    ],
+                      "trainingRunIds":  [
+
+                                         ],
+                      "policyIds":  [
+
+                                    ],
+                      "modelVersionIds":  [
+
+                                          ]
+                  },
+    "scenarios":  [
+                      {
+                          "id":  "ML-E2E-002",
+                          "name":  "failure-prediction production smoke",
+                          "status":  "PASSED",
+                          "summaryPath":  "artifacts/ml-production-smoke-summary.json"
+                      },
+                      {
+                          "id":  "ML-E2E-003",
+                          "name":  "anomaly-detection docker smoke",
+                          "status":  "PASSED",
+                          "summaryPath":  "artifacts/ml-anomaly-smoke-summary.json"
+                      },
+                      {
+                          "id":  "ML-E2E-006",
+                          "name":  "alert incident docker smoke",
+                          "status":  "PASSED",
+                          "summaryPath":  "artifacts/ml-alert-incident-smoke-summary.json"
+                      },
+                      {
+                          "id":  "ML-E2E-010",
+                          "name":  "ML-service outage recovery",
+                          "status":  "PASSED"
+                      },
+                      {
+                          "id":  "ML-E2E-011A",
+                          "name":  "analytics-service restart recovery",
+                          "status":  "PASSED"
+                      },
+                      {
+                          "id":  "ML-E2E-011B",
+                          "name":  "alert-service restart recovery",
+                          "status":  "PASSED"
+                      },
+                      {
+                          "id":  "ML-E2E-005",
+                          "name":  "artifact outage recovery",
+                          "status":  "PASSED"
+                      },
+                      {
+                          "id":  "ML-E2E-011C",
+                          "name":  "Redpanda restart replay recovery",
+                          "status":  "PASSED"
+                      }
+                  ],
+    "modelEvidence":  [
+
+                      ],
+    "alertEvidence":  [
+
+                      ],
+    "evidence":  {
+                     "screenshotPaths":  [
+                                             "artifacts/screenshots/ml-full-verification/ml-settings-desktop.png",
+                                             "artifacts/screenshots/ml-full-verification/ml-settings-mobile.png",
+                                             "artifacts/screenshots/ml-full-verification/alerts-desktop.png",
+                                             "artifacts/screenshots/ml-full-verification/alerts-mobile.png"
+                                         ],
+                     "reportPath":  "artifacts/ml-verification-report-2026-08-19.md",
+                     "summaryPaths":  [
+                                          "artifacts/ml-production-smoke-summary.json",
+                                          "artifacts/ml-anomaly-smoke-summary.json",
+                                          "artifacts/ml-alert-incident-smoke-summary.json",
+                                          "artifacts/ml-full-verification-summary.json"
+                                      ]
+                 },
+    "sanitization":  {
+                         "secretsExcluded":  true,
+                         "rawTelemetryExcluded":  true,
+                         "sourceTokensExcluded":  true
+                     }
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltcanary.local/schemas/ml-full-verification-summary.schema.json",
+  "title": "VoltCanary Full ML Verification Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "runId",
+    "startedAt",
+    "completedAt",
+    "scenarios",
+    "resources",
+    "serviceHealth",
+    "evidence",
+    "sanitization"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2026-08-19" },
+    "status": { "enum": ["PASSED", "FAILED", "SKIPPED"] },
+    "runId": { "type": "string", "minLength": 1 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "failedStep": { "type": "string" },
+    "failureMessage": { "type": "string" },
+    "serviceHealth": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string" },
+          "url": { "type": "string" }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accountIds": { "type": "array", "items": { "type": "string" } },
+        "deviceIds": { "type": "array", "items": { "type": "string" } },
+        "datasetVersionIds": { "type": "array", "items": { "type": "string" } },
+        "featureSnapshotIds": { "type": "array", "items": { "type": "string" } },
+        "trainingRunIds": { "type": "array", "items": { "type": "string" } },
+        "modelVersionIds": { "type": "array", "items": { "type": "string" } },
+        "policyIds": { "type": "array", "items": { "type": "string" } },
+        "predictionIds": { "type": "array", "items": { "type": "string" } },
+        "alertIds": { "type": "array", "items": { "type": "string" } },
+        "notificationAttemptIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["PASSED", "FAILED", "SKIPPED"] },
+          "summaryPath": { "type": "string" },
+          "screenshotPaths": { "type": "array", "items": { "type": "string" } },
+          "failureMessage": { "type": "string" }
+        }
+      }
+    },
+    "modelEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["modelFamily", "servingPath", "status"],
+        "properties": {
+          "modelFamily": { "enum": ["BASELINE_HEURISTIC", "ANOMALY_DETECTION", "FAILURE_PREDICTION"] },
+          "servingPath": { "type": "string" },
+          "status": { "type": "string" },
+          "modelVersionId": { "type": "string" },
+          "artifactHash": { "type": "string" },
+          "featureSchemaHash": { "type": "string" },
+          "inputHash": { "type": "string" },
+          "fallbackReason": { "type": "string" },
+          "policySource": { "type": "string" }
+        }
+      }
+    },
+    "alertEvidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "alertId": { "type": "string" },
+          "status": { "type": "string" },
+          "severity": { "type": "string" },
+          "alertType": { "type": "string" },
+          "sourceEventId": { "type": "string" },
+          "inputHash": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summaryPaths": { "type": "array", "items": { "type": "string" } },
+        "reportPath": { "type": "string" },
+        "screenshotPaths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sanitization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["secretsExcluded", "sourceTokensExcluded", "rawTelemetryExcluded"],
+      "properties": {
+        "secretsExcluded": { "type": "boolean" },
+        "sourceTokensExcluded": { "type": "boolean" },
+        "rawTelemetryExcluded": { "type": "boolean" }
+      }
+    }
+  }
+}

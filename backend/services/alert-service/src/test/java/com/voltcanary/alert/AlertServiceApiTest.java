@@ -18,6 +18,7 @@ import com.voltcanary.alert.service.AlertService;
 import com.voltcanary.alert.service.AnalyticsAlertEventHandler;
 import com.voltcanary.alert.service.MaintenanceWindowProjectionService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
+import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import java.time.Instant;
 import java.util.UUID;
@@ -374,6 +375,93 @@ class AlertServiceApiTest {
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listResponse.getBody()).hasSize(1);
         assertThat(listResponse.getBody().getFirst().severity()).isEqualTo("HIGH");
+    }
+
+    @Test
+    void highMlAnomalyAlertPreservesSourceTraceAndInputHash() {
+        UUID deviceId = UUID.randomUUID();
+        UUID sourceEventId = UUID.randomUUID();
+        UUID anomalyId = UUID.randomUUID();
+        Instant detectedAt = Instant.parse("2026-08-19T10:15:00Z");
+
+        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                sourceEventId,
+                deviceId,
+                anomalyId,
+                "ml-anomaly-detector-v1",
+                detectedAt.minusSeconds(300),
+                detectedAt,
+                "sha256:ml-anomaly-input",
+                "ML_ANOMALY_RISK",
+                "HIGH",
+                88,
+                "Trained anomaly model reported high washer risk.",
+                detectedAt));
+
+        assertThat(alert).isNotNull();
+        assertThat(alert.getStatus()).isEqualTo(AlertStatus.OPEN);
+        assertThat(alert.getSeverity().name()).isEqualTo("HIGH");
+        assertThat(alert.getSourceEventId()).isEqualTo(sourceEventId);
+        assertThat(alert.getAnomalyId()).isEqualTo(anomalyId);
+        assertThat(alert.getCalculationInputHash()).isEqualTo("sha256:ml-anomaly-input");
+        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
+                .anySatisfy(event -> assertThat(event.getPayloadJson())
+                        .contains("\"sourceEventId\":\"" + sourceEventId + "\"")
+                        .contains("\"calculationInputHash\":\"sha256:ml-anomaly-input\"")
+                        .contains("Trained anomaly model reported high washer risk."));
+    }
+
+    @Test
+    void highFailureRiskScoreCreatesOpenIncidentEquivalentAlert() {
+        UUID deviceId = UUID.randomUUID();
+        UUID sourceEventId = UUID.randomUUID();
+        UUID riskScoreId = UUID.randomUUID();
+        Instant changedAt = Instant.parse("2026-08-19T11:15:00Z");
+
+        var alert = alertService.handleRiskScoreChanged(new RiskScoreChangedEvent(
+                sourceEventId,
+                deviceId,
+                riskScoreId,
+                changedAt.minusSeconds(600),
+                changedAt,
+                "sha256:failure-risk-input",
+                0.21,
+                0.87,
+                "HIGH",
+                changedAt));
+
+        assertThat(alert).isNotNull();
+        assertThat(alert.getStatus()).isEqualTo(AlertStatus.OPEN);
+        assertThat(alert.getSeverity().name()).isEqualTo("HIGH");
+        assertThat(alert.getAlertType()).isEqualTo("RISK_HIGH");
+        assertThat(alert.getRiskScoreId()).isEqualTo(riskScoreId);
+        assertThat(alert.getCalculationInputHash()).isEqualTo("sha256:failure-risk-input");
+        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
+                .anySatisfy(event -> assertThat(event.getPayloadJson())
+                        .contains("\"riskScoreId\":\"" + riskScoreId + "\"")
+                        .contains("\"calculationInputHash\":\"sha256:failure-risk-input\"")
+                        .contains("\"currentScore\":0.87"));
+    }
+
+    @Test
+    void lowRiskScoreDoesNotCreateIncidentAlert() {
+        UUID deviceId = UUID.randomUUID();
+        UUID sourceEventId = UUID.randomUUID();
+
+        var alert = alertService.handleRiskScoreChanged(new RiskScoreChangedEvent(
+                sourceEventId,
+                deviceId,
+                UUID.randomUUID(),
+                Instant.parse("2026-08-19T12:00:00Z").minusSeconds(600),
+                Instant.parse("2026-08-19T12:00:00Z"),
+                "sha256:low-risk-input",
+                0.18,
+                0.22,
+                "LOW",
+                Instant.parse("2026-08-19T12:00:00Z")));
+
+        assertThat(alert).isNull();
+        assertThat(alertRepository.findFirstBySourceEventId(sourceEventId)).isEmpty();
     }
 
     @Test

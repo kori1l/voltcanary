@@ -30,8 +30,15 @@ jobs:
               - 'deploy/docker-compose/**'
               - 'docker-compose.yml'
               - 'scripts/ml-failure-prediction-docker-smoke.ps1'
+              - 'scripts/ml-anomaly-detection-docker-smoke.ps1'
+              - 'scripts/ml-alert-incident-docker-smoke.ps1'
+              - 'scripts/ml-full-docker-verification.ps1'
+              - 'scripts/ml-verification-fixtures.ps1'
               - 'docs/api/ml-api.md'
               - 'docs/flows/ml-failure-prediction-docker-verification.md'
+              - 'docs/flows/ml-full-verification.md'
+              - 'docs/flows/ml-full-verification-summary.schema.json'
+              - 'docs/flows/ml-full-verification-report-template.md'
               - 'docs/operations/ml-operations.md'
               - 'openspec/changes/**/specs/ml-*.md'
               - 'openspec/specs/ml-*.md'
@@ -134,19 +141,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Docker failure-prediction smoke
+      - name: Run Docker full ML verification
         shell: pwsh
         run: |
-          ./scripts/ml-failure-prediction-docker-smoke.ps1 `
+          ./scripts/ml-full-docker-verification.ps1 `
             -StartStack `
             -CiMode `
-            -TimeoutSeconds 600 `
-            -SummaryPath artifacts/ml-production-smoke-summary.json
+            -TimeoutSeconds 1200 `
+            -SummaryPath artifacts/ml-full-verification-summary.json
 
-      - name: Upload smoke summary
+      - name: Upload ML verification summaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ml-production-smoke-summary
-          path: artifacts/ml-production-smoke-summary.json
+          name: ml-verification-summaries
+          path: |
+            artifacts/ml-production-smoke-summary.json
+            artifacts/ml-anomaly-smoke-summary.json
+            artifacts/ml-alert-incident-smoke-summary.json
+            artifacts/ml-full-verification-summary.json
           if-no-files-found: ignore

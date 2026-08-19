@@ -1,0 +1,85 @@
+﻿{
+    "schemaVersion":  "2026-08-19",
+    "status":  "PASSED",
+    "runId":  "8661436d2d",
+    "startedAt":  "2026-08-19T20:11:00.9190622Z",
+    "completedAt":  "2026-08-19T20:11:25.2963076Z",
+    "failedStep":  "",
+    "failureMessage":  "",
+    "scenarios":  [
+                      {
+                          "status":  "PASSED",
+                          "name":  "ML-to-alert incident E2E",
+                          "id":  "ML-E2E-006"
+                      },
+                      {
+                          "status":  "PASSED",
+                          "name":  "alert lifecycle E2E",
+                          "id":  "ML-E2E-007"
+                      },
+                      {
+                          "status":  "PASSED",
+                          "name":  "notification attempt E2E",
+                          "id":  "ML-E2E-008"
+                      }
+                  ],
+    "resources":  {
+                      "datasetVersionIds":  [
+
+                                            ],
+                      "predictionIds":  [
+
+                                        ],
+                      "alertIds":  [
+                                       "7d6f2885-5df5-4767-8e7c-df98d2e4a805",
+                                       "e8581aae-3833-4cb7-8528-249fc71da98f"
+                                   ],
+                      "featureSnapshotIds":  [
+
+                                             ],
+                      "accountIds":  [
+                                         "549ca786-3bff-4de3-946b-c2784cd69503"
+                                     ],
+                      "notificationAttemptIds":  [
+                                                     "c85373f2-319f-49cc-8695-c008396b68d9"
+                                                 ],
+                      "deviceIds":  [
+                                        "aadac85a-27ec-42ce-90a8-633133b659e1"
+                                    ],
+                      "trainingRunIds":  [
+
+                                         ],
+                      "policyIds":  [
+
+                                    ],
+                      "modelVersionIds":  [
+
+                                          ]
+                  },
+    "serviceHealth":  {
+
+                      },
+    "alertEvidence":  [
+                          {
+                              "alertType":  "POWER_SPIKE",
+                              "status":  "OPEN",
+                              "sourceEventId":  "3dc78b9e-2b6a-372c-a83f-27545b1ab316",
+                              "inputHash":  "9f75d0ff0bc6cb72edabe93fd14118809c6611e10499295cab1ba8fa0648bf18",
+                              "severity":  "WARNING"
+                          }
+                      ],
+    "evidence":  {
+                     "screenshotPaths":  [
+
+                                         ],
+                     "reportPath":  "",
+                     "summaryPaths":  [
+                                          "artifacts/ml-alert-incident-smoke-summary.json"
+                                      ]
+                 },
+    "sanitization":  {
+                         "secretsExcluded":  true,
+                         "rawTelemetryExcluded":  true,
+                         "sourceTokensExcluded":  true
+                     }
+}

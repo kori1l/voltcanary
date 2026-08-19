@@ -1,0 +1,84 @@
+﻿{
+    "schemaVersion":  "2026-08-19",
+    "status":  "PASSED",
+    "runId":  "aedbe5dfaf",
+    "startedAt":  "2026-08-19T20:10:59.7707353Z",
+    "completedAt":  "2026-08-19T20:11:00.4429628Z",
+    "failedStep":  "",
+    "failureMessage":  "",
+    "scenarios":  [
+                      {
+                          "status":  "PASSED",
+                          "name":  "anomaly-detection docker smoke",
+                          "id":  "ML-E2E-003"
+                      },
+                      {
+                          "status":  "SKIPPED",
+                          "name":  "ML-to-alert incident check",
+                          "id":  "ML-E2E-006",
+                          "failureMessage":  "Covered by ml-alert-incident-docker-smoke.ps1"
+                      }
+                  ],
+    "resources":  {
+                      "datasetVersionIds":  [
+
+                                            ],
+                      "predictionIds":  [
+
+                                        ],
+                      "alertIds":  [
+
+                                   ],
+                      "featureSnapshotIds":  [
+
+                                             ],
+                      "accountIds":  [
+
+                                     ],
+                      "notificationAttemptIds":  [
+
+                                                 ],
+                      "deviceIds":  [
+
+                                    ],
+                      "trainingRunIds":  [
+
+                                         ],
+                      "policyIds":  [
+
+                                    ],
+                      "modelVersionIds":  [
+
+                                          ]
+                  },
+    "serviceHealth":  {
+
+                      },
+    "modelEvidence":  [
+                          {
+                              "modelVersionId":  "d2cc9c00-4bf3-4fca-a944-66d7d59e8ffd",
+                              "artifactHash":  "sha256:09f4cb9e736a8386b7c519e63a5fd5cd181911b5d49315ad5652d437d20f942d",
+                              "fallbackReason":  "",
+                              "modelFamily":  "ANOMALY_DETECTION",
+                              "policySource":  "",
+                              "inputHash":  "200aac901c124b60f6df751c9db91b43efb25be1b19c6cebd018f9943ecf8a77",
+                              "featureSchemaHash":  "sha256:anomaly-schema-aedbe5dfaf",
+                              "status":  "TRAINED_MODEL",
+                              "servingPath":  "ML-service trained model inference"
+                          }
+                      ],
+    "evidence":  {
+                     "screenshotPaths":  [
+
+                                         ],
+                     "reportPath":  "",
+                     "summaryPaths":  [
+                                          "artifacts/ml-anomaly-smoke-summary.json"
+                                      ]
+                 },
+    "sanitization":  {
+                         "secretsExcluded":  true,
+                         "rawTelemetryExcluded":  true,
+                         "sourceTokensExcluded":  true
+                     }
+}
