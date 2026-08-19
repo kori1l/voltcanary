@@ -88,6 +88,11 @@ public class AnalyticsRecalculationService {
     private final MlPolicyService mlPolicyService;
     private final MlModelRegistryService mlModelRegistryService;
     private final DeviceMetadataClient deviceMetadataClient;
+    private final AnalyticsPredictionTraceService predictionTraceService;
+    private final AnalyticsMlRuntimeDecisionService mlRuntimeDecisionService;
+    private final AnalyticsBaselineFeatureService baselineFeatureService;
+    private final AnalyticsMaintenanceTelemetryFilterService maintenanceTelemetryFilterService;
+    private final AnalyticsMlRecommendationService mlRecommendationService;
 
     public AnalyticsRecalculationService(
             TelemetryClient telemetryClient,
@@ -111,7 +116,12 @@ public class AnalyticsRecalculationService {
             MaintenanceWindowProjectionService maintenanceWindowProjectionService,
             MlPolicyService mlPolicyService,
             MlModelRegistryService mlModelRegistryService,
-            DeviceMetadataClient deviceMetadataClient) {
+            DeviceMetadataClient deviceMetadataClient,
+            AnalyticsPredictionTraceService predictionTraceService,
+            AnalyticsMlRuntimeDecisionService mlRuntimeDecisionService,
+            AnalyticsBaselineFeatureService baselineFeatureService,
+            AnalyticsMaintenanceTelemetryFilterService maintenanceTelemetryFilterService,
+            AnalyticsMlRecommendationService mlRecommendationService) {
         this.telemetryClient = telemetryClient;
         this.baselineRepository = baselineRepository;
         this.featureSetRepository = featureSetRepository;
@@ -134,6 +144,11 @@ public class AnalyticsRecalculationService {
         this.mlPolicyService = mlPolicyService;
         this.mlModelRegistryService = mlModelRegistryService;
         this.deviceMetadataClient = deviceMetadataClient;
+        this.predictionTraceService = predictionTraceService;
+        this.mlRuntimeDecisionService = mlRuntimeDecisionService;
+        this.baselineFeatureService = baselineFeatureService;
+        this.maintenanceTelemetryFilterService = maintenanceTelemetryFilterService;
+        this.mlRecommendationService = mlRecommendationService;
     }
 
     @Transactional
@@ -362,30 +377,7 @@ public class AnalyticsRecalculationService {
     }
 
     private DeviceBaseline saveBaseline(UUID deviceId, String metric, String period, BaselineStats baseline, Instant now) {
-        DeviceBaseline entity = new DeviceBaseline();
-        entity.setId(UUID.randomUUID());
-        entity.setDeviceId(deviceId);
-        entity.setCalculatedAt(now);
-        entity.setMetric(metric);
-        entity.setPeriod(period);
-        entity.setAlgorithmVersion(BASELINE_ALGORITHM_VERSION);
-        entity.setMean(baseline.mean());
-        entity.setMedian(baseline.median());
-        entity.setP90(baseline.p90());
-        entity.setMin(baseline.min());
-        entity.setMax(baseline.max());
-        entity.setSampleCount(baseline.sampleCount());
-        entity.setBaselineJson(writeJson(Map.of(
-                "metric", metric,
-                "period", period,
-                "algorithmVersion", BASELINE_ALGORITHM_VERSION,
-                "mean", baseline.mean(),
-                "median", baseline.median(),
-                "p90", baseline.p90(),
-                "min", baseline.min(),
-                "max", baseline.max(),
-                "sampleCount", baseline.sampleCount())));
-        return baselineRepository.save(entity);
+        return baselineFeatureService.saveBaseline(deviceId, metric, period, baseline, now);
     }
 
     private FeatureSet saveFeatureSet(
@@ -398,27 +390,16 @@ public class AnalyticsRecalculationService {
             TelemetryChartResponse chart,
             int excludedSamples,
             List<MaintenanceWindowReadModel> maintenanceWindows) {
-        FeatureSet entity = new FeatureSet();
-        entity.setId(UUID.randomUUID());
-        entity.setDeviceId(deviceId);
-        entity.setWindowStart(windowStart);
-        entity.setWindowEnd(windowEnd);
-        entity.setFeaturesJson(writeJson(Map.ofEntries(
-                Map.entry("metric", metric),
-                Map.entry("period", period),
-                Map.entry("sampleCount", baseline.sampleCount()),
-                Map.entry("mean", baseline.mean()),
-                Map.entry("median", baseline.median()),
-                Map.entry("p90", baseline.p90()),
-                Map.entry("min", baseline.min()),
-                Map.entry("max", baseline.max()),
-                Map.entry("latestValue", latestValue(chart)),
-                Map.entry("maintenanceExcludedSampleCount", excludedSamples),
-                Map.entry("maintenanceExcludedWindowIds", maintenanceWindows.stream()
-                        .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
-                        .map(UUID::toString)
-                        .toList()))));
-        return featureSetRepository.save(entity);
+        return baselineFeatureService.saveFeatureSet(
+                deviceId,
+                metric,
+                period,
+                windowStart,
+                windowEnd,
+                baseline,
+                chart,
+                excludedSamples,
+                maintenanceWindows);
     }
 
     private PredictionResult prediction(
@@ -633,33 +614,17 @@ public class AnalyticsRecalculationService {
             String fallbackReason,
             String deviceType,
             boolean canaryIncluded) {
-        PredictionResult result = new PredictionResult();
-        result.setId(UUID.randomUUID());
-        result.setDeviceId(deviceId);
-        result.setModelId(policy.modelVersionId());
-        result.setPolicySource(policy.policySource() == null ? null : policy.policySource().name());
-        result.setFeatureSchemaHash("");
-        result.setFallbackReason(fallbackReason);
-        result.setShadowPrediction(shadowPrediction);
-        result.setModelName(response == null ? "ml-unavailable" : response.modelName());
-        result.setModelVersion(response == null ? "unknown" : response.modelVersion());
-        result.setAnomalyScore(response == null ? 0 : response.anomalyScore());
-        result.setDegradationScore(response == null ? 0 : response.degradationScore());
-        result.setConfidence(response == null ? 0 : response.confidence());
-        result.setRiskLevel(response == null ? "" : response.riskLevel());
-        result.setStatus(predictionStatus);
-        result.setInputHash(inputHash);
-        result.setPredictionJson(writeJson(predictionPayload(
+        return predictionTraceService.buildPredictionResult(
+                deviceId,
                 response,
-                policy,
-                predictionStatus,
-                fallbackReason,
-                shadowPrediction,
+                now,
                 inputHash,
+                predictionStatus,
+                policy,
+                shadowPrediction,
+                fallbackReason,
                 deviceType,
-                canaryIncluded)));
-        result.setCreatedAt(now);
-        return result;
+                canaryIncluded);
     }
 
     private Map<String, Object> predictionPayload(
@@ -671,39 +636,15 @@ public class AnalyticsRecalculationService {
             String inputHash,
             String deviceType,
             boolean canaryIncluded) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("predictionStatus", predictionStatus);
-        payload.put("modelId", policy.modelVersionId() == null ? "" : policy.modelVersionId().toString());
-        payload.put("responseModelVersionId", response == null || response.modelVersionId() == null ? "" : response.modelVersionId());
-        payload.put("modelFamily", response == null || response.modelFamily() == null ? "" : response.modelFamily());
-        payload.put("policySource", policy.policySource() == null ? "" : policy.policySource().name());
-        payload.put("policyId", policy.policyId() == null ? "" : policy.policyId().toString());
-        payload.put("deploymentMode", policy.mode().name());
-        payload.put("resolvedDeviceType", blankToEmpty(deviceType));
-        payload.put("canaryPercent", policy.canaryPercent());
-        payload.put("canaryIncluded", canaryIncluded);
-        payload.put("predictionPath", shadowPrediction ? "SHADOW" : fallbackReason == null || fallbackReason.isBlank() ? policy.mode().name() : "FALLBACK");
-        payload.put("fallbackReason", fallbackReason);
-        payload.put("shadowPrediction", shadowPrediction);
-        payload.put("modelName", response == null ? "ml-unavailable" : response.modelName());
-        payload.put("modelVersion", response == null ? "unknown" : response.modelVersion());
-        payload.put("modelType", response == null || response.modelType() == null ? "" : response.modelType());
-        payload.put("modelStatus", response == null || response.modelStatus() == null ? "" : response.modelStatus());
-        payload.put("anomalyScore", response == null ? 0 : response.anomalyScore());
-        payload.put("degradationScore", response == null ? 0 : response.degradationScore());
-        payload.put("failureRiskScore", response == null ? null : response.failureRiskScore());
-        payload.put("failureHorizonDays", response == null ? null : response.failureHorizonDays());
-        payload.put("failureRiskBand", response == null ? null : response.failureRiskBand());
-        payload.put("riskLevel", response == null ? "" : response.riskLevel());
-        payload.put("confidence", response == null ? 0 : response.confidence());
-        payload.put("riskDrivers", response == null || response.riskDrivers() == null ? List.of() : response.riskDrivers());
-        payload.put("labelCoverage", response == null ? null : response.labelCoverage());
-        payload.put("trainingDataWindow", response == null || response.trainingDataWindow() == null ? Map.of() : response.trainingDataWindow());
-        payload.put("signals", response == null || response.signals() == null ? List.of() : response.signals());
-        payload.put("recommendedActions", response == null || response.recommendedActions() == null ? List.of() : response.recommendedActions());
-        payload.put("inputHash", inputHash);
-        payload.put("explanations", response == null || response.explanations() == null ? List.of() : response.explanations());
-        return payload;
+        return predictionTraceService.predictionPayload(
+                response,
+                policy,
+                predictionStatus,
+                fallbackReason,
+                shadowPrediction,
+                inputHash,
+                deviceType,
+                canaryIncluded);
     }
 
     private BaselineResponse toBaselineResponse(DeviceBaseline baseline) {
@@ -837,30 +778,7 @@ public class AnalyticsRecalculationService {
     }
 
     private List<Recommendation> mlRecommendations(UUID deviceId, PredictionResult prediction, Instant now) {
-        if (prediction == null || prediction.getPredictionJson() == null) {
-            return List.of();
-        }
-        Map<String, Object> values = readJson(prediction.getPredictionJson());
-        String riskLevel = prediction.getRiskLevel() == null ? string(values.get("riskLevel")) : prediction.getRiskLevel();
-        if (!List.of("MEDIUM", "HIGH", "CRITICAL").contains(riskLevel)) {
-            return List.of();
-        }
-        Object actions = values.get("recommendedActions");
-        if (!(actions instanceof List<?> actionList) || actionList.isEmpty()) {
-            return List.of();
-        }
-        Object signals = values.get("signals");
-        List<String> signalDescriptions = signals instanceof List<?> signalList
-                ? signalList.stream()
-                        .map(Object::toString)
-                        .limit(3)
-                        .toList()
-                : List.of();
-        return actionList.stream()
-                .map(Object::toString)
-                .filter(action -> !action.isBlank())
-                .map(action -> mlRecommendation(deviceId, action, signalDescriptions, riskLevel, now))
-                .toList();
+        return mlRecommendationService.mlRecommendations(deviceId, prediction, now);
     }
 
     private Recommendation mlRecommendation(
@@ -883,20 +801,12 @@ public class AnalyticsRecalculationService {
     }
 
     private String writeJson(Map<String, Object> values) {
-        try {
-            return objectMapper.writeValueAsString(values);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to write analytics JSON", e);
-        }
+        return predictionTraceService.writeJson(values);
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> readJson(String json) {
-        try {
-            return objectMapper.readValue(json, Map.class);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to read analytics JSON", e);
-        }
+        return predictionTraceService.readJson(json);
     }
 
     private String string(Object value) {
@@ -908,18 +818,7 @@ public class AnalyticsRecalculationService {
     }
 
     private boolean canaryIncluded(UUID accountId, UUID deviceId, UUID modelVersionId, Integer canaryPercent) {
-        if (modelVersionId == null) {
-            return false;
-        }
-        int percent = canaryPercent == null ? 0 : Math.max(0, Math.min(100, canaryPercent));
-        if (percent >= 100) {
-            return true;
-        }
-        if (percent <= 0 || accountId == null || deviceId == null) {
-            return false;
-        }
-        String key = accountId + "|" + deviceId + "|" + modelVersionId;
-        return hashBucket(key) < percent;
+        return mlRuntimeDecisionService.canaryIncluded(accountId, deviceId, modelVersionId, canaryPercent);
     }
 
     private int hashBucket(String key) {
@@ -936,45 +835,16 @@ public class AnalyticsRecalculationService {
     }
 
     private String compatibilityFallbackReason(MlModelVersionDto model, String deviceType, String metric) {
-        List<String> compatibleDeviceTypes = stringList(model.compatibleDeviceTypesJson());
-        if (!compatibleDeviceTypes.isEmpty()
-                && !blankToEmpty(deviceType).isBlank()
-                && compatibleDeviceTypes.stream().noneMatch(type -> type.equalsIgnoreCase(blankToEmpty(deviceType)))) {
-            return "INCOMPATIBLE_DEVICE_TYPE";
-        }
-        List<String> supportedMetrics = stringList(model.supportedMetricsJson());
-        if (model.family() != MlModelFamily.FAILURE_PREDICTION
-                && !supportedMetrics.isEmpty()
-                && !blankToEmpty(metric).isBlank()
-                && supportedMetrics.stream().noneMatch(item -> item.equalsIgnoreCase(blankToEmpty(metric)))) {
-            return "INCOMPATIBLE_FEATURE_SCHEMA";
-        }
-        return "";
+        return mlRuntimeDecisionService.compatibilityFallbackReason(model, deviceType, metric);
     }
 
     private String runtimeModelType(MlModelVersionDto model) {
-        return model.family() == MlModelFamily.FAILURE_PREDICTION
-                ? "trained_failure_prediction"
-                : "trained_tabular_anomaly";
+        return mlRuntimeDecisionService.runtimeModelType(model);
     }
 
     @SuppressWarnings("unchecked")
     private List<String> stringList(String json) {
-        if (json == null || json.isBlank()) {
-            return List.of();
-        }
-        try {
-            Object value = objectMapper.readValue(json, Object.class);
-            if (!(value instanceof List<?> list)) {
-                return List.of();
-            }
-            return list.stream()
-                    .map(Object::toString)
-                    .filter(item -> !item.isBlank())
-                    .toList();
-        } catch (JsonProcessingException exception) {
-            return List.of();
-        }
+        return mlRuntimeDecisionService.stringList(json);
     }
 
     private double number(Object value) {
@@ -982,13 +852,7 @@ public class AnalyticsRecalculationService {
     }
 
     private double latestValue(TelemetryChartResponse chart) {
-        if (chart == null || chart.points().isEmpty()) {
-            return 0;
-        }
-        return chart.points().stream()
-                .max(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                .map(TelemetryChartResponse.Point::value)
-                .orElse(0.0);
+        return baselineFeatureService.latestValue(chart);
     }
 
     private String inputHash(
@@ -997,53 +861,17 @@ public class AnalyticsRecalculationService {
             Instant windowEnd,
             List<TelemetryChartResponse> charts,
             List<MaintenanceWindowReadModel> maintenanceWindows) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update((deviceId + "|" + windowStart + "|" + windowEnd).getBytes(StandardCharsets.UTF_8));
-            charts.stream()
-                    .filter(chart -> chart != null)
-                    .sorted(Comparator.comparing(TelemetryChartResponse::metric))
-                    .forEach(chart -> {
-                        digest.update(("|" + chart.metric()).getBytes(StandardCharsets.UTF_8));
-                        chart.points().stream()
-                                .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                                .forEach(point -> digest.update(
-                                        ("|" + point.timestamp() + "=" + point.value()).getBytes(StandardCharsets.UTF_8)));
-                    });
-            maintenanceWindows.stream()
-                    .sorted(Comparator.comparing(MaintenanceWindowReadModel::getMaintenanceWindowId))
-                    .forEach(window -> digest.update(
-                            ("|maintenance:" + window.getMaintenanceWindowId() + ":" + window.getVersion()
-                                    + ":" + window.isExcludeFromAnalytics() + ":" + window.isExcludeFromMl())
-                                    .getBytes(StandardCharsets.UTF_8)));
-            return HexFormat.of().formatHex(digest.digest());
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is not available", exception);
-        }
+        return predictionTraceService.inputHash(deviceId, windowStart, windowEnd, charts, maintenanceWindows);
     }
 
     private TelemetryChartResponse filterChart(
             TelemetryChartResponse chart,
             List<MaintenanceWindowReadModel> analyticsExclusions) {
-        if (chart == null || chart.points() == null || chart.points().isEmpty() || analyticsExclusions.isEmpty()) {
-            return chart;
-        }
-        return new TelemetryChartResponse(
-                chart.deviceId(),
-                chart.metric(),
-                chart.points().stream()
-                        .filter(point -> !isInsideAny(point.timestamp(), analyticsExclusions))
-                        .toList());
+        return maintenanceTelemetryFilterService.filterChart(chart, analyticsExclusions);
     }
 
     private int excludedSampleCount(TelemetryChartResponse rawChart, TelemetryChartResponse filteredChart) {
-        int raw = rawChart == null || rawChart.points() == null ? 0 : rawChart.points().size();
-        int filtered = filteredChart == null || filteredChart.points() == null ? 0 : filteredChart.points().size();
-        int excluded = raw - filtered;
-        if (excluded > 0) {
-            meterRegistry.counter("analytics.maintenance.samples_excluded").increment(excluded);
-        }
-        return Math.max(excluded, 0);
+        return maintenanceTelemetryFilterService.excludedSampleCount(rawChart, filteredChart);
     }
 
     private boolean isInsideAny(Instant timestamp, List<MaintenanceWindowReadModel> windows) {

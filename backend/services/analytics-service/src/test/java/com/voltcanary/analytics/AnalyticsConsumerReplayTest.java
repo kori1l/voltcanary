@@ -2,6 +2,7 @@ package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
 import com.voltcanary.analytics.dto.MaintenanceOutcomeSnapshot;
+import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
 import com.voltcanary.analytics.service.MaintenanceOutcomeProjectionService;
 import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
@@ -53,6 +54,9 @@ class AnalyticsConsumerReplayTest {
 
     @MockitoBean
     private AnalyticsJobService jobService;
+
+    @MockitoBean
+    private MlClient mlClient;
 
     @Test
     void duplicateTelemetryValidatedEventEnqueuesOnlyOneAnalyticsJob() {

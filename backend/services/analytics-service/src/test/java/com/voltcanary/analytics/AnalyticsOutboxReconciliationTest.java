@@ -1,5 +1,6 @@
 package com.voltcanary.analytics;
 
+import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.producer.AnalyticsOutboxReconciliationService;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,6 +29,9 @@ class AnalyticsOutboxReconciliationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    private MlClient mlClient;
 
     @Test
     void resetsFailedAndStaleProcessingRowsForReplay() {

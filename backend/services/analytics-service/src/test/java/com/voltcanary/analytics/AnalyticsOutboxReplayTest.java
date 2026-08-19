@@ -1,6 +1,7 @@
 package com.voltcanary.analytics;
 
 import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
+import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.producer.AnalyticsOutboxPublisher;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.sql.Timestamp;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,6 +38,9 @@ class AnalyticsOutboxReplayTest {
 
     @Autowired
     private TransactionTemplate transactionTemplate;
+
+    @MockitoBean
+    private MlClient mlClient;
 
     @Test
     void pendingRowCommittedBeforeCrashIsPublishedOnReplay() {
