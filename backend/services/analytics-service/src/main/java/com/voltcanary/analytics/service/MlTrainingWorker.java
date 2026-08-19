@@ -11,6 +11,7 @@ import com.voltcanary.analytics.domain.MlModelStatus;
 import com.voltcanary.analytics.domain.MlModelVersion;
 import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
+import com.voltcanary.analytics.ml.FeatureVectorContract;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.ml.MlTrainingMetricRow;
@@ -128,6 +129,7 @@ public class MlTrainingWorker {
                     integerOption(run.getHyperparametersJson(), "failureHorizonDays"),
                     integerOption(run.getHyperparametersJson(), "minimumPositiveLabels"),
                     doubleOption(run.getHyperparametersJson(), "minimumLabelCoverage"),
+                    mapOption(run.getHyperparametersJson(), "approvalGateProfile"),
                     trainingRows));
             if (trainingResponse == null || !"SUCCEEDED".equals(trainingResponse.status())) {
                 throw new IllegalStateException("ML-service training did not produce a succeeded model artifact");
@@ -166,6 +168,15 @@ public class MlTrainingWorker {
             metrics.put("modelFamily", run.getModelFamily().name());
             metrics.put("algorithm", run.getAlgorithm());
             metrics.put("featureSnapshotRows", featureSnapshot.getRowCount());
+            metrics.put("featureSetVersion", featureSnapshot.getFeatureSetVersion());
+            metrics.put("featureGeneratorVersion", featureSnapshot.getCodeConfigVersion());
+            metrics.put("featureTemplateId", featureSnapshot.getFeatureTemplateId());
+            metrics.put("featureTemplateVersion", featureSnapshot.getFeatureTemplateVersion());
+            metrics.put("featureSnapshotHorizonDays", featureSnapshot.getHorizonDays());
+            metrics.put("requiredFeatureContractVersion", FeatureVectorContract.CONTRACT_VERSION);
+            metrics.put("requiredFeatureContractMetadataHash", featureContractMetadataHash(featureSnapshot));
+            metrics.put("requiredFeatureSchemaHash", featureSnapshot.getFeatureSchemaHash());
+            metrics.put("requiredFeatureConfigHash", featureSnapshot.getFeatureConfigHash());
             metrics.put("trainingFeatureValues", trainingRows.size());
             metrics.put("rejectedFeatureRows", featureSnapshot.getRejectedRowCount());
             metrics.put("loadTestPredictionStatus", smokeResponse.predictionStatus());
@@ -370,6 +381,39 @@ public class MlTrainingWorker {
                 .toList();
     }
 
+    private String featureContractMetadataHash(MlFeatureSnapshot featureSnapshot) {
+        String modelFamily = featureSnapshot.getModelFamily() == null || featureSnapshot.getModelFamily().isBlank()
+                ? "ANOMALY_DETECTION"
+                : featureSnapshot.getModelFamily();
+        FeatureVectorContract contract = FeatureVectorContract.forConfig(
+                modelFamily,
+                featureSnapshot.getHorizonDays(),
+                featureSnapshot.getFeatureTemplateId(),
+                featureSnapshot.getFeatureTemplateVersion(),
+                enabledFeatureFamilies(featureSnapshot));
+        return FeatureVectorContract.contractMetadataHash(
+                featureSnapshot.getFeatureSetVersion(),
+                featureSnapshot.getCodeConfigVersion(),
+                contract.contractVersion(),
+                contract.modelFamily().name(),
+                contract.horizonDays(),
+                contract.featureTemplateId(),
+                contract.featureTemplateVersion(),
+                contract.requiredColumns());
+    }
+
+    private List<String> enabledFeatureFamilies(MlFeatureSnapshot featureSnapshot) {
+        if (featureSnapshot.getFeatureConfigJson() == null || featureSnapshot.getFeatureConfigJson().isBlank()) {
+            return List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context");
+        }
+        Map<String, Object> config = readJson(featureSnapshot.getFeatureConfigJson());
+        Object families = config.get("enabledFeatureFamilies");
+        if (!(families instanceof List<?> list) || list.isEmpty()) {
+            return List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context");
+        }
+        return list.stream().map(Object::toString).filter(item -> !item.isBlank()).toList();
+    }
+
     private String modelType(MlTrainingRun run) {
         return run.getModelFamily() == com.voltcanary.analytics.domain.MlModelFamily.FAILURE_PREDICTION
                 ? "trained_failure_prediction"
@@ -384,6 +428,12 @@ public class MlTrainingWorker {
     private Double doubleOption(String hyperparametersJson, String key) {
         Object value = hyperparameterValue(hyperparametersJson, key);
         return value instanceof Number number ? number.doubleValue() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapOption(String hyperparametersJson, String key) {
+        Object value = hyperparameterValue(hyperparametersJson, key);
+        return value instanceof Map<?, ?> ? (Map<String, Object>) value : null;
     }
 
     private Object hyperparameterValue(String hyperparametersJson, String key) {
@@ -419,6 +469,14 @@ public class MlTrainingWorker {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize training metrics");
+        }
+    }
+
+    private Map<String, Object> readJson(String value) {
+        try {
+            return objectMapper.readValue(value, new TypeReference<>() {});
+        } catch (JsonProcessingException exception) {
+            return Map.of();
         }
     }
 

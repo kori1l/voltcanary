@@ -84,7 +84,8 @@ When the stack is already running, omit `-StartStack`. Add
 `-VerifyLifecycleCleanup` when the request asks to verify create/delete/archive
 or lifecycle-impact behavior; that mode checks blocked destructive actions,
 manual label delete, policy disable/delete, and archive paths for referenced ML
-lineage records.
+lineage records. Use `-CiMode -TimeoutSeconds 600 -SummaryPath artifacts/ml-production-smoke-summary.json`
+for the CI-safe gate or release evidence run.
 
 Never add secrets to tracked files. Put local values in `.env` and document
 new required keys in `.env.example`.

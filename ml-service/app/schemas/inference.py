@@ -38,6 +38,13 @@ class ModelPreference(BaseModel):
     artifact_hash: str | None = Field(default=None, alias="artifactHash")
     allow_baseline_heuristic: bool = Field(default=True, alias="allowBaselineHeuristic")
     required_feature_schema_hash: str | None = Field(default=None, alias="requiredFeatureSchemaHash")
+    required_feature_contract_version: str | None = Field(default=None, alias="requiredFeatureContractVersion")
+    required_feature_contract_metadata_hash: str | None = Field(default=None, alias="requiredFeatureContractMetadataHash")
+    required_feature_set_version: str | None = Field(default=None, alias="requiredFeatureSetVersion")
+    required_feature_generator_version: str | None = Field(default=None, alias="requiredFeatureGeneratorVersion")
+    required_feature_template_id: str | None = Field(default=None, alias="requiredFeatureTemplateId")
+    required_feature_template_version: str | None = Field(default=None, alias="requiredFeatureTemplateVersion")
+    required_horizon_days: int | None = Field(default=None, alias="requiredHorizonDays")
 
     model_config = ConfigDict(populate_by_name=True)
 

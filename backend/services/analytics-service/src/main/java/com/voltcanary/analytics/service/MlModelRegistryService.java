@@ -22,6 +22,7 @@ import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.PredictionResultRepository;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -175,6 +176,7 @@ public class MlModelRegistryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only candidate or rejected models can be approved");
         }
         verifyArtifactMetadata(model);
+        verifyFailureApprovalGates(model);
         model.setStatus(MlModelStatus.APPROVED);
         model.setApprovedBy(actorId);
         model.setApprovedAt(Instant.now());
@@ -599,6 +601,68 @@ public class MlModelRegistryService {
         if (model.getArtifactSizeBytes() == null || model.getArtifactSizeBytes() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact size must be recorded before approval");
         }
+    }
+
+    private void verifyFailureApprovalGates(MlModelVersion model) {
+        if (model.getFamily() != MlModelFamily.FAILURE_PREDICTION) {
+            return;
+        }
+        Map<String, Object> metrics = readJsonObject(model.getEvaluationMetricsJson());
+        Object approval = metrics.get("approvalGates");
+        if (!(approval instanceof Map<?, ?> gates)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Failure model approval gates are missing; retrain or repair the model with auditable gate metadata");
+        }
+        Object profileId = gates.get("profileId");
+        Object profileVersion = gates.get("profileVersion");
+        Object thresholdSource = gates.get("thresholdSource");
+        if (isBlank(profileId) || isBlank(profileVersion) || isBlank(thresholdSource)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Failure model approval gate profile metadata is missing; retrain or repair the model with auditable gate metadata");
+        }
+        Object criteria = gates.get("criteria");
+        if (!(criteria instanceof List<?> items) || items.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failure model approval gates are empty");
+        }
+        List<String> failed = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof Map<?, ?> gate)) {
+                continue;
+            }
+            boolean passed = Boolean.TRUE.equals(gate.get("passed"));
+            if (!passed) {
+                Object rawName = gate.get("name");
+                Object rawReason = gate.get("reason");
+                String name = rawName == null ? "approval_gate" : String.valueOf(rawName);
+                String reason = rawReason == null ? "Approval gate failed" : String.valueOf(rawReason);
+                failed.add(name + ": " + reason);
+            }
+        }
+        if (!failed.isEmpty() || !Boolean.TRUE.equals(gates.get("promotionEligible"))) {
+            String source = String.valueOf(thresholdSource);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Failure model approval blocked by " + source + " gates: " + String.join("; ", failed));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readJsonObject(String value) {
+        if (value == null || value.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Object parsed = objectMapper.readValue(value, Object.class);
+            return parsed instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not parse ML model evaluation metrics");
+        }
+    }
+
+    private boolean isBlank(Object value) {
+        return value == null || String.valueOf(value).isBlank();
     }
 
     private String writeJson(Object value) {

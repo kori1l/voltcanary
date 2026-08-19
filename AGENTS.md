@@ -54,6 +54,7 @@ radius justifies it:
 - Backend one service: `cd backend; mvn -pl services/<service-name> -am test`
 - ML service: `cd ml-service; .\.venv\Scripts\python.exe -m unittest discover -s app/tests`
 - Frontend: `cd frontend; npm run typecheck; npm run test; npm run build`
+- ML production smoke: `powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1 -StartStack -CiMode -TimeoutSeconds 600 -SummaryPath artifacts/ml-production-smoke-summary.json` for ML runtime/lifecycle/artifact/feature-contract/deployment changes.
 
 Keep documentation in `docs/` aligned when OpenSpec-governed behavior changes.
 Do not commit generated artifacts, logs, local environment files, or model

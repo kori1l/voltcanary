@@ -124,6 +124,49 @@ class MlServiceSmokeTest(unittest.TestCase):
         self.assertEqual(response.json()["predictionStatus"], "FEATURE_SCHEMA_MISMATCH")
         self.assertIn("schema", response.json()["explanations"][0])
 
+    def test_model_only_inference_prefers_contract_metadata_hash_for_feature_parity(self) -> None:
+        response = self.client.post(
+            "/inference",
+            json={
+                "deviceId": "device-1",
+                "metrics": {"activePowerW": 850.0},
+                "modelPreference": {
+                    "allowBaselineHeuristic": False,
+                    "requiredFeatureSchemaHash": "sha256:offline-full-schema",
+                    "requiredFeatureContractMetadataHash": "sha256:contract-v1",
+                },
+                "featureGenerationStatus": "READY",
+                "featureContract": {
+                    "featureSchemaHash": "sha256:online-runtime-schema",
+                    "contractMetadataHash": "sha256:contract-v1",
+                },
+                "featureVector": {"activePowerW": 850.0},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(response.json()["predictionStatus"], "FEATURE_SCHEMA_MISMATCH")
+
+    def test_model_only_inference_returns_schema_mismatch_for_contract_metadata_hash_mismatch(self) -> None:
+        response = self.client.post(
+            "/inference",
+            json={
+                "deviceId": "device-1",
+                "metrics": {"activePowerW": 850.0},
+                "modelPreference": {
+                    "allowBaselineHeuristic": False,
+                    "requiredFeatureContractMetadataHash": "sha256:trained-contract",
+                },
+                "featureGenerationStatus": "READY",
+                "featureContract": {"contractMetadataHash": "sha256:online-contract"},
+                "featureVector": {"activePowerW": 850.0},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["predictionStatus"], "FEATURE_SCHEMA_MISMATCH")
+        self.assertIn("contract metadata", response.json()["explanations"][0])
+
     def test_inference_rejects_non_finite_metric_values(self) -> None:
         response = self.client.post(
             "/inference",

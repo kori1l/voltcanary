@@ -7,6 +7,10 @@ For the repeatable Docker production-readiness path, run
 That smoke scenario exercises dataset materialization, outcome labels, feature
 snapshots, ML-service artifacts, approval, deployment, live inference
 traceability, and exported monitoring signals without manual database changes.
+It is required in CI, or as a documented manual release gate, for changes that
+touch ML-service runtime behavior, analytics ML lifecycle code, ML artifact or
+feature contracts, prediction traceability, Docker ML wiring, or the smoke
+automation itself.
 
 ## Retrain
 
@@ -117,13 +121,41 @@ labels store `horizonDays`, `generationVersion`, `sourceOutcomeIdsJson`, and
 `lineageHash`. Recent rows are intentionally unlabeled until the full horizon
 is observable.
 
+Failure-prediction approval gates start with the
+`failure-production-default` / `2026-08-approval-v1` profile from
+`ml-service-default-config`. Use these starting thresholds unless a stricter
+account, device-type, or rollout profile has been explicitly resolved:
+
+- minimum positive labels: `1` for local/demo datasets; raise this for
+  production accounts before broad rollout.
+- minimum label coverage: `0.8`.
+- minimum precision: `0.6`.
+- minimum recall: `0.6`.
+- minimum PR-AUC: `0.6`, or PR-AUC lift at least `0.0` against the
+  training-positive-rate baseline.
+- maximum false alerts: `10.0` per device-month.
+- minimum lead time: `1.0` day.
+- artifact load test and feature schema compatibility are required.
+
+The model card and registry metrics must show profile id, version, threshold
+source, observed values, thresholds, pass/fail state, and gate reasons. If a
+candidate lacks this metadata, retrain it or repair the artifact/registry
+lineage instead of approving it manually.
+
 ## Promote
 
-1. Approve a `CANDIDATE` model in `Models`.
+1. Approve a `CANDIDATE` model in `Models` only after the approval gate panel
+   shows passing required gates for the resolved profile.
 2. Create a `SHADOW` policy first and verify shadow predictions do not change latest active risk.
 3. Move to `CANARY` for a limited percentage when supported by the selected scope. Canary inclusion is deterministic per account, device, and model version, so repeated recalculations for the same inputs stay in the same cohort.
 4. Promote to `ACTIVE` only after fallback rate, inference failures, and prediction quality remain acceptable.
 5. Confirm the selected model version is marked `ACTIVE` and audit logs contain `MODEL_APPROVED` and `POLICY_UPDATED`.
+
+Analytics-service enforces failure-prediction gate metadata during approval.
+If approval returns `400`, inspect the failed gate names and threshold source
+in the response, adjust labels/features/profile thresholds as appropriate, and
+retrain. Do not bypass failed precision, recall, PR-AUC/lift, false-alert,
+lead-time, artifact load, or feature-schema gates for production promotion.
 
 For device-type rollouts, confirm device-service metadata returns the expected
 `type` through `/internal/devices/{deviceId}/metadata`. Analytics-service
@@ -144,13 +176,41 @@ If model-only inference returns `FEATURES_UNAVAILABLE`, regenerate the active
 feature window or enable baseline fallback for the affected scope. If it returns
 `FEATURE_SCHEMA_MISMATCH`, switch the policy to a model trained with the current
 feature template/schema or regenerate features with the model's expected
-contract.
+contract. Inspect latest prediction traceability for `generatedFeatureContract`,
+`featureGenerationStatus`, `featureGenerationErrors`,
+`requiredFeatureSchemaHash`, `requiredFeatureContractMetadataHash`, and
+`generatedFeatureContractMetadataHash`; mismatches should name the failing
+contract version, generator version, feature set, template id/version, horizon,
+or contract metadata hash.
+
+For failure-prediction policies, verify live telemetry includes the same
+positive `horizonDays` used by the trained feature snapshot. A missing or
+different horizon is a contract mismatch and should be handled by regenerating
+the online feature window or selecting a model trained for that horizon.
 
 If inference returns `MODEL_UNAVAILABLE`, first check `GET /health/artifacts`
 on ML-service and MinIO bucket access, then verify the model version has
 `artifactUri`, `artifactManifestUri`, `artifactHash`, and positive
 `artifactSizeBytes`. Roll back to the previous active policy or disable the
 policy with fallback enabled while restoring the missing object.
+
+ML-service keeps hash-verified trained model bundles in an in-process serving
+cache. Configure it with `ML_SERVING_CACHE_MAX_ENTRIES` (default `32`) and
+`ML_SERVING_CACHE_TTL_SECONDS` (default `900`). Cache keys include model
+version id, manifest URI, artifact hash, and artifact contract version, so a
+registry repair that changes the manifest or hash forces a verified reload.
+The first request after a miss, TTL expiry, or capacity eviction still verifies
+the manifest hash and every bundle file hash before a pipeline is reused.
+
+For cache diagnostics, search ML-service logs for
+`mlServingArtifactCache event=...`. Expected events are `hit`, `miss`,
+`load_success`, `load_failure`, and `eviction`; log fields include
+`modelVersionId`, artifact contract version, cache size, load duration, and
+eviction reason without logging manifest URIs or model contents. Repeated
+`load_failure` events with `MODEL_UNAVAILABLE` responses usually indicate a
+missing object, hash mismatch, corrupted bundle file, incompatible manifest, or
+joblib load error. Repeated capacity evictions mean the active model working
+set is larger than `ML_SERVING_CACHE_MAX_ENTRIES`.
 
 Readiness failure codes:
 

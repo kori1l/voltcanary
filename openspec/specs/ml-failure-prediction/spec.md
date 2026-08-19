@@ -197,3 +197,66 @@ selected horizon before committing an internal telemetry dataset version.
 - **AND** explicit horizon-label generation SHALL remain a separate
   lineage-changing action.
 
+### Requirement: Failure model approval gates are configurable and enforced
+
+Failure-prediction approval gates SHALL use explicit threshold profiles rather
+than hardcoded permissive thresholds, and backend approval SHALL enforce failed
+required gates.
+
+#### Scenario: Training uses a configured gate profile
+
+- **GIVEN** a failure-prediction training run starts with a resolved approval
+  gate profile
+- **WHEN** ML-service evaluates the candidate model
+- **THEN** approval metadata SHALL include the profile id and version
+- **AND** each required gate SHALL include observed value, threshold, pass/fail
+  state, and reason.
+
+#### Scenario: Candidate fails required quality gates
+
+- **GIVEN** a candidate failure model has precision, recall, PR-AUC, false-alert
+  rate, label coverage, or load-test gates below the configured profile
+- **WHEN** an operator attempts to approve the model
+- **THEN** analytics-service SHALL reject approval
+- **AND** return the failed gate names and operator-readable reasons.
+
+#### Scenario: Candidate is missing approval profile metadata
+
+- **GIVEN** a candidate failure model lacks required approval gate profile
+  metadata
+- **WHEN** an operator attempts to approve the model
+- **THEN** analytics-service SHALL block approval
+- **AND** explain that the model must be retrained or repaired with auditable
+  gate metadata.
+
+### Requirement: Production failure-prediction smoke is CI-gated
+
+The complete failure-prediction lifecycle smoke SHALL be runnable as a CI-safe
+gate for ML-affecting changes.
+
+#### Scenario: ML runtime change is proposed
+
+- **GIVEN** a change affects ML-service, analytics ML lifecycle, feature
+  contracts, model registry, prediction traceability, or ML deployment wiring
+- **WHEN** CI or an equivalent required validation job runs
+- **THEN** the production smoke SHALL execute or be explicitly marked as not
+  required with a documented reason
+- **AND** the result SHALL identify the lifecycle step that passed or failed.
+
+#### Scenario: Smoke verifies model routing
+
+- **GIVEN** the smoke trains and deploys a candidate model
+- **WHEN** live prediction recalculation runs
+- **THEN** the smoke SHALL prove that the selected `modelVersionId` was used
+  for inference or explicitly rejected with a controlled status
+- **AND** persisted traceability SHALL include model id, feature hash, input
+  hash, policy source, fallback reason when applicable, and failure-risk fields.
+
+#### Scenario: Smoke publishes diagnostics
+
+- **GIVEN** the smoke completes or fails
+- **WHEN** CI stores the result
+- **THEN** the artifact SHALL include a compact lifecycle summary and relevant
+  diagnostics
+- **AND** SHALL NOT expose secrets or full generated model artifacts.
+

@@ -117,7 +117,8 @@ Response:
 - `MODEL_UNAVAILABLE`: selected model artifact cannot be loaded or verified.
 - `MODEL_INCOMPATIBLE`: selected model cannot score the request metrics.
 - `FEATURES_UNAVAILABLE`: model-only mode required online features that were not generated.
-- `FEATURE_SCHEMA_MISMATCH`: online feature schema does not match the selected model.
+- `FEATURE_SCHEMA_MISMATCH`: online feature schema or runtime contract metadata
+  does not match the selected model.
 - `INSUFFICIENT_LABELS`: selected failure model artifact is not servable because label approval gates failed.
 
 Validation and failure responses:
@@ -210,6 +211,10 @@ Request fields:
 - `failureHorizonDays`
 - `minimumPositiveLabels`
 - `minimumLabelCoverage`
+- `approvalGateProfile`: optional resolved failure-prediction approval profile.
+  When omitted for failure models, ML-service uses the non-trivial
+  `failure-production-default` profile. Legacy `minimumPositiveLabels` and
+  `minimumLabelCoverage` override the same profile thresholds for compatibility.
 - `cancellationRequested`: cooperative cancellation flag checked before major
   ML-service phases and before final artifact promotion.
 - `trainingTimeoutSeconds`: optional ML-service timeout budget.
@@ -1016,12 +1021,29 @@ Supported template ids are:
   refrigerator-like devices.
 
 Live inference requests include an online `featureVector`, `featureContract`,
-`featureGenerationStatus`, and `featureGenerationErrors`. When a selected model
-requires a schema that cannot be produced online, the ML-service returns
-`FEATURE_SCHEMA_MISMATCH`. When required live features are missing and baseline
-fallback is disabled, it returns `FEATURES_UNAVAILABLE` with explicit missing
-feature reasons. Failure models additionally return `INSUFFICIENT_LABELS` when
-the selected artifact's label approval gates fail.
+`featureGenerationStatus`, and `featureGenerationErrors`. The online
+`featureContract` carries generated metadata (`contractVersion`,
+`featureSetVersion`, `generatorVersion`, `featureTemplateId`,
+`featureTemplateVersion`, `modelFamily`, `horizonDays`, ordered
+`requiredColumns`, and `contractMetadataHash`) plus selected-model requirements
+such as `requiredFeatureContractVersion`,
+`requiredFeatureContractMetadataHash`, `requiredFeatureSchemaHash`,
+`requiredFeatureSetVersion`, `requiredFeatureGeneratorVersion`,
+`requiredFeatureTemplateId`, `requiredFeatureTemplateVersion`, and
+`requiredHorizonDays`.
+
+`featureSchemaHash` remains the persisted snapshot lineage hash for the full
+schema/config combination. Runtime parity uses
+`requiredFeatureContractMetadataHash` when available so online inference can
+compare semantic contract metadata without needing to reproduce the complete
+offline snapshot hash. Contract-version, generator-version, feature-set,
+template, horizon, and metadata-hash mismatches produce explicit
+`FEATURE_*_MISMATCH` details. ML-service returns `FEATURE_SCHEMA_MISMATCH`
+when a selected model requires a contract that cannot be produced online. When
+required live features are missing and baseline fallback is disabled, it
+returns `FEATURES_UNAVAILABLE` with explicit missing feature reasons. Failure
+models additionally return `INSUFFICIENT_LABELS` when the selected artifact's
+label approval gates fail.
 
 ## POST /analytics/ml/training-runs
 
@@ -1030,10 +1052,16 @@ delegates fitting to ML-service, which trains a tabular sklearn IsolationForest
 pipeline from the materialized feature snapshot and returns a durable model
 bundle manifest.
 
-`FAILURE_PREDICTION` training requests add horizon and label-gate parameters:
-`failureHorizonDays`, `minimumPositiveLabels`, and `minimumLabelCoverage`.
-These fields are stored with the run hyperparameters and passed to ML-service
-for supervised target construction and approval gates.
+`FAILURE_PREDICTION` training requests add horizon and approval-gate
+parameters: `failureHorizonDays`, `minimumPositiveLabels`,
+`minimumLabelCoverage`, and optional `approvalGateProfile`. The profile
+contains `profileId`, `profileVersion`, `thresholdSource`,
+`minimumPositiveLabels`, `minimumLabelCoverage`, `minimumPrecision`,
+`minimumRecall`, `minimumPrAuc`, `minimumPrAucLift`,
+`maximumFalseAlertsPerDeviceMonth`, `minimumLeadTimeDays`,
+`requireArtifactLoadTest`, and `requireFeatureSchemaCompatibility`. When the
+profile is omitted, ML-service applies `failure-production-default` /
+`2026-08-approval-v1` from `ml-service-default-config`.
 
 Failure-prediction training is rejected before fitting when usable labels do
 not include the configured minimum positive failure outcomes, at least one
@@ -1058,6 +1086,17 @@ Request:
   "failureHorizonDays": 14,
   "minimumPositiveLabels": 20,
   "minimumLabelCoverage": 0.8,
+  "approvalGateProfile": {
+    "profileId": "failure-production-default",
+    "profileVersion": "2026-08-approval-v1",
+    "thresholdSource": "ml-service-default-config",
+    "minimumPrecision": 0.6,
+    "minimumRecall": 0.6,
+    "minimumPrAuc": 0.6,
+    "minimumPrAucLift": 0.0,
+    "maximumFalseAlertsPerDeviceMonth": 10.0,
+    "minimumLeadTimeDays": 1.0
+  },
   "hyperparametersJson": "{}"
 }
 ```
@@ -1092,11 +1131,13 @@ and comparison against `training-positive-rate-baseline-v1` with baseline
 precision/recall/F1/PR-AUC plus candidate lift fields.
 
 Approval gate metadata is stored in `approvalGates` on the manifest,
-`model.json`, and `model-card.json`. `failure-approval-gates-v1` reports
-`promotionEligible`, overall status, and per-gate observed values, thresholds,
-pass/fail state, and reasons for minimum positives, label coverage, time-based
-evaluation availability, precision, recall, false-alert rate, artifact load
-test, and feature schema compatibility.
+`model.json`, `model-card.json`, and the training/model registry metrics.
+`failure-approval-gates-v1` reports `profileId`, `profileVersion`,
+`thresholdSource`, `promotionEligible`, overall status, and per-gate observed
+values, thresholds, pass/fail state, and reasons for minimum positives, label
+coverage, time-based evaluation availability, precision, recall, PR-AUC or
+PR-AUC lift, false-alert rate, lead time, artifact load test, and feature
+schema compatibility.
 
 Prediction responses preserve existing anomaly and degradation fields and may
 include failure-specific fields when a failure model scores the device:
@@ -1173,7 +1214,12 @@ Returns one model version detail.
 ## POST /analytics/ml/models/{modelVersionId}/approve
 
 Moves a `CANDIDATE` or `REJECTED` model to `APPROVED`, records approval
-metadata, and writes an audit event.
+metadata, and writes an audit event. Failure-prediction models must include
+auditable `approvalGates` in `evaluationMetricsJson`; analytics-service blocks
+approval when profile metadata is missing, criteria are missing, any required
+gate failed, or `promotionEligible=false`. The `400` response identifies the
+failed gate names and threshold source so operators can retrain or repair the
+candidate.
 
 ## POST /analytics/ml/models/{modelVersionId}/reject
 

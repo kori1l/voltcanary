@@ -2,6 +2,7 @@ package com.voltcanary.analytics.dto;
 
 import com.voltcanary.analytics.domain.MlModelFamily;
 import jakarta.validation.constraints.NotNull;
+import java.util.Map;
 import java.util.UUID;
 
 public record MlTrainingRunRequest(
@@ -12,6 +13,7 @@ public record MlTrainingRunRequest(
         Integer failureHorizonDays,
         Integer minimumPositiveLabels,
         Double minimumLabelCoverage,
+        Map<String, Object> approvalGateProfile,
         String hyperparametersJson) {
 
     public MlTrainingRunRequest(
@@ -25,6 +27,7 @@ public record MlTrainingRunRequest(
                 featureSnapshotId,
                 modelFamily,
                 algorithm,
+                null,
                 null,
                 null,
                 null,

@@ -308,6 +308,25 @@ const failureModelVersion = {
     labelCoverage: 0.84,
     failurePositiveLabels: 18,
     failureNegativeLabels: 240,
+    approvalGateProfileId: "failure-production-default",
+    approvalGateProfileVersion: "2026-08-approval-v1",
+    approvalGateThresholdSource: "ml-service-default-config",
+    approvalGates: {
+      profileId: "failure-production-default",
+      profileVersion: "2026-08-approval-v1",
+      thresholdSource: "ml-service-default-config",
+      status: "PASSED",
+      promotionEligible: true,
+      criteria: [
+        {
+          name: "minimum_precision",
+          observed: 0.72,
+          threshold: 0.6,
+          passed: true,
+          reason: "Requires candidate precision to meet the configured approval threshold.",
+        },
+      ],
+    },
   },
   approvedBy: null,
   approvedAt: null,
@@ -329,6 +348,29 @@ const blockedFailureModelVersion = {
     failurePositiveLabels: 0,
     failureNegativeLabels: 240,
     failureValidationSamples: 0,
+    approvalGates: {
+      profileId: "failure-production-default",
+      profileVersion: "2026-08-approval-v1",
+      thresholdSource: "ml-service-default-config",
+      status: "NEEDS_REVIEW",
+      promotionEligible: false,
+      criteria: [
+        {
+          name: "minimum_label_coverage",
+          observed: 0.42,
+          threshold: 0.8,
+          passed: false,
+          reason: "Requires enough usable horizon labels for the dataset.",
+        },
+        {
+          name: "minimum_precision",
+          observed: 0.2,
+          threshold: 0.6,
+          passed: false,
+          reason: "Requires candidate precision to meet the configured approval threshold.",
+        },
+      ],
+    },
   },
 };
 const labelItem = {
@@ -569,8 +611,12 @@ describe("MlSettingsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Models" }));
     expect(await screen.findByText("Promotion gates passed")).toBeInTheDocument();
+    expect(screen.getAllByText(/failure-production-default \/ 2026-08-approval-v1 \/ ml-service-default-config/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Minimum Precision \/ Pass/i)).toBeInTheDocument();
+    expect(screen.getByText(/Observed 72% \/ required 60%/i)).toBeInTheDocument();
     expect(screen.getByText("Promotion blocked")).toBeInTheDocument();
-    expect(screen.getByText("Minimum Label Coverage")).toBeInTheDocument();
+    expect(screen.getByText(/Minimum Label Coverage \/ Fail/i)).toBeInTheDocument();
+    expect(screen.getByText(/Observed 42% \/ required 80%/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Approve washer-failure-low-labels v1/i })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Monitoring" }));
@@ -1233,9 +1279,9 @@ describe("MlSettingsPage", () => {
     expect(screen.getByText("18 positive / 240 negative")).toBeInTheDocument();
     expect(screen.getByText("Promotion gates passed")).toBeInTheDocument();
     expect(screen.getByText("Promotion blocked")).toBeInTheDocument();
-    expect(screen.getByText("Minimum Positive Labels")).toBeInTheDocument();
-    expect(screen.getAllByText(/Observed 0 \/ required 1/i)).toHaveLength(3);
-    expect(screen.getByText("Artifact Load Test")).toBeInTheDocument();
+    expect(screen.getByText(/Minimum Label Coverage \/ Fail/i)).toBeInTheDocument();
+    expect(screen.getByText(/Observed 42% \/ required 80%/i)).toBeInTheDocument();
+    expect(screen.getByText(/Minimum Precision \/ Fail/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Approve washer-failure-low-labels v1/i })).toBeDisabled();
     await userEvent.click((await screen.findAllByRole("button", { name: /Reject/i }))[0]);
     expect(await screen.findByText("Model registry updated")).toBeInTheDocument();

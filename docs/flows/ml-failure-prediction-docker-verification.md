@@ -29,6 +29,19 @@ For a broader destructive-lifecycle check, add `-VerifyLifecycleCleanup`:
 powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1 -VerifyLifecycleCleanup
 ```
 
+For CI or non-interactive runs, use `-CiMode` and write the compact evidence
+artifact with `-SummaryPath`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/ml-failure-prediction-docker-smoke.ps1 -StartStack -CiMode -TimeoutSeconds 600 -SummaryPath artifacts/ml-production-smoke-summary.json
+```
+
+On GitHub Actions/Linux the workflow uses PowerShell Core:
+
+```bash
+pwsh ./scripts/ml-failure-prediction-docker-smoke.ps1 -StartStack -CiMode -TimeoutSeconds 600 -SummaryPath artifacts/ml-production-smoke-summary.json
+```
+
 The script creates a unique user, account, washer device, API data source,
 source token, backfilled telemetry, maintenance outcome, dataset version,
 horizon labels, feature snapshot, training run, candidate model, approval,
@@ -38,6 +51,21 @@ impact previews, blocked destructive actions, manual label deletion, policy
 disable/delete, and archive paths for training, feature snapshot, and dataset
 lineage.
 
+The training request uses a `failure-docker-smoke-ci` approval profile for the
+synthetic dataset. It keeps precision, recall, PR-AUC/lift, false-alert,
+artifact-load, and feature-schema gates active, while setting
+`minimumLeadTimeDays=0` because the generated fixture has deterministic labels
+but does not model operational lead-time evidence.
+
+The CI job `ML Production Smoke` in `.github/workflows/ci.yml` runs for
+`workflow_dispatch` and for pull requests or pushes that touch ML-service,
+analytics ML lifecycle code, ML API/operations/flow docs, ML OpenSpec specs,
+Docker Compose wiring, or the smoke script. It uploads
+`ml-production-smoke-summary` when the script creates a summary file. In CI
+mode, failures write a compact summary with `status=FAILED`, the current
+lifecycle step, the sanitized error message, and any resource ids created before
+the failure.
+
 ## Verification Coverage
 
 | Requirement | Verification step |
@@ -46,11 +74,11 @@ lineage.
 | Immutable dataset rows | Uses the dataset API materialization path and later trains from the returned `datasetVersionId`; no database inserts are used. |
 | Maintenance outcome labels | Creates a `CORRECTIVE_MAINTENANCE` outcome, waits for analytics reconciliation, generates horizon labels, and asserts positive and normal labels plus `lineageHash`. |
 | Feature snapshot | Generates `FAILURE_PREDICTION` features for the same horizon and asserts `rowCount`, `featureSchemaHash`, `featureDataHash`, and `artifactUri`. |
-| Real model artifact | Queues a failure prediction training run, waits for `SUCCEEDED`, then asserts candidate model `artifactUri`, `artifactManifestUri`, `sha256` artifact hash, and positive artifact size. |
+| Real model artifact | Queues a failure prediction training run, waits for `SUCCEEDED`, then asserts candidate model `artifactUri`, `artifactManifestUri`, `sha256` artifact hash, matching training artifact hash, matching feature schema hash, and positive artifact size. |
 | Approval gate | Calls the model approval API, which rejects incomplete artifact metadata, and asserts the model becomes `APPROVED`. |
 | Deployment policy | Creates an `ACTIVE` device policy with fallback enabled and asserts it selects the trained `modelVersionId`. |
-| Live inference trace | Runs analytics recalculation, waits for `COMPLETED`, then asserts latest prediction is `TRAINED_MODEL`, `FAILURE_PREDICTION`, uses the deployed `modelVersionId`, and includes `failureRiskScore`, `failureHorizonDays`, `riskDrivers`, and `inputHash`. |
-| Monitoring signals | Reads `analytics-service` `/actuator/prometheus` and asserts feature generation, training run, inference duration, and inference fallback metrics are exported. |
+| Live inference trace | Runs analytics recalculation, waits for `COMPLETED`, then asserts latest prediction is `TRAINED_MODEL`, `FAILURE_PREDICTION`, uses the deployed `modelVersionId`, has `policySource=DEVICE`, has an empty `fallbackReason`, and includes `failureRiskScore`, `failureHorizonDays`, `riskDrivers`, and `inputHash`. |
+| Monitoring signals | Reads `analytics-service` `/actuator/prometheus` and asserts feature generation, training run, inference duration, fallback rate/count, feature-mismatch/missing-feature error gauges, shadow, canary, false-alert, and lead-time quality metrics are exported. |
 | Lifecycle cleanup | Optional `-VerifyLifecycleCleanup` creates and deletes a manual label, checks generated-label delete is blocked, verifies active policy delete is blocked until disable, deletes the disabled policy, checks model delete is blocked by runtime or prediction lineage, and archives referenced training, snapshot, and dataset records. |
 
 ## Expected Output
@@ -59,7 +87,9 @@ On success, the script prints a JSON object similar to:
 
 ```json
 {
+  "status": "PASSED",
   "runId": "0f1a2b3c4d",
+  "completedStep": "Docker smoke verification passed",
   "accountId": "9e2d...",
   "deviceId": "4c2f...",
   "datasetVersionId": "a12f...",
@@ -67,10 +97,15 @@ On success, the script prints a JSON object similar to:
   "horizonLabelLineageHash": "sha256:...",
   "trainingRunId": "c56d...",
   "modelVersionId": "d78e...",
+  "artifactHash": "sha256:...",
+  "featureSchemaHash": "sha256:...",
   "artifactUri": "s3://model-artifacts/...",
   "artifactManifestUri": "s3://model-artifacts/...",
+  "policySource": "DEVICE",
+  "fallbackReason": "",
   "predictionStatus": "TRAINED_MODEL",
   "failureRiskScore": 0.42,
+  "failureHorizonDays": 7,
   "inputHash": "...",
   "lifecycleCleanupVerified": true
 }

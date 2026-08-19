@@ -16,6 +16,7 @@ from app.services.artifact_store import ArtifactStore
 from app.services.feature_service import FeatureService
 from app.services.inference_service import InferenceService
 from app.services.model_registry_service import model_registry_service
+from app.services.serving_cache import ServingArtifactCache
 from app.services.training_service import TrainingService
 from app.tests.failure_fixtures import (
     EXPECTED_FAILURE_FIXTURE_SUMMARY,
@@ -59,6 +60,16 @@ class _FakeS3Client:
 class _FailingVerifyArtifactStore(ArtifactStore):
     def verify_model_bundle(self, manifest_uri: str, expected_hash: str | None = None) -> bool:
         raise RuntimeError("forced verification failure")
+
+
+class _CountingArtifactStore(ArtifactStore):
+    def __init__(self, root: str | None = None) -> None:
+        super().__init__(root)
+        self.load_model_bundle_calls = 0
+
+    def load_model_bundle(self, manifest_uri: str, expected_hash: str | None = None) -> dict:
+        self.load_model_bundle_calls += 1
+        return super().load_model_bundle(manifest_uri, expected_hash)
 
 
 def sample_rows() -> list[dict]:
@@ -515,6 +526,9 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(model_artifact["targetContract"]["targetColumn"], "failureWithinHorizon")
             self.assertIn("CONFIRMED_FAILURE", model_artifact["targetContract"]["positiveOutcomes"])
             self.assertEqual(model_artifact["approvalGates"]["approvalGateVersion"], "failure-approval-gates-v1")
+            self.assertEqual(model_artifact["approvalGates"]["profileId"], "failure-production-default")
+            self.assertEqual(model_artifact["approvalGates"]["profileVersion"], "2026-08-approval-v1")
+            self.assertEqual(model_artifact["approvalGates"]["thresholdSource"], "ml-service-default-config")
             self.assertEqual(model_artifact["approvalGates"]["status"], "NEEDS_REVIEW")
             self.assertFalse(model_artifact["approvalGates"]["promotionEligible"])
             self.assertIn(
@@ -595,7 +609,11 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertIn("failureBaselineFalseAlertsPerDeviceMonth", run.metrics)
             self.assertIn("failurePrAucLift", run.metrics)
             self.assertIn("failureF1Lift", run.metrics)
+            self.assertEqual(run.metrics["approvalGateProfileId"], "failure-production-default")
+            self.assertEqual(run.metrics["approvalGateProfileVersion"], "2026-08-approval-v1")
+            self.assertIn("approvalGates", run.metrics)
             bundle = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
+            self.assertEqual(bundle["manifest"]["approvalGates"]["profileId"], "failure-production-default")
             self.assertEqual(bundle["manifest"]["evaluation"]["strategy"], "time_based_holdout")
             self.assertEqual(bundle["manifest"]["evaluation"]["status"], "EVALUATED")
             self.assertEqual(bundle["manifest"]["evaluation"]["baseline"]["name"], "training-positive-rate-baseline-v1")
@@ -613,6 +631,43 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertIn("minimum_positive_labels", gate_names)
             self.assertIn("artifact_load_test", gate_names)
             self.assertEqual(model_card["approvalGates"]["status"], "PASSED")
+
+    def test_failure_training_applies_custom_approval_gate_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = ArtifactStore(directory)
+            service = TrainingService(artifact_store)
+            request = TrainingRequest.model_validate(
+                {
+                    "datasetVersionId": "dataset-failure-strict-profile-v1",
+                    "accountId": "account-1",
+                    "sourceType": "INTERNAL_TELEMETRY",
+                    "modelFamily": "FAILURE_PREDICTION",
+                    "failureHorizonDays": 14,
+                    "approvalGateProfile": {
+                        "profileId": "strict-failure-canary",
+                        "profileVersion": "v2",
+                        "thresholdSource": "analytics-service-config",
+                        "minimumPrecision": 1.1,
+                        "minimumRecall": 0.6,
+                        "minimumPrAuc": 0.6,
+                        "maximumFalseAlertsPerDeviceMonth": 10.0,
+                        "minimumLeadTimeDays": 1.0,
+                    },
+                    "rows": known_failure_outcome_rows(),
+                }
+            )
+
+            run = service.start_training(request)
+
+            self.assertEqual(run.status, "SUCCEEDED")
+            gates = run.metrics["approvalGates"]
+            self.assertEqual(gates["profileId"], "strict-failure-canary")
+            self.assertEqual(gates["profileVersion"], "v2")
+            self.assertEqual(gates["thresholdSource"], "analytics-service-config")
+            self.assertEqual(gates["status"], "NEEDS_REVIEW")
+            precision_gate = next(gate for gate in gates["criteria"] if gate["name"] == "minimum_precision")
+            self.assertEqual(precision_gate["threshold"], 1.1)
+            self.assertFalse(precision_gate["passed"])
 
     def test_failure_training_rejects_insufficient_positive_labels(self) -> None:
         start = datetime(2026, 7, 30, tzinfo=timezone.utc)
@@ -785,6 +840,53 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(response.model_family, "FAILURE_PREDICTION")
             self.assertEqual(response.model_version_id, run.model_version_id)
             self.assertIsNotNone(response.failure_risk_score)
+
+    def test_serving_artifact_cache_reuses_loaded_failure_pipeline(self) -> None:
+        start = datetime(2026, 7, 30, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _CountingArtifactStore(directory)
+            run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-failure-cache-hit-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "modelFamily": "FAILURE_PREDICTION",
+                        "failureHorizonDays": 14,
+                        "rows": [
+                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
+                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
+                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
+                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                        ],
+                    }
+                )
+            )
+            artifact_store.load_model_bundle_calls = 0
+            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
+            request = InferenceRequest.model_validate(
+                {
+                    "deviceId": "device-1",
+                    "metrics": {"rollingMean": 118.0, "baselineDeviationRatio": 1.7},
+                    "modelPreference": {
+                        "modelVersionId": run.model_version_id,
+                        "manifestUri": run.manifest_uri,
+                        "artifactUri": run.artifact_uri,
+                        "artifactHash": run.artifact_hash,
+                        "modelStatus": "APPROVED",
+                        "allowBaselineHeuristic": False,
+                    },
+                }
+            )
+
+            first = service.predict(request)
+            second = service.predict(request)
+
+            self.assertEqual(first.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(second.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(first.model_family, "FAILURE_PREDICTION")
+            self.assertEqual(artifact_store.load_model_bundle_calls, 1)
+            self.assertEqual(service.serving_cache.stats()["hits"], 1)
 
     def test_failure_model_inference_loads_by_model_version_id_from_registry(self) -> None:
         start = datetime(2026, 7, 30, tzinfo=timezone.utc)
@@ -1022,6 +1124,145 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(response.model_status, "APPROVED")
             self.assertGreater(response.confidence, 0.5)
 
+    def test_serving_artifact_cache_reuses_loaded_anomaly_pipeline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _CountingArtifactStore(directory)
+            run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-cache-hit-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "rows": sample_rows(),
+                    }
+                )
+            )
+            artifact_store.load_model_bundle_calls = 0
+            service = InferenceService(
+                artifact_store,
+                ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300),
+            )
+            request = InferenceRequest.model_validate(
+                {
+                    "deviceId": "device-1",
+                    "metrics": {"voltage": 245.0, "activePowerW": 1400.0, "current": 8.0},
+                    "modelPreference": {
+                        "modelVersionId": run.model_version_id,
+                        "manifestUri": run.manifest_uri,
+                        "artifactUri": run.artifact_uri,
+                        "artifactHash": run.artifact_hash,
+                        "allowBaselineHeuristic": False,
+                    },
+                }
+            )
+
+            first = service.predict(request)
+            second = service.predict(request)
+
+            self.assertEqual(first.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(second.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(artifact_store.load_model_bundle_calls, 1)
+            self.assertEqual(service.serving_cache.stats()["hits"], 1)
+            self.assertEqual(service.serving_cache.stats()["misses"], 1)
+
+    def test_serving_artifact_cache_reloads_when_artifact_hash_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _CountingArtifactStore(directory)
+            run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-cache-reload-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "rows": sample_rows(),
+                    }
+                )
+            )
+            loaded = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
+            model_payload = dict(loaded["files"]["model.json"], version="cache-reload-version")
+            manifest = dict(loaded["manifest"])
+            manifest.pop("artifactHash", None)
+            bundle = artifact_store.save_model_bundle(
+                "model-cache-reload",
+                model_payload,
+                manifest,
+                {
+                    "model.joblib": loaded["files"]["model.joblib"],
+                    "preprocessor.json": loaded["files"]["preprocessor.json"],
+                },
+            )
+            artifact_store.load_model_bundle_calls = 0
+            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
+
+            first = service.predict(self._artifact_request(run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash))
+            second = service.predict(self._artifact_request(run.model_version_id, bundle["manifestUri"], bundle["artifactUri"], bundle["artifactHash"]))
+
+            self.assertEqual(first.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(second.prediction_status, "TRAINED_MODEL")
+            self.assertEqual(artifact_store.load_model_bundle_calls, 2)
+
+    def test_serving_artifact_cache_does_not_cache_corrupted_artifact_loads(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _CountingArtifactStore(directory)
+            run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-cache-corrupt-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "rows": sample_rows(),
+                    }
+                )
+            )
+            artifact_path = Path(directory) / (run.artifact_uri or "").removeprefix("artifact://local/")
+            artifact_path.write_bytes(b"corrupted")
+            artifact_store.load_model_bundle_calls = 0
+            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
+            request = self._artifact_request(run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash)
+
+            first = service.predict(request)
+            second = service.predict(request)
+
+            self.assertEqual(first.prediction_status, "MODEL_UNAVAILABLE")
+            self.assertEqual(second.prediction_status, "MODEL_UNAVAILABLE")
+            self.assertEqual(artifact_store.load_model_bundle_calls, 2)
+            self.assertEqual(service.serving_cache.stats()["loadFailures"], 2)
+            self.assertEqual(service.serving_cache.stats()["cacheSize"], 0)
+
+    def test_serving_artifact_cache_evicts_least_recent_entry_at_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _CountingArtifactStore(directory)
+            first_run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-cache-evict-a-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "rows": sample_rows(),
+                    }
+                )
+            )
+            second_run = TrainingService(artifact_store).start_training(
+                TrainingRequest.model_validate(
+                    {
+                        "datasetVersionId": "dataset-cache-evict-b-v1",
+                        "accountId": "account-1",
+                        "sourceType": "INTERNAL_TELEMETRY",
+                        "rows": sample_rows(),
+                    }
+                )
+            )
+            artifact_store.load_model_bundle_calls = 0
+            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=1, ttl_seconds=300))
+
+            service.predict(self._artifact_request(first_run.model_version_id, first_run.manifest_uri, first_run.artifact_uri, first_run.artifact_hash))
+            service.predict(self._artifact_request(second_run.model_version_id, second_run.manifest_uri, second_run.artifact_uri, second_run.artifact_hash))
+            service.predict(self._artifact_request(first_run.model_version_id, first_run.manifest_uri, first_run.artifact_uri, first_run.artifact_hash))
+
+            self.assertEqual(artifact_store.load_model_bundle_calls, 3)
+            self.assertEqual(service.serving_cache.stats()["evictions"], 2)
+            self.assertEqual(service.serving_cache.stats()["cacheSize"], 1)
+
     def test_inference_returns_model_unavailable_when_runtime_artifact_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             artifact_store = ArtifactStore(directory)
@@ -1056,6 +1297,27 @@ class MlLifecycleTest(unittest.TestCase):
 
             self.assertEqual(response.prediction_status, "MODEL_UNAVAILABLE")
             self.assertEqual(response.model_version_id, run.model_version_id)
+
+    def _artifact_request(
+        self,
+        model_version_id: str | None,
+        manifest_uri: str | None,
+        artifact_uri: str | None,
+        artifact_hash: str | None,
+    ) -> InferenceRequest:
+        return InferenceRequest.model_validate(
+            {
+                "deviceId": "device-1",
+                "metrics": {"voltage": 245.0, "activePowerW": 1400.0, "current": 8.0},
+                "modelPreference": {
+                    "modelVersionId": model_version_id,
+                    "manifestUri": manifest_uri,
+                    "artifactUri": artifact_uri,
+                    "artifactHash": artifact_hash,
+                    "allowBaselineHeuristic": False,
+                },
+            }
+        )
 
     def test_api_training_run_lookup_returns_created_run(self) -> None:
         client = TestClient(app)

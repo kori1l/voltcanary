@@ -290,6 +290,7 @@ public class MlTrainingService {
         putIfPresent(values, "failureHorizonDays", request.failureHorizonDays());
         putIfPresent(values, "minimumPositiveLabels", request.minimumPositiveLabels());
         putIfPresent(values, "minimumLabelCoverage", request.minimumLabelCoverage());
+        putIfPresent(values, "approvalGateProfile", request.approvalGateProfile());
         try {
             return objectMapper.writeValueAsString(values);
         } catch (JsonProcessingException exception) {

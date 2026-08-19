@@ -317,7 +317,11 @@ public class MlFeaturePipelineService {
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("sourceType", datasetVersion.getSourceType().name());
-        schema.put("contract", contract.asMap());
+        schema.put("contract", contract.metadata(
+                config.featureSetVersion(),
+                config.codeConfigVersion(),
+                "",
+                ""));
         schema.put("groupCount", groups.size());
         return new FeatureGeneration(featureRows.size(), rejected, schema, featureRows);
     }
@@ -401,7 +405,11 @@ public class MlFeaturePipelineService {
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("sourceType", datasetVersion.getSourceType().name());
-        schema.put("contract", contract.asMap());
+        schema.put("contract", contract.metadata(
+                config.featureSetVersion(),
+                config.codeConfigVersion(),
+                "",
+                ""));
         schema.put("groupCount", groups.size());
         return new FeatureGeneration(featureRows.size(), 0, schema, featureRows);
     }

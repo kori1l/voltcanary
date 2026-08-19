@@ -21,6 +21,10 @@ public record FeatureVectorContract(
         List<String> optionalColumns,
         List<String> labelColumns) {
 
+    public static final String CONTRACT_VERSION = "feature-vector-contract-v1";
+    public static final String DEFAULT_FEATURE_SET_VERSION = "feature-set-v1";
+    public static final String DEFAULT_GENERATOR_VERSION = "analytics-feature-pipeline-v1";
+
     public static FeatureVectorContract forConfig(
             String modelFamily,
             Integer horizonDays,
@@ -42,7 +46,7 @@ public record FeatureVectorContract(
         List<String> labels = labelColumns(family);
 
         return new FeatureVectorContract(
-                "feature-vector-contract-v1",
+                CONTRACT_VERSION,
                 family,
                 horizonDays,
                 template.id(),
@@ -70,11 +74,72 @@ public record FeatureVectorContract(
         return value;
     }
 
+    public Map<String, Object> metadata(
+            String featureSetVersion,
+            String generatorVersion,
+            String featureSchemaHash,
+            String featureConfigHash) {
+        Map<String, Object> value = asMap();
+        value.put("featureSetVersion", blankToDefault(featureSetVersion, DEFAULT_FEATURE_SET_VERSION));
+        value.put("generatorVersion", blankToDefault(generatorVersion, DEFAULT_GENERATOR_VERSION));
+        value.put("featureSchemaHash", featureSchemaHash == null ? "" : featureSchemaHash);
+        value.put("featureConfigHash", featureConfigHash == null ? "" : featureConfigHash);
+        value.put("contractMetadataHash", contractMetadataHash(
+                blankToDefault(featureSetVersion, DEFAULT_FEATURE_SET_VERSION),
+                blankToDefault(generatorVersion, DEFAULT_GENERATOR_VERSION),
+                contractVersion,
+                modelFamily.name(),
+                horizonDays,
+                featureTemplateId,
+                featureTemplateVersion,
+                requiredColumns));
+        return value;
+    }
+
+    public static String contractMetadataHash(
+            String featureSetVersion,
+            String generatorVersion,
+            String contractVersion,
+            String modelFamily,
+            Integer horizonDays,
+            String featureTemplateId,
+            String featureTemplateVersion,
+            List<String> requiredColumns) {
+        String payload = String.join("|",
+                blankToDefault(featureSetVersion, DEFAULT_FEATURE_SET_VERSION),
+                blankToDefault(generatorVersion, DEFAULT_GENERATOR_VERSION),
+                blankToDefault(contractVersion, CONTRACT_VERSION),
+                modelFamily == null ? "" : modelFamily,
+                horizonDays == null ? "" : horizonDays.toString(),
+                blankToDefault(featureTemplateId, FeatureTemplateCatalog.DEFAULT_TEMPLATE_ID),
+                blankToDefault(featureTemplateVersion, FeatureTemplateCatalog.DEFAULT_TEMPLATE_VERSION),
+                String.join(",", requiredColumns == null ? List.of() : requiredColumns));
+        return sha256(payload);
+    }
+
+    private static String blankToDefault(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
+    }
+
     private static MlModelFamily parseFamily(String modelFamily) {
         try {
             return MlModelFamily.valueOf(modelFamily.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported ML model family: " + modelFamily);
+        }
+    }
+
+    private static String sha256(String value) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder("sha256:");
+            for (byte b : digest) {
+                builder.append(String.format("%02x", b));
+            }
+            return builder.toString();
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is not available", exception);
         }
     }
 

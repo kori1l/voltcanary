@@ -190,6 +190,79 @@ class MlModelRegistryServiceTest {
                 .hasMessageContaining("artifact manifest URI");
     }
 
+    @Test
+    void failureApprovalRejectsMissingGateMetadata() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlModelVersion model = failureModel(accountId, MlModelStatus.CANDIDATE, "{}");
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+
+        assertThatThrownBy(() -> service.approve(accountId, actorId, model.getId(), new MlModelStatusRequest("reviewed")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("approval gates are missing");
+    }
+
+    @Test
+    void failureApprovalRejectsFailedRequiredGates() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlModelVersion model = failureModel(accountId, MlModelStatus.CANDIDATE, """
+                {
+                  "approvalGates": {
+                    "profileId": "failure-production-default",
+                    "profileVersion": "2026-08-approval-v1",
+                    "thresholdSource": "ml-service-default-config",
+                    "promotionEligible": false,
+                    "criteria": [
+                      {
+                        "name": "minimum_precision",
+                        "observed": 0.2,
+                        "threshold": 0.6,
+                        "passed": false,
+                        "reason": "Requires candidate precision to meet the configured approval threshold."
+                      }
+                    ]
+                  }
+                }
+                """);
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+
+        assertThatThrownBy(() -> service.approve(accountId, actorId, model.getId(), new MlModelStatusRequest("reviewed")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("minimum_precision")
+                .hasMessageContaining("ml-service-default-config");
+    }
+
+    @Test
+    void failureApprovalAcceptsPassingGateMetadata() {
+        UUID accountId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        MlModelVersion model = failureModel(accountId, MlModelStatus.CANDIDATE, """
+                {
+                  "approvalGates": {
+                    "profileId": "failure-production-default",
+                    "profileVersion": "2026-08-approval-v1",
+                    "thresholdSource": "ml-service-default-config",
+                    "promotionEligible": true,
+                    "criteria": [
+                      {
+                        "name": "minimum_precision",
+                        "observed": 0.9,
+                        "threshold": 0.6,
+                        "passed": true,
+                        "reason": "Requires candidate precision to meet the configured approval threshold."
+                      }
+                    ]
+                  }
+                }
+                """);
+        when(modelRepository.findById(model.getId())).thenReturn(Optional.of(model));
+
+        MlModelVersionDto approved = service.approve(accountId, actorId, model.getId(), new MlModelStatusRequest("reviewed"));
+
+        assertThat(approved.status()).isEqualTo(MlModelStatus.APPROVED);
+    }
+
 
     @Test
     void resolvesDeploymentPoliciesByDeviceDeviceTypeThenAccount() {
@@ -280,6 +353,14 @@ class MlModelRegistryServiceTest {
         model.setSupportedMetricsJson("[]");
         model.setEvaluationMetricsJson("{}");
         model.setCreatedAt(Instant.now());
+        return model;
+    }
+
+    private MlModelVersion failureModel(UUID accountId, MlModelStatus status, String metricsJson) {
+        MlModelVersion model = model(accountId, status);
+        model.setFamily(MlModelFamily.FAILURE_PREDICTION);
+        model.setAlgorithm("sklearn-logistic-regression-failure-v1");
+        model.setEvaluationMetricsJson(metricsJson);
         return model;
     }
 

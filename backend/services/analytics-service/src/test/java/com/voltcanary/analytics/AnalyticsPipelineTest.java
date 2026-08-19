@@ -266,6 +266,7 @@ class AnalyticsPipelineTest {
                 null,
                 null,
                 null,
+                null,
                 List.of(new MlTrainingMetricRow(
                         Instant.parse("2026-07-30T12:00:00Z"),
                         "device-1",
@@ -362,5 +363,44 @@ class AnalyticsPipelineTest {
                 .containsEntry("baselineDeviationRatio", 1.18)
                 .containsEntry("applianceLoadRatio", 0.92);
         assertThat(request.featureContract()).containsEntry("modelFamily", "FAILURE_PREDICTION");
+    }
+
+    @Test
+    void mlInferenceRequestReportsExplicitContractMetadataMismatches() {
+        UUID deviceId = UUID.randomUUID();
+        MlInferenceRequest request = new MlInferenceRequest(
+                deviceId,
+                Instant.parse("2026-07-30T12:00:00Z"),
+                Map.of(
+                        "metric", "activePowerW",
+                        "latestValue", 120.0,
+                        "mean", 100.0,
+                        "min", 90.0,
+                        "max", 130.0,
+                        "featureSetVersion", "feature-set-v2",
+                        "featureGeneratorVersion", "analytics-feature-pipeline-v2",
+                        "deviceType", "washer"),
+                List.of(),
+                Map.of("mean", 100.0),
+                Map.of("sampleCount", 6),
+                Map.of(
+                        "modelFamily", "FAILURE_PREDICTION",
+                        "requiredFeatureContractVersion", "feature-vector-contract-v1",
+                        "requiredFeatureSetVersion", "feature-set-v1",
+                        "requiredFeatureGeneratorVersion", "analytics-feature-pipeline-v1",
+                        "requiredFeatureTemplateId", "generic-appliance",
+                        "requiredFeatureTemplateVersion", "template-v1",
+                        "requiredHorizonDays", 14,
+                        "requiredFeatureContractMetadataHash", "sha256:trained-contract"));
+
+        assertThat(request.featureGenerationStatus()).isEqualTo("FEATURE_SCHEMA_MISMATCH");
+        assertThat(request.featureGenerationErrors())
+                .anySatisfy(error -> assertThat(error).startsWith("FEATURE_SET_VERSION_MISMATCH"))
+                .anySatisfy(error -> assertThat(error).startsWith("FEATURE_GENERATOR_VERSION_MISMATCH"))
+                .anySatisfy(error -> assertThat(error).startsWith("FEATURE_HORIZON_MISMATCH"))
+                .anySatisfy(error -> assertThat(error).startsWith("FEATURE_SCHEMA_MISMATCH"));
+        assertThat(request.featureContract())
+                .containsEntry("requiredFeatureContractMetadataHash", "sha256:trained-contract")
+                .containsKey("contractMetadataHash");
     }
 }

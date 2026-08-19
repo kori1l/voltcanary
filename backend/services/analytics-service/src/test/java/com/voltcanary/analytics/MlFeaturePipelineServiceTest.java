@@ -508,6 +508,97 @@ class MlFeaturePipelineServiceTest {
                 .containsEntry("applianceActivityFlag", offlineFeatures.get("applianceActivityFlag"));
     }
 
+    @Test
+    void onlineAndOfflineFailureFeaturesMatchForPositiveHorizonFixture() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        UUID datasetId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        Instant predictionAt = Instant.parse("2026-07-01T02:00:00Z");
+        when(datasetVersionRepository.findById(versionId))
+                .thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.INTERNAL_TELEMETRY)));
+        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(versionId))
+                .thenReturn(List.of(canonicalRow(
+                        accountId,
+                        versionId,
+                        deviceId,
+                        1,
+                        "activePowerW",
+                        "active_power",
+                        predictionAt.toString(),
+                        120.0)));
+
+        service.generate(accountId, new MlFeatureSnapshotRequest(
+                versionId,
+                "feature-set-v1",
+                "analytics-feature-pipeline-v1",
+                1,
+                7200L,
+                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"),
+                "FAILURE_PREDICTION",
+                14,
+                "generic-appliance",
+                "template-v1"));
+
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        verify(featureRowRepository).saveAll(featureRows.capture());
+        MlFeatureRow offlineRow = featureRows.getValue().iterator().next();
+        Map<String, Object> offlineFeatures = new ObjectMapper().readValue(offlineRow.getFeatureValuesJson(), Map.class);
+        FeatureVectorContract contract = FeatureVectorContract.forConfig(
+                "FAILURE_PREDICTION",
+                14,
+                "generic-appliance",
+                "template-v1",
+                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"));
+        String requiredContractHash = FeatureVectorContract.contractMetadataHash(
+                "feature-set-v1",
+                "analytics-feature-pipeline-v1",
+                contract.contractVersion(),
+                contract.modelFamily().name(),
+                contract.horizonDays(),
+                contract.featureTemplateId(),
+                contract.featureTemplateVersion(),
+                contract.requiredColumns());
+
+        MlInferenceRequest onlineRequest = new MlInferenceRequest(
+                deviceId,
+                predictionAt,
+                Map.of(
+                        "metric", "active_power",
+                        "metricUnit", "W",
+                        "latestValue", 120.0,
+                        "mean", 120.0,
+                        "min", 120.0,
+                        "max", 120.0,
+                        "horizonDays", 14,
+                        "deviceType", "washer"),
+                List.of(),
+                Map.of("mean", 120.0),
+                Map.of("sampleCount", 1),
+                Map.of(
+                        "modelFamily", "FAILURE_PREDICTION",
+                        "requiredFeatureContractVersion", "feature-vector-contract-v1",
+                        "requiredFeatureSetVersion", "feature-set-v1",
+                        "requiredFeatureGeneratorVersion", "analytics-feature-pipeline-v1",
+                        "requiredFeatureTemplateId", "generic-appliance",
+                        "requiredFeatureTemplateVersion", "template-v1",
+                        "requiredHorizonDays", 14,
+                        "requiredFeatureContractMetadataHash", requiredContractHash));
+
+        assertThat(onlineRequest.featureGenerationStatus()).isEqualTo("READY");
+        assertThat(onlineRequest.featureVector())
+                .containsEntry("deviceKey", offlineFeatures.get("deviceKey"))
+                .containsEntry("metricName", offlineFeatures.get("metricName"))
+                .containsEntry("timestamp", offlineFeatures.get("timestamp"))
+                .containsEntry("rollingMean", offlineFeatures.get("rollingMean"))
+                .containsEntry("baselineDeviationRatio", offlineFeatures.get("baselineDeviationRatio"))
+                .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"));
+        assertThat(onlineRequest.featureContract())
+                .containsEntry("horizonDays", 14)
+                .containsEntry("requiredFeatureContractMetadataHash", requiredContractHash)
+                .containsEntry("contractMetadataHash", requiredContractHash);
+    }
+
     private MlDatasetVersion datasetVersion(UUID accountId, UUID datasetId, UUID versionId) {
         return datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.EXTERNAL_IMPORT);
     }

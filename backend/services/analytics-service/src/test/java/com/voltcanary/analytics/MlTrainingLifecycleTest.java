@@ -126,6 +126,11 @@ class MlTrainingLifecycleTest {
                 14,
                 1,
                 0.5,
+                Map.of(
+                        "profileId", "failure-smoke-ci",
+                        "profileVersion", "2026-08-smoke",
+                        "thresholdSource", "docker-smoke",
+                        "minimumLeadTimeDays", 0),
                 "{}"));
 
         assertThat(response.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
@@ -133,7 +138,9 @@ class MlTrainingLifecycleTest {
         assertThat(response.hyperparametersJson())
                 .contains("\"failureHorizonDays\":14")
                 .contains("\"minimumPositiveLabels\":1")
-                .contains("\"minimumLabelCoverage\":0.5");
+                .contains("\"minimumLabelCoverage\":0.5")
+                .contains("\"approvalGateProfile\"")
+                .contains("\"minimumLeadTimeDays\":0");
     }
 
     @Test
@@ -142,6 +149,7 @@ class MlTrainingLifecycleTest {
         UUID datasetVersionId = UUID.randomUUID();
         UUID featureSnapshotId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
+        run.setHyperparametersJson("{\"approvalGateProfile\":{\"minimumLeadTimeDays\":0}}");
         UUID modelVersionId = UUID.randomUUID();
         when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
         when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
@@ -192,6 +200,11 @@ class MlTrainingLifecycleTest {
         assertThat(result.get().getHeartbeatAt()).isNull();
         assertThat(result.get().getMetricsJson()).contains("trainingRows");
         assertThat(result.get().getArtifactUri()).isEqualTo("artifact://local/model/model.joblib");
+
+        ArgumentCaptor<MlTrainingRequest> trainingRequest = ArgumentCaptor.forClass(MlTrainingRequest.class);
+        verify(mlClient).requestTraining(trainingRequest.capture());
+        assertThat(trainingRequest.getValue().approvalGateProfile())
+                .containsEntry("minimumLeadTimeDays", 0);
 
         ArgumentCaptor<Map<String, Object>> smokePreference = ArgumentCaptor.forClass(Map.class);
         verify(mlClient).requestPrediction(

@@ -22,6 +22,7 @@ import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.FeatureSet;
+import com.voltcanary.analytics.ml.FeatureVectorContract;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
@@ -486,7 +487,20 @@ public class AnalyticsRecalculationService {
         String compatibilityFallbackReason = "";
         if (accountId != null && policy.modelVersionId() != null) {
             MlModelVersionDto model = mlModelRegistryService.getModel(accountId, policy.modelVersionId());
+            Map<String, Object> modelMetrics = model.evaluationMetricsJson() == null || model.evaluationMetricsJson().isBlank()
+                    ? Map.of()
+                    : readJson(model.evaluationMetricsJson());
             modelPreference.put("requiredFeatureSchemaHash", model.featureSchemaHash() == null ? "" : model.featureSchemaHash());
+            modelPreference.put("requiredFeatureContractVersion", string(modelMetrics.get("requiredFeatureContractVersion")).isBlank()
+                    ? FeatureVectorContract.CONTRACT_VERSION
+                    : string(modelMetrics.get("requiredFeatureContractVersion")));
+            modelPreference.put("requiredFeatureContractMetadataHash", string(modelMetrics.get("requiredFeatureContractMetadataHash")));
+            modelPreference.put("requiredFeatureSetVersion", string(modelMetrics.get("featureSetVersion")));
+            modelPreference.put("requiredFeatureGeneratorVersion", string(modelMetrics.get("featureGeneratorVersion")));
+            modelPreference.put("requiredFeatureTemplateId", string(modelMetrics.get("featureTemplateId")));
+            modelPreference.put("requiredFeatureTemplateVersion", string(modelMetrics.get("featureTemplateVersion")));
+            modelPreference.put("requiredHorizonDays", modelMetrics.get("featureSnapshotHorizonDays") == null ? "" : modelMetrics.get("featureSnapshotHorizonDays"));
+            modelPreference.put("requiredFeatureConfigHash", string(modelMetrics.get("requiredFeatureConfigHash")));
             modelPreference.put("modelFamily", model.family() == null ? "" : model.family().name());
             modelPreference.put("modelVersion", Integer.toString(model.version()));
             modelPreference.put("modelStatus", model.status() == null ? "" : model.status().name());
@@ -511,6 +525,14 @@ public class AnalyticsRecalculationService {
                         window.getEndAt(),
                         "MAINTENANCE"))
                 .toList();
+        com.voltcanary.analytics.ml.MlInferenceRequest inferenceRequest = new com.voltcanary.analytics.ml.MlInferenceRequest(
+                deviceId,
+                now,
+                metrics,
+                excludedIntervals,
+                baselineContext,
+                recentWindow,
+                modelPreference);
         MlInferenceResponse response = suppressMl ? null : mlClient.requestPrediction(
                 deviceId,
                 now,
@@ -583,6 +605,12 @@ public class AnalyticsRecalculationService {
                 deviceType,
                 canaryIncluded);
         payload.put("availabilityStatus", status);
+        payload.put("generatedFeatureContract", inferenceRequest.featureContract());
+        payload.put("featureGenerationStatus", inferenceRequest.featureGenerationStatus());
+        payload.put("featureGenerationErrors", inferenceRequest.featureGenerationErrors());
+        payload.put("requiredFeatureSchemaHash", string(modelPreference.get("requiredFeatureSchemaHash")));
+        payload.put("requiredFeatureContractMetadataHash", string(modelPreference.get("requiredFeatureContractMetadataHash")));
+        payload.put("generatedFeatureContractMetadataHash", string(inferenceRequest.featureContract().get("contractMetadataHash")));
         payload.put("confidence", response == null
                 ? 0
                 : (maintenanceOverlap && settings.maintenanceBehavior() == com.voltcanary.analytics.domain.MaintenanceMlBehavior.REDUCE_CONFIDENCE

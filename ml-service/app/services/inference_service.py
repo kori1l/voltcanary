@@ -8,11 +8,13 @@ from app.models.tabular_anomaly_model import TabularAnomalyModel
 from app.schemas.inference import InferenceRequest, InferenceResponse, PredictionSignal
 from app.services.artifact_store import ArtifactStore
 from app.services.model_registry_service import MODEL_NAME, MODEL_STATUS, MODEL_TYPE, MODEL_VERSION, model_registry_service
+from app.services.serving_cache import ServingArtifactCache
 
 
 class InferenceService:
-    def __init__(self, artifact_store: ArtifactStore | None = None) -> None:
+    def __init__(self, artifact_store: ArtifactStore | None = None, serving_cache: ServingArtifactCache | None = None) -> None:
         self.artifact_store = artifact_store or ArtifactStore()
+        self.serving_cache = serving_cache or ServingArtifactCache(self.artifact_store)
 
     def predict(self, request: InferenceRequest) -> InferenceResponse:
         feature_error_response = self._feature_error_response(request)
@@ -200,6 +202,13 @@ class InferenceService:
         input_hash = self._input_hash(request)
         if request.feature_generation_status and request.feature_generation_status != "READY":
             details = request.feature_generation_errors or ["Online features are unavailable for the active prediction window."]
+            mismatch_statuses = {"FEATURE_CONTRACT_VERSION_MISMATCH", "FEATURE_SCHEMA_MISMATCH"}
+            prediction_status = (
+                "FEATURE_SCHEMA_MISMATCH"
+                if request.feature_generation_status in mismatch_statuses
+                or any("MISMATCH" in detail for detail in details)
+                else "FEATURES_UNAVAILABLE"
+            )
             return InferenceResponse(
                 deviceId=request.device_id,
                 modelVersionId=None,
@@ -207,20 +216,27 @@ class InferenceService:
                 modelVersion=MODEL_VERSION,
                 modelType=MODEL_TYPE,
                 modelStatus=MODEL_STATUS,
-                predictionStatus="FEATURES_UNAVAILABLE",
+                predictionStatus=prediction_status,
                 anomalyScore=0.0,
                 degradationScore=0.0,
                 riskLevel="LOW",
                 confidence=0.1,
                 signals=[],
                 explanations=details,
-                recommendedActions=["Regenerate the active feature window or enable baseline fallback."],
+                recommendedActions=[
+                    "Regenerate online features with the selected model contract or select a compatible model."
+                    if prediction_status == "FEATURE_SCHEMA_MISMATCH"
+                    else "Regenerate the active feature window or enable baseline fallback."
+                ],
                 inputHash=input_hash,
             )
 
-        required_hash = preference.required_feature_schema_hash
-        generated_hash = str(request.feature_contract.get("featureSchemaHash") or "")
+        required_contract_hash = preference.required_feature_contract_metadata_hash
+        generated_contract_hash = str(request.feature_contract.get("contractMetadataHash") or "")
+        required_hash = required_contract_hash or preference.required_feature_schema_hash
+        generated_hash = generated_contract_hash or str(request.feature_contract.get("featureSchemaHash") or "")
         if required_hash and generated_hash and required_hash != generated_hash:
+            hash_name = "contract metadata" if required_contract_hash else "schema"
             return InferenceResponse(
                 deviceId=request.device_id,
                 modelVersionId=None,
@@ -234,7 +250,7 @@ class InferenceService:
                 riskLevel="LOW",
                 confidence=0.1,
                 signals=[],
-                explanations=["Online feature schema does not match the selected model feature schema."],
+                explanations=[f"Online feature {hash_name} does not match the selected model feature contract."],
                 recommendedActions=["Select a compatible model version or regenerate features with the model contract."],
                 inputHash=input_hash,
             )
@@ -256,28 +272,17 @@ class InferenceService:
             return None
 
         try:
-            bundle = self.artifact_store.load_model_bundle(model["manifestUri"], model.get("artifactHash"))
-        except (OSError, ValueError) as exc:
+            runtime = self.serving_cache.get(model)
+        except (OSError, ValueError, ImportError) as exc:
             return self._model_unavailable_response(request, model, str(exc))
-        manifest_model_version_id = str(bundle["manifest"].get("modelVersionId") or "")
-        if model.get("modelVersionId") and manifest_model_version_id != model.get("modelVersionId"):
-            return self._model_unavailable_response(
-                request,
-                model,
-                "Selected model manifest does not match the requested modelVersionId.",
-            )
-        artifact = bundle["files"]["model.json"]
+        artifact = runtime.artifact
         if model["name"].startswith("model-") and artifact.get("name"):
             model["name"] = artifact["name"]
         if model["version"] == model.get("modelVersionId") and artifact.get("version"):
             model["version"] = artifact["version"]
         if model["modelType"] == "trained_tabular_anomaly" and artifact.get("modelType"):
             model["modelType"] = artifact["modelType"]
-        if model["modelType"] == "trained_failure_prediction" or artifact.get("modelType") == "trained_failure_prediction":
-            model["modelType"] = "trained_failure_prediction"
-        pipeline_payload = bundle["files"].get("model.joblib")
-        if not isinstance(pipeline_payload, bytes):
-            return self._model_unavailable_response(request, model, "Selected model bundle does not contain a serialized runtime model.")
+        model["modelType"] = runtime.model_type
 
         if model["modelType"] == "trained_failure_prediction":
             label_response = self._failure_label_gate_response(request, model, artifact)
@@ -286,13 +291,9 @@ class InferenceService:
             feature_response = self._failure_feature_response(request, model, artifact, metric_values)
             if feature_response is not None:
                 return feature_response
-            return self._predict_with_failure_model(request, model, artifact, pipeline_payload, metric_values)
+            return self._predict_with_failure_model(request, model, artifact, runtime.pipeline, metric_values)
 
-        try:
-            pipeline = TabularAnomalyModel.load_pipeline(pipeline_payload)
-        except (OSError, ValueError, ImportError) as exc:
-            return self._model_unavailable_response(request, model, str(exc))
-        model_scores = TabularAnomalyModel.score_with_pipeline(pipeline, metric_values)
+        model_scores = TabularAnomalyModel.score_with_pipeline(runtime.pipeline, metric_values)
         metric_scores = model_scores["metricScores"]
         scores = list(metric_scores.values())
         signals: list[PredictionSignal] = []
@@ -366,13 +367,9 @@ class InferenceService:
         request: InferenceRequest,
         model: dict[str, Any],
         artifact: dict[str, Any],
-        pipeline_payload: bytes,
+        pipeline: Any,
         metric_values: dict[str, float],
     ) -> InferenceResponse:
-        try:
-            pipeline = FailurePredictionModel.load_pipeline(pipeline_payload)
-        except (OSError, ValueError, ImportError) as exc:
-            return self._model_unavailable_response(request, model, str(exc))
         score = FailurePredictionModel.score_with_pipeline(pipeline, metric_values)
         failure_risk_score = round(float(score["failureRiskScore"]), 4)
         failure_risk_band = str(score["failureRiskBand"])

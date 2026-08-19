@@ -5,16 +5,23 @@ param(
     [string] $MlBaseUrl = "http://localhost:8090",
     [int] $TimeoutSeconds = 420,
     [switch] $StartStack,
-    [switch] $VerifyLifecycleCleanup
+    [switch] $VerifyLifecycleCleanup,
+    [switch] $CiMode,
+    [string] $SummaryPath = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ($CiMode) {
+    $ProgressPreference = "SilentlyContinue"
+}
 
 $RunId = [Guid]::NewGuid().ToString("N").Substring(0, 10)
 $CorrelationId = "ml-failure-docker-smoke-$RunId"
+$script:CurrentSmokeStep = "initializing"
 
 function Write-Step {
     param([string] $Message)
+    $script:CurrentSmokeStep = $Message
     Write-Host "[$(Get-Date -Format HH:mm:ss)] $Message"
 }
 
@@ -99,6 +106,64 @@ function Encode-QueryValue {
     return [System.Uri]::EscapeDataString($Value)
 }
 
+function Get-OptionalProperty {
+    param([string] $VariableName, [string] $PropertyName)
+
+    $variable = Get-Variable -Name $VariableName -Scope Script -ErrorAction SilentlyContinue
+    if ($null -eq $variable -or $null -eq $variable.Value) {
+        return ""
+    }
+
+    $value = $variable.Value.$PropertyName
+    if ($null -eq $value) {
+        return ""
+    }
+    return "$value"
+}
+
+function Write-SmokeFailureSummary {
+    param([System.Management.Automation.ErrorRecord] $ErrorRecord)
+
+    $summary = [PSCustomObject]@{
+        status = "FAILED"
+        runId = $RunId
+        failedStep = $script:CurrentSmokeStep
+        error = "$($ErrorRecord.Exception.Message)"
+        accountId = (Get-OptionalProperty "account" "id")
+        deviceId = (Get-OptionalProperty "device" "id")
+        datasetVersionId = (Get-OptionalProperty "dataset" "datasetVersionId")
+        featureSnapshotId = (Get-OptionalProperty "features" "id")
+        trainingRunId = (Get-OptionalProperty "completedRun" "id")
+        modelVersionId = (Get-OptionalProperty "model" "id")
+        policySource = (Get-OptionalProperty "prediction" "policySource")
+        predictionStatus = (Get-OptionalProperty "prediction" "predictionStatus")
+        lifecycleCleanupVerified = [bool] $VerifyLifecycleCleanup
+    }
+
+    $summaryJson = $summary | ConvertTo-Json -Depth 8
+    try {
+        if ($SummaryPath) {
+            $summaryDirectory = Split-Path -Parent $SummaryPath
+            if ($summaryDirectory) {
+                New-Item -ItemType Directory -Force -Path $summaryDirectory | Out-Null
+            }
+            $summaryJson | Set-Content -Path $SummaryPath -Encoding UTF8
+        }
+        if ($env:GITHUB_STEP_SUMMARY) {
+            @(
+                "## ML failure prediction smoke",
+                "",
+                "- Status: ``FAILED``",
+                "- Run id: ``$RunId``",
+                "- Failed step: ``$script:CurrentSmokeStep``",
+                "- Error: ``$($ErrorRecord.Exception.Message)``"
+            ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+        }
+    } catch {
+        Write-Warning "Could not write smoke failure summary: $($_.Exception.Message)"
+    }
+}
+
 function Submit-IngestionBackfill {
     param(
         [Parameter(Mandatory = $true)] [System.Collections.Generic.List[object]] $Readings,
@@ -129,6 +194,11 @@ function Submit-IngestionBackfill {
         duplicateCount = $duplicate
         rejectedCount = $rejected
     }
+}
+
+trap {
+    Write-SmokeFailureSummary -ErrorRecord $_
+    break
 }
 
 if ($StartStack) {
@@ -215,7 +285,7 @@ $sourceHeaders = @{
 
 $end = (Get-Date).ToUniversalTime().AddHours(-2)
 $start = $end.AddDays(-28)
-$outcomeAt = $start.AddDays(14)
+$outcomeAt = $start.AddDays(21)
 $horizonDays = 7
 
 Write-Step "Ingesting synthetic backfill telemetry"
@@ -344,15 +414,25 @@ $dataset = Invoke-Api -Method POST -Path "/analytics/ml/datasets/internal-teleme
 Require-True ("$($dataset.status)" -eq "READY") "Dataset version was not READY: $($dataset.status)"
 Require-True ($dataset.acceptedRows -ge 24) "Dataset did not materialize enough canonical rows"
 
+$labelJob = Invoke-Api -Method POST -Path "/analytics/ml/datasets/horizon-labels" -Headers $authHeaders -Body @{
+    datasetVersionId = "$($dataset.datasetVersionId)"
+    horizonDays = $horizonDays
+    generationVersion = "docker-smoke-failure-outcome-v1"
+    includePreventiveMaintenance = $false
+}
+Require-Value $labelJob.jobId "Horizon label generation did not return jobId"
 $labels = Wait-For "positive horizon labels from maintenance outcome projection" {
-    $candidate = Invoke-Api -Method POST -Path "/analytics/ml/datasets/horizon-labels" -Headers $authHeaders -Body @{
-        datasetVersionId = "$($dataset.datasetVersionId)"
-        horizonDays = $horizonDays
-        generationVersion = "docker-smoke-failure-outcome-v1"
-        includePreventiveMaintenance = $false
+    $candidate = Invoke-Api -Method GET -Path "/analytics/ml/datasets/horizon-labels/$($labelJob.jobId)" -Headers $authHeaders
+    if ("$($candidate.status)" -eq "FAILED") {
+        throw "Horizon label generation failed: $($candidate.failureReason)"
     }
-    if ($candidate.positiveLabels -gt 0 -and $candidate.normalLabels -gt 0) { return $candidate }
-    return $false
+    if ("$($candidate.status)" -ne "COMPLETED" -or $null -eq $candidate.result) {
+        return $false
+    }
+    if ($candidate.result.positiveLabels -gt 0 -and $candidate.result.normalLabels -gt 0) {
+        return $candidate.result
+    }
+    throw "Horizon label generation completed without positive and normal labels: positive=$($candidate.result.positiveLabels) normal=$($candidate.result.normalLabels) unresolved=$($candidate.result.unresolvedLabels) unobservable=$($candidate.result.unobservableRows)"
 }
 Require-True ($labels.positiveLabels -gt 0) "Horizon labels did not include positive labels"
 Require-True ($labels.normalLabels -gt 0) "Horizon labels did not include normal labels"
@@ -385,6 +465,21 @@ $training = Invoke-Api -Method POST -Path "/analytics/ml/training-runs" -Headers
     failureHorizonDays = $horizonDays
     minimumPositiveLabels = 1
     minimumLabelCoverage = 0.01
+    approvalGateProfile = @{
+        profileId = "failure-docker-smoke-ci"
+        profileVersion = "2026-08-smoke"
+        thresholdSource = "docker-smoke-synthetic-data"
+        minimumPositiveLabels = 1
+        minimumLabelCoverage = 0.01
+        minimumPrecision = 0.6
+        minimumRecall = 0.6
+        minimumPrAuc = 0.6
+        minimumPrAucLift = 0.0
+        maximumFalseAlertsPerDeviceMonth = 10.0
+        minimumLeadTimeDays = 0.0
+        requireArtifactLoadTest = $true
+        requireFeatureSchemaCompatibility = $true
+    }
     hyperparametersJson = (@{ verificationRunId = $RunId } | ConvertTo-Json -Compress)
 }
 $completedRun = Wait-For "training run completion" {
@@ -410,6 +505,10 @@ Require-True ("$($model.status)" -eq "CANDIDATE") "Registered model was not CAND
 Require-Value $model.artifactUri "Candidate model missing artifactUri"
 Require-Value $model.artifactManifestUri "Candidate model missing artifactManifestUri"
 Require-True ("$($model.artifactHash)".StartsWith("sha256:")) "Candidate model artifactHash is not sha256"
+if ("$($completedRun.artifactHash)" -ne "") {
+    Require-True ("$($model.artifactHash)" -eq "$($completedRun.artifactHash)") "Candidate model artifactHash did not match training artifactHash"
+}
+Require-True ("$($model.featureSchemaHash)" -eq "$($features.featureSchemaHash)") "Candidate model featureSchemaHash did not match feature snapshot"
 Require-True ($model.artifactSizeBytes -gt 0) "Candidate model artifactSizeBytes is not positive"
 
 Write-Step "Approving candidate model and deploying active device policy"
@@ -453,6 +552,8 @@ $prediction = Invoke-Api -Method GET -Path "/analytics/devices/$($device.id)/pre
 Require-True ("$($prediction.predictionStatus)" -eq "TRAINED_MODEL") "Latest prediction was not TRAINED_MODEL: $($prediction.predictionStatus) fallback=$($prediction.fallbackReason)"
 Require-True ("$($prediction.modelVersionId)" -eq "$($model.id)") "Latest prediction did not use deployed modelVersionId"
 Require-True ("$($prediction.modelFamily)" -eq "FAILURE_PREDICTION") "Latest prediction modelFamily was not FAILURE_PREDICTION"
+Require-True ("$($prediction.policySource)" -eq "DEVICE") "Latest prediction policySource was not DEVICE: $($prediction.policySource)"
+Require-True ("$($prediction.fallbackReason)" -eq "") "Latest prediction unexpectedly used fallback: $($prediction.fallbackReason)"
 Require-True ($prediction.failureRiskScore -ne $null) "Latest prediction missing failureRiskScore"
 Require-True ($prediction.failureHorizonDays -eq $horizonDays) "Latest prediction horizon did not match"
 Require-True (@($prediction.riskDrivers).Count -gt 0) "Latest prediction missing riskDrivers"
@@ -467,10 +568,24 @@ try {
         throw "Could not read analytics Prometheus metrics: $($_.Exception.Message)"
     }
 }
-Require-True ($metricsText -match "analytics_ml_feature_generation_completed") "Prometheus output missing feature generation metric"
-Require-True ($metricsText -match "analytics_ml_training_runs") "Prometheus output missing training runs metric"
-Require-True ($metricsText -match "analytics_ml_inference_duration") "Prometheus output missing inference duration metric"
-Require-True ($metricsText -match "analytics_ml_inference_fallback_rate") "Prometheus output missing inference fallback metric"
+$requiredMetricNames = @(
+    "analytics_ml_feature_generation_completed",
+    "analytics_ml_training_runs",
+    "analytics_ml_inference_duration",
+    "analytics_ml_inference_fallback_rate",
+    "analytics_ml_inference_fallback_count",
+    "analytics_ml_inference_feature_mismatch_count",
+    "analytics_ml_inference_missing_feature_count",
+    "analytics_ml_inference_shadow_count",
+    "analytics_ml_inference_canary_included_count",
+    "analytics_ml_inference_canary_excluded_count",
+    "analytics_ml_quality_false_alerts_count",
+    "analytics_ml_quality_false_alerts_per_device_month",
+    "analytics_ml_quality_lead_time_days_avg"
+)
+foreach ($metricName in $requiredMetricNames) {
+    Require-True ($metricsText -match $metricName) "Prometheus output missing $metricName metric"
+}
 
 if ($VerifyLifecycleCleanup) {
     Write-Step "Verifying ML lifecycle previews, blocks, disable/delete, and archive paths"
@@ -568,8 +683,10 @@ if ($VerifyLifecycleCleanup) {
 }
 
 Write-Step "Docker smoke verification passed"
-[PSCustomObject]@{
+$summary = [PSCustomObject]@{
+    status = "PASSED"
     runId = $RunId
+    completedStep = $script:CurrentSmokeStep
     userId = "$($me.id)"
     accountId = "$($account.id)"
     deviceId = "$($device.id)"
@@ -578,10 +695,38 @@ Write-Step "Docker smoke verification passed"
     horizonLabelLineageHash = "$($labels.lineageHash)"
     trainingRunId = "$($completedRun.id)"
     modelVersionId = "$($model.id)"
+    artifactHash = "$($model.artifactHash)"
+    featureSchemaHash = "$($features.featureSchemaHash)"
     artifactUri = "$($model.artifactUri)"
     artifactManifestUri = "$($model.artifactManifestUri)"
+    policySource = "$($prediction.policySource)"
+    fallbackReason = "$($prediction.fallbackReason)"
     predictionStatus = "$($prediction.predictionStatus)"
     failureRiskScore = $prediction.failureRiskScore
+    failureHorizonDays = $prediction.failureHorizonDays
     inputHash = "$($prediction.inputHash)"
     lifecycleCleanupVerified = [bool] $VerifyLifecycleCleanup
-} | ConvertTo-Json -Depth 8
+}
+
+$summaryJson = $summary | ConvertTo-Json -Depth 8
+if ($SummaryPath) {
+    $summaryDirectory = Split-Path -Parent $SummaryPath
+    if ($summaryDirectory) {
+        New-Item -ItemType Directory -Force -Path $summaryDirectory | Out-Null
+    }
+    $summaryJson | Set-Content -Path $SummaryPath -Encoding UTF8
+}
+if ($env:GITHUB_STEP_SUMMARY) {
+    @(
+        "## ML failure prediction smoke",
+        "",
+        "- Run id: ``$RunId``",
+        "- Model version id: ``$($model.id)``",
+        "- Artifact hash: ``$($model.artifactHash)``",
+        "- Feature schema hash: ``$($features.featureSchemaHash)``",
+        "- Prediction status: ``$($prediction.predictionStatus)``",
+        "- Policy source: ``$($prediction.policySource)``",
+        "- Fallback reason: ``$($prediction.fallbackReason)``"
+    ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+}
+$summaryJson

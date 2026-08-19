@@ -1691,13 +1691,16 @@ function ApprovalGatePanel({ gates }: { gates: ApprovalGateSummary }) {
     <section className={gates.promotionEligible ? "ml-gate-panel ml-gate-panel-pass" : "ml-gate-panel ml-gate-panel-blocked"} aria-label="Promotion gates">
       <div>
         <strong>{gates.promotionEligible ? "Promotion gates passed" : "Promotion blocked"}</strong>
-        <span>{gates.promotionEligible ? "This candidate is eligible for approval." : "Resolve failed gates before approval."}</span>
+        <span>
+          {gates.profileId ? `${gates.profileId}${gates.profileVersion ? ` / ${gates.profileVersion}` : ""}` : gates.promotionEligible ? "This candidate is eligible for approval." : "Resolve failed gates before approval."}
+          {gates.thresholdSource ? ` / ${gates.thresholdSource}` : ""}
+        </span>
       </div>
-      {gates.failedCriteria.length > 0 && (
+      {gates.criteria.length > 0 && (
         <dl className="ml-gate-list">
-          {gates.failedCriteria.map((gate) => (
+          {gates.criteria.map((gate) => (
             <div key={gate.name}>
-              <dt>{humanizeFeatureName(gate.name)}</dt>
+              <dt>{humanizeFeatureName(gate.name)} / {gate.passed ? "Pass" : "Fail"}</dt>
               <dd>{gate.reason} Observed {formatGateValue(gate)} / required {formatGateThreshold(gate)}.</dd>
             </div>
           ))}
@@ -2030,7 +2033,11 @@ type ApprovalGateCriterion = {
 
 type ApprovalGateSummary = {
   status: string;
+  profileId: string | null;
+  profileVersion: string | null;
+  thresholdSource: string | null;
   promotionEligible: boolean;
+  criteria: ApprovalGateCriterion[];
   failedCriteria: ApprovalGateCriterion[];
 };
 
@@ -2286,7 +2293,11 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
   const failedCriteria = criteria.filter((gate) => !gate.passed);
   return {
     status: failedCriteria.length === 0 ? "PASSED" : "NEEDS_REVIEW",
+    profileId: "fallback-ui-derived",
+    profileVersion: null,
+    thresholdSource: "ui-derived-legacy-metrics",
     promotionEligible: failedCriteria.length === 0,
+    criteria,
     failedCriteria,
   };
 }
@@ -2298,7 +2309,7 @@ function explicitApprovalGateSummary(metrics: Record<string, unknown>): Approval
   }
   const gateObject = raw as Record<string, unknown>;
   const criteria = Array.isArray(gateObject.criteria) ? gateObject.criteria : [];
-  const failedCriteria = criteria
+  const normalizedCriteria = criteria
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
     .map((item) => ({
       name: stringMetric(item, "name") ?? "approval_gate",
@@ -2306,14 +2317,18 @@ function explicitApprovalGateSummary(metrics: Record<string, unknown>): Approval
       threshold: metricNumber(item, "threshold"),
       passed: Boolean(item.passed),
       reason: stringMetric(item, "reason") ?? "Approval gate failed.",
-    }))
-    .filter((item) => !item.passed);
+    }));
+  const failedCriteria = normalizedCriteria.filter((item) => !item.passed);
   const promotionEligible = typeof gateObject.promotionEligible === "boolean"
     ? gateObject.promotionEligible
     : failedCriteria.length === 0;
   return {
     status: stringMetric(gateObject, "status") ?? (promotionEligible ? "PASSED" : "NEEDS_REVIEW"),
+    profileId: stringMetric(gateObject, "profileId") ?? stringMetric(metrics, "approvalGateProfileId"),
+    profileVersion: stringMetric(gateObject, "profileVersion") ?? stringMetric(metrics, "approvalGateProfileVersion"),
+    thresholdSource: stringMetric(gateObject, "thresholdSource") ?? stringMetric(metrics, "approvalGateThresholdSource"),
     promotionEligible,
+    criteria: normalizedCriteria,
     failedCriteria,
   };
 }

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     ml_internal_service_token: str = ""
     ml_allowed_source_services: str = "analytics-service"
     ml_max_request_bytes: int = 1_048_576
+    ml_serving_cache_max_entries: int = 32
+    ml_serving_cache_ttl_seconds: float = 900.0
 
     @property
     def allowed_source_service_names(self) -> set[str]:

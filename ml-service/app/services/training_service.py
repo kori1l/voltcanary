@@ -8,7 +8,7 @@ from app.models.failure_evaluation import FailurePredictionEvaluator
 from app.models.failure_prediction_model import FailurePredictionModel
 from app.models.failure_target import FailureTargetBuilder
 from app.models.tabular_anomaly_model import TabularAnomalyModel
-from app.schemas.training import TrainingRequest, TrainingRunResponse
+from app.schemas.training import ApprovalGateProfile, TrainingRequest, TrainingRunResponse
 from app.services.artifact_store import ArtifactStore
 from app.services.feature_service import FeatureService
 from app.services.model_registry_service import model_registry_service
@@ -277,6 +277,13 @@ class TrainingService:
             feature_schema_hash=feature_schema_hash,
             evaluation_metadata=evaluation_metadata,
         )
+        metrics = {
+            **metrics,
+            "approvalGateProfileId": approval_metadata["profileId"],
+            "approvalGateProfileVersion": approval_metadata["profileVersion"],
+            "approvalGateThresholdSource": approval_metadata["thresholdSource"],
+            "approvalGates": approval_metadata,
+        }
         model_payload = {
             "name": model_name,
             "version": model_version,
@@ -479,11 +486,12 @@ class TrainingService:
         return request.algorithm or FailurePredictionModel.LOGISTIC_REGRESSION_ALGORITHM
 
     def _failure_gate_failure(self, request: TrainingRequest, metrics: dict[str, float]) -> str | None:
+        profile = self._approval_gate_profile(request)
         positives = int(metrics.get("failurePositiveLabels", 0.0))
         negatives = int(metrics.get("failureNegativeLabels", 0.0))
         label_coverage = float(metrics.get("labelCoverage", 0.0))
-        min_positive_labels = request.minimum_positive_labels if request.minimum_positive_labels is not None else 1
-        min_label_coverage = request.minimum_label_coverage if request.minimum_label_coverage is not None else 0.0
+        min_positive_labels = profile.minimum_positive_labels
+        min_label_coverage = profile.minimum_label_coverage
         if positives < min_positive_labels:
             return (
                 "Insufficient positive failure labels: "
@@ -570,24 +578,20 @@ class TrainingService:
         feature_schema_hash: str,
         evaluation_metadata: dict,
     ) -> dict:
-        min_positive_labels = request.minimum_positive_labels if request.minimum_positive_labels is not None else 1
-        min_label_coverage = request.minimum_label_coverage if request.minimum_label_coverage is not None else 0.0
-        min_precision = 0.0
-        min_recall = 0.0
-        max_false_alerts_per_device_month = 30.0
+        profile = self._approval_gate_profile(request)
         criteria = [
             self._approval_gate(
                 name="minimum_positive_labels",
-                observed=metrics.get("failurePositiveLabels", 0.0),
-                threshold=float(min_positive_labels),
-                passed=metrics.get("failurePositiveLabels", 0.0) >= min_positive_labels,
+                observed=self._metric(metrics, "failurePositiveLabels"),
+                threshold=float(profile.minimum_positive_labels),
+                passed=self._metric_passes_minimum(metrics, "failurePositiveLabels", profile.minimum_positive_labels),
                 reason="Requires enough confirmed failure or corrective maintenance labels.",
             ),
             self._approval_gate(
                 name="minimum_label_coverage",
-                observed=metrics.get("labelCoverage", 0.0),
-                threshold=float(min_label_coverage),
-                passed=metrics.get("labelCoverage", 0.0) >= min_label_coverage,
+                observed=self._metric(metrics, "labelCoverage"),
+                threshold=float(profile.minimum_label_coverage),
+                passed=self._metric_passes_minimum(metrics, "labelCoverage", profile.minimum_label_coverage),
                 reason="Requires enough usable horizon labels for the dataset.",
             ),
             self._approval_gate(
@@ -599,59 +603,104 @@ class TrainingService:
             ),
             self._approval_gate(
                 name="minimum_precision",
-                observed=metrics.get("failurePrecision", 0.0),
-                threshold=min_precision,
-                passed=metrics.get("failurePrecision", 0.0) >= min_precision,
+                observed=self._metric(metrics, "failurePrecision"),
+                threshold=profile.minimum_precision,
+                passed=self._metric_passes_minimum(metrics, "failurePrecision", profile.minimum_precision),
                 reason="Requires candidate precision to meet the configured approval threshold.",
             ),
             self._approval_gate(
                 name="minimum_recall",
-                observed=metrics.get("failureRecall", 0.0),
-                threshold=min_recall,
-                passed=metrics.get("failureRecall", 0.0) >= min_recall,
+                observed=self._metric(metrics, "failureRecall"),
+                threshold=profile.minimum_recall,
+                passed=self._metric_passes_minimum(metrics, "failureRecall", profile.minimum_recall),
                 reason="Requires candidate recall to meet the configured approval threshold.",
             ),
             self._approval_gate(
+                name="minimum_pr_auc_or_lift",
+                observed=self._metric(metrics, "failurePrAuc"),
+                threshold=profile.minimum_pr_auc,
+                passed=(
+                    self._metric_passes_minimum(metrics, "failurePrAuc", profile.minimum_pr_auc)
+                    or self._metric_passes_minimum(metrics, "failurePrAucLift", profile.minimum_pr_auc_lift)
+                ),
+                reason="Requires PR-AUC or PR-AUC lift to meet the configured approval profile.",
+            ),
+            self._approval_gate(
                 name="maximum_false_alert_rate",
-                observed=metrics.get("failureFalseAlertsPerDeviceMonth", 0.0),
-                threshold=max_false_alerts_per_device_month,
-                passed=metrics.get("failureFalseAlertsPerDeviceMonth", 0.0) <= max_false_alerts_per_device_month,
+                observed=self._metric(metrics, "failureFalseAlertsPerDeviceMonth"),
+                threshold=profile.maximum_false_alerts_per_device_month,
+                passed=self._metric_passes_maximum(
+                    metrics,
+                    "failureFalseAlertsPerDeviceMonth",
+                    profile.maximum_false_alerts_per_device_month,
+                ),
                 reason="Limits false alerts per device-month before promotion.",
+            ),
+            self._approval_gate(
+                name="minimum_lead_time",
+                observed=self._metric(metrics, "failureAverageLeadTimeDays"),
+                threshold=profile.minimum_lead_time_days,
+                passed=self._metric_passes_minimum(metrics, "failureAverageLeadTimeDays", profile.minimum_lead_time_days),
+                reason="Requires enough warning lead time for operational response.",
             ),
             self._approval_gate(
                 name="artifact_load_test",
                 observed=1.0,
                 threshold=1.0,
-                passed=True,
+                passed=profile.require_artifact_load_test,
                 reason="Model bundle is saved with a loadable manifest and verified after persistence.",
             ),
             self._approval_gate(
                 name="feature_schema_compatibility",
                 observed=1.0 if feature_schema_hash else 0.0,
                 threshold=1.0,
-                passed=bool(feature_schema_hash),
+                passed=bool(feature_schema_hash) if profile.require_feature_schema_compatibility else True,
                 reason="Requires a feature schema hash for runtime compatibility checks.",
             ),
         ]
         passed = all(item["passed"] for item in criteria)
         return {
             "approvalGateVersion": "failure-approval-gates-v1",
+            "profileId": profile.profile_id,
+            "profileVersion": profile.profile_version,
+            "thresholdSource": profile.threshold_source,
             "status": "PASSED" if passed else "NEEDS_REVIEW",
             "promotionEligible": passed,
             "criteria": criteria,
         }
 
+    def _approval_gate_profile(self, request: TrainingRequest) -> ApprovalGateProfile:
+        profile = request.approval_gate_profile or ApprovalGateProfile()
+        values = profile.model_dump()
+        if request.minimum_positive_labels is not None:
+            values["minimum_positive_labels"] = request.minimum_positive_labels
+        if request.minimum_label_coverage is not None:
+            values["minimum_label_coverage"] = request.minimum_label_coverage
+        return ApprovalGateProfile.model_validate(values)
+
+    def _metric(self, metrics: dict[str, float], key: str) -> float | None:
+        value = metrics.get(key)
+        return float(value) if isinstance(value, int | float) else None
+
+    def _metric_passes_minimum(self, metrics: dict[str, float], key: str, threshold: float) -> bool:
+        value = self._metric(metrics, key)
+        return value is not None and value >= threshold
+
+    def _metric_passes_maximum(self, metrics: dict[str, float], key: str, threshold: float) -> bool:
+        value = self._metric(metrics, key)
+        return value is not None and value <= threshold
+
     def _approval_gate(
         self,
         name: str,
-        observed: float,
+        observed: float | None,
         threshold: float,
         passed: bool,
         reason: str,
     ) -> dict:
         return {
             "name": name,
-            "observed": round(float(observed), 6),
+            "observed": None if observed is None else round(float(observed), 6),
             "threshold": round(float(threshold), 6),
             "passed": passed,
             "reason": reason,

@@ -16,6 +16,24 @@ class MetricRow(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class ApprovalGateProfile(BaseModel):
+    profile_id: str = Field(default="failure-production-default", alias="profileId")
+    profile_version: str = Field(default="2026-08-approval-v1", alias="profileVersion")
+    threshold_source: str = Field(default="ml-service-default-config", alias="thresholdSource")
+    minimum_positive_labels: int = Field(default=1, alias="minimumPositiveLabels")
+    minimum_label_coverage: float = Field(default=0.8, alias="minimumLabelCoverage")
+    minimum_precision: float = Field(default=0.6, alias="minimumPrecision")
+    minimum_recall: float = Field(default=0.6, alias="minimumRecall")
+    minimum_pr_auc: float = Field(default=0.6, alias="minimumPrAuc")
+    minimum_pr_auc_lift: float = Field(default=0.0, alias="minimumPrAucLift")
+    maximum_false_alerts_per_device_month: float = Field(default=10.0, alias="maximumFalseAlertsPerDeviceMonth")
+    minimum_lead_time_days: float = Field(default=1.0, alias="minimumLeadTimeDays")
+    require_artifact_load_test: bool = Field(default=True, alias="requireArtifactLoadTest")
+    require_feature_schema_compatibility: bool = Field(default=True, alias="requireFeatureSchemaCompatibility")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class TrainingRequest(BaseModel):
     training_run_id: str | None = Field(default=None, alias="trainingRunId")
     idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
@@ -28,6 +46,7 @@ class TrainingRequest(BaseModel):
     failure_horizon_days: int | None = Field(default=None, alias="failureHorizonDays")
     minimum_positive_labels: int | None = Field(default=None, alias="minimumPositiveLabels")
     minimum_label_coverage: float | None = Field(default=None, alias="minimumLabelCoverage")
+    approval_gate_profile: ApprovalGateProfile | None = Field(default=None, alias="approvalGateProfile")
     cancellation_requested: bool = Field(default=False, alias="cancellationRequested")
     training_timeout_seconds: float | None = Field(default=None, alias="trainingTimeoutSeconds")
     rows: list[MetricRow]
@@ -58,7 +77,7 @@ class TrainingRunResponse(BaseModel):
     manifest_uri: str | None = Field(default=None, alias="manifestUri")
     artifact_hash: str | None = Field(default=None, alias="artifactHash")
     artifact_size_bytes: int | None = Field(default=None, alias="artifactSizeBytes")
-    metrics: dict[str, float] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
     feature_snapshot: FeatureSnapshotResponse | None = Field(default=None, alias="featureSnapshot")
     logs_summary: list[str] = Field(default_factory=list, alias="logsSummary")
     failure_reason: str | None = Field(default=None, alias="failureReason")
