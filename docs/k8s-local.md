@@ -77,7 +77,8 @@ resources:
 The local setup also includes one-time initialization jobs:
 
 - `redpanda-init`: creates Kafka topics.
-- `minio-init`: creates required MinIO buckets.
+- `minio-init`: creates required MinIO buckets, including `model-artifacts`
+  for ML-service model and feature artifacts.
 
 ## High Availability Settings
 
@@ -142,6 +143,10 @@ From the host after port-forwarding:
 Invoke-WebRequest -UseBasicParsing http://localhost:8080/actuator/health
 Invoke-WebRequest -UseBasicParsing http://localhost:3000/index.html
 ```
+
+ML-service readiness uses `GET /health/artifacts`. The local Kubernetes overlay
+sets `ML_RUNTIME_PROFILE=kubernetes` and `ML_ARTIFACT_STORE=s3`, so readiness
+fails until MinIO is reachable and the `model-artifacts` bucket can be checked.
 
 ## Useful Commands
 

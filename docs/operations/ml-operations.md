@@ -30,9 +30,10 @@ returned `modelVersionId`. A `CANDIDATE` model is registered only after
 ML-service returns a verified artifact manifest and the smoke inference loads
 and scores that exact model version.
 
-Model artifacts are stored through ML-service `ArtifactStore`. Production and
-Docker profiles use MinIO/S3 with:
+Model artifacts are stored through ML-service `ArtifactStore`. Production-like
+runtime profiles use MinIO/S3 with:
 
+- `ML_RUNTIME_PROFILE=docker|kubernetes|production`
 - `ML_ARTIFACT_STORE=s3`
 - `ML_ARTIFACT_BUCKET=model-artifacts`
 - `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY`
@@ -42,6 +43,40 @@ Local unit tests may use `ML_ARTIFACT_STORE=local`; that mode writes under
 `model_registry_path` and is not a production storage boundary. Production
 artifact URIs use `s3://<bucket>/<modelVersionId-like-bundle>/...`; inference
 loads by the persisted `manifestUri` and verifies `artifactHash` before scoring.
+If `ML_RUNTIME_PROFILE` is one of `production`, `prod`, `docker`,
+`kubernetes`, or `k8s`, `/health/artifacts` fails with
+`local_artifact_store_forbidden` when `ML_ARTIFACT_STORE=local`.
+
+ML-service internal auth must be explicit in each runtime profile:
+
+- `ML_INTERNAL_AUTH_REQUIRED=true` for Docker and Kubernetes production-like
+  runs.
+- `ML_INTERNAL_SERVICE_TOKEN` on ML-service must match
+  `INTERNAL_SERVICE_TOKEN` used by analytics-service.
+- `ML_ALLOWED_SOURCE_SERVICES=analytics-service` keeps the caller allowlist
+  narrow.
+- `ML_MAX_REQUEST_BYTES` limits `/train`, `/inference`, and `/ml/*` execution
+  aliases before request parsing.
+- Local and unit-test profiles may disable auth only by explicitly setting
+  `ML_INTERNAL_AUTH_REQUIRED=false` or by using a test token.
+
+Keep `GET /health` and `GET /health/artifacts` unauthenticated. All other
+ML-service endpoints should be treated as private service-to-service endpoints.
+Auth failures and request rejections are logged as sanitized events without
+tokens, stack traces, raw request bodies, or internal object-store details.
+
+Artifact cleanup must start with a dry-run report. The report compares local or
+S3 artifacts with references supplied from analytics-service metadata:
+training runs, model versions, deployment policies, prediction traceability,
+and audit records. Artifacts referenced by any of those sources are blocked
+from deletion. Unreferenced artifacts are candidates only; destructive deletion
+requires a separate operator action and must not remove active, policy-backed,
+prediction-backed, or audit-required model lineage.
+
+`ml-service/models/` is only the default local development output path. The
+repository ignores generated feature snapshots and model bundles in that
+directory; tests should use temporary directories or explicit fixtures outside
+the runtime registry path.
 
 Each claimed run records `leaseOwner`, `leaseExpiresAt`, and `heartbeatAt`.
 Workers refresh the lease between training phases. If a worker stops and the
@@ -49,6 +84,23 @@ lease expires, the next worker pass returns the stale run to `QUEUED`, increment
 `retryCount`, and records `staleRecoveredAt`. Canceling a queued run completes
 it as `CANCELED`; canceling a running run sets `cancellationRequested`, and the
 worker cooperatively stops before registering a candidate model.
+
+When analytics-service delegates fitting to ML-service it sends the durable
+`trainingRunId`, a stable `idempotencyKey` derived from that run, and a
+deterministic `artifactBundleId`. Retrying the same claimed run reuses the same
+key so ML-service can return an already verified artifact response instead of
+writing a duplicate bundle. If the same key is replayed with different training
+metadata, ML-service rejects the call as an idempotency conflict and does not
+overwrite artifact metadata.
+
+ML-service checks cooperative cancellation and timeout budgets before major
+training phases and again before final artifact promotion. A canceled or timed
+out run returns a terminal non-success response without a candidate-ready
+manifest. If artifact persistence or verification fails after partial files are
+written, ML-service removes the deterministic final bundle before surfacing the
+failure; operators should investigate object-store write/credential errors and
+retry the analytics-owned run rather than manually registering partial
+artifacts.
 
 Before training, confirm the feature snapshot shows a nonzero row count,
 `featureSchemaHash`, `featureDataHash`, `featureConfigHash`, artifact URI,
@@ -99,6 +151,17 @@ on ML-service and MinIO bucket access, then verify the model version has
 `artifactUri`, `artifactManifestUri`, `artifactHash`, and positive
 `artifactSizeBytes`. Roll back to the previous active policy or disable the
 policy with fallback enabled while restoring the missing object.
+
+Readiness failure codes:
+
+- `local_artifact_store_forbidden`: set `ML_ARTIFACT_STORE=s3` for the current
+  production-like `ML_RUNTIME_PROFILE`.
+- `s3_credentials_missing`: provide MinIO/S3 access key and secret through the
+  secret manager or local `.env`.
+- `artifact_store_unavailable`: verify the `model-artifacts` bucket exists,
+  credentials can `HeadBucket`, and network/DNS can reach MinIO/S3.
+- `unsupported_artifact_store`: use `local` only for local/test or `s3` for
+  production-like runtime profiles.
 
 ## Delete Imported Datasets
 
@@ -156,6 +219,10 @@ Health checks:
 - `GET /health/artifacts` verifies the configured artifact provider can be
   accessed. Kubernetes readiness uses this endpoint so a pod does not accept
   trained-model traffic until MinIO/S3 is reachable.
+- Health probes remain unauthenticated even when
+  `ML_INTERNAL_AUTH_REQUIRED=true`.
+- In production-like runtime profiles, readiness also verifies that local
+  source-tree artifact storage is disabled.
 
 Structured log events:
 
@@ -174,3 +241,6 @@ Structured log events:
 - `mlDeploymentPolicyDisabled`
 - `mlDeploymentPolicyDeleted`
 - `mlInferenceFailed`
+- `mlInternalAuthRejected`
+- `mlRequestRejected`
+- `mlRequestValidationRejected`

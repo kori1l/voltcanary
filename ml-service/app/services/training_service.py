@@ -1,5 +1,8 @@
-from uuid import uuid4
+import hashlib
+import json
 import sys
+import time
+from uuid import uuid4
 
 from app.models.failure_evaluation import FailurePredictionEvaluator
 from app.models.failure_prediction_model import FailurePredictionModel
@@ -11,32 +14,108 @@ from app.services.feature_service import FeatureService
 from app.services.model_registry_service import model_registry_service
 
 
+class IdempotencyConflictError(Exception):
+    pass
+
+
+class TrainingCanceledError(Exception):
+    pass
+
+
+class TrainingTimeoutError(Exception):
+    pass
+
+
 class TrainingService:
     def __init__(self, artifact_store: ArtifactStore | None = None) -> None:
         self.artifact_store = artifact_store or ArtifactStore()
         self.feature_service = FeatureService(self.artifact_store)
         self.runs: dict[str, TrainingRunResponse] = {}
+        self.idempotency_records: dict[str, tuple[str, TrainingRunResponse]] = {}
 
     def start_training(self, request: TrainingRequest) -> TrainingRunResponse:
-        run_id = str(uuid4())
-        if not request.rows:
-            run = TrainingRunResponse(
-                runId=run_id,
-                status="FAILED",
-                datasetVersionId=request.dataset_version_id,
-                failureReason="training requires at least one metric row",
-                logsSummary=["Rejected empty training dataset."],
+        run_id = request.training_run_id or str(uuid4())
+        idempotency_key = request.idempotency_key
+        fingerprint = self._fingerprint(request)
+        if idempotency_key:
+            existing = self.idempotency_records.get(idempotency_key)
+            if existing:
+                existing_fingerprint, existing_response = existing
+                if existing_fingerprint != fingerprint:
+                    raise IdempotencyConflictError("training idempotency key was reused with different request metadata")
+                return existing_response
+
+        started_at = time.monotonic()
+        try:
+            self._checkpoint(request, started_at)
+            if not request.rows:
+                return self._record_result(
+                    request,
+                    TrainingRunResponse(
+                        runId=run_id,
+                        status="FAILED",
+                        datasetVersionId=request.dataset_version_id,
+                        trainingRunId=request.training_run_id,
+                        idempotencyKey=idempotency_key,
+                        artifactBundleId=self._artifact_bundle_id(run_id, request),
+                        failureReason="training requires at least one metric row",
+                        logsSummary=["Rejected empty training dataset."],
+                    ),
+                    fingerprint,
+                )
+
+            if request.model_family.upper() == "FAILURE_PREDICTION":
+                return self._record_result(
+                    request,
+                    self._start_failure_prediction_training(run_id, request, started_at),
+                    fingerprint,
+                )
+
+            return self._record_result(request, self._start_anomaly_training(run_id, request, started_at), fingerprint)
+        except TrainingCanceledError:
+            return self._record_result(
+                request,
+                TrainingRunResponse(
+                    runId=run_id,
+                    status="CANCELED",
+                    datasetVersionId=request.dataset_version_id,
+                    trainingRunId=request.training_run_id,
+                    idempotencyKey=idempotency_key,
+                    artifactBundleId=self._artifact_bundle_id(run_id, request),
+                    failureReason="training run cancellation was requested",
+                    logsSummary=["Training canceled before artifact promotion."],
+                ),
+                fingerprint,
             )
-            self.runs[run_id] = run
-            return run
+        except TrainingTimeoutError:
+            return self._record_result(
+                request,
+                TrainingRunResponse(
+                    runId=run_id,
+                    status="FAILED",
+                    datasetVersionId=request.dataset_version_id,
+                    trainingRunId=request.training_run_id,
+                    idempotencyKey=idempotency_key,
+                    artifactBundleId=self._artifact_bundle_id(run_id, request),
+                    failureReason="training timeout exceeded before artifact promotion",
+                    logsSummary=["Training stopped before artifact promotion because the timeout budget was exceeded."],
+                ),
+                fingerprint,
+            )
 
-        if request.model_family.upper() == "FAILURE_PREDICTION":
-            return self._start_failure_prediction_training(run_id, request)
-
+    def _start_anomaly_training(
+        self,
+        run_id: str,
+        request: TrainingRequest,
+        started_at: float,
+    ) -> TrainingRunResponse:
+        self._checkpoint(request, started_at)
         snapshot = self.feature_service.generate_snapshot(request.dataset_version_id, request.rows)
+        self._checkpoint(request, started_at)
         feature_artifact = self.feature_service.load_snapshot_artifact(snapshot.artifact_uri)
         model = TabularAnomalyModel()
         model.fit(request.rows, feature_artifact)
+        self._checkpoint(request, started_at)
         metrics = self._evaluate(model, request.rows)
         model_version_id = str(uuid4())
         algorithm = self._algorithm(request, model.algorithm)
@@ -53,8 +132,9 @@ class TrainingService:
             "metrics": metrics,
         }
         preprocessor_payload = model.preprocessor_payload(request.dataset_version_id, feature_artifact)
-        bundle = self.artifact_store.save_model_bundle(
-            f"model-{run_id}",
+        artifact_bundle_id = self._artifact_bundle_id(run_id, request)
+        bundle = self._save_verified_bundle(
+            artifact_bundle_id,
             model_payload,
             self._manifest(
                 model_version_id=model_version_id,
@@ -68,7 +148,7 @@ class TrainingService:
                 "preprocessor.json": preprocessor_payload,
             },
         )
-        self.artifact_store.verify_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
+        self._checkpoint(request, started_at)
         model_registry_service.register_model(
             {
                 "name": model_name,
@@ -87,6 +167,9 @@ class TrainingService:
             runId=run_id,
             status="SUCCEEDED",
             datasetVersionId=request.dataset_version_id,
+            trainingRunId=request.training_run_id,
+            idempotencyKey=request.idempotency_key,
+            artifactBundleId=artifact_bundle_id,
             modelVersionId=model_version_id,
             modelVersion=model_version,
             artifactUri=bundle["artifactUri"],
@@ -114,8 +197,14 @@ class TrainingService:
             ),
         )
 
-    def _start_failure_prediction_training(self, run_id: str, request: TrainingRequest) -> TrainingRunResponse:
+    def _start_failure_prediction_training(
+        self,
+        run_id: str,
+        request: TrainingRequest,
+        started_at: float,
+    ) -> TrainingRunResponse:
         try:
+            self._checkpoint(request, started_at)
             builder = FailureTargetBuilder()
             samples = builder.build(request)
             metrics = builder.summary(samples)
@@ -124,6 +213,9 @@ class TrainingService:
                 runId=run_id,
                 status="FAILED",
                 datasetVersionId=request.dataset_version_id,
+                trainingRunId=request.training_run_id,
+                idempotencyKey=request.idempotency_key,
+                artifactBundleId=self._artifact_bundle_id(run_id, request),
                 failureReason=str(exc),
                 logsSummary=["Rejected failure-prediction training request before fitting."],
             )
@@ -136,6 +228,9 @@ class TrainingService:
                 runId=run_id,
                 status="FAILED",
                 datasetVersionId=request.dataset_version_id,
+                trainingRunId=request.training_run_id,
+                idempotencyKey=request.idempotency_key,
+                artifactBundleId=self._artifact_bundle_id(run_id, request),
                 metrics=metrics,
                 failureReason=gate_failure,
                 logsSummary=["Rejected failure-prediction training request before fitting."],
@@ -144,6 +239,7 @@ class TrainingService:
             return run
 
         algorithm = self._failure_algorithm(request)
+        self._checkpoint(request, started_at)
         evaluation = FailurePredictionEvaluator().evaluate(samples, algorithm)
         evaluation_metrics = evaluation["metrics"]
         evaluation_metadata = evaluation["metadata"]
@@ -156,6 +252,9 @@ class TrainingService:
                 runId=run_id,
                 status="FAILED",
                 datasetVersionId=request.dataset_version_id,
+                trainingRunId=request.training_run_id,
+                idempotencyKey=request.idempotency_key,
+                artifactBundleId=self._artifact_bundle_id(run_id, request),
                 metrics=metrics,
                 failureReason=str(exc),
                 logsSummary=["Rejected failure-prediction training request before fitting."],
@@ -197,8 +296,10 @@ class TrainingService:
             evaluation_metadata=evaluation_metadata,
             approval_metadata=approval_metadata,
         )
-        bundle = self.artifact_store.save_model_bundle(
-            f"model-{run_id}",
+        self._checkpoint(request, started_at)
+        artifact_bundle_id = self._artifact_bundle_id(run_id, request)
+        bundle = self._save_verified_bundle(
+            artifact_bundle_id,
             model_payload,
             self._manifest(
                 model_version_id=model_version_id,
@@ -216,7 +317,7 @@ class TrainingService:
                 "preprocessor.json": model.preprocessor_payload(request.dataset_version_id, feature_schema_hash),
             },
         )
-        self.artifact_store.verify_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
+        self._checkpoint(request, started_at)
         model_registry_service.register_model(
             {
                 "name": model_name,
@@ -235,6 +336,9 @@ class TrainingService:
             runId=run_id,
             status="SUCCEEDED",
             datasetVersionId=request.dataset_version_id,
+            trainingRunId=request.training_run_id,
+            idempotencyKey=request.idempotency_key,
+            artifactBundleId=artifact_bundle_id,
             modelVersionId=model_version_id,
             modelVersion=model_version,
             artifactUri=bundle["artifactUri"],
@@ -249,6 +353,54 @@ class TrainingService:
         )
         self.runs[run_id] = run
         return run
+
+    def _record_result(
+        self,
+        request: TrainingRequest,
+        run: TrainingRunResponse,
+        fingerprint: str,
+    ) -> TrainingRunResponse:
+        self.runs[run.run_id] = run
+        if request.idempotency_key:
+            self.idempotency_records[request.idempotency_key] = (fingerprint, run)
+        return run
+
+    def _artifact_bundle_id(self, run_id: str, request: TrainingRequest) -> str:
+        return request.artifact_bundle_id or f"model-{run_id}"
+
+    def _checkpoint(self, request: TrainingRequest, started_at: float) -> None:
+        if request.cancellation_requested:
+            raise TrainingCanceledError()
+        timeout = request.training_timeout_seconds
+        if timeout is not None and time.monotonic() - started_at > timeout:
+            raise TrainingTimeoutError()
+
+    def _fingerprint(self, request: TrainingRequest) -> str:
+        payload = request.model_dump(mode="json", by_alias=True)
+        payload.pop("cancellationRequested", None)
+        payload.pop("trainingTimeoutSeconds", None)
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def _save_verified_bundle(
+        self,
+        artifact_bundle_id: str,
+        model_payload: dict,
+        manifest_payload: dict,
+        supporting_files: dict,
+    ) -> dict:
+        try:
+            bundle = self.artifact_store.save_model_bundle(
+                artifact_bundle_id,
+                model_payload,
+                manifest_payload,
+                supporting_files=supporting_files,
+            )
+            self.artifact_store.verify_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
+            return bundle
+        except Exception:
+            self.artifact_store.delete_artifact_bundle(artifact_bundle_id)
+            raise
 
     def _evaluate(self, model: TabularAnomalyModel, rows: list) -> dict[str, float]:
         values = {row.metric: float(row.value) for row in rows[-min(3, len(rows)) :]}

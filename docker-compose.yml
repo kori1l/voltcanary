@@ -55,6 +55,7 @@ x-java-app: &java-app
     SIMULATOR_SERVICE_URI: http://simulator-service:8087
     AI_AGENT_SERVICE_URI: http://ai-agent-service:8088
     ML_SERVICE_URI: http://ml-service:8090
+    INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
     INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
     INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
   depends_on:
@@ -420,6 +421,7 @@ services:
       DEVICE_SERVICE_URI: http://device-service:8082
       ML_SERVICE_URI: http://ml-service:8090
       ALERT_SERVICE_URI: http://alert-service:8086
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
     ports:
       - "${ANALYTICS_SERVICE_PORT:-8085}:8085"
 
@@ -497,6 +499,11 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       AWS_EC2_METADATA_DISABLED: "true"
+      ML_RUNTIME_PROFILE: ${ML_RUNTIME_PROFILE:-docker}
+      ML_INTERNAL_AUTH_REQUIRED: ${ML_INTERNAL_AUTH_REQUIRED:-true}
+      ML_INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
+      ML_ALLOWED_SOURCE_SERVICES: ${ML_ALLOWED_SOURCE_SERVICES:-analytics-service}
+      ML_MAX_REQUEST_BYTES: ${ML_MAX_REQUEST_BYTES:-1048576}
     volumes:
       - ./ml-service:/workspace/ml-service
     depends_on:

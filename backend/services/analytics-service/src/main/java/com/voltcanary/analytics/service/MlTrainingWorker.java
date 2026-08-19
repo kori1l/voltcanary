@@ -117,6 +117,9 @@ public class MlTrainingWorker {
             assertNotCanceled(run);
 
             MlTrainingResponse trainingResponse = mlClient.requestTraining(new MlTrainingRequest(
+                    run.getId(),
+                    idempotencyKey(run),
+                    "model-" + run.getId(),
                     datasetVersion.getId(),
                     run.getAccountId(),
                     datasetVersion.getSourceType().name(),
@@ -405,6 +408,10 @@ public class MlTrainingWorker {
             return "Training failed";
         }
         return message.length() > 240 ? message.substring(0, 240) : message;
+    }
+
+    private String idempotencyKey(MlTrainingRun run) {
+        return "ml-training:" + run.getId();
     }
 
     private String writeJson(Object value) {

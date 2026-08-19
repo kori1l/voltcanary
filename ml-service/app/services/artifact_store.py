@@ -1,12 +1,71 @@
 import hashlib
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 from urllib.parse import urlparse
 
 from app.config.settings import settings
 
 BundleFilePayload = dict[str, Any] | bytes
+
+
+class ArtifactStoreHealthError(Exception):
+    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+        super().__init__(payload.get("message", "artifact store is unhealthy"))
+        self.status_code = status_code
+        self.payload = payload
+
+
+@dataclass(frozen=True)
+class ArtifactReferenceSet:
+    training_runs: set[str] = field(default_factory=set)
+    model_versions: set[str] = field(default_factory=set)
+    deployment_policies: set[str] = field(default_factory=set)
+    prediction_traces: set[str] = field(default_factory=set)
+    audit_records: set[str] = field(default_factory=set)
+
+    @classmethod
+    def from_sources(
+        cls,
+        training_runs: Iterable[str] = (),
+        model_versions: Iterable[str] = (),
+        deployment_policies: Iterable[str] = (),
+        prediction_traces: Iterable[str] = (),
+        audit_records: Iterable[str] = (),
+    ) -> "ArtifactReferenceSet":
+        return cls(
+            training_runs=set(training_runs),
+            model_versions=set(model_versions),
+            deployment_policies=set(deployment_policies),
+            prediction_traces=set(prediction_traces),
+            audit_records=set(audit_records),
+        )
+
+    def reference_types_for(self, artifact_uri: str, child_uris: Iterable[str] = ()) -> list[str]:
+        keys = {artifact_uri, *child_uris}
+        reference_sources = {
+            "training_runs": self.training_runs,
+            "model_versions": self.model_versions,
+            "deployment_policies": self.deployment_policies,
+            "prediction_traces": self.prediction_traces,
+            "audit_records": self.audit_records,
+        }
+        return [
+            reference_type
+            for reference_type, references in reference_sources.items()
+            if any(self._matches(reference, key) for reference in references for key in keys)
+        ]
+
+    def _matches(self, reference: str, artifact_uri: str) -> bool:
+        if not reference:
+            return False
+        if reference == artifact_uri:
+            return True
+        return artifact_uri.endswith("/manifest.json") and reference.startswith(self._artifact_prefix(artifact_uri))
+
+    def _artifact_prefix(self, artifact_uri: str) -> str:
+        return artifact_uri.rsplit("/", 1)[0].rstrip("/") + "/"
 
 
 class ArtifactStore:
@@ -112,14 +171,102 @@ class ArtifactStore:
         return True
 
     def health(self) -> dict[str, str]:
+        if settings.is_production_like_runtime and self.store == "local":
+            raise ArtifactStoreHealthError(
+                503,
+                {
+                    "status": "unhealthy",
+                    "provider": "local",
+                    "runtimeProfile": settings.ml_runtime_profile,
+                    "code": "local_artifact_store_forbidden",
+                    "message": "Local artifact storage is not allowed for production-like ML runtime profiles.",
+                },
+            )
         if self.store == "s3":
-            self._client().head_bucket(Bucket=self.bucket)
+            if settings.minio_endpoint and (not settings.minio_access_key or not settings.minio_secret_key):
+                raise ArtifactStoreHealthError(
+                    503,
+                    {
+                        "status": "unhealthy",
+                        "provider": "s3",
+                        "bucket": self.bucket,
+                        "code": "s3_credentials_missing",
+                        "message": "S3 artifact credentials are not configured.",
+                    },
+                )
+            try:
+                self._client(ensure_bucket=False).head_bucket(Bucket=self.bucket)
+            except Exception:
+                raise ArtifactStoreHealthError(
+                    503,
+                    {
+                        "status": "unhealthy",
+                        "provider": "s3",
+                        "bucket": self.bucket,
+                        "code": "artifact_store_unavailable",
+                        "message": "S3 artifact bucket is unavailable or credentials are invalid.",
+                    },
+                ) from None
             return {"status": "ok", "provider": "s3", "bucket": self.bucket}
+        if self.store != "local":
+            raise ArtifactStoreHealthError(
+                503,
+                {
+                    "status": "unhealthy",
+                    "provider": self.store,
+                    "code": "unsupported_artifact_store",
+                    "message": "Configured ML artifact store is not supported.",
+                },
+            )
         self.root.mkdir(parents=True, exist_ok=True)
         probe = self.root / ".healthcheck"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
         return {"status": "ok", "provider": "local", "root": str(self.root)}
+
+    def preview_cleanup(self, references: ArtifactReferenceSet | None = None) -> dict[str, Any]:
+        references = references or ArtifactReferenceSet()
+        artifacts = self._list_artifacts()
+        blocked = []
+        candidates = []
+        for artifact in artifacts:
+            reference_types = references.reference_types_for(
+                artifact["artifactUri"],
+                artifact.get("childUris", []),
+            )
+            public_artifact = {key: value for key, value in artifact.items() if key != "childUris"}
+            if reference_types:
+                blocked.append(
+                    {
+                        **public_artifact,
+                        "referenceTypes": reference_types,
+                        "blocked": True,
+                    }
+                )
+            else:
+                candidates.append({**public_artifact, "blocked": False})
+        return {
+            "dryRun": True,
+            "provider": self.store,
+            "bucket": self.bucket if self.store == "s3" else None,
+            "root": str(self.root) if self.store == "local" else None,
+            "candidates": candidates,
+            "blocked": blocked,
+        }
+
+    def delete_artifact_bundle(self, artifact_id: str) -> None:
+        if self.store == "s3":
+            self._delete_s3_prefix(f"{artifact_id}/")
+            return
+        target = self.root / artifact_id
+        if not target.exists():
+            return
+        for path in sorted(target.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            if path.is_file():
+                path.unlink(missing_ok=True)
+            elif path.is_dir():
+                path.rmdir()
+        target.rmdir()
 
     def _save_model_bundle_s3(
         self,
@@ -167,7 +314,7 @@ class ArtifactStore:
     def _put_object(self, key: str, payload: bytes, content_type: str) -> None:
         self._client().put_object(Bucket=self.bucket, Key=key, Body=payload, ContentType=content_type)
 
-    def _client(self):
+    def _client(self, ensure_bucket: bool = True):
         if self._s3_client is None:
             import boto3
             from botocore.client import Config
@@ -181,6 +328,7 @@ class ArtifactStore:
                 region_name=settings.aws_region,
                 config=config,
             )
+        if ensure_bucket:
             self._ensure_bucket()
         return self._s3_client
 
@@ -224,3 +372,102 @@ class ArtifactStore:
 
     def _sha256_bytes(self, payload: bytes) -> str:
         return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+    def _list_artifacts(self) -> list[dict[str, Any]]:
+        if self.store == "s3":
+            return self._list_s3_artifacts()
+        return self._list_local_artifacts()
+
+    def _list_local_artifacts(self) -> list[dict[str, Any]]:
+        if not self.root.exists():
+            return []
+        artifacts: list[dict[str, Any]] = []
+        for item in sorted(self.root.iterdir(), key=lambda path: path.name):
+            if item.name.startswith("."):
+                continue
+            if item.is_dir():
+                files = [path for path in item.rglob("*") if path.is_file()]
+                child_uris = [f"artifact://local/{path.relative_to(self.root).as_posix()}" for path in files]
+                manifest_uri = f"artifact://local/{item.name}/manifest.json"
+                artifacts.append(
+                    {
+                        "artifactId": item.name,
+                        "artifactUri": manifest_uri,
+                        "kind": "model_bundle" if (item / "manifest.json").exists() else "directory",
+                        "sizeBytes": sum(path.stat().st_size for path in files),
+                        "fileCount": len(files),
+                        "childUris": child_uris,
+                    }
+                )
+            elif item.is_file():
+                artifact_uri = f"artifact://local/{item.name}"
+                artifacts.append(
+                    {
+                        "artifactId": item.stem,
+                        "artifactUri": artifact_uri,
+                        "kind": "feature_snapshot" if item.name.startswith("features-") else "file",
+                        "sizeBytes": item.stat().st_size,
+                        "fileCount": 1,
+                        "childUris": [artifact_uri],
+                    }
+                )
+        return artifacts
+
+    def _list_s3_artifacts(self) -> list[dict[str, Any]]:
+        objects = self._list_s3_objects()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        root_objects: list[dict[str, Any]] = []
+        for item in objects:
+            key = item["Key"]
+            if "/" in key:
+                artifact_id = key.split("/", 1)[0]
+                grouped.setdefault(artifact_id, []).append(item)
+            else:
+                root_objects.append(item)
+
+        artifacts = [
+            {
+                "artifactId": artifact_id,
+                "artifactUri": f"s3://{self.bucket}/{artifact_id}/manifest.json",
+                "kind": "model_bundle"
+                if any(item["Key"] == f"{artifact_id}/manifest.json" for item in children)
+                else "prefix",
+                "sizeBytes": sum(int(item.get("Size", 0)) for item in children),
+                "fileCount": len(children),
+                "childUris": [f"s3://{self.bucket}/{item['Key']}" for item in children],
+            }
+            for artifact_id, children in sorted(grouped.items())
+        ]
+        artifacts.extend(
+            {
+                "artifactId": Path(item["Key"]).stem,
+                "artifactUri": f"s3://{self.bucket}/{item['Key']}",
+                "kind": "feature_snapshot" if Path(item["Key"]).name.startswith("features-") else "file",
+                "sizeBytes": int(item.get("Size", 0)),
+                "fileCount": 1,
+                "childUris": [f"s3://{self.bucket}/{item['Key']}"],
+            }
+            for item in sorted(root_objects, key=lambda entry: entry["Key"])
+        )
+        return artifacts
+
+    def _list_s3_objects(self) -> list[dict[str, Any]]:
+        client = self._client(ensure_bucket=False)
+        token = None
+        objects: list[dict[str, Any]] = []
+        while True:
+            kwargs = {"Bucket": self.bucket}
+            if token:
+                kwargs["ContinuationToken"] = token
+            response = client.list_objects_v2(**kwargs)
+            objects.extend(response.get("Contents", []))
+            if not response.get("IsTruncated"):
+                return objects
+            token = response.get("NextContinuationToken")
+
+    def _delete_s3_prefix(self, prefix: str) -> None:
+        client = self._client(ensure_bucket=False)
+        for item in self._list_s3_objects():
+            key = item["Key"]
+            if key.startswith(prefix):
+                client.delete_object(Bucket=self.bucket, Key=key)

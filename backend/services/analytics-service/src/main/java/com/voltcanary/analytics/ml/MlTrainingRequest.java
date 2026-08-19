@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.UUID;
 
 public record MlTrainingRequest(
+        UUID trainingRunId,
+        String idempotencyKey,
+        String artifactBundleId,
         UUID datasetVersionId,
         UUID accountId,
         String sourceType,

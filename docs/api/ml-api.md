@@ -2,6 +2,32 @@
 
 Machine learning inference and model metadata endpoints.
 
+## Internal ML-service boundary
+
+The frontend never calls ML-service directly. Analytics-service is the trusted
+caller for ML-service execution and metadata endpoints.
+
+When `ML_INTERNAL_AUTH_REQUIRED=true`, every non-probe ML-service endpoint
+requires:
+
+- `X-Source-Service: analytics-service`
+- `X-Internal-Service-Token: <configured internal token>`
+
+This boundary applies to `/inference`, `/train`, `/runs/{runId}`, `/models`,
+and the compatibility aliases under `/ml/*`. `GET /health` and
+`GET /health/artifacts` stay unauthenticated for Kubernetes probes.
+
+Sanitized boundary failures return:
+
+- `401` with `missing_internal_service_token` when the token header is absent.
+- `403` with `invalid_internal_service_token` when the token does not match.
+- `403` with `source_service_forbidden` when the source service is not in the
+  configured allowlist.
+- `413` with `request_body_too_large` when `/train`, `/inference`, or their
+  `/ml/*` aliases exceed `ML_MAX_REQUEST_BYTES`.
+- `400` for invalid JSON or request shape errors, without stack traces,
+  secrets, raw request input, or internal artifact paths.
+
 ## POST /inference
 
 Runs deterministic predictive scoring for one device telemetry snapshot or
@@ -98,7 +124,9 @@ Validation and failure responses:
 
 - Empty `metrics` returns `200` with `predictionStatus=INSUFFICIENT_DATA`.
 - Invalid JSON, missing required fields, or non-finite numeric metric values
-  return `400`.
+  return sanitized `400` responses.
+- Oversized execution requests return `413` before model scoring or training
+  code runs.
 - Runtime failures return standard service errors; analytics-service treats ML
   unavailability as a degraded dependency and continues rule-based analytics.
 
@@ -113,9 +141,11 @@ registry state is only a compatibility/local path.
 
 Checks ML-service artifact store connectivity. With `ML_ARTIFACT_STORE=s3`, the
 service verifies access to `ML_ARTIFACT_BUCKET` using the configured
-MinIO/S3 credentials. Kubernetes readiness probes call this endpoint.
+MinIO/S3 credentials. Kubernetes readiness probes call this endpoint. In
+production-like runtime profiles, `ML_ARTIFACT_STORE=local` is unhealthy
+because the source tree is not a durable artifact registry.
 
-Example response:
+Healthy response:
 
 ```json
 {
@@ -126,9 +156,21 @@ Example response:
 }
 ```
 
+Unhealthy responses return `503` and never include secrets or stack traces.
+Known `code` values:
+
+- `local_artifact_store_forbidden`: production-like runtime is configured with
+  `ML_ARTIFACT_STORE=local`.
+- `s3_credentials_missing`: MinIO/S3 endpoint credentials are not configured.
+- `artifact_store_unavailable`: the configured bucket cannot be reached or the
+  credentials cannot access it.
+- `unsupported_artifact_store`: `ML_ARTIFACT_STORE` names an unsupported
+  provider.
+
 ## GET /models
 
-Returns active model registry metadata:
+Returns active model registry metadata. This endpoint is internal and requires
+the ML-service boundary headers when `ML_INTERNAL_AUTH_REQUIRED=true`:
 
 ```json
 [
@@ -144,6 +186,53 @@ Returns active model registry metadata:
 `status` distinguishes heuristic readiness from future trained model readiness
 so operators and analytics-service can audit which predictive boundary produced
 a result.
+
+## POST /train
+
+Starts a model training run from an already materialized dataset payload. This
+endpoint is internal, requires the ML-service boundary headers when
+`ML_INTERNAL_AUTH_REQUIRED=true`, and is size-limited by
+`ML_MAX_REQUEST_BYTES`.
+
+Request fields:
+
+- `trainingRunId`: analytics-owned durable training run id. When omitted,
+  ML-service generates a local compatibility id.
+- `idempotencyKey`: stable retry key for the same analytics training run.
+  Reusing the same key with identical request metadata returns the existing
+  training response when ML-service has already recorded one.
+- `artifactBundleId`: deterministic final artifact bundle id or prefix.
+- `datasetVersionId`
+- `accountId`
+- `sourceType`
+- `modelFamily`
+- `algorithm`
+- `failureHorizonDays`
+- `minimumPositiveLabels`
+- `minimumLabelCoverage`
+- `cancellationRequested`: cooperative cancellation flag checked before major
+  ML-service phases and before final artifact promotion.
+- `trainingTimeoutSeconds`: optional ML-service timeout budget.
+- `rows`
+
+The response is a `TrainingRunResponse` with `runId`, `status`,
+`datasetVersionId`, `trainingRunId`, `idempotencyKey`, `artifactBundleId`,
+optional model artifact metadata, training metrics, feature snapshot metadata,
+logs summary, and sanitized failure reason. Conflicting reuse of an
+`idempotencyKey` with different dataset, feature snapshot, model family,
+algorithm, horizon, hyperparameters, artifact target, or rows returns `409`
+without overwriting existing artifact metadata. Canceled or timed-out training
+returns a terminal non-success status and does not promote a final manifest URI.
+An oversized request returns `413` before feature parsing, model fitting,
+artifact write, or model registration work runs.
+
+## GET /runs/{runId}
+
+Returns the in-memory training run response for compatibility and local
+inspection. This endpoint is internal and requires the ML-service boundary
+headers when `ML_INTERNAL_AUTH_REQUIRED=true`. Production operator-visible
+training state remains owned by analytics-service; this endpoint is not a
+durable production run registry.
 
 ## Production ML metadata contracts
 
@@ -1208,6 +1297,14 @@ persist a fallback trace with `canaryIncluded=false`.
 shadow scoring does not change active risk or user-facing recommendations.
 Fallback traces use `predictionPath=FALLBACK` and preserve the selected policy
 metadata for audit.
+
+## Artifact cleanup boundary
+
+Artifact cleanup is dry-run first. A cleanup preview must compare artifacts in
+the configured store with references from training runs, model versions,
+deployment policies, prediction traceability, and audit records. Referenced
+artifacts are returned as blocked and must not be deleted by automated cleanup.
+Only unreferenced artifacts are cleanup candidates.
 
 ## Frontend status boundary
 

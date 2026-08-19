@@ -40,6 +40,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# ML runtime artifacts
+ml-service/models/*
+!ml-service/models/README.md
+
 # Logs and temporary files
 *.log
 *.tmp

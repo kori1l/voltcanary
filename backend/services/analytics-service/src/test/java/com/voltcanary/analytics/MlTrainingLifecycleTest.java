@@ -348,6 +348,9 @@ class MlTrainingLifecycleTest {
 
         ArgumentCaptor<MlTrainingRequest> request = ArgumentCaptor.forClass(MlTrainingRequest.class);
         verify(mlClient).requestTraining(request.capture());
+        assertThat(request.getValue().trainingRunId()).isEqualTo(run.getId());
+        assertThat(request.getValue().idempotencyKey()).isEqualTo("ml-training:" + run.getId());
+        assertThat(request.getValue().artifactBundleId()).isEqualTo("model-" + run.getId());
         assertThat(request.getValue().modelFamily()).isEqualTo("FAILURE_PREDICTION");
         assertThat(request.getValue().failureHorizonDays()).isEqualTo(14);
         assertThat(request.getValue().rows())

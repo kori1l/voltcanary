@@ -38,6 +38,29 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 9. Archive with `npm run openspec -- archive <change-id>` only after every
    task is complete and required validation passes.
 
+## Temporary ML Production Hardening Sequence
+
+Delete this section after `gate-ml-production-smoke-ci` is completed,
+validated, and archived.
+
+When the user asks for the next active ML production-hardening work and no
+change is explicitly named, prefer this order while these changes are active:
+
+1. `harden-ml-service-internal-boundary`
+2. `govern-ml-artifact-storage`
+3. `make-ml-training-runtime-durable`
+4. `configure-ml-approval-gates`
+5. `enforce-ml-feature-parity`
+6. `add-ml-serving-artifact-cache`
+7. `gate-ml-production-smoke-ci`
+
+`harden-ml-service-internal-boundary` and `govern-ml-artifact-storage` may be
+implemented in either order if the user asks to parallelize. After durable
+training is in place, `configure-ml-approval-gates` and
+`enforce-ml-feature-parity` may also proceed independently. Keep
+`gate-ml-production-smoke-ci` last so the smoke gate validates the hardened
+end-to-end lifecycle.
+
 ## Context
 
 Treat `openspec/project.md` as the project-level policy. Use `docs/api/*.md`,

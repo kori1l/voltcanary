@@ -2,12 +2,18 @@ import unittest
 
 from fastapi.testclient import TestClient
 
+from app.config.settings import settings
 from app.main import app
 
 
 class MlServiceSmokeTest(unittest.TestCase):
     def setUp(self) -> None:
+        self._auth_required = settings.ml_internal_auth_required
+        settings.ml_internal_auth_required = False
         self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        settings.ml_internal_auth_required = self._auth_required
 
     def test_health_returns_200(self) -> None:
         response = self.client.get("/health")

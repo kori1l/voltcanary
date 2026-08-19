@@ -9,6 +9,8 @@ import com.voltcanary.analytics.consumer.TelemetryValidatedConsumer;
 import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlTrainingMetricRow;
+import com.voltcanary.analytics.ml.MlTrainingRequest;
 import com.voltcanary.analytics.ml.MlInferenceRequest;
 import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.producer.AnalyticsEventPublisher;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -40,6 +43,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.client.ExpectedCount.once;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
@@ -194,6 +198,100 @@ class AnalyticsPipelineTest {
 
         assertThat(client.requestPrediction(UUID.randomUUID(), Instant.now(), Map.of("metric", "activePowerW")))
                 .isNull();
+        server.verify();
+    }
+
+    @Test
+    void mlClientSendsInternalBoundaryHeadersForInference() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
+        internalProperties.setServiceName("analytics-service");
+        internalProperties.setServiceToken("test-internal-token");
+        MlClient client = new MlClient(
+                builder.baseUrl("http://ml-service").build(),
+                internalProperties,
+                new SimpleMeterRegistry());
+        UUID deviceId = UUID.randomUUID();
+        server.expect(once(), requestTo("http://ml-service/inference"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Source-Service", "analytics-service"))
+                .andExpect(header("X-Internal-Service-Token", "test-internal-token"))
+                .andRespond(withSuccess("""
+                        {
+                          "deviceId": "%s",
+                          "modelName": "voltcanary-baseline-heuristic",
+                          "modelVersion": "baseline-heuristic-v1",
+                          "modelType": "baseline_heuristic",
+                          "modelStatus": "READY_HEURISTIC",
+                          "predictionStatus": "BASELINE_HEURISTIC",
+                          "anomalyScore": 0.0,
+                          "degradationScore": 0.0,
+                          "riskLevel": "LOW",
+                          "confidence": 0.9,
+                          "signals": [],
+                          "explanations": [],
+                          "recommendedActions": [],
+                          "inputHash": "sha256:test"
+                        }
+                        """.formatted(deviceId), MediaType.APPLICATION_JSON));
+
+        assertThat(client.requestPrediction(deviceId, Instant.now(), Map.of("metric", "activePowerW")))
+                .isNotNull();
+        server.verify();
+    }
+
+    @Test
+    void mlClientSendsInternalBoundaryHeadersForTraining() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
+        internalProperties.setServiceName("analytics-service");
+        internalProperties.setServiceToken("test-internal-token");
+        MlClient client = new MlClient(
+                builder.baseUrl("http://ml-service").build(),
+                internalProperties,
+                new SimpleMeterRegistry());
+        UUID datasetVersionId = UUID.randomUUID();
+        UUID trainingRunId = UUID.randomUUID();
+        MlTrainingRequest request = new MlTrainingRequest(
+                trainingRunId,
+                "ml-training:" + trainingRunId,
+                "model-" + trainingRunId,
+                datasetVersionId,
+                UUID.randomUUID(),
+                "INTERNAL_TELEMETRY",
+                "ANOMALY_DETECTION",
+                "baseline-statistical-anomaly-v1",
+                null,
+                null,
+                null,
+                List.of(new MlTrainingMetricRow(
+                        Instant.parse("2026-07-30T12:00:00Z"),
+                        "device-1",
+                        "activePowerW",
+                        850.0,
+                        Map.of())));
+        server.expect(once(), requestTo("http://ml-service/train"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Source-Service", "analytics-service"))
+                .andExpect(header("X-Internal-Service-Token", "test-internal-token"))
+                .andRespond(withSuccess("""
+                        {
+                          "runId": "run-1",
+                          "status": "SUCCEEDED",
+                          "datasetVersionId": "%s",
+                          "modelVersionId": "model-v1",
+                          "modelVersion": "v1",
+                          "artifactUri": "artifact://local/model-v1/model.joblib",
+                          "manifestUri": "artifact://local/model-v1/manifest.json",
+                          "artifactHash": "sha256:test",
+                          "artifactSizeBytes": 1,
+                          "metrics": {}
+                        }
+                        """.formatted(datasetVersionId), MediaType.APPLICATION_JSON));
+
+        assertThat(client.requestTraining(request)).isNotNull();
         server.verify();
     }
 

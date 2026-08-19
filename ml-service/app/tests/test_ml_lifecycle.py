@@ -5,6 +5,9 @@ import unittest
 
 from fastapi.testclient import TestClient
 
+from app.api import inference as inference_api
+from app.api import training as training_api
+from app.config.settings import settings
 from app.main import app
 from app.models.failure_target import FailureTargetBuilder
 from app.schemas.inference import InferenceRequest
@@ -48,6 +51,14 @@ class _FakeS3Client:
 
     def get_object(self, Bucket: str, Key: str) -> dict:
         return {"Body": _FakeBody(self.objects[(Bucket, Key)])}
+
+    def delete_object(self, Bucket: str, Key: str) -> None:
+        self.objects.pop((Bucket, Key), None)
+
+
+class _FailingVerifyArtifactStore(ArtifactStore):
+    def verify_model_bundle(self, manifest_uri: str, expected_hash: str | None = None) -> bool:
+        raise RuntimeError("forced verification failure")
 
 
 def sample_rows() -> list[dict]:
@@ -103,6 +114,27 @@ def failure_row(
 
 
 class MlLifecycleTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._auth_required = settings.ml_internal_auth_required
+        self._model_registry_path = settings.model_registry_path
+        self._inference_service = inference_api.inference_service
+        self._training_service = training_api.training_service
+        self._tempdir = tempfile.TemporaryDirectory()
+        artifact_store = ArtifactStore(self._tempdir.name)
+        settings.ml_internal_auth_required = False
+        settings.model_registry_path = self._tempdir.name
+        inference_api.inference_service = InferenceService(artifact_store)
+        training_api.training_service = TrainingService(artifact_store)
+        model_registry_service.clear()
+
+    def tearDown(self) -> None:
+        inference_api.inference_service = self._inference_service
+        training_api.training_service = self._training_service
+        settings.model_registry_path = self._model_registry_path
+        settings.ml_internal_auth_required = self._auth_required
+        model_registry_service.clear()
+        self._tempdir.cleanup()
+
     def test_feature_generation_is_deterministic_for_same_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             service = FeatureService(ArtifactStore(directory))
@@ -235,6 +267,112 @@ class MlLifecycleTest(unittest.TestCase):
 
         self.assertEqual(run.status, "FAILED")
         self.assertIn("at least one metric row", run.failure_reason or "")
+
+    def test_training_retry_with_same_idempotency_key_returns_existing_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = TrainingService(ArtifactStore(directory))
+            request = TrainingRequest.model_validate(
+                {
+                    "trainingRunId": "run-idempotent-1",
+                    "idempotencyKey": "ml-training:run-idempotent-1",
+                    "artifactBundleId": "model-run-idempotent-1",
+                    "datasetVersionId": "dataset-idempotent-v1",
+                    "accountId": "account-1",
+                    "sourceType": "INTERNAL_TELEMETRY",
+                    "rows": sample_rows(),
+                }
+            )
+
+            first = service.start_training(request)
+            second = service.start_training(request)
+
+            self.assertEqual(first.status, "SUCCEEDED")
+            self.assertEqual(second.model_version_id, first.model_version_id)
+            self.assertEqual(second.artifact_uri, first.artifact_uri)
+            self.assertEqual(len(list((Path(directory)).glob("model-run-idempotent-1"))), 1)
+
+    def test_api_rejects_conflicting_retry_for_same_idempotency_key(self) -> None:
+        client = TestClient(app)
+        payload = {
+            "trainingRunId": "run-conflict-1",
+            "idempotencyKey": "ml-training:run-conflict-1",
+            "artifactBundleId": "model-run-conflict-1",
+            "datasetVersionId": "dataset-conflict-v1",
+            "accountId": "account-1",
+            "sourceType": "INTERNAL_TELEMETRY",
+            "rows": sample_rows(),
+        }
+        first = client.post("/train", json=payload)
+        changed = {**payload, "algorithm": "sklearn-isolation-forest-v1"}
+
+        conflict = client.post("/train", json=changed)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertIn("idempotency", conflict.text)
+
+    def test_training_cancellation_before_artifact_promotion_returns_canceled(self) -> None:
+        service = TrainingService()
+        request = TrainingRequest.model_validate(
+            {
+                "trainingRunId": "run-canceled-1",
+                "idempotencyKey": "ml-training:run-canceled-1",
+                "artifactBundleId": "model-run-canceled-1",
+                "datasetVersionId": "dataset-canceled-v1",
+                "accountId": "account-1",
+                "sourceType": "INTERNAL_TELEMETRY",
+                "cancellationRequested": True,
+                "rows": sample_rows(),
+            }
+        )
+
+        run = service.start_training(request)
+
+        self.assertEqual(run.status, "CANCELED")
+        self.assertEqual(run.training_run_id, "run-canceled-1")
+        self.assertIsNone(run.artifact_uri)
+
+    def test_training_timeout_before_artifact_promotion_returns_failed(self) -> None:
+        service = TrainingService()
+        request = TrainingRequest.model_validate(
+            {
+                "trainingRunId": "run-timeout-1",
+                "idempotencyKey": "ml-training:run-timeout-1",
+                "artifactBundleId": "model-run-timeout-1",
+                "datasetVersionId": "dataset-timeout-v1",
+                "accountId": "account-1",
+                "sourceType": "INTERNAL_TELEMETRY",
+                "trainingTimeoutSeconds": 0,
+                "rows": sample_rows(),
+            }
+        )
+
+        run = service.start_training(request)
+
+        self.assertEqual(run.status, "FAILED")
+        self.assertIn("timeout", run.failure_reason or "")
+        self.assertIsNone(run.artifact_uri)
+
+    def test_partial_artifact_bundle_is_removed_when_verification_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_store = _FailingVerifyArtifactStore(directory)
+            service = TrainingService(artifact_store)
+            request = TrainingRequest.model_validate(
+                {
+                    "trainingRunId": "run-partial-1",
+                    "idempotencyKey": "ml-training:run-partial-1",
+                    "artifactBundleId": "model-run-partial-1",
+                    "datasetVersionId": "dataset-partial-v1",
+                    "accountId": "account-1",
+                    "sourceType": "INTERNAL_TELEMETRY",
+                    "rows": sample_rows(),
+                }
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "forced verification failure"):
+                service.start_training(request)
+
+            self.assertFalse((Path(directory) / "model-run-partial-1").exists())
 
     def test_failure_target_builder_constructs_horizon_targets_from_generated_labels(self) -> None:
         start = datetime(2026, 7, 30, tzinfo=timezone.utc)

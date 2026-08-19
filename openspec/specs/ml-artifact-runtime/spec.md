@@ -107,3 +107,142 @@ Training runs SHALL support cleanup actions appropriate to their state.
 - **WHEN** an operator requests deletion
 - **THEN** the system SHALL block hard deletion
 - **AND** offer archive semantics that preserve model lineage.
+
+### Requirement: ML-service execution endpoints enforce internal authorization
+
+ML-service SHALL require an authenticated internal-service boundary for
+production execution and metadata endpoints that can train models, load model
+artifacts, or expose model metadata.
+
+#### Scenario: Unauthorized training request is rejected
+
+- **GIVEN** ML-service internal authorization is enabled
+- **WHEN** a request calls `/train` without a valid internal service token
+- **THEN** the service SHALL return an authorization error
+- **AND** no training, artifact read, artifact write, or model registration
+  work SHALL run.
+
+#### Scenario: Authorized analytics request is accepted
+
+- **GIVEN** analytics-service calls ML-service with the configured internal
+  token and source-service header
+- **WHEN** it requests `/inference` or `/train`
+- **THEN** ML-service SHALL accept the request subject to normal validation
+- **AND** logs or metrics SHALL attribute the request to the source service.
+
+#### Scenario: Health probes remain unauthenticated
+
+- **GIVEN** Kubernetes probes call ML-service
+- **WHEN** they request `/health` or `/health/artifacts`
+- **THEN** ML-service SHALL return probe status without requiring the internal
+  service token.
+
+### Requirement: ML-service execution requests are size-limited
+
+ML-service SHALL reject oversized execution requests before they can consume
+unbounded training or inference resources.
+
+#### Scenario: Training payload exceeds configured limit
+
+- **GIVEN** a `/train` request body exceeds the configured maximum request size
+- **WHEN** ML-service receives the request
+- **THEN** the service SHALL return `413` or an equivalent structured oversized
+  request error
+- **AND** no feature parsing, model fitting, or artifact persistence SHALL run.
+
+### Requirement: Production ML artifacts use durable object storage
+
+Production-like ML-service deployments SHALL use durable object storage for
+model and feature artifacts, and SHALL NOT use the source tree as the runtime
+artifact registry.
+
+#### Scenario: Production starts with local artifact storage
+
+- **GIVEN** ML-service is running in a production-like profile
+- **AND** artifact storage is configured as `local`
+- **WHEN** readiness checks run
+- **THEN** `/health/artifacts` SHALL report an unhealthy artifact provider
+- **AND** the pod SHALL NOT accept trained-model traffic.
+
+#### Scenario: Production artifact bucket is unavailable
+
+- **GIVEN** ML-service is configured with S3 artifact storage
+- **BUT** the configured bucket or credentials are unavailable
+- **WHEN** `/health/artifacts` is called
+- **THEN** the response SHALL identify artifact storage as unavailable without
+  exposing secrets
+- **AND** readiness SHALL fail.
+
+### Requirement: Generated artifacts are not committed as registry state
+
+Generated model and feature artifacts SHALL be excluded from normal source
+control and treated as runtime outputs or test fixtures only when explicitly
+named.
+
+#### Scenario: Training creates a model locally
+
+- **GIVEN** a local or test training run creates a model bundle
+- **WHEN** the repository status is inspected
+- **THEN** generated model files SHALL NOT appear as normal source changes
+  under the production artifact registry path.
+
+### Requirement: Artifact cleanup preserves lineage references
+
+Artifact cleanup SHALL preserve artifacts referenced by training runs, model
+versions, deployment policies, prediction traceability, or audit records.
+
+#### Scenario: Operator previews artifact cleanup
+
+- **GIVEN** model artifacts exist in the configured artifact store
+- **WHEN** an operator requests cleanup impact
+- **THEN** the system SHALL identify unreferenced cleanup candidates
+- **AND** block active or historically referenced artifacts from deletion.
+
+### Requirement: ML-service training execution is idempotent per training run
+
+ML-service SHALL make training execution duplicate-safe for retries of the same
+analytics-owned training run.
+
+#### Scenario: Worker retries the same training run
+
+- **GIVEN** analytics-service retries a training request with the same
+  `trainingRunId` and idempotency key
+- **WHEN** ML-service has already produced a verified artifact for that request
+- **THEN** ML-service SHALL return the existing artifact metadata
+- **AND** SHALL NOT create a duplicate model bundle.
+
+#### Scenario: Conflicting retry is submitted
+
+- **GIVEN** ML-service has recorded an idempotency key for a training run
+- **WHEN** a retry uses the same key with different dataset, feature snapshot,
+  model family, algorithm, horizon, or hyperparameters
+- **THEN** ML-service SHALL reject the request as an idempotency conflict
+- **AND** SHALL NOT overwrite the existing artifact metadata.
+
+### Requirement: ML-service training supports cooperative cancellation
+
+ML-service SHALL stop training before final artifact promotion when the
+analytics-owned run is canceled before a cancellation checkpoint completes.
+
+#### Scenario: Cancellation arrives before artifact promotion
+
+- **GIVEN** a training run is executing in ML-service
+- **WHEN** analytics-service marks the run cancellation requested
+- **THEN** ML-service SHALL observe cancellation at a checkpoint
+- **AND** return a canceled or failed-with-cancellation response
+- **AND** no candidate-ready artifact SHALL be promoted.
+
+### Requirement: Partial training artifacts are not promoted
+
+ML-service SHALL avoid exposing incomplete model bundles after failed,
+timed-out, or canceled training.
+
+#### Scenario: Artifact write fails midway
+
+- **GIVEN** model fitting succeeds
+- **BUT** artifact persistence fails before all bundle files and hashes are
+  written
+- **WHEN** ML-service returns the training response
+- **THEN** the response SHALL be failed
+- **AND** no final manifest URI SHALL point at an incomplete bundle.
+

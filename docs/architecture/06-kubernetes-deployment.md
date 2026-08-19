@@ -118,6 +118,18 @@ Maintenance-window rollout adds these operational settings:
 The shared `DEVICE_SERVICE_URI` and `INTERNAL_SERVICE_TOKEN` must be configured
 for analytics-service and alert-service reconciliation calls.
 
+ML-service also uses the shared internal boundary and durable artifact storage
+policy. `voltcanary-config` sets `ML_RUNTIME_PROFILE=kubernetes`,
+`ML_ARTIFACT_STORE=s3`, `ML_INTERNAL_AUTH_REQUIRED=true`,
+`ML_ALLOWED_SOURCE_SERVICES`, and `ML_MAX_REQUEST_BYTES`; `voltcanary-secrets`
+provides both
+`INTERNAL_SERVICE_TOKEN` for analytics-service and `ML_INTERNAL_SERVICE_TOKEN`
+for ML-service. `GET /health` and `GET /health/artifacts` remain open for
+probes, while `/inference`, `/train`, `/runs/{runId}`, `/models`, and `/ml/*`
+require the configured headers. If MinIO/S3 is unavailable or ML-service is
+misconfigured for local artifact storage, `/health/artifacts` returns `503` and
+the pod is not ready.
+
 ## Event Topics
 
 Redpanda initialization creates the maintenance topic:

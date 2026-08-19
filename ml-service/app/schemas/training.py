@@ -17,6 +17,9 @@ class MetricRow(BaseModel):
 
 
 class TrainingRequest(BaseModel):
+    training_run_id: str | None = Field(default=None, alias="trainingRunId")
+    idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
+    artifact_bundle_id: str | None = Field(default=None, alias="artifactBundleId")
     dataset_version_id: str = Field(alias="datasetVersionId")
     account_id: str = Field(alias="accountId")
     source_type: str = Field(alias="sourceType")
@@ -25,6 +28,8 @@ class TrainingRequest(BaseModel):
     failure_horizon_days: int | None = Field(default=None, alias="failureHorizonDays")
     minimum_positive_labels: int | None = Field(default=None, alias="minimumPositiveLabels")
     minimum_label_coverage: float | None = Field(default=None, alias="minimumLabelCoverage")
+    cancellation_requested: bool = Field(default=False, alias="cancellationRequested")
+    training_timeout_seconds: float | None = Field(default=None, alias="trainingTimeoutSeconds")
     rows: list[MetricRow]
 
     model_config = ConfigDict(populate_by_name=True)
@@ -44,6 +49,9 @@ class TrainingRunResponse(BaseModel):
     run_id: str = Field(alias="runId")
     status: str
     dataset_version_id: str = Field(alias="datasetVersionId")
+    training_run_id: str | None = Field(default=None, alias="trainingRunId")
+    idempotency_key: str | None = Field(default=None, alias="idempotencyKey")
+    artifact_bundle_id: str | None = Field(default=None, alias="artifactBundleId")
     model_version_id: str | None = Field(default=None, alias="modelVersionId")
     model_version: str | None = Field(default=None, alias="modelVersion")
     artifact_uri: str | None = Field(default=None, alias="artifactUri")
