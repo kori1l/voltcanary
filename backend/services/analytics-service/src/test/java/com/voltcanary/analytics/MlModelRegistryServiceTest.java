@@ -25,8 +25,16 @@ import com.voltcanary.analytics.repository.MlDeploymentAuditEventRepository;
 import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.PredictionResultRepository;
+import com.voltcanary.analytics.service.MlDemoModelSeeder;
+import com.voltcanary.analytics.service.MlDeploymentAuditWriter;
+import com.voltcanary.analytics.service.MlDeploymentPolicyResolver;
+import com.voltcanary.analytics.service.MlDeploymentPolicyService;
 import com.voltcanary.analytics.service.MlLifecycleConflictException;
+import com.voltcanary.analytics.service.MlModelApprovalGateVerifier;
+import com.voltcanary.analytics.service.MlModelLifecycleService;
+import com.voltcanary.analytics.service.MlModelQueryService;
 import com.voltcanary.analytics.service.MlModelRegistryService;
+import com.voltcanary.analytics.service.MlModelRegistryResponseMapper;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -42,13 +50,28 @@ class MlModelRegistryServiceTest {
     private final MlDeploymentAuditEventRepository auditRepository = mock(MlDeploymentAuditEventRepository.class);
     private final PredictionResultRepository predictionResultRepository = mock(PredictionResultRepository.class);
     private final MlRegistryProperties registryProperties = new MlRegistryProperties();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final MlDeploymentAuditWriter auditWriter = new MlDeploymentAuditWriter(auditRepository, objectMapper);
+    private final MlModelRegistryResponseMapper mapper = new MlModelRegistryResponseMapper();
     private final MlModelRegistryService service = new MlModelRegistryService(
+            new MlModelQueryService(
             modelRepository,
-            policyRepository,
-            auditRepository,
-            predictionResultRepository,
-            new ObjectMapper(),
-            registryProperties);
+                    registryProperties,
+                    new MlDemoModelSeeder(modelRepository, auditWriter),
+                    mapper),
+            new MlModelLifecycleService(
+                    modelRepository,
+                    policyRepository,
+                    predictionResultRepository,
+                    new MlModelApprovalGateVerifier(objectMapper),
+                    auditWriter,
+                    mapper),
+            new MlDeploymentPolicyService(
+                    policyRepository,
+                    modelRepository,
+                    auditWriter,
+                    mapper),
+            new MlDeploymentPolicyResolver(policyRepository));
 
     @Test
     void listModelsDoesNotSeedDemoModelsUnlessEnabled() {

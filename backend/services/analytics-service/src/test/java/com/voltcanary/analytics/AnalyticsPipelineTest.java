@@ -188,8 +188,9 @@ class AnalyticsPipelineTest {
         downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
                 "http://ml-service",
                 Duration.ofSeconds(1)));
-        MlClient client = MlClient.forRestClient(
-                builder.baseUrl(downstreamProperties.getMlService().getBaseUrl()).build(),
+        MlClient client = new MlClient(
+                builder,
+                downstreamProperties,
                 new AnalyticsInternalProperties(),
                 new SimpleMeterRegistry());
         server.expect(once(), requestTo("http://ml-service/inference"))
@@ -208,8 +209,13 @@ class AnalyticsPipelineTest {
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");
         internalProperties.setServiceToken("test-internal-token");
-        MlClient client = MlClient.forRestClient(
-                builder.baseUrl("http://ml-service").build(),
+        AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
+        downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
+                "http://ml-service",
+                Duration.ofSeconds(1)));
+        MlClient client = new MlClient(
+                builder,
+                downstreamProperties,
                 internalProperties,
                 new SimpleMeterRegistry());
         UUID deviceId = UUID.randomUUID();
@@ -248,8 +254,13 @@ class AnalyticsPipelineTest {
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");
         internalProperties.setServiceToken("test-internal-token");
-        MlClient client = MlClient.forRestClient(
-                builder.baseUrl("http://ml-service").build(),
+        AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
+        downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
+                "http://ml-service",
+                Duration.ofSeconds(1)));
+        MlClient client = new MlClient(
+                builder,
+                downstreamProperties,
                 internalProperties,
                 new SimpleMeterRegistry());
         UUID datasetVersionId = UUID.randomUUID();

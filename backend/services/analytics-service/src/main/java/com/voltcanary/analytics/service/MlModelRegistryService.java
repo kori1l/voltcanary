@@ -1,7 +1,5 @@
 package com.voltcanary.analytics.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.config.MlRegistryProperties;
 import com.voltcanary.analytics.domain.MlDeploymentScope;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyDto;
 import com.voltcanary.analytics.dto.MlDeploymentPolicyRequest;
@@ -10,13 +8,8 @@ import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.dto.MlModelStatusRequest;
 import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
-import com.voltcanary.analytics.repository.MlDeploymentAuditEventRepository;
-import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
-import com.voltcanary.analytics.repository.MlModelVersionRepository;
-import com.voltcanary.analytics.repository.PredictionResultRepository;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,7 +20,6 @@ public class MlModelRegistryService {
     private final MlDeploymentPolicyService deploymentPolicyService;
     private final MlDeploymentPolicyResolver deploymentPolicyResolver;
 
-    @Autowired
     public MlModelRegistryService(
             MlModelQueryService modelQueryService,
             MlModelLifecycleService modelLifecycleService,
@@ -37,37 +29,6 @@ public class MlModelRegistryService {
         this.modelLifecycleService = modelLifecycleService;
         this.deploymentPolicyService = deploymentPolicyService;
         this.deploymentPolicyResolver = deploymentPolicyResolver;
-    }
-
-    public MlModelRegistryService(
-            MlModelVersionRepository modelVersionRepository,
-            MlDeploymentPolicyRepository policyRepository,
-            MlDeploymentAuditEventRepository auditRepository,
-            PredictionResultRepository predictionResultRepository,
-            ObjectMapper objectMapper,
-            MlRegistryProperties registryProperties) {
-        MlDeploymentAuditWriter auditWriter = new MlDeploymentAuditWriter(auditRepository, objectMapper);
-        MlModelRegistryResponseMapper mapper = new MlModelRegistryResponseMapper();
-        MlDemoModelSeeder demoModelSeeder = new MlDemoModelSeeder(modelVersionRepository, auditWriter);
-        MlModelApprovalGateVerifier approvalGateVerifier = new MlModelApprovalGateVerifier(objectMapper);
-        this.modelQueryService = new MlModelQueryService(
-                modelVersionRepository,
-                registryProperties,
-                demoModelSeeder,
-                mapper);
-        this.modelLifecycleService = new MlModelLifecycleService(
-                modelVersionRepository,
-                policyRepository,
-                predictionResultRepository,
-                approvalGateVerifier,
-                auditWriter,
-                mapper);
-        this.deploymentPolicyService = new MlDeploymentPolicyService(
-                policyRepository,
-                modelVersionRepository,
-                auditWriter,
-                mapper);
-        this.deploymentPolicyResolver = new MlDeploymentPolicyResolver(policyRepository);
     }
 
     public List<MlModelVersionDto> listModels(UUID accountId) {

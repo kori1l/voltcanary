@@ -38,28 +38,35 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 9. Archive with `npm run openspec -- archive <change-id>` only after every
    task is complete and required validation passes.
 
-## Temporary ML Production Hardening Sequence
+## Target Ingestion Architecture Sequence
 
-Delete this section after `gate-ml-production-smoke-ci` is completed,
-validated, and archived.
+When the user asks for the next active ingestion architecture work and no change
+is explicitly named, prefer this order while these changes are active:
 
-When the user asks for the next active ML production-hardening work and no
-change is explicitly named, prefer this order while these changes are active:
+1. `define-ingestion-adapter-contracts`
+2. `route-http-ingestion-through-adapters`
+3. `route-mqtt-ingestion-through-adapters`
+4. `replicate-ingestion-source-runtime-config`
+5. `harden-ingestion-shared-scaling-state`
+6. `build-ingestion-connector-runtime`
+7. `add-http-polling-ingestion-adapter`
+8. `add-modbus-tcp-ingestion-adapter`
+9. `add-opc-ua-ingestion-adapter`
+10. `verify-ingestion-horizontal-scale`
 
-1. `harden-ml-service-internal-boundary`
-2. `govern-ml-artifact-storage`
-3. `make-ml-training-runtime-durable`
-4. `configure-ml-approval-gates`
-5. `enforce-ml-feature-parity`
-6. `add-ml-serving-artifact-cache`
-7. `gate-ml-production-smoke-ci`
+Do not preserve weak internal ingestion structures merely for backward
+compatibility while these changes are being implemented; VoltCanary is
+pre-production. Preserve a public contract only when the active change
+explicitly says to do so or when keeping it reduces scope without compromising
+the target architecture.
 
-`harden-ml-service-internal-boundary` and `govern-ml-artifact-storage` may be
-implemented in either order if the user asks to parallelize. After durable
-training is in place, `configure-ml-approval-gates` and
-`enforce-ml-feature-parity` may also proceed independently. Keep
-`gate-ml-production-smoke-ci` last so the smoke gate validates the hardened
-end-to-end lifecycle.
+Implement `define-ingestion-adapter-contracts` first because every later slice
+depends on the canonical adapter boundary. HTTP and MQTT may be implemented
+sequentially or in parallel after the contracts are in place. Complete source
+runtime config and shared scaling state before active connectors. Build the
+connector runtime before adding HTTP polling, Modbus TCP, or OPC UA. Keep
+`verify-ingestion-horizontal-scale` last so it validates the full target
+runtime across replicas.
 
 ## Context
 

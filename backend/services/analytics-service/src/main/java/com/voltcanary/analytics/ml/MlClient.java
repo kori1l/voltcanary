@@ -11,7 +11,6 @@ import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,21 +33,7 @@ public class MlClient {
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties,
             MeterRegistry meterRegistry) {
-        this(
-                buildRestClient(restClientBuilder, downstreamProperties),
-                internalProperties,
-                meterRegistry);
-    }
-
-    public static MlClient forRestClient(
-            RestClient restClient,
-            AnalyticsInternalProperties internalProperties,
-            MeterRegistry meterRegistry) {
-        return new MlClient(restClient, internalProperties, meterRegistry);
-    }
-
-    private MlClient(RestClient restClient, AnalyticsInternalProperties internalProperties, MeterRegistry meterRegistry) {
-        this.restClient = restClient;
+        this.restClient = buildRestClient(restClientBuilder, downstreamProperties);
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
         this.meterRegistry = meterRegistry;
@@ -59,7 +44,6 @@ public class MlClient {
             AnalyticsDownstreamProperties downstreamProperties) {
         AnalyticsDownstreamProperties.DownstreamService mlService = downstreamProperties.getMlService();
         return restClientBuilder
-                .requestFactory(new SimpleClientHttpRequestFactory())
                 .baseUrl(mlService.getBaseUrl())
                 .build();
     }

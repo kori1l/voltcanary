@@ -34,7 +34,15 @@ import com.voltcanary.analytics.repository.MlImportedMetricRowRepository;
 import com.voltcanary.analytics.repository.MlLabelRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
+import com.voltcanary.analytics.service.MlFeatureGenerationService;
+import com.voltcanary.analytics.service.MlFeatureHashService;
 import com.voltcanary.analytics.service.MlFeaturePipelineService;
+import com.voltcanary.analytics.service.MlFeatureSnapshotGenerationService;
+import com.voltcanary.analytics.service.MlFeatureSnapshotLifecycleService;
+import com.voltcanary.analytics.service.MlFeatureSnapshotResponseMapper;
+import com.voltcanary.analytics.service.MlFeatureTemplateAppender;
+import com.voltcanary.analytics.service.MlImportedDatasetFeatureBuilder;
+import com.voltcanary.analytics.service.MlInternalTelemetryFeatureBuilder;
 import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
@@ -57,18 +65,34 @@ class MlFeaturePipelineServiceTest {
     private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
     private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
     private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
-    private final MlFeaturePipelineService service = new MlFeaturePipelineService(
-            datasetVersionRepository,
+    private final MlFeatureTemplateAppender templateAppender = new MlFeatureTemplateAppender();
+    private final MlInternalTelemetryFeatureBuilder internalBuilder = new MlInternalTelemetryFeatureBuilder(
             canonicalMetricRowRepository,
+            labelRepository,
+            templateAppender);
+    private final MlImportedDatasetFeatureBuilder importedBuilder = new MlImportedDatasetFeatureBuilder(
             importedFileRepository,
             rowRepository,
+            labelRepository,
+            templateAppender);
+    private final MlFeatureGenerationService featureGenerationService = new MlFeatureGenerationService(internalBuilder, importedBuilder);
+    private final MlFeatureSnapshotResponseMapper mapper = new MlFeatureSnapshotResponseMapper();
+    private final MlFeaturePipelineService service = new MlFeaturePipelineService(
+            new MlFeatureSnapshotGenerationService(
+            datasetVersionRepository,
             snapshotRepository,
             featureRowRepository,
-            labelRepository,
+                    featureGenerationService,
+                    new MlFeatureHashService(new ObjectMapper()),
+                    mapper,
+                    new SimpleMeterRegistry()),
+            new MlFeatureSnapshotLifecycleService(
+                    snapshotRepository,
             trainingRunRepository,
             modelVersionRepository,
-            new ObjectMapper(),
-            new SimpleMeterRegistry());
+                    mapper),
+            snapshotRepository,
+            mapper);
 
     @Test
     void sameDatasetAndFeatureConfigProduceSameFeatureSchemaHash() {

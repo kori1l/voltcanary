@@ -38,7 +38,15 @@ import com.voltcanary.analytics.repository.MlLabelRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
+import com.voltcanary.analytics.service.MlDatasetLabelReadinessService;
+import com.voltcanary.analytics.service.MlDatasetLifecycleService;
+import com.voltcanary.analytics.service.MlDatasetMaterializationService;
+import com.voltcanary.analytics.service.MlDatasetPreviewService;
+import com.voltcanary.analytics.service.MlDatasetQueryService;
+import com.voltcanary.analytics.service.MlDatasetResponseMapper;
 import com.voltcanary.analytics.service.MlDatasetService;
+import com.voltcanary.analytics.service.MlDatasetSupportService;
+import com.voltcanary.analytics.service.MlDatasetValidationService;
 import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
@@ -67,20 +75,49 @@ class MlDatasetServiceTest {
     private final MaintenanceWindowReadModelRepository maintenanceRepository = mock(MaintenanceWindowReadModelRepository.class);
     private final TelemetryClient telemetryClient = mock(TelemetryClient.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final MlDatasetSupportService support = new MlDatasetSupportService(objectMapper);
+    private final MlDatasetValidationService validationService = new MlDatasetValidationService(
+            maintenanceRepository,
+            telemetryClient,
+            support);
+    private final MlDatasetLabelReadinessService labelReadinessService = new MlDatasetLabelReadinessService(
+            maintenanceOutcomeRepository,
+            maintenanceRepository,
+            support);
+    private final MlDatasetPreviewService previewService = new MlDatasetPreviewService(
+            maintenanceOutcomeRepository,
+            maintenanceRepository,
+            telemetryClient,
+            validationService,
+            labelReadinessService,
+            support);
+    private final MlDatasetResponseMapper mapper = new MlDatasetResponseMapper(objectMapper);
     private final MlDatasetService service = new MlDatasetService(
+            previewService,
+            new MlDatasetMaterializationService(
+                    datasetRepository,
+                    versionRepository,
+                    reportRepository,
+                    lineageRepository,
+                    canonicalMetricRowRepository,
+                    validationService,
+                    labelReadinessService,
+                    previewService,
+                    support),
+            new MlDatasetQueryService(
+                    datasetRepository,
+                    versionRepository,
+                    reportRepository,
+                    lineageRepository,
+                    mapper),
+            new MlDatasetLifecycleService(
             datasetRepository,
             versionRepository,
-            reportRepository,
-            lineageRepository,
             labelRepository,
             featureSnapshotRepository,
             trainingRunRepository,
             modelVersionRepository,
-            canonicalMetricRowRepository,
-            maintenanceOutcomeRepository,
-            maintenanceRepository,
-            telemetryClient,
-            objectMapper);
+                    mapper));
 
     @Test
     void createsReadyDatasetVersionWhenTelemetryCoverageIsSufficient() {

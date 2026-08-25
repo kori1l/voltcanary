@@ -1,23 +1,12 @@
 package com.voltcanary.analytics.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotRequest;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
-import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
-import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
-import com.voltcanary.analytics.repository.MlFeatureRowRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
-import com.voltcanary.analytics.repository.MlImportedFileRepository;
-import com.voltcanary.analytics.repository.MlImportedMetricRowRepository;
-import com.voltcanary.analytics.repository.MlLabelRepository;
-import com.voltcanary.analytics.repository.MlModelVersionRepository;
-import com.voltcanary.analytics.repository.MlTrainingRunRepository;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +18,6 @@ public class MlFeaturePipelineService {
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlFeatureSnapshotResponseMapper mapper;
 
-    @Autowired
     public MlFeaturePipelineService(
             MlFeatureSnapshotGenerationService generationService,
             MlFeatureSnapshotLifecycleService lifecycleService,
@@ -39,48 +27,6 @@ public class MlFeaturePipelineService {
         this.lifecycleService = lifecycleService;
         this.featureSnapshotRepository = featureSnapshotRepository;
         this.mapper = mapper;
-    }
-
-    public MlFeaturePipelineService(
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlCanonicalMetricRowRepository canonicalMetricRowRepository,
-            MlImportedFileRepository importedFileRepository,
-            MlImportedMetricRowRepository importedMetricRowRepository,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlFeatureRowRepository featureRowRepository,
-            MlLabelRepository labelRepository,
-            MlTrainingRunRepository trainingRunRepository,
-            MlModelVersionRepository modelVersionRepository,
-            ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
-        MlFeatureTemplateAppender templateAppender = new MlFeatureTemplateAppender();
-        MlInternalTelemetryFeatureBuilder internalBuilder = new MlInternalTelemetryFeatureBuilder(
-                canonicalMetricRowRepository,
-                labelRepository,
-                templateAppender);
-        MlImportedDatasetFeatureBuilder importedBuilder = new MlImportedDatasetFeatureBuilder(
-                importedFileRepository,
-                importedMetricRowRepository,
-                labelRepository,
-                templateAppender);
-        MlFeatureGenerationService featureGenerationService = new MlFeatureGenerationService(internalBuilder, importedBuilder);
-        MlFeatureHashService hashService = new MlFeatureHashService(objectMapper);
-        MlFeatureSnapshotResponseMapper responseMapper = new MlFeatureSnapshotResponseMapper();
-        this.generationService = new MlFeatureSnapshotGenerationService(
-                datasetVersionRepository,
-                featureSnapshotRepository,
-                featureRowRepository,
-                featureGenerationService,
-                hashService,
-                responseMapper,
-                meterRegistry);
-        this.lifecycleService = new MlFeatureSnapshotLifecycleService(
-                featureSnapshotRepository,
-                trainingRunRepository,
-                modelVersionRepository,
-                responseMapper);
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.mapper = responseMapper;
     }
 
     public MlFeatureSnapshotResponse generate(UUID accountId, MlFeatureSnapshotRequest request) {
