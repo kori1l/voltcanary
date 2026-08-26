@@ -1,6 +1,7 @@
 package com.voltcanary.ingestion;
 
-import com.voltcanary.ingestion.device.DeviceValidationClient;
+import com.voltcanary.ingestion.source.InternalDataSourceResponse;
+import com.voltcanary.ingestion.source.SourceRegistryCache;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -18,14 +19,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.redpanda.RedpandaContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(
@@ -48,14 +47,14 @@ class IngestionKafkaIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
-    @MockitoBean
-    private DeviceValidationClient deviceValidationClient;
+    @Autowired
+    private SourceRegistryCache sourceRegistryCache;
 
     @Test
     void validReadingIsPublishedToKafka() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId);
 
         try (KafkaConsumer<String, String> consumer = consumer()) {
             consumer.subscribe(List.of("telemetry.raw.v1"));
@@ -99,5 +98,18 @@ class IngestionKafkaIntegrationTest {
                 "sourceId", sourceId,
                 "timestamp", Instant.now().minusSeconds(30).toString(),
                 "metrics", Map.of("activePowerW", 840.2, "voltageV", 230.1));
+    }
+
+    private void seedSource(UUID deviceId, String sourceId) {
+        sourceRegistryCache.put(new InternalDataSourceResponse(
+                UUID.randomUUID(),
+                deviceId,
+                UUID.randomUUID(),
+                sourceId,
+                "GENERIC_HTTP_PUSH",
+                "REST",
+                "ACTIVE",
+                null,
+                null), System.nanoTime());
     }
 }

@@ -1519,14 +1519,14 @@ on direct Kafka sends, in-process schedulers, or in-memory state.
         scheduler lock.~~
       - ~~Replay is idempotent because alert creation is still keyed by source
         event/deduplication data, and terminal inbox entries are skipped.~~
-    - ~~Add device registry reconciliation so ingestion caches and projections
-      can be rebuilt from device-service if registry events are missed.~~
-      - ~~`ingestion-service` now periodically reconciles its local
-        `SourceRegistryCache` against device-service, refreshing cached source
-        metadata by `dataSourceId` and evicting sources that no longer exist.~~
-      - ~~The loop is per-pod because the cache is in-memory, configurable
-        through `app.ingestion.source-registry-reconciliation.*`, and covered by
-        a focused unit test.~~
+    - ~~Replicate source runtime config to ingestion so source caches rebuild
+      from Kafka rather than synchronous `device-service` calls.~~
+      - ~~`device-service` publishes `source.runtime-config.v1` through the
+        device outbox and `ingestion-service` applies it to `SourceRegistryCache`
+        by `dataSourceId`, token prefix, and external source id.~~
+      - ~~The remaining reconciliation loop is local read-model hygiene,
+        configurable through `app.ingestion.source-registry-reconciliation.*`,
+        and covered by focused unit tests.~~
 
 12. ~~Standardize event envelopes across all asynchronous topics.~~
     - ~~`docs/events/event-envelope.md` defines event id, producer,

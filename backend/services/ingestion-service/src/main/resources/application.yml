@@ -61,8 +61,6 @@ app:
     backpressure-enabled: ${INGESTION_BACKPRESSURE_ENABLED:true}
     backpressure-cooldown: ${INGESTION_BACKPRESSURE_COOLDOWN:30s}
     audit-capacity: ${INGESTION_AUDIT_CAPACITY:1000}
-    device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
-    internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
     kafka-publish-enabled: ${APP_KAFKA_PUBLISH_ENABLED:true}
     source-registry-reconciliation:
       enabled: ${INGESTION_SOURCE_REGISTRY_RECONCILIATION_ENABLED:true}

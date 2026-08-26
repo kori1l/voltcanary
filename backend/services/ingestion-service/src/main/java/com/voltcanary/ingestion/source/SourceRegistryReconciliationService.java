@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
 
 @Component
 public class SourceRegistryReconciliationService {
@@ -14,17 +13,14 @@ public class SourceRegistryReconciliationService {
     private static final Logger log = LoggerFactory.getLogger(SourceRegistryReconciliationService.class);
 
     private final SourceRegistryCache cache;
-    private final DeviceServiceSourceClient sourceClient;
     private final SourceRegistryReconciliationProperties properties;
     private final MeterRegistry meterRegistry;
 
     public SourceRegistryReconciliationService(
             SourceRegistryCache cache,
-            DeviceServiceSourceClient sourceClient,
             SourceRegistryReconciliationProperties properties,
             MeterRegistry meterRegistry) {
         this.cache = cache;
-        this.sourceClient = sourceClient;
         this.properties = properties;
         this.meterRegistry = meterRegistry;
     }
@@ -50,32 +46,17 @@ public class SourceRegistryReconciliationService {
         int evicted = 0;
         int failed = 0;
         for (SourceRegistryCache.CachedSource cached : cache.snapshot(properties.getBatchSize())) {
-            try {
-                cache.putByTokenPrefix(cached.tokenPrefix(), refresh(cached.source()));
-                refreshed++;
-            } catch (HttpClientErrorException.NotFound exception) {
+            if (cached.source().dataSourceId() == null || cached.source().externalId() == null) {
                 cache.evictByTokenPrefix(cached.tokenPrefix());
                 evicted++;
-            } catch (RuntimeException exception) {
-                failed++;
-                log.warn(
-                        "Failed to reconcile cached source tokenPrefix={} dataSourceId={}",
-                        cached.tokenPrefix(),
-                        cached.source().dataSourceId(),
-                        exception);
+            } else {
+                refreshed++;
             }
         }
         record("refreshed", refreshed);
         record("evicted", evicted);
         record("failed", failed);
         return new ReconciliationResult(refreshed, evicted, failed);
-    }
-
-    private InternalDataSourceResponse refresh(InternalDataSourceResponse source) {
-        if (source.dataSourceId() != null) {
-            return sourceClient.findById(source.dataSourceId());
-        }
-        return sourceClient.findByExternalId(source.externalId());
     }
 
     private void record(String outcome, int count) {

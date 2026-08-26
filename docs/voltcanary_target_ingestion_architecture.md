@@ -3157,17 +3157,23 @@ MQTT -> adapter -> canonical -> pipeline
 
 ## Phase 4 — Source config read model
 
+Status: implemented in `device-service`, `common-events`, and
+`ingestion-service`; source changes now publish `source.runtime-config.v1`
+through the device outbox, and ingestion resolves normal telemetry against a
+local read model.
+
 Introduce:
 
 ```text
 source.runtime-config.v1
 SourceRuntimeConfigConsumer
-SourceRuntimeConfigRepository
+SourceRegistryCache
 ```
 
 Remove `device-service` from the normal telemetry hot path.
 
-Keep temporary reconciliation/fallback only if useful during migration.
+The remaining source-registry reconciliation is local-only read-model hygiene;
+it does not refresh source state from `device-service`.
 
 ---
 

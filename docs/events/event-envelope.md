@@ -90,6 +90,7 @@ Examples:
 
 - `telemetry.raw.v1`
 - `telemetry.validated.v1`
+- `source.runtime-config.v1`
 - `maintenance-window.changed.v1`
 - `anomaly.detected.v1`
 - `risk-score.changed.v1`
@@ -103,6 +104,7 @@ Use stable domain keys to preserve useful ordering:
 | --- | --- |
 | `telemetry.raw.v1` | `deviceId` |
 | `telemetry.validated.v1` | `deviceId` |
+| `source.runtime-config.v1` | `dataSourceId` |
 | `maintenance-window.changed.v1` | `deviceId` |
 | `anomaly.detected.v1` | `deviceId` |
 | `risk-score.changed.v1` | `deviceId` |
@@ -131,3 +133,20 @@ Breaking changes require a new event version and usually a new topic:
 4. Consumers must tolerate late or out-of-order telemetry.
 5. Poison messages should be moved to a DLQ topic with the original envelope preserved.
 6. Logs must include `eventId`, `correlationId`, `producer`, and topic where possible.
+
+## Source Runtime Config
+
+`source.runtime-config.v1` is a compacted read-model topic produced by
+`device-service` through the device outbox and consumed by `ingestion-service`.
+The Kafka key is `dataSourceId`.
+
+The direct-record value is `SourceRuntimeConfigEvent` with source identity,
+`dataSourceId`, `accountId`, `deviceId`, adapter type, protocol, transport,
+status, mapping schema version, adapter config schema version, mapping,
+adapter config, credential references, optional token prefix/hash, home region,
+monotonically comparable `configVersion`, and standard event metadata.
+
+Events must not contain raw protocol credentials or raw ingestion tokens.
+Credential fields carry references only. `DISABLED` or `REVOKED` status stops
+local ingestion use; future deletion support may publish a tombstone for the
+same `dataSourceId` key when a hard delete should remove the read-model row.

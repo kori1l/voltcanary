@@ -1,7 +1,8 @@
 package com.voltcanary.ingestion;
 
-import com.voltcanary.ingestion.device.DeviceValidationClient;
 import com.voltcanary.ingestion.kafka.TelemetryEventPublisher;
+import com.voltcanary.ingestion.source.InternalDataSourceResponse;
+import com.voltcanary.ingestion.source.SourceRegistryCache;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -37,17 +37,17 @@ class IngestionPerformanceSmokeTest {
     private TestRestTemplate restTemplate;
 
     @MockitoBean
-    private DeviceValidationClient deviceValidationClient;
-
-    @MockitoBean
     private TelemetryEventPublisher telemetryEventPublisher;
+
+    @Autowired
+    private SourceRegistryCache sourceRegistryCache;
 
     @Test
     @Timeout(10)
     void acceptsModerateBatchWithinSmokeBudget() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "perf-source";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId);
 
         List<Map<String, Object>> readings = new ArrayList<>();
         Instant start = Instant.now().minusSeconds(300);
@@ -70,7 +70,7 @@ class IngestionPerformanceSmokeTest {
     void repeatedSingleReadsStayWithinSmokeBudget() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "perf-single";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId);
         Instant start = Instant.now().minusSeconds(300);
 
         for (int index = 0; index < 20; index++) {
@@ -95,5 +95,18 @@ class IngestionPerformanceSmokeTest {
                         "currentA", 3.65,
                         "energyWh", 12450.7,
                         "rssi", -61));
+    }
+
+    private void seedSource(UUID deviceId, String sourceId) {
+        sourceRegistryCache.put(new InternalDataSourceResponse(
+                UUID.randomUUID(),
+                deviceId,
+                UUID.randomUUID(),
+                sourceId,
+                "GENERIC_HTTP_PUSH",
+                "REST",
+                "ACTIVE",
+                null,
+                null), System.nanoTime());
     }
 }

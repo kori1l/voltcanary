@@ -11,5 +11,6 @@ public record InternalDataSourceResponse(
         String sourceType,
         String protocol,
         String status,
+        String tokenPrefix,
         String tokenHash) {
 }

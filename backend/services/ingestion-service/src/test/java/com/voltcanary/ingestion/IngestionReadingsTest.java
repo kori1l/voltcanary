@@ -1,8 +1,9 @@
 package com.voltcanary.ingestion;
 
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
-import com.voltcanary.ingestion.device.DeviceValidationClient;
 import com.voltcanary.ingestion.kafka.TelemetryEventPublisher;
+import com.voltcanary.ingestion.source.InternalDataSourceResponse;
+import com.voltcanary.ingestion.source.SourceRegistryCache;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -17,12 +18,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -39,17 +38,17 @@ class IngestionReadingsTest {
     private TestRestTemplate restTemplate;
 
     @MockitoBean
-    private DeviceValidationClient deviceValidationClient;
-
-    @MockitoBean
     private TelemetryEventPublisher telemetryEventPublisher;
+
+    @Autowired
+    private SourceRegistryCache sourceRegistryCache;
 
     @Test
     void acceptsValidReadingAndPublishesKafkaEvent() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
         Instant timestamp = recentTimestamp(30);
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId, "ACTIVE");
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings",
@@ -68,7 +67,6 @@ class IngestionReadingsTest {
     void rejectsUnknownDeviceDataSource() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "missing-source";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(false);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings",
@@ -84,7 +82,7 @@ class IngestionReadingsTest {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
         Instant timestamp = recentTimestamp(32);
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId, "ACTIVE");
 
         restTemplate.postForEntity("/ingestion/readings", request(deviceId, sourceId, timestamp), String.class);
         ResponseEntity<String> duplicate = restTemplate.postForEntity(
@@ -95,14 +93,13 @@ class IngestionReadingsTest {
         assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(duplicate.getBody()).contains("\"duplicateCount\":1");
         verify(telemetryEventPublisher, times(1)).publish(any());
-        verify(deviceValidationClient, times(2)).dataSourceExists(eq(deviceId), eq(sourceId));
     }
 
     @Test
     void rejectsUnsupportedMetricName() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId, "ACTIVE");
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings",
@@ -121,7 +118,7 @@ class IngestionReadingsTest {
     void batchReturnsPartialSuccessWithPerItemStatus() {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId, "ACTIVE");
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 "/ingestion/readings/batch",
@@ -147,7 +144,7 @@ class IngestionReadingsTest {
         UUID deviceId = UUID.randomUUID();
         String sourceId = "plug-001";
         Instant timestamp = recentTimestamp(36);
-        when(deviceValidationClient.dataSourceExists(deviceId, sourceId)).thenReturn(true);
+        seedSource(deviceId, sourceId, "ACTIVE");
         doThrow(new org.springframework.web.server.ResponseStatusException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Telemetry broker publish failed"))
@@ -184,5 +181,18 @@ class IngestionReadingsTest {
 
     private Instant recentTimestamp(long secondsAgo) {
         return Instant.now().minusSeconds(secondsAgo);
+    }
+
+    private void seedSource(UUID deviceId, String sourceId, String status) {
+        sourceRegistryCache.put(new InternalDataSourceResponse(
+                UUID.randomUUID(),
+                deviceId,
+                UUID.randomUUID(),
+                sourceId,
+                "GENERIC_HTTP_PUSH",
+                "REST",
+                status,
+                null,
+                null), System.nanoTime());
     }
 }

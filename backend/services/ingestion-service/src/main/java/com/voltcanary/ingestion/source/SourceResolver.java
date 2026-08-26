@@ -2,11 +2,9 @@ package com.voltcanary.ingestion.source;
 
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
-import com.voltcanary.ingestion.device.DeviceValidationClient;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
@@ -14,18 +12,12 @@ public class SourceResolver {
 
     private final SourceRegistryCache cache;
     private final SourceTokenValidator tokenValidator;
-    private final DeviceServiceSourceClient sourceClient;
-    private final DeviceValidationClient deviceValidationClient;
 
     public SourceResolver(
             SourceRegistryCache cache,
-            SourceTokenValidator tokenValidator,
-            DeviceServiceSourceClient sourceClient,
-            DeviceValidationClient deviceValidationClient) {
+            SourceTokenValidator tokenValidator) {
         this.cache = cache;
         this.tokenValidator = tokenValidator;
-        this.sourceClient = sourceClient;
-        this.deviceValidationClient = deviceValidationClient;
     }
 
     public ResolvedSource resolve(IncomingTelemetryMessage message) {
@@ -38,11 +30,7 @@ public class SourceResolver {
 
         String tokenPrefix = tokenValidator.prefix(message.sourceToken());
         InternalDataSourceResponse source = cache.getByTokenPrefix(tokenPrefix)
-                .orElseGet(() -> {
-                    InternalDataSourceResponse fetched = fetchByTokenPrefix(tokenPrefix);
-                    cache.putByTokenPrefix(tokenPrefix, fetched);
-                    return fetched;
-                });
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token"));
         if (!tokenValidator.matches(message.sourceToken(), source.tokenHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token");
         }
@@ -58,26 +46,7 @@ public class SourceResolver {
         if (message.protocol() == ProtocolType.REST && !"REST".equalsIgnoreCase(source.protocol())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data source protocol does not allow REST ingestion");
         }
-        if (!deviceValidationClient.dataSourceExists(source.deviceId(), source.externalId())) {
-            cache.evictByTokenPrefix(tokenPrefix);
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source");
-        }
-        return new ResolvedSource(
-                source.accountId(),
-                source.deviceId(),
-                source.dataSourceId(),
-                source.externalId(),
-                source.sourceType(),
-                source.protocol(),
-                source.status());
-    }
-
-    private InternalDataSourceResponse fetchByTokenPrefix(String tokenPrefix) {
-        try {
-            return sourceClient.findByTokenPrefix(tokenPrefix);
-        } catch (HttpClientErrorException.NotFound exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token", exception);
-        }
+        return resolved(source);
     }
 
     private ResolvedSource resolveDevMode(IncomingTelemetryMessage message) {
@@ -85,20 +54,30 @@ public class SourceResolver {
         if (deviceId == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Source token is required");
         }
-        if (!deviceValidationClient.dataSourceExists(deviceId, message.sourceId())) {
+        InternalDataSourceResponse source = cache.getByExternalId(message.sourceId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source"));
+        if (!deviceId.equals(source.deviceId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source");
         }
-        return new ResolvedSource(null, deviceId, null, message.sourceId(), "DEV", "REST", "ACTIVE");
+        if (!"ACTIVE".equalsIgnoreCase(source.status())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Data source is not active");
+        }
+        return resolved(source);
     }
 
     private ResolvedSource resolveMqtt(IncomingTelemetryMessage message) {
-        InternalDataSourceResponse source = sourceClient.findByExternalId(message.sourceId());
+        InternalDataSourceResponse source = cache.getByExternalId(message.sourceId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source"));
         if (!"ACTIVE".equalsIgnoreCase(source.status())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Data source is not active");
         }
         if (!"MQTT".equalsIgnoreCase(source.protocol())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data source protocol does not allow MQTT ingestion");
         }
+        return resolved(source);
+    }
+
+    private ResolvedSource resolved(InternalDataSourceResponse source) {
         return new ResolvedSource(
                 source.accountId(),
                 source.deviceId(),

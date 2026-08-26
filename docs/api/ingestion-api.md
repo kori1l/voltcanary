@@ -5,9 +5,11 @@ Telemetry ingestion endpoints and contracts.
 ## Authentication
 
 Collectors submit the source ingestion token as `Authorization: Bearer <token>`.
-The token is resolved by prefix through `device-service`; ingestion compares only
-the token hash and verifies that the token belongs to the submitted `sourceId`
-and `deviceId`.
+Ingestion resolves source identity from its local `source.runtime-config.v1`
+read model, compares only the token hash, and verifies that the token belongs to
+the submitted `sourceId` and `deviceId`. The request path does not call
+`device-service` for normal source validation; if the read model has not yet
+seen a source, ingestion fails closed with an unknown/invalid source response.
 
 ## POST /ingestion/readings
 
@@ -85,8 +87,9 @@ or metric names return `400`.
 
 MQTT collectors publish JSON payloads with `timestamp` and `metrics` to
 `voltcanary/sources/{sourceId}/telemetry`. Source resolution and validation use
-the same ingestion pipeline as HTTP. Unsupported topics and malformed payloads
-are rejected at the MQTT adapter boundary before the common pipeline runs.
+the same local runtime-config read model as HTTP. Unsupported topics and
+malformed payloads are rejected at the MQTT adapter boundary before the common
+pipeline runs.
 
 ## Internal Adapter Boundary
 
@@ -120,7 +123,6 @@ Important properties:
 - `app.ingestion.kafka-ack-timeout`
 - `app.idempotency.redis-enabled`
 - `app.idempotency.ttl`
-- `app.device-service.base-url`
 - `app.ingestion.max-metrics-per-reading`
 - `app.ingestion.max-readings-per-batch`
 - `app.ingestion.max-source-id-length`

@@ -28,8 +28,6 @@ public class IngestionProperties {
     private boolean backpressureEnabled = true;
     private Duration backpressureCooldown = Duration.ofSeconds(30);
     private int auditCapacity = 1_000;
-    private String deviceServiceBaseUrl = "http://localhost:8082";
-    private String internalServiceToken = "dev-internal-token";
     private boolean kafkaPublishEnabled = false;
     private Mqtt mqtt = new Mqtt();
 
@@ -183,22 +181,6 @@ public class IngestionProperties {
 
     public void setAuditCapacity(int auditCapacity) {
         this.auditCapacity = auditCapacity;
-    }
-
-    public String getDeviceServiceBaseUrl() {
-        return deviceServiceBaseUrl;
-    }
-
-    public void setDeviceServiceBaseUrl(String deviceServiceBaseUrl) {
-        this.deviceServiceBaseUrl = deviceServiceBaseUrl;
-    }
-
-    public String getInternalServiceToken() {
-        return internalServiceToken;
-    }
-
-    public void setInternalServiceToken(String internalServiceToken) {
-        this.internalServiceToken = internalServiceToken;
     }
 
     public boolean isKafkaPublishEnabled() {

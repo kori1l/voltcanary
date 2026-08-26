@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.common.events.alert.AlertCreatedEvent;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.device.DeviceRegistryChangedEvent;
+import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import com.voltcanary.common.events.identity.IdentityAccountLifecycleEvent;
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
@@ -74,6 +75,29 @@ class EventContractTest {
                 "v1", "corr-1", "alert-service", accountId, now));
         assertMetadata(new DeviceRegistryChangedEvent(
                 eventId, "v1", "DEVICE", "UPDATED", accountId, deviceId, deviceId, "ACTIVE", now, "corr-1", "device-service"));
+        assertMetadata(new SourceRuntimeConfigEvent(
+                eventId,
+                "v1",
+                "source-1",
+                UUID.randomUUID(),
+                accountId,
+                deviceId,
+                "GENERIC_HTTP_PUSH",
+                "REST",
+                "HTTP",
+                "ACTIVE",
+                "v1",
+                "v1",
+                Map.of("metric", "activePowerW"),
+                Map.of(),
+                Map.of("ingestionToken", "token-ref"),
+                "vc_src_live_test",
+                "token-hash",
+                "default",
+                1L,
+                now,
+                "corr-1",
+                "device-service"));
         assertMetadata(new IdentityAccountLifecycleEvent(
                 eventId, "v1", accountId, "user@example.com", "ACTIVE", now, "corr-1", "identity-service", accountId));
     }

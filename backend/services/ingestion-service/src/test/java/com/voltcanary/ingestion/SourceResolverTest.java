@@ -3,8 +3,6 @@ package com.voltcanary.ingestion;
 import com.voltcanary.ingestion.canonical.IngestionContext;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.canonical.TelemetryOrigin;
-import com.voltcanary.ingestion.device.DeviceValidationClient;
-import com.voltcanary.ingestion.source.DeviceServiceSourceClient;
 import com.voltcanary.ingestion.source.InternalDataSourceResponse;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
 import com.voltcanary.ingestion.source.SourceResolver;
@@ -15,40 +13,30 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class SourceResolverTest {
 
-    private final DeviceServiceSourceClient sourceClient = mock(DeviceServiceSourceClient.class);
-    private final DeviceValidationClient deviceValidationClient = mock(DeviceValidationClient.class);
+    private final SourceRegistryCache cache = new SourceRegistryCache();
     private final SourceResolver resolver = new SourceResolver(
-            new SourceRegistryCache(),
-            new SourceTokenValidator(),
-            sourceClient,
-            deviceValidationClient);
+            cache,
+            new SourceTokenValidator());
 
     @Test
     void resolvesValidSourceToken() {
         String token = "vc_src_live_test_token";
         UUID deviceId = UUID.randomUUID();
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source(token, deviceId, "ACTIVE", "REST"));
-        when(deviceValidationClient.dataSourceExists(deviceId, "sim-fridge-001")).thenReturn(true);
+        cache.put(source(token, deviceId, "ACTIVE", "REST"), 1L);
 
         assertThat(resolver.resolve(message(token)).deviceId()).isEqualTo(deviceId);
     }
 
     @Test
     void rejectsInvalidToken() {
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source("different-token", UUID.randomUUID(), "ACTIVE", "REST"));
+        cache.put(source("different-token", UUID.randomUUID(), "ACTIVE", "REST"), 1L);
 
         assertThatThrownBy(() -> resolver.resolve(message("vc_src_live_test_token")))
                 .isInstanceOf(ResponseStatusException.class)
@@ -56,10 +44,7 @@ class SourceResolverTest {
     }
 
     @Test
-    void rejectsUnknownTokenPrefixWithoutLeakingDeviceServiceNotFound() {
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
-
+    void rejectsUnknownTokenPrefixFromLocalReadModel() {
         assertThatThrownBy(() -> resolver.resolve(message("vc_src_live_test_token")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401")
@@ -69,8 +54,7 @@ class SourceResolverTest {
     @Test
     void rejectsInactiveSource() {
         String token = "vc_src_live_test_token";
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source(token, UUID.randomUUID(), "REVOKED", "REST"));
+        cache.put(source(token, UUID.randomUUID(), "REVOKED", "REST"), 1L);
 
         assertThatThrownBy(() -> resolver.resolve(message(token)))
                 .isInstanceOf(ResponseStatusException.class)
@@ -81,9 +65,7 @@ class SourceResolverTest {
     void rejectsTokenBoundToDifferentSubmittedDevice() {
         String token = "vc_src_live_test_token";
         UUID registeredDeviceId = UUID.randomUUID();
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source(token, registeredDeviceId, "ACTIVE", "REST"));
-        when(deviceValidationClient.dataSourceExists(registeredDeviceId, "sim-fridge-001")).thenReturn(true);
+        cache.put(source(token, registeredDeviceId, "ACTIVE", "REST"), 1L);
 
         IncomingTelemetryMessage message = new IncomingTelemetryMessage(
                 "sim-fridge-001",
@@ -104,8 +86,7 @@ class SourceResolverTest {
     @Test
     void rejectsTokenBoundToDifferentSubmittedSourceId() {
         String token = "vc_src_live_test_token";
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source(token, UUID.randomUUID(), "ACTIVE", "REST"));
+        cache.put(source(token, UUID.randomUUID(), "ACTIVE", "REST"), 1L);
 
         IncomingTelemetryMessage message = new IncomingTelemetryMessage(
                 "different-source",
@@ -124,17 +105,22 @@ class SourceResolverTest {
     }
 
     @Test
-    void rejectsCachedTokenWhenDeviceSourceNoLongerExists() {
-        String token = "vc_src_live_test_token";
+    void resolvesMqttFromLocalReadModel() {
         UUID deviceId = UUID.randomUUID();
-        when(sourceClient.findByTokenPrefix("vc_src_live_test"))
-                .thenReturn(source(token, deviceId, "ACTIVE", "REST"));
-        when(deviceValidationClient.dataSourceExists(deviceId, "sim-fridge-001")).thenReturn(true, false);
+        cache.put(source(null, deviceId, "ACTIVE", "MQTT"), 1L);
 
-        assertThat(resolver.resolve(message(token)).deviceId()).isEqualTo(deviceId);
-        assertThatThrownBy(() -> resolver.resolve(message(token)))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("404");
+        IncomingTelemetryMessage message = new IncomingTelemetryMessage(
+                "sim-fridge-001",
+                null,
+                null,
+                Instant.now(),
+                Instant.now(),
+                Map.of("activePowerW", 120),
+                TelemetryOrigin.mqtt("voltcanary/sources/sim-fridge-001/telemetry"),
+                new IngestionContext(null, null, null, Map.of()),
+                false);
+
+        assertThat(resolver.resolve(message).deviceId()).isEqualTo(deviceId);
     }
 
     private IncomingTelemetryMessage message(String token) {
@@ -159,7 +145,8 @@ class SourceResolverTest {
                 "SIMULATOR",
                 protocol,
                 status,
-                sha256Hex(token));
+                token == null ? null : token.substring(0, Math.min(16, token.length())),
+                token == null ? null : sha256Hex(token));
     }
 
     private String sha256Hex(String value) {

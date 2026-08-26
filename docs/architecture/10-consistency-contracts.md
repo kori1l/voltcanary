@@ -10,8 +10,8 @@ be retried or replayed safely.
 | Flow | Request-path consistency | Eventual consistency |
 | --- | --- | --- |
 | Auth registration/login/session | Strong. Tokens and user status are written before the response. | Identity lifecycle events are replayable through the identity outbox and device account reconciliation. |
-| Device, location, sensor, and source management | Strong for API reads after a successful write in device-service. | Registry-change events update ingestion-side source caches. Missed events are repaired by source-registry reconciliation. |
-| Telemetry ingestion | `202 Accepted` means validation, source lookup, rate limit, idempotency, and raw event publication or queued publish succeeded. | Telemetry persistence, latest readings, analytics, alerts, and notifications happen asynchronously. |
+| Device, location, sensor, and source management | Strong for API reads after a successful write in device-service. | `source.runtime-config.v1` updates the ingestion-side source read model. Ingestion may reject telemetry for a new or changed source until the compacted event reaches the local instance. |
+| Telemetry ingestion | `202 Accepted` means validation, local source read-model lookup, rate limit, idempotency, and raw event publication or queued publish succeeded. | Telemetry persistence, latest readings, analytics, alerts, and notifications happen asynchronously. |
 | Telemetry latest/readings/quality | Strong for data already persisted by telemetry-service. | New ingestion readings can take time to appear while Kafka and telemetry consumers process them. |
 | Analytics jobs/results | Job creation is strongly persisted. | Baselines, anomalies, risk, recommendations, and predictions are produced by async jobs and outbox-published analytics events. |
 | Alert creation | Strong once alert-service handles an analytics event. Duplicate source events reuse the existing alert. | Delivery to notification channels is durable and retryable through `notification_attempts`. |

@@ -14,6 +14,7 @@ import com.voltcanary.device.dto.DataSourceResponse;
 import com.voltcanary.device.dto.InternalDataSourceResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.event.SourceRuntimeConfigEventPublisher;
 import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
@@ -41,6 +42,7 @@ public class DataSourceService {
     private final DeviceRepository deviceRepository;
     private final DataSourceRepository dataSourceRepository;
     private final DeviceRegistryEventPublisher eventPublisher;
+    private final SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher;
     private final DeviceAuditService auditService;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -50,12 +52,14 @@ public class DataSourceService {
             DeviceRepository deviceRepository,
             DataSourceRepository dataSourceRepository,
             DeviceRegistryEventPublisher eventPublisher,
+            SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher,
             DeviceAuditService auditService) {
         this.deviceService = deviceService;
         this.accountRepository = accountRepository;
         this.deviceRepository = deviceRepository;
         this.dataSourceRepository = dataSourceRepository;
         this.eventPublisher = eventPublisher;
+        this.runtimeConfigEventPublisher = runtimeConfigEventPublisher;
         this.auditService = auditService;
     }
 
@@ -96,6 +100,7 @@ public class DataSourceService {
         DataSource saved = dataSourceRepository.save(dataSource);
         auditService.record(user, device.getAccountId(), "DATA_SOURCE_CREATED", "DATA_SOURCE", saved.getId());
         eventPublisher.publish("DATA_SOURCE", "CREATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return toResponse(saved);
     }
 
@@ -166,6 +171,7 @@ public class DataSourceService {
         DataSource saved = dataSourceRepository.save(dataSource);
         auditService.record(user, device.getAccountId(), "DATA_SOURCE_TOKEN_ROTATED", "DATA_SOURCE", saved.getId());
         eventPublisher.publish("DATA_SOURCE", "TOKEN_ROTATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return new SourceTokenResponse(token, prefix);
     }
 
@@ -179,6 +185,7 @@ public class DataSourceService {
         DataSource saved = dataSourceRepository.save(dataSource);
         auditService.record(user, device.getAccountId(), "DATA_SOURCE_TOKEN_REVOKED", "DATA_SOURCE", saved.getId());
         eventPublisher.publish("DATA_SOURCE", "TOKEN_REVOKED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
     }
 
     @Transactional
@@ -219,6 +226,7 @@ public class DataSourceService {
         DataSource saved = dataSourceRepository.save(dataSource);
         auditService.record(user, device.getAccountId(), "DATA_SOURCE_UPDATED", "DATA_SOURCE", saved.getId());
         eventPublisher.publish("DATA_SOURCE", "UPDATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return toResponse(saved);
     }
 
@@ -236,6 +244,7 @@ public class DataSourceService {
         DataSource saved = dataSourceRepository.save(dataSource);
         auditService.record(user, device.getAccountId(), "DATA_SOURCE_DISABLED", "DATA_SOURCE", saved.getId());
         eventPublisher.publish("DATA_SOURCE", "DISABLED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
     }
 
     @Transactional(readOnly = true)
@@ -282,6 +291,7 @@ public class DataSourceService {
                 dataSource.getSourceType().name(),
                 dataSource.getProtocol().name(),
                 dataSource.getStatus().name(),
+                dataSource.getTokenPrefix(),
                 dataSource.getIngestionTokenHash());
     }
 
