@@ -176,6 +176,59 @@ owned locally. `HttpPollingTelemetryAdapter` registers manifest
 responses into `IncomingTelemetryMessage` using the source runtime mapping.
 Instances that do not own the lease do not poll the endpoint for that source.
 
+OPC UA sources use `adapterType=GENERIC_OPC_UA`, `protocol=OPC_UA`, and
+`transport=TCP` in `source.runtime-config.v1`. They are subscription connectors:
+the connector runtime owns lease acquisition, reconnect/backoff, config
+replacement, disable handling, and health state; the adapter owns session
+mechanics and node-to-metric mapping.
+
+Adapter config schema `v1`:
+
+```json
+{
+  "endpointUrl": "opc.tcp://plc-1.internal:4840",
+  "securityPolicy": "Basic256Sha256",
+  "authenticationMode": "USERNAME",
+  "sessionTimeout": "30s",
+  "publishingInterval": "1s",
+  "samplingInterval": "250ms",
+  "queueSize": 10,
+  "timestampPolicy": "SOURCE_TIME"
+}
+```
+
+`authenticationMode` is `ANONYMOUS`, `USERNAME`, or `CERTIFICATE`. Username auth
+requires `credentialReferences.username` and `credentialReferences.password`.
+Certificate auth requires `credentialReferences.clientCertificate` and
+`credentialReferences.privateKey`; `credentialReferences.trustList` can point to
+trusted server certificate material. Raw secrets and certificates must not be
+embedded in `adapterConfig`, `mapping`, or source metadata.
+
+Mapping schema `v1`:
+
+```json
+{
+  "nodes": [
+    {
+      "metric": "voltageV",
+      "nodeId": "ns=2;s=Line1.Voltage",
+      "dataType": "DOUBLE",
+      "scale": 0.1,
+      "offset": 0,
+      "unit": "V"
+    }
+  ]
+}
+```
+
+Each node mapping must include `metric` and either `nodeId` or `browsePath`.
+The adapter emits canonical metric names and bounded origin/context metadata;
+NodeIds, browse paths, sessions, subscriptions, and security classes do not
+enter the common pipeline. Session loss, endpoint failure, auth or certificate
+failure, invalid mapping, lease loss, and config replacement are reported as
+per-source connector health. Lease loss, source disable, and config replacement
+close the local session and stop telemetry emission from that replica.
+
 ## Configuration
 
 Important properties:

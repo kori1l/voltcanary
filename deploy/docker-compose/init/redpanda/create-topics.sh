@@ -14,6 +14,7 @@ identity.account-lifecycle.v1
 anomaly.detected.v1
 risk-score.changed.v1
 alert.created.v1
+source.runtime-config.v1
 telemetry.raw.v1.dlq
 telemetry.validated.v1.dlq
 device-registry.changed.v1.dlq
@@ -25,6 +26,15 @@ alert.created.v1.dlq
 "
 
 for topic in $topics; do
+  if [ "$topic" = "source.runtime-config.v1" ]; then
+    rpk topic create "$topic" \
+      -X "brokers=$BROKERS" \
+      --partitions "$PARTITIONS" \
+      --replicas "$REPLICAS" \
+      --topic-config cleanup.policy=compact || true
+    continue
+  fi
+
   rpk topic create "$topic" \
     -X "brokers=$BROKERS" \
     --partitions "$PARTITIONS" \

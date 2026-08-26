@@ -1,6 +1,7 @@
 package com.voltcanary.ingestion.kafka;
 
 import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
+import com.voltcanary.ingestion.connector.ConnectorRuntimeProperties;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
@@ -14,6 +15,11 @@ import org.springframework.kafka.support.serializer.JsonDeserializer;
 
 @Configuration
 public class KafkaConsumerConfig {
+
+    @Bean
+    String sourceRuntimeConfigConsumerGroupId(ConnectorRuntimeProperties properties) {
+        return "ingestion-service-source-runtime-config-" + properties.getInstanceId();
+    }
 
     @Bean
     ConsumerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigConsumerFactory(

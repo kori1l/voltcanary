@@ -12,7 +12,7 @@ between database commits and external side effects.
 | Service | Multi-replica status | Required external state | Current blockers / notes |
 | --- | --- | --- | --- |
 | `api-gateway` | Conditional | Shared JWT verification keys, downstream service discovery, Redis-backed rate limiting before scaling protected/rate-limited traffic | Routing and JWT verification are stateless. The current general limiter is per gateway instance, so limits are not globally consistent until Redis-backed gateway limiting is enabled. |
-| `ingestion-service` | Conditional | Kafka partitions, `source.runtime-config.v1` replay, Redis idempotency keys, Redis-backed rate limits | Kafka production is safe with idempotent producer settings. Running multiple replicas requires the source runtime-config topic to be compacted/replayable and Redis idempotency/rate limiting; local in-memory fallbacks are single-instance development behavior. |
+| `ingestion-service` | Verified with horizontal smoke when shared state is enabled | Kafka partitions, compacted `source.runtime-config.v1` replay, Redis idempotency keys, Redis-backed rate limits, Redis connector leases | Kafka production is safe with idempotent producer settings and deterministic `deviceId` keys. Running multiple replicas requires source runtime-config consumers to use replica-specific groups so every replica builds the local read model; local in-memory fallbacks are single-instance development behavior. |
 | `telemetry-service` | Safe with Kafka partitioning | Kafka consumer group, telemetry database, `processed_events`, `telemetry_event_outbox` with row leases | Consumers record processed raw event ids before side effects. Validated/DLQ events are published through a lease-based outbox, so stale `PROCESSING` rows are claimable by another worker. |
 | `analytics-service` | Safe with database leases | Kafka consumer group, analytics database, `processed_events`, `analytics_jobs` leases, `analytics_event_outbox` leases, scheduler locks | Telemetry consumers are idempotent. Recalculation jobs and outbox rows are claim-based. Scheduled retention uses `scheduler_locks`. |
 | `alert-service` | Safe with database leases | Kafka consumer group, alert database, `processed_events`, `scheduler_locks`, `notification_attempts` leases | Analytics event consumers are idempotent. Escalation/retention use scheduler locks. Notification delivery uses durable attempts, idempotency keys, and row leases. |
@@ -47,6 +47,8 @@ between database commits and external side effects.
   `telemetry-service`, `analytics-service`, `alert-service`, `identity-service`,
   and `device-service`.
 - Keep single-replica unless Redis-backed protections are enabled:
-  `api-gateway` and `ingestion-service`.
+  `api-gateway`.
+- `ingestion-service` may run horizontally only after the horizontal ingestion
+  smoke passes for the target environment.
 - Keep single-replica for active simulation workloads:
   `simulator-service`.

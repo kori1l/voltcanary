@@ -41,4 +41,13 @@ class IngestionServiceSmokeTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
+
+    @Test
+    void horizontalScaleSmokeEndpointsAreDisabledByDefault() {
+        ResponseEntity<String> response = restTemplate.getForEntity(
+                "/internal/ingestion/horizontal-scale-smoke/sources/00000000-0000-0000-0000-000000000001",
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
 }

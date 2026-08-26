@@ -29,6 +29,7 @@
         <nimbus.jose.jwt.version>10.9</nimbus.jose.jwt.version>
         <paho.mqtt.version>1.2.5</paho.mqtt.version>
         <digitalpetri.modbus.version>2.1.6</digitalpetri.modbus.version>
+        <eclipse.milo.version>0.6.16</eclipse.milo.version>
         <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -171,6 +172,11 @@
                 <groupId>com.digitalpetri.modbus</groupId>
                 <artifactId>modbus-tcp</artifactId>
                 <version>${digitalpetri.modbus.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.milo</groupId>
+                <artifactId>sdk-client</artifactId>
+                <version>${eclipse.milo.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

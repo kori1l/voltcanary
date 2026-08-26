@@ -59,5 +59,6 @@ redis-data/
 minio-data/
 
 # Generated reports
+artifacts/
 reports/
 *.hprof

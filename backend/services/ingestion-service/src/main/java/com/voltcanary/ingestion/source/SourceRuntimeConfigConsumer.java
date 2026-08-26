@@ -24,7 +24,7 @@ public class SourceRuntimeConfigConsumer {
 
     @KafkaListener(
             topics = TOPIC,
-            groupId = "${spring.application.name:ingestion-service}",
+            groupId = "#{@sourceRuntimeConfigConsumerGroupId}",
             containerFactory = "sourceRuntimeConfigKafkaListenerContainerFactory")
     public void consume(
             SourceRuntimeConfigEvent event,

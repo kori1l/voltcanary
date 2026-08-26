@@ -132,10 +132,14 @@ the pod is not ready.
 
 ## Event Topics
 
-Redpanda initialization creates the maintenance topic:
+Redpanda initialization creates application topics including:
 
 ```text
+telemetry.raw.v1
+telemetry.validated.v1
+device-registry.changed.v1
 maintenance-window.changed.v1
+source.runtime-config.v1
 ```
 
 Alert-service can dead-letter failed projection messages to:
@@ -146,6 +150,10 @@ maintenance-window.changed.dlq.v1
 
 The topic is keyed by `deviceId` so consumers preserve per-device maintenance
 ordering as much as the broker partitioning allows.
+
+`source.runtime-config.v1` is compacted and keyed by `dataSourceId`. Ingestion
+replicas consume it with replica-specific groups so every pod rebuilds its local
+source read model after startup or restart.
 
 ## Scaling Model
 
@@ -162,6 +170,12 @@ The current local overlay configures stateless services with:
 This gives pod-level resilience and validates Kubernetes autoscaling behavior.
 On a real multi-node cluster, topology spread constraints help distribute pods
 across nodes. On Docker Desktop, all pods still run on one node.
+
+`ingestion-service` horizontal operation requires the Redis-backed
+idempotency/rate-limit flags in `voltcanary-config`, compacted
+`source.runtime-config.v1`, and Redis connector leases. Run
+`scripts/ingestion-horizontal-scale-smoke.ps1` against the target environment
+before treating the HA overlay as an ingestion correctness gate.
 
 ## Stateful Services
 

@@ -176,13 +176,7 @@ public class ConnectorSupervisor {
         }
 
         private void leaseLost(Instant now) {
-            if (subscriptionStarted) {
-                adapterResolver.resolve(config)
-                        .filter(SubscriptionTelemetryAdapter.class::isInstance)
-                        .map(SubscriptionTelemetryAdapter.class::cast)
-                        .ifPresent(adapter -> adapter.stopSubscription(config));
-                subscriptionStarted = false;
-            }
+            stopSubscriptionIfStarted();
             leaseManager.release(config.dataSourceId());
             state = ConnectorRuntimeState.LEASE_LOST;
             nextAttemptAt = now.plus(scheduler.pollingInterval(config));
@@ -190,16 +184,21 @@ public class ConnectorSupervisor {
         }
 
         private void stop() {
-            if (subscriptionStarted) {
-                adapterResolver.resolve(config)
-                        .filter(SubscriptionTelemetryAdapter.class::isInstance)
-                        .map(SubscriptionTelemetryAdapter.class::cast)
-                        .ifPresent(adapter -> adapter.stopSubscription(config));
-            }
-            subscriptionStarted = false;
+            stopSubscriptionIfStarted();
             leaseManager.release(config.dataSourceId());
             state = ConnectorRuntimeState.STOPPED;
             healthManager.stopped(config.sourceId());
+        }
+
+        private void stopSubscriptionIfStarted() {
+            if (!subscriptionStarted) {
+                return;
+            }
+            adapterResolver.resolve(config)
+                    .filter(SubscriptionTelemetryAdapter.class::isInstance)
+                    .map(SubscriptionTelemetryAdapter.class::cast)
+                    .ifPresent(adapter -> adapter.stopSubscription(config));
+            subscriptionStarted = false;
         }
 
         @Override
@@ -213,6 +212,7 @@ public class ConnectorSupervisor {
 
         @Override
         public void reject(SourceRuntimeConfig sourceRuntimeConfig, RuntimeException exception) {
+            stopSubscriptionIfStarted();
             fail(clock.instant(), exception);
         }
     }

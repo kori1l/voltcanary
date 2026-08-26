@@ -1,5 +1,6 @@
 package com.voltcanary.ingestion.kafka;
 
+import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -26,5 +27,19 @@ public class KafkaProducerConfig {
     KafkaTemplate<String, TelemetryReceivedEvent> telemetryKafkaTemplate(
             ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory) {
         return new KafkaTemplate<>(telemetryProducerFactory);
+    }
+
+    @Bean
+    ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory(KafkaProperties kafkaProperties) {
+        var properties = kafkaProperties.buildProducerProperties(null);
+        properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(properties);
+    }
+
+    @Bean
+    KafkaTemplate<String, SourceRuntimeConfigEvent> sourceRuntimeConfigKafkaTemplate(
+            ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory) {
+        return new KafkaTemplate<>(sourceRuntimeConfigProducerFactory);
     }
 }

@@ -109,6 +109,62 @@ Connection failures, timeouts, endpoint errors, lease loss, and repeated
 mapping failures are reported through connector runtime per-source health and
 use connector backoff.
 
+OPC UA ingestion is a long-lived active connector adapter and runs only after
+connector runtime lease ownership:
+
+```text
+ConnectorRuntime
+  -> ConnectorSupervisor lease ownership
+  -> OpcUaTelemetryAdapter
+  -> OPC UA node subscription
+  -> IncomingTelemetryMessage
+  -> TelemetryIngestionPipeline
+```
+
+Source runtime config for `GENERIC_OPC_UA` uses `protocol=OPC_UA`,
+`transport=TCP`, `adapterConfigSchemaVersion=v1`, and
+`mappingSchemaVersion=v1`. The adapter config contains endpoint, security,
+session, subscription, and timestamp policy fields:
+
+```json
+{
+  "endpointUrl": "opc.tcp://plc-1.internal:4840",
+  "securityPolicy": "Basic256Sha256",
+  "authenticationMode": "USERNAME",
+  "sessionTimeout": "30s",
+  "publishingInterval": "1s",
+  "samplingInterval": "250ms",
+  "queueSize": 10,
+  "timestampPolicy": "SOURCE_TIME"
+}
+```
+
+The mapping contains versioned node-to-metric entries:
+
+```json
+{
+  "nodes": [
+    {
+      "metric": "voltageV",
+      "nodeId": "ns=2;s=Line1.Voltage",
+      "dataType": "DOUBLE",
+      "scale": 0.1,
+      "offset": 0,
+      "unit": "V"
+    }
+  ]
+}
+```
+
+OPC UA NodeIds, browse paths, session state, security policy, certificate
+handling, and reconnect details stay inside `adapter.opcua` and the connector
+runtime. The common pipeline receives only canonical metrics plus bounded
+origin/context metadata such as endpoint host, security policy, config version,
+timestamp policy, publishing interval, sampling interval, and units. Session
+loss, endpoint failure, authentication or certificate failure, invalid mapping,
+lease loss, and config replacement are reported through connector runtime
+per-source health and use connector backoff before reconnect.
+
 The pipeline validates required fields, timestamp skew/backfill limits,
 supported metric names, metric value ranges, source and metric name lengths,
 and batch size. It resolves source identity, account, device, adapter,

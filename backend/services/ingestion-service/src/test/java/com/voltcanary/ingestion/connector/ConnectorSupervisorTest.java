@@ -159,6 +159,46 @@ class ConnectorSupervisorTest {
         assertThat(healthManager.snapshot(config.sourceId()).nextAttemptAt()).isAfter(clock.instant());
     }
 
+    @Test
+    void opcUaSubscriptionFailureStopsSessionAndBacksOffForReconnect() {
+        SourceRuntimeConfig config = new SourceRuntimeConfig(
+                "opcua-source",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                AdapterType.GENERIC_OPC_UA,
+                ProtocolType.OPC_UA,
+                TransportType.TCP,
+                "ACTIVE",
+                "v1",
+                "v1",
+                Map.of("nodes", List.of(Map.of("metric", "voltageV", "nodeId", "ns=2;s=Line1.Voltage"))),
+                Map.of("endpointUrl", "opc.tcp://plc-1.internal:4840", "pollInterval", "1s"),
+                Map.of(),
+                "default",
+                1L);
+        RecordingSubscriptionAdapter adapter = new RecordingSubscriptionAdapter(manifest(
+                AdapterType.GENERIC_OPC_UA,
+                TransportType.TCP,
+                ProtocolType.OPC_UA,
+                AdapterCapability.SUBSCRIPTION));
+        ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
+
+        supervisor.reconcile(List.of(config));
+        supervisor.tick();
+        adapter.sink.reject(config, new IllegalStateException("OPC UA session lost"));
+
+        assertThat(adapter.starts).isEqualTo(1);
+        assertThat(adapter.stops).isEqualTo(1);
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.DEGRADED);
+        assertThat(healthManager.snapshot(config.sourceId()).message()).contains("OPC UA session lost");
+
+        clock.advance(Duration.ofSeconds(1));
+        supervisor.tick();
+
+        assertThat(adapter.starts).isEqualTo(2);
+    }
+
     private ConnectorSupervisor supervisor(ConnectorLeaseManager leaseManager, TelemetryAdapter adapter) {
         IngestionAdapterResolver resolver = ignored -> Optional.of(adapter);
         return new ConnectorSupervisor(
@@ -298,12 +338,23 @@ class ConnectorSupervisorTest {
     }
 
     private static final class RecordingSubscriptionAdapter implements SubscriptionTelemetryAdapter {
+        private final AdapterManifest manifest;
         private int starts;
         private int stops;
+        private SubscriptionTelemetrySink sink;
+
+        private RecordingSubscriptionAdapter() {
+            this(ConnectorSupervisorTest.manifest(AdapterCapability.SUBSCRIPTION));
+        }
+
+        private RecordingSubscriptionAdapter(AdapterManifest manifest) {
+            this.manifest = manifest;
+        }
 
         @Override
         public void startSubscription(SourceRuntimeConfig sourceRuntimeConfig, SubscriptionTelemetrySink sink) {
             starts++;
+            this.sink = sink;
         }
 
         @Override
@@ -313,7 +364,7 @@ class ConnectorSupervisorTest {
 
         @Override
         public AdapterManifest manifest() {
-            return ConnectorSupervisorTest.manifest(AdapterCapability.SUBSCRIPTION);
+            return manifest;
         }
     }
 

@@ -14,6 +14,7 @@ import com.voltcanary.ingestion.adapter.http.HttpPollingTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
+import com.voltcanary.ingestion.adapter.opcua.OpcUaTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterRegistry;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterResolver;
 import java.util.List;
@@ -126,6 +127,18 @@ class AdapterContractTest {
         assertThat(adapter.manifest().transport()).isEqualTo(TransportType.HTTP);
         assertThat(adapter.manifest().protocol()).isEqualTo(ProtocolType.HTTP);
         assertThat(adapter.manifest().capabilities().polling()).isTrue();
+    }
+
+    @Test
+    void opcUaAdapterRegistersSubscriptionManifest() {
+        OpcUaTelemetryAdapter adapter = new OpcUaTelemetryAdapter((ignored, handler) -> () -> {
+        });
+
+        assertThat(adapter.adapterId()).isEqualTo("generic-opc-ua");
+        assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_OPC_UA);
+        assertThat(adapter.manifest().transport()).isEqualTo(TransportType.TCP);
+        assertThat(adapter.manifest().protocol()).isEqualTo(ProtocolType.OPC_UA);
+        assertThat(adapter.manifest().capabilities().subscription()).isTrue();
     }
 
     private TelemetryAdapter adapter(
