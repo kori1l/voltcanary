@@ -1,7 +1,9 @@
 package com.voltcanary.ingestion;
 
 import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
+import com.voltcanary.ingestion.adapter.api.AdapterType;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
+import com.voltcanary.ingestion.source.SourceRuntimeConfigStore;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigConsumer;
 import java.time.Instant;
 import java.util.Map;
@@ -13,7 +15,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SourceRuntimeConfigConsumerTest {
 
     private final SourceRegistryCache cache = new SourceRegistryCache();
-    private final SourceRuntimeConfigConsumer consumer = new SourceRuntimeConfigConsumer(cache);
+    private final SourceRuntimeConfigStore runtimeConfigStore = new SourceRuntimeConfigStore();
+    private final SourceRuntimeConfigConsumer consumer = new SourceRuntimeConfigConsumer(cache, runtimeConfigStore);
 
     @Test
     void appliesRuntimeConfigToLocalReadModel() {
@@ -28,6 +31,10 @@ class SourceRuntimeConfigConsumerTest {
             assertThat(source.status()).isEqualTo("ACTIVE");
         });
         assertThat(cache.getByExternalId("sim-fridge-001")).isPresent();
+        assertThat(runtimeConfigStore.get(dataSourceId)).hasValueSatisfying(config -> {
+            assertThat(config.adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_PUSH);
+            assertThat(config.version()).isEqualTo(10L);
+        });
     }
 
     @Test
@@ -38,6 +45,8 @@ class SourceRuntimeConfigConsumerTest {
 
         assertThat(cache.getByExternalId("sim-fridge-001")).hasValueSatisfying(source ->
                 assertThat(source.status()).isEqualTo("DISABLED"));
+        assertThat(runtimeConfigStore.get(dataSourceId)).hasValueSatisfying(config ->
+                assertThat(config.status()).isEqualTo("DISABLED"));
     }
 
     private SourceRuntimeConfigEvent event(UUID dataSourceId, String status, long configVersion) {

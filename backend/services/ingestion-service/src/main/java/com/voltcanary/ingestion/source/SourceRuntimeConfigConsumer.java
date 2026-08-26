@@ -15,9 +15,11 @@ public class SourceRuntimeConfigConsumer {
     private static final Logger log = LoggerFactory.getLogger(SourceRuntimeConfigConsumer.class);
 
     private final SourceRegistryCache cache;
+    private final SourceRuntimeConfigStore runtimeConfigStore;
 
-    public SourceRuntimeConfigConsumer(SourceRegistryCache cache) {
+    public SourceRuntimeConfigConsumer(SourceRegistryCache cache, SourceRuntimeConfigStore runtimeConfigStore) {
         this.cache = cache;
+        this.runtimeConfigStore = runtimeConfigStore;
     }
 
     @KafkaListener(
@@ -28,6 +30,7 @@ public class SourceRuntimeConfigConsumer {
             SourceRuntimeConfigEvent event,
             @Header(KafkaHeaders.RECEIVED_KEY) String key) {
         cache.apply(event);
+        runtimeConfigStore.apply(event);
         log.debug(
                 "sourceRuntimeConfigApplied key={} dataSourceId={} sourceId={} status={} version={}",
                 key,

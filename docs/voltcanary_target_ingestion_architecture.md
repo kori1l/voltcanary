@@ -1239,6 +1239,13 @@ This distinction prevents the common pipeline from becoming protocol-aware.
 
 The connector runtime is the most important new subsystem for polling and long-lived connections.
 
+Implementation status:
+
+- implemented in `backend/services/ingestion-service/src/main/java/com/voltcanary/ingestion/connector`;
+- source config events update both the existing source registry lookup cache and `SourceRuntimeConfigStore`;
+- `ConnectorRuntime` performs the scheduled scan and delegates assignment and lifecycle decisions;
+- `ConnectorLeaseManager` is selected through Spring wiring: Redis leases are used when `StringRedisTemplate` is available, otherwise the local in-memory lease manager is used for single-process/test execution.
+
 Responsibilities:
 
 - discover enabled active sources;
@@ -1289,14 +1296,12 @@ Possible states:
 
 ```java
 public enum ConnectorState {
-    CREATED,
     STARTING,
     RUNNING,
     DEGRADED,
-    RETRYING,
+    STOPPED,
     FAILED,
-    STOPPING,
-    STOPPED
+    LEASE_LOST
 }
 ```
 
@@ -1398,6 +1403,10 @@ starts connector
 Use fencing/version information where duplicate active ownership could cause dangerous command execution.
 
 Telemetry-only duplicate polling is less dangerous than duplicate device commands, but the platform should still avoid it.
+
+The current runtime acquires and renews ownership before invoking polling or subscription adapters. If renewal fails or a lease is no longer owned locally, the supervisor moves that source to `LEASE_LOST`, stops local subscription work when applicable, releases the local lease, and waits for the next scheduled attempt. Polling results are only sent into the common ingestion pipeline after ownership is confirmed again, so a source is not polled by every replica.
+
+Adapters remain protocol-specific workers: they poll or manage subscriptions for the supplied `SourceRuntimeConfig`, but they do not decide global ownership, assignment, retry cadence, or health state.
 
 ---
 
@@ -3194,6 +3203,8 @@ No silent in-memory correctness fallback in a multi-replica production mode.
 
 ## Phase 6 — Connector runtime
 
+Status: implemented in `ingestion-service`.
+
 Implement:
 
 ```text
@@ -3209,6 +3220,10 @@ No industrial protocol yet.
 ---
 
 ## Phase 7 — Generic HTTP Polling Adapter
+
+Status: implemented in `ingestion-service`; generic HTTP polling sources are
+registered as `GENERIC_HTTP_POLLING` polling adapters and are invoked only by
+the connector runtime after lease ownership is acquired.
 
 Use HTTP polling as the first active connector because it is simpler than Modbus/OPC UA.
 

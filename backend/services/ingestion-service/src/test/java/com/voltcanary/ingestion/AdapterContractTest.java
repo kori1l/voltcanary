@@ -9,6 +9,8 @@ import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.TransportType;
+import com.voltcanary.ingestion.adapter.http.HttpPollingResponseMapper;
+import com.voltcanary.ingestion.adapter.http.HttpPollingTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
@@ -111,6 +113,19 @@ class AdapterContractTest {
         assertThat(mqttAdapter.manifest().transport()).isEqualTo(TransportType.MQTT);
         assertThat(mqttAdapter.manifest().protocol()).isEqualTo(ProtocolType.MQTT);
         assertThat(mqttAdapter.manifest().capabilities().inbound()).isTrue();
+    }
+
+    @Test
+    void httpPollingAdapterRegistersPollingManifest() {
+        HttpPollingTelemetryAdapter adapter = new HttpPollingTelemetryAdapter(
+                ignored -> java.util.Optional.empty(),
+                new HttpPollingResponseMapper(new ObjectMapper()));
+
+        assertThat(adapter.adapterId()).isEqualTo("generic-http-polling");
+        assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_POLLING);
+        assertThat(adapter.manifest().transport()).isEqualTo(TransportType.HTTP);
+        assertThat(adapter.manifest().protocol()).isEqualTo(ProtocolType.HTTP);
+        assertThat(adapter.manifest().capabilities().polling()).isTrue();
     }
 
     private TelemetryAdapter adapter(

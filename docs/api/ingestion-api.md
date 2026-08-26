@@ -91,6 +91,61 @@ the same local runtime-config read model as HTTP. Unsupported topics and
 malformed payloads are rejected at the MQTT adapter boundary before the common
 pipeline runs.
 
+## HTTP Polling Sources
+
+HTTP polling sources use `adapterType=GENERIC_HTTP_POLLING`, `protocol=HTTP`,
+and `transport=HTTP` in `source.runtime-config.v1`. They are active connectors:
+the connector runtime owns lease acquisition, scheduling, retry/backoff, and
+health state; the adapter only executes the HTTP request and maps the response
+into canonical telemetry.
+
+Adapter config schema `v1`:
+
+```json
+{
+  "method": "GET",
+  "url": "https://collector.example.com/devices/plug-001/latest",
+  "pollingInterval": "30s",
+  "timeout": "5s",
+  "headers": {
+    "Accept": "application/json"
+  },
+  "credentialHeaders": {
+    "Authorization": "apiToken"
+  }
+}
+```
+
+`credentialHeaders` maps outbound header names to keys in
+`credentialReferences`; the referenced value is resolved by the ingestion
+credential provider. Current local resolution supports `env:NAME`,
+`env://NAME`, and `sys:property.name` references. Raw credentials must not be
+embedded in `adapterConfig`, `mapping`, or source metadata.
+
+Mapping schema `v1`:
+
+```json
+{
+  "timestampPath": "sampledAt",
+  "metrics": {
+    "activePowerW": "payload.power",
+    "voltageV": "payload.voltage"
+  }
+}
+```
+
+Paths are dot-separated JSON object paths. If `metrics` is omitted, the
+response must contain a top-level `metrics` object. If `timestampPath` is
+missing in the response, ingestion uses the poll receive time as `occurredAt`.
+The adapter emits only mapped metrics plus bounded metadata such as endpoint
+host and HTTP status; it does not publish raw response bodies to
+`telemetry.raw.v1`.
+
+HTTP non-2xx responses, invalid config, unresolved credential references,
+malformed JSON, missing mapped fields, and timeout or connection failures are
+reported as per-source connector failures. The connector runtime applies
+backoff and keeps other sources running independently.
+
 ## Internal Adapter Boundary
 
 External HTTP and MQTT contracts remain stable, but both ingress paths must
@@ -114,6 +169,12 @@ with `TelemetryOrigin` set to `adapterType=GENERIC_MQTT`,
 available. MQTT ingress records adapter-scoped metrics for accepted messages,
 unsupported topics, invalid payloads, broker reconnects, and pipeline
 rejections.
+
+HTTP polling routes through the connector runtime after the source lease is
+owned locally. `HttpPollingTelemetryAdapter` registers manifest
+`generic-http-polling` with polling capability and maps successful JSON
+responses into `IncomingTelemetryMessage` using the source runtime mapping.
+Instances that do not own the lease do not poll the endpoint for that source.
 
 ## Configuration
 
