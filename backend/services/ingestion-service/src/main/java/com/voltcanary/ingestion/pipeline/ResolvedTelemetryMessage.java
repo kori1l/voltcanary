@@ -1,5 +1,6 @@
 package com.voltcanary.ingestion.pipeline;
 
+import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +12,6 @@ public record ResolvedTelemetryMessage(
         String externalSourceId,
         Instant timestamp,
         Map<String, Object> metrics,
-        IngestionProtocol protocol,
+        ProtocolType protocol,
         String correlationId) {
 }

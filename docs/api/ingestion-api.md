@@ -87,6 +87,21 @@ MQTT collectors publish JSON payloads with `timestamp` and `metrics` to
 `voltcanary/sources/{sourceId}/telemetry`. Source resolution and validation use
 the same ingestion pipeline as HTTP.
 
+## Internal Adapter Boundary
+
+External HTTP and MQTT contracts remain stable, but both ingress paths must
+produce canonical `IncomingTelemetryMessage` before validation, idempotency,
+rate limiting, and Kafka publication run. The canonical model distinguishes
+`occurredAt` from `receivedAt` and stores adapter/protocol/transport details in
+`TelemetryOrigin` plus bounded request metadata in `IngestionContext`.
+
+HTTP endpoints route through `IngressOrchestrator` and `HttpTelemetryAdapter`.
+The adapter maps request DTOs, `Authorization: Bearer <token>`,
+`X-Correlation-Id`, `X-Forwarded-For`, and import mode into the canonical
+message. Batch endpoints map every reading through the same adapter path before
+the common pipeline applies validation, duplicate detection, rate limiting, and
+event publication.
+
 ## Configuration
 
 Important properties:

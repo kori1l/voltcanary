@@ -1,9 +1,10 @@
 package com.voltcanary.ingestion;
 
 import com.voltcanary.ingestion.abuse.IngestionRateLimiter;
+import com.voltcanary.ingestion.canonical.IngestionContext;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.TelemetryOrigin;
 import com.voltcanary.ingestion.config.IngestionProperties;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
-import com.voltcanary.ingestion.pipeline.IngestionProtocol;
 import com.voltcanary.ingestion.source.ResolvedSource;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,14 +64,13 @@ class IngestionRedisOutageTest {
     private IncomingTelemetryMessage message(UUID deviceId, String sourceId) {
         return new IncomingTelemetryMessage(
                 sourceId,
+                deviceId,
+                null,
+                Instant.now(),
                 Instant.now(),
                 Map.of("activePowerW", 840.2),
-                IngestionProtocol.HTTP,
-                "{}",
-                "correlation-1",
-                "token",
-                deviceId,
-                "127.0.0.1",
+                TelemetryOrigin.httpPush(),
+                new IngestionContext("correlation-1", "token", "127.0.0.1", Map.of()),
                 false);
     }
 

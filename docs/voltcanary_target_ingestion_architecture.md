@@ -82,7 +82,10 @@ HTTP
 IngestionController
   │
   ▼
-RestTelemetryMapper
+IngressOrchestrator
+  |
+  v
+HttpTelemetryAdapter
   │
   └─────────────┐
                 │
@@ -3037,7 +3040,7 @@ Recommended refactoring:
 ## Rewrite / heavily change
 
 - `IngestionController` orchestration responsibility;
-- `RestTelemetryMapper` role;
+- legacy `RestTelemetryMapper` role;
 - `MqttTelemetrySubscriber` responsibility;
 - source-resolution hot path;
 - protocol validation if embedded in common pipeline;
@@ -3102,11 +3105,14 @@ Acceptance:
 
 ## Phase 2 — Refactor HTTP through adapter architecture
 
+Status: implemented in `ingestion-service`; HTTP single, batch, and import
+endpoints now route through `IngressOrchestrator` and `HttpTelemetryAdapter`.
+
 Change:
 
 ```text
 IngestionController
-RestTelemetryMapper
+legacy RestTelemetryMapper path
 ```
 
 Target:

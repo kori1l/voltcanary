@@ -1,6 +1,40 @@
 # Telemetry Ingestion
 
-`ingestion-service` is the unified telemetry boundary. HTTP requests and MQTT messages must map to `IncomingTelemetryMessage` and call `TelemetryIngestionPipeline`.
+`ingestion-service` is the unified telemetry boundary. HTTP requests and MQTT
+messages must map through an adapter boundary to canonical
+`IncomingTelemetryMessage` and call `TelemetryIngestionPipeline`.
+
+The canonical ingress contract carries VoltCanary semantics: `sourceId`,
+optional `deviceId` and `accountId`, `occurredAt`, `receivedAt`, metrics,
+`TelemetryOrigin`, `IngestionContext`, and import mode. `TelemetryOrigin`
+records adapter type, protocol type, transport type, adapter ID, and bounded
+metadata such as an MQTT topic when needed for observability. Protocol-specific
+objects, raw protocol payloads, MQTT topic parsing, Modbus register maps, OPC UA
+node IDs, and vendor response bodies stay in concrete adapter packages.
+
+Adapter contracts live under `backend/services/ingestion-service/src/main/java/com/voltcanary/ingestion/adapter/api`.
+They define adapter type, protocol type, transport type, capabilities,
+manifests, source runtime configuration, inbound mapping, polling,
+subscription, registry, resolver, and dispatcher contracts. The common
+ingestion core may depend on canonical models and adapter API contracts, but it
+must not depend on concrete protocol adapter packages.
+
+HTTP ingestion now uses the adapter route:
+
+```text
+IngestionController
+  -> IngressOrchestrator
+  -> HttpTelemetryAdapter
+  -> IncomingTelemetryMessage
+  -> TelemetryIngestionPipeline
+```
+
+`IngestionController` owns HTTP routes, DTO validation, bearer-token extraction,
+correlation headers, client IP extraction, and response status mapping.
+`HttpTelemetryAdapter` owns DTO-to-canonical mapping for realtime, batch, and
+historical import requests. `IngressOrchestrator` dispatches inbound adapter
+requests to the common pipeline, keeps batch size accounting, and preserves
+per-item partial-success semantics.
 
 The pipeline validates required fields, timestamp skew/backfill limits, supported metric names, metric value ranges, source and metric name lengths, and batch size. It resolves the source through `device-service`, checks that the source token hash matches the submitted token, verifies that the token belongs to the submitted `sourceId` and `deviceId`, checks source status/protocol, applies idempotency, builds `TelemetryReceivedEvent`, waits for a broker acknowledgement, and publishes to `telemetry.raw.v1`.
 

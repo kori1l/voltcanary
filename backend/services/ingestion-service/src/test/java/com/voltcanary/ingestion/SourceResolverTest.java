@@ -1,8 +1,9 @@
 package com.voltcanary.ingestion;
 
+import com.voltcanary.ingestion.canonical.IngestionContext;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.TelemetryOrigin;
 import com.voltcanary.ingestion.device.DeviceValidationClient;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
-import com.voltcanary.ingestion.pipeline.IngestionProtocol;
 import com.voltcanary.ingestion.source.DeviceServiceSourceClient;
 import com.voltcanary.ingestion.source.InternalDataSourceResponse;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
@@ -86,14 +87,13 @@ class SourceResolverTest {
 
         IncomingTelemetryMessage message = new IncomingTelemetryMessage(
                 "sim-fridge-001",
-                Instant.now(),
-                Map.of("activePowerW", 120),
-                IngestionProtocol.HTTP,
-                null,
-                null,
-                token,
                 UUID.randomUUID(),
                 null,
+                Instant.now(),
+                Instant.now(),
+                Map.of("activePowerW", 120),
+                TelemetryOrigin.httpPush(),
+                new IngestionContext(null, token, null, Map.of()),
                 false);
 
         assertThatThrownBy(() -> resolver.resolve(message))
@@ -109,14 +109,13 @@ class SourceResolverTest {
 
         IncomingTelemetryMessage message = new IncomingTelemetryMessage(
                 "different-source",
+                null,
+                null,
+                Instant.now(),
                 Instant.now(),
                 Map.of("activePowerW", 120),
-                IngestionProtocol.HTTP,
-                null,
-                null,
-                token,
-                null,
-                null,
+                TelemetryOrigin.httpPush(),
+                new IngestionContext(null, token, null, Map.of()),
                 false);
 
         assertThatThrownBy(() -> resolver.resolve(message))
@@ -141,14 +140,13 @@ class SourceResolverTest {
     private IncomingTelemetryMessage message(String token) {
         return new IncomingTelemetryMessage(
                 "sim-fridge-001",
+                null,
+                null,
+                Instant.now(),
                 Instant.now(),
                 Map.of("activePowerW", 120),
-                IngestionProtocol.HTTP,
-                null,
-                null,
-                token,
-                null,
-                null,
+                TelemetryOrigin.httpPush(),
+                new IngestionContext(null, token, null, Map.of()),
                 false);
     }
 

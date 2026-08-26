@@ -3,7 +3,7 @@ package com.voltcanary.ingestion.controller;
 import com.voltcanary.ingestion.dto.BatchTelemetryIngestionRequest;
 import com.voltcanary.ingestion.dto.IngestionAcceptedResponse;
 import com.voltcanary.ingestion.dto.TelemetryIngestionRequest;
-import com.voltcanary.ingestion.service.IngestionService;
+import com.voltcanary.ingestion.ingress.IngressOrchestrator;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,10 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/ingestion")
 public class IngestionController {
 
-    private final IngestionService ingestionService;
+    private final IngressOrchestrator ingressOrchestrator;
 
-    public IngestionController(IngestionService ingestionService) {
-        this.ingestionService = ingestionService;
+    public IngestionController(IngressOrchestrator ingressOrchestrator) {
+        this.ingressOrchestrator = ingressOrchestrator;
     }
 
     @PostMapping("/readings")
@@ -30,7 +30,12 @@ public class IngestionController {
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
             @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
             @Valid @RequestBody TelemetryIngestionRequest request) {
-        return ingestionService.ingest(request, bearerToken(authorization), correlationId, clientIp(forwardedFor), false);
+        return ingressOrchestrator.ingestHttp(
+                request,
+                bearerToken(authorization),
+                correlationId,
+                clientIp(forwardedFor),
+                false);
     }
 
     @PostMapping("/imports/readings")
@@ -40,7 +45,12 @@ public class IngestionController {
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
             @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
             @Valid @RequestBody TelemetryIngestionRequest request) {
-        return ingestionService.ingest(request, bearerToken(authorization), correlationId, clientIp(forwardedFor), true);
+        return ingressOrchestrator.ingestHttp(
+                request,
+                bearerToken(authorization),
+                correlationId,
+                clientIp(forwardedFor),
+                true);
     }
 
     @PostMapping("/readings/batch")
@@ -50,7 +60,12 @@ public class IngestionController {
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
             @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
             @Valid @RequestBody BatchTelemetryIngestionRequest request) {
-        return ingestionService.ingestBatch(request.readings(), bearerToken(authorization), correlationId, clientIp(forwardedFor), false);
+        return ingressOrchestrator.ingestHttpBatch(
+                request.readings(),
+                bearerToken(authorization),
+                correlationId,
+                clientIp(forwardedFor),
+                false);
     }
 
     @PostMapping("/imports/readings/batch")
@@ -60,7 +75,12 @@ public class IngestionController {
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
             @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
             @Valid @RequestBody BatchTelemetryIngestionRequest request) {
-        return ingestionService.ingestBatch(request.readings(), bearerToken(authorization), correlationId, clientIp(forwardedFor), true);
+        return ingressOrchestrator.ingestHttpBatch(
+                request.readings(),
+                bearerToken(authorization),
+                correlationId,
+                clientIp(forwardedFor),
+                true);
     }
 
     private String bearerToken(String authorization) {

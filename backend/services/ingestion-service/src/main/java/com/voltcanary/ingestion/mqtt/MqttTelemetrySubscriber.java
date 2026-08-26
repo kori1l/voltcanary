@@ -72,7 +72,7 @@ public class MqttTelemetrySubscriber implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         topicParser.sourceId(topic).ifPresentOrElse(
-                sourceId -> pipeline.ingest(payloadMapper.map(sourceId, message.getPayload())),
+                sourceId -> pipeline.ingest(payloadMapper.map(sourceId, topic, message.getPayload())),
                 () -> log.warn("Ignoring MQTT message with unsupported topic={}", topic));
     }
 

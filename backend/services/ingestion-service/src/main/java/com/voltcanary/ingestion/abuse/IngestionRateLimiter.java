@@ -1,7 +1,7 @@
 package com.voltcanary.ingestion.abuse;
 
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.config.IngestionProperties;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.source.ResolvedSource;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;

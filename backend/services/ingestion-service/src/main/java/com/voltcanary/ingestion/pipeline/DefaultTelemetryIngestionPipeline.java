@@ -4,6 +4,7 @@ import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.ingestion.abuse.IngestionRateLimiter;
 import com.voltcanary.ingestion.audit.IngestionAuditService;
 import com.voltcanary.ingestion.backpressure.KafkaBackpressureService;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.idempotency.IdempotencyService;
 import com.voltcanary.ingestion.kafka.TelemetryEventPublisher;
@@ -76,7 +77,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             if (!idempotencyService.markIfNew(
                     source.deviceId(),
                     normalizedMessage.sourceId(),
-                    normalizedMessage.timestamp(),
+                    normalizedMessage.occurredAt(),
                     normalizedMessage.metrics())) {
                 outcome = "duplicate";
                 meterRegistry.counter("voltcanary.ingestion.readings", "outcome", outcome).increment();
@@ -92,24 +93,24 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                         normalizedMessage.correlationId(),
                         source.deviceId(),
                         normalizedMessage.sourceId(),
-                        normalizedMessage.timestamp());
+                        normalizedMessage.occurredAt());
                 return new IngestionResult(false, null, "duplicate");
             }
 
             UUID eventId = UUID.randomUUID();
-            Instant receivedAt = Instant.now();
+            Instant receivedAt = normalizedMessage.receivedAt();
             TelemetryReceivedEvent event = new TelemetryReceivedEvent(
                     eventId,
                     source.deviceId(),
                     normalizedMessage.sourceId(),
-                    normalizedMessage.timestamp(),
+                    normalizedMessage.occurredAt(),
                     normalizedMessage.metrics(),
                     receivedAt,
                     "v1",
                     normalizedMessage.correlationId(),
                     "ingestion-service",
                     source.accountId(),
-                    normalizedMessage.timestamp());
+                    normalizedMessage.occurredAt());
             if (kafkaPublishEnabled) {
                 try {
                     telemetryEventPublisher.publish(event);
@@ -118,7 +119,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                     idempotencyService.forget(
                             source.deviceId(),
                             normalizedMessage.sourceId(),
-                            normalizedMessage.timestamp(),
+                            normalizedMessage.occurredAt(),
                             normalizedMessage.metrics());
                     backpressureService.markPublishFailure();
                     auditService.record(
@@ -139,7 +140,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                     eventId,
                     source.deviceId(),
                     normalizedMessage.sourceId(),
-                    normalizedMessage.protocol(),
+                    normalizedMessage.origin().protocol(),
                     normalizedMessage.metrics().size());
             auditService.record(
                     outcome,

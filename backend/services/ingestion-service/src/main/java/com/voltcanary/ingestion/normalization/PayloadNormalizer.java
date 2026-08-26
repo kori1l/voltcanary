@@ -1,6 +1,6 @@
 package com.voltcanary.ingestion.normalization;
 
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,14 +14,13 @@ public class PayloadNormalizer {
         message.metrics().forEach((key, value) -> metrics.put(key.trim(), normalizeValue(value)));
         return new IncomingTelemetryMessage(
                 message.sourceId().trim(),
-                message.timestamp(),
-                Map.copyOf(metrics),
-                message.protocol(),
-                message.rawPayload(),
-                message.correlationId(),
-                message.sourceToken(),
                 message.deviceId(),
-                message.clientIp(),
+                message.accountId(),
+                message.occurredAt(),
+                message.receivedAt(),
+                Map.copyOf(metrics),
+                message.origin(),
+                message.context(),
                 message.historicalImport());
     }
 

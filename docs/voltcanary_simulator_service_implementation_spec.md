@@ -71,9 +71,14 @@ It must contain multiple input adapters:
 
 ```text
 telemetry-ingestion-service
-  rest/
-    RestTelemetryController
-    RestTelemetryMapper
+  controller/
+    IngestionController
+
+  ingress/
+    IngressOrchestrator
+
+  adapter/http/
+    HttpTelemetryAdapter
 
   mqtt/
     MqttTelemetrySubscriber
@@ -274,6 +279,8 @@ Add packages:
 
 ```text
 pipeline/
+canonical/
+adapter/api/
 rest/
 mqtt/
 source/
@@ -290,24 +297,49 @@ Create `IncomingTelemetryMessage`:
 ```java
 public record IncomingTelemetryMessage(
     String sourceId,
-    Instant timestamp,
+    UUID deviceId,
+    UUID accountId,
+    Instant occurredAt,
+    Instant receivedAt,
     Map<String, Object> metrics,
-    IngestionProtocol protocol,
-    String rawPayload,
-    String correlationId,
-    String sourceToken
+    TelemetryOrigin origin,
+    IngestionContext context,
+    boolean historicalImport
 ) {
 }
 ```
 
-Create `IngestionProtocol`:
+Create adapter protocol, transport, and origin/context models:
 
 ```java
-public enum IngestionProtocol {
-    HTTP,
+public enum ProtocolType {
+    REST,
     MQTT,
     CSV,
     WEBHOOK
+}
+
+public enum TransportType {
+    HTTP,
+    MQTT,
+    FILE
+}
+
+public record TelemetryOrigin(
+    AdapterType adapterType,
+    ProtocolType protocol,
+    TransportType transport,
+    String adapterId,
+    Map<String, String> metadata
+) {
+}
+
+public record IngestionContext(
+    String correlationId,
+    String sourceToken,
+    String clientIp,
+    Map<String, String> metadata
+) {
 }
 ```
 
@@ -321,7 +353,7 @@ public record ResolvedTelemetryMessage(
     String externalSourceId,
     Instant timestamp,
     Map<String, Object> metrics,
-    IngestionProtocol protocol,
+    ProtocolType protocol,
     String correlationId
 ) {
 }

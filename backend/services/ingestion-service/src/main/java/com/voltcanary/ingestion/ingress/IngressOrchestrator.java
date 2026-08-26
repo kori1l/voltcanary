@@ -1,58 +1,60 @@
-package com.voltcanary.ingestion.service;
+package com.voltcanary.ingestion.ingress;
 
+import com.voltcanary.ingestion.adapter.api.InboundTelemetryAdapter;
+import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
+import com.voltcanary.ingestion.adapter.http.HttpAdapterRequest;
+import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.dto.BatchIngestionItemResponse;
 import com.voltcanary.ingestion.dto.IngestionAcceptedResponse;
 import com.voltcanary.ingestion.dto.TelemetryIngestionRequest;
 import com.voltcanary.ingestion.pipeline.IngestionResult;
 import com.voltcanary.ingestion.pipeline.TelemetryIngestionPipeline;
-import com.voltcanary.ingestion.rest.RestTelemetryMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.stereotype.Service;
 import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-public class IngestionService {
+public class IngressOrchestrator {
 
     private final TelemetryIngestionPipeline pipeline;
-    private final RestTelemetryMapper restTelemetryMapper;
+    private final HttpTelemetryAdapter httpTelemetryAdapter;
     private final IngestionProperties properties;
     private final MeterRegistry meterRegistry;
 
-    public IngestionService(
+    public IngressOrchestrator(
             TelemetryIngestionPipeline pipeline,
-            RestTelemetryMapper restTelemetryMapper,
+            HttpTelemetryAdapter httpTelemetryAdapter,
             IngestionProperties properties,
             MeterRegistry meterRegistry) {
         this.pipeline = pipeline;
-        this.restTelemetryMapper = restTelemetryMapper;
+        this.httpTelemetryAdapter = httpTelemetryAdapter;
         this.properties = properties;
         this.meterRegistry = meterRegistry;
     }
 
-    public IngestionAcceptedResponse ingest(
+    public IngestionAcceptedResponse ingestHttp(
             TelemetryIngestionRequest request,
             String sourceToken,
             String correlationId,
             String clientIp,
             boolean historicalImport) {
-        IngestionResult result = pipeline.ingest(restTelemetryMapper.map(
-                request,
-                sourceToken,
-                correlationId,
-                clientIp,
-                historicalImport));
+        IngestionResult result = dispatch(
+                httpTelemetryAdapter,
+                new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport),
+                null);
         if (result.accepted()) {
             return IngestionAcceptedResponse.single("accepted", 1, 0, result.eventId());
         }
         return IngestionAcceptedResponse.single("duplicate", 0, 1, result.eventId());
     }
 
-    public IngestionAcceptedResponse ingestBatch(
+    public IngestionAcceptedResponse ingestHttpBatch(
             Collection<TelemetryIngestionRequest> requests,
             String sourceToken,
             String correlationId,
@@ -62,19 +64,20 @@ public class IngestionService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size exceeds configured limit");
         }
         meterRegistry.summary("voltcanary.ingestion.batch.size").record(requests.size());
+
+        List<HttpAdapterRequest> adapterRequests = requests.stream()
+                .map(request -> new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport))
+                .toList();
+        List<IncomingTelemetryMessage> messages = httpTelemetryAdapter.mapBatch(adapterRequests);
+
         int index = 0;
         int accepted = 0;
         int duplicate = 0;
         int rejected = 0;
         List<BatchIngestionItemResponse> items = new ArrayList<>();
-        for (TelemetryIngestionRequest request : requests) {
+        for (var message : messages) {
             try {
-                IngestionResult result = pipeline.ingest(restTelemetryMapper.map(
-                        request,
-                        sourceToken,
-                        correlationId,
-                        clientIp,
-                        historicalImport));
+                IngestionResult result = pipeline.ingest(message);
                 if (result.accepted()) {
                     accepted++;
                     items.add(new BatchIngestionItemResponse(index, "accepted", result.eventId(), null));
@@ -90,5 +93,12 @@ public class IngestionService {
         }
         String status = rejected == 0 ? "accepted" : accepted == 0 && duplicate == 0 ? "rejected" : "partial";
         return IngestionAcceptedResponse.batch(status, accepted, duplicate, rejected, List.copyOf(items));
+    }
+
+    public <T> IngestionResult dispatch(
+            InboundTelemetryAdapter<T> adapter,
+            T request,
+            SourceRuntimeConfig sourceRuntimeConfig) {
+        return pipeline.ingest(adapter.map(request, sourceRuntimeConfig));
     }
 }

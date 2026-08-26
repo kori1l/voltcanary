@@ -1,8 +1,8 @@
 package com.voltcanary.ingestion;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.mqtt.MqttPayloadMapper;
-import com.voltcanary.ingestion.pipeline.IngestionProtocol;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +26,7 @@ class MqttPayloadMapperTest {
                 .map("sim-fridge-001", payload.getBytes(StandardCharsets.UTF_8));
 
         assertThat(message.sourceId()).isEqualTo("sim-fridge-001");
-        assertThat(message.protocol()).isEqualTo(IngestionProtocol.MQTT);
+        assertThat(message.origin().protocol()).isEqualTo(ProtocolType.MQTT);
         assertThat(message.metrics()).containsEntry("activePowerW", 120.5);
     }
 }

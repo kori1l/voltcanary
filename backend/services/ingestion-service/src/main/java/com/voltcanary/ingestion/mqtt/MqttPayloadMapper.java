@@ -3,8 +3,8 @@ package com.voltcanary.ingestion.mqtt;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
-import com.voltcanary.ingestion.pipeline.IngestionProtocol;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.TelemetryOrigin;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
@@ -20,6 +20,10 @@ public class MqttPayloadMapper {
     }
 
     public IncomingTelemetryMessage map(String sourceId, byte[] payload) {
+        return map(sourceId, null, payload);
+    }
+
+    public IncomingTelemetryMessage map(String sourceId, String topic, byte[] payload) {
         try {
             String rawPayload = new String(payload, StandardCharsets.UTF_8);
             JsonNode root = objectMapper.readTree(rawPayload);
@@ -28,13 +32,12 @@ public class MqttPayloadMapper {
             });
             return new IncomingTelemetryMessage(
                     sourceId,
+                    null,
+                    null,
                     timestamp,
+                    Instant.now(),
                     metrics,
-                    IngestionProtocol.MQTT,
-                    rawPayload,
-                    null,
-                    null,
-                    null,
+                    TelemetryOrigin.mqtt(topic),
                     null,
                     false);
         } catch (Exception exception) {

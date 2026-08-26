@@ -1,8 +1,8 @@
 package com.voltcanary.ingestion.source;
 
+import com.voltcanary.ingestion.adapter.api.ProtocolType;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.device.DeviceValidationClient;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
-import com.voltcanary.ingestion.pipeline.IngestionProtocol;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -30,7 +30,7 @@ public class SourceResolver {
 
     public ResolvedSource resolve(IncomingTelemetryMessage message) {
         if (message.sourceToken() == null || message.sourceToken().isBlank()) {
-            if (message.protocol() == IngestionProtocol.MQTT) {
+            if (message.protocol() == ProtocolType.MQTT) {
                 return resolveMqtt(message);
             }
             return resolveDevMode(message);
@@ -55,7 +55,7 @@ public class SourceResolver {
         if (message.deviceId() != null && !message.deviceId().equals(source.deviceId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Source token does not belong to submitted deviceId");
         }
-        if (message.protocol() == IngestionProtocol.HTTP && !"REST".equalsIgnoreCase(source.protocol())) {
+        if (message.protocol() == ProtocolType.REST && !"REST".equalsIgnoreCase(source.protocol())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Data source protocol does not allow REST ingestion");
         }
         if (!deviceValidationClient.dataSourceExists(source.deviceId(), source.externalId())) {

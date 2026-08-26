@@ -1,7 +1,7 @@
 package com.voltcanary.ingestion.validation;
 
 import com.voltcanary.ingestion.config.IngestionProperties;
-import com.voltcanary.ingestion.pipeline.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -25,15 +25,15 @@ public class IngestionValidator {
         if (message.sourceId().length() > properties.getMaxSourceIdLength()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId exceeds configured length limit");
         }
-        if (message.timestamp() == null) {
+        if (message.occurredAt() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "timestamp is required");
         }
         Instant now = Instant.now();
         Instant nowWithSkew = now.plus(properties.getMaxFutureSkew());
         Instant oldestAccepted = now.minus(properties.getMaxBackfillAge());
-        if (message.timestamp().isBefore(properties.getMinAcceptedTimestamp())
-                || (!message.historicalImport() && message.timestamp().isBefore(oldestAccepted))
-                || message.timestamp().isAfter(nowWithSkew)) {
+        if (message.occurredAt().isBefore(properties.getMinAcceptedTimestamp())
+                || (!message.historicalImport() && message.occurredAt().isBefore(oldestAccepted))
+                || message.occurredAt().isAfter(nowWithSkew)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid telemetry timestamp");
         }
         if (message.metrics() == null || message.metrics().isEmpty()) {
