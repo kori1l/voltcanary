@@ -126,6 +126,39 @@ class ConnectorSupervisorTest {
         assertThat(healthManager.snapshot(failing.sourceId()).nextAttemptAt()).isAfter(clock.instant());
     }
 
+    @Test
+    void modbusPollingFailureUsesConnectorHealthAndBackoff() {
+        SourceRuntimeConfig config = new SourceRuntimeConfig(
+                "modbus-source",
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                AdapterType.GENERIC_MODBUS_TCP,
+                ProtocolType.MODBUS_TCP,
+                TransportType.TCP,
+                "ACTIVE",
+                "v1",
+                "v1",
+                Map.of("registers", List.of(Map.of("metric", "voltageV", "address", 0))),
+                Map.of("host", "plc-1.internal", "pollInterval", "1s"),
+                Map.of(),
+                "default",
+                1L);
+        FailingPollingAdapter adapter = new FailingPollingAdapter(manifest(
+                AdapterType.GENERIC_MODBUS_TCP,
+                TransportType.TCP,
+                ProtocolType.MODBUS_TCP,
+                AdapterCapability.POLLING));
+        ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
+
+        supervisor.reconcile(List.of(config));
+        supervisor.tick();
+
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.DEGRADED);
+        assertThat(healthManager.snapshot(config.sourceId()).message()).contains("Modbus TCP operation timed out");
+        assertThat(healthManager.snapshot(config.sourceId()).nextAttemptAt()).isAfter(clock.instant());
+    }
+
     private ConnectorSupervisor supervisor(ConnectorLeaseManager leaseManager, TelemetryAdapter adapter) {
         IngestionAdapterResolver resolver = ignored -> Optional.of(adapter);
         return new ConnectorSupervisor(
@@ -185,12 +218,20 @@ class ConnectorSupervisorTest {
     }
 
     private static AdapterManifest manifest(AdapterCapability capability) {
+        return manifest(AdapterType.GENERIC_HTTP_POLLING, TransportType.HTTP, ProtocolType.HTTP, capability);
+    }
+
+    private static AdapterManifest manifest(
+            AdapterType adapterType,
+            TransportType transport,
+            ProtocolType protocol,
+            AdapterCapability capability) {
         return new AdapterManifest(
                 "test-active-adapter",
-                AdapterType.GENERIC_HTTP_POLLING,
+                adapterType,
                 "Test active adapter",
-                TransportType.HTTP,
-                ProtocolType.HTTP,
+                transport,
+                protocol,
                 AdapterCapabilities.of(capability),
                 "v1");
     }
@@ -235,6 +276,24 @@ class ConnectorSupervisorTest {
         @Override
         public AdapterManifest manifest() {
             return ConnectorSupervisorTest.manifest(AdapterCapability.POLLING);
+        }
+    }
+
+    private static final class FailingPollingAdapter implements PollingTelemetryAdapter {
+        private final AdapterManifest manifest;
+
+        private FailingPollingAdapter(AdapterManifest manifest) {
+            this.manifest = manifest;
+        }
+
+        @Override
+        public List<IncomingTelemetryMessage> poll(SourceRuntimeConfig sourceRuntimeConfig) {
+            throw new IllegalStateException("Modbus TCP operation timed out");
+        }
+
+        @Override
+        public AdapterManifest manifest() {
+            return manifest;
         }
     }
 

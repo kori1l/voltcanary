@@ -3240,6 +3240,10 @@ This validates:
 
 ## Phase 8 — Modbus TCP
 
+Status: implemented in `ingestion-service`; generic Modbus TCP sources are
+registered as `GENERIC_MODBUS_TCP` polling adapters and are invoked only by the
+connector runtime after lease ownership is acquired.
+
 Add the first industrial adapter.
 
 This is the architecture test.

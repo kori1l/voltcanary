@@ -53,6 +53,62 @@ payload mapping. Unsupported topics and invalid payloads are rejected before the
 common pipeline sees a message, so pipeline code does not branch on MQTT topic
 syntax or raw MQTT payload shape.
 
+Modbus TCP ingestion is an active connector adapter and runs only through
+connector runtime ownership:
+
+```text
+ConnectorRuntime
+  -> ConnectorSupervisor lease ownership
+  -> ModbusTcpTelemetryAdapter
+  -> Modbus register mapping
+  -> IncomingTelemetryMessage
+  -> TelemetryIngestionPipeline
+```
+
+Source runtime config for `GENERIC_MODBUS_TCP` uses `protocol=MODBUS_TCP`,
+`transport=TCP`, `adapterConfigSchemaVersion=v1`, and `mappingSchemaVersion=v1`.
+The adapter config contains endpoint and lifecycle fields:
+
+```json
+{
+  "host": "plc-1.internal",
+  "port": 502,
+  "unitId": 1,
+  "pollingInterval": "5s",
+  "timeout": "2s",
+  "timestampPolicy": "POLL_TIME"
+}
+```
+
+The mapping contains versioned register-to-metric entries:
+
+```json
+{
+  "registers": [
+    {
+      "metric": "voltageV",
+      "function": "HOLDING_REGISTER",
+      "address": 0,
+      "dataType": "UINT16",
+      "scale": 0.1,
+      "offset": 0,
+      "unit": "V",
+      "byteOrder": "BIG_ENDIAN",
+      "wordOrder": "BIG_ENDIAN"
+    }
+  ]
+}
+```
+
+Supported Modbus register functions are `HOLDING_REGISTER` and
+`INPUT_REGISTER`. Supported data types are `INT16`, `UINT16`, `INT32`,
+`UINT32`, and `FLOAT32`. Register addresses, function codes, unit IDs, and byte
+ordering stay inside `adapter.modbus`; the common pipeline receives only
+canonical metric names and values. Invalid mappings are rejected before polling.
+Connection failures, timeouts, endpoint errors, lease loss, and repeated
+mapping failures are reported through connector runtime per-source health and
+use connector backoff.
+
 The pipeline validates required fields, timestamp skew/backfill limits,
 supported metric names, metric value ranges, source and metric name lengths,
 and batch size. It resolves source identity, account, device, adapter,
