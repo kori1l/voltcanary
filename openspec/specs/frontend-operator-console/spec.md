@@ -1,7 +1,9 @@
 # frontend-operator-console Specification
 
 ## Purpose
-TBD - created by archiving change decompose-frontend-operator-pages. Update Purpose after archive.
+Define frontend operator-console structure and shared page behavior for data
+loading, draft persistence, polling, confirmations, and service-backed
+workflows.
 ## Requirements
 ### Requirement: Pages Compose Focused Workflow Modules
 
@@ -53,4 +55,3 @@ without extraction.
 - **THEN** the change SHALL extract the affected workflow into feature modules
   or record an explicit OpenSpec task explaining why extraction is deferred
 - **AND** tests SHALL cover the extracted helper, hook, or component boundary.
-

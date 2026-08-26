@@ -1,14 +1,17 @@
 package com.voltcanary.ingestion.connector;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ConnectorLeaseManager {
 
-    boolean acquire(UUID dataSourceId);
+    Optional<ConnectorLease> acquire(UUID dataSourceId);
 
-    boolean renew(UUID dataSourceId);
+    Optional<ConnectorLease> renew(ConnectorLease lease);
 
-    void release(UUID dataSourceId);
+    void release(ConnectorLease lease);
 
-    boolean isOwned(UUID dataSourceId);
+    boolean isCurrent(ConnectorLease lease);
+
+    Optional<ConnectorLease> current(UUID dataSourceId);
 }

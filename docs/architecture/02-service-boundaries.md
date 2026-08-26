@@ -11,11 +11,13 @@ through APIs or events, not by reading another service database directly.
 | `api-gateway` | Public routing boundary, CORS, correlation ID, future auth enforcement | Business data |
 | `identity-service` | Users, roles, refresh tokens, login audit | Devices, telemetry, analytics results |
 | `device-service` | Accounts, locations, devices, device types, sensors, data sources, analytics config, maintenance windows | Raw telemetry, risk score history, alerts |
-| `ingestion-service` | Ingestion validation state, idempotency keys later | Canonical telemetry storage |
+| `ingestion-service` | Ingestion validation state, source runtime-config read model, idempotency/rate-limit correctness state, active connector leases | Canonical telemetry storage, device source ownership |
 | `telemetry-service` | Telemetry readings, quality flags, aggregates, latest readings | Device metadata ownership, analytics conclusions |
 | `analytics-service` | Baselines, features, anomalies, risk scores, predictions, recommendations, analytics jobs, maintenance read model | Raw ingestion API, alert lifecycle, maintenance ownership |
 | `alert-service` | Alerts, alert events, notification channels, deduplication state, maintenance read model, suppression audit | Risk score calculation, maintenance ownership |
 | `ml-service` | Model metadata, model runs, datasets, inference contracts, model artifacts metadata | Device inventory and alert lifecycle |
+| `simulator-service` | Simulation YAML configs, simulation versions, simulation runs, simulator telemetry production state | Canonical telemetry storage, source ownership |
+| `ai-agent-service` | Agent provider configuration, model configuration, plan/execution orchestration state | Device, telemetry, analytics, alert, or simulator domain ownership |
 | `frontend` | Client-side views and UI state | Server-side domain data |
 
 ## Responsibilities
@@ -35,6 +37,8 @@ Routes:
 - `/telemetry/**` -> `telemetry-service`
 - `/analytics/**` -> `analytics-service`
 - `/alerts/**` -> `alert-service`
+- `/simulation/**` -> `simulator-service`
+- `/ai-agent/**` -> `ai-agent-service`
 - `/ml/**` -> `ml-service` later for admin/analyst flows
 
 ### Identity Service
@@ -92,8 +96,10 @@ REST API:
 
 ### Ingestion Service
 
-Accepts telemetry from REST first, and later MQTT, CSV, webhooks, Home Assistant,
-and vendor adapters. It validates input and publishes raw telemetry events.
+Accepts HTTP push and MQTT telemetry through registry-backed inbound adapters,
+and runs HTTP polling, Modbus TCP, and OPC UA active connectors from the local
+source runtime-config read model. It validates input and publishes raw
+telemetry events.
 
 REST API:
 
@@ -214,6 +220,37 @@ REST API:
 - `POST /ml/train`
 - `GET /ml/runs/{id}`
 
+### Simulator Service
+
+Owns simulation configuration and run history. It produces telemetry through
+normal ingestion contracts rather than writing telemetry storage or publishing
+canonical telemetry events directly.
+
+REST API:
+
+- `GET /simulation/devices/{deviceId}/config`
+- `PUT /simulation/devices/{deviceId}/config`
+- `POST /simulation/devices/{deviceId}/config/validate`
+- `POST /simulation/devices/{deviceId}/start`
+- `POST /simulation/devices/{deviceId}/stop`
+- `GET /simulation/devices/{deviceId}/status`
+- `GET /simulation/devices/{deviceId}/runs`
+- `GET /simulation/runs/{runId}`
+
+### AI Agent Service
+
+Owns agent-facing planning, tool execution coordination, and model provider
+configuration. It may call domain services through their public or internal
+contracts, but it does not own their data.
+
+REST API:
+
+- `GET /ai-agent/tools`
+- `GET /ai-agent/provider`
+- `POST /ai-agent/plans`
+- `POST /ai-agent/plans/{planId}/execute`
+- provider and model configuration endpoints under `/ai-agent/settings`
+
 ## Interaction Types
 
 REST is used for synchronous commands and queries:
@@ -221,11 +258,14 @@ REST is used for synchronous commands and queries:
 - frontend -> api-gateway
 - api-gateway -> Java services
 - analytics-service -> ml-service
-- ingestion-service -> device-service later for device/source validation
+- simulator-service -> ingestion-service
+- ai-agent-service -> domain service APIs through explicit tool boundaries
+- ingestion-service -> device-service internal APIs for reconciliation/smoke diagnostics, not hot-path source validation
 
 Events are used for asynchronous processing:
 
 - ingestion-service -> telemetry-service
+- device-service -> ingestion-service through compacted `source.runtime-config.v1`
 - telemetry-service -> analytics-service
 - analytics-service -> alert-service
 - alert-service -> notification provider later

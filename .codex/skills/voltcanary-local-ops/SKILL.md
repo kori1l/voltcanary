@@ -15,7 +15,7 @@ Read these sources before changing local operations behavior:
 - `README.md`
 - `.env.example`
 - `docker-compose.yml`
-- `docs/k8s-local.md`
+- `docs/operations/k8s-local.md`
 - `docs/architecture/06-kubernetes-deployment.md`
 - `docs/architecture/07-observability.md`
 - `deploy/k8s/`, `deploy/helm/`, `scripts/`
@@ -56,7 +56,7 @@ kubectl -n voltcanary port-forward svc/frontend 3000:3000
 kubectl -n voltcanary port-forward svc/api-gateway 8080:8080
 ```
 
-Keep local manifests aligned with `docs/k8s-local.md` and Helm values when a
+Keep local manifests aligned with `docs/operations/k8s-local.md` and Helm values when a
 behavior is shared.
 
 ## Diagnostics

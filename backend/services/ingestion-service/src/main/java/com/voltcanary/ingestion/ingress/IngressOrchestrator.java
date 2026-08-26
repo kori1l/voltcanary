@@ -1,9 +1,11 @@
 package com.voltcanary.ingestion.ingress;
 
-import com.voltcanary.ingestion.adapter.api.InboundTelemetryAdapter;
+import com.voltcanary.ingestion.adapter.api.AdapterType;
+import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
+import com.voltcanary.ingestion.adapter.api.TelemetryIngressDispatcher;
+import com.voltcanary.ingestion.adapter.api.TransportType;
 import com.voltcanary.ingestion.adapter.http.HttpAdapterRequest;
-import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.dto.BatchIngestionItemResponse;
@@ -23,17 +25,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class IngressOrchestrator {
 
     private final TelemetryIngestionPipeline pipeline;
-    private final HttpTelemetryAdapter httpTelemetryAdapter;
+    private final TelemetryIngressDispatcher ingressDispatcher;
     private final IngestionProperties properties;
     private final MeterRegistry meterRegistry;
 
     public IngressOrchestrator(
             TelemetryIngestionPipeline pipeline,
-            HttpTelemetryAdapter httpTelemetryAdapter,
+            TelemetryIngressDispatcher ingressDispatcher,
             IngestionProperties properties,
             MeterRegistry meterRegistry) {
         this.pipeline = pipeline;
-        this.httpTelemetryAdapter = httpTelemetryAdapter;
+        this.ingressDispatcher = ingressDispatcher;
         this.properties = properties;
         this.meterRegistry = meterRegistry;
     }
@@ -45,7 +47,10 @@ public class IngressOrchestrator {
             String clientIp,
             boolean historicalImport) {
         IngestionResult result = dispatch(
-                httpTelemetryAdapter,
+                AdapterType.GENERIC_HTTP_PUSH,
+                ProtocolType.REST,
+                TransportType.HTTP,
+                HttpAdapterRequest.class,
                 new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport),
                 null);
         if (result.accepted()) {
@@ -68,7 +73,15 @@ public class IngressOrchestrator {
         List<HttpAdapterRequest> adapterRequests = requests.stream()
                 .map(request -> new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport))
                 .toList();
-        List<IncomingTelemetryMessage> messages = httpTelemetryAdapter.mapBatch(adapterRequests);
+        List<IncomingTelemetryMessage> messages = adapterRequests.stream()
+                .map(adapterRequest -> ingressDispatcher.dispatch(
+                        AdapterType.GENERIC_HTTP_PUSH,
+                        ProtocolType.REST,
+                        TransportType.HTTP,
+                        HttpAdapterRequest.class,
+                        adapterRequest,
+                        null))
+                .toList();
 
         int index = 0;
         int accepted = 0;
@@ -96,9 +109,18 @@ public class IngressOrchestrator {
     }
 
     public <T> IngestionResult dispatch(
-            InboundTelemetryAdapter<T> adapter,
+            AdapterType adapterType,
+            ProtocolType protocol,
+            TransportType transport,
+            Class<T> requestType,
             T request,
             SourceRuntimeConfig sourceRuntimeConfig) {
-        return pipeline.ingest(adapter.map(request, sourceRuntimeConfig));
+        return pipeline.ingest(ingressDispatcher.dispatch(
+                adapterType,
+                protocol,
+                transport,
+                requestType,
+                request,
+                sourceRuntimeConfig));
     }
 }

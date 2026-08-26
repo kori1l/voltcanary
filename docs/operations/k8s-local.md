@@ -61,6 +61,8 @@ Stateless workloads run as Kubernetes `Deployment` resources:
 | `telemetry-service` | 2 | HPA 2-4 pods, CPU target 70% |
 | `analytics-service` | 2 | HPA 2-4 pods, CPU target 70% |
 | `alert-service` | 2 | HPA 2-4 pods, CPU target 70% |
+| `simulator-service` | 2 | HPA 2-4 pods, CPU target 70% |
+| `ai-agent-service` | 2 | HPA 2-4 pods, CPU target 70% |
 | `ml-service` | 2 | HPA 2-4 pods, CPU target 70% |
 
 Stateful infrastructure currently runs as single-replica `StatefulSet`

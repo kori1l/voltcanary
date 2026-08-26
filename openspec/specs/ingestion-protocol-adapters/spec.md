@@ -1,7 +1,9 @@
 # ingestion-protocol-adapters Specification
 
 ## Purpose
-TBD - created by archiving change add-http-polling-ingestion-adapter. Update Purpose after archive.
+Define protocol adapter behavior for HTTP polling, Modbus TCP, and OPC UA so
+active connector telemetry enters VoltCanary through the same canonical
+ingestion pipeline as push telemetry.
 ## Requirements
 ### Requirement: HTTP Polling Adapter Uses Connector Runtime Ownership
 
@@ -99,4 +101,3 @@ the OPC UA adapter and connector runtime layers.
   origin/context metadata
 - **AND** the common ingestion pipeline SHALL NOT depend on NodeId, namespace,
   browse path, session, or security policy classes.
-

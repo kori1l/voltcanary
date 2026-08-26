@@ -1,7 +1,8 @@
 # ml-deployment-operations Specification
 
 ## Purpose
-TBD - created by archiving change ml-deployment-runtime-monitoring. Update Purpose after archive.
+Define operational behavior for ML model deployment, artifact health,
+prediction status, incident outcomes, and fallback visibility.
 ## Requirements
 ### Requirement: Live policy resolution uses device type
 
@@ -150,4 +151,3 @@ generic model registry listing and lifecycle code.
 - **THEN** runtime selection SHALL use a resolver with deterministic ordering
 - **AND** the resolver SHALL be testable without invoking model lifecycle
   commands.
-

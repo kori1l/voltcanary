@@ -103,6 +103,7 @@ public class ConnectorSupervisor {
         private Instant nextAttemptAt = Instant.EPOCH;
         private int consecutiveFailures;
         private boolean subscriptionStarted;
+        private ConnectorLease lease;
 
         private ConnectorWorker(SourceRuntimeConfig config) {
             this.config = config;
@@ -113,10 +114,20 @@ public class ConnectorSupervisor {
             if (nextAttemptAt.isAfter(now)) {
                 return;
             }
-            if (!leaseManager.acquire(config.dataSourceId()) || !leaseManager.renew(config.dataSourceId())) {
+            Optional<ConnectorLease> acquired = lease == null || !leaseManager.isCurrent(lease)
+                    ? leaseManager.acquire(config.dataSourceId())
+                    : leaseManager.renew(lease);
+            if (acquired.isEmpty()) {
                 leaseLost(now);
                 return;
             }
+            lease = acquired.get();
+            Optional<ConnectorLease> renewed = leaseManager.renew(lease);
+            if (renewed.isEmpty()) {
+                leaseLost(now);
+                return;
+            }
+            lease = renewed.get();
             Optional<TelemetryAdapter> resolved = adapterResolver.resolve(config);
             if (resolved.isEmpty()) {
                 fail(now, new IllegalStateException("No adapter registered for " + config.adapterType()));
@@ -139,11 +150,17 @@ public class ConnectorSupervisor {
         private void runPoll(PollingTelemetryAdapter adapter, Instant now) {
             Duration interval = scheduler.pollingInterval(config);
             List<IncomingTelemetryMessage> messages = adapter.poll(config);
-            if (!leaseManager.renew(config.dataSourceId())) {
+            Optional<ConnectorLease> renewed = leaseManager.renew(lease);
+            if (renewed.isEmpty()) {
                 leaseLost(now);
                 return;
             }
+            lease = renewed.get();
             for (IncomingTelemetryMessage message : messages) {
+                if (!leaseManager.isCurrent(lease)) {
+                    leaseLost(now);
+                    return;
+                }
                 pipeline.ingest(message);
             }
             state = ConnectorRuntimeState.RUNNING;
@@ -177,7 +194,7 @@ public class ConnectorSupervisor {
 
         private void leaseLost(Instant now) {
             stopSubscriptionIfStarted();
-            leaseManager.release(config.dataSourceId());
+            releaseLease();
             state = ConnectorRuntimeState.LEASE_LOST;
             nextAttemptAt = now.plus(scheduler.pollingInterval(config));
             healthManager.leaseLost(config.sourceId(), now);
@@ -185,9 +202,16 @@ public class ConnectorSupervisor {
 
         private void stop() {
             stopSubscriptionIfStarted();
-            leaseManager.release(config.dataSourceId());
+            releaseLease();
             state = ConnectorRuntimeState.STOPPED;
             healthManager.stopped(config.sourceId());
+        }
+
+        private void releaseLease() {
+            if (lease != null) {
+                leaseManager.release(lease);
+                lease = null;
+            }
         }
 
         private void stopSubscriptionIfStarted() {
@@ -203,7 +227,9 @@ public class ConnectorSupervisor {
 
         @Override
         public void accept(IncomingTelemetryMessage message) {
-            if (leaseManager.renew(config.dataSourceId())) {
+            Optional<ConnectorLease> renewed = lease == null ? Optional.empty() : leaseManager.renew(lease);
+            if (renewed.isPresent()) {
+                lease = renewed.get();
                 pipeline.ingest(message);
             } else {
                 leaseLost(clock.instant());

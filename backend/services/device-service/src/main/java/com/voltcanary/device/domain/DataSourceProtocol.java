@@ -5,6 +5,8 @@ public enum DataSourceProtocol {
     MQTT,
     CSV,
     HTTP_POLLING,
+    MODBUS_TCP,
+    OPC_UA,
     WEBHOOK,
     HOME_ASSISTANT,
     VENDOR_API

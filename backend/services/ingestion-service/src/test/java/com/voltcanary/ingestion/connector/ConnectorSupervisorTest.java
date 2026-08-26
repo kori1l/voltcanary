@@ -199,6 +199,25 @@ class ConnectorSupervisorTest {
         assertThat(adapter.starts).isEqualTo(2);
     }
 
+    @Test
+    void staleSubscriptionOwnerCannotForwardAfterFailover() {
+        SourceRuntimeConfig config = config(1L, "ACTIVE", Map.of("pollInterval", "1s"));
+        RecordingSubscriptionAdapter adapter = new RecordingSubscriptionAdapter();
+        ManualLeaseManager leaseManager = new ManualLeaseManager();
+        ConnectorSupervisor supervisor = supervisor(leaseManager, adapter);
+
+        supervisor.reconcile(List.of(config));
+        supervisor.tick();
+        ConnectorLease firstLease = leaseManager.current(config.dataSourceId()).orElseThrow();
+        leaseManager.failOver(config.dataSourceId());
+
+        adapter.sink.accept(message(config));
+
+        assertThat(leaseManager.isCurrent(firstLease)).isFalse();
+        assertThat(pipeline.ingested).isEmpty();
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.LEASE_LOST);
+    }
+
     private ConnectorSupervisor supervisor(ConnectorLeaseManager leaseManager, TelemetryAdapter adapter) {
         IngestionAdapterResolver resolver = ignored -> Optional.of(adapter);
         return new ConnectorSupervisor(
@@ -381,24 +400,42 @@ class ConnectorSupervisorTest {
     private static final class ManualLeaseManager implements ConnectorLeaseManager {
         private boolean allowAcquire = true;
         private boolean allowRenew = true;
+        private long fencingSequence;
+        private final Map<UUID, ConnectorLease> leases = new java.util.HashMap<>();
 
         @Override
-        public boolean acquire(UUID dataSourceId) {
-            return allowAcquire;
+        public Optional<ConnectorLease> acquire(UUID dataSourceId) {
+            if (!allowAcquire) {
+                return Optional.empty();
+            }
+            ConnectorLease lease = leases.computeIfAbsent(
+                    dataSourceId,
+                    ignored -> new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence));
+            return Optional.of(lease);
         }
 
         @Override
-        public boolean renew(UUID dataSourceId) {
-            return allowRenew;
+        public Optional<ConnectorLease> renew(ConnectorLease lease) {
+            return allowRenew && isCurrent(lease) ? Optional.of(lease) : Optional.empty();
         }
 
         @Override
-        public void release(UUID dataSourceId) {
+        public void release(ConnectorLease lease) {
+            leases.remove(lease.dataSourceId(), lease);
         }
 
         @Override
-        public boolean isOwned(UUID dataSourceId) {
-            return allowAcquire && allowRenew;
+        public boolean isCurrent(ConnectorLease lease) {
+            return lease != null && lease.equals(leases.get(lease.dataSourceId()));
+        }
+
+        @Override
+        public Optional<ConnectorLease> current(UUID dataSourceId) {
+            return Optional.ofNullable(leases.get(dataSourceId));
+        }
+
+        private void failOver(UUID dataSourceId) {
+            leases.put(dataSourceId, new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence));
         }
     }
 

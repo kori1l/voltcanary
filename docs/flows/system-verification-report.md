@@ -3,7 +3,7 @@
 Date: 2026-06-06
 Environment: local Docker Compose app profile, frontend `http://localhost:3000`, API Gateway `http://localhost:8080`.
 
-Source checklist: `docs/flows/system-verification-flow.md`.
+Source checklist: `docs/flows/agent-e2e-verification-instructions.md`.
 
 ## Result
 
@@ -117,7 +117,7 @@ No broken scenario from the automated pass remains open after the analytics and 
 
 Recommended next verification step:
 
-1. Run the manual browser checks from `system-verification-flow.md`, especially chart drag-select/no-data ranges and alert-generating simulator profiles.
+1. Run the browser checks from `agent-e2e-verification-instructions.md`, especially chart range/no-data behavior and alert-generating simulator profiles.
 2. Add a reusable committed smoke script later if this flow should become part of CI or pre-demo verification.
 3. Decide whether deleted accounts should physically decommission devices/sources or retain rows only for audit/history. Runtime access and ingestion are already blocked.
 

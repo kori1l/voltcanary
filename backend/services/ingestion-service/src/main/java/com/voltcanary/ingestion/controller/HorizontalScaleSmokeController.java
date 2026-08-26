@@ -79,7 +79,7 @@ public class HorizontalScaleSmokeController {
 
     private boolean ownsConnectorLease(UUID dataSourceId) {
         try {
-            return leaseManager.isOwned(dataSourceId);
+            return leaseManager.current(dataSourceId).isPresent();
         } catch (RuntimeException exception) {
             return false;
         }

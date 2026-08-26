@@ -1,7 +1,8 @@
 # ml-feature-platform Specification
 
 ## Purpose
-TBD - created by archiving change materialize-ml-feature-platform. Update Purpose after archive.
+Define feature snapshot, feature schema, and feature parity requirements used
+by ML training, inference, and operator workflows.
 ## Requirements
 ### Requirement: Feature snapshots contain materialized feature rows
 
@@ -264,4 +265,3 @@ lifecycle commands and response mapping.
   generation
 - **AND** feature schema, config, and data hashes SHALL remain stable for
   unchanged inputs.
-

@@ -1,7 +1,8 @@
 # ml-console-workflows Specification
 
 ## Purpose
-TBD - created by archiving change improve-ml-console-guided-workflows. Update Purpose after archive.
+Define ML console workflows for guided setup, drafts, validation, training,
+deployment, fallback, and operator-facing recovery.
 ## Requirements
 ### Requirement: ML console provides guided workflow modes
 
@@ -379,4 +380,3 @@ helpers, and tab components while preserving the existing operator workflow.
 - **THEN** validation and draft persistence SHALL be independently testable
 - **AND** tab rendering SHALL consume the validated workflow state through
   explicit props.
-

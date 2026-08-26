@@ -5,6 +5,52 @@ ownership is acquired. HTTP polling, Modbus TCP, and OPC UA connector failures
 are isolated per source; one failing source must not stop ingestion for other
 sources.
 
+Connector ownership is fenced. Redis-backed leases store owner identity plus a
+generation, and in-memory local leases use the same contract. Renew, release,
+polling publication, and subscription forwarding must use the current
+generation. Command-capable adapters remain disabled until their command
+boundary can require current fenced ownership.
+
+## Modbus TCP Source Configuration
+
+Use `adapterType=GENERIC_MODBUS_TCP`, `protocol=MODBUS_TCP`, `transport=TCP`,
+`adapterConfigSchemaVersion=v1`, and `mappingSchemaVersion=v1`.
+
+Adapter config:
+
+```json
+{
+  "host": "plc-1.internal",
+  "port": 502,
+  "unitId": 1,
+  "pollingInterval": "5s",
+  "timeout": "2s",
+  "timestampPolicy": "POLL_TIME"
+}
+```
+
+Register mapping:
+
+```json
+{
+  "registers": [
+    {
+      "metric": "activePowerW",
+      "function": "HOLDING_REGISTER",
+      "address": 0,
+      "dataType": "FLOAT32",
+      "scale": 1,
+      "offset": 0,
+      "unit": "W"
+    }
+  ]
+}
+```
+
+Store protocol credentials only in `credentialReferences`, for example
+`credentialReferences.basicAuth=env:MODBUS_BASIC_AUTH`. Do not put passwords,
+tokens, or private secret material in `mapping` or `adapterConfig`.
+
 ## OPC UA Source Configuration
 
 Use `adapterType=GENERIC_OPC_UA`, `protocol=OPC_UA`, `transport=TCP`,
@@ -108,6 +154,8 @@ Expected results:
 - Duplicate telemetry sent to another replica is counted once.
 - Rate-limit counters are shared across replicas.
 - Exactly one replica owns each active connector source lease.
+- A stale owner generation cannot continue polling or forwarding subscription
+  telemetry after failover.
 - A surviving replica acquires ownership after the owner process stops.
 - `telemetry.raw.v1` records are keyed by `deviceId`.
 

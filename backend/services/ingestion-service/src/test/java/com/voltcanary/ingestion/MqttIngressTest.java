@@ -5,11 +5,14 @@ import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
+import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterRegistry;
+import com.voltcanary.ingestion.adapter.registry.RegistryBackedTelemetryIngressDispatcher;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.ingress.IngressOrchestrator;
 import com.voltcanary.ingestion.mqtt.MqttIngress;
 import com.voltcanary.ingestion.pipeline.TelemetryIngestionPipeline;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.List;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.Test;
 
@@ -71,9 +74,11 @@ class MqttIngressTest {
                 new MqttPayloadMapper(new ObjectMapper()));
         IngressOrchestrator orchestrator = new IngressOrchestrator(
                 pipeline,
-                new HttpTelemetryAdapter(),
+                new RegistryBackedTelemetryIngressDispatcher(new DefaultIngestionAdapterRegistry(List.of(
+                        new HttpTelemetryAdapter(),
+                        adapter))),
                 properties,
                 meterRegistry);
-        return new MqttIngress(adapter, orchestrator, meterRegistry, properties);
+        return new MqttIngress(orchestrator, meterRegistry, properties);
     }
 }

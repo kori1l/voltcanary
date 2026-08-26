@@ -9,11 +9,12 @@ description: VoltCanary documentation and guideline workflow for docs/, ADRs, AP
 
 Use the existing documentation tree instead of creating parallel summaries:
 
+- Documentation entrypoint: `docs/README.md`
 - Architecture: `docs/architecture/*.md`
 - API contracts: `docs/api/*.md`
 - Event contracts: `docs/events/*.md`
 - ADRs: `docs/adr/*.md`
-- Operational guides: `docs/operations/`, `docs/k8s-local.md`, `deploy/`
+- Operational guides: `docs/operations/`, `deploy/`
 - Verification flows: `docs/flows/*.md`
 - Project policy and specs: `openspec/project.md`, `openspec/specs/`
 - Active changes: `openspec/changes/<change-id>/`
@@ -25,6 +26,11 @@ to inspect or restore archived context.
 
 Prefer one authoritative document per topic. Update the existing source when it
 exists; create a new file only when the topic has no clear home.
+
+Every documentation folder with multiple markdown files should have a
+`README.md` index. When creating, deleting, or moving a document, update the
+nearest folder index and `docs/README.md` when the document changes the
+top-level navigation.
 
 Write docs as contracts and operating guidance, not marketing copy. Include:
 

@@ -5,10 +5,13 @@ import com.voltcanary.ingestion.adapter.api.AdapterCapabilities;
 import com.voltcanary.ingestion.adapter.api.AdapterCapability;
 import com.voltcanary.ingestion.adapter.api.AdapterManifest;
 import com.voltcanary.ingestion.adapter.api.AdapterType;
+import com.voltcanary.ingestion.adapter.api.InboundTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.TransportType;
+import com.voltcanary.ingestion.adapter.http.HttpAdapterRequest;
+import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.http.HttpPollingResponseMapper;
 import com.voltcanary.ingestion.adapter.http.HttpPollingTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
@@ -17,9 +20,14 @@ import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
 import com.voltcanary.ingestion.adapter.opcua.OpcUaTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterRegistry;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterResolver;
+import com.voltcanary.ingestion.adapter.registry.RegistryBackedTelemetryIngressDispatcher;
+import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.dto.TelemetryIngestionRequest;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -101,6 +109,34 @@ class AdapterContractTest {
         assertThatThrownBy(() -> new DefaultIngestionAdapterRegistry(List.of(first, second)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate ingestion adapter type");
+    }
+
+    @Test
+    void inboundDispatcherResolvesRegisteredAdapterWithoutPipelineChanges() {
+        HttpTelemetryAdapter httpAdapter = new HttpTelemetryAdapter();
+        DefaultIngestionAdapterRegistry registry = new DefaultIngestionAdapterRegistry(List.of(httpAdapter));
+        RegistryBackedTelemetryIngressDispatcher dispatcher = new RegistryBackedTelemetryIngressDispatcher(registry);
+        UUID deviceId = UUID.randomUUID();
+
+        IncomingTelemetryMessage message = dispatcher.dispatch(
+                AdapterType.GENERIC_HTTP_PUSH,
+                ProtocolType.REST,
+                TransportType.HTTP,
+                HttpAdapterRequest.class,
+                new HttpAdapterRequest(
+                        new TelemetryIngestionRequest(
+                                deviceId,
+                                "plug-001",
+                                Instant.parse("2026-08-26T10:15:30Z"),
+                                Map.of("activePowerW", 10.0)),
+                        "source-token",
+                        "correlation-1",
+                        "203.0.113.10",
+                        false),
+                null);
+
+        assertThat(message.sourceId()).isEqualTo("plug-001");
+        assertThat(message.origin().adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_PUSH);
     }
 
     @Test

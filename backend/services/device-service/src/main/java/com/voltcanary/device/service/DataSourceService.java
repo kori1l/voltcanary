@@ -1,5 +1,7 @@
 package com.voltcanary.device.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.DataSource;
@@ -28,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -44,6 +47,7 @@ public class DataSourceService {
     private final DeviceRegistryEventPublisher eventPublisher;
     private final SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher;
     private final DeviceAuditService auditService;
+    private final ObjectMapper objectMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public DataSourceService(
@@ -53,7 +57,8 @@ public class DataSourceService {
             DataSourceRepository dataSourceRepository,
             DeviceRegistryEventPublisher eventPublisher,
             SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher,
-            DeviceAuditService auditService) {
+            DeviceAuditService auditService,
+            ObjectMapper objectMapper) {
         this.deviceService = deviceService;
         this.accountRepository = accountRepository;
         this.deviceRepository = deviceRepository;
@@ -61,6 +66,7 @@ public class DataSourceService {
         this.eventPublisher = eventPublisher;
         this.runtimeConfigEventPublisher = runtimeConfigEventPublisher;
         this.auditService = auditService;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -92,6 +98,7 @@ public class DataSourceService {
         dataSource.setSourceType(request.sourceType());
         dataSource.setProtocol(request.protocol());
         dataSource.setConnectionRef(null);
+        applyRuntimeConfig(dataSource, request);
         dataSource.setEnabled(true);
         dataSource.setStatus(SourceStatus.ACTIVE);
         dataSource.setCreatedAt(now);
@@ -219,6 +226,7 @@ public class DataSourceService {
         dataSource.setType(request.sourceType());
         dataSource.setSourceType(request.sourceType());
         dataSource.setProtocol(request.protocol());
+        applyRuntimeConfig(dataSource, request);
         String sourceId = normalizeRequired(request.externalId(), "externalId");
         dataSource.setName(sourceId);
         dataSource.setSourceId(sourceId);
@@ -358,5 +366,63 @@ public class DataSourceService {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
+    }
+
+    private void applyRuntimeConfig(DataSource dataSource, DataSourceRequest request) {
+        rejectRawCredentials(request.mapping(), "mapping");
+        rejectRawCredentials(request.adapterConfig(), "adapterConfig");
+        dataSource.setMappingJson(toJson(request.mapping()));
+        dataSource.setAdapterConfigJson(toJson(request.adapterConfig()));
+        dataSource.setCredentialReferencesJson(toJson(request.credentialReferences()));
+        dataSource.setHomeRegion(normalizeHomeRegion(request.homeRegion()));
+    }
+
+    private String normalizeHomeRegion(String homeRegion) {
+        if (homeRegion == null || homeRegion.isBlank()) {
+            return "default";
+        }
+        String normalized = homeRegion.trim();
+        if (normalized.length() > 64) {
+            throw new IllegalArgumentException("homeRegion must be at most 64 characters");
+        }
+        return normalized;
+    }
+
+    private String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Map<?, ?> map && map.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Invalid source runtime config JSON", exception);
+        }
+    }
+
+    private void rejectRawCredentials(Map<String, Object> values, String field) {
+        if (values == null || values.isEmpty()) {
+            return;
+        }
+        values.forEach((key, value) -> {
+            String normalized = key == null ? "" : key.toLowerCase();
+            if (normalized.contains("password")
+                    || normalized.contains("secret")
+                    || normalized.contains("token")
+                    || normalized.contains("credential")) {
+                throw new IllegalArgumentException(field + " must not contain raw credentials");
+            }
+            if (value instanceof Map<?, ?> nested) {
+                rejectRawCredentials(castObjectMap(nested), field);
+            }
+        });
+    }
+
+    private Map<String, Object> castObjectMap(Map<?, ?> nested) {
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        nested.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 }

@@ -19,11 +19,12 @@ subscription, registry, resolver, and dispatcher contracts. The common
 ingestion core may depend on canonical models and adapter API contracts, but it
 must not depend on concrete protocol adapter packages.
 
-HTTP ingestion now uses the adapter route:
+HTTP ingestion uses the registry-backed inbound route:
 
 ```text
 IngestionController
   -> IngressOrchestrator
+  -> TelemetryIngressDispatcher
   -> HttpTelemetryAdapter
   -> IncomingTelemetryMessage
   -> TelemetryIngestionPipeline
@@ -31,15 +32,17 @@ IngestionController
 
 `IngestionController` owns HTTP routes, DTO validation, bearer-token extraction,
 correlation headers, client IP extraction, and response status mapping.
+`IngressOrchestrator` asks `TelemetryIngressDispatcher` to resolve
+`GENERIC_HTTP_PUSH` by manifest metadata and inbound capability.
 `HttpTelemetryAdapter` owns DTO-to-canonical mapping for realtime, batch, and
-historical import requests. `IngressOrchestrator` dispatches inbound adapter
-requests to the common pipeline, keeps batch size accounting, and preserves
-per-item partial-success semantics.
+historical import requests. `IngressOrchestrator` keeps batch size accounting
+and preserves per-item partial-success semantics.
 
 MQTT ingestion uses the same canonical boundary:
 
 ```text
 MqttIngress
+  -> TelemetryIngressDispatcher
   -> MqttTelemetryAdapter
   -> MqttTopicResolver
   -> MqttPayloadMapper
@@ -48,10 +51,11 @@ MqttIngress
 ```
 
 `MqttIngress` owns broker connection lifecycle, subscription callbacks, and
-adapter-scoped MQTT metrics. `MqttTelemetryAdapter` owns topic resolution and
-payload mapping. Unsupported topics and invalid payloads are rejected before the
-common pipeline sees a message, so pipeline code does not branch on MQTT topic
-syntax or raw MQTT payload shape.
+adapter-scoped MQTT metrics. It resolves `GENERIC_MQTT` through the inbound
+dispatcher. `MqttTelemetryAdapter` owns topic resolution and payload mapping.
+Unsupported topics and invalid payloads are rejected before the common pipeline
+sees a message, so pipeline code does not branch on MQTT topic syntax or raw
+MQTT payload shape.
 
 Modbus TCP ingestion is an active connector adapter and runs only through
 connector runtime ownership:
@@ -194,6 +198,12 @@ window and returns `503` before accepting more readings. The Kafka key for
 `telemetry.raw.v1` is always `deviceId`. The MVP keeps operational history in
 bounded in-memory audit logs and Micrometer metrics; it does not store telemetry
 time-series data in ingestion.
+
+Connector ownership is fenced. The active lease contains owner identity plus a
+monotonically increasing generation; renew, release, polling publication, and
+subscription forwarding are valid only for the current generation. Future
+command-capable adapters must pass fenced ownership to their command boundary;
+owner identity alone is not sufficient for stateful command execution.
 
 Historical imports use `/ingestion/imports/readings` and
 `/ingestion/imports/readings/batch`. Import endpoints keep the same validation

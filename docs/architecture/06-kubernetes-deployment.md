@@ -52,6 +52,8 @@ Stateless services are deployed as `Deployment` resources:
 - `telemetry-service`
 - `analytics-service`
 - `alert-service`
+- `simulator-service`
+- `ai-agent-service`
 - `ml-service`
 
 Stateful infrastructure is deployed as `StatefulSet` resources:
@@ -79,6 +81,8 @@ http://ingestion-service:8083
 http://telemetry-service:8084
 http://analytics-service:8085
 http://alert-service:8086
+http://simulator-service:8087
+http://ai-agent-service:8088
 http://ml-service:8090
 redpanda:9092
 postgres:5432

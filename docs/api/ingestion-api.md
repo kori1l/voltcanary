@@ -154,27 +154,43 @@ rate limiting, and Kafka publication run. The canonical model distinguishes
 `occurredAt` from `receivedAt` and stores adapter/protocol/transport details in
 `TelemetryOrigin` plus bounded request metadata in `IngestionContext`.
 
-HTTP endpoints route through `IngressOrchestrator` and `HttpTelemetryAdapter`.
-The adapter maps request DTOs, `Authorization: Bearer <token>`,
+HTTP endpoints route through `IngressOrchestrator` and the registry-backed
+inbound dispatcher. The dispatcher resolves `GENERIC_HTTP_PUSH` by
+`adapterType`, `protocol=REST`, `transport=HTTP`, and inbound capability, then
+the HTTP adapter maps request DTOs, `Authorization: Bearer <token>`,
 `X-Correlation-Id`, `X-Forwarded-For`, and import mode into the canonical
-message. Batch endpoints map every reading through the same adapter path before
-the common pipeline applies validation, duplicate detection, rate limiting, and
-event publication.
+message. Batch endpoints map every reading through the same dispatcher path
+before the common pipeline applies validation, duplicate detection, rate
+limiting, and event publication.
 
 MQTT transport routes through `MqttIngress`, which owns broker connection
-lifecycle and subscription callbacks. `MqttTelemetryAdapter` owns MQTT topic
-resolution and payload mapping, then emits canonical `IncomingTelemetryMessage`
-with `TelemetryOrigin` set to `adapterType=GENERIC_MQTT`,
-`protocol=MQTT`, `transport=MQTT`, and metadata containing the MQTT topic when
-available. MQTT ingress records adapter-scoped metrics for accepted messages,
-unsupported topics, invalid payloads, broker reconnects, and pipeline
-rejections.
+lifecycle and subscription callbacks, and resolves `GENERIC_MQTT` through the
+same inbound dispatcher. `MqttTelemetryAdapter` owns MQTT topic resolution and
+payload mapping, then emits canonical `IncomingTelemetryMessage` with
+`TelemetryOrigin` set to `adapterType=GENERIC_MQTT`, `protocol=MQTT`,
+`transport=MQTT`, and metadata containing the MQTT topic when available. MQTT
+ingress records adapter-scoped metrics for accepted messages, unsupported
+topics, invalid payloads, broker reconnects, and pipeline rejections.
 
 HTTP polling routes through the connector runtime after the source lease is
 owned locally. `HttpPollingTelemetryAdapter` registers manifest
 `generic-http-polling` with polling capability and maps successful JSON
 responses into `IncomingTelemetryMessage` using the source runtime mapping.
 Instances that do not own the lease do not poll the endpoint for that source.
+
+## Modbus TCP Sources
+
+Modbus TCP sources use `adapterType=GENERIC_MODBUS_TCP`,
+`protocol=MODBUS_TCP`, and `transport=TCP` in `source.runtime-config.v1`. They
+are polling connectors. `device-service` stores source mapping, adapter config,
+credential references, home region, and monotonic config version on the data
+source record and publishes those values without raw credentials.
+
+Register mappings live in `mapping.registers`; endpoint and polling settings
+live in `adapterConfig`. The ingestion adapter resolves credentials only from
+`credentialReferences` through the configured provider. Register addresses,
+function codes, byte order, and protocol errors stay inside the Modbus adapter;
+the common pipeline receives only canonical telemetry.
 
 OPC UA sources use `adapterType=GENERIC_OPC_UA`, `protocol=OPC_UA`, and
 `transport=TCP` in `source.runtime-config.v1`. They are subscription connectors:
@@ -281,3 +297,7 @@ Source runtime configuration is served from the local
 known active sources can continue ingesting, while newly created or changed
 sources may fail closed until their compacted config event reaches the
 ingestion instance.
+
+Connector leases include an owner and fencing generation. Renew, release,
+polling publication, and subscription forwarding require the current generation;
+a stale owner after failover cannot continue publishing through an old lease.

@@ -53,6 +53,18 @@ public class DataSource {
     @Column(name = "credentials_ref")
     private String credentialsRef;
 
+    @Column(name = "mapping_json")
+    private String mappingJson;
+
+    @Column(name = "adapter_config_json")
+    private String adapterConfigJson;
+
+    @Column(name = "credential_references_json")
+    private String credentialReferencesJson;
+
+    @Column(name = "home_region")
+    private String homeRegion;
+
     @Column(name = "ingestion_token_hash")
     private String ingestionTokenHash;
 
@@ -168,6 +180,38 @@ public class DataSource {
 
     public void setCredentialsRef(String credentialsRef) {
         this.credentialsRef = credentialsRef;
+    }
+
+    public String getMappingJson() {
+        return mappingJson;
+    }
+
+    public void setMappingJson(String mappingJson) {
+        this.mappingJson = mappingJson;
+    }
+
+    public String getAdapterConfigJson() {
+        return adapterConfigJson;
+    }
+
+    public void setAdapterConfigJson(String adapterConfigJson) {
+        this.adapterConfigJson = adapterConfigJson;
+    }
+
+    public String getCredentialReferencesJson() {
+        return credentialReferencesJson;
+    }
+
+    public void setCredentialReferencesJson(String credentialReferencesJson) {
+        this.credentialReferencesJson = credentialReferencesJson;
+    }
+
+    public String getHomeRegion() {
+        return homeRegion;
+    }
+
+    public void setHomeRegion(String homeRegion) {
+        this.homeRegion = homeRegion;
     }
 
     public String getIngestionTokenHash() {

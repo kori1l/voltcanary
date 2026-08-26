@@ -64,21 +64,21 @@ Local metadata and CI use these baselines. Older Node versions, including Node
 
 ## Project Status
 
-Early development stage.
+Pre-production engineering MVP.
 
 Current focus:
 
-- repository and service skeletons
-- event contracts
-- basic service boundaries
-- local development setup
-- first vertical slice for telemetry ingestion
+- keeping API, event, architecture, and OpenSpec contracts aligned
+- hardening telemetry ingestion adapters and connector runtime behavior
+- validating horizontal ingestion operation with shared Redis/Kafka state
+- improving production deployment, operations, and verification readiness
+- keeping ML predictions explainable and honest about confidence/fallback state
 
 ## Repository Structure
 
 ```text
 voltcanary/
-  docs/                 Architecture, ADRs, API docs, events, interview notes
+  docs/                 Architecture, ADRs, API docs, events, operations, flows
   backend/              Java Spring Boot monorepo modules
   ml-service/           Python FastAPI ML service
   frontend/             React + TypeScript web cabinet
@@ -98,6 +98,8 @@ voltcanary/
 | Telemetry Service | Java / Spring Boot | 8084 | `backend/services/telemetry-service` |
 | Analytics Service | Java / Spring Boot | 8085 | `backend/services/analytics-service` |
 | Alert Service | Java / Spring Boot | 8086 | `backend/services/alert-service` |
+| Simulator Service | Java / Spring Boot | 8087 | `backend/services/simulator-service` |
+| AI Agent Service | Java / Spring Boot | 8088 | `backend/services/ai-agent-service` |
 | ML Service | Python / FastAPI | 8090 | `ml-service` |
 | Frontend | React / Vite | 3000 | `frontend` |
 
@@ -241,7 +243,7 @@ Environment variables are documented in `.env.example`.
 ## Local Kubernetes
 
 The current local Kubernetes deployment is documented in
-`docs/k8s-local.md`. It uses Docker Desktop Kubernetes, Kustomize, local
+`docs/operations/k8s-local.md`. It uses Docker Desktop Kubernetes, Kustomize, local
 `hostPath` source mounts, and production-like controls for stateless services.
 
 Start the stack:
@@ -276,30 +278,21 @@ http://localhost:3001
 
 ## Documentation
 
-Key documents:
+Start with `docs/README.md`.
 
-- `docs/architecture/01-system-overview.md`
-- `docs/architecture/02-service-boundaries.md`
-- `docs/architecture/03-data-flow.md`
-- `docs/architecture/06-kubernetes-deployment.md`
-- `docs/architecture/07-observability.md`
-- `docs/architecture/09-horizontal-scaling-matrix.md`
-- `docs/architecture/11-ml-dataset-workbench.md`
-- `docs/k8s-local.md`
-- `docs/events/event-envelope.md`
-- `docs/interview/talking-points.md`
+The documentation tree is organized by role:
 
-## MVP Roadmap
+- `docs/architecture/` for current and target architecture.
+- `docs/api/` for HTTP contracts.
+- `docs/events/` for Kafka/event contracts.
+- `docs/operations/` for local operations and runtime guides.
+- `docs/flows/` for verification runbooks and reports.
+- `docs/adr/` for durable architecture decisions.
+- `docs/simulation/` and `docs/integrations/` for focused domain notes.
 
-1. Repository and service skeletons
-2. Local infrastructure with Docker Compose
-3. User registration and login
-4. Device creation and data source binding
-5. REST telemetry ingestion
-6. Kafka event publishing and telemetry storage
-7. Basic charts in frontend
-8. Baseline and anomaly detection
-9. Risk score and recommendations
-10. Alerts and acknowledgement flow
-11. ML inference and model registry expansion
-12. Kubernetes deployment with observability
+## Roadmap Source
+
+Roadmap-level product or architecture changes should be captured as OpenSpec
+changes, not as standalone backlog markdown files. The current target direction
+lives in `docs/architecture/12-target-architecture.md`; active requirements
+live in `openspec/specs/`.

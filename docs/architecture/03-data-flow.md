@@ -1,259 +1,150 @@
 # Data Flow
 
-The main telemetry flow is:
+VoltCanary separates the telemetry data plane from the device/source control
+plane. Device ownership, source metadata, source tokens, connector mappings, and
+maintenance policy are owned by `device-service`; high-volume telemetry enters
+through `ingestion-service` and then moves asynchronously through Kafka.
+
+## Telemetry Flow
 
 ```text
-Smart plug -> Ingestion -> Kafka -> Telemetry -> TimescaleDB -> Analytics -> Dashboard
-```
-
-In the full platform this expands to:
-
-```text
-Smart Plug / Sensor / CSV / API
+HTTP / MQTT / Import / HTTP polling / Modbus TCP / OPC UA / Simulator
         |
         v
-Ingestion Service
+ingestion-service adapter boundary
+        |
+        v
+IncomingTelemetryMessage
+        |
+        v
+common ingestion pipeline
         |
         v
 telemetry.raw.v1
         |
         v
-Telemetry Service
+telemetry-service
         |
         v
-TimescaleDB
+TimescaleDB + telemetry.validated.v1
         |
         v
-telemetry.validated.v1
+analytics-service <-> ml-service
         |
         v
-Analytics Service
-        ^ 
-        | maintenance-window.changed.v1
-        |
-        +----> ML Service
+anomaly.detected.v1 / risk-score.changed.v1 / recommendation events
         |
         v
-anomaly.detected.v1 / risk-score.changed.v1
+alert-service
         |
         v
-Alert Service
-        ^ 
-        | maintenance-window.changed.v1
-        |
-        v
-Frontend Dashboard
+frontend
 ```
 
-## Step 1: Smart Plug Sends Telemetry
+Ingestion success means the reading has passed the ingestion boundary and has
+been accepted for Kafka publication. It does not mean telemetry persistence,
+analytics, or alert generation has already completed.
 
-The first supported input is REST ingestion. MQTT and CSV import are planned for
-later versions.
+## Source Runtime Config Flow
 
-Example telemetry:
+`device-service` is the control-plane owner for data sources. It stores the
+source record, protocol/transport/adapter metadata, token hash, versioned
+adapter configuration, mapping, credential references, status, and home region.
 
-```json
-{
-  "deviceId": "device-123",
-  "sourceId": "plug-001",
-  "timestamp": "2026-05-12T12:30:00Z",
-  "metrics": {
-    "activePowerW": 840.2,
-    "voltageV": 230.1,
-    "currentA": 3.65,
-    "energyWh": 12450.7,
-    "relayState": "ON",
-    "rssi": -61
-  }
-}
-```
-
-## Step 2: Ingestion Service Validates Input
-
-`ingestion-service` checks that required fields exist:
-
-- `deviceId`
-- `sourceId`
-- `timestamp`
-- `metrics`
-
-It validates timestamps, metric shape, and later device/source existence. It
-also owns the first idempotency boundary for duplicate requests.
-
-Idempotency key strategy:
+When source configuration changes, `device-service` publishes:
 
 ```text
-deviceId + sourceId + timestamp + metricName
+source.runtime-config.v1
+key = dataSourceId
 ```
 
-Output event:
+Every `ingestion-service` replica consumes this compacted topic with a
+replica-specific group and rebuilds a local source read model. The normal
+telemetry path resolves source status, device/account identity, adapter type,
+mapping, config version, and token hash locally. New or changed sources may fail
+closed until the compacted event reaches the local ingestion replica.
 
-- topic: `telemetry.raw.v1`
-- key: `deviceId`
-- event: `TelemetryReceivedEvent`
+## Adapter Boundary
 
-Using `deviceId` as the key keeps events for one device in the same Kafka
-partition, preserving per-device order as much as the broker can guarantee.
+All protocol-specific paths normalize into the same canonical model:
 
-## Step 3: Kafka / Redpanda Decouples Producers and Consumers
+- HTTP push and imports route through `HttpTelemetryAdapter`.
+- MQTT route ownership stays in `MqttIngress`, while topic and payload mapping
+  stay in `MqttTelemetryAdapter`.
+- HTTP polling runs as a polling adapter owned by connector runtime leases.
+- Modbus TCP runs as a polling adapter; register details stay inside the
+  Modbus adapter package.
+- OPC UA runs as a subscription adapter; node/session/security details stay
+  inside the OPC UA adapter package.
 
-Kafka-compatible messaging allows ingestion to remain fast while downstream
-processing happens asynchronously.
+The common ingestion pipeline does not parse MQTT topics, Modbus registers, OPC
+UA NodeIds, vendor payloads, or connector-specific session objects.
 
-Benefits:
+## Ingestion Pipeline
 
-- ingestion can accept bursts without blocking on analytics
-- telemetry processing can scale independently
-- analytics can be replayed from events when logic changes
-- failures can be isolated with retries and DLQ topics
+For each canonical message, the common pipeline:
 
-## Step 4: Telemetry Service Normalizes and Stores Readings
+1. Resolves the source from the local runtime-config read model.
+2. Verifies source token hash, source status, device/account association,
+   adapter/protocol/transport compatibility, and import mode.
+3. Validates timestamps, metric names, values, source lengths, and batch size.
+4. Applies rate limits by source, device, account, and client identity.
+5. Applies idempotency.
+6. Builds `TelemetryReceivedEvent`.
+7. Publishes `telemetry.raw.v1` with `deviceId` as the Kafka key.
 
-`telemetry-service` consumes `telemetry.raw.v1`.
+In multi-replica mode, rate limiting, idempotency, and connector leases use
+Redis. Local in-memory implementations are single-instance development
+behavior only.
 
-Responsibilities:
+## Telemetry Persistence
 
-- normalize metric names and units
-- reject or flag invalid values
-- detect duplicate readings
-- detect out-of-order or late readings
-- store readings in TimescaleDB
-- calculate or schedule aggregates for charts
-- publish `telemetry.validated.v1`
+`telemetry-service` consumes `telemetry.raw.v1`, defensively validates the event,
+stores measurements and quality flags in TimescaleDB, and publishes
+`telemetry.validated.v1` through a durable outbox.
 
-Quality flags:
+Quality state distinguishes duplicate, out-of-order, missing-field,
+invalid-value, late-arrival, and unsupported-metric cases. Telemetry reads,
+latest readings, metrics, quality summaries, and exports are served from
+TimescaleDB through `telemetry-service`; ingestion never owns long-term
+time-series storage.
 
-- `OK`
-- `DUPLICATE`
-- `OUT_OF_ORDER`
-- `MISSING_FIELD`
-- `INVALID_VALUE`
-- `LATE_ARRIVAL`
-- `UNKNOWN_METRIC`
+## Analytics And ML
 
-TimescaleDB stores:
+`analytics-service` consumes validated telemetry and calculates baselines,
+feature snapshots, anomalies, risk scores, recommendations, predictions, and
+recalculation jobs. It calls `ml-service` for inference and lifecycle
+operations where model-backed behavior is enabled.
 
-- raw readings
-- quality flags
-- latest readings
-- aggregates such as 1m, 5m, 1h, and 1d buckets
+The ML service owns dataset previews, labels, feature snapshots, training runs,
+model registry records, artifact health, deployment policies, and inference
+contracts. Analytics must remain resilient when ML is unavailable and use
+documented fallback behavior instead of blocking telemetry ingestion.
 
-## Step 5: Analytics Service Calculates Behavior Signals
+## Alerts And Maintenance Windows
 
-`analytics-service` consumes `telemetry.validated.v1`.
+`device-service` publishes `maintenance-window.changed.v1`. Analytics and alert
+services maintain local maintenance read models:
 
-It calculates:
+- analytics excludes matching samples from derived calculations when policy
+  requires it;
+- alert-service suppresses or auto-resolves matching alerts when policy
+  requires it.
 
-- baseline by device and metric
-- rolling mean and rolling standard deviation
-- work cycles
-- energy per cycle
-- runtime and idle time
-- consumption growth
-- anomaly score
-- degradation score
-- risk score
-- recommendations
-
-MVP anomaly types:
-
-- power spike
-- long cycle
-- consumption growth
-
-Risk levels:
-
-| Score | Level |
-| ---: | --- |
-| 0-30 | LOW |
-| 31-60 | MEDIUM |
-| 61-80 | HIGH |
-| 81-100 | CRITICAL |
-
-Example formula:
-
-```text
-riskScore =
-  anomalyScore * 0.35
-+ trendScore * 0.25
-+ cycleDeviationScore * 0.20
-+ dataQualityRisk * 0.10
-+ offlineRisk * 0.10
-```
-
-## Step 6: ML Service Performs Inference
-
-The ML service is separate because model experimentation, data preparation, and
-training are better handled in the Python ecosystem.
-
-`analytics-service` calls `ml-service` through REST for:
-
-- model inference
-- training runs
-- model registry queries
-- future model quality metrics
-
-The ML response includes:
-
-- `modelVersion`
-- `anomalyScore`
-- `degradationScore`
-- `riskLevel`
-- `confidence`
-- explanations
-
-## Step 7: Alerts and Dashboard
-
-When analytics detects a significant anomaly or risk level change, it publishes:
-
-- `anomaly.detected.v1`
-- `risk-score.changed.v1`
-- `recommendation.created.v1` later
-
-`alert-service` consumes those events, deduplicates alerts by device, type,
-severity, and time window, and exposes them to the frontend.
-
-The frontend displays:
-
-- latest device status
-- charts
-- baseline deviation
-- anomalies
-- risk score
-- explanations
-- recommendations
-- alerts
-
-## Maintenance Window Flow
-
-Planned maintenance starts in device-service:
-
-```text
-Frontend -> API Gateway -> device-service
-                         -> device_event_outbox
-                         -> maintenance-window.changed.v1
-                         -> analytics-service local read model
-                         -> alert-service local read model
-```
-
-Analytics-service excludes samples that overlap windows with
-`excludeFromAnalytics=true` and passes explicit excluded intervals to ml-service
-when `excludeFromMl=true`.
-
-Alert-service suppresses new alerts that overlap windows with
-`suppressAlerts=true` and auto-resolves unresolved existing alerts when a new or
-expanded maintenance window covers them.
-
-Both consumers reconcile with device-service internal APIs using
-`updatedAfter` checkpoints so projection lag or missed Kafka messages do not
-create permanent divergence.
+`alert-service` consumes analytics events, deduplicates by device/type/severity
+and time window, owns alert lifecycle transitions, and owns notification
+channels, preferences, and attempts.
 
 ## Failure Handling
 
-The system assumes at-least-once delivery. Therefore:
+VoltCanary assumes at-least-once delivery:
 
-- producers use event IDs and correlation IDs
-- consumers are idempotent
-- poison messages go to DLQ topics
-- important future workflows can use the outbox pattern
-- duplicate and out-of-order telemetry is tracked explicitly as data quality
+- events carry stable ids, producer metadata, correlation ids, and occurred
+  times;
+- consumers are idempotent through processed-event or inbox tables;
+- outbox workers use row leases and replay stuck rows;
+- invalid events go to topic-specific DLQs where implemented;
+- Kafka publish failures in ingestion return `503` and release idempotency so
+  collectors can retry;
+- Redis failures in multi-replica ingestion fail closed instead of silently
+  switching to local correctness state.

@@ -1,8 +1,10 @@
 package com.voltcanary.ingestion.mqtt;
 
+import com.voltcanary.ingestion.adapter.api.AdapterType;
+import com.voltcanary.ingestion.adapter.api.ProtocolType;
+import com.voltcanary.ingestion.adapter.api.TransportType;
 import com.voltcanary.ingestion.adapter.mqtt.MqttAdapterRequest;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMappingException;
-import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.UnsupportedMqttTopicException;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.ingress.IngressOrchestrator;
@@ -25,8 +27,8 @@ import org.springframework.stereotype.Component;
 public class MqttIngress implements MqttCallback {
 
     private static final Logger log = LoggerFactory.getLogger(MqttIngress.class);
+    private static final String ADAPTER_ID = "generic-mqtt";
 
-    private final MqttTelemetryAdapter telemetryAdapter;
     private final IngressOrchestrator ingressOrchestrator;
     private final MeterRegistry meterRegistry;
     private final String brokerUrl;
@@ -35,11 +37,9 @@ public class MqttIngress implements MqttCallback {
     private MqttClient client;
 
     public MqttIngress(
-            MqttTelemetryAdapter telemetryAdapter,
             IngressOrchestrator ingressOrchestrator,
             MeterRegistry meterRegistry,
             IngestionProperties properties) {
-        this.telemetryAdapter = telemetryAdapter;
         this.ingressOrchestrator = ingressOrchestrator;
         this.meterRegistry = meterRegistry;
         this.brokerUrl = properties.getMqtt().getBrokerUrl();
@@ -78,7 +78,13 @@ public class MqttIngress implements MqttCallback {
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         try {
-            ingressOrchestrator.dispatch(telemetryAdapter, new MqttAdapterRequest(topic, message.getPayload()), null);
+            ingressOrchestrator.dispatch(
+                    AdapterType.GENERIC_MQTT,
+                    ProtocolType.MQTT,
+                    TransportType.MQTT,
+                    MqttAdapterRequest.class,
+                    new MqttAdapterRequest(topic, message.getPayload()),
+                    null);
             record("accepted");
         } catch (UnsupportedMqttTopicException exception) {
             record("unsupported_topic");
@@ -100,7 +106,7 @@ public class MqttIngress implements MqttCallback {
         meterRegistry.counter(
                 "voltcanary.ingestion.mqtt.messages",
                 "adapter",
-                telemetryAdapter.adapterId(),
+                ADAPTER_ID,
                 "outcome",
                 outcome).increment();
     }
