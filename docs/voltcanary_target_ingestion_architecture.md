@@ -92,7 +92,7 @@ HttpTelemetryAdapter
 MQTT            │
   │             │
   ▼             │
-MqttTelemetrySubscriber
+MqttIngress
   │             │
   └─────────────┘
                 ▼
@@ -120,7 +120,7 @@ The target system should not grow into this:
 
 ```text
 IngestionController
-MqttTelemetrySubscriber
+MqttIngress
 ModbusManager
 OpcUaManager
 CoapManager
@@ -3041,7 +3041,7 @@ Recommended refactoring:
 
 - `IngestionController` orchestration responsibility;
 - legacy `RestTelemetryMapper` role;
-- `MqttTelemetrySubscriber` responsibility;
+- `MqttIngress` and `MqttTelemetryAdapter` responsibilities;
 - source-resolution hot path;
 - protocol validation if embedded in common pipeline;
 - configuration model for source connectors;

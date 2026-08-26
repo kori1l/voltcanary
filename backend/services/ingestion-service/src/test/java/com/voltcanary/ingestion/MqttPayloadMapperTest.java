@@ -2,7 +2,7 @@ package com.voltcanary.ingestion;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
-import com.voltcanary.ingestion.mqtt.MqttPayloadMapper;
+import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 

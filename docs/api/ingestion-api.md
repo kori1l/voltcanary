@@ -85,7 +85,8 @@ or metric names return `400`.
 
 MQTT collectors publish JSON payloads with `timestamp` and `metrics` to
 `voltcanary/sources/{sourceId}/telemetry`. Source resolution and validation use
-the same ingestion pipeline as HTTP.
+the same ingestion pipeline as HTTP. Unsupported topics and malformed payloads
+are rejected at the MQTT adapter boundary before the common pipeline runs.
 
 ## Internal Adapter Boundary
 
@@ -101,6 +102,15 @@ The adapter maps request DTOs, `Authorization: Bearer <token>`,
 message. Batch endpoints map every reading through the same adapter path before
 the common pipeline applies validation, duplicate detection, rate limiting, and
 event publication.
+
+MQTT transport routes through `MqttIngress`, which owns broker connection
+lifecycle and subscription callbacks. `MqttTelemetryAdapter` owns MQTT topic
+resolution and payload mapping, then emits canonical `IncomingTelemetryMessage`
+with `TelemetryOrigin` set to `adapterType=GENERIC_MQTT`,
+`protocol=MQTT`, `transport=MQTT`, and metadata containing the MQTT topic when
+available. MQTT ingress records adapter-scoped metrics for accepted messages,
+unsupported topics, invalid payloads, broker reconnects, and pipeline
+rejections.
 
 ## Configuration
 

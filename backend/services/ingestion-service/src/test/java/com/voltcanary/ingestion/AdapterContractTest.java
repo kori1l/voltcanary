@@ -1,5 +1,6 @@
 package com.voltcanary.ingestion;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.api.AdapterCapabilities;
 import com.voltcanary.ingestion.adapter.api.AdapterCapability;
 import com.voltcanary.ingestion.adapter.api.AdapterManifest;
@@ -8,6 +9,9 @@ import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.TransportType;
+import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
+import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
+import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterRegistry;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterResolver;
 import java.util.List;
@@ -94,6 +98,19 @@ class AdapterContractTest {
         assertThatThrownBy(() -> new DefaultIngestionAdapterRegistry(List.of(first, second)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate ingestion adapter type");
+    }
+
+    @Test
+    void mqttAdapterRegistersInboundMqttManifest() {
+        MqttTelemetryAdapter mqttAdapter = new MqttTelemetryAdapter(
+                new MqttTopicResolver(),
+                new MqttPayloadMapper(new ObjectMapper()));
+
+        assertThat(mqttAdapter.adapterId()).isEqualTo("generic-mqtt");
+        assertThat(mqttAdapter.adapterType()).isEqualTo(AdapterType.GENERIC_MQTT);
+        assertThat(mqttAdapter.manifest().transport()).isEqualTo(TransportType.MQTT);
+        assertThat(mqttAdapter.manifest().protocol()).isEqualTo(ProtocolType.MQTT);
+        assertThat(mqttAdapter.manifest().capabilities().inbound()).isTrue();
     }
 
     private TelemetryAdapter adapter(

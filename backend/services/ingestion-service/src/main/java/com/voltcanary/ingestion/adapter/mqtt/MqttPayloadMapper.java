@@ -1,4 +1,4 @@
-package com.voltcanary.ingestion.mqtt;
+package com.voltcanary.ingestion.adapter.mqtt;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,7 +41,7 @@ public class MqttPayloadMapper {
                     null,
                     false);
         } catch (Exception exception) {
-            throw new IllegalArgumentException("Invalid MQTT telemetry payload", exception);
+            throw new MqttPayloadMappingException("Invalid MQTT telemetry payload", exception);
         }
     }
 }

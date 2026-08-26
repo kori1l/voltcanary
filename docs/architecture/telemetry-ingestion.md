@@ -36,6 +36,23 @@ historical import requests. `IngressOrchestrator` dispatches inbound adapter
 requests to the common pipeline, keeps batch size accounting, and preserves
 per-item partial-success semantics.
 
+MQTT ingestion uses the same canonical boundary:
+
+```text
+MqttIngress
+  -> MqttTelemetryAdapter
+  -> MqttTopicResolver
+  -> MqttPayloadMapper
+  -> IncomingTelemetryMessage
+  -> TelemetryIngestionPipeline
+```
+
+`MqttIngress` owns broker connection lifecycle, subscription callbacks, and
+adapter-scoped MQTT metrics. `MqttTelemetryAdapter` owns topic resolution and
+payload mapping. Unsupported topics and invalid payloads are rejected before the
+common pipeline sees a message, so pipeline code does not branch on MQTT topic
+syntax or raw MQTT payload shape.
+
 The pipeline validates required fields, timestamp skew/backfill limits, supported metric names, metric value ranges, source and metric name lengths, and batch size. It resolves the source through `device-service`, checks that the source token hash matches the submitted token, verifies that the token belongs to the submitted `sourceId` and `deviceId`, checks source status/protocol, applies idempotency, builds `TelemetryReceivedEvent`, waits for a broker acknowledgement, and publishes to `telemetry.raw.v1`.
 
 Telemetry-service repeats defensive validation before persistence. It treats ingestion as the primary external trust boundary, but still rejects malformed events, unsupported metrics, out-of-window timestamps, and out-of-range values before writing TimescaleDB rows.

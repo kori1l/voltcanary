@@ -81,8 +81,11 @@ telemetry-ingestion-service
     HttpTelemetryAdapter
 
   mqtt/
-    MqttTelemetrySubscriber
-    MqttTopicParser
+    MqttIngress
+
+  adapter/mqtt/
+    MqttTelemetryAdapter
+    MqttTopicResolver
     MqttPayloadMapper
 
   source/
@@ -1500,8 +1503,9 @@ ingestion/mqtt/
 Classes:
 
 ```text
-MqttTelemetrySubscriber
-MqttTopicParser
+MqttIngress
+MqttTelemetryAdapter
+MqttTopicResolver
 MqttPayloadMapper
 ```
 
@@ -1547,8 +1551,8 @@ voltcanary/sources/sim-fridge-001/telemetry
 ### 19.5 MQTT adapter flow
 
 ```text
-MqttTelemetrySubscriber receives message
-MqttTopicParser extracts sourceId
+MqttIngress receives message
+MqttTelemetryAdapter calls MqttTopicResolver for sourceId
 MqttPayloadMapper builds IncomingTelemetryMessage(protocol=MQTT)
 TelemetryIngestionPipeline.ingest()
 ```
@@ -1665,7 +1669,7 @@ TelemetryIngestionPipeline publishes telemetry.raw.v1
 Add tests for:
 
 ```text
-MqttTopicParser extracts sourceId
+MqttTopicResolver extracts sourceId
 MqttPayloadMapper maps payload
 MQTT adapter calls TelemetryIngestionPipeline
 ```
