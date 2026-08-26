@@ -110,6 +110,10 @@ Use stable domain keys to preserve useful ordering:
 | `risk-score.changed.v1` | `deviceId` |
 | `alert.created.v1` | `alertId` or `deviceId` depending on consumer need |
 
+`telemetry.raw.v1` MUST use the submitted canonical `deviceId` as the Kafka key.
+Producers must not use random keys for canonical telemetry records because
+per-device ordering and partition locality depend on this key.
+
 ## Versioning Rules
 
 Backward-compatible changes can keep the same `eventVersion`:

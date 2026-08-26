@@ -32,7 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "app.kafka.publish-enabled=true",
                 "app.idempotency.redis-enabled=false",
-                "app.ingestion.redis-rate-limit-enabled=false"
+                "app.ingestion.redis-rate-limit-enabled=false",
+                "app.ingestion.multi-replica-mode=false",
+                "app.ingestion.local-correctness-state-enabled=true"
         })
 class IngestionKafkaIntegrationTest {
 

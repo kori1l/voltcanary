@@ -45,7 +45,7 @@ Response `202`:
 ```
 
 Duplicates return `202` with `status=duplicate` and `duplicateCount=1`.
-Temporary broker failures return `503` and can be retried.
+Temporary Redis or broker failures return `503` and can be retried.
 
 ## POST /ingestion/readings/batch
 
@@ -123,11 +123,14 @@ Important properties:
 - `app.ingestion.kafka-ack-timeout`
 - `app.idempotency.redis-enabled`
 - `app.idempotency.ttl`
+- `app.ingestion.multi-replica-mode`
+- `app.ingestion.local-correctness-state-enabled`
 - `app.ingestion.max-metrics-per-reading`
 - `app.ingestion.max-readings-per-batch`
 - `app.ingestion.max-source-id-length`
 - `app.ingestion.max-metric-name-length`
 - `app.ingestion.rate-limit-enabled`
+- `app.ingestion.redis-rate-limit-enabled`
 - `app.ingestion.rate-limit-window`
 - `app.ingestion.source-requests-per-window`
 - `app.ingestion.device-requests-per-window`
@@ -136,3 +139,31 @@ Important properties:
 - `app.ingestion.backpressure-enabled`
 - `app.ingestion.backpressure-cooldown`
 - `app.ingestion.audit-capacity`
+
+## Scaling And Failure Policy
+
+`app.ingestion.multi-replica-mode=true` is the production-like mode. In this
+mode, ingestion requires Redis-backed idempotency and Redis-backed rate limiting
+at startup. If Redis becomes unavailable during request processing, ingestion
+fails closed with `503` instead of silently switching to local counters or local
+duplicate detection. The `ingestionCorrectnessState` health contributor and
+`voltcanary.ingestion.correctness.state` metric label the active mode as
+`shared-redis` or `local-only`.
+
+In-memory idempotency and rate-limit counters are only allowed for explicit
+single-instance/local development by setting
+`app.ingestion.multi-replica-mode=false`,
+`app.ingestion.local-correctness-state-enabled=true`,
+`app.idempotency.redis-enabled=false`, and
+`app.ingestion.redis-rate-limit-enabled=false`.
+
+Kafka publication to `telemetry.raw.v1` waits for broker acknowledgement within
+`app.ingestion.kafka-ack-timeout`. Publish failures return `503`, release the
+idempotency key for retry, and open the configured backpressure cooldown so
+subsequent ingress is rejected instead of buffering telemetry without bounds.
+
+Source runtime configuration is served from the local
+`source.runtime-config.v1` read model. If the stream is lagging, previously
+known active sources can continue ingesting, while newly created or changed
+sources may fail closed until their compacted config event reaches the
+ingestion instance.

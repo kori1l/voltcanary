@@ -53,6 +53,8 @@ app:
     idempotency-ttl: ${INGESTION_IDEMPOTENCY_TTL:24h}
     rate-limit-enabled: ${INGESTION_RATE_LIMIT_ENABLED:true}
     redis-rate-limit-enabled: ${INGESTION_RATE_LIMIT_REDIS_ENABLED:true}
+    multi-replica-mode: ${INGESTION_MULTI_REPLICA_MODE:true}
+    local-correctness-state-enabled: ${INGESTION_LOCAL_CORRECTNESS_STATE_ENABLED:false}
     rate-limit-window: ${INGESTION_RATE_LIMIT_WINDOW:1m}
     source-requests-per-window: ${INGESTION_SOURCE_REQUESTS_PER_WINDOW:600}
     device-requests-per-window: ${INGESTION_DEVICE_REQUESTS_PER_WINDOW:1200}

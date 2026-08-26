@@ -35,6 +35,8 @@ import static org.mockito.Mockito.when;
                 "app.kafka.publish-enabled=false",
                 "app.idempotency.redis-enabled=false",
                 "app.ingestion.redis-rate-limit-enabled=false",
+                "app.ingestion.multi-replica-mode=false",
+                "app.ingestion.local-correctness-state-enabled=true",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
 class HttpAdapterRouteTest {

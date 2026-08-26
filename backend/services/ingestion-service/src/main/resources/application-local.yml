@@ -8,5 +8,8 @@ spring:
       port: ${REDIS_PORT:6379}
 
 app:
+  ingestion:
+    multi-replica-mode: ${INGESTION_MULTI_REPLICA_MODE:false}
+    local-correctness-state-enabled: ${INGESTION_LOCAL_CORRECTNESS_STATE_ENABLED:true}
   idempotency:
     redis-enabled: true

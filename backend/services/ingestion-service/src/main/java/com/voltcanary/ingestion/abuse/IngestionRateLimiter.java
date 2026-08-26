@@ -90,6 +90,12 @@ public class IngestionRateLimiter {
                     "reason",
                     exception.getClass().getSimpleName()).increment();
             log.warn("ingestionRateLimitRedisUnavailable reasonCode={}", exception.getClass().getSimpleName());
+            if (!properties.isLocalCorrectnessStateEnabled()) {
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "Shared ingestion rate limit store unavailable",
+                        exception);
+            }
             return null;
         } finally {
             sample.stop(meterRegistry.timer("voltcanary.ingestion.redis.rate_limit.latency", "outcome", outcome));
@@ -97,6 +103,10 @@ public class IngestionRateLimiter {
     }
 
     private boolean allowInMemory(String key, long windowStartedAt, int limit) {
+        meterRegistry.counter(
+                "voltcanary.ingestion.rate_limit.local_only",
+                "mode",
+                properties.isLocalCorrectnessStateEnabled() ? "explicit" : "implicit").increment();
         WindowCounter counter = counters.compute(key, (ignored, existing) -> {
             if (existing == null || existing.windowStartedAt != windowStartedAt) {
                 return new WindowCounter(windowStartedAt);

@@ -18,9 +18,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.web.server.ResponseStatusException;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -28,10 +26,36 @@ import static org.mockito.Mockito.when;
 class IngestionRedisOutageTest {
 
     @Test
-    void rateLimiterFallsBackToInMemoryCountersWhenRedisIsUnavailable() {
+    void rateLimiterFailsClosedWhenRedisIsUnavailableInMultiReplicaMode() {
         IngestionProperties properties = new IngestionProperties();
         properties.setRateLimitEnabled(true);
         properties.setRedisRateLimitEnabled(true);
+        properties.setRateLimitWindow(Duration.ofMinutes(1));
+        properties.setSourceRequestsPerWindow(1);
+        properties.setDeviceRequestsPerWindow(10);
+        properties.setAccountRequestsPerWindow(10);
+        properties.setIpRequestsPerWindow(10);
+        StringRedisTemplate redisTemplate = redisTemplateFailingOnIncrement();
+        IngestionRateLimiter limiter = new IngestionRateLimiter(
+                properties,
+                Optional.of(redisTemplate),
+                new SimpleMeterRegistry());
+        ResolvedSource source = source();
+        IncomingTelemetryMessage message = message(source.deviceId(), source.externalId());
+
+        assertThatThrownBy(() -> limiter.check(message, source))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("503 SERVICE_UNAVAILABLE")
+                .hasMessageContaining("Shared ingestion rate limit store unavailable");
+    }
+
+    @Test
+    void rateLimiterUsesInMemoryCountersOnlyWhenLocalCorrectnessStateIsExplicit() {
+        IngestionProperties properties = new IngestionProperties();
+        properties.setRateLimitEnabled(true);
+        properties.setRedisRateLimitEnabled(true);
+        properties.setMultiReplicaMode(false);
+        properties.setLocalCorrectnessStateEnabled(true);
         properties.setRateLimitWindow(Duration.ofMinutes(1));
         properties.setSourceRequestsPerWindow(1);
         properties.setDeviceRequestsPerWindow(10);

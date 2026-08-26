@@ -70,10 +70,18 @@ Telemetry-service repeats defensive validation before persistence. It treats ing
 Batch ingestion uses partial-success semantics. The response includes accepted, duplicate, and rejected counts plus per-reading status entries. Kafka publish failures return `503`; the idempotency key is released so collectors can retry the same reading.
 
 Realtime ingestion enforces rate limits by source, device, account, and client
-IP. When Kafka publish failures occur, the service opens a short backpressure
-window and returns `503` before accepting more readings. The MVP keeps
-operational history in bounded in-memory audit logs and Micrometer metrics; it
-does not store telemetry time-series data in ingestion.
+IP. In multi-replica mode, idempotency and rate limiting must both use Redis.
+Startup fails when multi-replica mode is configured without Redis-backed
+idempotency or rate limiting, and Redis request-time outages fail closed with
+`503` instead of silently degrading to local memory. The local in-memory
+implementations are only valid when explicitly configured as single-instance
+local correctness state.
+
+When Kafka publish failures occur, the service opens a short backpressure
+window and returns `503` before accepting more readings. The Kafka key for
+`telemetry.raw.v1` is always `deviceId`. The MVP keeps operational history in
+bounded in-memory audit logs and Micrometer metrics; it does not store telemetry
+time-series data in ingestion.
 
 Historical imports use `/ingestion/imports/readings` and
 `/ingestion/imports/readings/batch`. Import endpoints keep the same validation

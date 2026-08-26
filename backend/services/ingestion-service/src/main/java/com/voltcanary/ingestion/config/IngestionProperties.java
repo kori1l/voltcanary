@@ -20,6 +20,8 @@ public class IngestionProperties {
     private Duration idempotencyTtl = Duration.ofHours(24);
     private boolean rateLimitEnabled = true;
     private boolean redisRateLimitEnabled = true;
+    private boolean multiReplicaMode = true;
+    private boolean localCorrectnessStateEnabled = false;
     private Duration rateLimitWindow = Duration.ofMinutes(1);
     private int sourceRequestsPerWindow = 600;
     private int deviceRequestsPerWindow = 1_200;
@@ -117,6 +119,22 @@ public class IngestionProperties {
 
     public void setRedisRateLimitEnabled(boolean redisRateLimitEnabled) {
         this.redisRateLimitEnabled = redisRateLimitEnabled;
+    }
+
+    public boolean isMultiReplicaMode() {
+        return multiReplicaMode;
+    }
+
+    public void setMultiReplicaMode(boolean multiReplicaMode) {
+        this.multiReplicaMode = multiReplicaMode;
+    }
+
+    public boolean isLocalCorrectnessStateEnabled() {
+        return localCorrectnessStateEnabled;
+    }
+
+    public void setLocalCorrectnessStateEnabled(boolean localCorrectnessStateEnabled) {
+        this.localCorrectnessStateEnabled = localCorrectnessStateEnabled;
     }
 
     public Duration getRateLimitWindow() {

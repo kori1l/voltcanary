@@ -29,6 +29,8 @@ import static org.mockito.Mockito.verify;
                 "app.kafka.publish-enabled=true",
                 "app.idempotency.redis-enabled=false",
                 "app.ingestion.redis-rate-limit-enabled=false",
+                "app.ingestion.multi-replica-mode=false",
+                "app.ingestion.local-correctness-state-enabled=true",
                 "app.ingestion.backpressure-enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
