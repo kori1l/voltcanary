@@ -1,0 +1,114 @@
+# API Gateway Routes
+
+The API Gateway is the only external HTTP entry point for the browser and public clients.
+
+## Public Routes
+
+- `POST /auth/register` -> `identity-service`
+- `POST /auth/login` -> `identity-service`
+- `POST /auth/refresh` -> `identity-service`
+- `POST /auth/logout` -> `identity-service`
+- `POST /auth/forgot-password` -> `identity-service`
+- `POST /auth/reset-password` -> `identity-service`
+- `POST /auth/email-verification/request` -> `identity-service`
+- `POST /auth/email-verification/confirm` -> `identity-service`
+- `GET /actuator/health` -> `api-gateway`
+- `GET /actuator/info` -> `api-gateway`
+
+## Protected Routes
+
+Protected routes require `Authorization: Bearer <accessToken>`. The gateway validates the access JWT and forwards:
+
+- `X-User-Id`
+- `X-User-Email`
+- `X-User-Role`
+
+Incoming client-provided `X-User-*` headers are stripped before these values are set.
+
+Gateway authorization policy:
+
+- `/auth/admin/**` requires `ADMIN`.
+- Non-admin protected routes require a valid access token at the gateway.
+- Resource ownership checks stay in the owning backend service.
+
+Route ownership:
+
+- `/auth/**` -> `identity-service`
+- `/accounts/**` -> `device-service`
+- `/locations/**` -> `device-service`
+- `/devices/**` -> `device-service`
+- `/maintenance-operations/**` -> `device-service`
+- `/device-types/**` -> `device-service`
+- `/ingestion/**` -> `ingestion-service`
+- `/telemetry/**` -> `telemetry-service`
+- `/analytics/**` -> `analytics-service`
+- `/alerts/**` -> `alert-service`
+- `/alert-rules/**` -> `alert-service`
+- `/simulation/**` -> `simulator-service`
+- `/ai-agent/**` -> `ai-agent-service`
+
+## Gateway Policies
+
+- Connect timeout: `GATEWAY_CONNECT_TIMEOUT_MS`, default `2000`.
+- Response timeout: `GATEWAY_RESPONSE_TIMEOUT`, default `5s`.
+- CORS allowed origins: `GATEWAY_CORS_ALLOWED_ORIGINS`, default `http://localhost:3000`.
+- Request size limits:
+  - default: `GATEWAY_REQUEST_MAX_BYTES`, default `1048576`.
+  - auth: `GATEWAY_AUTH_REQUEST_MAX_BYTES`, default `65536`.
+  - ingestion: `GATEWAY_INGESTION_REQUEST_MAX_BYTES`, default `262144`.
+- Rate limits:
+  - auth login/register: `GATEWAY_AUTH_RATE_LIMIT`, default `30` per window.
+  - ingestion: `GATEWAY_INGESTION_RATE_LIMIT`, default `120` per window.
+  - general: `GATEWAY_GENERAL_RATE_LIMIT`, default `600` per window.
+  - window: `GATEWAY_RATE_LIMIT_WINDOW`, default `1m`.
+  - The current gateway configuration supports Redis-backed rate limiting and
+    enables it by default with `GATEWAY_RATE_LIMIT_REDIS_ENABLED=true`. If Redis
+    is disabled, limits become per gateway instance and the gateway should be
+    treated as single-replica for rate-limited traffic.
+- Downstream health checks are optional and disabled by default:
+  - `GATEWAY_DOWNSTREAM_HEALTH_ENABLED=false`
+  - `GATEWAY_DOWNSTREAM_HEALTH_TIMEOUT=2s`
+
+Gateway-generated downstream failures return `503` with `code=downstream_unavailable`.
+
+## JWT Verification
+
+The gateway verifies access tokens with configured public keys:
+
+- `JWT_KEY_ID` selects the active key id for local/dev defaults.
+- `JWT_PUBLIC_KEYS` contains allowed verification keys by `kid`.
+- `JWT_ISSUER` and `JWT_AUDIENCE` are enforced.
+
+This keeps the gateway ready for asymmetric signing and key rotation.
+
+## API Versioning
+
+Current public routes remain unversioned to avoid breaking the existing frontend and clients. Future public API versioning is a target product/API concern documented in [../../target/production-readiness.md](../../target/production-readiness.md).
+
+## Error Shape
+
+Gateway-generated errors follow the service error shape:
+
+- `code`
+- `message`
+- `path`
+- `correlationId`
+- `timestamp`
+
+The gateway does not include downstream target URIs or service internals in public error responses.
+
+## Metrics
+
+Gateway metrics are exposed through actuator and Prometheus:
+
+- `voltcanary.gateway.requests` tracks request latency by `routeId`, HTTP method, and status.
+- `voltcanary.gateway.downstream.failures` tracks gateway-generated downstream failures.
+- Spring Cloud Gateway and JVM metrics remain available through `/actuator/metrics` and `/actuator/prometheus`.
+
+## Service Boundaries
+
+External browser and public client traffic must enter through the API Gateway. Internal synchronous service calls should use internal service DNS names on the private Docker/Kubernetes network. Asynchronous integration should use Redpanda/Kafka topics rather than calling public gateway routes.
+
+## Production Edge Assumptions
+
+Production ingress, TLS, and trusted proxy handling are target hardening items documented in [../../target/production-readiness.md](../../target/production-readiness.md).

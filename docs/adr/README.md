@@ -19,5 +19,5 @@ new ADR for a new durable decision.
 
 ## Related Docs
 
-- Current architecture: [../architecture/README.md](../architecture/README.md)
+- Current architecture: [../current/architecture/README.md](../current/architecture/README.md)
 - OpenSpec policy: [../../openspec/project.md](../../openspec/project.md)
