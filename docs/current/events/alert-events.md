@@ -29,3 +29,18 @@ retry/inspection.
 
 Target Kafka lifecycle topics are documented in
 [../../target/alert-lifecycle-events.md](../../target/alert-lifecycle-events.md).
+
+## Listener DLQs
+
+Alert-service does not publish alert lifecycle topics today, but its Kafka
+listeners are configured with retry and dead-letter publication for failed
+analytics or maintenance input records.
+
+| Source topic | DLQ topic |
+| --- | --- |
+| `anomaly.detected.v1` | `anomaly.detected.dlq.v1` |
+| `risk-score.changed.v1` | `risk-score.changed.dlq.v1` |
+| `maintenance-window.changed.v1` | `maintenance-window.changed.dlq.v1` |
+
+The retry policy is configured under `app.alert.kafka.retry`; the DLQ topic
+names are configured under `app.alert.kafka.dlq`.

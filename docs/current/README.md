@@ -10,7 +10,7 @@ manifests, tests, or local runbooks.
 | --- | --- |
 | System map, services, ports, main runtime state | [architecture/01-system-overview.md](architecture/01-system-overview.md) |
 | Service ownership and allowed interactions | [architecture/02-service-boundaries.md](architecture/02-service-boundaries.md) |
-| Telemetry, source config, analytics, alert, and maintenance flows | [architecture/03-data-flow.md](architecture/03-data-flow.md) |
+| Telemetry, source config, identity lifecycle, analytics, alert, and maintenance flows | [architecture/03-data-flow.md](architecture/03-data-flow.md) |
 | Kafka topics currently consumed/emitted | [architecture/04-event-driven-architecture.md](architecture/04-event-driven-architecture.md) |
 | Storage ownership and runtime stores | [architecture/05-storage-design.md](architecture/05-storage-design.md) |
 | Local Kubernetes deployment | [architecture/06-kubernetes-deployment.md](architecture/06-kubernetes-deployment.md) |

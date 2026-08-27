@@ -15,13 +15,18 @@ match broker fault-tolerance requirements.
 | Topic | Message key | Ordering boundary | Consumer group | Default listener concurrency |
 | --- | --- | --- | --- | --- |
 | `telemetry.raw.v1` | `deviceId` | per device | `telemetry-service` | 1 |
+| `telemetry.raw.dlq.v1` | `deviceId` when available, otherwise dead-letter id | per device when available | none in this repository | n/a |
 | `telemetry.validated.v1` | `deviceId` | per device | `analytics-service` | 1 |
+| `analytics.telemetry.validated.dlq.v1` | dead-letter id | none | none in this repository | n/a |
 | `source.runtime-config.v1` | `dataSourceId` | per source | `ingestion-service` | 1 |
-| `device-registry.changed.v1` | `accountId` when account ordering is intended, otherwise resource id | per account or resource | source-registry consumers | 1 |
+| `device-registry.changed.v1` | `accountId` when available, otherwise `resourceId` | per account or resource | none in this repository | n/a |
 | `maintenance-window.changed.v1` | `deviceId` | per device | `analytics-service`, `alert-service` | 1 |
+| `maintenance-window.changed.dlq.v1` | source record key | source partition | none in this repository | n/a |
 | `identity.account-lifecycle.v1` | `userId` | per user | `device-service` | 1 |
 | `anomaly.detected.v1` | `deviceId` | per device | `alert-service` | 1 |
+| `anomaly.detected.dlq.v1` | source record key | source partition | none in this repository | n/a |
 | `risk-score.changed.v1` | `deviceId` | per device | `alert-service` | 1 |
+| `risk-score.changed.dlq.v1` | source record key | source partition | none in this repository | n/a |
 
 Listener concurrency must stay less than or equal to the topic partition count.
 Increase partitions before increasing consumer concurrency or replica counts

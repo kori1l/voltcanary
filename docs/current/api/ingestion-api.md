@@ -249,7 +249,7 @@ close the local session and stop telemetry emission from that replica.
 
 Important properties:
 
-- `app.kafka.publish-enabled`
+- `app.ingestion.kafka-publish-enabled` / `APP_KAFKA_PUBLISH_ENABLED`
 - `app.ingestion.kafka-ack-timeout`
 - `app.idempotency.redis-enabled`
 - `app.idempotency.ttl`

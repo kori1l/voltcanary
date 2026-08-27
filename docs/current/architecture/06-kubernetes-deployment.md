@@ -156,12 +156,18 @@ Current DLQ topics include:
 telemetry.raw.v1.dlq
 telemetry.validated.v1.dlq
 device-registry.changed.v1.dlq
-maintenance-window.changed.dlq.v1
+maintenance-window.changed.v1.dlq
 identity.account-lifecycle.v1.dlq
-anomaly.detected.dlq.v1
-risk-score.changed.dlq.v1
+anomaly.detected.v1.dlq
+risk-score.changed.v1.dlq
 alert.created.v1.dlq
 ```
+
+The provisioning scripts still include legacy `*.v1.dlq` names for some
+topics. Current service code emits telemetry DLQ records to
+`telemetry.raw.dlq.v1`, analytics DLQ records to
+`analytics.telemetry.validated.dlq.v1`, and alert listener DLQ records to
+configured `*.dlq.v1` topics such as `anomaly.detected.dlq.v1`.
 
 `alert.created.v1` and `alert.created.v1.dlq` are provisioned for the target
 alert lifecycle event contract; the current alert-service implementation does

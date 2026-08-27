@@ -1,8 +1,9 @@
 # Event Envelope
 
-All internal events use the same envelope shape. The envelope separates event
-metadata from the domain payload and gives every consumer the fields needed for
-idempotency, tracing, versioning, and troubleshooting.
+`EventEnvelope<T>` is the preferred event shape for new internal events. The
+envelope separates event metadata from the domain payload and gives every
+consumer the fields needed for idempotency, tracing, versioning, and
+troubleshooting.
 
 ## JSON Shape
 
@@ -34,10 +35,10 @@ idempotency, tracing, versioning, and troubleshooting.
 
 ## Transitional Direct-Record Shape
 
-Some existing topics still publish domain records directly instead of wrapping
+Most current service topics publish domain records directly instead of wrapping
 them in `EventEnvelope<T>` as the Kafka value. During this transition, every
-published common event record must expose the same metadata fields at the top
-level:
+published common event record must expose envelope-equivalent metadata fields at
+the top level where the producing code has that context:
 
 - `eventId`
 - `eventVersion`
@@ -102,11 +103,18 @@ Use stable domain keys to preserve useful ordering:
 | Topic | Key |
 | --- | --- |
 | `telemetry.raw.v1` | `deviceId` |
+| `telemetry.raw.dlq.v1` | `deviceId` when available, otherwise dead-letter id |
 | `telemetry.validated.v1` | `deviceId` |
+| `analytics.telemetry.validated.dlq.v1` | dead-letter id |
 | `source.runtime-config.v1` | `dataSourceId` |
+| `device-registry.changed.v1` | `accountId` when available, otherwise `resourceId` |
 | `maintenance-window.changed.v1` | `deviceId` |
+| `maintenance-window.changed.dlq.v1` | source record key |
+| `identity.account-lifecycle.v1` | `userId` |
 | `anomaly.detected.v1` | `deviceId` |
+| `anomaly.detected.dlq.v1` | source record key |
 | `risk-score.changed.v1` | `deviceId` |
+| `risk-score.changed.dlq.v1` | source record key |
 
 `telemetry.raw.v1` MUST use the submitted canonical `deviceId` as the Kafka key.
 Producers must not use random keys for canonical telemetry records because

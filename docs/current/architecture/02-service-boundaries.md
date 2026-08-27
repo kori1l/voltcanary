@@ -111,6 +111,16 @@ REST API:
 - `GET/POST/PATCH /maintenance-operations`
 - `GET/POST/PATCH /maintenance-operations/{operationId}/outcomes`
 
+Consumes:
+
+- `identity.account-lifecycle.v1`
+
+Publishes:
+
+- `device-registry.changed.v1`
+- `source.runtime-config.v1`
+- `maintenance-window.changed.v1`
+
 ### Ingestion Service
 
 Accepts HTTP push, import, and MQTT telemetry through registry-backed inbound adapters,
@@ -309,6 +319,7 @@ Events are used for asynchronous processing:
 
 - ingestion-service -> telemetry-service
 - device-service -> ingestion-service through compacted `source.runtime-config.v1`
+- identity-service -> device-service through `identity.account-lifecycle.v1`
 - telemetry-service -> analytics-service
 - analytics-service -> alert-service
 - alert-service -> notification providers through durable notification attempts
@@ -318,7 +329,8 @@ Events are used for asynchronous processing:
 1. No service reads another service database directly.
 2. Events are versioned and must be backward compatible within a major version.
 3. At-least-once processing is assumed; consumers must be idempotent.
-4. Every event carries `eventId`, `correlationId`, `producer`, and `occurredAt`.
+4. Every event carries `eventId`, `producer`, and `occurredAt`; `correlationId`
+   is carried when the producing path has request/workflow context.
 5. User-facing analytics must be explainable and must include confidence where applicable.
 6. Device maintenance policy is owned by device-service and propagated by
    events plus reconciliation; consumers use local read models in hot paths.

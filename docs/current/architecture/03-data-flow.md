@@ -64,6 +64,25 @@ telemetry path resolves source status, device/account identity, adapter type,
 mapping, config version, and token hash locally. New or changed sources may fail
 closed until the compacted event reaches the local ingestion replica.
 
+Device-service also publishes registry audit/projection events on
+`device-registry.changed.v1` for device, location, sensor, data-source, and
+analytics-config mutations. No current service in this repository consumes that
+topic, so it must not be treated as a runtime dependency for current flows.
+
+## Identity Lifecycle Flow
+
+`identity-service` owns user lifecycle state and publishes:
+
+```text
+identity.account-lifecycle.v1
+key = userId
+```
+
+`device-service` consumes the topic idempotently and updates its local account
+lifecycle state. Disabled and deleted accounts are rejected by public device
+APIs; deleted accounts additionally trigger device decommissioning and
+data-source disable/revoke cleanup while keeping historical registry records.
+
 ## Adapter Boundary
 
 All protocol-specific paths normalize into the same canonical model:

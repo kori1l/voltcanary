@@ -67,3 +67,23 @@ traceability fields on the alert and notification payload.
 Recommendations and predictions are current API-facing analytics records, while
 alert creation is driven by `anomaly.detected.v1` and
 `risk-score.changed.v1`.
+
+## `analytics.telemetry.validated.dlq.v1`
+
+Producer: `analytics-service`.
+
+Current consumers: none in this repository.
+
+Key: generated `deadLetterId`.
+
+Analytics-service publishes this DLQ payload when a consumed
+`telemetry.validated.v1` or `maintenance-window.changed.v1` message is
+malformed or misses required ids and analytics DLQ publication is enabled.
+
+Payload fields:
+
+- `deadLetterId`
+- `sourceTopic`
+- `reason`
+- `originalPayload`
+- `failedAt`

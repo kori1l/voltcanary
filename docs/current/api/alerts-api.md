@@ -234,7 +234,7 @@ Create/update request:
   "name": "Ops webhook",
   "channelType": "WEBHOOK",
   "config": {
-    "urlRef": "ops-primary-webhook",
+    "url": "https://hooks.example.com/voltcanary/alerts",
     "headers": {
       "X-Team": "ops"
     }
@@ -249,14 +249,16 @@ Supported channel types are `EMAIL`, `WEBHOOK`, `TELEGRAM`, `SLACK`, `SMS`, and
 
 `config` must contain only non-secret settings. Do not send tokens, passwords,
 API keys, webhook secrets, or credentials in `config`; store those in a secret
-manager and pass only `credentialsRef`.
+manager and pass only `credentialsRef`. Current delivery reads `config.url`.
+Keys whose names contain `secret`, `token`, `password`, `credential`,
+`api_key`, or `apikey` are rejected even when nested.
 
 All supported channel types are delivered asynchronously after alert creation
 and escalation. Alert-service first creates durable `notification_attempts`
 rows in the same transaction as the alert lifecycle change. Background workers
 then claim due attempts with row leases and deliver them. For the current
-provider-neutral implementation, each channel requires `config.url`; the
-service sends an `ALERT_CREATED` or `ALERT_ESCALATED` JSON payload to that URL
+provider-neutral implementation, each enabled channel requires `config.url`;
+the service sends an `ALERT_CREATED` or `ALERT_ESCALATED` JSON payload to that URL
 and records each delivery as a notification attempt. The payload includes an
 `idempotencyKey`, and HTTP deliveries also send it as the `Idempotency-Key`
 header. Secrets such as webhook signing keys, bot tokens, SMTP passwords, and

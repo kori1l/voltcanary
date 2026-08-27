@@ -24,5 +24,6 @@ behavior.
 | Workspace/tenant administration, onboarding, metering, billing, support operations, public API keys, and enterprise controls | [product-roadmap.md](product-roadmap.md) and [production-readiness.md](production-readiness.md) |
 | Kafka alert lifecycle topics such as `alert.created.v1`, `alert.acknowledged.v1`, and `alert.resolved.v1` | [alert-lifecycle-events.md](alert-lifecycle-events.md) |
 | Production hardening for real connector credentials, certificates, network egress, protocol integration tests, dashboards, and runbooks | [production-readiness.md](production-readiness.md) |
+| Production consumers/runbooks for `device-registry.changed.v1` and DLQ replay tooling | [production-readiness.md](production-readiness.md) |
 
 For current behavior, start at [../current/README.md](../current/README.md).

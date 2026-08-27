@@ -59,3 +59,21 @@ work before use against customer assets:
   Modbus, and OPC UA endpoints;
 - connector health dashboards, alert rules, and operator runbooks;
 - customer-facing configuration validation and troubleshooting guidance.
+
+## Event Integration Gaps
+
+The current code publishes some integration topics before production consumers
+or operating workflows exist for them. These are target work, not current
+runtime dependencies:
+
+- define and implement downstream consumers or retention/audit handling for
+  `device-registry.changed.v1`;
+- decide whether alert lifecycle should remain database-local or publish Kafka
+  topics such as `alert.created.v1`, `alert.acknowledged.v1`, and
+  `alert.resolved.v1`;
+- add DLQ replay tooling and operator runbooks for `telemetry.raw.dlq.v1`,
+  `analytics.telemetry.validated.dlq.v1`, and alert-service listener DLQs;
+- align Redpanda topic provisioning with the DLQ topic names emitted by service
+  code and remove unused legacy `*.v1.dlq` topics when no longer needed;
+- standardize whether new topics use `EventEnvelope<T>` values or
+  direct-record values with top-level envelope metadata.
