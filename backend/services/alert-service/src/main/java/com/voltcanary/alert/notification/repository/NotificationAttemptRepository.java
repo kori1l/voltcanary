@@ -3,6 +3,7 @@ package com.voltcanary.alert.notification.repository;
 import com.voltcanary.alert.notification.domain.NotificationAttempt;
 import com.voltcanary.alert.notification.domain.NotificationAttemptStatus;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,35 @@ import org.springframework.data.repository.query.Param;
 public interface NotificationAttemptRepository extends JpaRepository<NotificationAttempt, UUID> {
 
     List<NotificationAttempt> findByAlertIdOrderByCreatedAtDesc(UUID alertId);
+
+    Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndStatusOrderBySentAtDesc(
+            UUID channelId,
+            UUID accountId,
+            NotificationAttemptStatus status);
+
+    Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndStatusInOrderByUpdatedAtDesc(
+            UUID channelId,
+            UUID accountId,
+            Collection<NotificationAttemptStatus> statuses);
+
+    Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndDeliveryEventTypeOrderByCreatedAtDesc(
+            UUID channelId,
+            UUID accountId,
+            String deliveryEventType);
+
+    long countByChannelIdAndAccountIdAndStatus(UUID channelId, UUID accountId, NotificationAttemptStatus status);
+
+    @Query("""
+            select min(attempt.createdAt)
+            from NotificationAttempt attempt
+            where attempt.channelId = :channelId
+              and attempt.accountId = :accountId
+              and attempt.status in :statuses
+            """)
+    Optional<Instant> findOldestCreatedAtByChannelAndStatus(
+            @Param("channelId") UUID channelId,
+            @Param("accountId") UUID accountId,
+            @Param("statuses") Collection<NotificationAttemptStatus> statuses);
 
     Optional<NotificationAttempt> findByIdempotencyKey(String idempotencyKey);
 

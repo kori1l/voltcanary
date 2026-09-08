@@ -8,11 +8,13 @@ import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.notification.application.NotificationAttemptService;
 import com.voltcanary.alert.notification.dto.NotificationAttemptResponse;
+import com.voltcanary.alert.notification.dto.NotificationChannelDiagnosticsResponse;
 import com.voltcanary.alert.notification.dto.NotificationChannelResponse;
 import com.voltcanary.alert.notification.port.AlertNotificationPort;
 import com.voltcanary.alert.notification.port.AlertNotificationRequest;
 import com.voltcanary.alert.notification.repository.NotificationAttemptRepository;
 import com.voltcanary.alert.notification.repository.NotificationChannelRepository;
+import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.service.AlertService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
@@ -64,6 +66,9 @@ class NotificationChannelApiTest {
 
     @Autowired
     private AlertRepository alertRepository;
+
+    @Autowired
+    private AlertEventRepository alertEventRepository;
 
     @Autowired
     private NotificationAttemptService notificationAttemptService;
@@ -173,6 +178,127 @@ class NotificationChannelApiTest {
                 String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void testDeliveryCreatesAttemptWithoutAlertLifecycleRows() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        AtomicInteger requests = new AtomicInteger();
+        AtomicReference<String> requestBody = new AtomicReference<>("");
+        webhookServer = HttpServer.create(new InetSocketAddress(0), 0);
+        webhookServer.createContext("/test", exchange -> {
+            requests.incrementAndGet();
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(202, response.length);
+            try (OutputStream body = exchange.getResponseBody()) {
+                body.write(response);
+            }
+        });
+        webhookServer.start();
+        String webhookUrl = "http://localhost:" + webhookServer.getAddress().getPort() + "/test";
+        long alertCountBefore = alertRepository.count();
+        long alertEventCountBefore = alertEventRepository.count();
+        ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(accountId, Map.of(
+                        "name", "Test webhook",
+                        "channelType", "WEBHOOK",
+                        "config", Map.of("url", webhookUrl),
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+
+        ResponseEntity<NotificationAttemptResponse> response = restTemplate.exchange(
+                "/alerts/notification-channels/{id}/test",
+                HttpMethod.POST,
+                entity(accountId, Map.of("sample", Map.of(
+                        "title", "Ops delivery test",
+                        "severity", "INFO",
+                        "alertType", "NOTIFICATION_TEST"))),
+                NotificationAttemptResponse.class,
+                createChannelResponse.getBody().id());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().alertId()).isNull();
+        assertThat(response.getBody().deliveryEventType()).isEqualTo("NOTIFICATION_TEST");
+        assertThat(response.getBody().status()).isEqualTo("SENT");
+        assertThat(response.getBody().maxAttempts()).isEqualTo(3);
+        assertThat(response.getBody().retryExhausted()).isFalse();
+        assertThat(requests.get()).isEqualTo(1);
+        assertThat(requestBody.get()).contains("\"eventType\":\"NOTIFICATION_TEST\"");
+        assertThat(requestBody.get()).contains("Ops delivery test");
+        assertThat(alertRepository.count()).isEqualTo(alertCountBefore);
+        assertThat(alertEventRepository.count()).isEqualTo(alertEventCountBefore);
+    }
+
+    @Test
+    void testDeliveryRejectsSecretLikePayloadKeysWithoutPersistingAttempt() {
+        UUID accountId = UUID.randomUUID();
+        ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(accountId, Map.of(
+                        "name", "Unsafe test webhook",
+                        "channelType", "WEBHOOK",
+                        "config", Map.of("urlRef", "safe-webhook"),
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+        long attemptsBefore = notificationAttemptRepository.count();
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/alerts/notification-channels/{id}/test",
+                HttpMethod.POST,
+                entity(accountId, Map.of("sample", Map.of("botToken", "secret-value"))),
+                String.class,
+                createChannelResponse.getBody().id());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(notificationAttemptRepository.count()).isEqualTo(attemptsBefore);
+    }
+
+    @Test
+    void diagnosticsAreScopedAndRedactProviderSummaries() {
+        UUID accountId = UUID.randomUUID();
+        ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(accountId, Map.of(
+                        "name", "Slack placeholder",
+                        "channelType", "SLACK",
+                        "config", Map.of("routingKey", "ops"),
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+        var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
+        var attempt = notificationAttemptService.createTestAttempt(channel, Map.of());
+        notificationAttemptService.markFailed(
+                attempt.getId(),
+                "HTTP_401",
+                "provider rejected token=super-secret-value",
+                true);
+
+        ResponseEntity<NotificationChannelDiagnosticsResponse> response = restTemplate.exchange(
+                "/alerts/notification-channels/{id}/diagnostics",
+                HttpMethod.GET,
+                entity(accountId, null),
+                NotificationChannelDiagnosticsResponse.class,
+                channel.getId());
+        ResponseEntity<String> otherAccountResponse = restTemplate.exchange(
+                "/alerts/notification-channels/{id}/diagnostics",
+                HttpMethod.GET,
+                entity(OTHER_ACCOUNT_ID, null),
+                String.class,
+                channel.getId());
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().adapterRegistered()).isFalse();
+        assertThat(response.getBody().failedCount()).isEqualTo(1);
+        assertThat(response.getBody().lastFailureErrorCode()).isEqualTo("HTTP_401");
+        assertThat(response.getBody().lastFailureSummary()).contains("token=[redacted]");
+        assertThat(response.getBody().lastTestAttemptStatus()).isEqualTo("FAILED");
+        assertThat(response.getBody().lastTestRetryExhausted()).isTrue();
+        assertThat(otherAccountResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

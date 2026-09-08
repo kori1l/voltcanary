@@ -14,7 +14,9 @@ import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -130,7 +132,10 @@ class HttpPollingTelemetryAdapterTest {
 
     private HttpPollingTelemetryAdapter adapter(Map<String, String> credentials) {
         CredentialProvider credentialProvider = reference -> Optional.ofNullable(credentials.get(reference));
-        return new HttpPollingTelemetryAdapter(credentialProvider, new HttpPollingResponseMapper(new ObjectMapper()));
+        return new HttpPollingTelemetryAdapter(
+                HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
+                credentialProvider,
+                new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC()));
     }
 
     private SourceRuntimeConfig config(

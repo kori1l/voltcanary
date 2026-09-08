@@ -16,7 +16,7 @@ public class NotificationAttempt {
     @Id
     private UUID id;
 
-    @Column(name = "alert_id", nullable = false)
+    @Column(name = "alert_id")
     private UUID alertId;
 
     @Column(name = "channel_id", nullable = false)
@@ -41,11 +41,23 @@ public class NotificationAttempt {
     @Column(name = "retry_count", nullable = false)
     private int retryCount;
 
+    @Column(name = "max_attempts", nullable = false)
+    private int maxAttempts;
+
+    @Column(name = "retry_exhausted", nullable = false)
+    private boolean retryExhausted;
+
     @Column(name = "last_error_code")
     private String lastErrorCode;
 
     @Column(name = "provider_response_summary")
     private String providerResponseSummary;
+
+    @Column(name = "provider_message_id")
+    private String providerMessageId;
+
+    @Column(name = "request_payload_json")
+    private String requestPayloadJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -137,6 +149,22 @@ public class NotificationAttempt {
         this.retryCount = retryCount;
     }
 
+    public int getMaxAttempts() {
+        return maxAttempts;
+    }
+
+    public void setMaxAttempts(int maxAttempts) {
+        this.maxAttempts = maxAttempts;
+    }
+
+    public boolean isRetryExhausted() {
+        return retryExhausted;
+    }
+
+    public void setRetryExhausted(boolean retryExhausted) {
+        this.retryExhausted = retryExhausted;
+    }
+
     public String getLastErrorCode() {
         return lastErrorCode;
     }
@@ -151,6 +179,22 @@ public class NotificationAttempt {
 
     public void setProviderResponseSummary(String providerResponseSummary) {
         this.providerResponseSummary = providerResponseSummary;
+    }
+
+    public String getProviderMessageId() {
+        return providerMessageId;
+    }
+
+    public void setProviderMessageId(String providerMessageId) {
+        this.providerMessageId = providerMessageId;
+    }
+
+    public String getRequestPayloadJson() {
+        return requestPayloadJson;
+    }
+
+    public void setRequestPayloadJson(String requestPayloadJson) {
+        this.requestPayloadJson = requestPayloadJson;
     }
 
     public Instant getCreatedAt() {

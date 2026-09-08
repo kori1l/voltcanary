@@ -1,8 +1,10 @@
 package com.voltcanary.alert.notification.port;
 
 import com.voltcanary.alert.domain.Alert;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -84,10 +86,62 @@ public record AlertNotificationRequest(
                 idempotencyKey == null || idempotencyKey.isBlank() ? request.idempotencyKey() : idempotencyKey);
     }
 
+    public static AlertNotificationRequest fromTestDelivery(
+            UUID accountId,
+            UUID channelId,
+            Map<String, Object> sample,
+            String idempotencyKey,
+            Instant occurredAt) {
+        Objects.requireNonNull(accountId, "accountId is required");
+        Objects.requireNonNull(channelId, "channelId is required");
+        String title = sampleString(sample, "title", "VoltCanary notification test");
+        return new AlertNotificationRequest(
+                null,
+                null,
+                accountId,
+                deterministicDeviceId(channelId),
+                null,
+                null,
+                null,
+                sampleString(sample, "ruleId", "notification-test"),
+                null,
+                null,
+                null,
+                "NOTIFICATION_TEST",
+                sampleString(sample, "alertType", "NOTIFICATION_TEST"),
+                sampleString(sample, "severity", "INFO"),
+                "TEST",
+                title,
+                sampleString(sample, "description", "Operator-triggered notification delivery test."),
+                occurredAt == null ? Instant.now() : occurredAt,
+                idempotencyKey == null || idempotencyKey.isBlank()
+                        ? "notification-test:" + channelId
+                        : idempotencyKey);
+    }
+
     private static String normalizeEventType(String eventType) {
         if (eventType == null || eventType.isBlank()) {
             throw new IllegalArgumentException("eventType is required");
         }
         return eventType.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static UUID deterministicDeviceId(UUID channelId) {
+        return UUID.nameUUIDFromBytes(("notification-test:" + channelId).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sampleString(Map<String, Object> sample, String key, String defaultValue) {
+        if (sample == null) {
+            return defaultValue;
+        }
+        Object value = sample.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return defaultValue;
+        }
+        return text.length() > 255 ? text.substring(0, 255) : text;
     }
 }

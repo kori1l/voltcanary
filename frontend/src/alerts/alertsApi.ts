@@ -52,14 +52,19 @@ export interface AlertSummaryResponse {
 
 export interface NotificationAttemptResponse {
   id: string;
-  alertId: string;
+  alertId?: string | null;
   channelId: string;
   accountId: string;
   channelType: string;
-  status: "PENDING" | "SENT" | "FAILED" | "RETRYING" | "DISABLED";
+  deliveryEventType: string;
+  status: "PENDING" | "PROCESSING" | "SENT" | "FAILED" | "RETRYING" | "DISABLED";
   retryCount: number;
+  maxAttempts: number;
+  nextAttemptAt: string;
+  retryExhausted: boolean;
   lastErrorCode?: string | null;
   providerResponseSummary?: string | null;
+  providerMessageId?: string | null;
   createdAt: string;
   updatedAt: string;
   sentAt?: string | null;
@@ -109,6 +114,38 @@ export interface NotificationChannelRequest {
   config: NotificationChannelConfig;
   credentialsRef?: string | null;
   enabled: boolean;
+}
+
+export interface NotificationTestDeliveryRequest {
+  sample?: {
+    title?: string;
+    description?: string;
+    alertType?: string;
+    severity?: string;
+    ruleId?: string;
+  };
+}
+
+export interface NotificationChannelDiagnosticsResponse {
+  channelId: string;
+  accountId: string;
+  channelType: string;
+  enabled: boolean;
+  adapterRegistered: boolean;
+  lastSuccessfulDeliveryAt?: string | null;
+  lastFailureAt?: string | null;
+  lastFailureErrorCode?: string | null;
+  lastFailureSummary?: string | null;
+  retryingCount: number;
+  failedCount: number;
+  pendingCount: number;
+  oldestPendingOrRetryingAgeSeconds?: number | null;
+  lastTestAttemptId?: string | null;
+  lastTestAttemptStatus?: NotificationAttemptResponse["status"] | null;
+  lastTestRetryCount: number;
+  lastTestMaxAttempts: number;
+  lastTestNextAttemptAt?: string | null;
+  lastTestRetryExhausted: boolean;
 }
 
 export interface NotificationPreferenceResponse {
@@ -254,6 +291,17 @@ export function disableNotificationChannel(channelId: string) {
 export function deleteNotificationChannel(channelId: string) {
   return apiRequest<void>(`/alerts/notification-channels/${channelId}`, {
     method: "DELETE",
+  });
+}
+
+export function getNotificationChannelDiagnostics(channelId: string) {
+  return apiRequest<NotificationChannelDiagnosticsResponse>(`/alerts/notification-channels/${channelId}/diagnostics`);
+}
+
+export function testNotificationChannel(channelId: string, request: NotificationTestDeliveryRequest = {}) {
+  return apiRequest<NotificationAttemptResponse>(`/alerts/notification-channels/${channelId}/test`, {
+    method: "POST",
+    body: JSON.stringify(request),
   });
 }
 

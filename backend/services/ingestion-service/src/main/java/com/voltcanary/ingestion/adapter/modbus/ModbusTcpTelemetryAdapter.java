@@ -16,7 +16,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -35,12 +34,7 @@ public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
     private final ModbusRegisterValueMapper mapper;
     private final Clock clock;
 
-    @Autowired
-    ModbusTcpTelemetryAdapter(ModbusTcpClientOperations client) {
-        this(client, new ModbusRegisterValueMapper(), Clock.systemUTC());
-    }
-
-    ModbusTcpTelemetryAdapter(ModbusTcpClientOperations client, ModbusRegisterValueMapper mapper, Clock clock) {
+    public ModbusTcpTelemetryAdapter(ModbusTcpClientOperations client, ModbusRegisterValueMapper mapper, Clock clock) {
         this.client = client;
         this.mapper = mapper;
         this.clock = clock;

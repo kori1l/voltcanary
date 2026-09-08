@@ -1,8 +1,10 @@
 package com.voltcanary.ingestion.adapter.opcua;
 
 import java.util.Locale;
+import org.springframework.stereotype.Component;
 
-class OpcUaValueMapper {
+@Component
+public class OpcUaValueMapper {
 
     Object map(OpcUaNodeMapping mapping, Object value) {
         if (value == null) {

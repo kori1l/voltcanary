@@ -15,7 +15,7 @@ be retried or replayed safely.
 | Telemetry latest/readings/quality | Strong for data already persisted by telemetry-service. | New ingestion readings can take time to appear while Kafka and telemetry consumers process them. |
 | Analytics jobs/results | Job creation is strongly persisted. | Baselines, anomalies, risk, recommendations, and predictions are produced by async jobs and outbox-published analytics events. |
 | Alert creation | Strong once alert-service handles an analytics event. Duplicate source events reuse the existing alert. | Delivery requests cross the internal notification port as immutable snapshots. |
-| Notification delivery | Attempt creation is strongly persisted with the alert transaction after notification preferences and enabled channels are evaluated. | Provider delivery is async, leased, retried by the notification application layer, and idempotency-keyed per alert lifecycle event/channel. |
+| Notification delivery | Attempt creation is strongly persisted with the alert transaction after notification preferences and enabled channels are evaluated. Test delivery attempt creation is strongly persisted without creating or mutating an alert. | Provider delivery is async, leased, retried by the notification application layer, and idempotency-keyed per alert lifecycle event/channel. Channel diagnostics are read-only summaries over persisted attempts. |
 
 ## Propagation Targets
 
@@ -29,6 +29,7 @@ These are operating targets, not hard real-time guarantees:
 | Analytics anomaly event to alert creation | Under 30 seconds. |
 | Alert creation/escalation to notification attempt creation | Same transaction as alert creation/escalation. |
 | Notification attempt to provider adapter call | Under 30 seconds when provider and worker are healthy. |
+| Notification test delivery request to provider adapter call | Same request when the selected channel is enabled and the provider is reachable. |
 
 ## Client Retry Expectations
 
@@ -59,6 +60,11 @@ Notification attempts:
 - provider adapters return normalized sent, disabled, retryable failure, or
   permanent failure results; the notification application layer performs state
   transitions and retry scheduling.
+- retryable failures use bounded exponential backoff with the attempt's stored
+  max-attempt context, a next retry timestamp, and an explicit exhaustion flag
+  when retry budget is consumed.
+- `NOTIFICATION_TEST` attempts have no alert id and are replayed from their
+  saved non-secret sample payload; they do not write alert lifecycle rows.
 - webhook, email, and Telegram adapters share the canonical alert notification
   message. Email SMTP/network failures and Telegram `429`/`5xx` responses are
   retryable; invalid email config, authentication failures, and Telegram
@@ -87,6 +93,11 @@ Prometheus/Actuator metrics expose the signals used to monitor these contracts:
 | Inbox replay pressure | `alert.analytics.inbox.depth`, `alert.analytics.inbox.stuck.processing` |
 | Scheduler locks | `*.scheduler.lock.acquire`, `*.scheduler.locks.active` |
 | Redis health for ingestion | `voltcanary.ingestion.redis.rate_limit.*`, `voltcanary.ingestion.redis.idempotency.*` |
+
+Notification channel diagnostics expose adapter availability, last success or
+failure, pending/retrying/failed counts, oldest pending or retrying age, and
+last test status through the Alert API. Diagnostics do not call providers,
+rotate credentials, or reveal provider secrets.
 
 Recommended alerts:
 - oldest pending outbox age above the propagation target for 5 minutes.

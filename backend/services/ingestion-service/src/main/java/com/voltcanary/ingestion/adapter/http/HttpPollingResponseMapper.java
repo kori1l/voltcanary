@@ -13,7 +13,6 @@ import java.time.Instant;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,12 +21,7 @@ public class HttpPollingResponseMapper {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    @Autowired
-    public HttpPollingResponseMapper(ObjectMapper objectMapper) {
-        this(objectMapper, Clock.systemUTC());
-    }
-
-    HttpPollingResponseMapper(ObjectMapper objectMapper, Clock clock) {
+    public HttpPollingResponseMapper(ObjectMapper objectMapper, Clock clock) {
         this.objectMapper = objectMapper;
         this.clock = clock;
     }

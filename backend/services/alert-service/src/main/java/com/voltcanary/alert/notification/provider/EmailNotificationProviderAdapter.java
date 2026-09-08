@@ -9,7 +9,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailAuthenticationException;
@@ -31,17 +30,10 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
     private final JavaMailSender mailSender;
     private final AlertNotificationProperties properties;
 
-    @Autowired
     public EmailNotificationProviderAdapter(
             ObjectProvider<JavaMailSender> mailSender,
             AlertNotificationProperties properties) {
-        this(mailSender.getIfAvailable(), properties);
-    }
-
-    EmailNotificationProviderAdapter(
-            JavaMailSender mailSender,
-            AlertNotificationProperties properties) {
-        this.mailSender = mailSender;
+        this.mailSender = mailSender.getIfAvailable();
         this.properties = properties;
     }
 

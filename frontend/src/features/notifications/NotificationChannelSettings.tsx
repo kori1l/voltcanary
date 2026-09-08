@@ -13,6 +13,7 @@ import {
   NotificationChannelDraft,
   NotificationChannelType,
 } from "./notificationChannelForm";
+import { NotificationChannelOperations } from "./NotificationChannelOperations";
 
 const channelTypes: NotificationChannelType[] = ["WEBHOOK", "EMAIL", "TELEGRAM"];
 const parseModes = ["", "Markdown", "MarkdownV2", "HTML"] as const;
@@ -193,20 +194,23 @@ export function NotificationChannelSettings() {
         <div className="notification-channel-list">
           {channels.map((channel) => (
             <article className="notification-channel-row" key={channel.id}>
-              <div>
-                <strong>{channel.name}</strong>
-                <span>
-                  {formatEnum(channel.channelType)} - {channel.enabled ? "Enabled" : "Disabled"}
-                </span>
+              <div className="notification-channel-summary">
+                <div>
+                  <strong>{channel.name}</strong>
+                  <span>
+                    {formatEnum(channel.channelType)} - {channel.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <div className="action-row">
+                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={isBusy}>
+                    {channel.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={isBusy}>
+                    Delete
+                  </button>
+                </div>
               </div>
-              <div className="action-row">
-                <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={isBusy}>
-                  {channel.enabled ? "Disable" : "Enable"}
-                </button>
-                <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={isBusy}>
-                  Delete
-                </button>
-              </div>
+              <NotificationChannelOperations channel={channel} disabled={isBusy} />
             </article>
           ))}
         </div>

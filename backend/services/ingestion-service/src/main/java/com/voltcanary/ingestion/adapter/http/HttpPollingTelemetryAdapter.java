@@ -17,7 +17,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -36,12 +35,7 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
     private final CredentialProvider credentialProvider;
     private final HttpPollingResponseMapper responseMapper;
 
-    @Autowired
-    public HttpPollingTelemetryAdapter(CredentialProvider credentialProvider, HttpPollingResponseMapper responseMapper) {
-        this(HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(), credentialProvider, responseMapper);
-    }
-
-    HttpPollingTelemetryAdapter(
+    public HttpPollingTelemetryAdapter(
             HttpClient httpClient,
             CredentialProvider credentialProvider,
             HttpPollingResponseMapper responseMapper) {

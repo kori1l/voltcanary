@@ -25,6 +25,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -45,7 +46,7 @@ class NotificationProviderAdapterTest {
     void emailAdapterValidatesAndSendsCanonicalMessage() throws Exception {
         JavaMailSender mailSender = mailSender();
         EmailNotificationProviderAdapter adapter = new EmailNotificationProviderAdapter(
-                mailSender,
+                mailSenderProvider(mailSender),
                 emailProperties());
         NotificationDeliveryCommand command = command(
                 "EMAIL",
@@ -70,9 +71,13 @@ class NotificationProviderAdapterTest {
         JavaMailSender permanentSender = mailSender();
         doThrow(new MailAuthenticationException("bad credentials")).when(permanentSender).send(any(MimeMessage.class));
 
-        NotificationDeliveryResult retryable = new EmailNotificationProviderAdapter(retrySender, emailProperties())
+        NotificationDeliveryResult retryable = new EmailNotificationProviderAdapter(
+                mailSenderProvider(retrySender),
+                emailProperties())
                 .deliver(command("EMAIL", Map.of("recipients", List.of("ops@example.com"))));
-        NotificationDeliveryResult permanent = new EmailNotificationProviderAdapter(permanentSender, emailProperties())
+        NotificationDeliveryResult permanent = new EmailNotificationProviderAdapter(
+                mailSenderProvider(permanentSender),
+                emailProperties())
                 .deliver(command("EMAIL", Map.of("recipients", List.of("ops@example.com"))));
 
         assertThat(retryable.status()).isEqualTo(NotificationDeliveryStatus.RETRYABLE_FAILURE);
@@ -137,6 +142,15 @@ class NotificationProviderAdapterTest {
         when(mailSender.createMimeMessage()).thenReturn(
                 new MimeMessage(Session.getInstance(new Properties())));
         return mailSender;
+    }
+
+    private ObjectProvider<JavaMailSender> mailSenderProvider(JavaMailSender mailSender) {
+        return new ObjectProvider<>() {
+            @Override
+            public JavaMailSender getIfAvailable() {
+                return mailSender;
+            }
+        };
     }
 
     private AlertNotificationProperties emailProperties() {

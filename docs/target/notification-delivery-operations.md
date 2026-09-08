@@ -6,7 +6,7 @@ without extracting a separate service.
 
 Related OpenSpec change:
 
-- `openspec/changes/harden-notification-delivery-operations`
+- `openspec/changes/archive/2026-09-08-harden-notification-delivery-operations`
 
 ## Target Capabilities
 
@@ -18,9 +18,16 @@ Related OpenSpec change:
 | Secret handling | APIs, logs, diagnostics, frontend forms, and examples never expose provider secrets. |
 | Frontend operations | Notification settings expose test send and diagnostics through focused feature modules, not route-page state. |
 
-## Current Gap
+## Current Status
 
-Current docs under `docs/current` describe implemented channel management,
-preferences, attempts, provider adapters, leases, and fixed retry behavior.
-Target-only endpoints such as channel test delivery and channel diagnostics
-must not be documented as current API behavior until implemented.
+The archived `harden-notification-delivery-operations` implementation promoted
+these target capabilities into the current Alert API and operator console:
+
+- `POST /alerts/notification-channels/{id}/test`
+- `GET /alerts/notification-channels/{id}/diagnostics`
+- bounded retry/backoff state with next retry and exhaustion visibility
+- focused frontend notification operations modules under
+  `frontend/src/features/notifications`
+
+Keep this target page only as a short pointer to the hardening capability set;
+the authoritative implemented contracts live under `docs/current`.

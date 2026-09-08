@@ -1,8 +1,12 @@
 package com.voltcanary.alert.notification.controller;
 
 import com.voltcanary.alert.notification.application.NotificationChannelService;
+import com.voltcanary.alert.notification.application.NotificationDeliveryOperationsService;
+import com.voltcanary.alert.notification.dto.NotificationAttemptResponse;
+import com.voltcanary.alert.notification.dto.NotificationChannelDiagnosticsResponse;
 import com.voltcanary.alert.notification.dto.NotificationChannelRequest;
 import com.voltcanary.alert.notification.dto.NotificationChannelResponse;
+import com.voltcanary.alert.notification.dto.NotificationTestDeliveryRequest;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.util.List;
@@ -29,9 +33,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationChannelController {
 
     private final NotificationChannelService service;
+    private final NotificationDeliveryOperationsService operationsService;
 
-    public NotificationChannelController(NotificationChannelService service) {
+    public NotificationChannelController(
+            NotificationChannelService service,
+            NotificationDeliveryOperationsService operationsService) {
         this.service = service;
+        this.operationsService = operationsService;
     }
 
     @GetMapping
@@ -73,6 +81,23 @@ public class NotificationChannelController {
             @RequestHeader(value = "X-Account-Id", required = false) String accountId,
             @PathVariable("id") UUID id) {
         return service.setEnabled(id, userId, accountId, false);
+    }
+
+    @PostMapping("/{id}/test")
+    public NotificationAttemptResponse testDelivery(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+            @PathVariable("id") UUID id,
+            @RequestBody(required = false) NotificationTestDeliveryRequest request) {
+        return operationsService.testDelivery(id, userId, accountId, request);
+    }
+
+    @GetMapping("/{id}/diagnostics")
+    public NotificationChannelDiagnosticsResponse diagnostics(
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+            @PathVariable("id") UUID id) {
+        return operationsService.diagnostics(id, userId, accountId);
     }
 
     @DeleteMapping("/{id}")

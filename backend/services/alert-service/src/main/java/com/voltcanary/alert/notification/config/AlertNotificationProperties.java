@@ -10,6 +10,9 @@ public class AlertNotificationProperties {
     private boolean workerEnabled = true;
     private int maxAttempts = 3;
     private Duration retryInterval = Duration.ofSeconds(1);
+    private double retryMultiplier = 1.0d;
+    private Duration maxRetryDelay = Duration.ofSeconds(1);
+    private double retryJitterPercent = 0.0d;
     private Duration leaseDuration = Duration.ofSeconds(30);
     private int claimBatchSize = 25;
     private int connectTimeoutMillis = 2000;
@@ -47,6 +50,35 @@ public class AlertNotificationProperties {
 
     public void setRetryInterval(Duration retryInterval) {
         this.retryInterval = retryInterval == null ? Duration.ZERO : retryInterval;
+        if (maxRetryDelay.compareTo(this.retryInterval) < 0) {
+            maxRetryDelay = this.retryInterval;
+        }
+    }
+
+    public double getRetryMultiplier() {
+        return retryMultiplier;
+    }
+
+    public void setRetryMultiplier(double retryMultiplier) {
+        this.retryMultiplier = Math.max(1.0d, retryMultiplier);
+    }
+
+    public Duration getMaxRetryDelay() {
+        return maxRetryDelay.compareTo(retryInterval) < 0 ? retryInterval : maxRetryDelay;
+    }
+
+    public void setMaxRetryDelay(Duration maxRetryDelay) {
+        this.maxRetryDelay = maxRetryDelay == null || maxRetryDelay.isNegative()
+                ? retryInterval
+                : maxRetryDelay;
+    }
+
+    public double getRetryJitterPercent() {
+        return retryJitterPercent;
+    }
+
+    public void setRetryJitterPercent(double retryJitterPercent) {
+        this.retryJitterPercent = Math.max(0.0d, Math.min(100.0d, retryJitterPercent));
     }
 
     public Duration getLeaseDuration() {

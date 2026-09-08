@@ -46,10 +46,19 @@ Verify:
   account only.
 - `POST /alerts/notification-channels/{id}/disable` prevents new delivery.
 - `POST /alerts/notification-channels/{id}/enable` restores delivery.
+- `POST /alerts/notification-channels/{id}/test` creates a
+  `NOTIFICATION_TEST` attempt with `alertId: null`, calls the selected provider
+  when the channel is enabled, and does not create alert or alert event rows.
+- `GET /alerts/notification-channels/{id}/diagnostics` returns adapter
+  availability, enabled state, last success/failure, retrying/failed/pending
+  counts, oldest pending or retrying age, and last test status for the same
+  account scope only.
 - Invalid webhook URLs, invalid email addresses, unsupported Telegram parse
   modes, and unsupported channel types return `400`.
 - Secret-like config keys such as `token`, `password`, `apiKey`, `credential`,
   or `webhookSecret` return `400`.
+- Secret-like keys in test-delivery `sample` payloads return `400` and do not
+  persist an attempt.
 
 Update preferences:
 
@@ -76,9 +85,11 @@ Verify:
 - webhook, email, and Telegram attempts use the canonical alert content;
 - successful provider outcomes become `SENT`;
 - retryable SMTP/network failures and Telegram `429` or `5xx` failures become
-  `RETRYING` while attempts remain;
+  `RETRYING` while attempts remain, with `nextAttemptAt`, `retryCount`, and
+  `maxAttempts` visible on the attempt response or diagnostics surface;
 - invalid email config, provider authentication failures, and Telegram
   `400`, `401`, or `403` outcomes become `FAILED`;
+- exhausted retryable failures become `FAILED` with `retryExhausted: true`;
 - provider response summaries are bounded and do not include secrets.
 
 ## Worker And Lease Checks
@@ -90,6 +101,8 @@ For backend changes, include focused tests or local evidence that:
   attempt;
 - a stale `PROCESSING` lease can be replayed after lease expiry;
 - retry exhaustion ends in `FAILED`;
+- bounded backoff honors initial delay, multiplier, max delay, and jitter
+  bounds while preserving fixed-delay defaults when unset;
 - notification retention removes only attempts older than the configured TTL.
 
 ## Frontend Checks
@@ -100,6 +113,11 @@ Open notification settings in the frontend and verify:
   `frontend/src/alerts/alertsApi.ts`;
 - forms do not expose or submit provider secret fields;
 - preference changes persist after reload;
+- channel diagnostics render enabled state, adapter availability, attempt
+  counts, last success/failure, and last test status;
+- test send action uses `POST /alerts/notification-channels/{id}/test` and
+  renders sent, retrying, failed, disabled, and unsupported states without
+  asking for provider secrets;
 - alert details show notification attempts and provider status/error summaries.
 
 ## Evidence
@@ -111,6 +129,8 @@ Record:
 - preference payload;
 - alert id;
 - attempt ids, statuses, retry counts, and provider summaries;
+- retry timestamps, max attempts, and exhaustion flags;
+- diagnostics response for each channel under test;
 - provider stub or sandbox evidence;
 - frontend route and screenshot notes when UI is touched;
 - relevant backend test command output.

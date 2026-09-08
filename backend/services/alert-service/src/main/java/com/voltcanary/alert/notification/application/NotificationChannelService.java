@@ -81,7 +81,7 @@ public class NotificationChannelService {
         repository.delete(loadOwned(id, userId, accountId));
     }
 
-    private NotificationChannel loadOwned(UUID id, String userId, String accountId) {
+    NotificationChannel loadOwned(UUID id, String userId, String accountId) {
         return repository.findByIdAndAccountId(id, accountScope(userId, accountId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification channel not found"));
     }
@@ -120,7 +120,7 @@ public class NotificationChannelService {
         }
     }
 
-    private UUID accountScope(String userId, String accountId) {
+    UUID accountScope(String userId, String accountId) {
         String scope = accountId == null || accountId.isBlank() ? userId : accountId;
         if (scope == null || scope.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User context is required");

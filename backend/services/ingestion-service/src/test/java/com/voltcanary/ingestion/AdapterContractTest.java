@@ -18,11 +18,14 @@ import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
 import com.voltcanary.ingestion.adapter.opcua.OpcUaTelemetryAdapter;
+import com.voltcanary.ingestion.adapter.opcua.OpcUaValueMapper;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterRegistry;
 import com.voltcanary.ingestion.adapter.registry.DefaultIngestionAdapterResolver;
 import com.voltcanary.ingestion.adapter.registry.RegistryBackedTelemetryIngressDispatcher;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
 import com.voltcanary.ingestion.dto.TelemetryIngestionRequest;
+import java.net.http.HttpClient;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -155,8 +158,9 @@ class AdapterContractTest {
     @Test
     void httpPollingAdapterRegistersPollingManifest() {
         HttpPollingTelemetryAdapter adapter = new HttpPollingTelemetryAdapter(
+                HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
                 ignored -> java.util.Optional.empty(),
-                new HttpPollingResponseMapper(new ObjectMapper()));
+                new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC()));
 
         assertThat(adapter.adapterId()).isEqualTo("generic-http-polling");
         assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_POLLING);
@@ -167,8 +171,11 @@ class AdapterContractTest {
 
     @Test
     void opcUaAdapterRegistersSubscriptionManifest() {
-        OpcUaTelemetryAdapter adapter = new OpcUaTelemetryAdapter((ignored, handler) -> () -> {
-        });
+        OpcUaTelemetryAdapter adapter = new OpcUaTelemetryAdapter(
+                (ignored, handler) -> () -> {
+                },
+                new OpcUaValueMapper(),
+                Clock.systemUTC());
 
         assertThat(adapter.adapterId()).isEqualTo("generic-opc-ua");
         assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_OPC_UA);

@@ -4,8 +4,10 @@ import java.nio.ByteBuffer;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.stereotype.Component;
 
-class ModbusRegisterValueMapper {
+@Component
+public class ModbusRegisterValueMapper {
 
     Map<String, Object> map(List<ModbusRegisterMapping> mappings, List<ModbusReadResult> results) {
         Map<ModbusReadRequest, int[]> byRequest = new LinkedHashMap<>();

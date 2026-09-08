@@ -18,7 +18,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -33,18 +32,7 @@ public class ConnectorSupervisor {
     private final TelemetryIngestionPipeline pipeline;
     private final Clock clock;
 
-    @Autowired
     public ConnectorSupervisor(
-            ConnectorLeaseManager leaseManager,
-            IngestionAdapterResolver adapterResolver,
-            ConnectorScheduler scheduler,
-            ConnectorBackoffPolicy backoffPolicy,
-            ConnectorHealthManager healthManager,
-            TelemetryIngestionPipeline pipeline) {
-        this(leaseManager, adapterResolver, scheduler, backoffPolicy, healthManager, pipeline, Clock.systemUTC());
-    }
-
-    ConnectorSupervisor(
             ConnectorLeaseManager leaseManager,
             IngestionAdapterResolver adapterResolver,
             ConnectorScheduler scheduler,

@@ -57,6 +57,12 @@ describe("SettingsPage notification settings", () => {
           ...body,
         }, 201);
       }
+      if (path === "/alerts/notification-channels/channel-1/diagnostics" && method === "GET") {
+        return json(diagnostics());
+      }
+      if (path === "/alerts/notification-channels/channel-1/test" && method === "POST") {
+        return json(testAttempt());
+      }
       if (path === "/alerts/notification-preferences" && method === "GET") {
         return json(preference());
       }
@@ -73,7 +79,11 @@ describe("SettingsPage notification settings", () => {
     );
 
     expect(await screen.findByText("Ops webhook")).toBeInTheDocument();
+    expect(await screen.findByText("Adapter ready")).toBeInTheDocument();
     expect(await screen.findByText("Notification Preferences")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /send test/i }));
+    await waitFor(() => expect(screen.getByText("Last test: Sent")).toBeInTheDocument());
 
     await userEvent.click(screen.getByRole("checkbox", { name: /high/i }));
     await userEvent.click(screen.getByRole("button", { name: /save preferences/i }));
@@ -81,6 +91,8 @@ describe("SettingsPage notification settings", () => {
     await waitFor(() => expect(screen.getByText("Notification preferences saved")).toBeInTheDocument());
     expect(requests).toEqual(expect.arrayContaining([
       expect.objectContaining({ url: "/alerts/notification-channels", method: "GET" }),
+      expect.objectContaining({ url: "/alerts/notification-channels/channel-1/diagnostics", method: "GET" }),
+      expect.objectContaining({ url: "/alerts/notification-channels/channel-1/test", method: "POST" }),
       expect.objectContaining({ url: "/alerts/notification-preferences", method: "GET" }),
       expect.objectContaining({
         url: "/alerts/notification-preferences",
@@ -123,6 +135,9 @@ describe("SettingsPage notification settings", () => {
           updatedAt: "2026-09-07T09:00:00Z",
           ...body,
         }, 201);
+      }
+      if (path.includes("/diagnostics") && method === "GET") {
+        return json(diagnostics());
       }
       if (path === "/alerts/notification-preferences" && method === "GET") {
         return json(preference());
@@ -176,6 +191,52 @@ describe("SettingsPage notification settings", () => {
     ]));
   });
 });
+
+function diagnostics() {
+  return {
+    channelId: "channel-1",
+    accountId: "account-1",
+    channelType: "WEBHOOK",
+    enabled: true,
+    adapterRegistered: true,
+    lastSuccessfulDeliveryAt: "2026-09-07T09:05:00Z",
+    lastFailureAt: null,
+    lastFailureErrorCode: null,
+    lastFailureSummary: null,
+    retryingCount: 0,
+    failedCount: 0,
+    pendingCount: 0,
+    oldestPendingOrRetryingAgeSeconds: null,
+    lastTestAttemptId: null,
+    lastTestAttemptStatus: null,
+    lastTestRetryCount: 0,
+    lastTestMaxAttempts: 0,
+    lastTestNextAttemptAt: null,
+    lastTestRetryExhausted: false,
+  };
+}
+
+function testAttempt() {
+  return {
+    id: "attempt-1",
+    alertId: null,
+    channelId: "channel-1",
+    accountId: "account-1",
+    channelType: "WEBHOOK",
+    deliveryEventType: "NOTIFICATION_TEST",
+    status: "SENT",
+    retryCount: 0,
+    maxAttempts: 3,
+    nextAttemptAt: "2026-09-07T09:06:00Z",
+    retryExhausted: false,
+    lastErrorCode: null,
+    providerResponseSummary: "HTTP 202",
+    providerMessageId: null,
+    createdAt: "2026-09-07T09:06:00Z",
+    updatedAt: "2026-09-07T09:06:00Z",
+    sentAt: "2026-09-07T09:06:00Z",
+  };
+}
 
 function preference() {
   return {

@@ -12,7 +12,9 @@ public record AlertNotificationMessage(
     public static AlertNotificationMessage from(NotificationDeliveryCommand command) {
         String severity = valueOrUnknown(command.alert().severity());
         String title = valueOrUnknown(command.alert().title());
-        String subject = severity + " alert: " + title;
+        String subject = command.alert().alertId() == null
+                ? "Notification test: " + title
+                : severity + " alert: " + title;
         StringBuilder text = new StringBuilder()
                 .append(subject)
                 .append('\n')
@@ -20,9 +22,10 @@ public record AlertNotificationMessage(
                 .append('\n')
                 .append("Status: ").append(valueOrUnknown(command.alert().status()))
                 .append('\n')
-                .append("Device: ").append(command.alert().deviceId())
-                .append('\n')
-                .append("Alert: ").append(command.alert().alertId());
+                .append("Device: ").append(command.alert().deviceId());
+        if (command.alert().alertId() != null) {
+            text.append('\n').append("Alert: ").append(command.alert().alertId());
+        }
         if (command.alert().description() != null && !command.alert().description().isBlank()) {
             text.append('\n').append(command.alert().description().trim());
         }

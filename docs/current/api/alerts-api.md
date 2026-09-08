@@ -224,6 +224,8 @@ POST /alerts/notification-channels
 PUT /alerts/notification-channels/{id}
 POST /alerts/notification-channels/{id}/enable
 POST /alerts/notification-channels/{id}/disable
+POST /alerts/notification-channels/{id}/test
+GET /alerts/notification-channels/{id}/diagnostics
 DELETE /alerts/notification-channels/{id}
 ```
 
@@ -294,6 +296,60 @@ may include `parseMode` (`Markdown`, `MarkdownV2`, or `HTML`) and
 Keys whose names contain `secret`, `token`, `password`, `credential`,
 `api_key`, or `apikey` are rejected even when nested.
 
+Test delivery sends a provider call through one existing channel without
+creating an alert or writing alert lifecycle events:
+
+```http
+POST /alerts/notification-channels/{id}/test
+Content-Type: application/json
+
+{
+  "sample": {
+    "title": "Ops delivery check",
+    "description": "Operator-triggered notification delivery test.",
+    "alertType": "NOTIFICATION_TEST",
+    "severity": "INFO"
+  }
+}
+```
+
+The response is a notification attempt with `deliveryEventType:
+"NOTIFICATION_TEST"` and `alertId: null`. The same recursive secret-key policy
+applies to `sample`; secret-like keys are rejected before an attempt is
+persisted.
+
+Channel diagnostics are read-only and do not call providers:
+
+```http
+GET /alerts/notification-channels/{id}/diagnostics
+```
+
+Example response:
+
+```json
+{
+  "channelId": "d0eb3f57-6cb1-445a-94e1-677442126fd3",
+  "accountId": "2c07eb26-e038-4565-b637-d9787c861477",
+  "channelType": "WEBHOOK",
+  "enabled": true,
+  "adapterRegistered": true,
+  "lastSuccessfulDeliveryAt": "2026-09-08T10:15:30Z",
+  "lastFailureAt": null,
+  "lastFailureErrorCode": null,
+  "lastFailureSummary": null,
+  "retryingCount": 0,
+  "failedCount": 0,
+  "pendingCount": 0,
+  "oldestPendingOrRetryingAgeSeconds": null,
+  "lastTestAttemptId": "68fdfd2a-5966-4417-a32a-7d088a869cc7",
+  "lastTestAttemptStatus": "SENT",
+  "lastTestRetryCount": 0,
+  "lastTestMaxAttempts": 3,
+  "lastTestNextAttemptAt": "2026-09-08T10:15:29Z",
+  "lastTestRetryExhausted": false
+}
+```
+
 Notification delivery is implemented by the alert-service notification module,
 not by alert lifecycle services. Alert creation and escalation pass immutable
 notification request snapshots across `AlertNotificationPort`; the notification
@@ -316,10 +372,21 @@ decisions and attempt state transitions. HTTP deliveries include an
 SMTP passwords, and provider API keys must be resolved from `credentialsRef` or
 service-level configuration, not stored in channel config.
 
+Retryable failures use bounded application-layer backoff. Existing deployments
+keep the previous one-second fixed retry behavior unless they configure a
+larger multiplier, max delay, or jitter. Attempts store their max-attempt
+context and expose `nextAttemptAt` and `retryExhausted` so operators can
+understand pending retries and exhaustion without reading database rows.
+
 Operational provider configuration:
 
 | Environment variable | Purpose |
 | --- | --- |
+| `ALERT_NOTIFICATIONS_MAX_ATTEMPTS` | Maximum provider call attempts, including the initial call. Defaults to `3`. |
+| `ALERT_NOTIFICATIONS_RETRY_INTERVAL` | Initial retry delay and compatibility setting for the former fixed retry delay. Defaults to `1s`. |
+| `ALERT_NOTIFICATIONS_RETRY_MULTIPLIER` | Exponential backoff multiplier. Defaults to `1.0` for fixed delay compatibility. |
+| `ALERT_NOTIFICATIONS_MAX_RETRY_DELAY` | Upper bound for computed retry delay. Defaults to the retry interval. |
+| `ALERT_NOTIFICATIONS_RETRY_JITTER_PERCENT` | Optional jitter percentage applied inside the max delay cap. Defaults to `0`. |
 | `ALERT_NOTIFICATIONS_EMAIL_FROM_ADDRESS` | Optional default sender address for email notifications. SMTP host, username, and password are supplied through Spring Mail configuration such as `SPRING_MAIL_HOST`, `SPRING_MAIL_USERNAME`, and `SPRING_MAIL_PASSWORD`. |
 | `ALERT_NOTIFICATIONS_TELEGRAM_API_BASE_URL` | Optional Telegram API base URL override for tests or private gateways. Defaults to `https://api.telegram.org`. |
 | `ALERT_NOTIFICATIONS_TELEGRAM_BOT_TOKEN` | Service-level Telegram bot token. Keep it out of channel config JSON. |
@@ -389,10 +456,15 @@ Example response:
     "channelId": "d0eb3f57-6cb1-445a-94e1-677442126fd3",
     "accountId": "account-123",
     "channelType": "WEBHOOK",
+    "deliveryEventType": "ALERT_CREATED",
     "status": "SENT",
     "retryCount": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": "2026-05-14T12:00:00Z",
+    "retryExhausted": false,
     "lastErrorCode": null,
     "providerResponseSummary": "HTTP 202",
+    "providerMessageId": null,
     "createdAt": "2026-05-14T12:00:00Z",
     "updatedAt": "2026-05-14T12:01:00Z",
     "sentAt": "2026-05-14T12:01:00Z"

@@ -39,6 +39,9 @@ app:
       worker-enabled: ${ALERT_NOTIFICATIONS_WORKER_ENABLED:true}
       max-attempts: ${ALERT_NOTIFICATIONS_MAX_ATTEMPTS:3}
       retry-interval: ${ALERT_NOTIFICATIONS_RETRY_INTERVAL:1s}
+      retry-multiplier: ${ALERT_NOTIFICATIONS_RETRY_MULTIPLIER:1.0}
+      max-retry-delay: ${ALERT_NOTIFICATIONS_MAX_RETRY_DELAY:1s}
+      retry-jitter-percent: ${ALERT_NOTIFICATIONS_RETRY_JITTER_PERCENT:0}
       lease-duration: ${ALERT_NOTIFICATIONS_LEASE_DURATION:30s}
       claim-batch-size: ${ALERT_NOTIFICATIONS_CLAIM_BATCH_SIZE:25}
       connect-timeout-millis: ${ALERT_NOTIFICATIONS_CONNECT_TIMEOUT_MS:2000}
