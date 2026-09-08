@@ -244,26 +244,85 @@ Create/update request:
 }
 ```
 
+Email channel example:
+
+```json
+{
+  "name": "Ops email",
+  "channelType": "EMAIL",
+  "config": {
+    "recipients": ["ops@example.com"],
+    "cc": ["lead@example.com"],
+    "fromAlias": "VoltCanary",
+    "subjectPrefix": "[VoltCanary]"
+  },
+  "credentialsRef": "vault://alerts/email/ops",
+  "enabled": true
+}
+```
+
+Telegram channel example:
+
+```json
+{
+  "name": "Ops Telegram",
+  "channelType": "TELEGRAM",
+  "config": {
+    "chatId": "-1001234567890",
+    "parseMode": "MarkdownV2",
+    "disableWebPagePreview": true
+  },
+  "credentialsRef": "vault://alerts/telegram/ops",
+  "enabled": true
+}
+```
+
 Supported channel types are `EMAIL`, `WEBHOOK`, `TELEGRAM`, `SLACK`, `SMS`, and
-`PUSH`.
+`PUSH`. Runtime provider adapters currently deliver `WEBHOOK`, `EMAIL`, and
+`TELEGRAM`; the remaining channel types are accepted only as
+forward-compatible backend configuration and fail delivery until an adapter is
+registered. The frontend currently exposes `WEBHOOK`, `EMAIL`, and `TELEGRAM`
+channel configuration.
 
 `config` must contain only non-secret settings. Do not send tokens, passwords,
 API keys, webhook secrets, or credentials in `config`; store those in a secret
-manager and pass only `credentialsRef`. Current delivery reads `config.url`.
+manager and pass only `credentialsRef`. Webhook delivery reads `config.url`.
+Email delivery requires `config.recipients` and may include `cc`, `bcc`,
+`fromAlias`, and `subjectPrefix`. Telegram delivery requires `config.chatId` and
+may include `parseMode` (`Markdown`, `MarkdownV2`, or `HTML`) and
+`disableWebPagePreview`.
 Keys whose names contain `secret`, `token`, `password`, `credential`,
 `api_key`, or `apikey` are rejected even when nested.
 
-All supported channel types are delivered asynchronously after alert creation
-and escalation. Alert-service first creates durable `notification_attempts`
-rows in the same transaction as the alert lifecycle change. Background workers
-then claim due attempts with row leases and deliver them. For the current
-provider-neutral implementation, each enabled channel requires `config.url`;
-the service sends an `ALERT_CREATED` or `ALERT_ESCALATED` JSON payload to that URL
-and records each delivery as a notification attempt. The payload includes an
-`idempotencyKey`, and HTTP deliveries also send it as the `Idempotency-Key`
-header. Secrets such as webhook signing keys, bot tokens, SMTP passwords, and
-provider API keys must be resolved from `credentialsRef` by the
-deployment/provider adapter, not stored in channel config.
+Notification delivery is implemented by the alert-service notification module,
+not by alert lifecycle services. Alert creation and escalation pass immutable
+notification request snapshots across `AlertNotificationPort`; the notification
+module evaluates preferences and enabled channels, then creates durable
+`notification_attempts` rows in the same transaction as the lifecycle change.
+Background workers claim due attempts with row leases and select provider
+adapters from a registry keyed by `channelType`.
+
+The webhook adapter requires `config.url`, sends an `ALERT_CREATED` or
+`ALERT_ESCALATED` JSON payload to that URL, and returns a normalized delivery
+result. Email and Telegram adapters use the same canonical alert message, then
+apply provider-specific formatting and routing. Email accepted/sent responses
+map to `SENT`; SMTP/network send failures are retryable, while invalid config
+or authentication failures are permanent. Telegram success maps to `SENT` and
+stores the Telegram `message_id` when present; HTTP `429` and `5xx` responses
+are retryable, while `400`, `401`, `403`, and other invalid chat/config
+responses are permanent failures. The notification application layer owns retry
+decisions and attempt state transitions. HTTP deliveries include an
+`Idempotency-Key` header. Secrets such as webhook signing keys, bot tokens,
+SMTP passwords, and provider API keys must be resolved from `credentialsRef` or
+service-level configuration, not stored in channel config.
+
+Operational provider configuration:
+
+| Environment variable | Purpose |
+| --- | --- |
+| `ALERT_NOTIFICATIONS_EMAIL_FROM_ADDRESS` | Optional default sender address for email notifications. SMTP host, username, and password are supplied through Spring Mail configuration such as `SPRING_MAIL_HOST`, `SPRING_MAIL_USERNAME`, and `SPRING_MAIL_PASSWORD`. |
+| `ALERT_NOTIFICATIONS_TELEGRAM_API_BASE_URL` | Optional Telegram API base URL override for tests or private gateways. Defaults to `https://api.telegram.org`. |
+| `ALERT_NOTIFICATIONS_TELEGRAM_BOT_TOKEN` | Service-level Telegram bot token. Keep it out of channel config JSON. |
 
 ## Notification Preferences
 
@@ -274,6 +333,12 @@ PUT /alerts/notification-preferences
 
 Preferences are scoped by `X-Account-Id`. If the header is missing in local/dev
 flows, `X-User-Id` is used as the account scope.
+
+The frontend exposes webhook, email, Telegram channel, and preference
+configuration from focused notification settings components and keeps requests
+centralized in `frontend/src/alerts/alertsApi.ts`. Provider-specific forms must
+submit only non-secret channel config and use `credentialsRef` for secret
+manager references.
 
 Update request:
 
@@ -439,8 +504,10 @@ event when the configured severity threshold is exceeded:
 | `CRITICAL` | 5 minutes |
 
 Escalated alerts remain `OPEN`; the escalation is stored in `alert_events` for
-audit/history and triggers another notification delivery pass with webhook
-payload `eventType: ALERT_ESCALATED`.
+audit/history and triggers another notification delivery pass for eligible
+channels. Webhook payloads use `eventType: ALERT_ESCALATED`; email and Telegram
+deliveries use the same canonical notification message with provider-specific
+formatting.
 
 ## Event Audit
 

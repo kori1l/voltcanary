@@ -5753,6 +5753,20 @@ code {
   gap: 10px;
 }
 
+.notification-channel-form-wide {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  align-items: center;
+}
+
+.notification-provider-field {
+  grid-column: span 2;
+}
+
+.notification-enabled-toggle {
+  min-height: 42px;
+  padding: 0 4px;
+}
+
 .notification-channel-list {
   display: grid;
   gap: 10px;
@@ -6192,8 +6206,13 @@ code {
   .ml-form-grid,
   .ml-control-grid,
   .ml-quality-grid,
+  .notification-channel-form-wide,
   .alerts-grid {
     grid-template-columns: 1fr;
+  }
+
+  .notification-provider-field {
+    grid-column: auto;
   }
 
   .alert-inbox-head {

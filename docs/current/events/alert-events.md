@@ -23,6 +23,15 @@ table for alert creation, acknowledgement, resolution, escalation, and
 maintenance auto-resolution. Notification delivery is driven by durable
 `notification_attempts` rows and provider idempotency keys.
 
+Alert creation and escalation request delivery through the internal
+`AlertNotificationPort` using immutable notification request snapshots that
+include the alert id, alert event id, account id, device/source context,
+lifecycle event type, severity/status, message text, occurred timestamp, and an
+idempotency key. The notification module evaluates preferences and channels
+before creating attempts. Provider adapters receive normalized delivery
+commands and return normalized results; retry and attempt state transitions
+remain in the notification application layer.
+
 Provider delivery is not modeled as a Kafka command in the current
 implementation. Failed delivery remains in the alert database for
 retry/inspection.

@@ -43,6 +43,11 @@ app:
       claim-batch-size: ${ALERT_NOTIFICATIONS_CLAIM_BATCH_SIZE:25}
       connect-timeout-millis: ${ALERT_NOTIFICATIONS_CONNECT_TIMEOUT_MS:2000}
       read-timeout-millis: ${ALERT_NOTIFICATIONS_READ_TIMEOUT_MS:5000}
+      email:
+        from-address: ${ALERT_NOTIFICATIONS_EMAIL_FROM_ADDRESS:}
+      telegram:
+        api-base-url: ${ALERT_NOTIFICATIONS_TELEGRAM_API_BASE_URL:https://api.telegram.org}
+        bot-token: ${ALERT_NOTIFICATIONS_TELEGRAM_BOT_TOKEN:}
     reconciliation:
       enabled: ${ALERT_RECONCILIATION_ENABLED:true}
       interval: ${ALERT_RECONCILIATION_INTERVAL:30s}

@@ -14,8 +14,8 @@ be retried or replayed safely.
 | Telemetry ingestion | `202 Accepted` means validation, local source read-model lookup, rate limit, idempotency, and raw event publication or queued publish succeeded. | Telemetry persistence, latest readings, analytics, alerts, and notifications happen asynchronously. |
 | Telemetry latest/readings/quality | Strong for data already persisted by telemetry-service. | New ingestion readings can take time to appear while Kafka and telemetry consumers process them. |
 | Analytics jobs/results | Job creation is strongly persisted. | Baselines, anomalies, risk, recommendations, and predictions are produced by async jobs and outbox-published analytics events. |
-| Alert creation | Strong once alert-service handles an analytics event. Duplicate source events reuse the existing alert. | Delivery to notification channels is durable and retryable through `notification_attempts`. |
-| Notification delivery | Attempt creation is strongly persisted with the alert transaction. | Provider delivery is async, leased, retried, and idempotency-keyed per alert/channel/event type. |
+| Alert creation | Strong once alert-service handles an analytics event. Duplicate source events reuse the existing alert. | Delivery requests cross the internal notification port as immutable snapshots. |
+| Notification delivery | Attempt creation is strongly persisted with the alert transaction after notification preferences and enabled channels are evaluated. | Provider delivery is async, leased, retried by the notification application layer, and idempotency-keyed per alert lifecycle event/channel. |
 
 ## Propagation Targets
 
@@ -28,7 +28,7 @@ These are operating targets, not hard real-time guarantees:
 | Analytics job creation to anomaly/risk availability | Under 2 minutes for default windows and normal data volume. |
 | Analytics anomaly event to alert creation | Under 30 seconds. |
 | Alert creation/escalation to notification attempt creation | Same transaction as alert creation/escalation. |
-| Notification attempt to provider call | Under 30 seconds when provider and worker are healthy. |
+| Notification attempt to provider adapter call | Under 30 seconds when provider and worker are healthy. |
 
 ## Client Retry Expectations
 
@@ -52,6 +52,17 @@ Inbox rows:
 - terminal `PROCESSED` rows must not be replayed.
 - `FAILED` or stale `PROCESSING` inbox rows are replayable because consumers use
   source event ids and deterministic deduplication keys.
+
+Notification attempts:
+- `PENDING` and `RETRYING` rows are safe for the notification worker to claim.
+- stale `PROCESSING` rows are safe to replay after their lease expires.
+- provider adapters return normalized sent, disabled, retryable failure, or
+  permanent failure results; the notification application layer performs state
+  transitions and retry scheduling.
+- webhook, email, and Telegram adapters share the canonical alert notification
+  message. Email SMTP/network failures and Telegram `429`/`5xx` responses are
+  retryable; invalid email config, authentication failures, and Telegram
+  `400`/`401`/`403` responses are permanent failures.
 
 Analytics jobs:
 - `PENDING` jobs are claimable by workers.

@@ -7,6 +7,8 @@ import com.voltcanary.alert.domain.Alert;
 import com.voltcanary.alert.domain.AlertEvent;
 import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
+import com.voltcanary.alert.notification.port.AlertNotificationPort;
+import com.voltcanary.alert.notification.port.AlertNotificationRequest;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.scheduling.SchedulerLockService;
@@ -36,7 +38,7 @@ public class AlertEscalationService {
     private final AlertRepository alertRepository;
     private final AlertEventRepository alertEventRepository;
     private final AlertEscalationProperties properties;
-    private final NotificationDeliveryService notificationDeliveryService;
+    private final AlertNotificationPort alertNotificationPort;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
     private final SchedulerLockService schedulerLockService;
@@ -45,14 +47,14 @@ public class AlertEscalationService {
             AlertRepository alertRepository,
             AlertEventRepository alertEventRepository,
             AlertEscalationProperties properties,
-            NotificationDeliveryService notificationDeliveryService,
+            AlertNotificationPort alertNotificationPort,
             MeterRegistry meterRegistry,
             ObjectMapper objectMapper,
             SchedulerLockService schedulerLockService) {
         this.alertRepository = alertRepository;
         this.alertEventRepository = alertEventRepository;
         this.properties = properties;
-        this.notificationDeliveryService = notificationDeliveryService;
+        this.alertNotificationPort = alertNotificationPort;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
         this.schedulerLockService = schedulerLockService;
@@ -101,10 +103,15 @@ public class AlertEscalationService {
             if (alertEventRepository.existsByAlertIdAndEventType(alert.getId(), ESCALATED)) {
                 continue;
             }
-            if (!saveEscalationEvent(alert, threshold, now)) {
+            var alertEventId = saveEscalationEvent(alert, threshold, now);
+            if (alertEventId.isEmpty()) {
                 continue;
             }
-            notificationDeliveryService.dispatchAlertEscalated(alert);
+            alertNotificationPort.alertEscalated(AlertNotificationRequest.fromAlert(
+                    alert,
+                    alertEventId.get(),
+                    "ALERT_ESCALATED",
+                    now));
             meterRegistry.counter(
                     "alert.escalations",
                     "severity", severity.name(),
@@ -120,7 +127,7 @@ public class AlertEscalationService {
         return escalated;
     }
 
-    private boolean saveEscalationEvent(Alert alert, Duration threshold, Instant now) {
+    private java.util.Optional<UUID> saveEscalationEvent(Alert alert, Duration threshold, Instant now) {
         UUID eventId = UUID.randomUUID();
         AlertEvent event = new AlertEvent();
         event.setId(eventId);
@@ -132,9 +139,9 @@ public class AlertEscalationService {
         event.setPayloadJson(writeJson(escalationPayload(eventId, alert, threshold, now)));
         try {
             alertEventRepository.saveAndFlush(event);
-            return true;
+            return java.util.Optional.of(eventId);
         } catch (DataIntegrityViolationException ignored) {
-            return false;
+            return java.util.Optional.empty();
         }
     }
 

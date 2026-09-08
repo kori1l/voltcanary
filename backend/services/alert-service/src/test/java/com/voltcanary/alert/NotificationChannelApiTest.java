@@ -6,14 +6,15 @@ import com.sun.net.httpserver.HttpServer;
 import com.voltcanary.alert.domain.Alert;
 import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
-import com.voltcanary.alert.dto.NotificationAttemptResponse;
-import com.voltcanary.alert.dto.NotificationChannelResponse;
+import com.voltcanary.alert.notification.application.NotificationAttemptService;
+import com.voltcanary.alert.notification.dto.NotificationAttemptResponse;
+import com.voltcanary.alert.notification.dto.NotificationChannelResponse;
+import com.voltcanary.alert.notification.port.AlertNotificationPort;
+import com.voltcanary.alert.notification.port.AlertNotificationRequest;
+import com.voltcanary.alert.notification.repository.NotificationAttemptRepository;
+import com.voltcanary.alert.notification.repository.NotificationChannelRepository;
 import com.voltcanary.alert.repository.AlertRepository;
-import com.voltcanary.alert.repository.NotificationAttemptRepository;
-import com.voltcanary.alert.repository.NotificationChannelRepository;
 import com.voltcanary.alert.service.AlertService;
-import com.voltcanary.alert.service.NotificationDeliveryService;
-import com.voltcanary.alert.service.NotificationAttemptService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -68,7 +69,7 @@ class NotificationChannelApiTest {
     private NotificationAttemptService notificationAttemptService;
 
     @Autowired
-    private NotificationDeliveryService notificationDeliveryService;
+    private AlertNotificationPort alertNotificationPort;
 
     @Autowired
     private NotificationChannelRepository notificationChannelRepository;
@@ -182,11 +183,65 @@ class NotificationChannelApiTest {
                 entity(null, Map.of(
                         "name", "User scoped email",
                         "channelType", "EMAIL",
-                        "config", Map.of("toRef", "primary-contact"))),
+                        "config", Map.of("recipients", List.of("ops@example.com")))),
                 NotificationChannelResponse.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().accountId()).isEqualTo(USER_ID);
+    }
+
+    @Test
+    void emailAndTelegramChannelConfigIsValidated() {
+        ResponseEntity<NotificationChannelResponse> emailResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(ACCOUNT_ID, Map.of(
+                        "name", "Ops email",
+                        "channelType", "EMAIL",
+                        "config", Map.of(
+                                "recipients", List.of("ops@example.com"),
+                                "cc", List.of("lead@example.com"),
+                                "fromAlias", "VoltCanary",
+                                "subjectPrefix", "[VoltCanary]"),
+                        "credentialsRef", "vault://alerts/email/ops",
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+        ResponseEntity<String> invalidEmailResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(ACCOUNT_ID, Map.of(
+                        "name", "Bad email",
+                        "channelType", "EMAIL",
+                        "config", Map.of("recipients", List.of("not-an-email")))),
+                String.class);
+        ResponseEntity<NotificationChannelResponse> telegramResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(ACCOUNT_ID, Map.of(
+                        "name", "Ops Telegram",
+                        "channelType", "TELEGRAM",
+                        "config", Map.of(
+                                "chatId", "-1001234567890",
+                                "parseMode", "MarkdownV2",
+                                "disableWebPagePreview", true),
+                        "credentialsRef", "vault://alerts/telegram/ops",
+                        "enabled", true)),
+                NotificationChannelResponse.class);
+        ResponseEntity<String> unsafeTelegramResponse = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(ACCOUNT_ID, Map.of(
+                        "name", "Unsafe Telegram",
+                        "channelType", "TELEGRAM",
+                        "config", Map.of("chatId", "-1001234567890", "botToken", "secret-value"))),
+                String.class);
+
+        assertThat(emailResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(emailResponse.getBody().config()).containsEntry("fromAlias", "VoltCanary");
+        assertThat(invalidEmailResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(telegramResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(telegramResponse.getBody().config()).containsEntry("parseMode", "MarkdownV2");
+        assertThat(unsafeTelegramResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test
@@ -211,7 +266,9 @@ class NotificationChannelApiTest {
                 NotificationChannelResponse.class);
         var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
 
-        var pending = notificationAttemptService.createPendingAttempt(alert, channel);
+        var pending = notificationAttemptService.createPendingAttempt(
+                notificationRequest(alert, UUID.randomUUID(), "MANUAL"),
+                channel);
         var retrying = notificationAttemptService.markRetrying(pending.getId(), "HTTP_503", "Provider unavailable");
         var sent = notificationAttemptService.markSent(retrying.getId(), "Accepted by provider");
 
@@ -252,7 +309,9 @@ class NotificationChannelApiTest {
                         "enabled", true)),
                 NotificationChannelResponse.class);
         var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
-        var pending = notificationAttemptService.createPendingAttempt(alert, channel, "ALERT_CREATED");
+        var pending = notificationAttemptService.createPendingAttempt(
+                notificationRequest(alert, UUID.randomUUID(), "ALERT_CREATED"),
+                channel);
 
         var firstClaim = notificationAttemptService.claimNext("worker-a", Duration.ofMinutes(2), 10);
         var secondClaim = notificationAttemptService.claimNext("worker-b", Duration.ofMinutes(2), 10);
@@ -306,10 +365,11 @@ class NotificationChannelApiTest {
                 NotificationChannelResponse.class);
         Alert alert = saveAlertWithAccount();
 
-        notificationDeliveryService.dispatchAlertCreated(alert);
+        UUID alertEventId = UUID.randomUUID();
+        alertNotificationPort.alertCreated(notificationRequest(alert, alertEventId, "ALERT_CREATED"));
 
         List<NotificationAttemptResponse> attempts = waitForAttempts(alert.getId(), "SENT");
-        notificationDeliveryService.dispatchAlertCreated(alert);
+        alertNotificationPort.alertCreated(notificationRequest(alert, alertEventId, "ALERT_CREATED"));
         Thread.sleep(250);
 
         assertThat(requests.get()).isEqualTo(1);
@@ -321,8 +381,12 @@ class NotificationChannelApiTest {
         assertThat(attempts.getFirst().status()).isEqualTo("SENT");
         assertThat(attempts.getFirst().providerResponseSummary()).isEqualTo("HTTP 202");
         assertThat(idempotencyKey.get())
-                .isEqualTo(alert.getId() + ":" + createChannelResponse.getBody().id() + ":ALERT_CREATED");
+                .isEqualTo(alertEventId + ":ALERT_CREATED:" + createChannelResponse.getBody().id());
         assertThat(notificationAttemptRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())).hasSize(1);
+    }
+
+    private AlertNotificationRequest notificationRequest(Alert alert, UUID alertEventId, String eventType) {
+        return AlertNotificationRequest.fromAlert(alert, alertEventId, eventType, alert.getCreatedAt());
     }
 
     private Alert saveAlertWithAccount() {

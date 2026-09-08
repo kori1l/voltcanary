@@ -2,9 +2,9 @@ package com.voltcanary.alert.service;
 
 import com.voltcanary.alert.config.AlertRetentionProperties;
 import com.voltcanary.alert.domain.AlertStatus;
+import com.voltcanary.alert.notification.repository.NotificationAttemptRepository;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
-import com.voltcanary.alert.repository.NotificationAttemptRepository;
 import com.voltcanary.alert.scheduling.SchedulerLockService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;

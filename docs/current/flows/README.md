@@ -15,6 +15,7 @@ manual or agent-driven runs.
 | --- | --- |
 | First telemetry slice | [01-first-telemetry-flow.md](01-first-telemetry-flow.md) |
 | Maintenance window E2E checks | [maintenance-windows-e2e-checklist.md](maintenance-windows-e2e-checklist.md) |
+| Notification delivery verification | [notification-delivery-verification.md](notification-delivery-verification.md) |
 | ML full verification | [ml-full-verification.md](ml-full-verification.md) |
 | ML full verification report template | [ml-full-verification-report-template.md](ml-full-verification-report-template.md) |
 | ML failure prediction Docker verification | [ml-failure-prediction-docker-verification.md](ml-failure-prediction-docker-verification.md) |

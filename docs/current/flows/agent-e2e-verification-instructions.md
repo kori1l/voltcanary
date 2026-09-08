@@ -351,6 +351,10 @@ Failure guard:
 Steps:
 - Open `/alerts` UI.
 - Create webhook notification channel.
+- Create email notification channel with recipients, optional cc/bcc, from
+  alias, subject prefix, and credentials ref.
+- Create Telegram notification channel with chat id, optional parse mode,
+  preview toggle, and credentials ref.
 - List notification channels.
 - Disable the channel.
 - Enable the channel.
@@ -362,12 +366,21 @@ Steps:
 
 Assertions:
 - Channel create/disable/enable/delete is visible in UI and API.
+- Email and Telegram channel payloads contain only non-secret provider config;
+  SMTP passwords, bot tokens, API keys, and webhook secrets are absent from
+  `config`.
 - Deleted channel disappears and cannot be used.
 - Preferences persist after reload.
 - Notification attempts show status and provider response/error where applicable.
+- Provider responses normalize to `SENT`, `RETRYING`, or `FAILED`: SMTP/network
+  and Telegram `429`/`5xx` failures retry while attempts remain, and invalid
+  email/Telegram config fails permanently.
 
 Negative checks:
 - Invalid webhook URL is rejected.
+- Invalid email addresses and unsupported Telegram parse modes are rejected.
+- Secret-like config keys such as `botToken`, `smtpPassword`, `apiKey`, and
+  `webhookSecret` are rejected.
 - Unsupported channel type is rejected.
 - Disabled channel does not send new attempts.
 

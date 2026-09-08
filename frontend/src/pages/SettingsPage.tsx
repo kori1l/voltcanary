@@ -1,21 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  createNotificationChannel,
-  deleteNotificationChannel,
-  disableNotificationChannel,
-  enableNotificationChannel,
-  listNotificationChannels,
-  NotificationChannelResponse,
-} from "../alerts/alertsApi";
 import { changePassword, me, MeResponse, requestEmailVerification } from "../auth/authApi";
+import { NotificationChannelSettings } from "../features/notifications/NotificationChannelSettings";
+import { NotificationPreferenceSettings } from "../features/notifications/NotificationPreferenceSettings";
 
 export function SettingsPage() {
   const [profile, setProfile] = useState<MeResponse | null>(null);
-  const [channels, setChannels] = useState<NotificationChannelResponse[]>([]);
-  const [channelName, setChannelName] = useState("Ops webhook");
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [credentialsRef, setCredentialsRef] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -29,12 +19,7 @@ export function SettingsPage() {
   async function load() {
     setError(null);
     try {
-      const [profileResponse, channelsResponse] = await Promise.all([
-        me().catch(() => null),
-        listNotificationChannels().catch(() => []),
-      ]);
-      setProfile(profileResponse);
-      setChannels(channelsResponse);
+      setProfile(await me().catch(() => null));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to load settings");
     }
@@ -51,43 +36,6 @@ export function SettingsPage() {
     } finally {
       setIsBusy(false);
     }
-  }
-
-  async function addWebhookChannel(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!webhookUrl.trim()) {
-      setError("Webhook URL is required");
-      return;
-    }
-    await run(async () => {
-      await createNotificationChannel({
-        name: channelName.trim() || "Ops webhook",
-        channelType: "WEBHOOK",
-        config: { url: webhookUrl.trim() },
-        credentialsRef: credentialsRef.trim() || null,
-        enabled: true,
-      });
-      setWebhookUrl("");
-      setCredentialsRef("");
-      setChannels(await listNotificationChannels());
-      setMessage("Notification channel added");
-    });
-  }
-
-  async function setChannelEnabled(channel: NotificationChannelResponse, enabled: boolean) {
-    await run(async () => {
-      const updated = enabled ? await enableNotificationChannel(channel.id) : await disableNotificationChannel(channel.id);
-      setChannels((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage(`Notification channel ${enabled ? "enabled" : "disabled"}`);
-    });
-  }
-
-  async function removeChannel(channel: NotificationChannelResponse) {
-    await run(async () => {
-      await deleteNotificationChannel(channel.id);
-      setChannels((current) => current.filter((item) => item.id !== channel.id));
-      setMessage("Notification channel deleted");
-    });
   }
 
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
@@ -204,55 +152,8 @@ export function SettingsPage() {
         </section>
       </section>
 
-      <section className="panel notification-channel-panel">
-        <div className="section-header">
-          <div>
-            <h2>Notification Channels</h2>
-            <p>{channels.length} configured</p>
-          </div>
-        </div>
-        <form className="notification-channel-form" onSubmit={addWebhookChannel}>
-          <input value={channelName} onChange={(event) => setChannelName(event.target.value)} placeholder="Channel name" />
-          <input value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} placeholder="Webhook URL" />
-          <input value={credentialsRef} onChange={(event) => setCredentialsRef(event.target.value)} placeholder="Credentials ref" />
-          <button className="primary-button" type="submit" disabled={isBusy}>
-            Add webhook
-          </button>
-        </form>
-        {channels.length > 0 ? (
-          <div className="notification-channel-list">
-            {channels.map((channel) => (
-              <article className="notification-channel-row" key={channel.id}>
-                <div>
-                  <strong>{channel.name}</strong>
-                  <span>
-                    {formatEnum(channel.channelType)} - {channel.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-                <div className="action-row">
-                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={isBusy}>
-                    {channel.enabled ? "Disable" : "Enable"}
-                  </button>
-                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={isBusy}>
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state">No notification channels configured.</div>
-        )}
-      </section>
+      <NotificationChannelSettings />
+      <NotificationPreferenceSettings />
     </>
   );
-}
-
-function formatEnum(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

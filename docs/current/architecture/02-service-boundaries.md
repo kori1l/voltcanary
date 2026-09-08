@@ -201,7 +201,10 @@ window changes through device-service internal APIs.
 ### Alert Service
 
 Owns alert lifecycle. It creates alerts from analytics events, deduplicates
-similar alerts, and exposes acknowledgement/resolution commands.
+similar alerts, and exposes acknowledgement/resolution commands. Notification
+delivery remains inside alert-service as an internal notification module with
+its own application, provider, controller, domain, DTO, repository, and config
+packages.
 
 Consumes:
 
@@ -226,10 +229,15 @@ Maintenance windows are projected locally. Alert-service suppresses matching
 new analytics events and auto-resolves overlapping unresolved alerts without
 synchronous device-service lookups in the alert creation path.
 
-Alert lifecycle changes are stored in `alert_events`; notification delivery is
-driven by durable `notification_attempts`. Kafka lifecycle topics for alert
-creation, acknowledgement, and resolution are a target extension, not current
-runtime behavior; see
+Alert lifecycle changes are stored in `alert_events`. Alert lifecycle code
+requests delivery through `AlertNotificationPort` with immutable notification
+request snapshots; it does not pass JPA alert entities to provider delivery.
+The notification module owns channel/preference evaluation, durable
+`notification_attempts`, leases, retries, idempotency, and provider adapter
+selection. Provider adapters are selected by notification channel type and
+return normalized delivery results; they do not own retry policy or attempt
+state transitions. Kafka lifecycle topics for alert creation, acknowledgement,
+and resolution are a target extension, not current runtime behavior; see
 [../../target/alert-lifecycle-events.md](../../target/alert-lifecycle-events.md).
 
 ### ML Service
@@ -322,7 +330,8 @@ Events are used for asynchronous processing:
 - identity-service -> device-service through `identity.account-lifecycle.v1`
 - telemetry-service -> analytics-service
 - analytics-service -> alert-service
-- alert-service -> notification providers through durable notification attempts
+- alert-service alert lifecycle -> alert-service notification module through `AlertNotificationPort`
+- alert-service notification module -> notification providers through durable notification attempts and provider adapters
 
 ## Boundary Rules
 

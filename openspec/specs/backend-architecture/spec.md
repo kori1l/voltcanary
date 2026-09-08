@@ -121,3 +121,23 @@ ML request construction, fallback decisions, persistence, and event publishing.
   behind explicit collaborators
 - **AND** the recalculation entry point SHALL remain an orchestrator rather than
   a combined calculator, adapter, serializer, and repository owner.
+
+### Requirement: Alert Notifications Use An Internal Module Boundary
+
+Alert-service notification delivery SHALL remain behind an internal boundary
+while it is hosted in alert-service.
+
+#### Scenario: Alert lifecycle requests notification delivery
+
+- **WHEN** alert lifecycle code creates or escalates an alert
+- **THEN** it SHALL request delivery through an alert notification port
+- **AND** pass an immutable notification request snapshot rather than a JPA
+  alert entity.
+
+#### Scenario: Notification provider delivery is extended
+
+- **WHEN** a notification provider channel is implemented
+- **THEN** provider-specific delivery SHALL live behind an adapter selected by
+  notification channel type
+- **AND** retry, lease, idempotency, preference, channel, and attempt state
+  transitions SHALL remain in the notification application module.

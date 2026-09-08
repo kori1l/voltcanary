@@ -91,7 +91,7 @@ describe("ML alert incident UI workflows", () => {
           status: "PENDING",
           retryCount: 0,
           lastErrorCode: null,
-          providerResponse: "queued",
+          providerResponseSummary: "queued",
           createdAt: "2026-08-19T11:01:10Z",
           sentAt: null,
         }]);

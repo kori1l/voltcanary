@@ -666,7 +666,7 @@ function NotificationAttempts({ attempts, isLoading }: { attempts: NotificationA
         <div className="notification-attempt-row" key={attempt.id}>
           <span>{formatEnum(attempt.channelType)}</span>
           <strong>{formatEnum(attempt.status)}</strong>
-          <span>{attempt.lastErrorCode || attempt.providerResponse || formatShortDateTime(attempt.createdAt)}</span>
+          <span>{attempt.lastErrorCode || attempt.providerResponseSummary || formatShortDateTime(attempt.createdAt)}</span>
         </div>
       ))}
     </div>

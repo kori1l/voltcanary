@@ -59,8 +59,9 @@ export interface NotificationAttemptResponse {
   status: "PENDING" | "SENT" | "FAILED" | "RETRYING" | "DISABLED";
   retryCount: number;
   lastErrorCode?: string | null;
-  providerResponse?: string | null;
+  providerResponseSummary?: string | null;
   createdAt: string;
+  updatedAt: string;
   sentAt?: string | null;
 }
 
@@ -76,12 +77,65 @@ export interface NotificationChannelResponse {
   updatedAt: string;
 }
 
+export type NotificationChannelType = "WEBHOOK" | "EMAIL" | "TELEGRAM";
+
+export interface WebhookNotificationChannelConfig {
+  url: string;
+}
+
+export interface EmailNotificationChannelConfig {
+  recipients: string[];
+  cc?: string[];
+  bcc?: string[];
+  fromAlias?: string;
+  subjectPrefix?: string;
+}
+
+export interface TelegramNotificationChannelConfig {
+  chatId: string;
+  parseMode?: "Markdown" | "MarkdownV2" | "HTML";
+  disableWebPagePreview?: boolean;
+}
+
+export type NotificationChannelConfig =
+  | WebhookNotificationChannelConfig
+  | EmailNotificationChannelConfig
+  | TelegramNotificationChannelConfig
+  | Record<string, unknown>;
+
 export interface NotificationChannelRequest {
   name: string;
-  channelType: string;
-  config: Record<string, unknown>;
+  channelType: NotificationChannelType;
+  config: NotificationChannelConfig;
   credentialsRef?: string | null;
   enabled: boolean;
+}
+
+export interface NotificationPreferenceResponse {
+  id?: string | null;
+  accountId: string;
+  userId?: string | null;
+  enabled: boolean;
+  severities: string[];
+  channelTypes: string[];
+  deviceIds: string[];
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+  timezone: string;
+  criticalBypassQuietHours: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationPreferenceRequest {
+  enabled?: boolean;
+  severities?: string[];
+  channelTypes?: string[];
+  deviceIds?: string[];
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+  timezone?: string;
+  criticalBypassQuietHours?: boolean;
 }
 
 export interface AlertRule {
@@ -200,6 +254,17 @@ export function disableNotificationChannel(channelId: string) {
 export function deleteNotificationChannel(channelId: string) {
   return apiRequest<void>(`/alerts/notification-channels/${channelId}`, {
     method: "DELETE",
+  });
+}
+
+export function getNotificationPreference() {
+  return apiRequest<NotificationPreferenceResponse>("/alerts/notification-preferences");
+}
+
+export function updateNotificationPreference(request: NotificationPreferenceRequest) {
+  return apiRequest<NotificationPreferenceResponse>("/alerts/notification-preferences", {
+    method: "PUT",
+    body: JSON.stringify(request),
   });
 }
 

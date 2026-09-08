@@ -11,6 +11,8 @@ import com.voltcanary.alert.dto.AlertListFilters;
 import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.dto.AlertSummaryResponse;
+import com.voltcanary.alert.notification.port.AlertNotificationPort;
+import com.voltcanary.alert.notification.port.AlertNotificationRequest;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
@@ -42,7 +44,7 @@ public class AlertService {
     private final AlertEventRepository alertEventRepository;
     private final AlertAccessService alertAccessService;
     private final AlertDeduplicationService deduplicationService;
-    private final NotificationDeliveryService notificationDeliveryService;
+    private final AlertNotificationPort alertNotificationPort;
     private final AlertMaintenanceSuppressionService maintenanceSuppressionService;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
@@ -52,7 +54,7 @@ public class AlertService {
             AlertEventRepository alertEventRepository,
             AlertAccessService alertAccessService,
             AlertDeduplicationService deduplicationService,
-            NotificationDeliveryService notificationDeliveryService,
+            AlertNotificationPort alertNotificationPort,
             AlertMaintenanceSuppressionService maintenanceSuppressionService,
             MeterRegistry meterRegistry,
             ObjectMapper objectMapper) {
@@ -60,7 +62,7 @@ public class AlertService {
         this.alertEventRepository = alertEventRepository;
         this.alertAccessService = alertAccessService;
         this.deduplicationService = deduplicationService;
-        this.notificationDeliveryService = notificationDeliveryService;
+        this.alertNotificationPort = alertNotificationPort;
         this.maintenanceSuppressionService = maintenanceSuppressionService;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
@@ -429,9 +431,13 @@ public class AlertService {
         alert.setStatus(AlertStatus.OPEN);
         alert.setCreatedAt(createdAt == null ? Instant.now() : createdAt);
         Alert saved = alertRepository.saveAndFlush(alert);
-        saveEvent(saved, eventType, null, null, payload);
+        UUID alertEventId = saveEvent(saved, eventType, null, null, payload);
         recordCreated(saved, eventType);
-        notificationDeliveryService.dispatchAlertCreated(saved);
+        alertNotificationPort.alertCreated(AlertNotificationRequest.fromAlert(
+                saved,
+                alertEventId,
+                "ALERT_CREATED",
+                saved.getCreatedAt()));
         return saved;
     }
 
@@ -456,7 +462,7 @@ public class AlertService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found"));
     }
 
-    private void saveEvent(Alert alert, String eventType, UUID actorId, String reason, Object details) {
+    private UUID saveEvent(Alert alert, String eventType, UUID actorId, String reason, Object details) {
         UUID eventId = UUID.randomUUID();
         Instant createdAt = Instant.now();
         AlertEvent event = new AlertEvent();
@@ -485,6 +491,7 @@ public class AlertService {
                 context)));
         event.setCreatedAt(createdAt);
         alertEventRepository.save(event);
+        return eventId;
     }
 
     private Specification<Alert> specification(AlertListFilters filters) {

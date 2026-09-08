@@ -20,8 +20,8 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 2. If the user named a change, run `npm run openspec:apply -- <change-id>`
    before editing implementation files.
 3. If no change was named, ask which active change to apply. If the user asks
-   for the next active ML work, choose from the currently active output of
-   `openspec:list`; do not use archived changes or stale hard-coded change
+   for the next active notification or ML work, choose from the currently active
+   output of `openspec:list`; do not use archived changes or stale hard-coded
    sequences.
 4. Read the applied change's `proposal.md`, `design.md`, `tasks.md`, and changed
    specs under `openspec/changes/<change-id>/specs/`.
@@ -38,35 +38,19 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 9. Archive with `npm run openspec -- archive <change-id>` only after every
    task is complete and required validation passes.
 
-## Target Ingestion Architecture Sequence
+## Notification Work Sequence
 
-When the user asks for the next active ingestion architecture work and no change
-is explicitly named, prefer this order while these changes are active:
+When the user asks for the next active notification work and no change is
+explicitly named, prefer this order while these changes are active:
 
-1. `define-ingestion-adapter-contracts`
-2. `route-http-ingestion-through-adapters`
-3. `route-mqtt-ingestion-through-adapters`
-4. `replicate-ingestion-source-runtime-config`
-5. `harden-ingestion-shared-scaling-state`
-6. `build-ingestion-connector-runtime`
-7. `add-http-polling-ingestion-adapter`
-8. `add-modbus-tcp-ingestion-adapter`
-9. `add-opc-ua-ingestion-adapter`
-10. `verify-ingestion-horizontal-scale`
+1. `modularize-alert-notification-boundary`
+2. `add-email-telegram-notification-adapters`
 
-Do not preserve weak internal ingestion structures merely for backward
-compatibility while these changes are being implemented; VoltCanary is
-pre-production. Preserve a public contract only when the active change
-explicitly says to do so or when keeping it reduces scope without compromising
-the target architecture.
-
-Implement `define-ingestion-adapter-contracts` first because every later slice
-depends on the canonical adapter boundary. HTTP and MQTT may be implemented
-sequentially or in parallel after the contracts are in place. Complete source
-runtime config and shared scaling state before active connectors. Build the
-connector runtime before adding HTTP polling, Modbus TCP, or OPC UA. Keep
-`verify-ingestion-horizontal-scale` last so it validates the full target
-runtime across replicas.
+Implement the boundary first, or apply both changes in the same implementation
+pass only if the adapter work still goes through the new port, snapshot request,
+provider registry, and focused frontend notification settings modules. Do not
+add provider-specific delivery branches directly to alert lifecycle code or large
+route pages.
 
 ## Context
 
