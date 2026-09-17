@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class InternalController {
-    @GetMapping("/internal/health")
+    @GetMapping({"/internal/health", "/internal/ping"})
     public Map<String, String> health() {
         return Map.of("status", "ok", "service", "ai-agent-service");
     }

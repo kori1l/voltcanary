@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 public class MlClient {
@@ -73,6 +74,12 @@ public class MlClient {
             meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
             sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
             log.warn("mlTrainingRequestFailed datasetVersionId={} reason={} phase=serialize", request.datasetVersionId(), exception.getClass().getSimpleName());
+            return null;
+        } catch (RestClientResponseException exception) {
+            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
+            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
+            log.warn("mlTrainingRequestFailed datasetVersionId={} status={} response={} phase=request",
+                    request.datasetVersionId(), exception.getStatusCode(), responseSnippet(exception));
             return null;
         } catch (RestClientException exception) {
             meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
@@ -142,6 +149,22 @@ public class MlClient {
                     modelVersionId(modelPreference, null)));
             log.warn("mlInferenceFailed deviceId={} reason={} phase=serialize", deviceId, exception.getClass().getSimpleName());
             return null;
+        } catch (RestClientResponseException exception) {
+            meterRegistry.counter(
+                    "analytics.ml.inference.failures",
+                    "reason",
+                    exception.getClass().getSimpleName(),
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)).increment();
+            sample.stop(meterRegistry.timer(
+                    "analytics.ml.inference.duration",
+                    "status",
+                    "failure",
+                    "modelVersionId",
+                    modelVersionId(modelPreference, null)));
+            log.warn("mlInferenceFailed deviceId={} status={} response={} phase=request",
+                    deviceId, exception.getStatusCode(), responseSnippet(exception));
+            return null;
         } catch (RestClientException exception) {
             meterRegistry.counter(
                     "analytics.ml.inference.failures",
@@ -167,5 +190,14 @@ public class MlClient {
         Object value = modelPreference == null ? null : modelPreference.get("modelVersionId");
         String result = value == null ? "" : value.toString();
         return result.isBlank() ? "none" : result;
+    }
+
+    private String responseSnippet(RestClientResponseException exception) {
+        String body = exception.getResponseBodyAsString();
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        String compact = body.replaceAll("\\s+", " ");
+        return compact.length() > 1000 ? compact.substring(0, 1000) : compact;
     }
 }

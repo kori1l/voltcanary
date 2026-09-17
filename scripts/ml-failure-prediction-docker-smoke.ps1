@@ -174,6 +174,7 @@ function Submit-IngestionBackfill {
     $accepted = 0
     $duplicate = 0
     $rejected = 0
+    $rejectionMessages = New-Object System.Collections.Generic.List[string]
     for ($offset = 0; $offset -lt $Readings.Count; $offset += $ChunkSize) {
         $last = [Math]::Min($offset + $ChunkSize - 1, $Readings.Count - 1)
         $chunk = New-Object System.Collections.Generic.List[object]
@@ -187,13 +188,48 @@ function Submit-IngestionBackfill {
         $accepted += [int] $response.acceptedCount
         $duplicate += [int] $response.duplicateCount
         $rejected += [int] $response.rejectedCount
+        foreach ($item in @($response.items)) {
+            if ("$($item.status)" -eq "rejected") {
+                $message = "$($item.message)"
+                if ($message -eq "") {
+                    $message = "unspecified"
+                }
+                $rejectionMessages.Add($message) | Out-Null
+            }
+        }
     }
 
     return [PSCustomObject]@{
         acceptedCount = $accepted
         duplicateCount = $duplicate
         rejectedCount = $rejected
+        rejectionReasons = @($rejectionMessages | Group-Object | Sort-Object Count -Descending | ForEach-Object {
+            "$($_.Name)=$($_.Count)"
+        })
     }
+}
+
+function Wait-For-IngestionSourceReadModel {
+    param(
+        [Parameter(Mandatory = $true)] [object] $Reading,
+        [Parameter(Mandatory = $true)] [hashtable] $Headers,
+        [Parameter(Mandatory = $true)] [string] $SourceId
+    )
+
+    Wait-For "ingestion source runtime config for $SourceId" {
+        $response = Invoke-Api -Method POST -Path "/ingestion/imports/readings/batch" -Headers $Headers -Body @{
+            readings = @($Reading)
+        }
+        if ([int] $response.rejectedCount -eq 0) {
+            return $true
+        }
+
+        $reason = @($response.items | Where-Object { "$($_.status)" -eq "rejected" } | Select-Object -First 1).message
+        if ("$reason" -eq "Unknown device data source" -or "$reason" -eq "Data source is not active" -or "$reason" -eq "Invalid source token") {
+            return $false
+        }
+        throw "Probe telemetry was rejected: $reason"
+    } | Out-Null
 }
 
 trap {
@@ -288,7 +324,6 @@ $start = $end.AddDays(-28)
 $outcomeAt = $start.AddDays(21)
 $horizonDays = 7
 
-Write-Step "Ingesting synthetic backfill telemetry"
 $readings = New-Object System.Collections.Generic.List[object]
 $timestamp = $start
 $index = 0
@@ -312,9 +347,17 @@ while ($timestamp -le $end) {
     $index++
 }
 
+Write-Step "Waiting for ingestion source runtime config"
+Wait-For-IngestionSourceReadModel -Reading $readings[0] -Headers $sourceHeaders -SourceId $sourceId
+
+Write-Step "Ingesting synthetic backfill telemetry"
 $ingestion = Submit-IngestionBackfill -Readings $readings -Headers $sourceHeaders
 Require-True ($ingestion.acceptedCount -gt 0) "Telemetry batch was not accepted"
-Require-True ($ingestion.rejectedCount -eq 0) "Telemetry batch rejected $($ingestion.rejectedCount) readings"
+$rejectionDetails = ""
+if (@($ingestion.rejectionReasons).Count -gt 0) {
+    $rejectionDetails = " Reasons: $(@($ingestion.rejectionReasons) -join '; ')"
+}
+Require-True ($ingestion.rejectedCount -eq 0) "Telemetry batch rejected $($ingestion.rejectedCount) readings.$rejectionDetails"
 
 $fromQuery = Encode-QueryValue (To-IsoInstant $start)
 $toQuery = Encode-QueryValue (To-IsoInstant $end)
