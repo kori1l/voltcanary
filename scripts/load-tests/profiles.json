@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "supportedNumericMetrics": [
+    "activePowerW",
+    "voltageV",
+    "currentA",
+    "energyWh",
+    "rssi",
+    "temperatureC",
+    "vibrationMmS",
+    "runtimeHours",
+    "powerFactor",
+    "frequencyHz"
+  ],
+  "profiles": {
+    "current-5": {
+      "description": "Current supported workload shape: 10,000 devices at one reading per 300 seconds with five numeric metrics.",
+      "deviceCount": 10000,
+      "intervalSeconds": 300,
+      "requiredNumericMetricCount": 5,
+      "metricNames": [
+        "activePowerW",
+        "voltageV",
+        "currentA",
+        "energyWh",
+        "rssi"
+      ],
+      "batchSize": 100,
+      "protocol": "rest",
+      "seed": 424242
+    },
+    "resume-10": {
+      "description": "Resume claim workload: 10,000 devices at one reading per 300 seconds with ten supported numeric metrics.",
+      "deviceCount": 10000,
+      "intervalSeconds": 300,
+      "requiredNumericMetricCount": 10,
+      "metricNames": [
+        "activePowerW",
+        "voltageV",
+        "currentA",
+        "energyWh",
+        "rssi",
+        "temperatureC",
+        "vibrationMmS",
+        "runtimeHours",
+        "powerFactor",
+        "frequencyHz"
+      ],
+      "batchSize": 100,
+      "protocol": "rest",
+      "seed": 424242
+    }
+  },
+  "phases": {
+    "smoke": {
+      "description": "Short generator/readiness gate for the current harness.",
+      "deviceCount": 100,
+      "intervalSeconds": 30,
+      "measurementSeconds": 300,
+      "warmupSeconds": 0,
+      "drainSeconds": 60
+    },
+    "baseline": {
+      "description": "Thirty measured minutes after warmup at the target periodic schedule.",
+      "measurementSeconds": 1800,
+      "warmupSeconds": 600,
+      "drainSeconds": 600
+    },
+    "hourly": {
+      "description": "Local one-hour measurement; daily volumes are projections, not a 24-hour endurance result.",
+      "measurementSeconds": 3600,
+      "warmupSeconds": 300,
+      "drainSeconds": 300
+    },
+    "daily": {
+      "description": "Twenty-four measured hours at the target periodic schedule.",
+      "measurementSeconds": 86400,
+      "warmupSeconds": 600,
+      "drainSeconds": 600
+    },
+    "burst": {
+      "description": "Burst window: same total readings per five-minute cycle, concentrated into thirty seconds.",
+      "measurementSeconds": 1800,
+      "warmupSeconds": 600,
+      "drainSeconds": 600,
+      "burstWindowSeconds": 30
+    },
+    "stress": {
+      "description": "Capacity discovery step above baseline rate; the last sustainable step is evidence, not a guaranteed pass.",
+      "measurementSeconds": 1800,
+      "warmupSeconds": 600,
+      "drainSeconds": 600,
+      "rateMultiplier": 1.5
+    },
+    "mixed": {
+      "description": "Ingestion plus read workload, used only after storage history is prepared.",
+      "measurementSeconds": 1800,
+      "warmupSeconds": 600,
+      "drainSeconds": 600,
+      "readMix": {
+        "latestPerSecond": 10,
+        "chartPerSecond": 2,
+        "exportPerMinute": 1
+      }
+    }
+  },
+  "thresholds": {
+    "httpIngestionP95Millis": 500,
+    "httpIngestionP99Millis": 1000,
+    "visibilityP95Millis": 5000,
+    "unexpectedFailureRate": 0.001,
+    "droppedScheduledReadings": 0
+  }
+}

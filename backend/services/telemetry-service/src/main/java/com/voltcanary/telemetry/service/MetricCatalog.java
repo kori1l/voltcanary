@@ -14,7 +14,12 @@ public class MetricCatalog {
             "voltageV", new MetricDefinition("V", 0.0, 1000.0),
             "currentA", new MetricDefinition("A", -1000.0, 1000.0),
             "energyWh", new MetricDefinition("Wh", 0.0, 1_000_000_000.0),
-            "rssi", new MetricDefinition("dBm", -150.0, 0.0));
+            "rssi", new MetricDefinition("dBm", -150.0, 0.0),
+            "temperatureC", new MetricDefinition("C", -50.0, 150.0),
+            "vibrationMmS", new MetricDefinition("mm/s", 0.0, 200.0),
+            "runtimeHours", new MetricDefinition("h", 0.0, 1_000_000.0),
+            "powerFactor", new MetricDefinition("ratio", 0.0, 1.0),
+            "frequencyHz", new MetricDefinition("Hz", 0.0, 1000.0));
 
     public Optional<MetricDefinition> find(String metricName) {
         return Optional.ofNullable(METRICS.get(metricName));

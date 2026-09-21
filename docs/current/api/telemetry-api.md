@@ -60,6 +60,11 @@ Supported metrics:
 - `currentA`, unit `A`
 - `energyWh`, unit `Wh`
 - `rssi`, unit `dBm`
+- `temperatureC`, unit `C`
+- `vibrationMmS`, unit `mm/s`
+- `runtimeHours`, unit `h`
+- `powerFactor`, unit `ratio`
+- `frequencyHz`, unit `Hz`
 
 ## GET /telemetry/devices/{deviceId}/quality
 

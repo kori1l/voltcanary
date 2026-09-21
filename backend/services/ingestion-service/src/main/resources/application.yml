@@ -23,6 +23,14 @@ management:
   health:
     redis:
       enabled: false
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        voltcanary.ingestion.processing: true
+        voltcanary.ingestion.kafka.publish.latency: true
+        voltcanary.ingestion.redis.rate_limit.latency: true
+        voltcanary.ingestion.redis.idempotency.latency: true
   endpoints:
     web:
       exposure:

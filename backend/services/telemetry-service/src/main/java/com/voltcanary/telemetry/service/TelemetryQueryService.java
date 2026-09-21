@@ -187,6 +187,11 @@ public class TelemetryQueryService {
             case "currentA" -> "Current";
             case "energyWh" -> "Energy";
             case "rssi" -> "Signal strength";
+            case "temperatureC" -> "Temperature";
+            case "vibrationMmS" -> "Vibration";
+            case "runtimeHours" -> "Runtime";
+            case "powerFactor" -> "Power factor";
+            case "frequencyHz" -> "Frequency";
             default -> metricName;
         };
     }

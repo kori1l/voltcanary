@@ -73,7 +73,9 @@ and returns `nextCursor` for the next page.
 
 Supported metric metadata is owned by `MetricCatalog` and exposed per device at
 `GET /telemetry/devices/{deviceId}/metrics`. The current supported metrics are
-`activePowerW`, `voltageV`, `currentA`, `energyWh`, and `rssi`.
+`activePowerW`, `voltageV`, `currentA`, `energyWh`, `rssi`,
+`temperatureC`, `vibrationMmS`, `runtimeHours`, `powerFactor`, and
+`frequencyHz`.
 
 The service emits Micrometer metrics for event processing:
 

@@ -25,3 +25,18 @@ scrape_configs:
     static_configs:
       - targets:
           - redpanda:9644
+
+  - job_name: postgres
+    static_configs:
+      - targets:
+          - postgres-exporter:9187
+
+  - job_name: timescaledb
+    static_configs:
+      - targets:
+          - timescaledb-exporter:9187
+
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080

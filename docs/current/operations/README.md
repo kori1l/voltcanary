@@ -10,6 +10,7 @@ not product plans.
 | --- | --- |
 | Local Kubernetes setup | [k8s-local.md](k8s-local.md) |
 | Ingestion active connectors and horizontal ingestion smoke | [ingestion-connectors.md](ingestion-connectors.md) |
+| Load-test profile preflight and evidence files | [load-testing.md](load-testing.md) |
 | ML operations and artifact/runtime checks | [ml-operations.md](ml-operations.md) |
 | Repository and Java package structure | [repository-structure.md](repository-structure.md) |
 

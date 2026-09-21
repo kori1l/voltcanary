@@ -16,6 +16,7 @@ behavior.
 | ML dataset workbench target design | [ml-dataset-workbench.md](ml-dataset-workbench.md) |
 | Product roadmap context | [product-roadmap.md](product-roadmap.md) |
 | Interview/demo talking points | [talking-points.md](talking-points.md) |
+| Capacity claims, load-test procedure and tooling gaps | [load-testing.md](load-testing.md) |
 
 ## Target-Only Items Currently Called Out
 

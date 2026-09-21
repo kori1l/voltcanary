@@ -73,7 +73,12 @@ tenant-aware replay, and DLQ tooling. New topics should prefer the explicit
       "currentA": 3.65,
       "energyWh": 12450.7,
       "relayState": "ON",
-      "rssi": -61
+      "rssi": -61,
+      "temperatureC": 42.5,
+      "vibrationMmS": 2.4,
+      "runtimeHours": 1830.5,
+      "powerFactor": 0.92,
+      "frequencyHz": 50.0
     }
   }
 }

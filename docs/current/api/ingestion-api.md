@@ -78,10 +78,11 @@ telemetry can quality-flag historical data.
 ## Validation
 
 Supported numeric metrics are `activePowerW`, `voltageV`, `currentA`,
-`energyWh`, and `rssi`. `relayState` is allowed as a non-numeric companion
-field. Unknown metric names, non-finite values, out-of-range values, invalid
-timestamps, excessive metric counts, excessive batch sizes, and oversized source
-or metric names return `400`.
+`energyWh`, `rssi`, `temperatureC`, `vibrationMmS`, `runtimeHours`,
+`powerFactor`, and `frequencyHz`. `relayState` is allowed as a non-numeric
+companion field. Unknown metric names, non-finite values, out-of-range values,
+invalid timestamps, excessive metric counts, excessive batch sizes, and
+oversized source or metric names return `400`.
 
 ## MQTT Collectors
 

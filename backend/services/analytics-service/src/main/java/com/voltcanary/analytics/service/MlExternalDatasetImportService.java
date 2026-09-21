@@ -607,6 +607,11 @@ public class MlExternalDatasetImportService {
             case "voltage", "voltageV", "voltage_v" -> "V";
             case "current", "currentA", "current_a" -> "A";
             case "energyGrowth", "energy_growth", "energyGrowthWh", "energy_growth_wh" -> "Wh";
+            case "temperature", "temperatureC", "temperature_c" -> "C";
+            case "vibration", "vibrationMmS", "vibration_mm_s" -> "mm/s";
+            case "runtime", "runtimeHours", "runtime_hours" -> "h";
+            case "powerFactor", "power_factor" -> "ratio";
+            case "frequency", "frequencyHz", "frequency_hz" -> "Hz";
             default -> null;
         };
     }

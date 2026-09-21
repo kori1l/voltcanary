@@ -27,6 +27,8 @@ to the task:
 - `$voltcanary-frontend` - React/Vite console, API clients, UI workflow tests.
 - `$voltcanary-local-ops` - Compose, local Kubernetes, ports, observability.
 - `$voltcanary-docs-guidelines` - docs, ADRs, API/event contracts, guidelines.
+- `$voltcanary-load-testing` - capacity profiles, load/soak/storage/scaling/recovery runs.
+- `$voltcanary-load-test-analysis` - performance evidence, bottlenecks, claim-level verdicts.
 
 For cross-service or product-facing work, start with `$voltcanary-openspec`,
 then load the surface-specific skills needed for implementation.

@@ -264,6 +264,39 @@ services:
       retries: 10
       start_period: 10s
 
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    profiles:
+      - observability
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-voltcanary}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-voltcanary}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  timescaledb-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    profiles:
+      - observability
+    environment:
+      DATA_SOURCE_NAME: postgresql://${TIMESCALE_USER:-voltcanary}:${TIMESCALE_PASSWORD:-change_me}@timescaledb:5432/${TIMESCALE_DB:-voltcanary_telemetry}?sslmode=disable
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    profiles:
+      - observability
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - "${CADVISOR_PORT:-8089}:8080"
+
   loki:
     image: grafana/loki:3.3.2
     profiles:

@@ -220,6 +220,11 @@ public class MlDatasetSupportService {
             case "voltage", "voltageV", "voltage_v" -> new MlDatasetNormalizedMetric(metric, "voltage", "V");
             case "current", "currentA", "current_a" -> new MlDatasetNormalizedMetric(metric, "current", "A");
             case "energyGrowth", "energy_growth", "energyGrowthWh", "energy_growth_wh" -> new MlDatasetNormalizedMetric(metric, "energy_growth", "Wh");
+            case "temperature", "temperatureC", "temperature_c" -> new MlDatasetNormalizedMetric(metric, "temperature", "C");
+            case "vibration", "vibrationMmS", "vibration_mm_s" -> new MlDatasetNormalizedMetric(metric, "vibration", "mm/s");
+            case "runtime", "runtimeHours", "runtime_hours" -> new MlDatasetNormalizedMetric(metric, "runtime", "h");
+            case "powerFactor", "power_factor" -> new MlDatasetNormalizedMetric(metric, "power_factor", "ratio");
+            case "frequency", "frequencyHz", "frequency_hz" -> new MlDatasetNormalizedMetric(metric, "frequency", "Hz");
             default -> new MlDatasetNormalizedMetric(metric, toSnakeCase(metric), null);
         };
     }

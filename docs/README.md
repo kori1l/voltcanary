@@ -17,6 +17,8 @@ topic, then follow the folder-level index for the specific contract or runbook.
 | Integration notes | [current/integrations](current/integrations/README.md) | Protocol or external integration notes |
 | Simulator docs | [current/simulation](current/simulation/README.md) | Simulator service, frontend flow, YAML schema |
 | Interview/demo context | [target/talking-points.md](target/talking-points.md) | Non-contract explanatory talking points |
+| Load-test preflight | [current/operations/load-testing.md](current/operations/load-testing.md) | Current executable profile validation, arithmetic and sanitized evidence |
+| Load testing and capacity evidence | [target/load-testing.md](target/load-testing.md) | Planned generators, execution procedure, evidence gates and tooling gaps |
 
 ## Current Vs Target
 

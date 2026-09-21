@@ -109,7 +109,7 @@ class IngestionReadingsTest {
                         "deviceId", deviceId,
                         "sourceId", sourceId,
                         "timestamp", recentTimestamp(33).toString(),
-                        "metrics", Map.of("temperatureC", 24.5)),
+                        "metrics", Map.of("unsupportedMetric", 24.5)),
                 String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);

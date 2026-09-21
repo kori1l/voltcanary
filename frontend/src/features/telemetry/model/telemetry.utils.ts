@@ -55,6 +55,10 @@ export function inferMetricUnit(key: string) {
   if (normalized.endsWith("a") || normalized.includes("current")) return "A";
   if (normalized.includes("energy") || normalized.endsWith("wh")) return "Wh";
   if (normalized.includes("rssi") || normalized.includes("signal")) return "dBm";
+  if (normalized.includes("vibration")) return "mm/s";
+  if (normalized.includes("runtime") || normalized.endsWith("hours")) return "h";
+  if (normalized.includes("factor")) return "ratio";
+  if (normalized.includes("frequency") || normalized.endsWith("hz")) return "Hz";
   if (normalized.includes("percent") || normalized.endsWith("pct")) return "%";
   if (normalized.includes("temperature") || normalized.endsWith("c")) return "C";
   return "";
@@ -62,7 +66,7 @@ export function inferMetricUnit(key: string) {
 
 function inferMetricKind(key: string): MetricDefinition["kind"] {
   const normalized = key.toLowerCase();
-  if (normalized.includes("energy") || normalized.endsWith("wh")) return "accumulator";
+  if (normalized.includes("energy") || normalized.endsWith("wh") || normalized.includes("runtime")) return "accumulator";
   if (normalized.includes("rssi") || normalized.includes("signal")) return "signal";
   if (normalized.includes("count") || normalized.includes("total")) return "counter";
   return "gauge";

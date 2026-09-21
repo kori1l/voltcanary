@@ -50,6 +50,37 @@ Prometheus is installed through `kube-prometheus-stack`. It collects cluster
 metrics, Kubernetes object metrics, node metrics, and metrics from the
 monitoring stack.
 
+For the local Docker Compose stack, `docker-compose.yml` starts Prometheus,
+Grafana, Loki, Promtail and the following Prometheus scrape targets when the
+`observability` profile is enabled:
+
+| Job | Target | Purpose |
+| --- | --- | --- |
+| `voltcanary-apps` | Java service `/actuator/prometheus` endpoints | application counters, gauges, summaries and histogram buckets |
+| `redpanda` | `redpanda:9644/public_metrics` | Kafka broker and consumer-group observations |
+| `postgres` | `postgres-exporter:9187` | service PostgreSQL resource observations |
+| `timescaledb` | `timescaledb-exporter:9187` | telemetry database resource observations |
+| `cadvisor` | `cadvisor:8080` | container CPU, memory and filesystem observations |
+
+Capacity evidence runs also write `observability-inventory.json` through
+`scripts/load-tests/run.ps1 -RunnerPhase prepare`. That inventory records the
+current ingestion/telemetry meters, histogram bucket configuration, scrape jobs
+and the PromQL queries used by the load-test report. Confirm the exact Redpanda
+consumer-lag series names from a live scrape before treating lag queries as
+claim evidence.
+
+Useful capacity PromQL patterns:
+
+```promql
+histogram_quantile(0.95, sum(rate(voltcanary_ingestion_processing_seconds_bucket[5m])) by (le))
+histogram_quantile(0.95, sum(rate(voltcanary_telemetry_processing_seconds_bucket[5m])) by (le))
+sum(telemetry_outbox_depth) by (status)
+sum by (group, topic) (redpanda_kafka_consumer_group_latest_offset - redpanda_kafka_consumer_group_committed_offset)
+pg_stat_database_numbackends
+sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (container_label_com_docker_compose_service)
+container_memory_working_set_bytes{name!=""}
+```
+
 ## Logs
 
 Application logs are written to stdout/stderr by the containers. Promtail
