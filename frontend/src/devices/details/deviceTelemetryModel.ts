@@ -16,7 +16,6 @@ export type DashboardChartPreferences = {
   expandedChartMetricKey: string | null;
 };
 
-const MIN_CUSTOM_CHART_RANGE_MS = 60 * 1000;
 
 export const CHART_METRICS: ChartMetricConfig[] = [
   { key: "activePowerW", label: "Active power", unit: "W" },
@@ -116,8 +115,7 @@ export function getChartTimeWindow(range: ChartTimeRange, customFrom: string, cu
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate >= toDate) {
       return null;
     }
-    const normalized = ensureMinimumChartRange(fromDate, toDate);
-    return { from: normalized.from.toISOString(), to: normalized.to.toISOString() };
+    return { from: fromDate.toISOString(), to: toDate.toISOString() };
   }
 
   const preset = CHART_TIME_RANGES.find((item) => item.value === range);
@@ -140,16 +138,4 @@ function isChartDensity(value: unknown): value is ChartDensity {
 
 function isChartTimeRange(value: unknown): value is ChartTimeRange {
   return value === "15m" || value === "1h" || value === "6h" || value === "24h" || value === "7d" || value === "custom";
-}
-
-function ensureMinimumChartRange(from: Date, to: Date) {
-  const spanMs = to.getTime() - from.getTime();
-  if (spanMs >= MIN_CUSTOM_CHART_RANGE_MS) {
-    return { from, to };
-  }
-  const midpoint = from.getTime() + spanMs / 2;
-  return {
-    from: new Date(midpoint - MIN_CUSTOM_CHART_RANGE_MS / 2),
-    to: new Date(midpoint + MIN_CUSTOM_CHART_RANGE_MS / 2),
-  };
 }

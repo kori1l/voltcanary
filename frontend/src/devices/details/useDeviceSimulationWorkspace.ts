@@ -4,6 +4,9 @@ import {
   getSimulationConfig,
   getSimulationRuns,
   getSimulationStatus,
+  getSimulationTemplate,
+  listSimulationPresets,
+  SimulationPreset,
   resetSimulationTemplate,
   saveSimulationConfig,
   SimulationConfig,
@@ -14,6 +17,7 @@ import {
 } from "../../simulation/simulationApi";
 import { DeviceDetailsTab } from "./DeviceTabs";
 import { readSimulationSettings, SimulationSettings, updateSimulationYaml } from "./simulationYaml";
+import { useActionConfirmation } from "../../components/useActionConfirmation";
 
 export function useDeviceSimulationWorkspace({
   deviceId,
@@ -33,6 +37,11 @@ export function useDeviceSimulationWorkspace({
   const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
   const [simulationValidation, setSimulationValidation] = useState<{ valid: boolean; message: string }>({ valid: true, message: "YAML is valid" });
   const [isSimulationBusy, setIsSimulationBusy] = useState(false);
+  const [simulationPresets, setSimulationPresets] = useState<SimulationPreset[]>([]);
+  const [simulationPreset, setSimulationPreset] = useState("NORMAL_OPERATION");
+  const confirmation = useActionConfirmation();
+  const hasUnsavedSimulation = Boolean(simulationConfig && (simulationYaml !== simulationConfig.yamlConfig || simulationProfile !== simulationConfig.profile || simulationProtocol !== simulationConfig.protocol));
+  useEffect(() => { let live = true; listSimulationPresets().then((presets) => { if (live) setSimulationPresets(presets); }).catch(() => undefined); return () => { live = false; }; }, []);
 
   const simulationSettings = useMemo(() => readSimulationSettings(simulationYaml), [simulationYaml]);
   const simulationSourceId = simulationSettings.sourceId || readDeviceSourcePreference(deviceId) || "plug-001";
@@ -44,8 +53,8 @@ export function useDeviceSimulationWorkspace({
     try {
       const [configResponse, statusResponse, runsResponse] = await Promise.all([
         getSimulationConfig(currentDeviceId),
-        getSimulationStatus(currentDeviceId).catch(() => null),
-        getSimulationRuns(currentDeviceId).catch(() => []),
+        getSimulationStatus(currentDeviceId),
+        getSimulationRuns(currentDeviceId),
       ]);
       setSimulationConfig(configResponse);
       setSimulationYaml(configResponse.yamlConfig);
@@ -53,13 +62,8 @@ export function useDeviceSimulationWorkspace({
       setSimulationProtocol(configResponse.protocol);
       setSimulationStatus(statusResponse);
       setSimulationRuns(runsResponse);
-    } catch {
-      setSimulationConfig(null);
-      setSimulationYaml("");
-      setSimulationStatus(null);
-      setSimulationRuns([]);
-      setSimulationProfile("FRIDGE");
-      setSimulationProtocol("HTTP");
+    } catch (error) {
+      setSimulationMessage(error instanceof Error ? error.message : "Simulator unavailable. Retained configuration may be stale.");
     }
   }
 
@@ -69,14 +73,13 @@ export function useDeviceSimulationWorkspace({
     }
     try {
       const [statusResponse, runsResponse] = await Promise.all([
-        getSimulationStatus(currentDeviceId).catch(() => null),
-        getSimulationRuns(currentDeviceId).catch(() => []),
+        getSimulationStatus(currentDeviceId),
+        getSimulationRuns(currentDeviceId),
       ]);
       setSimulationStatus(statusResponse);
       setSimulationRuns(runsResponse);
     } catch {
-      setSimulationStatus(null);
-      setSimulationRuns([]);
+      setSimulationMessage("Runtime refresh failed. Retained status and runs may be stale.");
     }
   }
 
@@ -178,6 +181,7 @@ export function useDeviceSimulationWorkspace({
 
   async function toggleSimulation() {
     if (!deviceId || !simulationConfig) return;
+    if (simulationStatus?.status !== "RUNNING" && await confirmation.confirm({ title: "Start simulator", object: simulationConfig.name, impact: `${hasUnsavedSimulation ? "Saves the current draft, then starts" : "Starts"} telemetry generation. HTTP start rotates the source credential; external senders sharing this source must be updated.` }) === null) return;
     setIsSimulationBusy(true);
     setSimulationMessage(null);
     try {
@@ -197,7 +201,8 @@ export function useDeviceSimulationWorkspace({
   }
 
   async function resetYamlTemplate() {
-    if (!deviceId || !simulationConfig) return;
+    if (!deviceId || !simulationConfig || isSimulationBusy) return;
+    if (hasUnsavedSimulation && await confirmation.confirm({ title: "Replace simulator draft", object: simulationConfig.name, impact: "Replace unsaved YAML with the server template. Review and save the new draft before starting." }) === null) return;
     setIsSimulationBusy(true);
     setSimulationMessage(null);
     try {
@@ -207,6 +212,15 @@ export function useDeviceSimulationWorkspace({
     } finally {
       setIsSimulationBusy(false);
     }
+  }
+
+  async function applyPreset() {
+    if (!deviceId || !simulationConfig) return;
+    if (hasUnsavedSimulation && await confirmation.confirm({ title: "Replace simulator draft", object: simulationConfig.name, impact: "Replaces unsaved YAML with the selected preset. Saved configuration and current run are unchanged until you save or start." }) === null) return;
+    setIsSimulationBusy(true);
+    try { const template = await getSimulationTemplate(simulationProfile, simulationSourceId, simulationPreset); setSimulationYaml(template.yamlConfig); setSimulationMessage("Preset loaded as a draft. Validate and save before using it."); }
+    catch (error) { setSimulationMessage(error instanceof Error ? error.message : "Preset unavailable"); }
+    finally { setIsSimulationBusy(false); }
   }
 
   async function saveCurrentSimulationConfig(rotateToken: boolean) {
@@ -255,6 +269,12 @@ export function useDeviceSimulationWorkspace({
   }
 
   return {
+    hasUnsavedSimulation,
+    simulationPresets,
+    simulationPreset,
+    setSimulationPreset,
+    applyPreset,
+    confirmationDialog: confirmation.dialog,
     simulationConfig,
     setSimulationConfig,
     simulationStatus,

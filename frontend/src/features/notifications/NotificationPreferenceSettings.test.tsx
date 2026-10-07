@@ -1,0 +1,20 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, it, vi } from "vitest";
+import { NotificationPreferenceSettings } from "./NotificationPreferenceSettings";
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+it("validates quiet hours before saving and preserves unavailable channel choices", async () => {
+  const requests: RequestInit[] = [];
+  const preference = { accountId: "account", enabled: true, severities: ["CRITICAL"], channelTypes: ["SMS"], quietHoursStart: "22:00", quietHoursEnd: "07:00", timezone: "Europe/Belgrade", criticalBypassQuietHours: true };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => { if (init?.method === "PUT") { requests.push(init); return new Response(init.body as string, { status: 200 }); } return new Response(JSON.stringify(String(input).endsWith("notification-channels") ? [] : preference), { status: 200 }); });
+  render(<NotificationPreferenceSettings />);
+  await screen.findByDisplayValue("Europe/Belgrade");
+  fireEvent.change(screen.getByLabelText("Quiet hours end"), { target: { value: "" } });
+  await userEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+  expect(await screen.findByText("Set both quiet-hours times, or clear both.")).toBeInTheDocument();
+  expect(requests).toHaveLength(0);
+  fireEvent.change(screen.getByLabelText("Quiet hours end"), { target: { value: "07:00" } });
+  await userEvent.click(screen.getByRole("button", { name: "Save preferences" }));
+  await screen.findByText("Notification preferences saved");
+  expect(JSON.parse(requests[0].body as string)).toMatchObject({ channelTypes: ["SMS"], quietHoursStart: "22:00", quietHoursEnd: "07:00", timezone: "Europe/Belgrade", criticalBypassQuietHours: true });
+});

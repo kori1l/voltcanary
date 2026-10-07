@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Dialog } from "../../../components/Dialog";
 import { MetricDetailResponse, TelemetryEvent, TelemetryOverviewResponse } from "../model/telemetry.types";
 import { formatShortDateTime } from "../model/telemetry.utils";
 import { CorrelationPanel } from "./CorrelationPanel";
@@ -34,16 +35,15 @@ export function MetricDetailPanel({
 }) {
   const [isBrushZoomEnabled, setIsBrushZoomEnabled] = useState(true);
   const lastSample = detail.series[detail.series.length - 1];
+  const localTime = (value: string) => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19); };
+  const [exactFrom, setExactFrom] = useState(localTime(range.from));
+  const [exactTo, setExactTo] = useState(localTime(range.to));
+  useEffect(() => { setExactFrom(localTime(range.from)); setExactTo(localTime(range.to)); }, [range.from, range.to]);
+  const validRange = Number.isFinite(Date.parse(exactFrom)) && Number.isFinite(Date.parse(exactTo)) && Date.parse(exactFrom) < Date.parse(exactTo);
 
   return (
-    <div className="metric-detail-overlay" role="presentation" onMouseDown={onClose}>
-      <section
-        className="metric-detail-surface metric-detail-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="metric-detail-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+    <Dialog title={detail.metric.name} onClose={onClose} wide>
+      <section className="console-metric-detail">
         <div className="section-header">
           <div>
             <div className="telemetry-monitor-title">
@@ -56,9 +56,6 @@ export function MetricDetailPanel({
               {lastSample ? ` to ${formatShortDateTime(lastSample.timestamp)}` : ""}
             </p>
           </div>
-          <button className="ghost-button icon-button-text" type="button" onClick={onClose}>
-            Close
-          </button>
         </div>
 
         <div className="metric-detail-toolbar" aria-label="Analysis tools">
@@ -87,6 +84,11 @@ export function MetricDetailPanel({
           onRangeSelect={onRangeSelect}
           mode="detailed"
         />
+        <form className="form-grid-two" onSubmit={(event) => { event.preventDefault(); if (validRange) onRangeSelect(new Date(exactFrom).toISOString(), new Date(exactTo).toISOString()); }}>
+          <label>Analyze from<input type="datetime-local" step="1" value={exactFrom} onChange={(event) => setExactFrom(event.target.value)} /></label><label>Analyze to<input type="datetime-local" step="1" value={exactTo} onChange={(event) => setExactTo(event.target.value)} /></label>
+          <small>Exact interval in {Intl.DateTimeFormat().resolvedOptions().timeZone}. Keyboard alternative to brush selection.</small><button className="ghost-button" disabled={!validRange}>Apply analysis interval</button>
+        </form>
+        <p className="muted-text">Measurements are recorded samples. Thresholds and related-signal explanations are inferred evidence; recommended checks are not a confirmed diagnosis.</p>
 
         <MetricStatsBar metric={detail.metric} statistics={detail.statistics} />
 
@@ -102,6 +104,6 @@ export function MetricDetailPanel({
 
         <EventTimeline events={detail.events} selectedEventId={selectedEventId} onSelectEvent={onSelectEvent} />
       </section>
-    </div>
+    </Dialog>
   );
 }

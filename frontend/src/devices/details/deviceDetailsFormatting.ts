@@ -53,7 +53,9 @@ export function parseJsonObject(value: string) {
   if (!trimmed || trimmed === "{}") {
     return null;
   }
-  return JSON.parse(trimmed) as Record<string, unknown>;
+  const parsed: unknown = JSON.parse(trimmed);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON configuration must be an object.");
+  return parsed as Record<string, unknown>;
 }
 
 export function downloadText(text: string, filename: string, type: string) {

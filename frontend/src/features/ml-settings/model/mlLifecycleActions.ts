@@ -1,12 +1,8 @@
 import { MlLifecycleImpact } from "../../../analytics/mlModuleApi";
+import type { ConfirmationRequest } from "../../../components/useActionConfirmation";
 
-export function requestLifecycleReason(action: string, label: string, impact?: MlLifecycleImpact) {
-  const summary = impact ? `\n\nImpact: ${impact.message}${formatImpactDependencies(impact)}` : "";
-  if (!window.confirm(`${humanizeKey(action)} ${label}?${summary}`)) {
-    return null;
-  }
-  const reason = window.prompt(`Reason for ${action} ${label}`);
-  return reason?.trim() || null;
+export function requestLifecycleReason(confirm: (request: ConfirmationRequest) => Promise<string | null>, action: string, label: string, impact?: MlLifecycleImpact) {
+  return confirm({ title: `${humanizeKey(action)} ${label}`, object: label, impact: impact?.message ?? `This will ${action} the selected lifecycle record.`, dependencies: impact ? formatImpactDependencies(impact) : undefined, reasonRequired: true });
 }
 
 export function formatImpactDependencies(impact: MlLifecycleImpact) {

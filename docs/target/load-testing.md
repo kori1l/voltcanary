@@ -5,9 +5,12 @@
 Текущий выбор пользователя: один час измерения на личном компьютере и расчёт
 суточного объёма по измеренной скорости. Суточный endurance и полная предзагрузка
 864 млн значений остаются дополнительными испытаниями, не обязательными локально.
-Готовность реализации проверена в [review](../../openspec/changes/add-capacity-verification-harness/review.md):
+Готовность реализации проверена в [review](../../openspec/changes/archive/2026-10-05-add-capacity-verification-harness/review.md):
 до устранения блокеров команды генерации не дают достоверного результата.
-Доработки определены в [OpenSpec change](../../openspec/changes/add-capacity-verification-harness/proposal.md).
+Доработки сохранены в [архивном OpenSpec change](../../openspec/changes/archive/2026-10-05-add-capacity-verification-harness/proposal.md).
+Change архивирован 5 октября 2026 года по запросу пользователя с четырьмя
+открытыми задачами и без обновления основных specs. Архивирование не означает
+успешного завершения испытаний; продолжение требует нового change.
 
 ## Что подтверждаем
 
@@ -216,21 +219,25 @@ Kafka и рестарт БД. Записать момент отказа, вос
 Предпочтителен отдельный disposable dataset. Не удалять все volumes или
 чужие источники. Историю и конфигурацию стенда сохранять до анализа результата.
 
-## Результат и будущие команды
+## Результат и команды
 
-Предлагаемый интерфейс, **ещё не реализован**:
+Интерфейс реализован. Без `-Execute` runner создаёт только план и evidence;
+с `-Execute` он запускает генератор, visibility sampling и автоматическую
+сверку локальной TimescaleDB:
 
 ```powershell
 # Эти файлы появятся после реализации OpenSpec change.
 powershell -File scripts/load-tests/run.ps1 -Profile current-5 -Phase preflight
-powershell -File scripts/load-tests/run.ps1 -Profile current-5 -Phase smoke
-powershell -File scripts/load-tests/run.ps1 -Profile resume-10 -Phase daily
+powershell -File scripts/load-tests/run.ps1 -Profile current-5 -Phase smoke -Execute -K6Mode docker
+powershell -File scripts/load-tests/run.ps1 -Profile resume-10 -Phase hourly -Execute -K6Mode docker
 powershell -File scripts/load-tests/analyze.ps1 -RunDirectory artifacts/load-tests/<run-id>
 ```
 
-Runner должен поддерживать prepare/run/reconcile/report/cleanup как отдельные
-возобновляемые операции; cleanup не выполняется автоматически после сбоя.
-Названия профилей и фаз фиксируются при реализации, валидируются до записи данных.
+Runner поддерживает prepare/generate/reconcile/report/cleanup как отдельные
+операции; cleanup не выполняется автоматически после сбоя. Для REST локальный
+execute по умолчанию ждёт bounded drain, выгружает committed measurements из
+TimescaleDB и выполняет оконную сверку. `-SkipAutoReconcile` оставлен только для
+диагностики или внешнего хранилища.
 
 В `artifacts/load-tests/<run-id>/` сохранять sanitized `manifest.json`,
 `summary.json`, результаты генератора, timeline, snapshots метрик, reconciliation

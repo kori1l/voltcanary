@@ -23,6 +23,7 @@ export function DeviceTabs({ activeTab, onChange }: DeviceTabsProps) {
           key={tab.value}
           className={activeTab === tab.value ? "tab-button tab-button-active" : "tab-button"}
           type="button"
+          aria-pressed={activeTab === tab.value}
           onClick={() => onChange(tab.value)}
         >
           {tab.label}

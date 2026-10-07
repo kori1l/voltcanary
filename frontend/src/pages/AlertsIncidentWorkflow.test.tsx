@@ -104,7 +104,7 @@ describe("ML alert incident UI workflows", () => {
         currentAlert = { ...currentAlert, status: "RESOLVED", resolutionReason: "Resolved after inspection." };
         return json({ status: "RESOLVED", alertId: "alert-ml-1" });
       }
-      if (url.endsWith("/alerts?limit=100") || url.endsWith("/alerts")) return json([currentAlert]);
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts")) return json([currentAlert]);
       if (url.endsWith("/alerts/summary?limit=100")) {
         return json({
           total: 1,
@@ -122,14 +122,16 @@ describe("ML alert incident UI workflows", () => {
     expect(await screen.findAllByText("Power spike detected")).not.toHaveLength(0);
     expect(screen.getAllByText("ML alert washer")).not.toHaveLength(0);
     await userEvent.click(screen.getByRole("button", { name: "Details" }));
-    expect(await screen.findByText("12345678")).toBeInTheDocument();
-    expect(screen.getByText("abcdef1234")).toBeInTheDocument();
+    expect(await screen.findByText(mlAlert.sourceEventId)).toBeInTheDocument();
+    expect(screen.getByText(mlAlert.calculationInputHash)).toBeInTheDocument();
     expect(screen.getByText("Http")).toBeInTheDocument();
     expect(screen.getByText("Pending")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Ack" }));
     await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true));
     await userEvent.click(await screen.findByRole("button", { name: "Resolve" }));
+    await userEvent.type(await screen.findByLabelText(/Reason/), "Resolved after inspection.");
+    await userEvent.click(screen.getByRole("button", { name: "Resolve alert" }));
     await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(true));
   });
 
@@ -147,7 +149,7 @@ describe("ML alert incident UI workflows", () => {
         currentAlert = { ...currentAlert, status: "RESOLVED", resolutionReason: "Resolved from device tab." };
         return json({ status: "RESOLVED", alertId: "alert-ml-1" });
       }
-      if (url.endsWith("/alerts?limit=100") || url.endsWith("/alerts")) return json([currentAlert]);
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts")) return json([currentAlert]);
       return defaultJson(url);
     });
 
@@ -168,6 +170,8 @@ describe("ML alert incident UI workflows", () => {
     await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
     await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true));
     await userEvent.click(await screen.findByRole("button", { name: "Resolve" }));
+    await userEvent.type(await screen.findByLabelText(/Reason/), "Resolved from device tab.");
+    await userEvent.click(screen.getByRole("button", { name: "Resolve alert" }));
     await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(true));
   });
 

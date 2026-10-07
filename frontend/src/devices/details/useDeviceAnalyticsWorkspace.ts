@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AnomalyResponse,
   AnalyticsJobResponse,
@@ -15,33 +15,35 @@ import {
   RiskResponse,
 } from "../../analytics/analyticsApi";
 import { delay } from "./deviceDetailsFormatting";
+import { useSectionResource } from "../../components/useSectionResource";
 
 export function useDeviceAnalyticsWorkspace(deviceId: string | undefined) {
-  const [baseline, setBaseline] = useState<BaselineResponse | null>(null);
-  const [risk, setRisk] = useState<RiskResponse | null>(null);
-  const [anomalies, setAnomalies] = useState<AnomalyResponse[]>([]);
-  const [recommendations, setRecommendations] = useState<RecommendationResponse[]>([]);
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const baselineSection = useSectionResource<BaselineResponse>(deviceId);
+  const riskSection = useSectionResource<RiskResponse>(deviceId);
+  const anomaliesSection = useSectionResource<AnomalyResponse[]>(deviceId);
+  const recommendationsSection = useSectionResource<RecommendationResponse[]>(deviceId);
+  const predictionSection = useSectionResource<PredictionResponse>(deviceId);
+  const baseline = baselineSection.data;
+  const risk = riskSection.data;
+  const anomalies = anomaliesSection.data ?? [];
+  const recommendations = recommendationsSection.data ?? [];
+  const prediction = predictionSection.data;
   const [analyticsJob, setAnalyticsJob] = useState<AnalyticsJobResponse | null>(null);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recalculationPending = useRef(false);
 
   async function loadAnalytics(currentDeviceId = deviceId) {
     if (!currentDeviceId) {
       return null;
     }
-    const [baselineResponse, riskResponse, anomaliesResponse, recommendationsResponse, predictionResponse] = await Promise.all([
-      getDeviceBaseline(currentDeviceId).catch(() => null),
-      getDeviceRisk(currentDeviceId).catch(() => null),
-      getDeviceAnomalies(currentDeviceId).catch(() => []),
-      getDeviceRecommendations(currentDeviceId).catch(() => []),
-      getLatestPrediction(currentDeviceId).catch(() => null),
+    const [, riskResponse] = await Promise.all([
+      baselineSection.load(() => getDeviceBaseline(currentDeviceId)),
+      riskSection.load(() => getDeviceRisk(currentDeviceId)),
+      anomaliesSection.load(() => getDeviceAnomalies(currentDeviceId), (data) => !data.length),
+      recommendationsSection.load(() => getDeviceRecommendations(currentDeviceId), (data) => !data.length),
+      predictionSection.load(() => getLatestPrediction(currentDeviceId)),
     ]);
-    setBaseline(baselineResponse);
-    setRisk(riskResponse);
-    setAnomalies(anomaliesResponse);
-    setRecommendations(recommendationsResponse);
-    setPrediction(predictionResponse);
     return riskResponse;
   }
 
@@ -53,7 +55,9 @@ export function useDeviceAnalyticsWorkspace(deviceId: string | undefined) {
     if (!response.jobId) {
       return null;
     }
-    let job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => null);
+    let job: AnalyticsJobResponse = { id: response.jobId, deviceId: currentDeviceId, jobType: "RECALCULATE", status: "PENDING", createdAt: new Date().toISOString(), startedAt: null, completedAt: null, errorMessage: null };
+    setAnalyticsJob(job);
+    job = await getAnalyticsJob(currentDeviceId, response.jobId).catch(() => job);
     if (job) {
       setAnalyticsJob(job);
     }
@@ -71,10 +75,11 @@ export function useDeviceAnalyticsWorkspace(deviceId: string | undefined) {
   }
 
   async function recalculateDeviceAnalytics() {
-    if (!deviceId) {
+    if (!deviceId || recalculationPending.current || (analyticsJob && ["PENDING", "RUNNING"].includes(analyticsJob.status))) {
       return;
     }
     setIsRecalculating(true);
+    recalculationPending.current = true;
     setError(null);
     try {
       await enqueueAndWaitForAnalyticsJob(deviceId);
@@ -83,10 +88,18 @@ export function useDeviceAnalyticsWorkspace(deviceId: string | undefined) {
       setError(requestError instanceof Error ? requestError.message : "Failed to recalculate risk");
     } finally {
       setIsRecalculating(false);
+      recalculationPending.current = false;
     }
   }
 
+  async function refreshAnalyticsJob() {
+    if (!deviceId || !analyticsJob) return;
+    try { setAnalyticsJob(await getAnalyticsJob(deviceId, analyticsJob.id)); setError(null); }
+    catch (error) { setError(error instanceof Error ? error.message : "Job status unavailable; retaining last known state."); }
+  }
+
   return {
+    sections: [ { label: "baseline", resource: baselineSection }, { label: "risk", resource: riskSection }, { label: "anomalies", resource: anomaliesSection }, { label: "recommendations", resource: recommendationsSection }, { label: "prediction", resource: predictionSection } ],
     baseline,
     risk,
     anomalies,
@@ -99,5 +112,6 @@ export function useDeviceAnalyticsWorkspace(deviceId: string | undefined) {
     loadAnalytics,
     enqueueAndWaitForAnalyticsJob,
     recalculateDeviceAnalytics,
+    refreshAnalyticsJob,
   };
 }

@@ -7,6 +7,7 @@ import {
   MaintenanceWindow,
 } from "../devicesApi";
 import { toDateTimeLocalValue } from "./deviceDetailsFormatting";
+import { useActionConfirmation } from "../../components/useActionConfirmation";
 
 export function useDeviceMaintenanceActions(deviceId: string | undefined) {
   const [maintenanceWindows, setMaintenanceWindows] = useState<MaintenanceWindow[]>([]);
@@ -19,6 +20,7 @@ export function useDeviceMaintenanceActions(deviceId: string | undefined) {
   const [maintenanceExcludeMl, setMaintenanceExcludeMl] = useState(true);
   const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
   const [isMaintenanceBusy, setIsMaintenanceBusy] = useState(false);
+  const confirmation = useActionConfirmation();
 
   const sortedMaintenanceWindows = [...maintenanceWindows].sort((left, right) => new Date(right.startAt).getTime() - new Date(left.startAt).getTime());
   const activeMaintenanceWindows = maintenanceWindows.filter((window) => window.status === "ACTIVE");
@@ -27,11 +29,12 @@ export function useDeviceMaintenanceActions(deviceId: string | undefined) {
 
   async function refreshMaintenanceWindows(currentDeviceId = deviceId) {
     if (!currentDeviceId) return;
-    setMaintenanceWindows(await listMaintenanceWindows(currentDeviceId).catch(() => []));
+    try { setMaintenanceWindows(await listMaintenanceWindows(currentDeviceId)); }
+    catch (error) { setMaintenanceMessage(error instanceof Error ? error.message : "Maintenance unavailable. Retained windows may be stale."); }
   }
 
   async function submitMaintenanceWindow() {
-    if (!deviceId) return;
+    if (!deviceId || isMaintenanceBusy) return;
     setIsMaintenanceBusy(true);
     setMaintenanceMessage(null);
     try {
@@ -65,10 +68,12 @@ export function useDeviceMaintenanceActions(deviceId: string | undefined) {
 
   async function cancelWindow(windowId: string) {
     if (!deviceId) return;
+    const reason = await confirmation.confirm({ title: "Cancel maintenance window", object: maintenanceWindows.find((window) => window.id === windowId)?.title ?? windowId, impact: "Ends the window's selected alert, analytics and ML exclusions. Records the cancellation reason.", reasonRequired: true });
+    if (reason === null) return;
     setIsMaintenanceBusy(true);
     setMaintenanceMessage(null);
     try {
-      await cancelMaintenanceWindow(deviceId, windowId, "Cancelled from device maintenance panel.");
+      await cancelMaintenanceWindow(deviceId, windowId, reason);
       await refreshMaintenanceWindows(deviceId);
     } catch (requestError) {
       setMaintenanceMessage(requestError instanceof Error ? requestError.message : "Failed to cancel maintenance window");
@@ -92,6 +97,7 @@ export function useDeviceMaintenanceActions(deviceId: string | undefined) {
   }
 
   return {
+    confirmationDialog: confirmation.dialog,
     maintenanceWindows,
     setMaintenanceWindows,
     maintenanceTitle,

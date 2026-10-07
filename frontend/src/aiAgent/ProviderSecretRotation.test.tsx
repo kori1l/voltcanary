@@ -1,0 +1,21 @@
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, it, vi } from "vitest";
+import { ProviderSecretRotation } from "./ProviderSecretRotation";
+import { ModelProvider } from "./aiAgentApi";
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+const provider: ModelProvider = { id: "provider-id", name: "Operations provider", providerType: "OPENAI", status: "ACTIVE", isDefault: false, baseUrl: null, authType: "API_KEY", maskedSecretHint: "old-secret-hint", lastTestStatus: null, lastTestMessage: null, lastTestAt: null, models: [], createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z" };
+it("never shows the saved credential hint; canceled rotation makes no request and success clears the draft", async () => {
+  const fetch = vi.spyOn(globalThis,"fetch").mockResolvedValue(new Response(JSON.stringify(provider), { status: 200 }));
+  render(<ProviderSecretRotation provider={provider} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  expect(screen.queryByText(/old-secret-hint/)).not.toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Replacement API key"), "synthetic-test-value");
+  await userEvent.click(screen.getByRole("button", { name: "Review credential rotation" }));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+  expect(fetch).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Review credential rotation" }));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Rotate provider credential" }));
+  await screen.findByRole("status");
+  expect(screen.getByLabelText("Replacement API key")).toHaveValue("");
+  expect(fetch).toHaveBeenCalledOnce();
+});

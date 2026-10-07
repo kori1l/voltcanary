@@ -3,6 +3,8 @@ import {
   getNotificationPreference,
   NotificationPreferenceResponse,
   updateNotificationPreference,
+  listNotificationChannels,
+  NotificationChannelResponse,
 } from "../../alerts/alertsApi";
 
 const severityOptions = ["WARNING", "HIGH", "CRITICAL"];
@@ -20,9 +22,12 @@ export function NotificationPreferenceSettings() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [channels, setChannels] = useState<NotificationChannelResponse[] | null>(null);
+  const timezoneOptions = [...new Set([timezone, "UTC", Intl.DateTimeFormat().resolvedOptions().timeZone, "Europe/Belgrade", "Europe/London", "America/New_York", "Asia/Tokyo"])];
 
   useEffect(() => {
     void loadPreference();
+    listNotificationChannels().then(setChannels).catch(() => setChannels(null));
   }, []);
 
   async function loadPreference() {
@@ -48,6 +53,9 @@ export function NotificationPreferenceSettings() {
 
   async function savePreference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isBusy || !preference) return;
+    if (Boolean(quietHoursStart) !== Boolean(quietHoursEnd)) { setError("Set both quiet-hours times, or clear both."); return; }
+    try { new Intl.DateTimeFormat(undefined, { timeZone: timezone }); } catch { setError("Choose a valid IANA timezone."); return; }
     setIsBusy(true);
     setMessage(null);
     setError(null);
@@ -115,17 +123,17 @@ export function NotificationPreferenceSettings() {
                 onChange={(event) => toggleSelected(channelType, event.target.checked, channelTypes, setChannelTypes)}
               />
               <span>{formatEnum(channelType)}</span>
+              <small>{!["WEBHOOK", "EMAIL", "TELEGRAM"].includes(channelType) ? "No current delivery adapter" : channels === null ? "Availability unknown" : channels.some((channel) => channel.channelType === channelType && channel.enabled) ? "Enabled channel configured; check its health" : "No enabled channel configured"}</small>
             </label>
           ))}
         </fieldset>
-        <input value={quietHoursStart} onChange={(event) => setQuietHoursStart(event.target.value)} type="time" aria-label="Quiet hours start" />
-        <input value={quietHoursEnd} onChange={(event) => setQuietHoursEnd(event.target.value)} type="time" aria-label="Quiet hours end" />
-        <input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Timezone" />
+        <fieldset><legend>Quiet hours</legend><div className="form-grid-two"><label>Quiet hours start<input value={quietHoursStart} onChange={(event) => setQuietHoursStart(event.target.value)} type="time" /></label><label>Quiet hours end<input value={quietHoursEnd} onChange={(event) => setQuietHoursEnd(event.target.value)} type="time" /></label></div><label>Timezone<input list="routing-timezones" value={timezone} onChange={(event) => setTimezone(event.target.value)} required /><datalist id="routing-timezones">{timezoneOptions.map((zone) => <option key={zone} value={zone} />)}</datalist></label><p>Times follow this timezone, including overnight intervals. Leave both times blank to disable quiet hours.</p></fieldset>
         <label className="notification-attempt-row">
           <input type="checkbox" checked={criticalBypassQuietHours} onChange={(event) => setCriticalBypassQuietHours(event.target.checked)} />
           <span>Critical bypass quiet hours</span>
         </label>
-        <button className="primary-button" type="submit" disabled={isBusy}>
+        <p className="status-note">{enabled ? `Deliver ${severities.join(", ") || "no selected severities"} through ${channelTypes.join(", ") || "no selected channel types"}.` : "Personal delivery disabled."} {quietHoursStart && quietHoursEnd ? `Quiet ${quietHoursStart}–${quietHoursEnd} in ${timezone}.` : "No quiet hours."} {criticalBypassQuietHours ? "Critical alerts can bypass quiet hours." : "Quiet hours also apply to critical alerts."}</p>
+        <button className="primary-button" type="submit" disabled={isBusy || !preference}>
           Save preferences
         </button>
       </form>

@@ -1,5 +1,6 @@
 import { MetricDefinition } from "../model/telemetry.types";
 import { MetricSelector } from "./MetricSelector";
+import { TimezoneNote } from "../../../components/TimeDisplay";
 
 export type TelemetryToolbarRange = "15m" | "1h" | "6h" | "24h" | "7d" | "custom";
 
@@ -46,6 +47,7 @@ export function TelemetryToolbar({
             <button
               className={`chart-range-button${range === item ? " chart-range-button-active" : ""}`}
               type="button"
+              aria-pressed={range === item}
               key={item}
               onClick={() => onRangeChange(item)}
             >
@@ -55,13 +57,14 @@ export function TelemetryToolbar({
         </div>
         {range === "custom" ? (
           <div className="chart-custom-range">
+            <TimezoneNote />
             <label>
               <span>From</span>
-              <input type="datetime-local" value={customFrom} onChange={(event) => onCustomFromChange(event.target.value)} />
+              <input type="datetime-local" step="1" value={customFrom} onChange={(event) => onCustomFromChange(event.target.value)} />
             </label>
             <label>
               <span>To</span>
-              <input type="datetime-local" value={customTo} onChange={(event) => onCustomToChange(event.target.value)} />
+              <input type="datetime-local" step="1" value={customTo} onChange={(event) => onCustomToChange(event.target.value)} />
             </label>
           </div>
         ) : null}

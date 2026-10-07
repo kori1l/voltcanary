@@ -134,3 +134,7 @@ Record:
 - provider stub or sandbox evidence;
 - frontend route and screenshot notes when UI is touched;
 - relevant backend test command output.
+
+## Console workflow guidance
+
+See [Console interface workflows](console-interface.md) for the shared review, validation, responsive layout and evidence-state behavior. UI fixtures do not replace this guide’s live backend verification.

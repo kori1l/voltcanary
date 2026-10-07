@@ -1,4 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DeviceIcon, getDeviceTone, formatEnum, formatNumber, formatRelativeTime, locationLabel, splitTags, parseMetadata, downloadText } from "../devices/deviceInventoryPresentation";
+import { DeviceInventoryTable } from "../devices/DeviceInventoryTable";
+import { DeviceWizardBasics } from "../devices/DeviceWizardBasics";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getDeviceRisk, RiskResponse } from "../analytics/analyticsApi";
 import {
@@ -12,9 +15,13 @@ import {
   listLocations,
   Location,
 } from "../devices/devicesApi";
-import { createDemoDevice, createDeviceWithSource, defaultSourceId, DeviceSourceMode } from "../devices/createDeviceFlow";
+import { createDemoDevice, createDeviceWithSource, defaultSourceId, DeviceSourceMode, DeviceSetupProgress } from "../devices/createDeviceFlow";
 import { listSimulationPresets, SimulationPreset } from "../simulation/simulationApi";
 import { getLatestTelemetry, LatestTelemetry } from "../telemetry/telemetryApi";
+import { Dialog, DialogClose } from "../components/Dialog";
+import { EntitySelector } from "../components/EntitySelector";
+import { CsvImportPreview, inspectImportCsv } from "../devices/CsvImportPreview";
+import { TimeDisplay } from "../components/TimeDisplay";
 
 const wizardSteps = ["Basics", "Location", "Telemetry", "Review"] as const;
 const demoPresets = [
@@ -51,14 +58,21 @@ export function DevicesPage() {
   const [demoPreset, setDemoPreset] = useState("NORMAL_OPERATION");
   const [startDemoImmediately, setStartDemoImmediately] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
+  const setupProgress = useRef<DeviceSetupProgress>({});
+  const createdLocation = useRef<string | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [locationMode, setLocationMode] = useState("existing");
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCsvOpen, setIsCsvOpen] = useState(false);
+  const [inventoryView, setInventoryView] = useState("cards");
   const [csvText, setCsvText] = useState("name,type,locationId,manufacturer,model\n");
   const [csvMessage, setCsvMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasInventory, setHasInventory] = useState(false);
+  const loadSequence = useRef(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,16 +107,17 @@ export function DevicesPage() {
     wizardStep === 0
       ? Boolean(name.trim() && type)
       : wizardStep === 1
-        ? Boolean(selectedLocationId || newLocationName.trim())
+        ? Boolean(locationMode === "existing" ? selectedLocationId : newLocationName.trim())
         : wizardStep === 2
           ? Boolean(sourceMode)
           : true;
 
   async function load() {
+    const generation = ++loadSequence.current;
     setIsLoading(true);
     setError(null);
     try {
-      const [devicesResponse, locationsResponse, deviceTypesResponse, simulationPresetsResponse] = await Promise.all([
+      const [deviceResult, locationResult, typeResult, presetResult] = await Promise.allSettled([
         listDevices({
           search: search.trim() || undefined,
           locationId: locationFilter === "all" ? undefined : locationFilter,
@@ -112,38 +127,39 @@ export function DevicesPage() {
         }),
         listLocations({ limit: 200, offset: 0 }),
         listDeviceTypes(),
-        listSimulationPresets().catch(() => []),
+        listSimulationPresets(),
       ]);
-      setDevices(devicesResponse);
-      setLocations(locationsResponse);
-      setDeviceTypes(deviceTypesResponse);
-      setSimulationPresets(simulationPresetsResponse);
-      if (!selectedLocationId && locationsResponse.length > 0) {
-        setSelectedLocationId(locationsResponse[0].id);
+      if (generation !== loadSequence.current) return;
+      if (deviceResult.status === "fulfilled") {
+        setHasInventory(true);
+        setDevices(deviceResult.value);
+        void loadDeviceSignals(deviceResult.value);
       }
-      if (deviceTypesResponse.length > 0 && !deviceTypesResponse.some((item) => item.code === type)) {
-        setType(deviceTypesResponse[0].code);
+      if (locationResult.status === "fulfilled") setLocations(locationResult.value);
+      if (typeResult.status === "fulfilled") {
+        setDeviceTypes(typeResult.value);
+        if (typeResult.value.length && !typeResult.value.some((item) => item.code === type)) setType(typeResult.value[0].code);
       }
-      void loadDeviceSignals(devicesResponse);
+      if (presetResult.status === "fulfilled") setSimulationPresets(presetResult.value);
+      const failures = [deviceResult, locationResult, typeResult, presetResult].flatMap((result, index) => result.status === "rejected" ? [`${["Devices", "Locations", "Device types", "Simulation presets"][index]} unavailable: ${result.reason instanceof Error ? result.reason.message : "request failed"}`] : []);
+      if (failures.length) setError(`${failures.join("; ")}. Retained results may be stale.`);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to load devices");
     } finally {
-      setIsLoading(false);
+      if (generation === loadSequence.current) setIsLoading(false);
     }
   }
 
   async function loadDeviceSignals(devicesToLoad: Device[]) {
-    const entries = await Promise.all(
-      devicesToLoad.map(async (device) => {
-        const [latest, risk] = await Promise.all([
-          getLatestTelemetry(device.id).catch(() => null),
-          getDeviceRisk(device.id).catch(() => null),
-        ]);
-        return [device.id, latest, risk] as const;
-      }),
-    );
-    setLatestByDevice(Object.fromEntries(entries.map(([deviceId, latest]) => [deviceId, latest])));
-    setRiskByDevice(Object.fromEntries(entries.map(([deviceId, , risk]) => [deviceId, risk])));
+    const generation = loadSequence.current;
+    const entries = await Promise.all(devicesToLoad.map(async (device) => {
+      const [latest, risk] = await Promise.allSettled([getLatestTelemetry(device.id), getDeviceRisk(device.id)]);
+      return { deviceId: device.id, latest, risk };
+    }));
+    if (generation !== loadSequence.current) return;
+    setLatestByDevice((previous) => Object.fromEntries(entries.map(({ deviceId, latest }) => [deviceId, latest.status === "fulfilled" ? latest.value : previous[deviceId] ?? null])));
+    setRiskByDevice((previous) => Object.fromEntries(entries.map(({ deviceId, risk }) => [deviceId, risk.status === "fulfilled" ? risk.value : previous[deviceId] ?? null])));
+    if (entries.some(({ latest, risk }) => latest.status === "rejected" || risk.status === "rejected")) setError((current) => `${current ?? ""} Some telemetry or risk sections are unavailable; retained values may be stale.`);
   }
 
   useEffect(() => {
@@ -151,12 +167,16 @@ export function DevicesPage() {
   }, [locationFilter, search, statusFilter]);
 
   function openCreateWizard() {
-    setWizardStep(0);
-    setSourceId(defaultSourceId(sourceMode, name || "device"));
+    setWizardStep(setupProgress.current.device ? 3 : 0);
+    setSetupError(null);
+    if (!setupProgress.current.device) setSourceId(defaultSourceId(sourceMode, name || "device"));
     setIsCreateOpen(true);
   }
 
   function resetCreateForm() {
+    setupProgress.current = {};
+    createdLocation.current = null;
+    setSetupError(null);
     setName("");
     setManufacturer("");
     setModel("");
@@ -184,11 +204,13 @@ export function DevicesPage() {
       }
       return;
     }
-    setError(null);
+    if (isSubmitting) return;
+    setSetupError(null);
     setIsSubmitting(true);
     try {
       let locationId = selectedLocationId;
-      if (newLocationName.trim()) {
+      if (locationMode === "new" && createdLocation.current) locationId = createdLocation.current;
+      else if (locationMode === "new" && newLocationName.trim()) {
         const location = await createLocation({
           parentId: newLocationParentId || null,
           name: newLocationName.trim(),
@@ -200,6 +222,7 @@ export function DevicesPage() {
           tags: splitTags(newLocationTags),
         });
         locationId = location.id;
+        createdLocation.current = location.id;
         setLocations((current) => [...current, location]);
       }
       if (!locationId) {
@@ -223,11 +246,11 @@ export function DevicesPage() {
               profile: demoProfile,
               preset: demoPreset,
               startImmediately: startDemoImmediately,
-            })
+            }, setupProgress.current)
           : await createDeviceWithSource(deviceRequest, {
               mode: sourceMode,
               externalId,
-            });
+            }, setupProgress.current);
       const device = result.device;
       localStorage.setItem(`voltcanary.deviceSource.${device.id}`, externalId);
       setDevices((current) => [...current, device]);
@@ -235,13 +258,14 @@ export function DevicesPage() {
       setIsCreateOpen(false);
       navigate(sourceMode === "SIMULATOR" ? `/devices/${device.id}?tab=telemetry` : `/devices/${device.id}`);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create device");
+      setSetupError(requestError instanceof Error ? requestError.message : "Failed to create device");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function onImportDevicesCsv() {
+    if (!inspectImportCsv(csvText, ["name", "type", "locationId", "manufacturer", "model"]).valid || isSubmitting) return;
     setError(null);
     setCsvMessage(null);
     setIsSubmitting(true);
@@ -296,35 +320,40 @@ export function DevicesPage() {
         <div className="inventory-toolbar">
           <input
             className="search-input"
+            aria-label="Search devices"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search devices..."
           />
-          <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
+          <label>Location<select aria-label="Filter by location" value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
             <option value="all">All locations</option>
             {locations.map((location) => (
               <option value={location.id} key={location.id}>
                 {locationLabel(location)}
               </option>
             ))}
-          </select>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          </select></label>
+          <label>Registration status<select aria-label="Filter by registration status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="all">All statuses</option>
             {[...new Set(devices.map((device) => device.status))].map((status) => (
               <option value={status} key={status}>
                 {formatEnum(status)}
               </option>
             ))}
-          </select>
+          </select></label>
         </div>
 
         {error ? <div className="error-message">{error}</div> : null}
         {isLoading ? <div className="empty-state">Loading devices...</div> : null}
-        {!isLoading && devices.length === 0 ? (
+        <label>Inventory view<select value={inventoryView} onChange={(event) => setInventoryView(event.target.value)}><option value="table">Compact table</option><option value="cards">Cards by location</option></select></label>
+        <p className="muted-text">Showing up to 100 matching devices. Registration status is separate from telemetry freshness.</p>
+        {!isLoading && hasInventory && devices.length === 0 ? (
           <div className="empty-state">
             <strong>No devices match these filters</strong>
             <span>Clear search or add a new device.</span>
           </div>
+        ) : inventoryView === "table" ? (
+          <DeviceInventoryTable devices={devices} locationById={locationById} typeByCode={typeByCode} latestByDevice={latestByDevice} riskByDevice={riskByDevice} />
         ) : (
           <div className="room-device-board">
             {roomGroups.map((group) => (
@@ -365,18 +394,14 @@ export function DevicesPage() {
       </section>
 
       {isCreateOpen ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsCreateOpen(false)}>
-          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-device-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="section-header">
-              <div>
-                <h2 id="add-device-title">Add device</h2>
-                <p>Connect a device and its telemetry source.</p>
-              </div>
-              <button className="ghost-button icon-button-text" type="button" onClick={() => setIsCreateOpen(false)}>
-                Close
-              </button>
-            </div>
-            <form className="device-wizard form-stack" onSubmit={onSubmit}>
+        <Dialog title="Add device" onClose={() => { setIsCreateOpen(false); if (!setupProgress.current.device) resetCreateForm(); }} guardChanges busy={isSubmitting} footer={<>
+          <DialogClose />
+          {wizardStep > 0 ? <button className="ghost-button" type="button" onClick={() => setWizardStep((current) => Math.max(current - 1, 0))} disabled={isSubmitting || Boolean(setupProgress.current.device)}>Back</button> : null}
+          <button className="primary-button" type="submit" form="create-device-form" disabled={isSubmitting || !canAdvanceWizard}>{isSubmitting ? "Adding..." : setupProgress.current.device ? "Resume setup" : wizardStep === wizardSteps.length - 1 ? "Add device" : "Next"}</button>
+        </>}>
+            <form id="create-device-form" className="device-wizard form-stack" onSubmit={onSubmit}>
+              {setupError ? <div className="error-message" role="alert">{setupError}</div> : null}
+              {setupProgress.current.device ? <div className="status-note">Device {setupProgress.current.device.name} has been created. Retry continues its setup. <Link to={`/devices/${setupProgress.current.device.id}`}>Open created device</Link><details><summary>Completed steps</summary><p>Device: {setupProgress.current.device.id}</p>{setupProgress.current.dataSource ? <p>Source: {setupProgress.current.dataSource.id}</p> : null}{setupProgress.current.simulationConfig ? <p>Simulator configuration saved</p> : null}</details></div> : null}
               <div className="wizard-steps" aria-label="Add device steps">
                 {wizardSteps.map((step, index) => (
                   <button
@@ -384,7 +409,8 @@ export function DevicesPage() {
                     type="button"
                     key={step}
                     onClick={() => setWizardStep(index)}
-                    disabled={index > wizardStep && !canAdvanceWizard}
+                    aria-current={index === wizardStep ? "step" : undefined}
+                    disabled={isSubmitting || Boolean(setupProgress.current.device) || index > wizardStep}
                   >
                     <span>{index + 1}</span>
                     {step}
@@ -392,54 +418,20 @@ export function DevicesPage() {
                 ))}
               </div>
 
-              {wizardStep === 0 ? (
-                <div className="wizard-panel">
-                  <div className="form-grid-two">
-                    <label>
-                      Name
-                      <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Kitchen fridge" />
-                    </label>
-                    <label>
-                      Device type
-                      <select value={type} onChange={(event) => setType(event.target.value)}>
-                        {deviceTypes.map((deviceType) => (
-                          <option value={deviceType.code} key={deviceType.code}>
-                            {deviceType.displayName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Manufacturer
-                      <input value={manufacturer} onChange={(event) => setManufacturer(event.target.value)} placeholder="Bosch" />
-                    </label>
-                    <label>
-                      Model
-                      <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Unknown" />
-                    </label>
-                  </div>
-                </div>
-              ) : null}
+              {wizardStep === 0 ? <DeviceWizardBasics name={name} type={type} manufacturer={manufacturer} model={model} deviceTypes={deviceTypes} setName={setName} setType={setType} setManufacturer={setManufacturer} setModel={setModel} /> : null}
 
               {wizardStep === 1 ? (
                 <div className="wizard-panel">
-                  <label>
-                    Existing location
-                    <select value={selectedLocationId} onChange={(event) => setSelectedLocationId(event.target.value)}>
-                      <option value="">Create new location</option>
-                      {locations.map((location) => (
-                        <option value={location.id} key={location.id}>
-                          {locationLabel(location)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <label>Location choice<select value={locationMode} onChange={(event) => setLocationMode(event.target.value)}><option value="existing">Use existing location</option><option value="new">Create new location</option></select></label>
+                  {locationMode === "existing" ? <>
+                  <EntitySelector label="Existing location" options={locations.map((location) => ({ id: location.id, name: locationLabel(location) }))} value={selectedLocationId} onChange={setSelectedLocationId} />
+                  </> : <>
                   <label>
                     New location
                     <input value={newLocationName} onChange={(event) => setNewLocationName(event.target.value)} placeholder="Kitchen" />
                   </label>
                   {newLocationName.trim() ? (
-                    <>
+                    <details><summary>Additional location details</summary>
                       <label>
                         Parent location
                         <select value={newLocationParentId} onChange={(event) => setNewLocationParentId(event.target.value)}>
@@ -473,8 +465,9 @@ export function DevicesPage() {
                         Tags
                         <input value={newLocationTags} onChange={(event) => setNewLocationTags(event.target.value)} placeholder="critical, it" />
                       </label>
-                    </>
+                    </details>
                   ) : null}
+                  </>}
                 </div>
               ) : null}
 
@@ -549,7 +542,7 @@ export function DevicesPage() {
                     </div>
                     <div>
                       <dt>Location</dt>
-                      <dd>{newLocationName.trim() || locationById.get(selectedLocationId) || "No location selected"}</dd>
+                      <dd>{locationMode === "new" ? newLocationName.trim() : locationById.get(selectedLocationId) || "No location selected"}</dd>
                     </div>
                     <div>
                       <dt>Telemetry</dt>
@@ -563,218 +556,22 @@ export function DevicesPage() {
                 </div>
               ) : null}
 
-              <div className="action-row">
-                <button className="ghost-button" type="button" onClick={() => setIsCreateOpen(false)}>
-                  Cancel
-                </button>
-                {wizardStep > 0 ? (
-                  <button className="ghost-button" type="button" onClick={() => setWizardStep((current) => Math.max(current - 1, 0))}>
-                    Back
-                  </button>
-                ) : null}
-                <button className="primary-button" type="submit" disabled={isSubmitting || !canAdvanceWizard}>
-                  {isSubmitting ? "Adding..." : wizardStep === wizardSteps.length - 1 ? "Add device" : "Next"}
-                </button>
-              </div>
             </form>
-          </section>
-        </div>
+        </Dialog>
       ) : null}
 
       {isCsvOpen ? (
-        <div className="modal-backdrop" role="presentation" onMouseDown={() => setIsCsvOpen(false)}>
-          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="device-import-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="section-header">
-              <div>
-                <h2 id="device-import-title">Import devices</h2>
-                <p>CSV header: name,type,locationId,manufacturer,model.</p>
-              </div>
-              <button className="ghost-button icon-button-text" type="button" onClick={() => setIsCsvOpen(false)}>
-                Close
-              </button>
-            </div>
+        <Dialog title="Import devices" onClose={() => setIsCsvOpen(false)} dirty={csvText.trim() !== "name,type,locationId,manufacturer,model"} busy={isSubmitting} footer={<>
+          <DialogClose /><button className="primary-button" type="button" onClick={() => void onImportDevicesCsv()} disabled={isSubmitting || !inspectImportCsv(csvText, ["name", "type", "locationId", "manufacturer", "model"]).valid}>{isSubmitting ? "Importing..." : "Import devices"}</button>
+        </>}>
+            <p>CSV header: name,type,locationId,manufacturer,model.</p>
             <div className="form-stack">
-              <textarea className="csv-textarea" value={csvText} onChange={(event) => setCsvText(event.target.value)} />
-              {csvMessage ? <div className="success-message">{csvMessage}</div> : null}
-              <div className="action-row">
-                <button className="ghost-button" type="button" onClick={() => setIsCsvOpen(false)}>
-                  Cancel
-                </button>
-                <button className="primary-button" type="button" onClick={() => void onImportDevicesCsv()} disabled={isSubmitting}>
-                  {isSubmitting ? "Importing..." : "Import devices"}
-                </button>
-              </div>
+              <CsvImportPreview text={csvText} onChange={setCsvText} columns={["name", "type", "locationId", "manufacturer", "model"]} example="Kitchen fridge,FRIDGE,replace-with-location-id,Bosch,Example" busy={isSubmitting} />
+              {error ? <div className="error-message" role="alert">{error}</div> : null}
+              {csvMessage ? <div className="status-note" role="status">{csvMessage}</div> : null}
             </div>
-          </section>
-        </div>
+        </Dialog>
       ) : null}
     </>
   );
-}
-
-function DeviceIcon({ type }: { type: string }) {
-  const normalizedType = type.toUpperCase();
-  if (normalizedType.includes("FRIDGE") || normalizedType.includes("FREEZER")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="15" y="6" width="18" height="36" rx="3" />
-        <line x1="15" y1="20" x2="33" y2="20" />
-        <line x1="20" y1="12" x2="20" y2="16" />
-        <line x1="20" y1="25" x2="20" y2="31" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("HEATER") || normalizedType.includes("BOILER")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="11" y="14" width="26" height="22" rx="4" />
-        <line x1="17" y1="20" x2="31" y2="20" />
-        <path d="M18 30c2-4 5-4 7 0s5 4 7 0" />
-        <line x1="16" y1="40" x2="16" y2="36" />
-        <line x1="32" y1="40" x2="32" y2="36" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("AC") || normalizedType.includes("AIR")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="8" y="12" width="32" height="16" rx="4" />
-        <line x1="14" y1="22" x2="34" y2="22" />
-        <path d="M17 33c2 2 4 2 6 0" />
-        <path d="M25 33c2 2 4 2 6 0" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("WASH")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="12" y="7" width="24" height="34" rx="4" />
-        <circle cx="24" cy="27" r="8" />
-        <circle cx="18" cy="13" r="1.8" />
-        <line x1="23" y1="13" x2="31" y2="13" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("PUMP")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <circle cx="22" cy="24" r="10" />
-        <path d="M31 20h7v8h-7" />
-        <path d="M12 24H7" />
-        <path d="M20 18l7 6-7 6z" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("SERVER") || normalizedType.includes("NAS")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="12" y="8" width="24" height="32" rx="3" />
-        <line x1="17" y1="17" x2="31" y2="17" />
-        <line x1="17" y1="25" x2="31" y2="25" />
-        <circle cx="18" cy="33" r="1.7" />
-        <circle cx="24" cy="33" r="1.7" />
-      </svg>
-    );
-  }
-  if (normalizedType.includes("PRINTER")) {
-    return (
-      <svg viewBox="0 0 48 48" role="img">
-        <rect x="14" y="7" width="20" height="11" rx="2" />
-        <rect x="10" y="18" width="28" height="16" rx="3" />
-        <rect x="15" y="30" width="18" height="10" rx="2" />
-        <circle cx="33" cy="24" r="1.8" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 48 48" role="img">
-      <rect x="14" y="10" width="20" height="28" rx="4" />
-      <path d="M19 10V6" />
-      <path d="M29 10V6" />
-      <path d="M20 20h8" />
-      <path d="M20 27h8" />
-    </svg>
-  );
-}
-
-function getDeviceTone(type: string) {
-  const normalizedType = type.toUpperCase();
-  if (normalizedType.includes("FRIDGE") || normalizedType.includes("FREEZER")) {
-    return "cool";
-  }
-  if (normalizedType.includes("HEATER") || normalizedType.includes("BOILER")) {
-    return "warm";
-  }
-  if (normalizedType.includes("SERVER") || normalizedType.includes("NAS")) {
-    return "compute";
-  }
-  if (normalizedType.includes("PUMP") || normalizedType.includes("WASH")) {
-    return "water";
-  }
-  return "neutral";
-}
-
-function formatEnum(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatNumber(value: number) {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-function formatRelativeTime(value: string) {
-  const diffMs = Date.now() - new Date(value).getTime();
-  const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
-  if (diffMinutes < 1) {
-    return "just now";
-  }
-  if (diffMinutes < 60) {
-    return `${diffMinutes} min ago`;
-  }
-  const diffHours = Math.round(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `${diffHours} hr ago`;
-  }
-  return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function locationLabel(location: Location) {
-  const hierarchy = [location.building, location.floor ? `Floor ${location.floor}` : null, location.room, location.zone]
-    .filter(Boolean)
-    .join(" / ");
-  return hierarchy ? `${location.name} - ${hierarchy}` : location.name;
-}
-
-function splitTags(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function parseMetadata(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed || trimmed === "{}") {
-    return null;
-  }
-  const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-  const secretKey = Object.keys(parsed).find((key) => /password|token|secret|credential/i.test(key));
-  if (secretKey) {
-    throw new Error(`Metadata must not contain secret key: ${secretKey}`);
-  }
-  return parsed;
-}
-
-function downloadText(text: string, filename: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 }

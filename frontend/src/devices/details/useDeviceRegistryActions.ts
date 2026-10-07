@@ -17,6 +17,8 @@ import {
   updateAnalyticsConfig,
 } from "../devicesApi";
 import { downloadText, parseJsonObject } from "./deviceDetailsFormatting";
+import { useActionConfirmation } from "../../components/useActionConfirmation";
+import { inspectImportCsv } from "../CsvImportPreview";
 
 export function useDeviceRegistryActions({
   deviceId,
@@ -42,22 +44,27 @@ export function useDeviceRegistryActions({
   const [sensorMetadataText, setSensorMetadataText] = useState("{}");
   const [isRegistryBusy, setIsRegistryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirmation = useActionConfirmation();
+  const [registryLoaded, setRegistryLoaded] = useState(false);
 
   async function loadRegistry(currentDeviceId = deviceId) {
     if (!currentDeviceId) {
       return;
     }
-    const [sourcesResponse, sensorsResponse, analyticsConfigResponse] = await Promise.all([
-      listDataSources(currentDeviceId).catch(() => []),
-      listSensors(currentDeviceId).catch(() => []),
-      getAnalyticsConfig(currentDeviceId).catch(() => null),
+    const [sourcesResponse, sensorsResponse, analyticsConfigResponse] = await Promise.allSettled([
+      listDataSources(currentDeviceId),
+      listSensors(currentDeviceId),
+      getAnalyticsConfig(currentDeviceId),
     ]);
-    setDataSources(sourcesResponse);
-    setSensors(sensorsResponse);
-    setAnalyticsConfig(analyticsConfigResponse);
-    if (analyticsConfigResponse) {
-      setAnalyticsConfigText(JSON.stringify(analyticsConfigResponse.config ?? {}, null, 2));
+    if (sourcesResponse.status === "fulfilled") setDataSources(sourcesResponse.value);
+    if (sensorsResponse.status === "fulfilled") setSensors(sensorsResponse.value);
+    if (analyticsConfigResponse.status === "fulfilled") {
+      setAnalyticsConfig(analyticsConfigResponse.value);
+      setAnalyticsConfigText(JSON.stringify(analyticsConfigResponse.value.config ?? {}, null, 2));
     }
+    const failures = [sourcesResponse, sensorsResponse, analyticsConfigResponse].flatMap((result, index) => result.status === "rejected" ? [["Sources", "Sensors", "Analytics configuration"][index]] : []);
+    setRegistryLoaded(failures.length === 0);
+    if (failures.length) setError(`${failures.join(", ")} unavailable. Retained records may be stale.`);
   }
 
   async function addDataSource() {
@@ -81,6 +88,7 @@ export function useDeviceRegistryActions({
 
   async function rotateSourceToken(dataSourceId: string) {
     if (!deviceId) return;
+    if (await confirmation.confirm({ title: "Rotate source token", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Replaces the active credential. External integrations using the previous token must be updated.", dependencies: "The attached simulator configuration is updated with the new token when available." }) === null) return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -97,6 +105,7 @@ export function useDeviceRegistryActions({
 
   async function revokeSourceToken(dataSourceId: string) {
     if (!deviceId) return;
+    if (await confirmation.confirm({ title: "Revoke source token", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Invalidates the active credential. Senders using it can no longer authenticate telemetry." }) === null) return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -111,6 +120,7 @@ export function useDeviceRegistryActions({
 
   async function disableSource(dataSourceId: string) {
     if (!deviceId) return;
+    if (await confirmation.confirm({ title: "Disable source", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Disables ingestion from this source. Telemetry gaps can affect alerts and analytics." }) === null) return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -125,6 +135,7 @@ export function useDeviceRegistryActions({
 
   async function importSourcesCsv() {
     if (!deviceId) return;
+    if (!inspectImportCsv(sourceCsvText, ["externalId", "sourceType", "protocol"]).valid || isRegistryBusy) return;
     setIsRegistryBusy(true);
     setSourceCsvMessage(null);
     setError(null);
@@ -180,6 +191,7 @@ export function useDeviceRegistryActions({
 
   async function removeSensor(sensorId: string) {
     if (!deviceId) return;
+    if (await confirmation.confirm({ title: "Delete sensor", object: sensors.find((sensor) => sensor.id === sensorId)?.name ?? sensorId, impact: "Removes this physical sensor mapping. Existing telemetry history is retained." }) === null) return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -197,9 +209,11 @@ export function useDeviceRegistryActions({
     setIsRegistryBusy(true);
     setError(null);
     try {
+      const config = parseJsonObject(analyticsConfigText) ?? {};
+      if (config.baselineWindowDays !== undefined && (!Number.isInteger(config.baselineWindowDays) || Number(config.baselineWindowDays) < 1)) throw new Error("Baseline window days must be a positive integer.");
       const saved = await updateAnalyticsConfig(deviceId, {
         enabled: analyticsConfig.enabled,
-        config: parseJsonObject(analyticsConfigText) ?? {},
+        config,
       });
       setAnalyticsConfig(saved);
       setAnalyticsConfigText(JSON.stringify(saved.config ?? {}, null, 2));
@@ -211,6 +225,8 @@ export function useDeviceRegistryActions({
   }
 
   return {
+    confirmationDialog: confirmation.dialog,
+    registryLoaded,
     dataSources,
     sensors,
     analyticsConfig,

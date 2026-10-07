@@ -287,10 +287,18 @@ try {
     Assert-Equal $restPlan.workerPartition.workerIndex 0 "REST plan should retain worker index."
     Assert-Equal $restPlan.workerPartition.startSequenceInclusive 0 "REST plan should retain worker start sequence."
     Assert-Equal $restPlan.workerPartition.materializedEndSequenceExclusive 12 "REST plan should retain materialized range."
-    Assert-True ($restPlan.command -match " run --compatibility-mode=base ") "REST plan command should describe k6 execution."
+    Assert-True ($restPlan.command -match " run --env RUN_DIRECTORY") "REST plan command should describe k6 execution."
     Assert-True ($restPlan.command -match "grafana/k6:0.52.0") "REST plan command should use the pinned k6 image."
     $writtenPlan = Write-CapacityGenerationPlan -Plan $restPlan -RunDirectory $scheduled.runDirectory
     Assert-True (Test-Path -LiteralPath $writtenPlan.generationManifestPath) "generation-manifest.json was not written."
+
+    $baselinePrepared = New-CapacityFixtureSchedule -ProfileName "resume-10" -PhaseName "baseline" -RunId "test-baseline-warmup" -MaxMaterializedReadings 30
+    $baselineScheduled = Write-CapacityFixtureSchedule -Prepared $baselinePrepared -OutputRoot $tempRoot
+    $baselinePlan = New-CapacityGenerationPlan -RunDirectory $baselineScheduled.runDirectory -Protocol "rest" -MaxReadings 30
+    Assert-Equal $baselinePlan.warmupSchedule.enabled $true "baseline should execute a real warmup phase."
+    Assert-Equal $baselinePlan.warmupSchedule.durationSeconds 600 "baseline warmup duration is wrong."
+    Assert-Equal $baselinePlan.warmupReadings.Count 10 "warmup request count should scale from the measured request rate."
+    Assert-True (($baselinePlan.warmupReadings | Where-Object { $_.recordedAtOffsetSeconds -ge 0 } | Measure-Object).Count -eq 0) "warmup timestamps must precede the measured epoch."
 
     $mqttPlan = New-CapacityGenerationPlan `
         -RunDirectory $scheduled.runDirectory `
@@ -342,6 +350,13 @@ try {
     Assert-Equal $importedK6.unknownOutcomes 1 "k6 import should retain unresolved final unknown outcomes."
     Assert-Equal $importedK6.retries 2 "k6 import should count retried and unresolved identities."
     Assert-Equal $importedK6.droppedScheduledReadings 7 "k6 import should count materialized readings absent from outcome logs."
+
+    $k6PrefixedOutcomePath = Join-Path $scheduled.runDirectory "k6-prefixed-outcome.log"
+    $prefixedPayload = ([PSCustomObject]@{ type = "capacity-rest-batch"; runId = $restPlan.runId; workerIndex = 0; iteration = 0; attempt = 0; status = "accepted"; sequences = @(0); itemStatuses = @("accepted") } | ConvertTo-Json -Compress -Depth 10)
+    $escapedPayload = $prefixedPayload.Replace('\', '\\').Replace('"', '\"')
+    "time=`"2026-09-29T00:00:00Z`" level=info msg=`"$escapedPayload`" source=console" | Set-Content -LiteralPath $k6PrefixedOutcomePath -Encoding UTF8
+    $importedPrefixedK6 = ConvertFrom-CapacityK6RestOutcomes -Plan $restPlan -OutcomePath $k6PrefixedOutcomePath
+    Assert-Equal $importedPrefixedK6.acceptedUniqueReadings 1 "k6 import should decode Docker console prefixes and escaped JSON messages."
 
     $partialBatch = New-CapacityGenerationResult `
         -Plan $restPlan `
@@ -419,6 +434,14 @@ try {
     )
     Assert-Equal $visibility.status "INCONCLUSIVE" "observer timeout should be retained as inconclusive."
     Assert-Equal $visibility.timeoutCount 1 "observer timeout count is wrong."
+    $slowVisibility = New-CapacityVisibilityObservation -Samples @([PSCustomObject]@{ observed = $true; latencyMillis = 6000 }) -ThresholdMillis 5000
+    Assert-Equal $slowVisibility.status "FAIL" "visibility p95 above the fixed threshold should fail."
+    $visibilityLog = Join-Path $scheduled.runDirectory "visibility-k6.log"
+    $visibilityEvent = [PSCustomObject]@{ type = "capacity-rest-visibility"; runId = $restPlan.runId; sequence = 0; observed = $true; latencyMillis = 250; acceptedAtUnixMs = 1; pollingIntervalMillis = 250; timeoutMillis = 30000; error = $null } | ConvertTo-Json -Compress
+    "INFO[0001] $visibilityEvent source=console" | Set-Content -LiteralPath $visibilityLog -Encoding UTF8
+    $importedVisibility = ConvertFrom-CapacityK6VisibilityOutcomes -OutcomePath $visibilityLog -ThresholdMillis 5000
+    Assert-Equal $importedVisibility.status "PASS" "k6 visibility evidence within threshold should pass."
+    Assert-Equal $importedVisibility.latencyReference "accepted-response-to-first-telemetry-export-visibility" "visibility latency reference must be explicit."
     $emptyVisibility = New-CapacityVisibilityObservation -Samples @()
     Assert-Equal $emptyVisibility.status "NOT_RUN" "empty visibility samples should be NOT_RUN."
     $writtenVisibility = Write-CapacityVisibilityObservation -RunDirectory $scheduled.runDirectory -Observation $visibility

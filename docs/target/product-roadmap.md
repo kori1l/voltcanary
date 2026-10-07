@@ -43,3 +43,24 @@ Later product expansion may add:
   need asynchronous copies of those analytics records.
 
 These are target directions, not current runtime contracts.
+
+## User-Created Dashboards
+
+Users should be able to create private dashboards from task templates or a
+blank canvas, choose real device/metric bindings, configure time and scope,
+arrange widgets, and save a personal default. Team publication depends on
+workspace membership and resource grants; dashboard editing must not grant
+access to devices, incident mutations, ML configuration, or tariffs.
+
+The authoritative future requirements are
+[Custom dashboards](custom-dashboards.md): business segments and personas,
+widget contracts, editor/draft/revision workflows, filter and time semantics,
+energy/quality calculations, permissions, proposed APIs, performance budgets,
+and scenario-level acceptance. Private dashboards come first; team dashboards
+and business cost/cycle calculations require their explicit domain dependencies.
+This capability is not implemented by the current fixed Dashboard page.
+
+The [active OpenSpec program](../../openspec/changes/README.md) separates current
+UI/UX repairs from private dashboards, typed widget queries, the editor and
+templates, verified energy aggregates, workspace membership/team publication,
+and later tariff/operational metrics. All implementation tasks remain open.

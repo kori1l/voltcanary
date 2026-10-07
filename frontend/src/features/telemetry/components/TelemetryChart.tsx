@@ -1,6 +1,7 @@
 import { type PointerEvent, useState } from "react";
 import { MetricThreshold, TelemetryEvent, TelemetryOverviewResponse, TelemetrySample } from "../model/telemetry.types";
 import { formatCompactNumber, formatMetricValue, formatShortTime } from "../model/telemetry.utils";
+import { splitSampleSegments } from "../model/chartSegments";
 
 type RenderSample = TelemetrySample & { synthetic?: boolean };
 
@@ -117,7 +118,8 @@ export function TelemetryChart({
     x: xForTimestamp(range, event.timestamp, padding.left, width - padding.right),
   }));
   const maxPoint = coordinates.reduce((current, next) => ((next.sample.value ?? 0) > (current.sample.value ?? 0) ? next : current), coordinates[0]);
-  const visiblePoints = showPoints ? coordinates : maxPoint && isAboveThreshold(maxPoint.sample.value, threshold) ? [maxPoint] : [];
+  const isolatedTimes = new Set(splitSampleSegments(renderSeries).filter((segment) => segment.length === 1).map((segment) => segment[0].timestamp));
+  const visiblePoints = showPoints ? coordinates : coordinates.filter((coordinate) => isolatedTimes.has(coordinate.sample.timestamp) || (coordinate === maxPoint && isAboveThreshold(coordinate.sample.value, threshold)));
   const yTicks = [minValue, minValue + valueRange / 2, maxValue];
   const xTicks = rangeTicks(range, padding.left, width - padding.right);
 
@@ -168,7 +170,7 @@ export function TelemetryChart({
           </g>
         ))}
 
-        {coordinates.length > 0 ? <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} /> : null}
+        {splitSampleSegments(renderSeries).map((segment, index) => <polyline key={index} points={segment.map((sample) => `${xForTime(sample.timestamp)},${yForValue(sample.value!)}`).join(" ")} />)}
 
         {coordinates.length === 0 ? (
           <text className="chart-axis-label" x={(padding.left + width - padding.right) / 2} y={(padding.top + height - padding.bottom) / 2} textAnchor="middle">
@@ -238,7 +240,7 @@ export function TelemetryChart({
         <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
           <strong>{formatShortTime(hovered.sample.timestamp)}</strong>
           <span>{formatMetricValue(hovered.sample.value, unit)}</span>
-          {hovered.sample.synthetic ? <em>No data - 0</em> : null}
+          {hovered.sample.synthetic ? <em>No sample</em> : null}
           {isAboveThreshold(hovered.sample.value, threshold) ? <em>Outside threshold</em> : null}
           {hovered.event ? <em>{hovered.event.title}</em> : null}
         </div>
@@ -248,49 +250,10 @@ export function TelemetryChart({
 }
 
 function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: TelemetryOverviewResponse["range"]): RenderSample[] {
-  const sorted = [...series].sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
-  const fromMs = new Date(range.from).getTime();
-  const toMs = new Date(range.to).getTime();
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-    return sampleSeries(sorted, maxPoints);
-  }
-
-  const bucketCount = Math.max(2, maxPoints);
-  const bucketSizeMs = (toMs - fromMs) / (bucketCount - 1);
-  const buckets = Array.from({ length: bucketCount }, (_, index) => {
-    const timestampMs = index === bucketCount - 1 ? toMs : fromMs + index * bucketSizeMs;
-    return {
-      timestamp: new Date(timestampMs).toISOString(),
-      metricKey: sorted[0]?.metricKey ?? "",
-      value: null as number | null,
-      quality: "partial" as TelemetrySample["quality"],
-      synthetic: true,
-      sourceCount: 0,
-    };
-  });
-
-  for (const sample of sorted) {
-    const sampleMs = new Date(sample.timestamp).getTime();
-    if (!Number.isFinite(sampleMs) || sampleMs < fromMs || sampleMs > toMs || sample.value === null || !Number.isFinite(sample.value)) {
-      continue;
-    }
-    const index = Math.min(bucketCount - 1, Math.max(0, Math.round((sampleMs - fromMs) / bucketSizeMs)));
-    const bucket = buckets[index];
-    if (bucket.sourceCount === 0) {
-      bucket.value = sample.value;
-    } else {
-      bucket.value = ((bucket.value ?? 0) * bucket.sourceCount + sample.value) / (bucket.sourceCount + 1);
-    }
-    bucket.timestamp = sample.timestamp;
-    bucket.metricKey = sample.metricKey;
-    bucket.quality = sample.quality ?? "partial";
-    bucket.synthetic = false;
-    bucket.sourceCount += 1;
-  }
-
-  return buckets.map(({ sourceCount: _sourceCount, ...sample }) => sample);
+  const bounded = [...series].filter((sample) => Date.parse(sample.timestamp) >= Date.parse(range.from) && Date.parse(sample.timestamp) <= Date.parse(range.to)).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const segments = splitSampleSegments(bounded);
+  return segments.flatMap((segment, index) => [...(index ? [{ ...segment[0], value: null }] : []), ...sampleSeries(segment, maxPoints)]);
 }
-
 function sampleSeries(series: TelemetrySample[], maxPoints: number): RenderSample[] {
   if (series.length <= maxPoints) {
     return series;

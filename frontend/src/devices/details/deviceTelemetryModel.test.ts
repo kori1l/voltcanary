@@ -42,11 +42,16 @@ describe("deviceTelemetryModel", () => {
     });
   });
 
-  it("normalizes custom chart windows to at least one minute", () => {
+  it("preserves exact custom intervals without silently widening them", () => {
     const window = getChartTimeWindow("custom", "2026-07-01T00:00:00", "2026-07-01T00:00:10");
 
     expect(window).not.toBeNull();
-    expect(new Date(window!.to).getTime() - new Date(window!.from).getTime()).toBe(60_000);
+    expect(new Date(window!.to).getTime() - new Date(window!.from).getTime()).toBe(10_000);
+  });
+
+  it("rejects invalid and reversed custom ranges", () => {
+    expect(getChartTimeWindow("custom", "invalid", "2026-07-01T00:00:10")).toBeNull();
+    expect(getChartTimeWindow("custom", "2026-07-01T00:00:10", "2026-07-01T00:00:00")).toBeNull();
   });
 
   it("orders known and inferred telemetry metrics consistently", () => {

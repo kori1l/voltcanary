@@ -4,8 +4,11 @@ Status: current executable preflight, fixture schedule, API provisioning,
 bounded REST/MQTT generation execution, outcome-accounting,
 visibility-observation and logical reconciliation harness plus storage-volume
 fixture, monthly query/write, scaling/HPA and recovery trial planning. Full
-storage-volume execution and measured scaling/recovery runs remain tracked by
-`openspec/changes/add-capacity-verification-harness`.
+storage-volume execution and measured scaling/recovery work are recorded in
+[the archived harness change](../../../openspec/changes/archive/2026-10-05-add-capacity-verification-harness/proposal.md).
+The user requested archival on 2026-10-05 with four tasks still open; this does
+not establish passing capacity evidence or promote the incomplete delta to main
+specs. Outstanding live rerun and extension work require a new scoped change.
 
 ## Scope
 
@@ -19,11 +22,26 @@ Project daily volume from reconciled observed totals divided by actual measured
 seconds and multiplied by 86,400. Label it an estimate, not daily endurance or
 populated monthly storage evidence.
 
+The first local evidence runs on 2026-09-29 produced these results:
+
+| Run | Result | Evidence |
+| --- | --- | --- |
+| `local-smoke-20260929-032744` | PASS | 1,000/1,000 readings accepted; 5,000/5,000 values reconciled; visibility 10/10, p95 262 ms. |
+| `local-hourly-resume10-20260929-034408` | FAIL | 120,000 started; 116,245 accepted and persisted; 3,755 rejected; zero dropped; exact accepted-set reconciliation; visibility 97/100, p95 264 ms. |
+| `local-hourly-resume10-rerun-20260929-174105` | FAIL | 120,000 started; 119,952 accepted and persisted; 48 rejected by four stale-token sources; zero dropped; exact accepted-set reconciliation; visibility 100/100, p95 265 ms. |
+
+The best hourly accepted-set rate was 33.32 readings/s and 333.2 numeric
+values/s. This projects to 2,878,848 readings and 28,788,480 values per day, but
+the projection inherits the strict failed generation result. It is 99.96% of
+the target schedule and is not evidence for zero-loss 2.88M/28.8M daily volume,
+24-hour endurance or monthly storage.
+
 The command below prepares the full hourly schedule and writes dry-run evidence
 only. Add `-Execute` after fixture provisioning, source-token rotation,
-ingestion readiness checks and environment capture. A completed hourly run still
-requires generation-result, visibility-observation and reconciliation evidence
-before any throughput claim can pass.
+ingestion readiness checks and environment capture. With `-Execute`, REST runs
+perform their configured warmup before the measured window, sample committed
+visibility while traffic is running, wait through bounded drain, export the
+local TimescaleDB rows and run windowed logical reconciliation automatically.
 
 ```powershell
 pwsh -File scripts/load-tests/run.ps1 -Profile resume-10 -Phase hourly -RunnerPhase generate
@@ -106,6 +124,18 @@ coordinating observer and reconciler timestamps:
 powershell -ExecutionPolicy Bypass -File scripts/load-tests/run.ps1 -Profile current-5 -Phase smoke -Protocol rest -RunnerPhase generate -Execute -K6Mode docker
 ```
 
+For the selected hourly evidence run use `resume-10` and keep the default
+automatic reconciliation:
+
+```powershell
+pwsh -File scripts/load-tests/run.ps1 -Profile resume-10 -Phase hourly -Protocol rest -RunnerPhase generate -Execute -K6Mode docker -MinFreeDiskPercent 20
+```
+
+The runner checks the artifact and Docker-data drives throughout generation.
+k6 aborts on the configured HTTP failure rate, while the host monitor samples
+Prometheus error rate and sustained Redpanda consumer-lag growth. If Prometheus
+is unavailable, the run report cannot use those observations as evidence.
+
 The runner stores raw generator output in `generation-output.log`, imports the
 application-level k6 outcome events into `generation-result.json`, and keeps the
 k6 summary as `k6-summary.json` when k6 writes one. To import a separately run
@@ -115,16 +145,20 @@ k6 log into application-level generation evidence:
 powershell -ExecutionPolicy Bypass -File scripts/load-tests/import-k6-outcomes.ps1 -RunDirectory artifacts/load-tests/<run-id>
 ```
 
-After generation, collect bounded committed-visibility samples through the
-telemetry export API. Timeouts remain in `visibility-observations.json`; this
-sample is latency/availability evidence and does not replace full logical
-key/value reconciliation.
+REST execution collects bounded committed-visibility samples through the
+telemetry export API while the measured traffic is running. Latency starts when
+the application accepts the reading and ends at its first exact timestamp/value
+visibility; timeouts remain censored in `visibility-observations.json`. The
+standalone command remains available for diagnosis, but its poll-start latency
+must not replace the in-run acceptance-to-visibility evidence.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/load-tests/observe-visibility.ps1 -RunDirectory artifacts/load-tests/<run-id> -TelemetryBaseUrl http://localhost:8084 -SamplePercent 1 -MaxSamples 100
 ```
 
-Run full logical key/value reconciliation from a committed-measurements CSV.
+Automatic local REST execution exports the committed-measurements CSV from the
+Compose TimescaleDB and reconciles it in timestamp windows. The standalone
+command below supports externally acquired committed-measurements CSV files.
 The CSV must include `deviceId`, `sourceId`, `recordedAtOffsetSeconds` or
 `recordedAt`, `metricName`, and `numericValue`. The reconciler expects accepted
 sequences plus ambiguous `unknown` and `timeout-after-accept` identities; missing,
@@ -162,6 +196,23 @@ ingestion readiness:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/load-tests/provision-fixtures.ps1 -RunDirectory artifacts/load-tests/<run-id> -DeviceApiBaseUrl http://localhost:8082 -IngestionBaseUrls http://localhost:8083 -RotateSourceTokens
+```
+
+For the 10,000-device hourly fixture, enable the local-only source readiness
+endpoint and use bounded parallel provisioning. State and local secrets are
+checkpointed after each batch, so rerunning the command resumes incomplete work.
+The readiness barrier posts every provisioned data-source ID and expected token
+prefix to every configured ingestion replica. Missing source/cache state or a
+stale token config makes provisioning `BLOCKED`; the runner must not start. Do
+not restart ingestion between provisioning and the measured run: the current
+runtime registry needs source configuration events to be republished after a
+restart. A 10,000-event local replay took longer than five minutes, so use a
+timeout that covers observed convergence rather than weakening the barrier.
+
+```powershell
+$env:INGESTION_HORIZONTAL_SCALE_SMOKE_ENABLED = "true"
+docker compose --profile app up -d --no-deps ingestion-service
+powershell -ExecutionPolicy Bypass -File scripts/load-tests/provision-fixtures.ps1 -RunDirectory artifacts/load-tests/<run-id> -DeviceApiBaseUrl http://localhost:8082 -IngestionBaseUrls http://localhost:8083 -RotateSourceTokens -Parallelism 16 -TimeoutSeconds 900
 ```
 
 Clean up only the provisioned fixture scope:
@@ -245,7 +296,9 @@ Each preflight writes:
 | `generation-manifest.json` | Protocol entrypoint, pinned tool policy, worker allocation and retry/acceptance policy. |
 | `generation-result.json` | Application-level generation accounting imported from k6 outcomes or another protocol adapter: attempts, retries, accepted unique readings, duplicates, rejects, unknown outcomes and dropped schedule entries. |
 | `visibility-observations.json` | Optional committed-visibility samples from the telemetry export API with polling interval, timeouts and censored latency notes. |
+| `committed-measurements.csv` | Automatically exported local TimescaleDB rows for the measured run window; potentially large and ignored by Git. |
 | `reconciliation.json` | Logical `(device_id, source_id, recorded_at, metric_name)` comparison, ambiguous-outcome resolution and value-integrity result. |
+| `guard-timeline.json` | A stopping disk/error/lag guard event recorded during generation. |
 | `runner-summary.json` | Bounded dry-run runner status and generated evidence paths. |
 | `cancellation-report.json` | Guard-triggered stop details, drain policy and restoration scope. |
 | `provisioning-state.json` | Resumable API provisioning progress, API ids and scoped cleanup state. |

@@ -49,6 +49,10 @@ The target architecture is not complete until these gaps are closed:
   billing, support operations, public API keys, and enterprise controls;
 - optional Kafka alert lifecycle topics if a downstream projection or separate
   notification service needs them.
+- user-created dashboards with versioned definitions, private drafts, typed
+  widget queries, full-scope aggregates and independent resource authorization;
+  team sharing depends on workspace membership. See the concrete
+  [dashboard requirements](custom-dashboards.md).
 
 ## Target Shape
 

@@ -64,3 +64,7 @@ alert-service, api-gateway, frontend, and Redpanda.
 3. Create another scheduled window.
 4. Cancel it from the UI.
 5. Confirm status changes to `CANCELLED` and downstream projections update.
+
+## Console workflow guidance
+
+See [Console interface workflows](console-interface.md) for the shared review, validation, responsive layout and evidence-state behavior. UI fixtures do not replace this guide’s live backend verification.

@@ -25,7 +25,7 @@ export function MetricSelector({
   return (
     <details className="metric-selector">
       <summary>
-        Metrics <strong>{selectedMetricKeys.length}</strong>
+        Metrics <strong>{metrics.filter((metric) => selectedMetricKeys.includes(metric.key)).length} shown</strong>
       </summary>
       <div className="metric-selector-panel">
         <div className="chart-settings-actions">
@@ -42,11 +42,13 @@ export function MetricSelector({
         <input
           className="chart-metric-search"
           type="search"
+          aria-label="Search telemetry metrics"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Filter metrics"
         />
         <div className="chart-metric-list">
+          {!filtered.length ? <p>No metrics match this search.</p> : null}
           {filtered.map((metric) => (
             <label className="chart-metric-toggle" key={metric.key}>
               <input type="checkbox" checked={selectedMetricKeys.includes(metric.key)} onChange={() => onToggleMetric(metric.key)} />

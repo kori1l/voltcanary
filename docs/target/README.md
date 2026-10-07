@@ -15,6 +15,9 @@ behavior.
 | Notification delivery operations target | [notification-delivery-operations.md](notification-delivery-operations.md) |
 | ML dataset workbench target design | [ml-dataset-workbench.md](ml-dataset-workbench.md) |
 | Product roadmap context | [product-roadmap.md](product-roadmap.md) |
+| User-created dashboards: businesses, widgets, editor, permissions, and acceptance | [custom-dashboards.md](custom-dashboards.md) |
+| Proposed UI/UX and dashboard changes: dependencies and requirement coverage | [OpenSpec program](../../openspec/changes/README.md) |
+| UI audit, completed redesign baseline, and remaining UX fixes (7 October 2026) | [ui-design-requirements.md](ui-design-requirements.md) |
 | Interview/demo talking points | [talking-points.md](talking-points.md) |
 | Capacity claims, load-test procedure and tooling gaps | [load-testing.md](load-testing.md) |
 
@@ -24,6 +27,7 @@ behavior.
 | --- | --- |
 | Production deployment with immutable images, external secrets, ingress/TLS, stateful HA, network policies, SLOs, backup/restore, and runbooks | [production-readiness.md](production-readiness.md) |
 | Workspace/tenant administration, onboarding, metering, billing, support operations, public API keys, and enterprise controls | [product-roadmap.md](product-roadmap.md) and [production-readiness.md](production-readiness.md) |
+| Private dashboard editor, full-scope aggregates, and later team publication with independent resource grants | [custom-dashboards.md](custom-dashboards.md) |
 | Kafka alert lifecycle topics such as `alert.created.v1`, `alert.acknowledged.v1`, and `alert.resolved.v1` | [alert-lifecycle-events.md](alert-lifecycle-events.md) |
 | Notification test delivery, channel diagnostics, and bounded retry operations | [notification-delivery-operations.md](notification-delivery-operations.md) |
 | Production hardening for real connector credentials, certificates, network egress, protocol integration tests, dashboards, and runbooks | [production-readiness.md](production-readiness.md) |

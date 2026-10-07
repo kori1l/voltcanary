@@ -155,3 +155,7 @@ export function createMaintenanceOutcome(operationId: string, request: Maintenan
     body: JSON.stringify(request),
   });
 }
+
+export function listMaintenanceOutcomes(operationId: string) {
+  return apiRequest<MaintenanceOutcome[]>(`/maintenance-operations/${operationId}/outcomes`);
+}

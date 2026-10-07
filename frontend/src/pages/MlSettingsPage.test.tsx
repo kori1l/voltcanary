@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MlSettingsPage } from "./MlSettingsPage";
@@ -512,6 +512,7 @@ describe("MlSettingsPage", () => {
 
     expect(await screen.findByText("DEVICE_OVERRIDE")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Clear override/i }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Clear device override" })).getByRole("button", { name: "Clear device override" }));
 
     expect(await screen.findByText("Device now inherits account defaults")).toBeInTheDocument();
     expect(requests.some((request) => request.method === "DELETE")).toBe(true);
@@ -733,6 +734,9 @@ describe("MlSettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Models" }));
     await userEvent.click(await screen.findByRole("button", { name: /Approve washer-failure v1/i }));
 
+    const approval = await screen.findByRole("dialog", { name: "Approve model" });
+    await userEvent.type(within(approval).getByLabelText(/Reason/), "Reviewed promotion evidence");
+    await userEvent.click(within(approval).getByRole("button", { name: "Approve model" }));
     expect(await screen.findByText("Bad Request for /analytics/ml/models/model-failure-1/approve")).toBeInTheDocument();
     expect(screen.queryByText(/timestamp/i)).not.toBeInTheDocument();
   });
@@ -996,30 +1000,35 @@ describe("MlSettingsPage", () => {
     expect(await screen.findByRole("button", { name: /ARCHIVED/i })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: /Washer July/i }));
     await userEvent.click(screen.getByRole("button", { name: /Archive dataset/i }));
+    await confirmLifecycleDialog();
     await userEvent.click(screen.getByRole("button", { name: /Washer July/i }));
     await userEvent.click(screen.getByRole("button", { name: /Generate feature snapshot/i }));
     await userEvent.click(await screen.findByRole("button", { name: /Delete snapshot/i }));
+    await confirmLifecycleDialog();
     await userEvent.selectOptions(screen.getByLabelText(/Dataset status filter/i), "default");
 
     await userEvent.click(screen.getByRole("button", { name: "Labels" }));
     await userEvent.click(screen.getByRole("button", { name: /Refresh labels/i }));
     await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+    await confirmLifecycleDialog();
 
     await userEvent.click(screen.getByRole("button", { name: "Training" }));
     await userEvent.selectOptions(await screen.findByLabelText(/Training status filter/i), "failed");
     await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+    await confirmLifecycleDialog();
 
     await userEvent.click(screen.getByRole("button", { name: "Models" }));
     await userEvent.selectOptions(await screen.findByLabelText(/Model status filter/i), "failed");
     await userEvent.click(await screen.findByRole("button", { name: /Delete washer-failure v1/i }));
+    await confirmLifecycleDialog();
 
     await userEvent.click(screen.getByRole("button", { name: "Policies" }));
     await userEvent.selectOptions(await screen.findByLabelText(/Policy status filter/i), "deleted");
     await userEvent.click(await screen.findByRole("button", { name: /Delete/i }));
+    await confirmLifecycleDialog();
 
-    expect(confirm).toHaveBeenCalled();
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Impact:"));
-    expect(prompt).toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(prompt).not.toHaveBeenCalled();
     const lifecycleRequests = requests.filter((request) => request.method === "POST" && /(archive|delete)$/.test(request.url));
     expect(lifecycleRequests.map((request) => new URL(request.url).pathname)).toEqual(expect.arrayContaining([
       "/analytics/ml/datasets/versions/dataset-version-1/archive",
@@ -1231,7 +1240,13 @@ describe("MlSettingsPage", () => {
     expect(screen.getByText("fridge-freezer / template-v1")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Import" }));
-    await userEvent.upload(screen.getByLabelText(/Dataset file/i), new File(["ts,device,metric,value"], "sample.csv", { type: "text/csv" }));
+    await userEvent.type(screen.getByLabelText("Dataset name"), "Imported CSV July");
+    await userEvent.upload(screen.getByLabelText(/Dataset file/i), new File(["ts,device,metric,value\n2026-07-01T00:00:00Z,fridge,activePowerW,120"], "sample.csv", { type: "text/csv" }));
+    await screen.findByRole("region", { name: "Dataset file preview" });
+    await userEvent.selectOptions(screen.getByLabelText("Timestamp *"), "ts");
+    await userEvent.selectOptions(screen.getByLabelText("External device key *"), "device");
+    await userEvent.selectOptions(screen.getByLabelText("Metric name *"), "metric");
+    await userEvent.selectOptions(screen.getByLabelText("Metric value *"), "value");
     await userEvent.click(screen.getByRole("button", { name: /Import dataset/i }));
     expect(await screen.findByText(/Imported 5 rows/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Datasets" }));
@@ -1243,6 +1258,9 @@ describe("MlSettingsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /Generate horizon labels/i }));
     expect(await screen.findByText("sha256:labels")).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText(/Correct label label-1/i), "NORMAL");
+    const correction = await screen.findByRole("dialog", { name: "Correct label" });
+    await userEvent.type(within(correction).getByLabelText(/Reason/), "Corrected during label review");
+    await userEvent.click(within(correction).getByRole("button", { name: "Correct label" }));
     expect(await screen.findByText("Label review updated")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Audit/i }));
     expect(await screen.findByText(/Corrected during label review/i)).toBeInTheDocument();
@@ -1284,18 +1302,24 @@ describe("MlSettingsPage", () => {
     expect(screen.getByText(/Minimum Precision \/ Fail/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Approve washer-failure-low-labels v1/i })).toBeDisabled();
     await userEvent.click((await screen.findAllByRole("button", { name: /Reject/i }))[0]);
+    const rejection = await screen.findByRole("dialog", { name: "Reject model" });
+    await userEvent.type(within(rejection).getByLabelText(/Reason/), "Rejected after evaluation review");
+    await userEvent.click(within(rejection).getByRole("button", { name: "Reject model" }));
     expect(await screen.findByText("Model registry updated")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Policies" }));
     await userEvent.click(screen.getByRole("button", { name: /Save policy/i }));
+    const policyReview = await screen.findByRole("dialog", { name: "Apply deployment policy" });
+    await userEvent.type(within(policyReview).getByLabelText(/Reason/), "Reviewed shadow deployment");
+    await userEvent.click(within(policyReview).getByRole("button", { name: "Apply deployment policy" }));
     expect(await screen.findByText("Deployment policy saved")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Resolve policy/i }));
     expect(await screen.findAllByText(/ACCOUNT.*SHADOW/i)).not.toHaveLength(0);
 
     await userEvent.click(screen.getByRole("button", { name: "Monitoring" }));
-    expect(await screen.findByText("Fallback rate")).toBeInTheDocument();
-    expect(screen.getByText("Error rate")).toBeInTheDocument();
-    expect(screen.getByText("Prediction quality")).toBeInTheDocument();
+    expect(await screen.findByText("Fallback-enabled policies")).toBeInTheDocument();
+    expect(screen.getByText("Failed training runs")).toBeInTheDocument();
+    expect(screen.getByText("Prediction confidence")).toBeInTheDocument();
     expect(screen.getByText("Drift")).toBeInTheDocument();
     expect(screen.getByText("30-day failure risk")).toBeInTheDocument();
     expect(screen.getAllByText("37%")).toHaveLength(2);
@@ -1363,7 +1387,7 @@ describe("MlSettingsPage", () => {
       generationVersion: "failure-outcome-v1",
       includePreventiveMaintenance: false,
     });
-  });
+  }, 15000);
 
   it("keeps horizon label generation in processing status when the gateway times out", async () => {
     const requests: Request[] = [];
@@ -1560,4 +1584,12 @@ function impact(action: string, message: string, details: Record<string, unknown
     message,
     dependencies: [{ type: action === "delete" ? "datasetVersion" : "lifecycleTarget", id: "impact-1", details }],
   };
+}
+
+async function confirmLifecycleDialog() {
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText("Reason", { exact: false })).toBeInTheDocument();
+  await userEvent.type(within(dialog).getByLabelText(/Reason/), "cleanup reason");
+  await userEvent.click(within(dialog).getByRole("button", { name: /^(Archive|Delete|Disable)/i }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 }

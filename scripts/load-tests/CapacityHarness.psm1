@@ -1114,8 +1114,8 @@ function New-CapacityFixtureSchedule {
 
     $deviceCount = [int] $preflight.workload.deviceCount
     $effectiveTenantCount = [math]::Min($TenantCount, $deviceCount)
-    $devices = @()
-    $tenants = @()
+    $devices = [System.Collections.Generic.List[object]]::new()
+    $tenants = [System.Collections.Generic.List[object]]::new()
 
     $baseDevicesPerTenant = [math]::Floor($deviceCount / $effectiveTenantCount)
     $deviceRemainder = $deviceCount % $effectiveTenantCount
@@ -1128,16 +1128,16 @@ function New-CapacityFixtureSchedule {
         }
 
         $tenantId = New-CapacityStableGuid -Value "$($preflight.runId):tenant:$tenantIndex"
-        $tenants += [PSCustomObject]@{
+        $tenants.Add([PSCustomObject]@{
             tenantIndex = $tenantIndex
             accountId = $tenantId
             deviceCount = $tenantDeviceCount
-        }
+        })
 
         for ($tenantDeviceIndex = 0; $tenantDeviceIndex -lt $tenantDeviceCount; $tenantDeviceIndex++) {
             $deviceId = New-CapacityStableGuid -Value "$($preflight.runId):device:$deviceIndex"
             $sourceId = New-CapacityStableGuid -Value "$($preflight.runId):source:$deviceIndex"
-            $devices += [PSCustomObject]@{
+            $devices.Add([PSCustomObject]@{
                 deviceIndex = $deviceIndex
                 tenantIndex = $tenantIndex
                 accountId = $tenantId
@@ -1145,7 +1145,7 @@ function New-CapacityFixtureSchedule {
                 sourceId = $sourceId
                 deviceName = "capacity-device-$("{0:D5}" -f $deviceIndex)"
                 sourceName = "capacity-source-$("{0:D5}" -f $deviceIndex)"
-            }
+            })
             $deviceIndex += 1
         }
     }
@@ -1156,7 +1156,7 @@ function New-CapacityFixtureSchedule {
     } else {
         [math]::Min([int64] $MaxMaterializedReadings, [int64] $preflight.workload.scheduledReadings)
     }
-    $readings = @()
+    $readings = [System.Collections.Generic.List[object]]::new()
     $phaseWindowSeconds = [int] (Get-PropertyValue -Object $preflight.workload -Name "burstWindowSeconds" -Default $preflight.workload.effectiveIntervalSeconds)
     if ($phaseWindowSeconds -le 0) {
         $phaseWindowSeconds = [int] $preflight.workload.intervalSeconds
@@ -1169,7 +1169,7 @@ function New-CapacityFixtureSchedule {
         $phaseOffsetSeconds = [int] [math]::Floor($currentDeviceIndex * $phaseWindowSeconds / $deviceCount)
         $recordedAtOffsetSeconds = [int64] [math]::Floor(($cycleIndex * $effectiveIntervalSeconds) + $phaseOffsetSeconds)
         $device = $devices[$currentDeviceIndex]
-        $readings += [PSCustomObject]@{
+        $readings.Add([PSCustomObject]@{
             sequence = $sequence
             workerIndex = Get-CapacityWorkerIndexForSequence -Sequence $sequence -WorkerRanges $workerRanges
             cycleIndex = $cycleIndex
@@ -1180,7 +1180,7 @@ function New-CapacityFixtureSchedule {
             recordedAtOffsetSeconds = $recordedAtOffsetSeconds
             phaseOffsetSeconds = $phaseOffsetSeconds
             metricNames = $preflight.profileMetricNames
-        }
+        })
     }
 
     $fixture = [PSCustomObject]@{
@@ -1500,6 +1500,27 @@ function Update-CapacityRunReport {
     }
     if ($null -ne $reconciliation) {
         $summary.verdicts.persistenceReconciliation = $reconciliation.status
+        if ($reconciliation.status -eq "PASS" -and $null -ne $generation) {
+            $measuredSeconds = if ($null -ne $generation.actualMeasuredSeconds -and [double] $generation.actualMeasuredSeconds -gt 0) { [double] $generation.actualMeasuredSeconds } else { [double] $summary.workload.measurementSeconds }
+            $persistedValues = [int64] $reconciliation.committedMeasurements
+            $metricCount = [int] $summary.workload.requiredNumericMetricCount
+            $persistedReadings = if ($metricCount -gt 0) { [int64] ($persistedValues / $metricCount) } else { [int64] 0 }
+            Add-Member -InputObject $summary -NotePropertyName measuredResult -NotePropertyValue ([PSCustomObject]@{
+                actualMeasuredSeconds = $measuredSeconds
+                persistedUniqueReadings = $persistedReadings
+                persistedNumericValues = $persistedValues
+                readingsPerSecond = [math]::Round($persistedReadings / $measuredSeconds, 6)
+                numericValuesPerSecond = [math]::Round($persistedValues / $measuredSeconds, 6)
+            }) -Force
+            Add-Member -InputObject $summary -NotePropertyName dailyProjection -NotePropertyValue ([PSCustomObject]@{
+                status = "EXTRAPOLATION"
+                basis = "Reconciled persisted totals divided by actual measured seconds and multiplied by 86400."
+                projectedReadings = [int64] [math]::Round(($persistedReadings / $measuredSeconds) * 86400)
+                projectedNumericValues = [int64] [math]::Round(($persistedValues / $measuredSeconds) * 86400)
+                dailyEnduranceVerdict = "NOT_RUN"
+                monthlyPopulatedStorageVerdict = "NOT_RUN"
+            }) -Force
+        }
     }
     if ($null -ne $runner) {
         Add-Member -InputObject $summary -NotePropertyName runnerSummaryPath -NotePropertyValue "runner-summary.json" -Force
@@ -1531,8 +1552,14 @@ function Update-CapacityRunReport {
         $summary.verdicts.recovery = "INCONCLUSIVE"
     }
 
-    $claimVerdicts = @($summary.verdicts.PSObject.Properties | ForEach-Object { [string] $_.Value })
-    Add-Member -InputObject $summary -NotePropertyName overallEvidenceStatus -NotePropertyValue (Get-CapacityClaimStatus -Verdicts $claimVerdicts) -Force
+    $requiredClaimNames = @("profilePreflight", "generation", "visibilityObservation", "persistenceReconciliation")
+    $requiredClaimVerdicts = @($requiredClaimNames | ForEach-Object {
+        $property = $summary.verdicts.PSObject.Properties[$_]
+        if ($null -eq $property) { "NOT_RUN" } else { [string] $property.Value }
+    })
+    Add-Member -InputObject $summary -NotePropertyName requiredClaimNames -NotePropertyValue $requiredClaimNames -Force
+    Add-Member -InputObject $summary -NotePropertyName optionalClaimNames -NotePropertyValue @("monthlyVolume", "scaling", "recovery") -Force
+    Add-Member -InputObject $summary -NotePropertyName overallEvidenceStatus -NotePropertyValue (Get-CapacityClaimStatus -Verdicts $requiredClaimVerdicts) -Force
     Write-CapacityJsonFile -Value $summary -Path $paths.summaryPath
 
     $report = @(
@@ -1613,6 +1640,22 @@ function Update-CapacityRunReport {
             "- Missing: $($reconciliation.missingCount)",
             "- Unexpected: $($reconciliation.unexpectedCount)",
             "- Wrong values: $($reconciliation.wrongValueCount)"
+        )
+    }
+    if ($null -ne $summary.measuredResult) {
+        $report += @(
+            "",
+            "## Measured Result",
+            "",
+            "- Actual measured seconds: $($summary.measuredResult.actualMeasuredSeconds)",
+            "- Persisted unique readings: $($summary.measuredResult.persistedUniqueReadings)",
+            "- Persisted numeric values: $($summary.measuredResult.persistedNumericValues)",
+            "- Persisted readings/s: $($summary.measuredResult.readingsPerSecond)",
+            "- Persisted numeric values/s: $($summary.measuredResult.numericValuesPerSecond)",
+            "- Projected daily readings: $($summary.dailyProjection.projectedReadings) (EXTRAPOLATION)",
+            "- Projected daily numeric values: $($summary.dailyProjection.projectedNumericValues) (EXTRAPOLATION)",
+            "- 24-hour endurance: NOT_RUN",
+            "- Populated monthly storage: NOT_RUN"
         )
     }
 
@@ -1740,6 +1783,8 @@ function Get-CapacityRunPaths {
         generationLogPath = Join-Path $RunDirectory "generation-output.log"
         k6SummaryPath = Join-Path $RunDirectory "k6-summary.json"
         visibilityPath = Join-Path $RunDirectory "visibility-observations.json"
+        committedMeasurementsPath = Join-Path $RunDirectory "committed-measurements.csv"
+        guardTimelinePath = Join-Path $RunDirectory "guard-timeline.json"
         reconciliationPath = Join-Path $RunDirectory "reconciliation.json"
         runnerSummaryPath = Join-Path $RunDirectory "runner-summary.json"
         cancellationReportPath = Join-Path $RunDirectory "cancellation-report.json"
@@ -1887,6 +1932,7 @@ function New-CapacityGenerationPlan {
     $versionPolicy = if ($Protocol -eq "rest") { $PinnedK6Version } else { $PinnedMqttClientVersion }
     $workerRange = @($schedule.workerRanges | Where-Object { [int] $_.workerIndex -eq $WorkerIndex } | Select-Object -First 1)
     $measurementSeconds = [int] $schedule.workload.measurementSeconds
+    $warmupSeconds = [int] $schedule.workload.warmupSeconds
     $drainSeconds = [int] $schedule.workload.drainSeconds
     $rateTimeUnit = if ($measurementSeconds -gt 0) { "$($measurementSeconds)s" } else { "1s" }
     $duration = $rateTimeUnit
@@ -1895,6 +1941,23 @@ function New-CapacityGenerationPlan {
     $preAllocatedVus = [math]::Max(1, [math]::Min(200, [int] [math]::Ceiling([math]::Max(1, $averageRequestsPerSecond) * 2)))
     $maxVus = [math]::Max($preAllocatedVus, [math]::Min(1000, $preAllocatedVus * 4))
     $toolImage = if ($Protocol -eq "rest") { "grafana/k6:$PinnedK6Version" } else { $MqttClientImage }
+    $warmupRequestCount = if ($Protocol -eq "rest" -and $warmupSeconds -gt 0 -and $measurementSeconds -gt 0) {
+        [int64] [math]::Round($expectedRequests * ($warmupSeconds / [double] $measurementSeconds))
+    } else {
+        [int64] 0
+    }
+    $warmupReadings = @()
+    if ($warmupRequestCount -gt 0 -and @($readings).Count -gt 0) {
+        for ($warmupIndex = [int64] 0; $warmupIndex -lt $warmupRequestCount; $warmupIndex++) {
+            $template = $readings[[int] ($warmupIndex % @($readings).Count)] | Select-Object *
+            $scheduleOffsetSeconds = [int64] [math]::Floor($warmupIndex * $warmupSeconds / [double] $warmupRequestCount)
+            $template.sequence = [int64] ($schedule.workload.scheduledReadings + ($WorkerIndex * $warmupRequestCount) + $warmupIndex)
+            $template.recordedAtOffsetSeconds = [int64] ($scheduleOffsetSeconds - $warmupSeconds)
+            Add-Member -InputObject $template -NotePropertyName scheduleOffsetSeconds -NotePropertyValue $scheduleOffsetSeconds -Force
+            Add-Member -InputObject $template -NotePropertyName trafficPhase -NotePropertyValue "warmup" -Force
+            $warmupReadings += $template
+        }
+    }
 
     return [PSCustomObject]@{
         schemaVersion = 1
@@ -1918,8 +1981,8 @@ function New-CapacityGenerationPlan {
             restSourceScope = "REST generation sends one reading per request so each bearer token covers exactly one external source."
         }
         runEpoch = [PSCustomObject]@{
-            iso = (Get-Date).ToUniversalTime().ToString("o")
-            policy = "Use this fixed epoch, or explicit RUN_START, for all reading timestamps in the run."
+            iso = (Get-Date).ToUniversalTime().AddSeconds($warmupSeconds).ToString("o")
+            policy = "The runner refreshes this epoch immediately before execution; it is the start of the measured window after warmup."
         }
         workerPartition = [PSCustomObject]@{
             workerCount = [int] $schedule.workerCount
@@ -1941,6 +2004,14 @@ function New-CapacityGenerationPlan {
             maxRetries = 1
             droppedIterationThreshold = 0
             scheduleWaitPolicy = "Each k6 iteration may wait until the batch's first recordedAtOffsetSeconds; retries preserve the same payload identity."
+        }
+        warmupSchedule = [PSCustomObject]@{
+            enabled = ($warmupRequestCount -gt 0)
+            durationSeconds = $warmupSeconds
+            expectedRequests = $warmupRequestCount
+            rate = $warmupRequestCount
+            timeUnit = if ($warmupSeconds -gt 0) { "$($warmupSeconds)s" } else { "1s" }
+            accountingPolicy = "Warmup traffic uses distinct timestamps and is excluded from measured scheduled/accepted/persisted totals."
         }
         accounting = [PSCustomObject]@{
             scheduledReadings = [int64] $schedule.workload.scheduledReadings
@@ -1964,8 +2035,9 @@ function New-CapacityGenerationPlan {
             $null
         }
         readings = @($readings)
+        warmupReadings = @($warmupReadings)
         command = if ($Protocol -eq "rest") {
-            "docker run --rm -v <repo>:/workspace -w /workspace $toolImage run --compatibility-mode=base --env RUN_DIRECTORY=<run-dir> --env WORKER_INDEX=$WorkerIndex --summary-export <run-dir>/k6-summary.json $RestScriptPath"
+            "docker run --rm -v <repo>:/workspace -w /workspace $toolImage run --env RUN_DIRECTORY=<run-dir> --env WORKER_INDEX=$WorkerIndex --summary-export <run-dir>/k6-summary.json $RestScriptPath"
         } else {
             "powershell -ExecutionPolicy Bypass -File $MqttGeneratorPath -RunDirectory <run-dir> -WorkerIndex $WorkerIndex -Qos $MqttQos -ConnectionCount $MqttConnections"
         }
@@ -2025,18 +2097,51 @@ function New-CapacityGenerationResult {
         [string] $ClientVersion = ""
     )
 
+    function New-SequenceSet {
+        param([AllowEmptyCollection()] [object[]] $Values = @())
+        $set = [System.Collections.Generic.HashSet[int64]]::new()
+        foreach ($value in @($Values)) { $set.Add([int64] $value) | Out-Null }
+        return ,$set
+    }
+
     $readings = @($Plan.readings)
-    $materializedSequences = @($readings | ForEach-Object { [int64] $_.sequence })
-    $accepted = @($AcceptedSequences | Select-Object -Unique)
-    $duplicates = @($DuplicateSequences | Select-Object -Unique)
-    $rejected = @($RejectedSequences | Select-Object -Unique)
-    $unknown = @($UnknownSequences | Select-Object -Unique)
-    $timeouts = @($TimeoutAfterAcceptSequences | Select-Object -Unique)
-    $transportErrors = @($TransportErrorSequences | Select-Object -Unique)
-    $retrySequences = @($RetriedSequences + $unknown + $timeouts | Select-Object -Unique)
-    $unexpectedSequences = @($accepted + $duplicates + $rejected + $unknown + $timeouts + $transportErrors | Where-Object { $materializedSequences -notcontains $_ } | Select-Object -Unique)
-    $started = [int64] (($accepted + $duplicates + $rejected + $unknown + $transportErrors) | Select-Object -Unique).Count
-    $attempts = if ($ObservedTransportAttempts -gt 0) { [int64] $ObservedTransportAttempts } else { [int64] ($started + $retrySequences.Count + $transportErrors.Count) }
+    $materializedSet = [System.Collections.Generic.HashSet[int64]]::new()
+    foreach ($reading in $readings) { $materializedSet.Add([int64] $reading.sequence) | Out-Null }
+    $acceptedSet = New-SequenceSet -Values $AcceptedSequences
+    $duplicateSet = New-SequenceSet -Values $DuplicateSequences
+    $rejectedSet = New-SequenceSet -Values $RejectedSequences
+    $unknownSet = New-SequenceSet -Values $UnknownSequences
+    $timeoutSet = New-SequenceSet -Values $TimeoutAfterAcceptSequences
+    $transportErrorSet = New-SequenceSet -Values $TransportErrorSequences
+    $retrySet = New-SequenceSet -Values $RetriedSequences
+    $retrySet.UnionWith($unknownSet)
+    $retrySet.UnionWith($timeoutSet)
+
+    $outcomeSet = [System.Collections.Generic.HashSet[int64]]::new($acceptedSet)
+    $outcomeSet.UnionWith($duplicateSet)
+    $outcomeSet.UnionWith($rejectedSet)
+    $outcomeSet.UnionWith($unknownSet)
+    $outcomeSet.UnionWith($timeoutSet)
+    $outcomeSet.UnionWith($transportErrorSet)
+    $unexpectedSequences = [System.Collections.Generic.List[int64]]::new()
+    foreach ($sequence in $outcomeSet) {
+        if (-not $materializedSet.Contains($sequence)) { $unexpectedSequences.Add($sequence) }
+    }
+
+    $startedSet = [System.Collections.Generic.HashSet[int64]]::new($acceptedSet)
+    $startedSet.UnionWith($duplicateSet)
+    $startedSet.UnionWith($rejectedSet)
+    $startedSet.UnionWith($unknownSet)
+    $startedSet.UnionWith($transportErrorSet)
+    $accepted = @($acceptedSet)
+    $duplicates = @($duplicateSet)
+    $rejected = @($rejectedSet)
+    $unknown = @($unknownSet)
+    $timeouts = @($timeoutSet)
+    $transportErrors = @($transportErrorSet)
+    $retrySequences = @($retrySet)
+    $started = [int64] $startedSet.Count
+    $attempts = if ($ObservedTransportAttempts -gt 0) { [int64] $ObservedTransportAttempts } else { [int64] ($started + $retrySet.Count + $transportErrorSet.Count) }
     $acceptedUnique = [int64] $accepted.Count
     $expectedNumericValues = [int64] ($acceptedUnique * @($Plan.readings[0].metricNames).Count)
 
@@ -2093,7 +2198,7 @@ function New-CapacityGenerationResult {
         applicationPersistenceEvidence = if ($Plan.protocol -eq "mqtt") { "REQUIRES_RECONCILIATION" } else { "HTTP_APPLICATION_RESPONSE_ONLY" }
         droppedScheduledReadings = [int64] $DroppedScheduledReadings
         expectedCommittedNumericValues = $expectedNumericValues
-        unexpectedOutcomeSequences = @($unexpectedSequences)
+        unexpectedOutcomeSequences = @($unexpectedSequences.ToArray())
         retryIdentityPolicy = $Plan.retryPolicy
         acceptedSequences = @($accepted)
         duplicateSequences = @($duplicates)
@@ -2124,18 +2229,30 @@ function ConvertFrom-CapacityK6RestOutcomes {
     $observedSequences = New-Object System.Collections.Generic.HashSet[int64]
     $finalBySequence = @{}
     $attemptCount = [int64] 0
+    $firstCompletedAtUnixMs = $null
+    $lastCompletedAtUnixMs = $null
 
     foreach ($line in Get-Content -LiteralPath $OutcomePath) {
         $text = $line.ToString().Trim()
         if ($text.Length -eq 0) {
             continue
         }
+        $messageMatch = [regex]::Match($text, 'msg="(?<message>(?:\\.|[^"])*)"')
+        if ($messageMatch.Success) {
+            try {
+                $text = ('"' + $messageMatch.Groups["message"].Value + '"' | ConvertFrom-Json)
+            } catch {
+                continue
+            }
+        }
         $jsonStart = $text.IndexOf("{")
         if ($jsonStart -lt 0) {
             continue
         }
+        $jsonEnd = $text.LastIndexOf("}")
+        if ($jsonEnd -lt $jsonStart) { continue }
         try {
-            $event = $text.Substring($jsonStart) | ConvertFrom-Json
+            $event = $text.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json
         } catch {
             continue
         }
@@ -2154,6 +2271,11 @@ function ConvertFrom-CapacityK6RestOutcomes {
             }
         }
         $attemptCount += $sequences.Count
+        if ($null -ne $event.responseCompletedAtUnixMs) {
+            $completedAt = [int64] $event.responseCompletedAtUnixMs
+            if ($null -eq $firstCompletedAtUnixMs -or $completedAt -lt $firstCompletedAtUnixMs) { $firstCompletedAtUnixMs = $completedAt }
+            if ($null -eq $lastCompletedAtUnixMs -or $completedAt -gt $lastCompletedAtUnixMs) { $lastCompletedAtUnixMs = $completedAt }
+        }
 
         if ($event.status -eq "accepted") {
             $statuses = @($event.itemStatuses)
@@ -2187,7 +2309,7 @@ function ConvertFrom-CapacityK6RestOutcomes {
     $scheduled = @($Plan.readings | ForEach-Object { [int64] $_.sequence })
     $dropped = [int64] @($scheduled | Where-Object { -not $observedSequences.Contains($_) }).Count
 
-    return New-CapacityGenerationResult `
+    $result = New-CapacityGenerationResult `
         -Plan $Plan `
         -AcceptedSequences @($accepted.ToArray()) `
         -DuplicateSequences @($duplicates.ToArray()) `
@@ -2197,6 +2319,10 @@ function ConvertFrom-CapacityK6RestOutcomes {
         -RetriedSequences @($retried.ToArray()) `
         -ObservedTransportAttempts $attemptCount `
         -DroppedScheduledReadings $dropped
+    Add-Member -InputObject $result -NotePropertyName measurementFirstOutcomeUnixMs -NotePropertyValue $firstCompletedAtUnixMs -Force
+    Add-Member -InputObject $result -NotePropertyName measurementLastOutcomeUnixMs -NotePropertyValue $lastCompletedAtUnixMs -Force
+    Add-Member -InputObject $result -NotePropertyName actualMeasuredSeconds -NotePropertyValue $(if ($null -ne $firstCompletedAtUnixMs -and $null -ne $lastCompletedAtUnixMs) { [math]::Max(1, [math]::Round(($lastCompletedAtUnixMs - $firstCompletedAtUnixMs) / 1000.0, 3)) } else { $null }) -Force
+    return $result
 }
 
 function Write-CapacityGenerationResult {
@@ -2226,7 +2352,9 @@ function New-CapacityVisibilityObservation {
     param(
         [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [object[]] $Samples,
         [int] $PollingIntervalMillis = 250,
-        [int] $TimeoutMillis = 30000
+        [int] $TimeoutMillis = 30000,
+        [double] $ThresholdMillis = 5000,
+        [string] $LatencyReference = "accepted-response-to-first-committed-read"
     )
 
     $observed = @($Samples | Where-Object { $_.observed -eq $true -and $null -ne $_.latencyMillis })
@@ -2241,20 +2369,73 @@ function New-CapacityVisibilityObservation {
         return [math]::Round($Values[$index], 3)
     }
 
+    $p95 = Get-Percentile -Values $latencies -Percentile 95
+    $status = if (@($Samples).Count -eq 0) {
+        "NOT_RUN"
+    } elseif ($timeouts.Count -gt 0) {
+        "INCONCLUSIVE"
+    } elseif ($null -ne $p95 -and $ThresholdMillis -gt 0 -and $p95 -gt $ThresholdMillis) {
+        "FAIL"
+    } else {
+        "PASS"
+    }
     return [PSCustomObject]@{
         schemaVersion = 1
         generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-        status = if (@($Samples).Count -eq 0) { "NOT_RUN" } elseif ($timeouts.Count -gt 0) { "INCONCLUSIVE" } else { "PASS" }
+        status = $status
         sampleCount = @($Samples).Count
         observedCount = $observed.Count
         timeoutCount = $timeouts.Count
         pollingIntervalMillis = $PollingIntervalMillis
         timeoutMillis = $TimeoutMillis
-        p95Millis = Get-Percentile -Values $latencies -Percentile 95
+        p95Millis = $p95
         p99Millis = Get-Percentile -Values $latencies -Percentile 99
+        thresholdMillis = $ThresholdMillis
+        latencyReference = $LatencyReference
         uncertainty = "Polling latencies are upper bounds plus interval and network overhead; timed-out samples remain in the report."
         samples = @($Samples)
     }
+}
+
+function ConvertFrom-CapacityK6VisibilityOutcomes {
+    param(
+        [Parameter(Mandatory = $true)] [string] $OutcomePath,
+        [double] $ThresholdMillis = 5000
+    )
+
+    if (-not (Test-Path -LiteralPath $OutcomePath)) {
+        throw "k6 outcome log not found: $OutcomePath"
+    }
+    $samples = New-Object System.Collections.Generic.List[object]
+    foreach ($line in Get-Content -LiteralPath $OutcomePath) {
+        $text = $line.ToString().Trim()
+        $messageMatch = [regex]::Match($text, 'msg="(?<message>(?:\\.|[^"])*)"')
+        if ($messageMatch.Success) {
+            try {
+                $text = ('"' + $messageMatch.Groups["message"].Value + '"' | ConvertFrom-Json)
+            } catch {
+                continue
+            }
+        }
+        $jsonStart = $text.IndexOf("{")
+        if ($jsonStart -lt 0) { continue }
+        $jsonEnd = $text.LastIndexOf("}")
+        if ($jsonEnd -lt $jsonStart) { continue }
+        try { $event = $text.Substring($jsonStart, $jsonEnd - $jsonStart + 1) | ConvertFrom-Json } catch { continue }
+        if ($event.type -ne "capacity-rest-visibility") { continue }
+        $samples.Add([PSCustomObject]@{
+            sequence = [int64] $event.sequence
+            observed = [bool] $event.observed
+            latencyMillis = if ($null -eq $event.latencyMillis) { $null } else { [double] $event.latencyMillis }
+            acceptedAtUnixMs = [int64] $event.acceptedAtUnixMs
+            pollingIntervalMillis = [int] $event.pollingIntervalMillis
+            timeoutMillis = [int] $event.timeoutMillis
+            error = $event.error
+        })
+    }
+    $poll = if ($samples.Count -gt 0) { [int] $samples[0].pollingIntervalMillis } else { 250 }
+    $timeout = if ($samples.Count -gt 0) { [int] $samples[0].timeoutMillis } else { 30000 }
+    return New-CapacityVisibilityObservation -Samples @($samples.ToArray()) -PollingIntervalMillis $poll -TimeoutMillis $timeout -ThresholdMillis $ThresholdMillis -LatencyReference "accepted-response-to-first-telemetry-export-visibility"
 }
 
 function Write-CapacityVisibilityObservation {
@@ -2293,7 +2474,7 @@ function Invoke-CapacityVisibilityObservation {
     $plan = Read-CapacityJsonFile -Path $paths.generationManifestPath -Default $null
     $generation = Read-CapacityJsonFile -Path $paths.generationResultPath -Default $null
     if ($null -eq $plan -or $null -eq $generation) {
-        $observation = New-CapacityVisibilityObservation -Samples @() -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis
+        $observation = New-CapacityVisibilityObservation -Samples @() -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis -ThresholdMillis 0 -LatencyReference "standalone-post-run-poll-start-to-visibility"
         return Write-CapacityVisibilityObservation -RunDirectory $RunDirectory -Observation $observation
     }
 
@@ -2303,7 +2484,7 @@ function Invoke-CapacityVisibilityObservation {
     }
     $acceptedSequences = @($generation.acceptedSequences | ForEach-Object { [int64] $_ } | Where-Object { $readingBySequence.ContainsKey($_) } | Sort-Object -Unique)
     if ($acceptedSequences.Count -eq 0) {
-        $observation = New-CapacityVisibilityObservation -Samples @() -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis
+        $observation = New-CapacityVisibilityObservation -Samples @() -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis -ThresholdMillis 0 -LatencyReference "standalone-post-run-poll-start-to-visibility"
         return Write-CapacityVisibilityObservation -RunDirectory $RunDirectory -Observation $observation
     }
 
@@ -2314,7 +2495,8 @@ function Invoke-CapacityVisibilityObservation {
         $sampleIndexes.Add($index) | Out-Null
     }
     $sampleSequences = @($sampleIndexes | Sort-Object | ForEach-Object { $acceptedSequences[$_] })
-    $runStart = [DateTimeOffset]::Parse([string] $plan.runEpoch.iso)
+    $parsedRunStart = [DateTimeOffset]::Parse([string] $plan.runEpoch.iso)
+    $runStart = [DateTimeOffset]::FromUnixTimeMilliseconds($parsedRunStart.ToUnixTimeMilliseconds())
     $baseUrl = $TelemetryBaseUrl.TrimEnd("/")
     $headers = @{
         "X-Internal-Service-Token" = $InternalServiceToken
@@ -2329,8 +2511,11 @@ function Invoke-CapacityVisibilityObservation {
         $recordedAt = $runStart.AddSeconds([int64] $reading.recordedAtOffsetSeconds)
         $timestamp = $recordedAt.UtcDateTime.ToString("o")
         $encodedMetric = [System.Uri]::EscapeDataString($metricName)
-        $encodedFrom = [System.Uri]::EscapeDataString($timestamp)
-        $uri = "$baseUrl/telemetry/devices/$($reading.deviceId)/readings/export?metric=$encodedMetric&from=$encodedFrom&to=$encodedFrom&limit=1"
+        $fromTimestamp = $recordedAt.AddMilliseconds(-2).UtcDateTime.ToString("o")
+        $toTimestamp = $recordedAt.AddMilliseconds(2).UtcDateTime.ToString("o")
+        $encodedFrom = [System.Uri]::EscapeDataString($fromTimestamp)
+        $encodedTo = [System.Uri]::EscapeDataString($toTimestamp)
+        $uri = "$baseUrl/telemetry/devices/$($reading.deviceId)/readings/export?metric=$encodedMetric&from=$encodedFrom&to=$encodedTo&limit=1"
         $pollStart = (Get-Date).ToUniversalTime()
         $deadline = $pollStart.AddMilliseconds($TimeoutMillis)
         $observed = $false
@@ -2342,7 +2527,7 @@ function Invoke-CapacityVisibilityObservation {
                 foreach ($point in @($response.points)) {
                     $pointTimestamp = [DateTimeOffset]::Parse([string] $point.timestamp)
                     $pointValue = [double] $point.value
-                    if ($pointTimestamp.UtcDateTime -eq $recordedAt.UtcDateTime -and [math]::Abs($pointValue - $expectedValue) -le 0.000001) {
+                    if ([math]::Abs(($pointTimestamp - $recordedAt).TotalMilliseconds) -le 2 -and [math]::Abs($pointValue - $expectedValue) -le 0.000001) {
                         $observed = $true
                         break
                     }
@@ -2372,14 +2557,14 @@ function Invoke-CapacityVisibilityObservation {
         })
     }
 
-    $observation = New-CapacityVisibilityObservation -Samples @($samples.ToArray()) -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis
+    $observation = New-CapacityVisibilityObservation -Samples @($samples.ToArray()) -PollingIntervalMillis $PollingIntervalMillis -TimeoutMillis $TimeoutMillis -ThresholdMillis 0 -LatencyReference "standalone-post-run-poll-start-to-visibility"
     return Write-CapacityVisibilityObservation -RunDirectory $RunDirectory -Observation $observation
 }
 
 function Test-CapacityLogicalReconciliation {
     param(
-        [Parameter(Mandatory = $true)] [object[]] $ExpectedReadings,
-        [Parameter(Mandatory = $true)] [object[]] $CommittedMeasurements
+        [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [object[]] $ExpectedReadings,
+        [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [object[]] $CommittedMeasurements
     )
 
     $expected = @{}
@@ -2487,7 +2672,9 @@ function Write-CapacityReconciliation {
 function ConvertFrom-CapacityCommittedMeasurementCsv {
     param(
         [Parameter(Mandatory = $true)] [string] $Path,
-        [AllowNull()] [object] $Plan = $null
+        [AllowNull()] [object] $Plan = $null,
+        [Nullable[int64]] $MinOffsetSeconds = $null,
+        [Nullable[int64]] $MaxOffsetSecondsExclusive = $null
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -2513,15 +2700,170 @@ function ConvertFrom-CapacityCommittedMeasurementCsv {
         } else {
             "$($row.deviceId)|$($row.sourceId)|$offsetSeconds|$($row.metricName)"
         }
-        [PSCustomObject]@{
-            deviceId = [string] $row.deviceId
-            sourceId = [string] $row.sourceId
-            recordedAtOffsetSeconds = $offsetSeconds
-            metricName = [string] $row.metricName
-            numericValue = [double] $row.numericValue
-            logicalKey = $logicalKey
+        if (($null -eq $MinOffsetSeconds -or $offsetSeconds -ge [int64] $MinOffsetSeconds) -and ($null -eq $MaxOffsetSecondsExclusive -or $offsetSeconds -lt [int64] $MaxOffsetSecondsExclusive)) {
+            [PSCustomObject]@{
+                deviceId = [string] $row.deviceId
+                sourceId = [string] $row.sourceId
+                recordedAtOffsetSeconds = $offsetSeconds
+                metricName = [string] $row.metricName
+                numericValue = [double] $row.numericValue
+                logicalKey = $logicalKey
+            }
         }
     })
+}
+
+function Split-CapacityCommittedMeasurementCsv {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [Parameter(Mandatory = $true)] [string] $OutputDirectory,
+        [Parameter(Mandatory = $true)] [int64] $WindowSeconds,
+        [Parameter(Mandatory = $true)] [int64] $MeasurementSeconds
+    )
+
+    New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+    $reader = [System.IO.StreamReader]::new($Path)
+    $writers = @{}
+    $paths = @{}
+    try {
+        $header = $reader.ReadLine()
+        if ([string]::IsNullOrWhiteSpace($header) -or $header.ToLowerInvariant() -notlike "deviceid,sourceid,recordedatoffsetseconds,metricname,numericvalue*") {
+            throw "Committed measurement CSV has an unsupported header for partitioned reconciliation."
+        }
+        for ($windowStart = [int64] 0; $windowStart -lt $MeasurementSeconds; $windowStart += $WindowSeconds) {
+            $partitionPath = Join-Path $OutputDirectory "committed-$windowStart.csv"
+            $writer = [System.IO.StreamWriter]::new($partitionPath, $false, [System.Text.UTF8Encoding]::new($false))
+            $writer.WriteLine($header)
+            $writers[$windowStart] = $writer
+            $paths[$windowStart] = $partitionPath
+        }
+        while (($line = $reader.ReadLine()) -ne $null) {
+            if ($line.Length -eq 0) { continue }
+            $first = $line.IndexOf(',')
+            $second = if ($first -ge 0) { $line.IndexOf(',', $first + 1) } else { -1 }
+            $third = if ($second -ge 0) { $line.IndexOf(',', $second + 1) } else { -1 }
+            if ($second -lt 0 -or $third -lt 0) { throw "Malformed committed measurement CSV row." }
+            $offsetSeconds = [int64] $line.Substring($second + 1, $third - $second - 1)
+            if ($offsetSeconds -lt 0 -or $offsetSeconds -ge $MeasurementSeconds) { continue }
+            $windowStart = [int64] ([math]::Floor($offsetSeconds / $WindowSeconds) * $WindowSeconds)
+            $writers[$windowStart].WriteLine($line)
+        }
+    } finally {
+        $reader.Dispose()
+        foreach ($writer in $writers.Values) { $writer.Dispose() }
+    }
+    return $paths
+}
+
+function Invoke-CapacityStreamingReconciliation {
+    param(
+        [Parameter(Mandatory = $true)] [string] $RunDirectory,
+        [Parameter(Mandatory = $true)] [string] $CommittedMeasurementsPath,
+        [Parameter(Mandatory = $true)] [object] $Plan,
+        [Parameter(Mandatory = $true)] [object] $Generation
+    )
+
+    $schedule = Read-CapacityJsonFile -Path (Get-CapacityRunPaths -RunDirectory $RunDirectory).schedulePath
+    $state = Read-CapacityJsonFile -Path (Get-CapacityProvisioningPaths -RunDirectory $RunDirectory).statePath
+    $deviceCount = [int64] $schedule.workload.deviceCount
+    $intervalSeconds = [double] $schedule.workload.effectiveIntervalSeconds
+    $phaseWindowSeconds = [int64] $schedule.phaseWindowSeconds
+    $measurementSeconds = [int64] $schedule.workload.measurementSeconds
+    $windowSeconds = [int64] [math]::Max(60, [double] $schedule.workload.intervalSeconds)
+    $windowCount = [int] [math]::Ceiling($measurementSeconds / $windowSeconds)
+    $metricNames = @($Plan.readings[0].metricNames)
+    $metricSet = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($metricName in $metricNames) { $metricSet.Add([string] $metricName) | Out-Null }
+    $accepted = [System.Collections.Generic.HashSet[int64]]::new()
+    foreach ($sequence in @(@($Generation.acceptedSequences) + @($Generation.timeoutAfterAcceptSequences) + @($Generation.unknownSequences))) { $accepted.Add([int64] $sequence) | Out-Null }
+    $sourceByName = @{}
+    $sourceByIndex = @{}
+    foreach ($source in @($state.dataSources)) { $sourceByName[[string] $source.externalId] = $source; $sourceByIndex[[int] $source.deviceIndex] = $source }
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $expectedByWindow = [int64[]]::new($windowCount)
+    $committedByWindow = [int64[]]::new($windowCount)
+    foreach ($sequence in $accepted) {
+        $deviceIndex = [int64] ($sequence % $deviceCount)
+        $cycleIndex = [int64] [math]::Floor($sequence / $deviceCount)
+        $phaseOffset = [int64] [math]::Floor($deviceIndex * $phaseWindowSeconds / $deviceCount)
+        $offset = [int64] [math]::Floor(($cycleIndex * $intervalSeconds) + $phaseOffset)
+        $expectedByWindow[[int] [math]::Floor($offset / $windowSeconds)] += $metricNames.Count
+    }
+
+    $committedCount = [int64] 0; $unexpected = [int64] 0; $wrong = [int64] 0; $duplicates = [int64] 0; $nonFinite = [int64] 0
+    $unexpectedKeys = [System.Collections.Generic.List[object]]::new(); $wrongValues = [System.Collections.Generic.List[object]]::new(); $duplicateKeys = [System.Collections.Generic.List[object]]::new(); $nonFiniteKeys = [System.Collections.Generic.List[object]]::new()
+    $reader = [System.IO.StreamReader]::new($CommittedMeasurementsPath)
+    try {
+        $header = $reader.ReadLine()
+        if ([string]::IsNullOrWhiteSpace($header) -or $header.ToLowerInvariant() -notlike "deviceid,sourceid,recordedatoffsetseconds,metricname,numericvalue*") { throw "Committed measurement CSV has an unsupported header." }
+        while (($line = $reader.ReadLine()) -ne $null) {
+            if ($line.Length -eq 0) { continue }
+            $parts = $line.Split(',')
+            if ($parts.Count -lt 5) { throw "Malformed committed measurement CSV row." }
+            $deviceId = $parts[0]; $sourceId = $parts[1]; $offset = [int64] $parts[2]; $metricName = $parts[3]
+            $committedCount += 1
+            $source = $sourceByName[$sourceId]
+            $validIdentity = $null -ne $source -and [string] $source.apiDeviceId -eq $deviceId
+            $sequence = [int64] -1
+            if ($validIdentity) {
+                $deviceIndex = [int64] $source.deviceIndex
+                $phaseOffset = [int64] [math]::Floor($deviceIndex * $phaseWindowSeconds / $deviceCount)
+                $cycleIndex = [int64] [math]::Floor(($offset - $phaseOffset) / $intervalSeconds)
+                $expectedOffset = [int64] [math]::Floor(($cycleIndex * $intervalSeconds) + $phaseOffset)
+                if ($cycleIndex -ge 0 -and [math]::Abs($expectedOffset - $offset) -le 1) {
+                    $sequence = ($cycleIndex * $deviceCount) + $deviceIndex
+                    if ($expectedOffset -ge 0 -and $expectedOffset -lt $measurementSeconds) { $committedByWindow[[int] [math]::Floor($expectedOffset / $windowSeconds)] += 1 }
+                }
+            }
+            $logicalKey = "$deviceId|$sourceId|$offset|$metricName"
+            if ($sequence -lt 0 -or -not $accepted.Contains($sequence) -or -not $metricSet.Contains($metricName)) {
+                $unexpected += 1; if ($unexpectedKeys.Count -lt 100) { $unexpectedKeys.Add($logicalKey) }; continue
+            }
+            $compactKey = "$sequence|$metricName"
+            if (-not $seen.Add($compactKey)) { $duplicates += 1; if ($duplicateKeys.Count -lt 100) { $duplicateKeys.Add($logicalKey) }; continue }
+            $numericValue = [double]::Parse($parts[4], [Globalization.CultureInfo]::InvariantCulture)
+            if ([double]::IsNaN($numericValue) -or [double]::IsInfinity($numericValue)) { $nonFinite += 1; if ($nonFiniteKeys.Count -lt 100) { $nonFiniteKeys.Add($logicalKey) }; continue }
+            $expectedValue = switch ($metricName) {
+                "activePowerW" { [math]::Round(350 + (($sequence * 17) % 650) + (($sequence % 10) / 10), 3) }
+                "voltageV" { [math]::Round(220 + (($sequence * 7) % 20) + (($sequence % 5) / 10), 3) }
+                "currentA" { [math]::Round(1 + (($sequence * 11) % 900) / 100, 3) }
+                "energyWh" { [math]::Round(10000 + ($sequence * 5), 3) }
+                "rssi" { [math]::Round(-70 + ($sequence % 25), 3) }
+                "temperatureC" { [math]::Round(18 + (($sequence * 3) % 550) / 10, 3) }
+                "vibrationMmS" { [math]::Round((($sequence * 13) % 1200) / 100, 3) }
+                "runtimeHours" { [math]::Round(($sequence * 5) / 60, 3) }
+                "powerFactor" { [math]::Round(0.7 + (($sequence * 7) % 30) / 100, 3) }
+                "frequencyHz" { [math]::Round(49 + (($sequence * 5) % 250) / 100, 3) }
+            }
+            if ([math]::Abs($numericValue - [double] $expectedValue) -gt 0.000001) { $wrong += 1; if ($wrongValues.Count -lt 100) { $wrongValues.Add([PSCustomObject]@{ logicalKey = $logicalKey; expected = $expectedValue; actual = $numericValue }) } }
+        }
+    } finally { $reader.Dispose() }
+    $expectedCount = [int64] ($accepted.Count * $metricNames.Count)
+    $missing = [int64] ($expectedCount - $seen.Count)
+    $missingKeys = [System.Collections.Generic.List[object]]::new()
+    if ($missing -gt 0) {
+        foreach ($sequence in $accepted) {
+            foreach ($metricName in $metricNames) {
+                if ($missingKeys.Count -ge 100) { break }
+                if (-not $seen.Contains("$sequence|$metricName")) {
+                    $source = $sourceByIndex[[int] ($sequence % $deviceCount)]
+                    $cycleIndex = [int64] [math]::Floor($sequence / $deviceCount); $phaseOffset = [int64] [math]::Floor(([int64] $source.deviceIndex) * $phaseWindowSeconds / $deviceCount); $offset = [int64] [math]::Floor(($cycleIndex * $intervalSeconds) + $phaseOffset)
+                    $missingKeys.Add("$($source.apiDeviceId)|$($source.externalId)|$offset|$metricName")
+                }
+            }
+            if ($missingKeys.Count -ge 100) { break }
+        }
+    }
+    $windows = for ($index = 0; $index -lt $windowCount; $index++) { [PSCustomObject]@{ startOffsetSeconds = [int64] ($index * $windowSeconds); endOffsetSecondsExclusive = [int64] [math]::Min($measurementSeconds, ($index + 1) * $windowSeconds); status = if ($expectedByWindow[$index] -eq $committedByWindow[$index]) { "PASS" } else { "FAIL" }; expectedMeasurements = $expectedByWindow[$index]; committedMeasurements = $committedByWindow[$index] } }
+    $failed = $missing + $unexpected + $wrong + $duplicates + $nonFinite
+    return [PSCustomObject]@{
+        schemaVersion = 1; generatedAt = (Get-Date).ToUniversalTime().ToString("o"); status = if ($failed -eq 0) { "PASS" } else { "FAIL" }
+        expectedMeasurements = $expectedCount; committedMeasurements = $committedCount; missingCount = $missing; unexpectedCount = $unexpected; wrongValueCount = $wrong
+        duplicateExpectedCount = 0; duplicateCommittedCount = $duplicates; nonFiniteCommittedCount = $nonFinite
+        missingKeys = @($missingKeys); unexpectedKeys = @($unexpectedKeys); wrongValues = @($wrongValues); duplicateExpectedKeys = @(); duplicateCommittedKeys = @($duplicateKeys); nonFiniteCommittedKeys = @($nonFiniteKeys)
+        partitioning = "Streamed once with compact sequence/metric keys and $windowSeconds-second counters."
+        partitionWindows = @($windows)
+    }
 }
 
 function Invoke-CapacityLogicalReconciliation {
@@ -2550,12 +2892,92 @@ function Invoke-CapacityLogicalReconciliation {
         @($generation.unknownSequences)
     ) | ForEach-Object { [int64] $_ } | Where-Object { $readingBySequence.ContainsKey($_) } | Sort-Object -Unique
     $expectedReadings = @($expectedSequences | ForEach-Object { $readingBySequence[$_] })
-    $committed = ConvertFrom-CapacityCommittedMeasurementCsv -Path $CommittedMeasurementsPath -Plan $plan
-    $reconciliation = Test-CapacityLogicalReconciliation -ExpectedReadings $expectedReadings -CommittedMeasurements $committed
+    $metricCount = if ($expectedReadings.Count -gt 0) { @($expectedReadings[0].metricNames).Count } else { 0 }
+    $estimatedMeasurements = [int64] ($expectedReadings.Count * $metricCount)
+    if ($estimatedMeasurements -le 200000) {
+        $committed = @(ConvertFrom-CapacityCommittedMeasurementCsv -Path $CommittedMeasurementsPath -Plan $plan)
+        $reconciliation = Test-CapacityLogicalReconciliation -ExpectedReadings $expectedReadings -CommittedMeasurements $committed
+        Add-Member -InputObject $reconciliation -NotePropertyName partitionWindows -NotePropertyValue @() -Force
+    } else {
+        $reconciliation = Invoke-CapacityStreamingReconciliation -RunDirectory $RunDirectory -CommittedMeasurementsPath $CommittedMeasurementsPath -Plan $plan -Generation $generation
+    }
     Add-Member -InputObject $reconciliation -NotePropertyName expectedSequenceCount -NotePropertyValue $expectedSequences.Count -Force
     Add-Member -InputObject $reconciliation -NotePropertyName ambiguousSequenceCount -NotePropertyValue @(@($generation.timeoutAfterAcceptSequences) + @($generation.unknownSequences) | Sort-Object -Unique).Count -Force
     Add-Member -InputObject $reconciliation -NotePropertyName committedMeasurementsSource -NotePropertyValue (Split-Path -Leaf $CommittedMeasurementsPath) -Force
     return Write-CapacityReconciliation -RunDirectory $RunDirectory -Reconciliation $reconciliation
+}
+
+function Export-CapacityCommittedMeasurements {
+    param(
+        [Parameter(Mandatory = $true)] [string] $RunDirectory,
+        [int] $DrainSeconds = 300,
+        [int] $PollSeconds = 5
+    )
+
+    $paths = Get-CapacityRunPaths -RunDirectory $RunDirectory
+    $plan = Read-CapacityJsonFile -Path $paths.generationManifestPath -Default $null
+    $generation = Read-CapacityJsonFile -Path $paths.generationResultPath -Default $null
+    if ($null -eq $plan -or $null -eq $generation) { throw "Generation plan and result are required before committed export." }
+    if ($null -eq (Get-Command "docker" -ErrorAction SilentlyContinue)) { throw "Docker is required for automatic local TimescaleDB export." }
+
+    $dbUser = if ([string]::IsNullOrWhiteSpace($env:TIMESCALE_USER)) { "voltcanary" } else { $env:TIMESCALE_USER }
+    $dbName = if ([string]::IsNullOrWhiteSpace($env:TIMESCALE_DB)) { "voltcanary_telemetry" } else { $env:TIMESCALE_DB }
+    $dbPassword = if ([string]::IsNullOrWhiteSpace($env:TIMESCALE_PASSWORD)) { "change_me" } else { $env:TIMESCALE_PASSWORD }
+    $parsedRunStart = [DateTimeOffset]::Parse([string] $plan.runEpoch.iso)
+    $runStart = [DateTimeOffset]::FromUnixTimeMilliseconds($parsedRunStart.ToUnixTimeMilliseconds())
+    $measurementSeconds = [int] ((Read-CapacityJsonFile -Path $paths.schedulePath).workload.measurementSeconds)
+    $runEnd = $runStart.AddSeconds($measurementSeconds)
+    $startSql = $runStart.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fff'Z'")
+    $endSql = $runEnd.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fff'Z'")
+    $expectedSequences = @(@($generation.acceptedSequences) + @($generation.timeoutAfterAcceptSequences) + @($generation.unknownSequences) | Sort-Object -Unique).Count
+    $metricCount = @($plan.readings[0].metricNames).Count
+    $expectedMeasurements = [int64] ($expectedSequences * $metricCount)
+    $countSql = "select count(*) from telemetry.measurements where recorded_at >= timestamptz '$startSql' and recorded_at < timestamptz '$endSql' and source_id like 'capacity-source-%'"
+    $deadline = (Get-Date).ToUniversalTime().AddSeconds([math]::Max(0, $DrainSeconds))
+    $observedCount = [int64] 0
+    $countError = $null
+    do {
+        $countOutput = & docker compose exec -T -e "PGPASSWORD=$dbPassword" timescaledb psql -U $dbUser -d $dbName -tA -v ON_ERROR_STOP=1 -c $countSql 2>&1
+        if ($LASTEXITCODE -eq 0 -and [int64]::TryParse(($countOutput | Select-Object -Last 1).ToString().Trim(), [ref] $observedCount)) {
+            $countError = $null
+        } else {
+            $countError = ($countOutput -join [Environment]::NewLine)
+        }
+        if ($observedCount -ge $expectedMeasurements -or (Get-Date).ToUniversalTime() -ge $deadline) { break }
+        Start-Sleep -Seconds ([math]::Max(1, $PollSeconds))
+    } while ($true)
+
+    $safeRunId = ([string] $plan.runId) -replace '[^a-zA-Z0-9-]', '-'
+    $remotePath = "/tmp/voltcanary-capacity-$safeRunId.csv"
+    $copySql = "\copy (select device_id as deviceid, source_id as sourceid, round(extract(epoch from (recorded_at - timestamptz '$startSql')))::bigint as recordedatoffsetseconds, metric_name as metricname, metric_value as numericvalue, received_at as receivedat from telemetry.measurements where recorded_at >= timestamptz '$startSql' and recorded_at < timestamptz '$endSql' and source_id like 'capacity-source-%' order by recorded_at, device_id, source_id, metric_name) TO '$remotePath' WITH (FORMAT CSV, HEADER true)"
+    $exportOutput = & docker compose exec -T -e "PGPASSWORD=$dbPassword" timescaledb psql -U $dbUser -d $dbName -v ON_ERROR_STOP=1 -c $copySql 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Committed export failed: $($exportOutput -join ' ')" }
+    & docker compose cp "timescaledb:$remotePath" $paths.committedMeasurementsPath | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to copy committed export from TimescaleDB." }
+    & docker compose exec -T timescaledb rm -f $remotePath | Out-Null
+
+    return [PSCustomObject]@{
+        status = if ($null -ne $countError) { "INCONCLUSIVE" } elseif ($observedCount -lt $expectedMeasurements) { "INCONCLUSIVE" } else { "PASS" }
+        expectedMeasurements = $expectedMeasurements
+        observedMeasurementsAtDrain = $observedCount
+        drainSeconds = $DrainSeconds
+        countError = $countError
+        committedMeasurementsPath = $paths.committedMeasurementsPath
+    }
+}
+
+function Invoke-CapacityAutomaticReconciliation {
+    param(
+        [Parameter(Mandatory = $true)] [string] $RunDirectory,
+        [int] $DrainSeconds = 300
+    )
+    $export = Export-CapacityCommittedMeasurements -RunDirectory $RunDirectory -DrainSeconds $DrainSeconds
+    $reconciliation = Invoke-CapacityLogicalReconciliation -RunDirectory $RunDirectory -CommittedMeasurementsPath $export.committedMeasurementsPath
+    return [PSCustomObject]@{
+        status = if ($export.status -eq "PASS" -and $reconciliation.status -eq "PASS") { "PASS" } elseif ($reconciliation.status -eq "FAIL") { "FAIL" } else { "INCONCLUSIVE" }
+        export = $export
+        reconciliation = $reconciliation
+    }
 }
 
 function Get-CapacityRunDiskSnapshot {
@@ -2578,12 +3000,44 @@ function Get-CapacityRunDiskSnapshot {
 
     $total = [double] ($drive.Free + $drive.Used)
     $freePercent = if ($total -le 0) { $null } else { [math]::Round(([double] $drive.Free / $total) * 100, 3) }
+    $dockerDataPath = $null
+    $dockerSettingsPath = Join-Path $env:APPDATA "Docker\settings.json"
+    if (Test-Path -LiteralPath $dockerSettingsPath) {
+        try {
+            $dockerSettings = Get-Content -LiteralPath $dockerSettingsPath -Raw | ConvertFrom-Json
+            if (-not [string]::IsNullOrWhiteSpace([string] $dockerSettings.customWslDistroDir)) {
+                $dockerDataPath = [string] $dockerSettings.customWslDistroDir
+            } elseif (-not [string]::IsNullOrWhiteSpace([string] $dockerSettings.dataFolder)) {
+                $dockerDataPath = [string] $dockerSettings.dataFolder
+            }
+        } catch {
+            $dockerDataPath = $null
+        }
+    }
+    $dockerDisk = $null
+    if (-not [string]::IsNullOrWhiteSpace($dockerDataPath)) {
+        $dockerRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($dockerDataPath))
+        $dockerDriveName = $dockerRoot.TrimEnd("\").TrimEnd(":")
+        $dockerDrive = Get-PSDrive -Name $dockerDriveName -ErrorAction SilentlyContinue
+        if ($null -ne $dockerDrive) {
+            $dockerTotal = [double] ($dockerDrive.Free + $dockerDrive.Used)
+            $dockerDisk = [PSCustomObject]@{
+                status = "OBSERVED"
+                drive = $dockerDriveName
+                path = $dockerDataPath
+                freePercent = if ($dockerTotal -le 0) { $null } else { [math]::Round(([double] $dockerDrive.Free / $dockerTotal) * 100, 3) }
+                freeBytes = [int64] $dockerDrive.Free
+                usedBytes = [int64] $dockerDrive.Used
+            }
+        }
+    }
     return [PSCustomObject]@{
         status = "OBSERVED"
         drive = $driveName
         freePercent = $freePercent
         freeBytes = [int64] $drive.Free
         usedBytes = [int64] $drive.Used
+        dockerData = $dockerDisk
     }
 }
 
@@ -2605,6 +3059,15 @@ function Test-CapacityRunnerGuards {
             guard = "min-free-disk-percent"
             limit = $MinFreeDiskPercent
             observed = [double] $disk.freePercent
+            action = "generation-stopped"
+        })
+    }
+    if ($MinFreeDiskPercent -gt 0 -and $null -ne $disk.dockerData -and $null -ne $disk.dockerData.freePercent -and [double] $disk.dockerData.freePercent -lt $MinFreeDiskPercent) {
+        $events.Add([PSCustomObject]@{
+            guard = "docker-data-min-free-disk-percent"
+            limit = $MinFreeDiskPercent
+            observed = [double] $disk.dockerData.freePercent
+            drive = $disk.dockerData.drive
             action = "generation-stopped"
         })
     }
@@ -2666,7 +3129,9 @@ function Invoke-CapacityLoggedProcess {
         [string[]] $ArgumentList = @(),
         [string] $WorkingDirectory = (Get-CapacityRepoRoot),
         [Parameter(Mandatory = $true)] [string] $LogPath,
-        [hashtable] $Environment = @()
+        [hashtable] $Environment = @{},
+        [scriptblock] $GuardProbe = $null,
+        [int] $GuardPollSeconds = 5
     )
 
     $parent = Split-Path -Parent $LogPath
@@ -2674,21 +3139,43 @@ function Invoke-CapacityLoggedProcess {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
 
-    $oldValues = @{}
-    foreach ($key in $Environment.Keys) {
-        $oldValues[$key] = [Environment]::GetEnvironmentVariable($key, "Process")
-        [Environment]::SetEnvironmentVariable($key, [string] $Environment[$key], "Process")
-    }
-
-    $previousLocation = Get-Location
     try {
-        Set-Location -LiteralPath $WorkingDirectory
-        & $FileName @ArgumentList *> $LogPath
-        $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $FileName
+        $startInfo.WorkingDirectory = $WorkingDirectory
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        foreach ($argument in $ArgumentList) { $startInfo.ArgumentList.Add([string] $argument) }
+        foreach ($key in $Environment.Keys) { $startInfo.Environment[$key] = [string] $Environment[$key] }
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) { throw "Failed to start $FileName." }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $guardEvents = New-Object System.Collections.Generic.List[object]
+        while (-not $process.HasExited) {
+            if ($null -ne $GuardProbe) {
+                $probe = & $GuardProbe
+                foreach ($event in @($probe.events)) { $guardEvents.Add($event) }
+                if ($probe.status -eq "STOP") {
+                    try { $process.Kill($true) } catch { }
+                    break
+                }
+            }
+            Start-Sleep -Seconds ([math]::Max(1, $GuardPollSeconds))
+        }
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        ($stdout + $(if ([string]::IsNullOrWhiteSpace($stderr)) { "" } else { [Environment]::NewLine + $stderr })) | Set-Content -LiteralPath $LogPath -Encoding UTF8
+        $exitCode = $process.ExitCode
         return [PSCustomObject]@{
-            status = if ($exitCode -eq 0) { "PASS" } else { "FAIL" }
+            status = if ($guardEvents.Count -gt 0) { "STOPPED_BY_GUARD" } elseif ($exitCode -eq 0) { "PASS" } else { "FAIL" }
             exitCode = $exitCode
             logPath = $LogPath
+            guardEvents = @($guardEvents.ToArray())
         }
     } catch {
         $_.Exception.Message | Set-Content -LiteralPath $LogPath -Encoding UTF8
@@ -2698,12 +3185,75 @@ function Invoke-CapacityLoggedProcess {
             logPath = $LogPath
             error = $_.Exception.Message
         }
-    } finally {
-        Set-Location -LiteralPath $previousLocation
-        foreach ($key in $Environment.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $oldValues[$key], "Process")
-        }
     }
+}
+
+function New-CapacityLiveGuardProbe {
+    param(
+        [Parameter(Mandatory = $true)] [string] $RunDirectory,
+        [double] $MinFreeDiskPercent = 20,
+        [double] $MaxErrorRatePercent = 5,
+        [int] $MaxLagGrowthSeconds = 300,
+        [string] $PrometheusBaseUrl = "http://localhost:9090"
+    )
+    $diskSnapshotCommand = ${function:Get-CapacityRunDiskSnapshot}
+    $lastLag = $null
+    $lagGrowthStartedAt = $null
+    return {
+        $snapshot = & $diskSnapshotCommand -RunDirectory $RunDirectory
+        $events = New-Object System.Collections.Generic.List[object]
+        foreach ($candidate in @(
+            [PSCustomObject]@{ name = "artifact-disk"; state = $snapshot },
+            [PSCustomObject]@{ name = "docker-data-disk"; state = $snapshot.dockerData }
+        )) {
+            if ($null -ne $candidate.state -and $null -ne $candidate.state.freePercent -and [double] $candidate.state.freePercent -lt $MinFreeDiskPercent) {
+                $events.Add([PSCustomObject]@{
+                    guard = "$($candidate.name)-min-free-percent"
+                    limit = $MinFreeDiskPercent
+                    observed = [double] $candidate.state.freePercent
+                    drive = $candidate.state.drive
+                    action = "generation-stopped"
+                    observedAt = (Get-Date).ToUniversalTime().ToString("o")
+                })
+            }
+        }
+        $queries = @{
+            errorRate = '100 * sum(rate(http_server_requests_seconds_count{status=~"5.."}[1m])) / clamp_min(sum(rate(http_server_requests_seconds_count[1m])), 1)'
+            consumerLag = 'sum(clamp_min(redpanda_kafka_consumer_group_latest_offset - redpanda_kafka_consumer_group_committed_offset, 0))'
+        }
+        $observations = @{}
+        foreach ($name in $queries.Keys) {
+            try {
+                $uri = "$($PrometheusBaseUrl.TrimEnd('/'))/api/v1/query?query=$([System.Uri]::EscapeDataString($queries[$name]))"
+                $response = Invoke-RestMethod -Method GET -Uri $uri -TimeoutSec 3
+                if ($response.status -eq "success" -and @($response.data.result).Count -gt 0) {
+                    $observations[$name] = [double] @($response.data.result)[0].value[1]
+                }
+            } catch { }
+        }
+        if ($observations.ContainsKey("errorRate") -and [double] $observations.errorRate -gt $MaxErrorRatePercent) {
+            $events.Add([PSCustomObject]@{ guard = "prometheus-error-rate-percent"; limit = $MaxErrorRatePercent; observed = [double] $observations.errorRate; action = "generation-stopped"; observedAt = (Get-Date).ToUniversalTime().ToString("o") })
+        }
+        if ($observations.ContainsKey("consumerLag")) {
+            $now = (Get-Date).ToUniversalTime()
+            $lag = [double] $observations.consumerLag
+            if ($null -ne $lastLag -and $lag -gt [double] $lastLag) {
+                if ($null -eq $lagGrowthStartedAt) { $lagGrowthStartedAt = $now }
+                if (($now - $lagGrowthStartedAt).TotalSeconds -gt $MaxLagGrowthSeconds) {
+                    $events.Add([PSCustomObject]@{ guard = "prometheus-consumer-lag-growth"; limitSeconds = $MaxLagGrowthSeconds; observed = $lag; action = "generation-stopped"; observedAt = $now.ToString("o") })
+                }
+            } else {
+                $lagGrowthStartedAt = $null
+            }
+            $lastLag = $lag
+        }
+        [PSCustomObject]@{
+            status = if ($events.Count -gt 0) { "STOP" } else { "PASS" }
+            events = @($events.ToArray())
+            disk = $snapshot
+            observations = $observations
+        }
+    }.GetNewClosure()
 }
 
 function New-CapacityK6Environment {
@@ -2713,6 +3263,7 @@ function New-CapacityK6Environment {
         [Parameter(Mandatory = $true)] [string] $SummaryPath,
         [Parameter(Mandatory = $true)] [string] $SecretPath,
         [int] $MaxDurationSeconds = 0,
+        [double] $MaxErrorRatePercent = 5,
         [switch] $ContainerPaths
     )
 
@@ -2720,9 +3271,6 @@ function New-CapacityK6Environment {
     $summaryPathValue = if ($ContainerPaths) { ConvertTo-CapacityContainerPath -Path $SummaryPath } else { $SummaryPath }
     $secretPathValue = if ($ContainerPaths) { ConvertTo-CapacityContainerPath -Path $SecretPath } else { $SecretPath }
     $duration = [string] $Plan.arrivalSchedule.duration
-    if ($MaxDurationSeconds -gt 0) {
-        $duration = "$($MaxDurationSeconds)s"
-    }
 
     $ingestionBaseUrl = [Environment]::GetEnvironmentVariable("INGESTION_BASE_URL", "Process")
     if ([string]::IsNullOrWhiteSpace($ingestionBaseUrl)) {
@@ -2733,17 +3281,24 @@ function New-CapacityK6Environment {
         RUN_DIRECTORY = $runDirectoryValue
         SOURCE_TOKENS_PATH = $secretPathValue
         RUN_START = [string] $Plan.runEpoch.iso
-        SCHEDULE_WALL_CLOCK_START_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
+        SCHEDULE_WALL_CLOCK_START_MS = ([DateTimeOffset]::Parse([string] $Plan.runEpoch.iso).AddSeconds(-[int] $Plan.warmupSchedule.durationSeconds)).ToUnixTimeMilliseconds().ToString()
         CAPACITY_K6_LOG_OUTCOMES = "1"
         INGESTION_BASE_URL = $ingestionBaseUrl
-        K6_RATE = [string] $Plan.arrivalSchedule.rate
-        K6_TIME_UNIT = [string] $Plan.arrivalSchedule.timeUnit
-        K6_DURATION = $duration
-        K6_PRE_ALLOCATED_VUS = [string] $Plan.arrivalSchedule.preAllocatedVUs
-        K6_MAX_VUS = [string] $Plan.arrivalSchedule.maxVUs
-        K6_GRACEFUL_STOP = [string] $Plan.arrivalSchedule.gracefulStop
+        TELEMETRY_BASE_URL = if ($ContainerPaths) { "http://host.docker.internal:8084" } else { "http://localhost:8084" }
+        INTERNAL_SERVICE_TOKEN = if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("INTERNAL_SERVICE_TOKEN", "Process"))) { "dev-internal-token" } else { [Environment]::GetEnvironmentVariable("INTERNAL_SERVICE_TOKEN", "Process") }
+        VISIBILITY_SAMPLE_PERCENT = "1"
+        VISIBILITY_MAX_SAMPLES = "100"
+        VISIBILITY_POLL_MILLIS = "250"
+        VISIBILITY_TIMEOUT_MILLIS = "30000"
+        CAPACITY_BATCH_RATE = [string] [math]::Ceiling([double] $Plan.accounting.workerMaterializedReadings / [double] $Plan.accounting.batchSize)
+        CAPACITY_TIME_UNIT = [string] $Plan.arrivalSchedule.timeUnit
+        CAPACITY_DURATION = $duration
+        CAPACITY_PRE_ALLOCATED_VUS = [string] $Plan.arrivalSchedule.preAllocatedVUs
+        CAPACITY_MAX_VUS = [string] $Plan.arrivalSchedule.maxVUs
+        CAPACITY_GRACEFUL_STOP = [string] $Plan.arrivalSchedule.gracefulStop
         MAX_DROPPED_ITERATIONS = [string] $Plan.arrivalSchedule.droppedIterationThreshold
-        K6_SUMMARY_EXPORT = $summaryPathValue
+        MAX_ERROR_RATE = [string] ($MaxErrorRatePercent / 100.0)
+        CAPACITY_SUMMARY_EXPORT = $summaryPathValue
     }
 }
 
@@ -2752,43 +3307,57 @@ function Invoke-CapacityRestGeneration {
         [Parameter(Mandatory = $true)] [string] $RunDirectory,
         [Parameter(Mandatory = $true)] [object] $Plan,
         [ValidateSet("auto", "local", "docker")] [string] $K6Mode = "auto",
-        [int] $MaxDurationSeconds = 0
+        [int] $MaxDurationSeconds = 0,
+        [double] $MinFreeDiskPercent = 20,
+        [double] $MaxErrorRatePercent = 5,
+        [int] $MaxLagGrowthSeconds = 300
     )
 
     $paths = Get-CapacityRunPaths -RunDirectory $RunDirectory
     $repoRoot = Get-CapacityRepoRoot
     $secretPath = (Get-CapacityProvisioningPaths -RunDirectory $RunDirectory).secretPath
+    if (-not (Test-Path -LiteralPath $secretPath)) {
+        throw "Provisioned source token file not found: $secretPath. Run provision-fixtures.ps1 with -RotateSourceTokens first."
+    }
     $selectedMode = $K6Mode
     if ($selectedMode -eq "auto") {
         $selectedMode = if ($null -ne (Get-Command "k6" -ErrorAction SilentlyContinue)) { "local" } else { "docker" }
     }
 
+    $warmupSeconds = [int] $Plan.warmupSchedule.durationSeconds
+    $measurementStart = [DateTimeOffset]::UtcNow.AddSeconds($warmupSeconds)
+    $Plan.runEpoch.iso = $measurementStart.ToString("o")
+    Write-CapacityGenerationPlan -Plan $Plan -RunDirectory $RunDirectory | Out-Null
+    $liveGuardProbe = New-CapacityLiveGuardProbe -RunDirectory $RunDirectory -MinFreeDiskPercent $MinFreeDiskPercent -MaxErrorRatePercent $MaxErrorRatePercent -MaxLagGrowthSeconds $MaxLagGrowthSeconds
+
     if ($selectedMode -eq "local") {
         if ($null -eq (Get-Command "k6" -ErrorAction SilentlyContinue)) {
             throw "k6 is not available on PATH. Use -K6Mode docker or install k6."
         }
-        $environment = New-CapacityK6Environment -Plan $Plan -RunDirectory $RunDirectory -SummaryPath $paths.k6SummaryPath -SecretPath $secretPath -MaxDurationSeconds $MaxDurationSeconds
+        $environment = New-CapacityK6Environment -Plan $Plan -RunDirectory $RunDirectory -SummaryPath $paths.k6SummaryPath -SecretPath $secretPath -MaxDurationSeconds $MaxDurationSeconds -MaxErrorRatePercent $MaxErrorRatePercent
         $execution = Invoke-CapacityLoggedProcess `
             -FileName "k6" `
-            -ArgumentList @("run", "--compatibility-mode=base", "--summary-export", $paths.k6SummaryPath, $Plan.entrypoint) `
+            -ArgumentList @("run", "--summary-export", $paths.k6SummaryPath, $Plan.entrypoint) `
             -WorkingDirectory $repoRoot `
             -LogPath $paths.generationLogPath `
-            -Environment $environment
+            -Environment $environment `
+            -GuardProbe $liveGuardProbe
     } else {
         if ($null -eq (Get-Command "docker" -ErrorAction SilentlyContinue)) {
             throw "Docker is not available on PATH. Use -K6Mode local with k6 installed."
         }
-        $environment = New-CapacityK6Environment -Plan $Plan -RunDirectory $RunDirectory -SummaryPath $paths.k6SummaryPath -SecretPath $secretPath -MaxDurationSeconds $MaxDurationSeconds -ContainerPaths
+        $environment = New-CapacityK6Environment -Plan $Plan -RunDirectory $RunDirectory -SummaryPath $paths.k6SummaryPath -SecretPath $secretPath -MaxDurationSeconds $MaxDurationSeconds -MaxErrorRatePercent $MaxErrorRatePercent -ContainerPaths
         $dockerArgs = @("run", "--rm", "-v", "$repoRoot`:/workspace", "-w", "/workspace")
         foreach ($key in $environment.Keys) {
             $dockerArgs += @("-e", "$key=$($environment[$key])")
         }
-        $dockerArgs += @($Plan.toolImage, "run", "--compatibility-mode=base", "--summary-export", $environment.K6_SUMMARY_EXPORT, $Plan.entrypoint)
+        $dockerArgs += @($Plan.toolImage, "run", "--summary-export", $environment.CAPACITY_SUMMARY_EXPORT, $Plan.entrypoint)
         $execution = Invoke-CapacityLoggedProcess `
             -FileName "docker" `
             -ArgumentList $dockerArgs `
             -WorkingDirectory $repoRoot `
-            -LogPath $paths.generationLogPath
+            -LogPath $paths.generationLogPath `
+            -GuardProbe $liveGuardProbe
     }
 
     $result = ConvertFrom-CapacityK6RestOutcomes -Plan $Plan -OutcomePath $paths.generationLogPath
@@ -2801,13 +3370,26 @@ function Invoke-CapacityRestGeneration {
     if ($execution.status -ne "PASS" -and $result.status -eq "PASS") {
         $result.status = "INCONCLUSIVE"
     }
+    if (@($execution.guardEvents).Count -gt 0) {
+        Write-CapacityJsonFile -Value ([PSCustomObject]@{
+            schemaVersion = 1
+            status = "STOPPED_BY_GUARD"
+            generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+            events = @($execution.guardEvents)
+        }) -Path $paths.guardTimelinePath
+    }
 
     Write-CapacityGenerationResult -RunDirectory $RunDirectory -Result $result | Out-Null
+    $summary = Read-CapacityJsonFile -Path $paths.summaryPath -Default $null
+    $visibilityThreshold = if ($null -ne $summary -and $null -ne $summary.thresholds.visibilityP95Millis) { [double] $summary.thresholds.visibilityP95Millis } else { 5000 }
+    $visibility = ConvertFrom-CapacityK6VisibilityOutcomes -OutcomePath $paths.generationLogPath -ThresholdMillis $visibilityThreshold
+    Write-CapacityVisibilityObservation -RunDirectory $RunDirectory -Observation $visibility | Out-Null
     return [PSCustomObject]@{
         status = $result.status
         exitCode = $execution.exitCode
         generationResultPath = $paths.generationResultPath
         generationLogPath = $paths.generationLogPath
+        visibilityPath = $paths.visibilityPath
     }
 }
 
@@ -2866,7 +3448,10 @@ function Invoke-CapacityProtocolGeneration {
         [Parameter(Mandatory = $true)] [string] $RunDirectory,
         [Parameter(Mandatory = $true)] [object] $Plan,
         [ValidateSet("auto", "local", "docker")] [string] $K6Mode = "auto",
-        [int] $MaxDurationSeconds = 0
+        [int] $MaxDurationSeconds = 0,
+        [double] $MinFreeDiskPercent = 20,
+        [double] $MaxErrorRatePercent = 5,
+        [int] $MaxLagGrowthSeconds = 300
     )
 
     if ($Plan.status -eq "BLOCKED") {
@@ -2874,7 +3459,7 @@ function Invoke-CapacityProtocolGeneration {
     }
 
     if ($Plan.protocol -eq "rest") {
-        return Invoke-CapacityRestGeneration -RunDirectory $RunDirectory -Plan $Plan -K6Mode $K6Mode -MaxDurationSeconds $MaxDurationSeconds
+        return Invoke-CapacityRestGeneration -RunDirectory $RunDirectory -Plan $Plan -K6Mode $K6Mode -MaxDurationSeconds $MaxDurationSeconds -MinFreeDiskPercent $MinFreeDiskPercent -MaxErrorRatePercent $MaxErrorRatePercent -MaxLagGrowthSeconds $MaxLagGrowthSeconds
     }
     if ($Plan.protocol -eq "mqtt") {
         return Invoke-CapacityMqttGeneration -RunDirectory $RunDirectory -Plan $Plan -MaxDurationSeconds $MaxDurationSeconds
@@ -2919,7 +3504,8 @@ function Invoke-CapacityRunnerPhase {
         [int] $MaxLagGrowthSeconds = 300,
         [string[]] $FaultTargets = @(),
         [ValidateSet("auto", "local", "docker")] [string] $K6Mode = "auto",
-        [switch] $DryRun
+        [switch] $DryRun,
+        [bool] $AutoReconcile = $true
     )
 
     $paths = Get-CapacityRunPaths -RunDirectory $RunDirectory
@@ -2937,11 +3523,15 @@ function Invoke-CapacityRunnerPhase {
     $plan = $null
     $generationResult = $null
     $protocolExecution = $null
+    $automaticReconciliation = $null
     $status = if ($guardEvaluation.status -eq "STOP") { "INCONCLUSIVE" } else { "PASS" }
 
     if ($Phase -eq "generate") {
         $plan = New-CapacityGenerationPlan -RunDirectory $RunDirectory -Protocol $Protocol -WorkerIndex $WorkerIndex -MaxReadings $MaxMaterializedReadings
         Write-CapacityGenerationPlan -Plan $plan -RunDirectory $RunDirectory | Out-Null
+        if (-not $DryRun -and $plan.identityResolution.source -ne "provisioning-state.json") {
+            throw "Live generation requires provisioned API identities. Run provision-fixtures.ps1 for this run directory first."
+        }
         $plannedReadings = @($plan.readings)
         $startedReadings = $plannedReadings
         if ($stoppingGuardEvents.Count -gt 0) {
@@ -2975,9 +3565,17 @@ function Invoke-CapacityRunnerPhase {
                     -RunDirectory $RunDirectory `
                     -Plan $plan `
                     -K6Mode $K6Mode `
-                    -MaxDurationSeconds $MaxDurationSeconds
+                    -MaxDurationSeconds $MaxDurationSeconds `
+                    -MinFreeDiskPercent $MinFreeDiskPercent `
+                    -MaxErrorRatePercent $MaxErrorRatePercent `
+                    -MaxLagGrowthSeconds $MaxLagGrowthSeconds
                 $generationResult = Read-CapacityJsonFile -Path $paths.generationResultPath -Default $null
                 $status = $protocolExecution.status
+                if ($Protocol -eq "rest" -and $AutoReconcile) {
+                    $schedule = Read-CapacityJsonFile -Path $paths.schedulePath
+                    $automaticReconciliation = Invoke-CapacityAutomaticReconciliation -RunDirectory $RunDirectory -DrainSeconds ([int] $schedule.workload.drainSeconds)
+                    if ($automaticReconciliation.status -ne "PASS") { $status = $automaticReconciliation.status }
+                }
             } catch {
                 $guardEvents += @([PSCustomObject]@{
                     guard = "generation-execution"
@@ -3059,6 +3657,7 @@ function Invoke-CapacityRunnerPhase {
         environmentManifestPath = if (Test-Path -LiteralPath $paths.environmentManifestPath) { "environment-manifest.json" } else { $null }
         observabilityInventoryPath = if (Test-Path -LiteralPath $paths.observabilityInventoryPath) { "observability-inventory.json" } else { $null }
         protocolExecution = $protocolExecution
+        automaticReconciliation = $automaticReconciliation
         guards = $guardEvaluation
     }
     Write-CapacityJsonFile -Value $runnerSummary -Path $paths.runnerSummaryPath
@@ -3180,6 +3779,140 @@ function Get-CapacityStateEntry {
     return @($Entries | Where-Object { $_.$KeyName -eq $KeyValue } | Select-Object -First 1)
 }
 
+function Invoke-CapacityParallelDeviceProvisioning {
+    param(
+        [Parameter(Mandatory = $true)] [object[]] $Devices,
+        [Parameter(Mandatory = $true)] [object[]] $Tenants,
+        [Parameter(Mandatory = $true)] [object] $State,
+        [Parameter(Mandatory = $true)] [object] $Secrets,
+        [Parameter(Mandatory = $true)] [string] $DeviceApiBaseUrl,
+        [string] $BearerToken = "",
+        [ValidateSet("REST", "MQTT")] [string] $SourceProtocol = "REST",
+        [switch] $RotateSourceTokens,
+        [ValidateRange(2, 64)] [int] $Parallelism = 16,
+        [int] $TimeoutSeconds = 30,
+        [Parameter(Mandatory = $true)] [string] $StatePath,
+        [Parameter(Mandatory = $true)] [string] $SecretPath
+    )
+
+    $tenantByIndex = @{}
+    foreach ($tenant in $Tenants) { $tenantByIndex[[int] $tenant.tenantIndex] = $tenant }
+    $locationByTenant = @{}
+    foreach ($location in @($State.locations)) { $locationByTenant[[int] $location.tenantIndex] = $location }
+    $deviceByIndex = @{}
+    foreach ($entry in @($State.devices)) { $deviceByIndex[[int] $entry.deviceIndex] = $entry }
+    $sourceByIndex = @{}
+    foreach ($entry in @($State.dataSources)) { $sourceByIndex[[int] $entry.deviceIndex] = $entry }
+    $rotationByIndex = @{}
+    foreach ($entry in @($State.tokenRotations)) { $rotationByIndex[[int] $entry.deviceIndex] = $entry }
+    $secretByIndex = @{}
+    foreach ($entry in @($Secrets.sourceTokens)) { $secretByIndex[[int] $entry.deviceIndex] = $entry }
+
+    $workItems = [System.Collections.Generic.List[object]]::new()
+    foreach ($device in $Devices) {
+        $index = [int] $device.deviceIndex
+        $hasToken = (-not $RotateSourceTokens) -or ($rotationByIndex.ContainsKey($index) -and $secretByIndex.ContainsKey($index))
+        if ($deviceByIndex.ContainsKey($index) -and $sourceByIndex.ContainsKey($index) -and $hasToken) { continue }
+        $workItems.Add([PSCustomObject]@{
+            device = $device
+            tenant = $tenantByIndex[[int] $device.tenantIndex]
+            locationId = $locationByTenant[[int] $device.tenantIndex].locationId
+            existingDevice = if ($deviceByIndex.ContainsKey($index)) { $deviceByIndex[$index] } else { $null }
+            existingSource = if ($sourceByIndex.ContainsKey($index)) { $sourceByIndex[$index] } else { $null }
+            existingSecret = if ($secretByIndex.ContainsKey($index)) { $secretByIndex[$index] } else { $null }
+        })
+    }
+
+    $baseUrl = ConvertTo-CapacityApiBaseUrl -BaseUrl $DeviceApiBaseUrl
+    $runId = [string] $State.runId
+    $rotateTokens = [bool] $RotateSourceTokens
+    $bearerSupplied = $BearerToken.Trim().Length -gt 0
+    $batchSize = [math]::Max(100, $Parallelism * 8)
+    for ($offset = 0; $offset -lt $workItems.Count; $offset += $batchSize) {
+        $last = [math]::Min($offset + $batchSize - 1, $workItems.Count - 1)
+        $batch = @($workItems[$offset..$last])
+        $results = @($batch | ForEach-Object -ThrottleLimit $Parallelism -Parallel {
+            $item = $_
+            $device = $item.device
+            $tenant = $item.tenant
+            if ($null -eq $script:CapacityProvisioningHttpClient) {
+                $script:CapacityProvisioningHttpClient = [System.Net.Http.HttpClient]::new()
+                $script:CapacityProvisioningHttpClient.Timeout = [TimeSpan]::FromSeconds($using:TimeoutSeconds)
+            }
+            function Invoke-ParallelProvisioningJson {
+                param([string] $Method, [string] $Uri, [hashtable] $Headers, [AllowNull()] [string] $Body = $null)
+                $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method), $Uri)
+                try {
+                    foreach ($header in $Headers.GetEnumerator()) { $request.Headers.TryAddWithoutValidation([string] $header.Key, [string] $header.Value) | Out-Null }
+                    if ($null -ne $Body) { $request.Content = [System.Net.Http.StringContent]::new($Body, [System.Text.Encoding]::UTF8, "application/json") }
+                    $response = $script:CapacityProvisioningHttpClient.SendAsync($request).GetAwaiter().GetResult()
+                    try {
+                        $content = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                        if (-not $response.IsSuccessStatusCode) { throw "HTTP $([int] $response.StatusCode) $($response.ReasonPhrase): $content" }
+                        if ($content.Trim().Length -eq 0) { return $null }
+                        return $content | ConvertFrom-Json
+                    } finally { $response.Dispose() }
+                } finally { $request.Dispose() }
+            }
+            $headers = @{ Accept = "application/json"; "Content-Type" = "application/json"; "X-Correlation-Id" = "capacity-provisioning-$($tenant.accountId)" }
+            if ($using:bearerSupplied) { $headers.Authorization = "Bearer $using:BearerToken" }
+            else {
+                $headers["X-User-Id"] = [string] $tenant.accountId
+                $headers["X-User-Email"] = "capacity+$using:runId-tenant-$($tenant.tenantIndex)@load.local"
+                $headers["X-User-Role"] = "USER"
+            }
+            try {
+                $apiDeviceId = if ($null -ne $item.existingDevice) { $item.existingDevice.apiDeviceId } else { $null }
+                if ($null -eq $apiDeviceId) {
+                    $body = @{ locationId = $item.locationId; name = $device.deviceName; type = "FRIDGE"; manufacturer = "VoltCanary"; model = "CapacityFixture"; metadata = @{ capacityRunId = $using:runId; fixtureDeviceIndex = $device.deviceIndex } } | ConvertTo-Json -Depth 10
+                    $created = Invoke-ParallelProvisioningJson -Method POST -Uri "$using:baseUrl/devices" -Headers $headers -Body $body
+                    $apiDeviceId = $created.id
+                }
+                $apiDataSourceId = if ($null -ne $item.existingSource) { $item.existingSource.apiDataSourceId } else { $null }
+                if ($null -eq $apiDataSourceId) {
+                    $body = @{ sourceType = "SMART_PLUG"; protocol = $using:SourceProtocol; externalId = $device.sourceName; mapping = @{}; adapterConfig = @{}; credentialReferences = @{}; homeRegion = "local" } | ConvertTo-Json -Depth 10
+                    $createdSource = Invoke-ParallelProvisioningJson -Method POST -Uri "$using:baseUrl/devices/$apiDeviceId/data-sources" -Headers $headers -Body $body
+                    $apiDataSourceId = $createdSource.id
+                }
+                $tokenPrefix = if ($null -ne $item.existingSecret) { $item.existingSecret.tokenPrefix } else { $null }
+                $token = if ($null -ne $item.existingSecret) { $item.existingSecret.token } else { $null }
+                if ($using:rotateTokens -and $null -eq $token) {
+                    $tokenResponse = Invoke-ParallelProvisioningJson -Method POST -Uri "$using:baseUrl/devices/$apiDeviceId/data-sources/$apiDataSourceId/token" -Headers $headers
+                    $tokenPrefix = $tokenResponse.tokenPrefix; $token = $tokenResponse.token
+                }
+                [PSCustomObject]@{ status = "PASS"; deviceIndex = [int] $device.deviceIndex; tenantIndex = [int] $device.tenantIndex; accountId = $device.accountId; fixtureDeviceId = $device.deviceId; apiDeviceId = $apiDeviceId; name = $device.deviceName; apiDataSourceId = $apiDataSourceId; fixtureSourceId = $device.sourceId; externalId = $device.sourceName; protocol = $using:SourceProtocol; tokenPrefix = $tokenPrefix; token = $token }
+            } catch { [PSCustomObject]@{ status = "FAIL"; deviceIndex = [int] $device.deviceIndex; message = $_.Exception.Message } }
+        })
+
+        $failures = @($results | Where-Object { $_.status -eq "FAIL" })
+        foreach ($failure in $failures) { $State.failures = @($State.failures) + [PSCustomObject]@{ deviceIndex = $failure.deviceIndex; stage = "parallel-provisioning"; message = $failure.message } }
+        foreach ($result in @($results | Where-Object { $_.status -eq "PASS" })) {
+            $index = [int] $result.deviceIndex
+            $State.failures = @($State.failures | Where-Object { [int] $_.deviceIndex -ne $index -or $_.stage -ne "parallel-provisioning" })
+            if (-not $deviceByIndex.ContainsKey($index)) {
+                $entry = [PSCustomObject]@{ deviceIndex = $index; tenantIndex = $result.tenantIndex; accountId = $result.accountId; fixtureDeviceId = $result.fixtureDeviceId; apiDeviceId = $result.apiDeviceId; name = $result.name; status = "CREATED" }
+                $deviceByIndex[$index] = $entry; $State.devices = @($State.devices) + $entry
+            }
+            if (-not $sourceByIndex.ContainsKey($index)) {
+                $entry = [PSCustomObject]@{ deviceIndex = $index; tenantIndex = $result.tenantIndex; accountId = $result.accountId; apiDeviceId = $result.apiDeviceId; apiDataSourceId = $result.apiDataSourceId; fixtureSourceId = $result.fixtureSourceId; externalId = $result.externalId; protocol = $result.protocol; status = "CREATED" }
+                $sourceByIndex[$index] = $entry; $State.dataSources = @($State.dataSources) + $entry
+            }
+            if ($RotateSourceTokens -and -not $rotationByIndex.ContainsKey($index)) {
+                $rotation = [PSCustomObject]@{ deviceIndex = $index; apiDataSourceId = $result.apiDataSourceId; tokenPrefix = $result.tokenPrefix; tokenPersistedTo = Split-Path -Leaf $SecretPath; status = "ROTATED" }
+                $secret = [PSCustomObject]@{ deviceIndex = $index; apiDeviceId = $result.apiDeviceId; apiDataSourceId = $result.apiDataSourceId; externalId = $result.externalId; tokenPrefix = $result.tokenPrefix; token = $result.token }
+                $rotationByIndex[$index] = $rotation; $secretByIndex[$index] = $secret
+                $State.tokenRotations = @($State.tokenRotations) + $rotation; $Secrets.sourceTokens = @($Secrets.sourceTokens) + $secret
+            }
+        }
+        $State.generatedAt = (Get-Date).ToUniversalTime().ToString("o"); $Secrets.generatedAt = $State.generatedAt
+        Write-CapacityJsonFile -Value $State -Path $StatePath
+        if ($RotateSourceTokens) { Write-CapacityJsonFile -Value $Secrets -Path $SecretPath }
+        Write-Host "Provisioned $([math]::Min($last + 1, $workItems.Count))/$($workItems.Count) pending devices (parallelism $Parallelism)."
+        if ($failures.Count -gt 0) { throw "Parallel provisioning failed for $($failures.Count) device(s) in the latest checkpoint; rerun to resume." }
+    }
+    return [PSCustomObject]@{ state = $State; secrets = $Secrets }
+}
+
 function Invoke-CapacityFixtureProvisioning {
     param(
         [Parameter(Mandatory = $true)] [string] $RunDirectory,
@@ -3188,6 +3921,7 @@ function Invoke-CapacityFixtureProvisioning {
         [string] $BearerToken = "",
         [string] $InternalServiceToken = "dev-internal-token",
         [int] $LimitDevices = 0,
+        [ValidateRange(1, 64)] [int] $Parallelism = 1,
         [ValidateSet("REST", "MQTT")] [string] $SourceProtocol = "REST",
         [switch] $RotateSourceTokens,
         [string] $SecretOutputPath = "",
@@ -3265,6 +3999,23 @@ function Invoke-CapacityFixtureProvisioning {
         }
     }
 
+    if ($Parallelism -gt 1 -and -not $DryRun) {
+        $parallelResult = Invoke-CapacityParallelDeviceProvisioning `
+            -Devices $devices `
+            -Tenants $tenants `
+            -State $state `
+            -Secrets $secrets `
+            -DeviceApiBaseUrl $DeviceApiBaseUrl `
+            -BearerToken $BearerToken `
+            -SourceProtocol $SourceProtocol `
+            -RotateSourceTokens:$RotateSourceTokens `
+            -Parallelism $Parallelism `
+            -TimeoutSeconds $TimeoutSeconds `
+            -StatePath $paths.statePath `
+            -SecretPath $paths.secretPath
+        $state = $parallelResult.state
+        $secrets = $parallelResult.secrets
+    } else {
     foreach ($device in $devices) {
         $knownDevice = Get-CapacityStateEntry -Entries @($state.devices) -KeyName "deviceIndex" -KeyValue $device.deviceIndex
         if ($knownDevice.Count -eq 0) {
@@ -3409,6 +4160,7 @@ function Invoke-CapacityFixtureProvisioning {
             }
         }
     }
+    }
 
     if ($RotateSourceTokens -and -not $DryRun) {
         Write-CapacityJsonFile -Value $secrets -Path $paths.secretPath
@@ -3421,7 +4173,8 @@ function Invoke-CapacityFixtureProvisioning {
         -TimeoutSeconds $TimeoutSeconds `
         -DryRun:$DryRun
     $state.readiness = @($readiness)
-    $state.status = if ($state.failures.Count -gt 0) { "FAILED" } elseif ($DryRun) { "DRY_RUN" } else { "PROVISIONED" }
+    $readinessFailures = @($state.readiness | Where-Object { $_.status -eq "TIMEOUT" })
+    $state.status = if ($state.failures.Count -gt 0) { "FAILED" } elseif ($DryRun) { "DRY_RUN" } elseif ($readinessFailures.Count -gt 0) { "BLOCKED" } else { "PROVISIONED" }
     $state.generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     Write-CapacityJsonFile -Value $state -Path $paths.statePath
 
@@ -3435,6 +4188,7 @@ function Invoke-CapacityFixtureProvisioning {
         devices = @($state.devices).Count
         dataSources = @($state.dataSources).Count
         tokenRotations = @($state.tokenRotations).Count
+        parallelism = $Parallelism
         readiness = @($state.readiness)
         statePath = "provisioning-state.json"
         secretPath = if ($RotateSourceTokens -and -not $DryRun) { Split-Path -Leaf $paths.secretPath } else { "NOT_WRITTEN" }
@@ -3493,36 +4247,45 @@ function Wait-CapacitySourceRuntimeReadiness {
             }
 
             $sourceStates = @()
-            foreach ($source in @($state.dataSources | Select-Object -First 10)) {
-                try {
-                    $headers = New-CapacityApiHeaders `
-                        -UserId $source.accountId `
-                        -Email "capacity-readiness@$($state.runId).local" `
-                        -InternalServiceToken $InternalServiceToken
-                    $sourceState = Invoke-CapacityApiJson `
-                        -Method "GET" `
-                        -BaseUrl $base `
-                        -Path "/internal/ingestion/horizontal-scale-smoke/sources/$($source.apiDataSourceId)" `
-                        -Headers $headers `
-                        -TimeoutSeconds 5
-                    $sourceStates += [PSCustomObject]@{
-                        apiDataSourceId = $source.apiDataSourceId
-                        knownSource = $sourceState.knownSource
-                        knownRuntimeConfig = $sourceState.knownRuntimeConfig
-                        connectorState = $sourceState.connectorState
-                        instanceId = $sourceState.instanceId
-                    }
-                } catch {
-                    $sourceStates += [PSCustomObject]@{
-                        apiDataSourceId = $source.apiDataSourceId
-                        status = "UNAVAILABLE"
-                        error = $_.Exception.Message
+            try {
+                $firstSource = @($state.dataSources | Select-Object -First 1)[0]
+                $headers = New-CapacityApiHeaders `
+                    -UserId $firstSource.accountId `
+                    -Email "capacity-readiness@$($state.runId).local" `
+                    -InternalServiceToken $InternalServiceToken
+                $secretDocument = Read-CapacityJsonFile -Path $paths.secretPath -Default $null
+                $tokenPrefixByDataSourceId = @{}
+                foreach ($token in @($secretDocument.sourceTokens)) {
+                    if ($null -ne $token.apiDataSourceId -and -not [string]::IsNullOrWhiteSpace([string] $token.tokenPrefix)) {
+                        $tokenPrefixByDataSourceId[[string] $token.apiDataSourceId] = [string] $token.tokenPrefix
                     }
                 }
+                $sourceReadiness = Invoke-CapacityApiJson `
+                    -Method "POST" `
+                    -BaseUrl $base `
+                    -Path "/internal/ingestion/horizontal-scale-smoke/sources/readiness" `
+                    -Headers $headers `
+                    -Body @{
+                        dataSourceIds = @($state.dataSources | ForEach-Object { $_.apiDataSourceId })
+                        expectedTokenPrefixes = $tokenPrefixByDataSourceId
+                    } `
+                    -TimeoutSeconds ([math]::Max(10, $TimeoutSeconds))
+                $sourceStates = @([PSCustomObject]@{
+                    instanceId = $sourceReadiness.instanceId
+                    requestedCount = $sourceReadiness.requestedCount
+                    knownSourceCount = $sourceReadiness.knownSourceCount
+                    knownRuntimeConfigCount = $sourceReadiness.knownRuntimeConfigCount
+                    matchingTokenPrefixCount = $sourceReadiness.matchingTokenPrefixCount
+                    ready = $sourceReadiness.ready
+                    missingSourceIds = @($sourceReadiness.missingSourceIds)
+                    missingRuntimeConfigIds = @($sourceReadiness.missingRuntimeConfigIds)
+                    tokenPrefixMismatchIds = @($sourceReadiness.tokenPrefixMismatchIds)
+                })
+                $ready = ($healthStatus -eq "UP" -or $healthStatus -eq "OBSERVED") -and $sourceReadiness.ready -eq $true
+            } catch {
+                $sourceStates = @([PSCustomObject]@{ status = "UNAVAILABLE"; error = $_.Exception.Message })
+                $ready = $false
             }
-
-            $unknownSources = @($sourceStates | Where-Object { $_.knownSource -ne $true -or $_.knownRuntimeConfig -ne $true })
-            $ready = ($healthStatus -eq "UP" -or $healthStatus -eq "OBSERVED") -and $unknownSources.Count -eq 0
             if (-not $ready -and (Get-Date) -lt $deadline) {
                 Start-Sleep -Seconds 1
             }
@@ -3674,6 +4437,7 @@ function New-CapacityPreflight {
     $verdicts = [ordered]@{
         profilePreflight = $support.status
         generation = "NOT_RUN"
+        visibilityObservation = "NOT_RUN"
         persistenceReconciliation = "NOT_RUN"
         monthlyVolume = "NOT_RUN"
         scaling = "NOT_RUN"
@@ -3706,15 +4470,15 @@ function New-CapacityPreflight {
         warnings = @($warnings)
         thresholds = $document.thresholds
         verdicts = [PSCustomObject]$verdicts
+        requiredRunEvidence = @(
+            "executed-generator-result",
+            "accepted-response-to-committed-visibility-samples",
+            "automatic-timescaledb-logical-key-reconciliation"
+        )
         pendingCapabilities = @(
-            "api-fixture-provisioning",
-            "source-runtime-readiness",
-            "k6-rest-generation",
-            "mqtt-generation",
-            "committed-visibility-observer",
-            "full-logical-key-reconciliation",
-            "storage-volume-loader",
-            "scaling-and-recovery-runners"
+            "optional-full-monthly-volume-execution",
+            "optional-scaling-execution",
+            "optional-recovery-execution"
         )
     }
 }
@@ -3756,6 +4520,7 @@ function Write-CapacityEvidence {
         blockers = $Preflight.blockers
         warnings = $Preflight.warnings
         verdicts = $Preflight.verdicts
+        requiredRunEvidence = $Preflight.requiredRunEvidence
         pendingCapabilities = $Preflight.pendingCapabilities
         thresholds = $Preflight.thresholds
     }
@@ -3802,7 +4567,15 @@ function Write-CapacityEvidence {
 
     $report += @(
         "",
-        "## Pending Implementation",
+        "## Required Run Evidence",
+        ""
+    )
+    foreach ($evidenceItem in $Preflight.requiredRunEvidence) {
+        $report += "- $evidenceItem"
+    }
+    $report += @(
+        "",
+        "## Optional Unexecuted Extensions",
         ""
     )
     foreach ($capability in $Preflight.pendingCapabilities) {
@@ -3840,6 +4613,7 @@ Export-ModuleMember -Function `
     Write-CapacityGenerationPlan, `
     New-CapacityGenerationResult, `
     ConvertFrom-CapacityK6RestOutcomes, `
+    ConvertFrom-CapacityK6VisibilityOutcomes, `
     Write-CapacityGenerationResult, `
     New-CapacityStorageFixturePlan, `
     Test-CapacityStorageFixtureCheckpoint, `
@@ -3858,6 +4632,8 @@ Export-ModuleMember -Function `
     Write-CapacityReconciliation, `
     ConvertFrom-CapacityCommittedMeasurementCsv, `
     Invoke-CapacityLogicalReconciliation, `
+    Export-CapacityCommittedMeasurements, `
+    Invoke-CapacityAutomaticReconciliation, `
     Invoke-CapacityProtocolGeneration, `
     Invoke-CapacityRunnerPhase, `
     Invoke-CapacityFixtureProvisioning, `

@@ -28,18 +28,29 @@ export interface DemoDeviceInput extends DeviceSourceInput {
   startImmediately: boolean;
 }
 
-export async function createDeviceWithSource(deviceRequest: CreateDeviceRequest, source: DeviceSourceInput): Promise<DeviceSetupResult> {
-  const device = await createDevice(deviceRequest);
-  const dataSource = await createDataSource(device.id, {
+/** Kept in memory while the wizard is open. Never persist source credentials. */
+export interface DeviceSetupProgress {
+  device?: Device;
+  dataSource?: DataSource;
+  sourceToken?: string;
+  simulationConfig?: SimulationConfig;
+  simulationRun?: SimulationRun;
+}
+
+export async function createDeviceWithSource(deviceRequest: CreateDeviceRequest, source: DeviceSourceInput, progress: DeviceSetupProgress = {}): Promise<DeviceSetupResult> {
+  const device = progress.device ?? await createDevice(deviceRequest);
+  progress.device = device;
+  const dataSource = progress.dataSource ?? await createDataSource(device.id, {
     sourceType: source.mode === "MQTT" ? "MQTT" : "SMART_PLUG",
     protocol: source.mode === "MQTT" ? "MQTT" : "REST",
     externalId: source.externalId,
   });
+  progress.dataSource = dataSource;
   return { device, dataSource };
 }
 
-export async function createDemoDevice(deviceRequest: CreateDeviceRequest, source: DemoDeviceInput): Promise<DeviceSetupResult> {
-  const device = await createDevice({
+export async function createDemoDevice(deviceRequest: CreateDeviceRequest, source: DemoDeviceInput, progress: DeviceSetupProgress = {}): Promise<DeviceSetupResult> {
+  const device = progress.device ?? await createDevice({
     ...deviceRequest,
     metadata: {
       ...(deviceRequest.metadata ?? {}),
@@ -47,23 +58,27 @@ export async function createDemoDevice(deviceRequest: CreateDeviceRequest, sourc
       preset: source.preset,
     },
   });
-  const dataSource = await createDataSource(device.id, {
+  progress.device = device;
+  const dataSource = progress.dataSource ?? await createDataSource(device.id, {
     sourceType: "SIMULATOR",
     protocol: "REST",
     externalId: source.externalId,
   });
-  const token = await createDataSourceToken(device.id, dataSource.id);
-  const template = await getSimulationTemplate(source.profile, source.externalId, source.preset);
-  const simulationConfig = await saveSimulationConfig(device.id, {
+  progress.dataSource = dataSource;
+  if (!progress.sourceToken) progress.sourceToken = (await createDataSourceToken(device.id, dataSource.id)).token;
+  if (!progress.simulationConfig) {
+    const template = await getSimulationTemplate(source.profile, source.externalId, source.preset);
+    progress.simulationConfig = await saveSimulationConfig(device.id, {
     dataSourceId: dataSource.id,
     name: `${deviceRequest.name} Simulator`,
     profile: source.profile,
     protocol: "HTTP",
     yamlConfig: template.yamlConfig,
-    sourceToken: token.token,
+    sourceToken: progress.sourceToken,
   });
-  const simulationRun = source.startImmediately ? await startSimulation(device.id) : undefined;
-  return { device, dataSource, simulationConfig, simulationRun };
+  }
+  if (source.startImmediately && !progress.simulationRun) progress.simulationRun = await startSimulation(device.id);
+  return { device, dataSource, simulationConfig: progress.simulationConfig, simulationRun: progress.simulationRun };
 }
 
 export function defaultSourceId(mode: DeviceSourceMode, name: string) {

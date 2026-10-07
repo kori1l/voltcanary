@@ -18,7 +18,7 @@ param(
     [int] $MaxMaterializedReadings = 0,
     [int] $MaxStartedReadings = 0,
     [int] $MaxDurationSeconds = 0,
-    [double] $MinFreeDiskPercent = 0,
+    [double] $MinFreeDiskPercent = 20,
     [double] $ObservedErrorRatePercent = 0,
     [double] $MaxErrorRatePercent = 5,
     [int] $ObservedLagGrowthSeconds = 0,
@@ -26,6 +26,7 @@ param(
     [string[]] $FaultTargets = @(),
     [ValidateSet("auto", "local", "docker")]
     [string] $K6Mode = "auto",
+    [switch] $SkipAutoReconcile,
     [switch] $Execute,
     [switch] $CiMode
 )
@@ -97,6 +98,7 @@ if ($Phase -ne "preflight") {
         -MaxLagGrowthSeconds $MaxLagGrowthSeconds `
         -FaultTargets $FaultTargets `
         -K6Mode $K6Mode `
+        -AutoReconcile:(-not [bool] $SkipAutoReconcile) `
         -DryRun:(-not [bool] $Execute)
     Write-Host "Runner phase $RunnerPhase`: $($runner.status): $($runner.runnerSummaryPath)"
     if ($RunnerPhase -eq "generate" -and -not $Execute) {

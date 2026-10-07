@@ -1,23 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PredictionResponse } from "../../../analytics/analyticsApi";
-import {
-  approveMlModel,
-  archiveMlModel,
-  MlDatasetSummary,
-  MlDeploymentMode,
-  MlDeploymentPolicy,
-  MlDeploymentScope,
-  MlFeatureSnapshotResponse,
-  MlLabelType,
-  MlLifecycleStatusFilter,
-  MlModelVersion,
-  MlTrainingRun,
-  rejectMlModel,
-  resolveDeploymentPolicy,
-  saveDeploymentPolicy,
-} from "../../../analytics/mlModuleApi";
+import { approveMlModel, archiveMlModel, MlDatasetSummary, MlDeploymentMode, MlDeploymentPolicy, MlDeploymentScope, MlFeatureSnapshotResponse, MlLabelType, MlLifecycleStatusFilter, MlModelVersion, MlTrainingRun, rejectMlModel, resolveDeploymentPolicy, saveDeploymentPolicy } from "../../../analytics/mlModuleApi";
 import { safeMlError } from "../../../analytics/mlSettingsApi";
 import { Device, DeviceType } from "../../../devices/devicesApi";
+import { useActionConfirmation } from "../../../components/useActionConfirmation";
 
 const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
 
@@ -35,16 +21,29 @@ function StatusFilterSelect(props: {
     </label>
   );
 }
-function ModelsTab(props: { models: MlModelVersion[]; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
+function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
+  const confirmation = useActionConfirmation();
+  async function archive(model: MlModelVersion) {
+    try { const reason = await confirmation.confirm({ title: "Archive model", object: `${model.modelKey} v${model.version}`, impact: "Archives this model version while retaining its artifact and lineage history. The server validates model state and references; archive has no impact-preview endpoint.", reasonRequired: true }); if (!reason) return; await archiveMlModel(model.id,reason); await props.onChanged(); } catch (error) { props.setError(safeMlError(error)); }
+  }
+  async function reviewModel(model: MlModelVersion, action: "approve" | "reject") {
+    try {
+      const reason = await confirmation.confirm({ title: `${action === "approve" ? "Approve" : "Reject"} model`, object: `${model.modelKey} v${model.version}`, impact: action === "approve" ? "Make this version eligible for deployment selection. Approval does not activate a policy; server promotion gates remain required." : "Reject this model version for deployment. Existing policy and lifecycle restrictions are enforced by the server.", reasonRequired: true });
+      if (!reason) return;
+      await (action === "approve" ? approveMlModel(model.id, reason) : rejectMlModel(model.id, reason));
+      await props.onChanged();
+    } catch (error) { props.setError(safeMlError(error)); }
+  }
   return (
     <section className="panel">
+      {confirmation.dialog}
       <div className="section-header">
         <div>
           <h2>Model registry</h2>
         </div>
         <StatusFilterSelect label="Model status filter" value={props.statusFilter} onChange={props.onFilterChange} />
       </div>
-      {props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((model) => {
+      {props.modelsAvailable === false ? <p>Model records unavailable or loading.</p> : props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((model) => {
         const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
         const approveBlocked = Boolean(gates && !gates.promotionEligible);
         const modelLabel = `${model.modelKey} v${model.version}`;
@@ -61,15 +60,15 @@ function ModelsTab(props: { models: MlModelVersion[]; statusFilter: MlLifecycleS
                   aria-label={`Approve ${modelLabel}`}
                   className="ghost-button"
                   disabled={approveBlocked}
-                  onClick={() => void approveMlModel(model.id, "UI approval").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))}
+                  onClick={() => void reviewModel(model, "approve")}
                   title={approveBlocked ? "Promotion gates must pass before approval." : undefined}
                   type="button"
                 >
                   Approve
                 </button>
               )}
-              {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" onClick={() => void rejectMlModel(model.id, "UI rejection").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Reject</button>}
-              {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" onClick={() => void archiveMlModel(model.id, "UI archive").then(props.onChanged).catch((e: unknown) => props.setError(safeMlError(e)))} type="button">Archive</button>}
+              {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" onClick={() => void reviewModel(model, "reject")} type="button">Reject</button>}
+              {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" onClick={() => void archive(model)} type="button">Archive</button>}
               {["CANDIDATE", "REJECTED"].includes(model.status) && <button aria-label={`Delete ${modelLabel}`} className="ghost-button" onClick={() => void props.onDelete(model)} type="button">Delete</button>}
             </div>
           </div>
@@ -161,6 +160,7 @@ function PoliciesTab(props: {
   deviceTypes: DeviceType[];
   models: MlModelVersion[];
   policies: MlDeploymentPolicy[];
+  policiesAvailable?: boolean;
   statusFilter: MlLifecycleStatusFilter;
   onChanged: () => Promise<void>;
   onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
@@ -176,6 +176,9 @@ function PoliciesTab(props: {
   const [canaryPercent, setCanaryPercent] = useState(10);
   const [fallbackEnabled, setFallbackEnabled] = useState(true);
   const [resolved, setResolved] = useState<string | null>(null);
+  const confirmation = useActionConfirmation();
+  const [saving, setSaving] = useState(false);
+  const validPolicy = (mode === "DISABLED" || deployableModels.some((model) => model.id === modelVersionId)) && (scope !== "DEVICE" || Boolean(deviceId)) && (scope !== "DEVICE_TYPE" || Boolean(deviceType)) && (mode !== "CANARY" || (Number.isFinite(canaryPercent) && canaryPercent >= 0 && canaryPercent <= 100));
 
   useEffect(() => {
     if (!modelVersionId && deployableModels[0]) {
@@ -185,6 +188,10 @@ function PoliciesTab(props: {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!validPolicy || saving) return;
+    const reason = await confirmation.confirm({ title: "Apply deployment policy", object: `${scope === "DEVICE" ? props.devices.find((device) => device.id === deviceId)?.name ?? deviceId : scope === "DEVICE_TYPE" ? deviceType : "Account defaults"} · ${mode}`, impact: `${mode === "SHADOW" ? "Evaluates the model separately from the primary serving path." : mode === "CANARY" ? `Uses the model for ${canaryPercent}% of the configured canary cohort.` : mode === "ACTIVE" ? "Uses this approved model for eligible predictions." : "Disables the selected deployment scope."} Model: ${mode === "DISABLED" ? "none" : deployableModels.find((model) => model.id === modelVersionId)?.modelKey ?? modelVersionId}. Baseline fallback ${fallbackEnabled ? "enabled" : "disabled"}. More specific device policies take precedence over type and account settings.`, reasonRequired: true });
+    if (reason === null) return;
+    setSaving(true);
     try {
       await saveDeploymentPolicy({
         scope,
@@ -194,12 +201,12 @@ function PoliciesTab(props: {
         mode,
         canaryPercent: mode === "CANARY" ? canaryPercent : null,
         fallbackEnabled,
-        reason: "Updated from ML console",
+        reason,
       });
       await props.onChanged();
     } catch (error) {
       props.setError(safeMlError(error));
-    }
+    } finally { setSaving(false); }
   }
 
   async function resolve() {
@@ -213,6 +220,7 @@ function PoliciesTab(props: {
 
   return (
     <div className="ml-workflow-grid">
+      {confirmation.dialog}
       <form className="panel ml-workflow-form" onSubmit={submit}>
         <h2>Deployment policy editor</h2>
         <div className="ml-control-grid">
@@ -240,7 +248,8 @@ function PoliciesTab(props: {
           {mode === "CANARY" && <label>Canary percent<input max="100" min="0" onChange={(e) => setCanaryPercent(Number(e.target.value))} type="number" value={canaryPercent} /></label>}
         </div>
         <label className="checkbox-label"><input checked={fallbackEnabled} onChange={(e) => setFallbackEnabled(e.target.checked)} type="checkbox" /> Baseline fallback enabled</label>
-        <div className="action-row action-row-start"><button className="primary-button">Save policy</button><button className="ghost-button" onClick={() => void resolve()} type="button">Resolve policy</button></div>
+        <p className="status-note">Shadow records comparison evidence; Canary serves a percentage; Active serves the approved model. Fallback is a configured alternative, not a measured success rate. Select a device and resolve its effective policy to inspect inheritance before applying changes.</p>
+        <div className="action-row action-row-start"><button className="primary-button" disabled={!validPolicy || saving}>Save policy</button><button className="ghost-button" onClick={() => void resolve()} type="button">Resolve policy</button></div>
         {resolved && <div className="success-message">{resolved}</div>}
       </form>
       <section className="panel">
@@ -250,7 +259,7 @@ function PoliciesTab(props: {
           </div>
           <StatusFilterSelect label="Policy status filter" value={props.statusFilter} onChange={props.onFilterChange} />
         </div>
-        {props.policies.length === 0 ? <div className="empty-state">No deployment policies yet.</div> : props.policies.map((policy) => (
+        {props.policiesAvailable === false ? <p>Policy records unavailable or loading.</p> : props.policies.length === 0 ? <div className="empty-state">No deployment policies yet.</div> : props.policies.map((policy) => (
           <div className="ml-readout" key={policy.id}>
             <strong>{policy.scope} / {policy.mode}</strong>
             <span>{policy.modelVersionId ?? "baseline fallback"} / fallback {policy.fallbackEnabled ? "on" : "off"}</span>
@@ -266,6 +275,7 @@ function PoliciesTab(props: {
 }
 
 function MonitoringTab(props: {
+  dataAvailable?: { datasets: boolean; models: boolean; policies: boolean; trainingRuns: boolean };
   datasets: MlDatasetSummary[];
   deviceId: string;
   models: MlModelVersion[];
@@ -279,10 +289,10 @@ function MonitoringTab(props: {
     const fallbackPolicies = props.policies.filter((policy) => policy.fallbackEnabled).length;
     const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY").length;
     const activeModels = props.models.filter((model) => model.status === "ACTIVE").length;
-    const fallbackRate = props.policies.length === 0 ? 0 : Math.round((fallbackPolicies / props.policies.length) * 100);
-    const errorRate = props.trainingRuns.length === 0 ? 0 : Math.round((failedRuns / props.trainingRuns.length) * 100);
-    const predictionQuality = props.prediction ? Math.round(props.prediction.confidence * 100) : 0;
-    const latencyStatus = props.prediction ? "Captured at prediction boundary" : "No recent prediction";
+    const fallbackRate = props.policies.length === 0 ? null : Math.round((fallbackPolicies / props.policies.length) * 100);
+    const errorRate = props.trainingRuns.length === 0 ? null : Math.round((failedRuns / props.trainingRuns.length) * 100);
+    const predictionQuality = props.prediction && Number.isFinite(props.prediction.confidence) && !/DISABLED|INSUFFICIENT|ERROR|UNAVAILABLE|NO_DATA/i.test(props.prediction.predictionStatus) ? Math.round(props.prediction.confidence * 100) : null;
+    const latencyStatus = "No latency measurement is exposed by this API.";
     const driftStatus = activeModels > 0 && readyDatasets > 0 ? "Watch feature hash changes" : "Insufficient model baseline";
     const deploymentPath = props.prediction?.predictionPath ?? props.prediction?.deploymentMode ?? "N/A";
     const canaryState = props.prediction?.canaryIncluded === true
@@ -298,25 +308,25 @@ function MonitoringTab(props: {
       <section className="panel">
         <h2>ML operations snapshot</h2>
         <div className="ml-stat-grid">
-          <article><span>Ready datasets</span><strong>{stats.readyDatasets}</strong></article>
-          <article><span>Active models</span><strong>{stats.activeModels}</strong></article>
-          <article><span>Fallback rate</span><strong>{stats.fallbackRate}%</strong></article>
-          <article><span>Error rate</span><strong>{stats.errorRate}%</strong></article>
-          <article><span>Prediction quality</span><strong>{stats.predictionQuality}%</strong></article>
-          <article><span>Inference latency</span><strong>{props.prediction ? "OK" : "N/A"}</strong></article>
+          <article><span>Ready datasets (loaded)</span><strong>{props.dataAvailable?.datasets === false ? "Unavailable" : stats.readyDatasets}</strong></article>
+          <article><span>Active models (loaded)</span><strong>{props.dataAvailable?.models === false ? "Unavailable" : stats.activeModels}</strong></article>
+          <article><span>Fallback-enabled policies</span><strong>{props.dataAvailable?.policies === false || stats.fallbackRate === null ? "Unavailable" : `${stats.fallbackPolicies} / ${props.policies.length} (${stats.fallbackRate}%)`}</strong><small>Configuration share in loaded scopes; runtime fallback frequency unavailable.</small></article>
+          <article><span>Failed training runs</span><strong>{props.dataAvailable?.trainingRuns === false || stats.errorRate === null ? "Unavailable" : `${stats.failedRuns} / ${props.trainingRuns.length} (${stats.errorRate}%)`}</strong><small>Loaded lifecycle records, all returned dates.</small></article>
+          <article><span>Prediction confidence</span><strong>{stats.predictionQuality === null ? "Unavailable" : `${stats.predictionQuality}%`}</strong><small>{props.prediction?.createdAt ?? "No prediction observation"}</small></article>
+          <article><span>Inference latency</span><strong>Unavailable</strong></article>
           <article><span>Deployment path</span><strong>{stats.deploymentPath}</strong></article>
           <article><span>Canary</span><strong>{stats.canaryState}</strong></article>
         </div>
         <div className="ml-readout"><strong>Drift</strong><span>{stats.driftStatus}</span></div>
         <div className="ml-readout"><strong>Latency</strong><span>{stats.latencyStatus}</span></div>
-        <div className="ml-readout"><strong>Fallback policies</strong><span>{stats.fallbackPolicies} policy scopes have baseline fallback enabled</span></div>
-        <div className="ml-readout"><strong>Training errors</strong><span>{stats.failedRuns} failed runs in the current list</span></div>
+        <div className="ml-readout"><strong>Fallback policies</strong><span>{props.dataAvailable?.policies === false ? "Unavailable policy evidence" : `${stats.fallbackPolicies} policy scopes have baseline fallback enabled`}</span></div>
+        <div className="ml-readout"><strong>Training errors</strong><span>{props.dataAvailable?.trainingRuns === false ? "Unavailable training evidence" : `${stats.failedRuns} failed runs in the current list`}</span></div>
         <h3>Deployment comparison</h3>
         <dl className="ml-model-metric-grid">
           <div><dt>Active</dt><dd>{props.prediction?.predictionPath === "ACTIVE" ? statusText(props.prediction.predictionStatus) : "No active path in latest trace"}</dd></div>
           <div><dt>Shadow</dt><dd>{props.prediction?.shadowPrediction ? statusText(props.prediction.predictionStatus) : "Stored separately from latest active"}</dd></div>
           <div><dt>Canary</dt><dd>{props.prediction?.deploymentMode === "CANARY" ? formatCanaryState(props.prediction) : "No canary policy in latest trace"}</dd></div>
-          <div><dt>Fallback</dt><dd>{props.prediction?.predictionPath === "FALLBACK" ? props.prediction.fallbackReason || "Fallback used" : "Not used"}</dd></div>
+          <div><dt>Fallback</dt><dd>{props.prediction ? props.prediction.predictionPath === "FALLBACK" ? props.prediction.fallbackReason || "Fallback used" : "Not used in this trace" : "No prediction trace"}</dd></div>
         </dl>
       </section>
       <MlStatus deviceMode={Boolean(props.deviceId)} error={props.statusError} prediction={props.prediction} />
@@ -540,8 +550,7 @@ const labelOptions: MlLabelType[] = [
 ];
 
 function deviceLabel(device: Device) {
-  const location = device.locationId ? ` / ${device.locationId}` : "";
-  return `${device.name} / ${device.type} / ${device.status}${location} / ${device.id}`;
+  return `${device.name} / ${device.type} / ${device.status}`;
 }
 
 function snapshotLabel(snapshot: MlFeatureSnapshotResponse) {

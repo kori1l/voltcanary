@@ -9,6 +9,9 @@ topic, then follow the folder-level index for the specific contract or runbook.
 | --- | --- | --- |
 | Current system shape | [current](current/README.md) | Entry point for behavior that exists in code today |
 | Target architecture | [target](target/README.md) | Entry point for where the system is going |
+| UI/UX audit and remaining fixes | [target/ui-design-requirements.md](target/ui-design-requirements.md) | Current review, completed redesign baseline, priorities, and acceptance criteria |
+| User-created dashboards | [target/custom-dashboards.md](target/custom-dashboards.md) | Future business/persona scenarios, editor and widgets, permissions, calculation semantics, and acceptance |
+| UI/UX and dashboard implementation proposals | [OpenSpec program](../openspec/changes/README.md) | Proposed changes, delivery order, dependencies, and audit/product requirement coverage |
 | HTTP contracts | [current/api](current/api/README.md) | Public gateway routes and service API contracts implemented in code |
 | Kafka/event contracts | [current/events](current/events/README.md) | Event envelope, topic keys, producer/consumer ownership implemented in code |
 | Operations and local deployment | [current/operations](current/operations/README.md) | Local Kubernetes, connector operation, ML operation, repository structure |

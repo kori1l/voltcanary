@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { getLatestPrediction, PredictionResponse } from "../../../analytics/analyticsApi";
 import {
   getMlDatasetVersion,
@@ -30,6 +30,7 @@ import {
   saveDeviceMlSettings,
 } from "../../../analytics/mlSettingsApi";
 import { Device, DeviceType, listDevices, listDeviceTypes } from "../../../devices/devicesApi";
+import { useSectionResource } from "../../../components/useSectionResource";
 
 const initial: MlSettingsValues = {
   mlEnabled: true,
@@ -50,6 +51,11 @@ export function useMlWorkspaceData({
   modelStatusFilter: MlLifecycleStatusFilter;
   policyStatusFilter: MlLifecycleStatusFilter;
 }) {
+  const scopeGeneration = useRef(0);
+  const detailGeneration = useRef(0);
+  const labelsGeneration = useRef(0);
+  const auditGeneration = useRef(0);
+  useEffect(() => () => { scopeGeneration.current++; detailGeneration.current++; labelsGeneration.current++; auditGeneration.current++; }, []);
   const [values, setValues] = useState(initial);
   const [effective, setEffective] = useState<MlSettingsResponse | null>(null);
   const [deviceId, setDeviceId] = useState("");
@@ -59,22 +65,33 @@ export function useMlWorkspaceData({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [datasets, setDatasets] = useState<MlDatasetSummary[]>([]);
+  const datasetSection = useSectionResource<MlDatasetSummary[]>(datasetStatusFilter);
+  const datasets = datasetSection.data ?? [];
+  const setDatasets = datasetSection.setData;
   const [datasetDetail, setDatasetDetail] = useState<MlDatasetDetail | null>(null);
-  const [trainingRuns, setTrainingRuns] = useState<MlTrainingRun[]>([]);
-  const [models, setModels] = useState<MlModelVersion[]>([]);
-  const [policies, setPolicies] = useState<MlDeploymentPolicy[]>([]);
+  const trainingSection = useSectionResource<MlTrainingRun[]>(trainingStatusFilter);
+  const trainingRuns = trainingSection.data ?? [];
+  const setTrainingRuns = trainingSection.setData;
+  const modelSection = useSectionResource<MlModelVersion[]>(modelStatusFilter);
+  const models = modelSection.data ?? [];
+  const setModels = modelSection.setData;
+  const policySection = useSectionResource<MlDeploymentPolicy[]>(policyStatusFilter);
+  const policies = policySection.data ?? [];
+  const setPolicies = policySection.setData;
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-  const [featureSnapshots, setFeatureSnapshots] = useState<MlFeatureSnapshotResponse[]>([]);
+  const snapshotSection = useSectionResource<MlFeatureSnapshotResponse[]>();
+  const featureSnapshots = snapshotSection.data ?? [];
+  const setFeatureSnapshots = snapshotSection.setData;
   const [labels, setLabels] = useState<MlLabel[]>([]);
   const [labelAudit, setLabelAudit] = useState<MlLabelAudit[]>([]);
 
   useEffect(() => {
     void loadAccount();
-    void refreshMlWorkspace();
     void loadSelectors();
   }, []);
+
+  useEffect(() => { void refreshMlWorkspace(); }, [datasetStatusFilter, trainingStatusFilter, modelStatusFilter, policyStatusFilter]);
 
   function adopt(v: MlSettingsResponse) {
     setEffective(v);
@@ -88,19 +105,28 @@ export function useMlWorkspaceData({
   }
 
   async function loadAccount() {
+    const generation = ++scopeGeneration.current;
+    setPrediction(null);
+    setStatusError(null);
     setBusy(true);
     setError(null);
     try {
-      adopt(await getAccountMlSettings());
+      const response = await getAccountMlSettings();
+      if (generation !== scopeGeneration.current) return;
+      adopt(response);
       setDeviceMode(false);
     } catch (e) {
+      if (generation !== scopeGeneration.current) return;
       setError(safeMlError(e));
     } finally {
-      setBusy(false);
+      if (generation === scopeGeneration.current) setBusy(false);
     }
   }
 
   async function loadDevice() {
+    const generation = ++scopeGeneration.current;
+    const requestedDeviceId = deviceId.trim();
+    setPrediction(null);
     if (!deviceId.trim()) {
       setError("Device ID is required");
       return;
@@ -109,44 +135,37 @@ export function useMlWorkspaceData({
     setError(null);
     setStatusError(null);
     try {
-      adopt(await getDeviceMlSettings(deviceId.trim()));
+      const response = await getDeviceMlSettings(requestedDeviceId);
+      if (generation !== scopeGeneration.current) return;
+      adopt(response);
       setDeviceMode(true);
-      getLatestPrediction(deviceId.trim())
-        .then(setPrediction)
+      getLatestPrediction(requestedDeviceId)
+        .then((response) => { if (generation === scopeGeneration.current) setPrediction(response); })
         .catch((e) => {
+          if (generation !== scopeGeneration.current) return;
           setPrediction(null);
           setStatusError(safeMlError(e));
         });
     } catch (e) {
+      if (generation !== scopeGeneration.current) return;
       setError(safeMlError(e));
     } finally {
-      setBusy(false);
+      if (generation === scopeGeneration.current) setBusy(false);
     }
   }
 
   async function refreshMlWorkspace() {
-    const [datasetResult, snapshotResult, trainingResult, modelResult, policyResult] = await Promise.allSettled([
-      listMlDatasets(datasetStatusFilter),
-      listFeatureSnapshots(),
-      listTrainingRuns(trainingStatusFilter),
-      listMlModels(modelStatusFilter),
-      listDeploymentPolicies(policyStatusFilter),
+    await Promise.allSettled([
+      datasetSection.load(() => listMlDatasets(datasetStatusFilter), (data) => !data.length),
+      snapshotSection.load(async () => {
+        const response = await listFeatureSnapshots();
+        if (!Array.isArray(response)) throw new Error("Feature snapshot list is unavailable: invalid response");
+        return response;
+      }, (data) => !data.length),
+      trainingSection.load(() => listTrainingRuns(trainingStatusFilter), (data) => !data.length),
+      modelSection.load(() => listMlModels(modelStatusFilter), (data) => !data.length),
+      policySection.load(() => listDeploymentPolicies(policyStatusFilter), (data) => !data.length),
     ]);
-    if (datasetResult.status === "fulfilled") {
-      setDatasets(datasetResult.value);
-    }
-    if (trainingResult.status === "fulfilled") {
-      setTrainingRuns(trainingResult.value);
-    }
-    if (snapshotResult.status === "fulfilled" && Array.isArray(snapshotResult.value)) {
-      setFeatureSnapshots(snapshotResult.value);
-    }
-    if (modelResult.status === "fulfilled") {
-      setModels(modelResult.value);
-    }
-    if (policyResult.status === "fulfilled") {
-      setPolicies(policyResult.value);
-    }
   }
 
   async function loadSelectors() {
@@ -164,6 +183,7 @@ export function useMlWorkspaceData({
 
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (busy || !effective || (deviceMode && effective.deviceId !== deviceId.trim())) { setError("Load the selected scope before saving its settings."); return; }
     if (values.confidenceWarningThreshold < 0 || values.confidenceWarningThreshold > 1) {
       setError("Confidence threshold must be between 0 and 1");
       return;
@@ -185,6 +205,7 @@ export function useMlWorkspaceData({
   }
 
   async function clearOverride() {
+    if (busy || !effective || effective.deviceId !== deviceId.trim()) return;
     setBusy(true);
     try {
       await clearDeviceMlSettings(deviceId);
@@ -198,34 +219,45 @@ export function useMlWorkspaceData({
   }
 
   async function loadDatasetDetail(datasetVersionId: string) {
+    const generation = ++detailGeneration.current;
+    setDatasetDetail(null);
     setBusy(true);
     setError(null);
     try {
-      setDatasetDetail(await getMlDatasetVersion(datasetVersionId));
+      const response = await getMlDatasetVersion(datasetVersionId);
+      if (generation === detailGeneration.current) setDatasetDetail(response);
     } catch (e) {
-      setError(safeMlError(e));
+      if (generation === detailGeneration.current) setError(safeMlError(e));
     } finally {
-      setBusy(false);
+      if (generation === detailGeneration.current) setBusy(false);
     }
   }
 
   async function loadLabelAudit(labelId: string) {
+    const generation = ++auditGeneration.current;
+    setLabelAudit([]);
     setError(null);
     try {
-      setLabelAudit(await getMlLabelAudit(labelId));
+      const response = await getMlLabelAudit(labelId);
+      if (generation === auditGeneration.current) setLabelAudit(response);
     } catch (e) {
-      setError(safeMlError(e));
+      if (generation === auditGeneration.current) setError(safeMlError(e));
     }
   }
 
   async function refreshLabels(datasetVersionId: string) {
-    setLabels(await listMlLabels(datasetVersionId));
+    const generation = ++labelsGeneration.current;
+    setLabels([]);
+    const response = await listMlLabels(datasetVersionId);
+    if (generation === labelsGeneration.current) setLabels(response);
   }
 
   const set = <K extends keyof MlSettingsValues>(key: K, value: MlSettingsValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
 
   return {
+    sections: [{ label: "datasets", resource: datasetSection }, { label: "snapshots", resource: snapshotSection }, { label: "training runs", resource: trainingSection }, { label: "models", resource: modelSection }, { label: "policies", resource: policySection }],
+    dataAvailable: { datasets: datasetSection.data !== null, models: modelSection.data !== null, trainingRuns: trainingSection.data !== null, policies: policySection.data !== null },
     values,
     setValues,
     effective,

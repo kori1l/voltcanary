@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   generateHorizonLabels,
   getHorizonLabelGenerationStatus,
@@ -21,6 +21,8 @@ export function useHorizonLabelGeneration({
 }) {
   const [generationJob, setGenerationJob] = useState<MlHorizonLabelGenerationResponse | null>(null);
   const [generationStatusMessage, setGenerationStatusMessage] = useState<string | null>(null);
+  const starting = useRef(false);
+  const [generationStarting, setGenerationStarting] = useState(false);
 
   useEffect(() => {
     if (!isActiveHorizonJob(generationJob)) {
@@ -52,11 +54,14 @@ export function useHorizonLabelGeneration({
   }, [datasetVersionId, horizonDays, includePreventiveMaintenance]);
 
   async function generateLabels() {
+    if (starting.current || isActiveHorizonJob(generationJob)) return;
     if (!datasetVersionId) {
       setError("Select a dataset version before generating labels");
       return;
     }
     setGenerationStatusMessage("Starting horizon label generation.");
+    starting.current = true;
+    setGenerationStarting(true);
     setError(null);
     try {
       const job = await generateHorizonLabels({
@@ -73,6 +78,9 @@ export function useHorizonLabelGeneration({
       }
       setGenerationStatusMessage(null);
       setError(safeMlError(error));
+    } finally {
+      starting.current = false;
+      setGenerationStarting(false);
     }
   }
 
@@ -111,7 +119,7 @@ export function useHorizonLabelGeneration({
     generationJob,
     generationStatusMessage,
     generationResult: generationJob?.result ?? null,
-    generationActive: isActiveHorizonJob(generationJob),
+    generationActive: generationStarting || isActiveHorizonJob(generationJob),
     generateLabels,
     refreshGenerationStatus,
   };

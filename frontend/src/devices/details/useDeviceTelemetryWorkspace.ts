@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLatestTelemetry, getTelemetryReadings, LatestTelemetry, TelemetryChart } from "../../telemetry/telemetryApi";
 import { DeviceDetailsTab } from "./DeviceTabs";
+import { useSectionResource } from "../../components/useSectionResource";
 import {
   arraysEqual,
   buildAvailableChartMetrics,
@@ -25,8 +26,6 @@ export function useDeviceTelemetryWorkspace({
   searchParams: URLSearchParams;
 }) {
   const initialChartPreferences = readDashboardChartPreferences(deviceId);
-  const [latest, setLatest] = useState<LatestTelemetry | null>(null);
-  const [charts, setCharts] = useState<Record<string, TelemetryChart>>({});
   const [selectedChartMetricKeys, setSelectedChartMetricKeys] = useState<string[]>(initialChartPreferences.selectedMetricKeys);
   const [showChartPoints, setShowChartPoints] = useState(initialChartPreferences.showChartPoints);
   const [chartDensity, setChartDensity] = useState<ChartDensity>(initialChartPreferences.chartDensity);
@@ -36,9 +35,12 @@ export function useDeviceTelemetryWorkspace({
   const [metricSearch, setMetricSearch] = useState("");
   const [expandedChartMetricKey, setExpandedChartMetricKey] = useState<string | null>(initialChartPreferences.expandedChartMetricKey);
   const [selectedTelemetryEventId, setSelectedTelemetryEventId] = useState<string | null>(null);
-  const [isTelemetryLoading, setIsTelemetryLoading] = useState(false);
 
   const chartTimeWindow = useMemo(() => getChartTimeWindow(chartTimeRange, customChartFrom, customChartTo), [chartTimeRange, customChartFrom, customChartTo]);
+  const resource = useSectionResource<{ latest: LatestTelemetry; charts: Record<string, TelemetryChart>; failures: string[] }>(`${deviceId}:${chartTimeWindow?.from}:${chartTimeWindow?.to}`);
+  const latest = resource.data?.latest ?? null;
+  const charts = resource.data?.charts ?? {};
+  const isTelemetryLoading = resource.refreshing;
   const availableChartMetrics = useMemo(() => buildAvailableChartMetrics(charts), [charts]);
   const availableChartKeySignature = availableChartMetrics.map((metric) => metric.key).join("|");
   const chartMetrics = useMemo(
@@ -52,23 +54,22 @@ export function useDeviceTelemetryWorkspace({
       return false;
     }
 
-    setIsTelemetryLoading(true);
-    try {
+    const result = await resource.load(async () => {
       const latestResponse = await getLatestTelemetry(currentDeviceId);
-      setLatest(latestResponse);
       const numericMetrics = buildChartMetrics(latestResponse.readings);
-      const chartResponses = await Promise.all(
+      const chartResponses = await Promise.allSettled(
         numericMetrics.map(async (metric) => [metric.key, await getTelemetryReadings(currentDeviceId, metric.key, chartTimeWindow.from, chartTimeWindow.to)] as const),
       );
-      setCharts(Object.fromEntries(chartResponses));
-      return true;
-    } catch {
-      setLatest(null);
-      setCharts({});
-      return false;
-    } finally {
-      setIsTelemetryLoading(false);
-    }
+      const charts: Record<string, TelemetryChart> = {};
+      const failures: string[] = [];
+      chartResponses.forEach((response, index) => {
+        if (response.status === "fulfilled") charts[response.value[0]] = response.value[1];
+        else failures.push(`${numericMetrics[index].label}: ${response.reason instanceof Error ? response.reason.message : "unavailable"}`);
+      });
+      if (chartResponses.length && !Object.keys(charts).length) throw new Error(failures.join("; "));
+      return { latest: latestResponse, charts, failures };
+    }, (data) => !Object.values(data.charts).some((chart) => chart.points.length > 0));
+    return !!result;
   }
 
   useEffect(() => {
@@ -91,7 +92,7 @@ export function useDeviceTelemetryWorkspace({
     }
     setSelectedChartMetricKeys([metric]);
     setExpandedChartMetricKey(metric);
-    if (from && to) {
+    if (from && to && Number.isFinite(Date.parse(from)) && Number.isFinite(Date.parse(to)) && Date.parse(from) < Date.parse(to)) {
       setChartTimeRange("custom");
       setCustomChartFrom(toDateTimeLocalValue(new Date(from)));
       setCustomChartTo(toDateTimeLocalValue(new Date(to)));
@@ -118,18 +119,6 @@ export function useDeviceTelemetryWorkspace({
     void loadTelemetry(deviceId);
   }, [deviceId, chartTimeRange, customChartFrom, customChartTo]);
 
-  useEffect(() => {
-    const availableKeys = availableChartKeySignature ? availableChartKeySignature.split("|") : [];
-    if (availableKeys.length === 0) {
-      return;
-    }
-    setSelectedChartMetricKeys((current) => {
-      const currentAvailable = current.filter((key) => availableKeys.includes(key));
-      const defaultAvailable = DEFAULT_CHART_METRICS.filter((key) => availableKeys.includes(key));
-      const next = currentAvailable.length > 0 ? currentAvailable : defaultAvailable;
-      return arraysEqual(current, next) ? current : next;
-    });
-  }, [availableChartKeySignature]);
 
   function toggleChartMetric(metricKey: string) {
     setSelectedChartMetricKeys((current) =>
@@ -168,6 +157,8 @@ export function useDeviceTelemetryWorkspace({
     selectedTelemetryEventId,
     setSelectedTelemetryEventId,
     isTelemetryLoading,
+    resource,
+    telemetryFailures: resource.data?.failures ?? [],
     chartTimeWindow,
     availableChartMetrics,
     chartMetrics,

@@ -15,7 +15,7 @@ if ($CiMode) {
 Import-Module (Join-Path $PSScriptRoot "CapacityHarness.psm1") -Force
 
 if ($OutcomePath.Trim().Length -eq 0) {
-    $OutcomePath = Join-Path $RunDirectory "k6-outcomes.ndjson"
+    $OutcomePath = Join-Path $RunDirectory "generation-output.log"
 }
 
 $generationManifestPath = Join-Path $RunDirectory "generation-manifest.json"

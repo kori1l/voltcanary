@@ -9,9 +9,11 @@ import com.voltcanary.ingestion.source.SourceRegistryCache;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigConsumer;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigStore;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/internal/ingestion/horizontal-scale-smoke")
@@ -77,6 +80,42 @@ public class HorizontalScaleSmokeController {
                 "configVersion", config.map(value -> value.version()).orElse(0L));
     }
 
+    @PostMapping("/sources/readiness")
+    public SourceReadinessResponse sourceReadiness(@RequestBody SourceReadinessRequest request) {
+        List<UUID> ids = request == null || request.dataSourceIds() == null
+                ? List.of()
+                : request.dataSourceIds().stream().distinct().toList();
+        Map<UUID, String> expectedTokenPrefixes = request == null || request.expectedTokenPrefixes() == null
+                ? Map.of()
+                : request.expectedTokenPrefixes();
+        if (ids.size() > 20_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At most 20000 dataSourceIds are allowed");
+        }
+        List<UUID> missingSources = ids.stream()
+                .filter(id -> cache.getByDataSourceId(id).isEmpty())
+                .toList();
+        List<UUID> missingRuntimeConfigs = ids.stream()
+                .filter(id -> configStore.get(id).isEmpty())
+                .toList();
+        List<UUID> tokenPrefixMismatches = ids.stream()
+                .filter(expectedTokenPrefixes::containsKey)
+                .filter(id -> cache.getByDataSourceId(id)
+                        .map(source -> !expectedTokenPrefixes.get(id).equals(source.tokenPrefix()))
+                        .orElse(false))
+                .toList();
+        return new SourceReadinessResponse(
+                properties.getInstanceId(),
+                ids.size(),
+                ids.size() - missingSources.size(),
+                ids.size() - missingRuntimeConfigs.size(),
+                expectedTokenPrefixes.size(),
+                expectedTokenPrefixes.size() - tokenPrefixMismatches.size(),
+                missingSources.isEmpty() && missingRuntimeConfigs.isEmpty() && tokenPrefixMismatches.isEmpty(),
+                missingSources.stream().limit(100).toList(),
+                missingRuntimeConfigs.stream().limit(100).toList(),
+                tokenPrefixMismatches.stream().limit(100).toList());
+    }
+
     private boolean ownsConnectorLease(UUID dataSourceId) {
         try {
             return leaseManager.current(dataSourceId).isPresent();
@@ -130,5 +169,23 @@ public class HorizontalScaleSmokeController {
                     correlationId,
                     "horizontal-scale-smoke");
         }
+    }
+
+    public record SourceReadinessRequest(
+            List<UUID> dataSourceIds,
+            Map<UUID, String> expectedTokenPrefixes) {
+    }
+
+    public record SourceReadinessResponse(
+            String instanceId,
+            int requestedCount,
+            int knownSourceCount,
+            int knownRuntimeConfigCount,
+            int expectedTokenPrefixCount,
+            int matchingTokenPrefixCount,
+            boolean ready,
+            List<UUID> missingSourceIds,
+            List<UUID> missingRuntimeConfigIds,
+            List<UUID> tokenPrefixMismatchIds) {
     }
 }

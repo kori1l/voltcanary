@@ -123,3 +123,7 @@ private telemetry dumps, generated model files, or MinIO object contents.
    source event id.
 6. If frontend evidence fails, rerun the backend/full gate first, then verify
    the API response used by the failing screen.
+
+## Console workflow guidance
+
+See [Console interface workflows](console-interface.md) for the shared review, validation, responsive layout and evidence-state behavior. UI fixtures do not replace this guide’s live backend verification.

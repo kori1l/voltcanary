@@ -1,0 +1,20 @@
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { FormEvent } from "react";
+import { afterEach, expect, it, vi } from "vitest";
+import { useAssistantPlan } from "./useAssistantPlan";
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+it("invalidates old plans on context changes and ignores a late response", async () => {
+  const responses: ((response: Response) => void)[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>((resolve) => responses.push(resolve)));
+  const event = { preventDefault: vi.fn() } as unknown as FormEvent;
+  const { result, rerender } = renderHook(({ message }) => useAssistantPlan(message, '{}'), { initialProps: { message: "Inspect device A" } });
+  let old: Promise<void>;
+  act(() => { old = result.current.submit(event); });
+  rerender({ message: "Inspect device B" });
+  let current: Promise<void>;
+  act(() => { current = result.current.submit(event); });
+  await act(async () => { responses[1](new Response(JSON.stringify({ planId: "new-plan" }), { status: 200 })); await current; });
+  expect(result.current.plan?.planId).toBe("new-plan");
+  await act(async () => { responses[0](new Response(JSON.stringify({ planId: "old-plan" }), { status: 200 })); await old; });
+  expect(result.current.plan?.planId).toBe("new-plan");
+});

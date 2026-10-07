@@ -14,7 +14,10 @@ authoritative workload and evidence contract. Resolve paths from this skill.
    diagnose a failed run. A request for a plan does not start a stress test.
 2. For implementation, use `voltcanary-openspec` and the relevant backend/local
    operations skills. Inspect active changes; the initial proposal is
-   `add-capacity-verification-harness`. Do not present proposed commands as installed.
+   `openspec/changes/archive/2026-10-05-add-capacity-verification-harness`.
+   This change was archived by user request with open tasks; do not treat it as
+   active or as proof that capacity gates passed. Use a new scoped change for
+   outstanding live rerun/scaling/recovery work. Do not present proposed commands as installed.
 3. Read the current ingestion and telemetry API contracts and inspect both metric
    catalogs. The ten-metric contract now exists in source; verify the deployed
    catalog as well. An unsupported profile is BLOCKED, never silently downscaled.
@@ -25,7 +28,8 @@ authoritative workload and evidence contract. Resolve paths from this skill.
 ## Execution invariants
 
 - Provision devices, sources and credentials through supported APIs. Wait for
-  source runtime-config readiness on every ingress replica before measurement.
+  every source ID and expected rotated-token prefix to be ready on every ingress
+  replica before measurement; source presence alone does not prove auth readiness.
 - Schedule 10,000 devices once per 300 seconds with deterministic phases. Distinguish
   device count, active MQTT connections, requests, readings and numeric values.
 - Use an independent arrival schedule, report scheduled versus started operations,
@@ -49,6 +53,11 @@ authoritative workload and evidence contract. Resolve paths from this skill.
   and 1.2M numeric values for resume-10. Report actual persisted throughput and
   label multiplication to a day as an extrapolation. Daily endurance and full
   monthly-volume trials are optional, not prerequisites for the hourly result.
+- For local REST execution, keep automatic reconciliation enabled: the runner
+  performs warmup outside measured totals, samples acceptance-to-visibility,
+  waits through bounded drain, exports Compose TimescaleDB rows and reconciles
+  them in bounded timestamp windows. Use `-SkipAutoReconcile` only when an
+  external committed-row source is supplied and documented.
 - Check the Docker data disk as well as the artifact disk; they may differ.
 - A 24-hour test and a prefilled monthly-volume test answer different questions.
   Direct SQL storage fixtures cannot prove ingestion or downstream capacity.

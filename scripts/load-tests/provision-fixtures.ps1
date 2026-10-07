@@ -7,6 +7,8 @@ param(
     [string] $BearerToken = "",
     [string] $InternalServiceToken = "dev-internal-token",
     [int] $LimitDevices = 0,
+    [ValidateRange(1, 64)]
+    [int] $Parallelism = 1,
     [ValidateSet("REST", "MQTT")]
     [string] $SourceProtocol = "REST",
     [switch] $RotateSourceTokens,
@@ -44,6 +46,7 @@ $result = Invoke-CapacityFixtureProvisioning `
     -BearerToken $BearerToken `
     -InternalServiceToken $InternalServiceToken `
     -LimitDevices $LimitDevices `
+    -Parallelism $Parallelism `
     -SourceProtocol $SourceProtocol `
     -RotateSourceTokens:$RotateSourceTokens `
     -SecretOutputPath $SecretOutputPath `

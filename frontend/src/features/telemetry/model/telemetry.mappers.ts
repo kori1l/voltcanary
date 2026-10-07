@@ -50,7 +50,7 @@ export function mapTelemetryOverview({
       } : undefined);
       const computedEvents = detectTelemetryEvents(definition, series, threshold);
       const analyticsEvents = (anomalies ?? [])
-        .filter((anomaly) => metricKey === "activePowerW")
+        .filter((anomaly) => metricKey === "activePowerW" && Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to))
         .map((anomaly): TelemetryEvent => ({
           id: anomaly.id,
           timestamp: anomaly.detectedAt,
@@ -83,9 +83,9 @@ export function mapTelemetryOverview({
     range,
     health,
     metrics,
-    events: mergeEvents(metrics.flatMap((metric) => metric.statistics.alertsCount > 0 || metric.status !== "normal"
+    events: mergeEvents([...(anomalies ?? []).filter((anomaly) => Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to)).map((anomaly): TelemetryEvent => ({ id: anomaly.id, timestamp: anomaly.detectedAt, metricKey: "activePowerW", type: "custom", severity: normalizeSeverity(anomaly.severity), title: anomaly.type.replace(/_/g, " "), description: anomaly.description })), ...metrics.flatMap((metric) => metric.statistics.alertsCount > 0 || metric.status !== "normal"
       ? detectTelemetryEvents(metric.definition, metric.series, metric.threshold)
-      : detectTelemetryEvents(metric.definition, metric.series, metric.threshold).slice(0, 2))),
+      : detectTelemetryEvents(metric.definition, metric.series, metric.threshold).slice(0, 2))]),
   };
 }
 

@@ -57,6 +57,7 @@ x-java-app: &java-app
     ML_SERVICE_URI: http://ml-service:8090
     INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
     INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
+    APP_INGESTION_HORIZONTAL_SCALE_SMOKE_ENABLED: ${INGESTION_HORIZONTAL_SCALE_SMOKE_ENABLED:-false}
     INGESTION_MQTT_BROKER_URL: tcp://mosquitto:1883
   depends_on:
     postgres-database-init:

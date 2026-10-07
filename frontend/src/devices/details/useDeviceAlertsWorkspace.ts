@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { acknowledgeAlert, AlertResponse, listAlerts, resolveAlert } from "../../alerts/alertsApi";
+import { useActionConfirmation } from "../../components/useActionConfirmation";
+import { useSectionResource } from "../../components/useSectionResource";
 
 export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
-  const [deviceAlerts, setDeviceAlerts] = useState<AlertResponse[]>([]);
+  const confirmation = useActionConfirmation();
+  const resource = useSectionResource<AlertResponse[]>(deviceId);
+  const deviceAlerts = resource.data ?? [];
+  const setDeviceAlerts = resource.setData;
   const [deviceAlertStatusFilter, setDeviceAlertStatusFilter] = useState("all");
   const [showAllDeviceAlerts, setShowAllDeviceAlerts] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +24,7 @@ export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
     if (!currentDeviceId) {
       return;
     }
-    setDeviceAlerts((await listAlerts().catch(() => [])).filter((alert) => alert.deviceId === currentDeviceId));
+    await resource.load(() => listAlerts({ deviceId: currentDeviceId, limit: 100 }), (data) => !data.length);
   }
 
   async function updateDeviceAlert(alertId: string, action: "ack" | "resolve") {
@@ -28,7 +33,7 @@ export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
       if (action === "ack") {
         await acknowledgeAlert(alertId);
       } else {
-        const reason = window.prompt("Resolution reason");
+        const reason = await confirmation.confirm({ title: "Resolve alert", object: deviceAlerts.find((alert) => alert.id === alertId)?.title ?? alertId, impact: "The incident will be marked resolved. Its history will retain this reason.", reasonRequired: true });
         if (reason === null) {
           return;
         }
@@ -41,6 +46,8 @@ export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
   }
 
   return {
+    resource,
+    confirmationDialog: confirmation.dialog,
     deviceAlerts,
     setDeviceAlerts,
     deviceAlertStatusFilter,

@@ -1,13 +1,16 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { changePassword, me, MeResponse, requestEmailVerification } from "../auth/authApi";
+import { me, MeResponse, requestEmailVerification } from "../auth/authApi";
 import { NotificationChannelSettings } from "../features/notifications/NotificationChannelSettings";
 import { NotificationPreferenceSettings } from "../features/notifications/NotificationPreferenceSettings";
+import { PasswordChangeForm } from "../auth/PasswordChangeForm";
+import { useSectionResource } from "../components/useSectionResource";
+import { SectionFeedback } from "../components/SectionFeedback";
+import { PersonalSessionControls } from "../auth/PersonalSessionControls";
 
 export function SettingsPage() {
-  const [profile, setProfile] = useState<MeResponse | null>(null);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const profileSection = useSectionResource<MeResponse>();
+  const profile = profileSection.data;
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -17,12 +20,7 @@ export function SettingsPage() {
   }, []);
 
   async function load() {
-    setError(null);
-    try {
-      setProfile(await me().catch(() => null));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load settings");
-    }
+    await profileSection.load(me);
   }
 
   async function run(action: () => Promise<void>) {
@@ -36,16 +34,6 @@ export function SettingsPage() {
     } finally {
       setIsBusy(false);
     }
-  }
-
-  async function submitPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await run(async () => {
-      const response = await changePassword(currentPassword, newPassword);
-      setCurrentPassword("");
-      setNewPassword("");
-      setMessage(response.message);
-    });
   }
 
   async function verifyEmail() {
@@ -72,6 +60,7 @@ export function SettingsPage() {
 
       {message ? <div className="success-message account-message">{message}</div> : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
+      <SectionFeedback resource={profileSection} label="profile" onRetry={() => void load()} />
 
       <section className="settings-grid">
         <section className="panel">
@@ -96,7 +85,7 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Email verification</dt>
-              <dd>{profile?.emailVerified ? "Verified" : "Not verified"}</dd>
+              <dd>{profile ? profile.emailVerified ? "Verified" : "Not verified" : "Unavailable"}</dd>
             </div>
           </dl>
           <div className="action-row action-row-start">
@@ -118,13 +107,8 @@ export function SettingsPage() {
               <p>Change your password.</p>
             </div>
           </div>
-          <form className="notification-channel-form settings-password-form" onSubmit={submitPassword}>
-            <input value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} type="password" placeholder="Current password" required />
-            <input value={newPassword} onChange={(event) => setNewPassword(event.target.value)} type="password" placeholder="New password" minLength={8} required />
-            <button className="primary-button" type="submit" disabled={isBusy}>
-              Change password
-            </button>
-          </form>
+          <PasswordChangeForm />
+          <PersonalSessionControls />
         </section>
 
         <section className="panel">

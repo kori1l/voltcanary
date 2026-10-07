@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { forgotPassword } from "../auth/authApi";
-import { BrandLogo } from "../components/BrandLogo";
+import { AuthShell } from "../auth/AuthShell";
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -11,33 +11,31 @@ export function ForgotPasswordPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
     setMessage(null);
     setError(null);
     setIsSubmitting(true);
     try {
-      const response = await forgotPassword(email);
-      setMessage(response.message);
+      await forgotPassword(email);
+      setMessage("If this email is eligible for recovery, a reset token has been requested. Follow the configured delivery instructions; this screen cannot verify email delivery.");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Password reset request failed");
+      setError("Could not request recovery. Please try again later.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <BrandLogo size="large" />
-        <p>Reset password</p>
+    <AuthShell title="Reset password" description="Request a recovery token using your account email.">
         <form className="form-stack" onSubmit={onSubmit}>
           <label>
             Email
             <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required />
           </label>
-          {message ? <div className="success-message">{message}</div> : null}
-          {error ? <div className="error-message">{error}</div> : null}
+          {message ? <div className="success-message" role="status">{message}</div> : null}
+          {error ? <div className="error-message" role="alert">{error}</div> : null}
           <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Sending..." : "Send reset token"}
+            {isSubmitting ? "Requesting..." : "Request reset token"}
           </button>
         </form>
         <Link className="auth-link" to="/reset-password">
@@ -46,7 +44,6 @@ export function ForgotPasswordPage() {
         <Link className="auth-link auth-link-secondary" to="/login">
           Back to sign in
         </Link>
-      </section>
-    </main>
+    </AuthShell>
   );
 }

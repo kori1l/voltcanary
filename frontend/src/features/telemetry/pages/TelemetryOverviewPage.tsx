@@ -5,7 +5,6 @@ import { EventTimeline } from "../components/EventTimeline";
 import { mapMetricDetail } from "../model/telemetry.mappers";
 import { TelemetryOverviewResponse } from "../model/telemetry.types";
 
-const MIN_DETAIL_SELECTION_RANGE_MS = 60 * 1000;
 
 export function TelemetryOverviewPage({
   overview,
@@ -55,18 +54,22 @@ export function TelemetryOverviewPage({
   onSelectEvent: (eventId: string) => void;
 }) {
   const selectedMetrics = overview.metrics.filter((metric) => selectedMetricKeys.includes(metric.definition.key));
+  const unavailable = selectedMetricKeys.filter((key) => !overview.metrics.some((metric) => metric.definition.key === key));
   const selectedMetricDefinitions = overview.metrics.map((metric) => metric.definition);
   const detail = openedMetricKey ? mapMetricDetail(overview, openedMetricKey, selectedEventId) : null;
   const rangeLabel = range === "custom" ? "Custom range" : range;
   const applyDetailRangeSelection = (from: string, to: string) => {
-    const normalized = ensureMinimumRange(new Date(from), new Date(to));
-    onCustomFromChange(toDateTimeLocalValue(normalized.from));
-    onCustomToChange(toDateTimeLocalValue(normalized.to));
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime()) || fromDate >= toDate) return;
+    onCustomFromChange(toDateTimeLocalValue(fromDate));
+    onCustomToChange(toDateTimeLocalValue(toDate));
     onRangeChange("custom");
   };
 
   return (
     <section className="panel telemetry-monitoring-panel compact-telemetry-panel">
+      {range === "custom" && (!Number.isFinite(Date.parse(customFrom)) || !Number.isFinite(Date.parse(customTo)) || Date.parse(customFrom) >= Date.parse(customTo)) ? <p className="error-message" role="alert">Custom interval end must be after start. Displayed evidence belongs to the last valid interval.</p> : null}
       <div className="compact-telemetry-head">
         <div>
           <h2>Telemetry monitoring</h2>
@@ -77,9 +80,12 @@ export function TelemetryOverviewPage({
         <div className="compact-telemetry-meta">
           <span>Quality: {overview.health.dataQuality}</span>
           <span>Range: {rangeLabel}</span>
-          <span>Metrics: {selectedMetricKeys.length}</span>
+          <span>Metrics shown: {selectedMetrics.length} / {overview.metrics.length} available</span>
         </div>
       </div>
+      {unavailable.length ? <p className="status-note">Selected metrics unavailable in this response: {unavailable.join(", ")}. Selection is preserved for later data.</p> : null}
+      {!selectedMetrics.some((metric) => metric.series.length) ? <p className="status-note">No samples for the selected metrics and interval. Change the range or check the source.</p> : null}
+      {overview.health.lastSampleAt ? <button type="button" className="ghost-button" onClick={() => { const end = new Date(overview.health.lastSampleAt!); applyDetailRangeSelection(new Date(end.getTime() - 3_600_000).toISOString(), new Date(end.getTime() + 60_000).toISOString()); }}>Show range around latest sample</button> : null}
       <TelemetryToolbar
         range={range}
         customFrom={customFrom}
@@ -128,25 +134,4 @@ export function TelemetryOverviewPage({
 function toDateTimeLocalValue(date: Date) {
   const offsetMs = date.getTimezoneOffset() * 60 * 1000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 19);
-}
-
-function ensureMinimumRange(from: Date, to: Date) {
-  const fromMs = from.getTime();
-  const toMs = to.getTime();
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-    const now = Date.now();
-    return {
-      from: new Date(now - MIN_DETAIL_SELECTION_RANGE_MS),
-      to: new Date(now),
-    };
-  }
-  const spanMs = toMs - fromMs;
-  if (spanMs >= MIN_DETAIL_SELECTION_RANGE_MS) {
-    return { from, to };
-  }
-  const midpoint = fromMs + spanMs / 2;
-  return {
-    from: new Date(midpoint - MIN_DETAIL_SELECTION_RANGE_MS / 2),
-    to: new Date(midpoint + MIN_DETAIL_SELECTION_RANGE_MS / 2),
-  };
 }
