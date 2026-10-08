@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { listAlerts, type AlertResponse } from "../../alerts/alertsApi";
 import { listDevices, listLocations, type Device, type Location } from "../../devices/devicesApi";
 import { getLatestTelemetry, type LatestTelemetry } from "../../telemetry/telemetryApi";
 import { useSectionResource } from "../../components/useSectionResource";
+import { ApiError } from "../../api/client";
 
 export interface FleetSignal { device: Device; telemetry: LatestTelemetry | null; error: string | null }
 export const FRESH_SIGNAL_MS = 5 * 60 * 1000;
@@ -13,22 +14,32 @@ export function isFreshSignal(telemetry: LatestTelemetry | null, now = Date.now(
 }
 
 export function useFleetDashboard() {
+  const inventoryGeneration = useRef(0);
   const inventory = useSectionResource<Device[]>();
   const alerts = useSectionResource<AlertResponse[]>();
   const locations = useSectionResource<Location[]>();
   const signals = useSectionResource<FleetSignal[]>();
-  const reloadInventory = () => inventory.load(() => listDevices({ limit: 200 }), (data) => !data.length);
+  const reloadInventory = async () => {
+    const generation = ++inventoryGeneration.current;
+    signals.waitForDependency();
+    const devices = await inventory.load(() => listDevices({ limit: 200 }), (data) => !data.length);
+    if (generation !== inventoryGeneration.current) return null;
+    if (devices) await reloadSignals(devices);
+    else signals.waitForDependency("Inventory unavailable. Retry inventory to verify signals.");
+    return devices;
+  };
   const reloadAlerts = () => alerts.load(() => listAlerts({ limit: 100 }), (data) => !data.length);
   const reloadLocations = () => locations.load(listLocations);
   async function reloadSignals(devices = inventory.data) {
     if (!devices) return;
     await signals.load(async () => Promise.all(devices.slice(0, 6).map(async (device): Promise<FleetSignal> => {
       try { return { device, telemetry: await getLatestTelemetry(device.id), error: null }; }
-      catch (error) { return { device, telemetry: signals.data?.find((signal) => signal.device.id === device.id)?.telemetry ?? null, error: error instanceof Error ? error.message : "Telemetry unavailable" }; }
+      catch (error) { return { device, telemetry: error instanceof ApiError && [401, 403].includes(error.status) ? null : signals.data?.find((signal) => signal.device.id === device.id)?.telemetry ?? null, error: error instanceof Error ? error.message : "Telemetry unavailable" }; }
     })), (data) => !data.length);
   }
   async function reload() {
-    await Promise.allSettled([reloadInventory().then((devices) => { if (devices) return reloadSignals(devices); }), reloadAlerts(), reloadLocations()]);
+    const results = await Promise.allSettled([reloadInventory(), reloadAlerts(), reloadLocations()]);
+    return results.every((result) => result.status === "fulfilled" && result.value !== null);
   }
   useEffect(() => { void reload(); }, []);
   const attention = useMemo(() => {

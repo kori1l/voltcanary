@@ -27,10 +27,10 @@
 
 ## Dependencies And Delivery
 
-- [add-private-dashboard-domain](../add-private-dashboard-domain/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [add-dashboard-widget-query-engine](../add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [improve-console-context-and-session-recovery](../improve-console-context-and-session-recovery/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [improve-console-accessibility-and-page-delivery](../improve-console-accessibility-and-page-delivery/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-private-dashboard-domain](../archive/2026-10-08-add-private-dashboard-domain/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [improve-console-context-and-session-recovery](../archive/2026-10-08-improve-console-context-and-session-recovery/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [improve-console-accessibility-and-page-delivery](../archive/2026-10-08-improve-console-accessibility-and-page-delivery/proposal.md) — prerequisite закрыт с документированным пользовательским исключением native zoom/speech проверок; собственные acceptance проверки редактора сохраняются.
 
 
 ## Impact

@@ -5,21 +5,29 @@ import {
   MlHorizonLabelGenerationResponse,
 } from "../../../analytics/mlModuleApi";
 import { safeMlError } from "../../../analytics/mlSettingsApi";
+import { draftScope, readPrivateLegacyDraft, readScopedDraft, saveScopedDraft, scopedDraftKey } from "../../../components/scopedDrafts";
 
 export function useHorizonLabelGeneration({
+  accountId,
   datasetVersionId,
   horizonDays,
   includePreventiveMaintenance,
   onChanged,
   setError,
 }: {
+  accountId: string | null;
   datasetVersionId: string;
   horizonDays: number;
   includePreventiveMaintenance: boolean;
   onChanged: (datasetVersionId: string) => Promise<void>;
   setError: (value: string | null) => void;
 }) {
-  const [generationJob, setGenerationJob] = useState<MlHorizonLabelGenerationResponse | null>(null);
+  const scope = draftScope(accountId, `horizon-labels.${datasetVersionId}`, `${horizonDays}.failure-outcome-v1.${includePreventiveMaintenance}`);
+  const scopeKey = scope ? scopedDraftKey(scope) : `volatile.${accountId}.${datasetVersionId}.${horizonDays}.${includePreventiveMaintenance}`;
+  const generation = useRef(0);
+  const [storedJob, setStoredJob] = useState<{ scope: string; job: MlHorizonLabelGenerationResponse | null }>({ scope: scopeKey, job: null });
+  const generationJob = storedJob.scope === scopeKey ? storedJob.job : null;
+  const setGenerationJob = (job: MlHorizonLabelGenerationResponse | null) => setStoredJob({ scope: scopeKey, job });
   const [generationStatusMessage, setGenerationStatusMessage] = useState<string | null>(null);
   const starting = useRef(false);
   const [generationStarting, setGenerationStarting] = useState(false);
@@ -35,25 +43,19 @@ export function useHorizonLabelGeneration({
   }, [generationJob?.jobId, generationJob?.status]);
 
   useEffect(() => {
+    generation.current++;
+    setGenerationJob(null);
+    setGenerationStatusMessage(null);
     if (!datasetVersionId) {
       return;
     }
-    const stored = window.localStorage.getItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
-    if (!stored) {
-      return;
-    }
-    try {
-      const job = JSON.parse(stored) as MlHorizonLabelGenerationResponse;
-      if (job.datasetVersionId === datasetVersionId) {
-        setGenerationJob(job);
-        setGenerationStatusMessage(horizonJobStatusMessage(job));
-      }
-    } catch {
-      window.localStorage.removeItem(horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance));
-    }
-  }, [datasetVersionId, horizonDays, includePreventiveMaintenance]);
+    const decode = (value: Record<string, unknown>): MlHorizonLabelGenerationResponse | null => typeof value.jobId === "string" && value.datasetVersionId === datasetVersionId && value.horizonDays === horizonDays && value.includePreventiveMaintenance === includePreventiveMaintenance && ["QUEUED", "RUNNING", "COMPLETED", "FAILED"].includes(String(value.status)) ? { ...value, result: null, failureReason: null, message: null } as unknown as MlHorizonLabelGenerationResponse : null;
+    const job = readScopedDraft(scope, decode) ?? readPrivateLegacyDraft(scope, horizonJobStorageKey(datasetVersionId, horizonDays, includePreventiveMaintenance), decode, jobFields);
+    if (job) { setGenerationJob(job); setGenerationStatusMessage(`Last recorded state: ${horizonJobStatusMessage(job)}`); }
+  }, [scopeKey]);
 
   async function generateLabels() {
+    const epoch = generation.current;
     if (starting.current || isActiveHorizonJob(generationJob)) return;
     if (!datasetVersionId) {
       setError("Select a dataset version before generating labels");
@@ -70,7 +72,7 @@ export function useHorizonLabelGeneration({
         generationVersion: "failure-outcome-v1",
         includePreventiveMaintenance,
       });
-      await applyGenerationJob(job);
+      await applyGenerationJob(job, epoch);
     } catch (error) {
       if (isGatewayTimeout(error)) {
         setGenerationStatusMessage("Label generation start timed out before a job id was returned. Retry start or refresh labels before training.");
@@ -85,6 +87,7 @@ export function useHorizonLabelGeneration({
   }
 
   async function refreshGenerationStatus(manual = true) {
+    const epoch = generation.current;
     if (!generationJob?.jobId) {
       if (manual) {
         setGenerationStatusMessage("Start label generation before checking status.");
@@ -93,7 +96,7 @@ export function useHorizonLabelGeneration({
     }
     try {
       const job = await getHorizonLabelGenerationStatus(generationJob.jobId);
-      await applyGenerationJob(job);
+      await applyGenerationJob(job, epoch);
     } catch {
       if (manual) {
         setGenerationStatusMessage("Status refresh failed. Last known generation state is still shown.");
@@ -101,12 +104,11 @@ export function useHorizonLabelGeneration({
     }
   }
 
-  async function applyGenerationJob(job: MlHorizonLabelGenerationResponse) {
+  async function applyGenerationJob(job: MlHorizonLabelGenerationResponse, epoch: number) {
+    if (job.datasetVersionId !== datasetVersionId || job.horizonDays !== horizonDays || job.includePreventiveMaintenance !== includePreventiveMaintenance) return;
+    saveScopedDraft(scope, job, jobFields);
+    if (epoch !== generation.current) return;
     setGenerationJob(job);
-    window.localStorage.setItem(
-      horizonJobStorageKey(job.datasetVersionId, job.horizonDays, job.includePreventiveMaintenance),
-      JSON.stringify(job),
-    );
     if (job.status === "COMPLETED" && job.result) {
       setGenerationStatusMessage(horizonJobStatusMessage(job));
       await onChanged(job.datasetVersionId);
@@ -136,6 +138,7 @@ function isActiveHorizonJob(job: MlHorizonLabelGenerationResponse | null) {
 function horizonJobStorageKey(datasetVersionId: string, horizonDays: number, includePreventiveMaintenance: boolean) {
   return `voltcanary.horizonLabelJob.${datasetVersionId}.${horizonDays}.failure-outcome-v1.${includePreventiveMaintenance}`;
 }
+const jobFields = ["jobId", "datasetVersionId", "status", "submittedAt", "startedAt", "completedAt", "progress", "horizonDays", "generationVersion", "includePreventiveMaintenance", "inputLineageHash"];
 
 function horizonJobStatusMessage(job: MlHorizonLabelGenerationResponse) {
   if (job.status === "COMPLETED" && job.result) {

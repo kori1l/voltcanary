@@ -34,7 +34,8 @@ public class MlModelRegistryResponseMapper {
                 isSystemHeuristic(model),
                 model.getApprovedBy(),
                 model.getApprovedAt(),
-                model.getCreatedAt());
+                model.getCreatedAt(),
+                model.getTrainingRunId());
     }
 
     public MlDeploymentPolicyDto policyResponse(MlDeploymentPolicy policy) {

@@ -27,7 +27,7 @@
 
 ## Dependencies And Delivery
 
-- [add-dashboard-widget-query-engine](../add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
 - [add-dashboard-energy-aggregates](../add-dashboard-energy-aggregates/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 

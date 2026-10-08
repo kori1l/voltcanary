@@ -315,6 +315,26 @@ P2 — визуальная и редакционная доработка. Пр
 | R10 · К · актуальность во времени | Пересчитывать относительный возраст/свежесть по таймеру, показывать «Обновлено…» и переключатель контролируемого auto-refresh для рабочих экранов. При скрытой вкладке приостанавливать запросы. | Freshness зависит от `Date.now()` во время render, а Dashboard загружается при mount/ручном refresh. Через пять минут Recent/Fresh может остаться на экране до следующего render. Приёмка: переход свежий → старый происходит по часам без клика; интерфейс показывает интервал обновления. Источники: `useFleetDashboard.ts:9,33`, `DeviceOverview.tsx:7`. |
 | R11 · К · скорость первого открытия | Загружать ML, AI, Admin и details по маршруту через lazy/dynamic import с устойчивой заглушкой. Измерить время входа и Devices на целевом устройстве до/после. | Все страницы импортируются в App статически; даже экран входа получает общий JS chunk 645.07 kB. Это расход на неоткрытые сценарии. Приёмка: auth не скачивает ML/Admin сразу; навигация и обработка ошибки загрузки chunk остаются рабочими. Источник: `App.tsx:1–19`, проверенная production build. |
 
+### Implementation tracking (2026-10-08)
+
+`fix-console-evidence-state-transitions` implements resource transitions,
+entity-specific risk/telemetry feedback, local attempts retry, ML unknown
+inventory states, grouped transport errors and read refresh/clock behavior
+for R01/R03/R04/R05/R09/R10/R15. Focused tests and synthetic browser fixtures
+verify these paths. Local authenticated integration checks use 20 demo devices
+and six alerts with controlled read failures at 390/768/1440. This is UI evidence,
+not a runtime notification-delivery or capacity claim. Current transition table:
+[console interface](../current/flows/console-interface.md#scoped-evidence-transitions-2026-10-08).
+
+`fix-ml-pipeline-lineage-readiness` implements R02 through a selected context,
+canonical owner/dataset/snapshot/run/model links, family/horizon checks and
+independent progress/approval/configuration/observed inference. Persisted owner
+and training lineage are additive read metadata; legacy unknown remains review.
+Selector/workflow tests, analytics PostgreSQL/serialization tests and both-mode
+browser fixtures cover unrelated assets, seven/fourteen-day mismatch, disabled
+policy and unavailable-resource recovery. See
+[selected lineage verification](../current/flows/console-interface.md#selected-ml-lineage-verification-2026-10-08).
+
 ### P1: завершение сценариев и сохранение контекста
 
 | ID / свидетельство | Что поменять | Почему и критерий приёмки |
@@ -405,3 +425,58 @@ AGENTS.md и project skills менять не требуется.
 
 Источники обосновывают принципы; наличие конкретных проблем VoltCanary
 подтверждается указанными файлами и ограниченным браузерным просмотром.
+
+### Реализация R12/R13/R17/R28: 2026-10-08
+
+`improve-console-context-and-session-recovery` реализует typed URL context и
+safe returnTo, single-flight refresh и возврат в задачу после входа, защиту
+черновиков на route/tab/Back/unload, scoped allowlist persistence и task-aware
+assistant preview. Проверки и ограничения зафиксированы в
+[текущем workflow](../current/flows/console-interface.md#navigation-context-and-session-recovery-2026-10-08).
+Это не подтверждает ещё не выполненные fleet pagination, command feedback,
+accessibility patterns или dashboard-domain возможности следующих changes.
+
+### Реализация R14/R16/R27: 2026-10-08
+
+`improve-console-command-feedback` сохраняет подтверждённый результат команды
+отдельно от чтения, блокирует concurrent duplicate entity/action, требует
+canonical reconciliation для неизвестного результата создания и показывает
+sanitized guidance и clipboard status. Причина/impact/Cancel остаются обязательными
+там, где требовались ранее. Evidence и ограничения:
+[текущий workflow](../current/flows/console-interface.md#command-outcomes-and-recovery-guidance-2026-10-08).
+Delivery/runtime success не выводится из результата UI-команды.
+
+### Реализация R06/R07/R08/R18: 2026-10-08
+
+`improve-fleet-browsing-and-device-activation` добавляет достижимые страницы и
+async selectors, canonical status/Clear filters, 300ms debounce/AbortSignal,
+независимые справочники и concurrency signals ≤6. Activation workflow сохраняет
+canonical device/source при partial/unknown outcome, даёт sender instructions и
+меняет ожидание на observed только по telemetry evidence. Проверки и ограничения:
+[текущий workflow](../current/flows/console-interface.md#fleet-browsing-and-first-measurement-2026-10-08).
+Это не full-scope dashboard aggregates и не утверждение connectivity по ACTIVE.
+
+### Реализация R19/R20/R23: 2026-10-08
+
+`improve-telemetry-history-and-readable-evidence` добавляет interval metadata и
+независимую от latest history, bounded min/max envelopes с полной серверной
+статистикой, явными gap/quality/counts и доступными значениями/events. Cursor
+учитывает source для совпадающих timestamps; таблица не загружает весь raw ряд.
+Приёмка и ограничения: [текущий workflow](../current/flows/console-interface.md#historical-telemetry-and-readable-evidence-2026-10-08).
+Envelope не обещает точный порядок/число crossing events и не подтверждает
+текущее состояние устройства историческими экстремумами.
+
+### Accessibility/page delivery implementation checkpoint — 2026-10-08
+
+R11/R21/R22/R24/R25/R26: shared device/ML manual-activation Tabs, associated
+hints/errors, independent Agenda commands, entity-named actions, neutral unavailable
+states, inline required markers, canonical CSS variables, ML workspace/Acknowledge
+terminology, compact mobile inventory and eight-section ML selector are implemented.
+Protected pages/shell use lazy delivery with explicit import retry preserving URL.
+Six responsive widths and doubled-font stress pass in populated fixtures; keyboard
+and accessibility-tree semantics pass. Native browser 200% zoom and screen-reader
+speech were not executed. On 2026-10-09 the user authorized closure/archive with
+these verification limitations. They are acceptance exceptions for this change,
+not passed checks; product accessibility requirements remain in effect.
+Build size separation is verified without a latency claim; initial login API reads
+remain zero. See docs/current/flows/console-interface.md for measured scope.

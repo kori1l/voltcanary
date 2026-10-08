@@ -74,7 +74,7 @@ export function TelemetryOverviewPage({
         <div>
           <h2>Telemetry monitoring</h2>
           <p>
-            Device health: {overview.health.status.replace("_", " ")} - {overview.health.reason}
+            Interval evidence: {overview.health.status.replace("_", " ")} - {overview.health.reason}
           </p>
         </div>
         <div className="compact-telemetry-meta">
@@ -112,7 +112,7 @@ export function TelemetryOverviewPage({
         maxDisplayPoints={maxDisplayPoints}
         onAnalyze={onOpenMetric}
       />
-      <EventTimeline events={overview.events} selectedEventId={selectedEventId} onSelectEvent={onSelectEvent} />
+      <EventTimeline events={overview.events} incompleteEvidence={overview.metrics.some((metric) => metric.evidence?.aggregationMode === "MIN_MAX_ENVELOPE")} selectedEventId={selectedEventId} onSelectEvent={onSelectEvent} />
       {detail ? (
         <MetricDetailPanel
           detail={detail}

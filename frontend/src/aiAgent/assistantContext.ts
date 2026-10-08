@@ -1,10 +1,14 @@
-export function buildAssistantContext(pathname: string, search: string) {
-  const params = new URLSearchParams(search);
-  const searchParams = Object.fromEntries(["tab", "metric", "from", "to", "alertId", "ruleId"].flatMap((key) => params.get(key) ? [[key, params.get(key)!]] : []));
+import { consoleQuery, safeReturnTo } from "../app/consoleRouteContext";
+import type { TaskEvidence } from "./taskEvidence";
+export function buildAssistantContext(pathname: string, search: string, evidence: TaskEvidence = {}) {
+  const params = consoleQuery(pathname, search);
+  const searchParams = Object.fromEntries(params);
+  for (const key of ["from", "to"] as const) if (evidence.interval?.[key] && Number.isFinite(Date.parse(evidence.interval[key]!))) searchParams[key] = evidence.interval[key]!;
   const deviceMatch = pathname.match(/^\/devices\/([^/]+)/);
-  const deviceId = deviceMatch ? decodeURIComponent(deviceMatch[1]) : params.get("deviceId") ?? undefined;
-  const page = deviceMatch ? "Device details" : pathname.startsWith("/alerts") ? "Alerts" : pathname.startsWith("/devices") ? "Devices" : pathname.startsWith("/settings") ? "Settings" : "Console";
-  return { page, pageLabel: page, route: pathname, searchParams, deviceId };
+  const deviceId = deviceMatch && /^[a-zA-Z0-9_-]{1,128}$/.test(deviceMatch[1]) ? deviceMatch[1] : params.get("deviceId") ?? undefined;
+  const page = deviceMatch ? "Device details" : pathname === "/settings/ml" ? "ML workspace" : pathname === "/maintenance" ? "Maintenance" : pathname.startsWith("/alerts") ? "Alerts" : pathname.startsWith("/devices") ? "Devices" : pathname.startsWith("/settings") ? "Settings" : "Console";
+  const names = Object.fromEntries(["device", "dataset", "operation", "incident", "location"].flatMap((key) => { const name = evidence.names?.[key as keyof NonNullable<TaskEvidence["names"]>]; return typeof name === "string" && name.length <= 200 ? [[key, name]] : []; }));
+  return { page, pageLabel: page, route: safeReturnTo(pathname), searchParams, deviceId, names };
 }
 export function inspectAssistantContext(text: string): Record<string, unknown> {
   const value: unknown = text.trim() ? JSON.parse(text) : {};

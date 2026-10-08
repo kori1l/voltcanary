@@ -1,10 +1,30 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useSectionResource } from "./useSectionResource";
+import { ApiError, clearTokens, setTokens } from "../api/client";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); clearTokens(); });
 
 describe("independent resource evidence", () => {
+  it("purges retained evidence immediately when login identity changes", async () => {
+    setTokens("account-A", "refresh-A");
+    const { result } = renderHook(() => useSectionResource<string>("same-filter"));
+    await act(() => result.current.load(async () => "private-A"));
+    act(() => setTokens("account-B", "refresh-B"));
+    expect(result.current.data).toBeNull();
+    expect(result.current.status).toBe("idle");
+  });
+  it("starts idle, terminates dependency waiting, and purges retained values on permission loss", async () => {
+    const { result } = renderHook(() => useSectionResource<string>());
+    expect(result.current.status).toBe("idle");
+    act(() => result.current.waitForDependency());
+    expect(result.current.status).toBe("waiting-dependency");
+    act(() => result.current.waitForDependency("Inventory unavailable"));
+    expect(result.current.status).toBe("error");
+    await act(() => result.current.load(async () => "private"));
+    await act(() => result.current.load(async () => { throw new ApiError("Access revoked", 403); }));
+    expect(result.current).toMatchObject({ data: null, status: "no-access", receivedAt: null });
+  });
   it("distinguishes a successful empty result from a failed request and retains previous data", async () => {
     const { result } = renderHook(() => useSectionResource<number[]>());
     await act(() => result.current.load(async () => [], (data) => !data.length));

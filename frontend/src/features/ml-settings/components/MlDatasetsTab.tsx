@@ -8,6 +8,8 @@ import { WorkflowMode, FeatureSnapshotConfig, DatasetLifecycleKind, ArchiveDelet
 import { StatusFilterSelect } from "./MlLifecycleFilter";
 export function DatasetsTab(props: {
   accountId: string;
+  refreshRecords?: () => Promise<unknown>;
+  isGeneratingSnapshot?: boolean;
   datasets: MlDatasetSummary[];
   datasetsAvailable?: boolean;
   devices: Device[];
@@ -19,6 +21,7 @@ export function DatasetsTab(props: {
   onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
   onGenerateFeatureSnapshot: (body: FeatureSnapshotConfig) => Promise<void>;
   onLifecycle: (kind: DatasetLifecycleKind, id: string, action: ArchiveDeleteAction, label: string) => Promise<void>;
+  isLifecyclePending?: (kind: string, id: string, action: string) => boolean;
   onSelect: (datasetVersionId: string) => Promise<void>;
   onWorkflowModeChange: (mode: WorkflowMode) => void;
 }) {
@@ -71,14 +74,16 @@ export function DatasetsTab(props: {
 
   return (
     <div className="ml-datasets-workspace">
-      <DatasetWorkbench
+      {props.accountId === "unknown-account" ? <p role="status">Loading account context before editing the dataset draft…</p> : <DatasetWorkbench
         accountId={props.accountId}
+        existingDatasets={props.datasets}
+        refreshRecords={props.refreshRecords}
         devices={props.devices}
         workflowMode={props.workflowMode}
         onCreate={props.onCreateInternalDataset}
         onCreatedFromWorkbench={applyWorkbenchDefaults}
         onWorkflowModeChange={props.onWorkflowModeChange}
-      />
+      />}
       <div className="ml-datasets-secondary-grid">
         <section className="panel">
           <div className="section-header">
@@ -121,9 +126,9 @@ export function DatasetsTab(props: {
               <div><dt>Failure reason</dt><dd>{props.detail.dataset.failureReason ?? "None"}</dd></div>
             </dl>
             <div className="action-row action-row-start">
-              <button className="ghost-button" onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "archive", props.detail!.dataset.name)} type="button">Archive dataset</button>
+              <button className="ghost-button" disabled={props.isLifecyclePending?.("dataset", props.detail!.dataset.datasetVersionId, "archive")} onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "archive", props.detail!.dataset.name)} type="button">Archive dataset</button>
               {["DRAFT", "FAILED"].includes(props.detail.dataset.status) && (
-                <button className="ghost-button" onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "delete", props.detail!.dataset.name)} type="button">Delete dataset</button>
+                <button className="ghost-button" disabled={props.isLifecyclePending?.("dataset", props.detail!.dataset.datasetVersionId, "delete")} onClick={() => void props.onLifecycle("dataset", props.detail!.dataset.datasetVersionId, "delete", props.detail!.dataset.name)} type="button">Delete dataset</button>
               )}
             </div>
             <h3>Validation</h3>
@@ -178,7 +183,7 @@ export function DatasetsTab(props: {
               )}
               <label>Feature families<textarea className="ml-compact-editor" value={featureFamiliesText} onChange={(event) => setFeatureFamiliesText(event.target.value)} /></label>
               <div className="action-row action-row-start">
-                <button className="primary-button" disabled={modelFamily === "FAILURE_PREDICTION" && (!horizonDays || horizonDays < 1)} onClick={generateSnapshot} type="button">Generate feature snapshot</button>
+                <button className="primary-button" disabled={props.isGeneratingSnapshot || (modelFamily === "FAILURE_PREDICTION" && (!horizonDays || horizonDays < 1))} onClick={generateSnapshot} type="button">Generate feature snapshot</button>
               </div>
               {detailSnapshots.length === 0 ? (
                 <div className="empty-state">No feature snapshots generated for this dataset yet.</div>
@@ -186,8 +191,8 @@ export function DatasetsTab(props: {
                 <div className="ml-readout" key={snapshot.id}>
                   <FeatureSnapshotSummary snapshot={snapshot} />
                   <div className="action-row action-row-start">
-                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", snapshot.id, "archive", "feature snapshot")} type="button">Archive snapshot</button>
-                    <button className="ghost-button" onClick={() => void props.onLifecycle("snapshot", snapshot.id, "delete", "feature snapshot")} type="button">Delete snapshot</button>
+                    <button aria-label={`Archive snapshot ${snapshot.id}`} className="ghost-button" disabled={props.isLifecyclePending?.("snapshot", snapshot.id, "archive")} onClick={() => void props.onLifecycle("snapshot", snapshot.id, "archive", "feature snapshot")} type="button">Archive snapshot</button>
+                    <button aria-label={`Delete snapshot ${snapshot.id}`} className="ghost-button" disabled={props.isLifecyclePending?.("snapshot", snapshot.id, "delete")} onClick={() => void props.onLifecycle("snapshot", snapshot.id, "delete", "feature snapshot")} type="button">Delete snapshot</button>
                   </div>
                 </div>
               ))}

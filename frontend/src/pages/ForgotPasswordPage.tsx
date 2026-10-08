@@ -17,9 +17,9 @@ export function ForgotPasswordPage() {
     setIsSubmitting(true);
     try {
       await forgotPassword(email);
-      setMessage("If this email is eligible for recovery, a reset token has been requested. Follow the configured delivery instructions; this screen cannot verify email delivery.");
+      setMessage("If this email is eligible for recovery, a reset token has been requested. Follow the configured delivery instructions; this screen cannot verify email delivery. If delivery is unavailable, ask your administrator for the approved manual token recovery process.");
     } catch (requestError) {
-      setError("Could not request recovery. Please try again later.");
+      setError("Could not confirm recovery. Check the configured delivery instructions or manual recovery process before trying again.");
     } finally {
       setIsSubmitting(false);
     }

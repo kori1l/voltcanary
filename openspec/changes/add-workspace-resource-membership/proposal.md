@@ -27,7 +27,7 @@
 
 ## Dependencies And Delivery
 
-- [add-private-dashboard-domain](../add-private-dashboard-domain/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-private-dashboard-domain](../archive/2026-10-08-add-private-dashboard-domain/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 
 ## Impact

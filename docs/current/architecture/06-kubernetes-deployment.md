@@ -53,6 +53,7 @@ Stateless services are deployed as `Deployment` resources:
 - `analytics-service`
 - `alert-service`
 - `simulator-service`
+- `dashboard-service` (8089, private domain; database-aware readiness)
 - `ai-agent-service`
 - `ml-service`
 

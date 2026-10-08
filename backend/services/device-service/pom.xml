@@ -16,6 +16,11 @@
     <dependencies>
         <dependency>
             <groupId>com.voltcanary</groupId>
+            <artifactId>common-web</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.voltcanary</groupId>
             <artifactId>common-security</artifactId>
             <version>${project.version}</version>
         </dependency>

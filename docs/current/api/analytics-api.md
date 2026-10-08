@@ -152,3 +152,16 @@ Latest predictions distinguish `TRAINED_MODEL`, `BASELINE_HEURISTIC`,
 `DISABLED`, `UNAVAILABLE`, `INSUFFICIENT_DATA`, `SUPPRESSED_MAINTENANCE`,
 `CANARY_NOT_INCLUDED`, and `INCOMPATIBLE_MODEL`. Rule-based analytics continue
 for disabled, unavailable, or incompatible ML.
+
+## Dashboard owner read
+
+Internal POST `/internal/dashboard/analytics` requires an internal token and
+signed viewer bearer and renews active device-account scope, even if legacy
+authorization is disabled. It reads latest persisted risk and non-shadow
+prediction records≤asOf and account-qualified maintenance exclusions. Prediction
+metadata is a scalar allowlist for model/family/horizon/status/path/fallback/lineage,
+not the full arbitrary prediction JSON. It never calls ML, recalculation or job
+creation. Risk scores are not failure probabilities; recorded confidence is not
+measured accuracy, and unavailable prediction statuses have no display confidence.
+The shared typed request, budgets and owner-snapshot result semantics are in
+[dashboard-api.md](dashboard-api.md); existing analytics routes are unchanged.

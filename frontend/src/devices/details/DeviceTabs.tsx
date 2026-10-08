@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { Tabs } from "../../components/Tabs";
 export type DeviceDetailsTab = "overview" | "telemetry" | "analytics" | "alerts" | "maintenance" | "configuration" | "simulation";
 
 const tabs: { value: DeviceDetailsTab; label: string }[] = [
@@ -13,22 +15,9 @@ const tabs: { value: DeviceDetailsTab; label: string }[] = [
 interface DeviceTabsProps {
   activeTab: DeviceDetailsTab;
   onChange: (tab: DeviceDetailsTab) => void;
+  children?: ReactNode;
 }
 
-export function DeviceTabs({ activeTab, onChange }: DeviceTabsProps) {
-  return (
-    <nav className="tab-row" aria-label="Device sections">
-      {tabs.map((tab) => (
-        <button
-          key={tab.value}
-          className={activeTab === tab.value ? "tab-button tab-button-active" : "tab-button"}
-          type="button"
-          aria-pressed={activeTab === tab.value}
-          onClick={() => onChange(tab.value)}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </nav>
-  );
+export function DeviceTabs({ activeTab, onChange, children }: DeviceTabsProps) {
+  return <Tabs label="Device sections" items={tabs} value={activeTab} onChange={onChange} mobileSelector>{children}</Tabs>;
 }

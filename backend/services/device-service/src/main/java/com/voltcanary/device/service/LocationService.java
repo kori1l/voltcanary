@@ -68,6 +68,8 @@ public class LocationService {
     public List<LocationResponse> list(AuthenticatedUser user, String search, Integer limit, Integer offset) {
         Account account = accountService.currentAccount(user);
         return locationRepository.findByAccountIdOrderByCreatedAtAsc(account.getId()).stream()
+                .sorted(java.util.Comparator.comparing(Location::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                        .thenComparing(Location::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .filter(location -> matchesSearch(location, search))
                 .skip(normalizedOffset(offset))
                 .limit(normalizedLimit(limit))

@@ -12,7 +12,7 @@ describe("console navigation", () => {
   it("marks only the most specific destination and closes the menu after navigation", async () => {
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     render(<MemoryRouter initialEntries={["/settings/ml"]}><Routes><Route element={<AppLayout />}><Route path="*" element={<h1>Workspace</h1>} /></Route></Routes></MemoryRouter>);
-    await waitFor(() => expect(screen.getByRole("link", { name: "ML Settings" })).toHaveClass("active"));
+    await waitFor(() => expect(screen.getByRole("link", { name: "ML workspace" })).toHaveClass("active"));
     expect(screen.getByRole("link", { name: /^Settings$/ })).not.toHaveClass("active");
     expect(screen.getByRole("link", { name: /^Settings$/ })).not.toHaveAttribute("aria-current");
     await userEvent.click(screen.getByRole("button", { name: "Menu" }));

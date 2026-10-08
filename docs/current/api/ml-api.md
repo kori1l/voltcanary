@@ -14,6 +14,31 @@ and verifies model bundles, reads/writes artifact storage, exposes artifact
 health, and returns sanitized execution results to analytics-service. The
 frontend never calls `ml-service` directly.
 
+## Selected pipeline read metadata
+
+Dataset summaries from `GET /analytics/ml/datasets` and dataset version details
+include `accountId`, mapped from the existing immutable version owner. Model
+responses from `/analytics/ml/models` include `trainingRunId`, mapped from the
+existing registry column; known values are returned, legacy null remains null.
+These fields are additive and do not change authorization or write contracts.
+No migration/backfill is required and missing lineage is never inferred from a
+model name, timestamps or another matching asset.
+
+Snapshot read metadata already includes account/dataset/family/horizon and
+lifecycle status. Run metadata includes account/dataset/snapshot/family and
+optional explicit horizon parameters in `hyperparametersJson`. The console
+verifies a model horizon through its canonical snapshot link, with compatible
+explicit run parameters. Device-scoped dataset evidence comes from the selected
+detail's `lineage[].selectedDevicesJson`; unknown external/legacy device mapping
+remains unverified. Model compatibility/evaluation JSON fields are decoded by
+the frontend API adapter without synthesizing server approval decisions.
+
+The selected pipeline separately displays dataset/snapshot readiness, queued or
+running work, successful training artifacts, server model approval, configured
+deployment and recorded inference. Approval/configuration does not establish
+observed runtime success. Approval/deployment/ownership gates remain server
+authoritative; the console applies no new numeric promotion thresholds.
+
 ## Internal ML-service boundary
 
 Analytics-service is the trusted caller for ML-service execution and metadata

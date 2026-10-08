@@ -1,4 +1,5 @@
 import { listLocations as detailsLoadLocations } from "../devices/devicesApi";
+import { useTaskEvidence } from "../aiAgent/taskEvidence";
 import { DeviceAlertsPanel } from "../devices/details/DeviceAlertsPanel";
 import { normalizeDeviceTab, buildIncidentSummary, buildIncidentConclusion, buildWhyBullets, buildAnalyticsSummary, buildPredictionInsight, normalizeRiskTone, getRiskInsight, formatInsightText } from "../devices/details/deviceInsightPresentation";
 import { DeviceConfigurationPanel } from "../devices/details/DeviceConfigurationPanel";
@@ -28,6 +29,7 @@ import { useDeviceTelemetryWorkspace } from "../devices/details/useDeviceTelemet
 import { SectionFeedback } from "../components/SectionFeedback";
 
 
+import { DeviceActivationSummary } from "../devices/DeviceActivationSummary";
 import { DeviceOverview } from "../devices/details/DeviceOverview";
 
 export function DeviceDetailsPage() {
@@ -56,6 +58,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
   });
 
   const { device, locationName, isLoading, setIsLoading, loadDeviceContext, changeDeviceStatus } = details;
+  useTaskEvidence({ names: { device: device?.name, location: locationName ?? undefined }, interval: { from: searchParams.get("from"), to: searchParams.get("to") } });
   const { latest, charts, selectedChartMetricKeys, setSelectedChartMetricKeys, showChartPoints, setShowChartPoints, chartDensity, chartTimeRange, setChartTimeRange, customChartFrom, setCustomChartFrom, customChartTo, setCustomChartTo, metricSearch, setMetricSearch, expandedChartMetricKey, setExpandedChartMetricKey, selectedTelemetryEventId, setSelectedTelemetryEventId, isTelemetryLoading, chartTimeWindow, availableChartMetrics, chartMetrics, expandedChartMetric, loadTelemetry, toggleChartMetric, selectAllChartMetrics, resetChartMetrics } = telemetry;
   const { baseline, risk, anomalies, recommendations, prediction, analyticsJob, isRecalculating, loadAnalytics, enqueueAndWaitForAnalyticsJob, recalculateDeviceAnalytics } = analytics;
   const { maintenanceWindows, upcomingMaintenanceWindows, suppressingMaintenanceWindow, refreshMaintenanceWindows } = maintenance;
@@ -142,7 +145,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
           <h1>{device?.name ?? "Device details"}</h1>
           <p>
             {device
-              ? `${locationName} · ${formatEnum(device.status)} · Last telemetry: ${latest ? formatShortTime(latest.timestamp) : "No data"}`
+              ? `${locationName} · ${formatEnum(device.status)} · Last telemetry: ${latest ? formatShortTime(latest.timestamp) : telemetry.latestResource.status === "error" || telemetry.latestResource.status === "no-access" ? "Unavailable" : telemetry.latestResource.status === "empty" ? "No sample confirmed" : "Not confirmed"}`
               : details.resource.status === "error" ? "Device unavailable" : "Loading device status"}
           </p>
         </div>
@@ -201,7 +204,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
 
       {!isLoading && device ? (
         <>
-          <DeviceTabs activeTab={activeTab} onChange={changeTab} />
+          <DeviceTabs activeTab={activeTab} onChange={changeTab}>
 
           {suppressingMaintenanceWindow && (activeTab === "telemetry" || activeTab === "analytics" || activeTab === "alerts") ? (
             <section className="maintenance-notice">
@@ -222,6 +225,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
 
           {activeTab === "configuration" ? <DeviceConfigurationPanel registry={registry} sourceToken={simulationSourceToken} /> : null}
 
+          {activeTab === "overview" && searchParams.get("setup") === "activation" ? (() => { const source = registry.dataSources.find((item) => item.id === searchParams.get("dataSourceId") && item.deviceId === device.id); return source ? <DeviceActivationSummary device={device} source={source} /> : <section className="panel"><p>Activation source is unavailable or loading. Review the registered source before continuing.</p><button type="button" className="ghost-button" onClick={() => void loadRegistry(device.id)}>Retry source read</button><Link to={`/devices/${device.id}?tab=configuration`}>Open source configuration</Link></section>; })() : null}
           {activeTab === "overview" ? <DeviceOverview device={device} latest={latest} risk={risk} /> : null}
 
           {activeTab === "telemetry" && telemetryOverview ? (
@@ -536,6 +540,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
           ) : null}
 
           {activeTab === "alerts" ? <DeviceAlertsPanel alerts={alerts} /> : null}
+          </DeviceTabs>
         </>
       ) : null}
     </>

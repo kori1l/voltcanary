@@ -129,8 +129,8 @@ export function getDeviceFeatures(deviceId: string) {
   return apiRequest<FeatureSetResponse[]>(`/analytics/devices/${deviceId}/features`);
 }
 
-export function getDeviceRisk(deviceId: string) {
-  return apiRequest<RiskResponse>(`/analytics/devices/${deviceId}/risk`);
+export function getDeviceRisk(deviceId: string, signal?: AbortSignal) {
+  return apiRequest<RiskResponse>(`/analytics/devices/${deviceId}/risk`, { signal });
 }
 
 export function getDeviceRecommendations(deviceId: string) {

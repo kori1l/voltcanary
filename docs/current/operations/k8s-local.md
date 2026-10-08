@@ -227,3 +227,43 @@ select the Loki datasource, and query:
 ```logql
 {namespace="voltcanary"}
 ```
+
+## Private dashboard domain
+
+`dashboard-service` listens on8089 with Flyway database `voltcanary_dashboard`.
+Kustomize includes its source runtime, local backend hostPath and a one-shot
+`dashboard-database-init-v1` Job, which also creates the database for an existing
+PostgreSQL volume. The normal fresh PostgreSQL init includes it as well. Readiness
+includes the database; identity/device outages fail ownership requests closed.
+
+Compose: run the idempotent database initializer, then start dashboard-service
+and gateway. If the existing stack dependencies are healthy, these commands can
+target only the changed services:
+
+```powershell
+docker compose --profile app run --rm --no-deps postgres-database-init
+docker compose --profile app up -d --no-deps dashboard-service api-gateway
+powershell -ExecutionPolicy Bypass -File scripts/dashboard-domain-smoke.ps1
+```
+
+The smoke creates two isolated local test users and retains only a sanitized
+ignored summary; it never writes credentials/tokens. Config keys are documented
+in `.env.example`. Dashboard metrics are added to the Compose Prometheus targets.
+
+The formerly placeholder Helm chart now has an opt-in dashboard Deployment,
+Service and local database Job. It is not a complete-stack chart. Its local
+values assume existing `voltcanary-config`/`voltcanary-secrets`, PostgreSQL and
+identity/device services; sourceRuntime uses the local backend mount. Do not
+install these resources over the same Kustomize-managed dashboard resources.
+For an immutable service image, supply dashboard.image and disable sourceRuntime;
+database provisioning and shared dependencies remain external responsibilities.
+
+```powershell
+helm lint deploy/helm/voltcanary -f deploy/helm/voltcanary/values-local.yaml
+helm template voltcanary deploy/helm/voltcanary -n voltcanary -f deploy/helm/voltcanary/values-local.yaml
+kubectl kustomize deploy/k8s/overlays/local
+```
+
+Compose runtime health and real-JWT public-route smoke pass; Kustomize rendering
+and Helm lint/template pass. A Kubernetes/Helm cluster rollout has not been run
+for this change; these are manifest checks, not cluster readiness evidence.

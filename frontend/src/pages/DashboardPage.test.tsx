@@ -8,6 +8,19 @@ import { isFreshSignal } from "../features/dashboard/useFleetDashboard";
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("fleet dashboard evidence", () => {
+  it("terminates signal waiting after inventory failure and retries that dependency", async () => {
+    let failed = true;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const path = new URL(url).pathname;
+      return new Response(JSON.stringify(path === "/devices" && failed ? { message: "Inventory offline" } : []), { status: path === "/devices" && failed ? 503 : 200 });
+    }));
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+    await screen.findByText("signals: unavailable.");
+    expect(screen.queryByText(/Loading signals/)).not.toBeInTheDocument();
+    failed = false;
+    await userEvent.click(screen.getByRole("button", { name: "Retry signals" }));
+    await screen.findByText("No devices to check. Register a device first.");
+  });
   it("keeps inventory when alerts fail and marks retained counts stale on a failed refresh", async () => {
     let alertsFail = true;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {

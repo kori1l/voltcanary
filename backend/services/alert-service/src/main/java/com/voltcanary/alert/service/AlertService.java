@@ -240,7 +240,7 @@ public class AlertService {
                 equalsIfPresent("accountId", accountId));
         org.springframework.data.domain.Page<Alert> result = alertRepository.findAll(
                 spec,
-                PageRequest.of(normalizedPage, normalizedSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+                PageRequest.of(normalizedPage, normalizedSize, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
         return new AlertPageResponse(
                 result.getContent().stream().map(this::toResponse).toList(),
                 normalizedPage,
@@ -263,8 +263,8 @@ public class AlertService {
                         PageRequest.of(
                                 0,
                                 filters.normalizedLimit(),
-                                Sort.by(Sort.Direction.DESC, "createdAt"))).getContent()
-                : alertRepository.findAll(specification(filters), Sort.by(Sort.Direction.DESC, "createdAt"));
+                                Sort.by(Sort.Direction.DESC, "createdAt", "id"))).getContent()
+                : alertRepository.findAll(specification(filters), Sort.by(Sort.Direction.DESC, "createdAt", "id"));
         return alerts.stream()
                 .filter(alert -> alertAccessService.canReadDevice(alert.getDeviceId(), userId, role, correlationId))
                 .toList();

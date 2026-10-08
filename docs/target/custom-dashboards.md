@@ -1,11 +1,33 @@
 # Настраиваемые дашборды VoltCanary
 
-Дата: 7 октября 2026. Статус: **целевые продуктовые требования, не реализовано**.
+Дата: 7 октября 2026; checkpoint 2026-10-09. Статус: **целевые продуктовые требования; private domain и typed query engine реализованы, editor/team/calculation этапы ещё не реализованы**.
 Документ фиксирует будущую возможность платформы; перечисленные маршруты,
 permissions, расчёты и бюджеты не являются действующими API или результатами
 нагрузочных испытаний. Нумерованные требования сопоставлены с
 [активной программой OpenSpec](../../openspec/changes/README.md) и её приёмкой.
-Архитектурные решения необходимо подтвердить при реализации.
+Private domain ownership/service8089/database подтверждены [ADR-011](../adr/ADR-011-private-dashboard-domain.md).
+
+DB-08/09/10/22/33/38/39/40/43 server foundation: private definitions/drafts,
+immutable publication and rollback-as-new-draft, ETags/conflicts, body-bound24h
+idempotency, owner/account checks, archive/restore/copy, quotas and preferences
+implemented and verified with PostgreSQL plus real-JWT local smoke. DB-12 safe
+unsupported payload storage is preserved; unknown widget versions remain inert.
+Browser autosave/editor, USER entry/default routing, templates, team grants and
+calculations remain target behavior. Current API:
+[dashboard-api.md](../current/api/dashboard-api.md).
+
+DB-16/17/18/19/20/21/23/24/26/27/28/29/30/31/32/39/40/41/42/43 and
+W01–04/W07–13 have server query contracts: current active owner, fixed/dynamic
+scope, UTC/DST/shared asOf/contextHash, complete reducers/counts, qualified
+provenance and secure cache. W11 is single-account; W05/06/14/15 remain dependency
+unsupported. Frontend supplies typed API/read hooks with obsolete-scope and
+actor isolation; editor/viewer integration is a separate change.
+Tests exercise250 devices, zero comparison, sparse/manual freshness, source
+authorization, immutable references, partial outage, bounded fanout and no writes.
+The local synthetic12-widget/100-device/24h profile measured cold-cache max405ms,
+warm p95 128ms (ten warm samples), and telemetry failure4093ms with independent
+panels retained. Earlier first-facts read was1379ms. This is a single local query
+profile, not a fresh-JVM, ingestion, soak, scaling or production capacity claim.
 
 ## 1. Продуктовое решение и текущая граница
 
@@ -423,12 +445,13 @@ DashboardPage одним монолитом. Catalog tests проверяют ca
    Reporting/PDF/email schedules/public embed/AI-generated dashboards не входят
    в эти requirements и оформляются самостоятельными product changes.
 
-На основе документа созданы proposed OpenSpec changes: серверный private domain,
-query engine, visual editor, task templates, energy aggregates, workspace
+На основе документа созданы OpenSpec changes: private domain и query engine
+реализованы; visual editor, task templates, energy aggregates, workspace
 membership, team publication, tariff estimates и operational period metrics.
 Их зависимости и полное DB/W покрытие указаны в
 [индексе программы](../../openspec/changes/README.md). Код и main specs текущего
-поведения не менялись; tasks остаются unchecked до implementation и verification.
+поведения обновляются при завершении каждого этапа; плановые tasks остаются
+unchecked до implementation и verification.
 Перед кодом применить выбранный active change через проектный OpenSpec workflow.
 [Roadmap](product-roadmap.md) и
 [target architecture](architecture.md) ссылаются на этот источник требований.

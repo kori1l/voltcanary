@@ -3,13 +3,18 @@ import {
   createInternalTelemetryDataset,
   previewInternalTelemetryDataset,
 } from "../../../analytics/mlModuleApi";
-import type { MlInternalDatasetResponse } from "../../../analytics/mlModuleApi";
+import { CommandFeedback } from "../../../components/CommandFeedback";
+import { useEntityCommands } from "../../../components/useEntityCommands";
+import type { MlDatasetSummary, MlInternalDatasetResponse } from "../../../analytics/mlModuleApi";
 import type { Device } from "../../../devices/devicesApi";
 import { CandidateWindowList } from "./CandidateWindowList";
 import { DatasetReadinessPanel } from "./DatasetReadinessPanel";
 import { DeviceScopeSelector } from "./DeviceScopeSelector";
 import { MetricCoverageMatrix } from "./MetricCoverageMatrix";
 import { TelemetryWindowChart } from "./TelemetryWindowChart";
+import { decodeDraftFields, draftScope, scopedDraftKey } from "../../../components/scopedDrafts";
+import { useScopedDraftValue } from "../../../components/useScopedDraftValue";
+import { markWorkflowDraftSaved, useWorkflowDraft } from "../../../components/workflowDraftContext";
 import type {
   DatasetWorkbenchDefaults,
   DatasetWorkbenchDraft,
@@ -32,32 +37,40 @@ import {
 
 export function DatasetWorkbench({
   accountId,
-  devices,
+  existingDatasets = [],
+  refreshRecords,
+  devices: suppliedDevices,
   workflowMode,
   onCreate,
   onCreatedFromWorkbench,
   onWorkflowModeChange,
 }: {
   accountId: string;
+  existingDatasets?: MlDatasetSummary[];
+  refreshRecords?: () => Promise<unknown>;
   devices: Device[];
   workflowMode: DatasetWorkbenchDraft["modelFamily"];
   onCreate: (body: Parameters<typeof createInternalTelemetryDataset>[0]) => Promise<MlInternalDatasetResponse>;
   onCreatedFromWorkbench: (defaults: DatasetWorkbenchDefaults) => void;
   onWorkflowModeChange: (mode: DatasetWorkbenchDraft["modelFamily"]) => void;
 }) {
-  const draftKey = datasetWorkbenchDraftKey(accountId);
-  const initialDraft = readDraft<DatasetWorkbenchDraft>(draftKey);
-  const [draft, setDraft] = useState<DatasetWorkbenchDraft>(() => mergeDraft(initialDraft));
-  const [restoredDraft, setRestoredDraft] = useState(Boolean(initialDraft));
+  const [discoveredDevices, setDiscoveredDevices] = useState<Device[]>([]);
+  const devices = useMemo(() => [...new Map([...suppliedDevices, ...discoveredDevices].map((device) => [device.id, device])).values()], [suppliedDevices, discoveredDevices]);
+  const commands = useEntityCommands();
+  const submitted = useRef<{ name: string; ids: Set<string> } | null>(null);
+  const scope = draftScope(accountId, "dataset-workbench", "new-dataset-v1");
+  const draftKey = scope ? scopedDraftKey(scope) : "volatile";
+  const [draft, setDraft, clearPersistedDraft, restoredDraft] = useScopedDraftValue(scope, defaultDatasetWorkbenchDraft, (value) => {
+    const fields = decodeDraftFields(value, defaultDatasetWorkbenchDraft);
+    return fields ? mergeDraft(fields) : null;
+  }, datasetWorkbenchDraftKey(accountId));
+  useWorkflowDraft(restoredDraft, clearPersistedDraft);
   const [previewState, setPreviewState] = useState<DatasetWorkbenchPreviewState>({ preview: null, status: "idle", error: null });
   const [localError, setLocalError] = useState<string | null>(null);
   const [createSummary, setCreateSummary] = useState<string | null>(null);
   const previewVersion = useRef(0);
 
   useEffect(() => {
-    const stored = readDraft<DatasetWorkbenchDraft>(draftKey);
-    setDraft(mergeDraft(stored));
-    setRestoredDraft(Boolean(stored));
     setPreviewState({ preview: null, status: "idle", error: null });
     setCreateSummary(null);
   }, [draftKey]);
@@ -70,18 +83,6 @@ export function DatasetWorkbench({
       ? { ...current, status: "stale", error: null }
       : current);
   }, [workflowMode]);
-
-  useEffect(() => {
-    try {
-      if (isDefaultDraft(draft)) {
-        window.localStorage.removeItem(draftKey);
-        return;
-      }
-      window.localStorage.setItem(draftKey, JSON.stringify(draft));
-    } catch {
-      // Draft persistence is best effort; server-side preview/create remains authoritative.
-    }
-  }, [draftKey, draft]);
 
   useEffect(() => {
     if (!canAutoPreview(draft)) {
@@ -173,6 +174,7 @@ export function DatasetWorkbench({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (commands.isBlocked("dataset:create")) return;
     const currentValidation = validateWorkbench(draft, devices, previewState.preview, previewState.status);
     if (currentValidation.createDisabled) {
       setLocalError(currentValidation.createDisabledReason);
@@ -182,8 +184,10 @@ export function DatasetWorkbench({
       setLocalError("Run preview before creating a dataset.");
       return;
     }
+    const preview = previewState.preview;
+    submitted.current = { name: draft.name.trim(), ids: new Set(existingDatasets.map((dataset) => dataset.datasetVersionId)) };
     try {
-      const response = await onCreate({
+      await commands.run("dataset:create", { label: "Create dataset", nonIdempotent: true, mutate: () => onCreate({
         name: draft.name.trim(),
         description: draft.description.trim() || null,
         deviceIds: draft.deviceIds,
@@ -197,12 +201,12 @@ export function DatasetWorkbench({
         featureConfigVersion: draft.featureConfigVersion.trim() || "feature-config-v1",
         minSamplesPerMetric: draft.minSamplesPerMetric,
         maxSamplingGapSeconds: draft.maxSamplingGapSeconds,
-        previewId: previewState.preview.previewId,
-        previewHash: previewState.preview.previewHash,
+        previewId: preview.previewId,
+        previewHash: preview.previewHash,
         modelFamily: draft.modelFamily,
         horizonDays: draft.modelFamily === "FAILURE_PREDICTION" ? draft.horizonDays : null,
         metricSelectionMode: draft.metricSelectionMode,
-      });
+      }), onCommitted: (response) => {
       onCreatedFromWorkbench({
         modelFamily: draft.modelFamily,
         horizonDays: draft.modelFamily === "FAILURE_PREDICTION" ? draft.horizonDays : null,
@@ -210,24 +214,22 @@ export function DatasetWorkbench({
       });
       clearDraft();
       setCreateSummary(`Created dataset ${response.status}: ${response.acceptedRows} accepted / ${response.rejectedRows} rejected / ${response.warningCount} warnings.`);
+      }, refresh: refreshRecords });
     } catch (error) {
       setLocalError(readableError(error));
     }
   }
 
   function clearDraft() {
-    try {
-      window.localStorage.removeItem(draftKey);
-    } catch {
-      // Ignore storage failures.
-    }
-    setDraft(defaultDatasetWorkbenchDraft);
-    setRestoredDraft(false);
+    clearPersistedDraft();
+    markWorkflowDraftSaved("dataset-workbench");
     setPreviewState({ preview: null, status: "idle", error: null });
   }
 
   return (
-    <form className="panel dataset-workbench" onSubmit={submit}>
+    <form className="panel dataset-workbench" data-draft-id="dataset-workbench" onSubmit={submit}>
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
+      {commands.outcomes["dataset:create"]?.phase === "unknown-result" ? <div><p>Review dataset versions before creating another dataset. Matching names require manual review.</p>{existingDatasets.filter((dataset) => submitted.current && dataset.name === submitted.current.name && !submitted.current.ids.has(dataset.datasetVersionId)).map((dataset) => <button type="button" key={dataset.datasetVersionId} onClick={() => { commands.reconcile("dataset:create", { id: dataset.datasetVersionId }); clearDraft(); }}>Use matching dataset {dataset.name} · {dataset.datasetVersionId}</button>)}</div> : null}
       <div className="section-header">
         <div>
           <h2>Dataset Workbench</h2>
@@ -281,7 +283,7 @@ export function DatasetWorkbench({
 
       <div className="workbench-scope-grid">
         <div className="workbench-scope-devices">
-          <DeviceScopeSelector devices={devices} draft={draft} preview={previewState.preview} onPatch={patchDraft} />
+          <DeviceScopeSelector onDeviceAdded={(device) => { setDiscoveredDevices((current) => [...current.filter((item) => item.id !== device.id), device]); patchDraft({ deviceIds: [...new Set([...draft.deviceIds, device.id])] }); }} devices={devices} draft={draft} preview={previewState.preview} onPatch={patchDraft} />
         </div>
         <div className="workbench-scope-metrics">
           <MetricCoverageMatrix
@@ -313,7 +315,7 @@ export function DatasetWorkbench({
           <button className="ghost-button" disabled={previewState.status === "loading"} onClick={() => void runPreview()} type="button">
             {previewState.status === "loading" ? "Previewing..." : previewState.status === "stale" ? "Refresh preview" : "Preview dataset"}
           </button>
-          <button className="primary-button" disabled={validation.createDisabled} title={validation.createDisabledReason ?? undefined}>
+          <button className="primary-button" disabled={validation.createDisabled || commands.isBlocked("dataset:create")} title={validation.createDisabledReason ?? undefined}>
             Create dataset version
           </button>
           <button className="ghost-button" onClick={clearDraft} type="button">Reset draft</button>
@@ -331,15 +333,6 @@ function mergeDraft(stored: Partial<DatasetWorkbenchDraft> | null): DatasetWorkb
     metricSelectionMode: stored?.metricSelectionMode === "ALL_AVAILABLE" ? "ALL_AVAILABLE" : "COMMON",
     selectedCandidateId: stored?.selectedCandidateId ?? null,
   };
-}
-
-function readDraft<T>(key: string): Partial<T> | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Partial<T>) : null;
-  } catch {
-    return null;
-  }
 }
 
 function readableError(error: unknown) {

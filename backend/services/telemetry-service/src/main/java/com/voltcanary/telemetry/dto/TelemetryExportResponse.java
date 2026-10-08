@@ -7,5 +7,6 @@ public record TelemetryExportResponse(
         UUID deviceId,
         String metric,
         List<TelemetryChartPointResponse> points,
-        String nextCursor) {
+        String nextCursor,
+        String nextCursorSourceId) {
 }

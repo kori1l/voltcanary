@@ -17,7 +17,7 @@ Read the local service shape before editing:
   `common-security`, `common-test`
 - Services: `api-gateway`, `identity-service`, `device-service`,
   `ingestion-service`, `simulator-service`, `ai-agent-service`,
-  `telemetry-service`, `analytics-service`, `alert-service`
+  `telemetry-service`, `analytics-service`, `alert-service`, `dashboard-service`
 - Contracts: `docs/api/*.md`, `docs/events/*.md`,
   `docs/architecture/02-service-boundaries.md`
 

@@ -2,25 +2,29 @@ import type { Device } from "../../../devices/devicesApi";
 import type { DatasetWorkbenchDraft } from "../model/datasetWorkbench.types";
 import { filterDevices, selectedDeviceSummary, statusLabel } from "../model/datasetWorkbench.utils";
 import type { MlDatasetWorkbenchPreviewResponse } from "../../../analytics/mlModuleApi";
+import { DeviceChoiceAdder } from "../../../devices/DeviceChoiceAdder";
 
 export function DeviceScopeSelector({
   devices,
   draft,
   preview,
   onPatch,
+  onDeviceAdded,
 }: {
   devices: Device[];
   draft: DatasetWorkbenchDraft;
   preview: MlDatasetWorkbenchPreviewResponse | null;
   onPatch: (patch: Partial<DatasetWorkbenchDraft>, affectsPreview?: boolean) => void;
+  onDeviceAdded?: (device: Device) => void;
 }) {
   const filteredDevices = filterDevices(devices, draft);
   const summary = selectedDeviceSummary(devices, draft.deviceIds, preview);
   const deviceTypes = Array.from(new Set(devices.map((device) => device.type))).sort();
-  const statuses = Array.from(new Set(devices.map((device) => device.status))).sort();
+  const statuses = ["ACTIVE", "DISABLED", "OFFLINE", "DECOMMISSIONED"];
 
   return (
     <section className="workbench-section" aria-labelledby="workbench-device-scope-title">
+      {onDeviceAdded ? <DeviceChoiceAdder onAdd={onDeviceAdded} /> : null}
       <div className="workbench-section-header">
         <div>
           <h3 id="workbench-device-scope-title">Device scope</h3>

@@ -118,8 +118,11 @@ function query(params: MaintenanceOperationListParams) {
   return value ? `?${value}` : "";
 }
 
-export function listMaintenanceOperations(params: MaintenanceOperationListParams = {}) {
-  return apiRequest<MaintenanceOperation[]>(`/maintenance-operations${query(params)}`);
+export function listMaintenanceOperations(params: MaintenanceOperationListParams = {}, signal?: AbortSignal) {
+  return apiRequest<MaintenanceOperation[]>(`/maintenance-operations${query(params)}`, { signal });
+}
+export function getMaintenanceOperation(id: string, signal?: AbortSignal) {
+  return apiRequest<MaintenanceOperation>(`/maintenance-operations/${id}`, { signal });
 }
 
 export function createMaintenanceOperation(request: MaintenanceOperationRequest) {

@@ -1,4 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useSectionResource } from "../../components/useSectionResource";
+import { SectionFeedback } from "../../components/SectionFeedback";
+import { clearScopedDraft, draftScope, readScopedDraft, saveScopedDraft } from "../../components/scopedDrafts";
+import { markWorkflowDraftSaved, useWorkflowDraft } from "../../components/workflowDraftContext";
 import {
   getNotificationPreference,
   NotificationPreferenceResponse,
@@ -11,7 +15,9 @@ const severityOptions = ["WARNING", "HIGH", "CRITICAL"];
 const channelTypeOptions = ["WEBHOOK", "EMAIL", "TELEGRAM", "SLACK", "SMS", "PUSH"];
 
 export function NotificationPreferenceSettings() {
-  const [preference, setPreference] = useState<NotificationPreferenceResponse | null>(null);
+  const preferenceResource = useSectionResource<NotificationPreferenceResponse>();
+  const preference = preferenceResource.data;
+  const setPreference = preferenceResource.setData;
   const [enabled, setEnabled] = useState(true);
   const [severities, setSeverities] = useState<string[]>([]);
   const [channelTypes, setChannelTypes] = useState<string[]>([]);
@@ -23,6 +29,15 @@ export function NotificationPreferenceSettings() {
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [channels, setChannels] = useState<NotificationChannelResponse[] | null>(null);
+  const [recovered, setRecovered] = useState(false);
+  const fields = { enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours };
+  const scope = preference ? draftScope(preference.accountId, preference.id ?? "notification-preferences", preference.updatedAt ?? "legacy") : null;
+  useWorkflowDraft(recovered, () => { clearScopedDraft(scope); setRecovered(false); if (preference) applyPreference(preference); });
+  useEffect(() => {
+    if (!preference) return;
+    const baseline = { enabled: preference.enabled, severities: preference.severities ?? [], channelTypes: preference.channelTypes ?? [], quietHoursStart: preference.quietHoursStart ?? "", quietHoursEnd: preference.quietHoursEnd ?? "", timezone: preference.timezone || "UTC", criticalBypassQuietHours: preference.criticalBypassQuietHours };
+    if (JSON.stringify(fields) === JSON.stringify(baseline)) clearScopedDraft(scope); else saveScopedDraft(scope, fields, Object.keys(fields));
+  }, [preference, enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours]);
   const timezoneOptions = [...new Set([timezone, "UTC", Intl.DateTimeFormat().resolvedOptions().timeZone, "Europe/Belgrade", "Europe/London", "America/New_York", "Asia/Tokyo"])];
 
   useEffect(() => {
@@ -32,11 +47,16 @@ export function NotificationPreferenceSettings() {
 
   async function loadPreference() {
     setError(null);
-    try {
-      const response = await getNotificationPreference();
+    const response = await preferenceResource.load(getNotificationPreference);
+    if (response) {
+      const saved = readScopedDraft(draftScope(response.accountId, response.id ?? "notification-preferences", response.updatedAt ?? "legacy"), (value) => {
+        if (typeof value.enabled !== "boolean" || typeof value.criticalBypassQuietHours !== "boolean" || !Array.isArray(value.severities) || !value.severities.every((item) => typeof item === "string" && severityOptions.includes(item)) || !Array.isArray(value.channelTypes) || !value.channelTypes.every((item) => typeof item === "string" && channelTypeOptions.includes(item)) || typeof value.timezone !== "string") return null;
+        try { new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }); } catch { return null; }
+        return { enabled: value.enabled, criticalBypassQuietHours: value.criticalBypassQuietHours, severities: value.severities as string[], channelTypes: value.channelTypes as string[], timezone: value.timezone, quietHoursStart: typeof value.quietHoursStart === "string" ? value.quietHoursStart : "", quietHoursEnd: typeof value.quietHoursEnd === "string" ? value.quietHoursEnd : "" };
+      });
       applyPreference(response);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load notification preferences");
+      if (saved) { setEnabled(saved.enabled); setSeverities(saved.severities); setChannelTypes(saved.channelTypes); setTimezone(saved.timezone); setCriticalBypassQuietHours(saved.criticalBypassQuietHours); setQuietHoursStart(saved.quietHoursStart); setQuietHoursEnd(saved.quietHoursEnd); }
+      setRecovered(Boolean(saved));
     }
   }
 
@@ -70,6 +90,7 @@ export function NotificationPreferenceSettings() {
         criticalBypassQuietHours,
       });
       applyPreference(response);
+      clearScopedDraft(scope); setRecovered(false); markWorkflowDraftSaved("notification-preferences");
       setMessage("Notification preferences saved");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Failed to save notification preferences");
@@ -87,15 +108,17 @@ export function NotificationPreferenceSettings() {
       <div className="section-header">
         <div>
           <h2>Notification Preferences</h2>
-          <p>{preference ? `${preference.timezone} routing policy` : "Loading routing policy"}</p>
+          <p>{preference ? `${preference.timezone} routing policy` : preferenceResource.status === "loading" ? "Loading routing policy" : "Routing policy unavailable"}</p>
         </div>
         <button className="ghost-button" type="button" onClick={() => void loadPreference()} disabled={isBusy}>
           Refresh
         </button>
       </div>
       {message ? <div className="success-message account-message">{message}</div> : null}
+      <SectionFeedback resource={preferenceResource} label="routing policy" onRetry={() => void loadPreference()} />
+      {recovered ? <p role="status">Recovered notification draft for this account and server revision. Review before saving.</p> : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
-      <form className="notification-channel-form" onSubmit={savePreference}>
+      <form className="notification-channel-form" data-draft-id="notification-preferences" onSubmit={savePreference}>
         <label className="notification-attempt-row">
           <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
           <span>Delivery enabled</span>

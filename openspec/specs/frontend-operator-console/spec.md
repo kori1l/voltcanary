@@ -124,3 +124,77 @@ through focused notification settings modules.
 - **AND** route pages SHALL delegate this behavior to focused notification
   components, hooks, or model helpers.
 
+### Requirement: Canonical route context and guarded workflow drafts
+
+ML, inventory, alerts and maintenance SHALL encode safe navigable context in typed query parameters and protect dirty drafts across internal route and tab transitions.
+
+#### Scenario: Reload and Back
+
+- **GIVEN** a user selected an ML tab or maintenance range
+- **WHEN** the page reloads or browser Back is used
+- **THEN** the intended context is restored without publishing draft state.
+
+#### Scenario: Dirty route form
+
+- **GIVEN** a notification or rule form has unsaved changes
+- **WHEN** a different route or tab is requested
+- **THEN** Keep preserves the draft, Discard is explicit, and any persisted recovery excludes secrets and is scoped to the same user and account.
+
+### Requirement: Committed commands survive read refresh failure
+
+A confirmed mutation result SHALL remain successful when its subsequent read refresh fails, while a transport failure before confirmation SHALL remain outcome-unknown and require reconciliation before a non-idempotent retry.
+
+#### Scenario: Channel added but list reload fails
+
+- **GIVEN** create returned a canonical channel ID
+- **WHEN** the channel list refresh fails
+- **THEN** the UI states channel added and list unavailable, with a read retry instead of another create.
+
+#### Scenario: Create response lost
+
+- **GIVEN** a non-idempotent create was sent
+- **WHEN** transport failed before an ID was received
+- **THEN** the UI explains uncertainty and reconciles existing records rather than claiming failure guarantees no record.
+
+### Requirement: Entity command pending and understandable feedback
+
+Operational row commands SHALL reject duplicate concurrent submissions per entity and action, preserve independent row access, and expose sanitized errors and clipboard results through meaningful feedback.
+
+#### Scenario: Double acknowledge
+
+- **GIVEN** an OPEN alert is visible
+- **WHEN** Ack is clicked twice before completion
+- **THEN** one acknowledge request occurs and another alert remains operable.
+
+#### Scenario: Clipboard fails
+
+- **GIVEN** a technical ID can be copied
+- **WHEN** clipboard access is rejected
+- **THEN** the UI announces copy failure and offers manual selection without an unhandled promise.
+
+### Requirement: Bounded fleet search and operational pagination
+
+Fleet search SHALL debounce or explicitly apply input, cancel obsolete requests, reuse independent references and bound signal concurrency; incident and maintenance pages SHALL expose continuation beyond their initial limits.
+
+#### Scenario: Rapid search input
+
+- **GIVEN** inventory search and signal enrichment are active
+- **WHEN** a complete word is entered quickly
+- **THEN** one debounced search is applied; older requests cannot replace it and reference APIs are not reloaded for every character.
+
+#### Scenario: Later operational records
+
+- **GIVEN** over two hundred maintenance operations exist
+- **WHEN** the user requests continuation
+- **THEN** later operations are reachable without a guessed UUID and an unknown total remains labeled unknown.
+
+### Requirement: Route-scoped application delivery
+
+The console SHALL load heavy route modules on demand and keep stable, actionable loading and chunk-error states without downloading ML or administration modules for initial authentication.
+
+#### Scenario: Initial login and failed lazy chunk
+
+- **GIVEN** the user opens login then navigates to ML
+- **WHEN** a route chunk fails to load
+- **THEN** login did not preload all heavy features and the ML route provides a contained retry while preserving safe route context.
+

@@ -3,13 +3,17 @@ import { PageHeader } from "../components/PageHeader";
 import { SectionFeedback } from "../components/SectionFeedback";
 import { TimeDisplay } from "../components/TimeDisplay";
 import { isFreshSignal, useFleetDashboard } from "../features/dashboard/useFleetDashboard";
+import { useEvidenceClock } from "../components/useEvidenceClock";
+import { ReadRefresh } from "../components/ReadRefresh";
 
 export function DashboardPage() {
   const fleet = useFleetDashboard();
+  useEvidenceClock();
   const locationById = new Map((fleet.locations.data ?? []).map((location) => [location.id, location.name]));
   const freshSignals = fleet.signals.data?.some((signal) => signal.error) ? undefined : fleet.signals.data?.filter((signal) => isFreshSignal(signal.telemetry)).length;
   return <>
     <PageHeader title="Dashboard" description="Fleet inventory and evidence requiring attention." actions={<button className="ghost-button" onClick={() => void fleet.reload()} disabled={fleet.inventory.refreshing || fleet.alerts.refreshing}>Refresh dashboard</button>} />
+    <ReadRefresh scope="fleet-dashboard" refresh={fleet.reload} />
     <section className="metric-grid">
       <MetricCard label="Registered devices (up to 200)" value={fleet.inventory.data?.length} stale={fleet.inventory.status === "stale"} />
       <MetricCard label={`Fresh signals (${fleet.signals.data?.length ?? "unknown"} checked)`} value={freshSignals} stale={fleet.signals.status === "stale"} />
@@ -24,7 +28,7 @@ export function DashboardPage() {
         {fleet.alerts.data && fleet.alerts.data.length > 0 && !fleet.attention.length ? <p>No open alerts in the loaded cohort. This does not establish device health.</p> : null}
       </section>
       <section className="panel"><h2>Latest signals</h2><p>First six registered devices. Fresh means a reading within five minutes; registration status is separate.</p>
-        <SectionFeedback resource={fleet.signals} label="signals" onRetry={() => void fleet.reloadSignals()} emptyMessage="No devices to check. Register a device first." />
+        <SectionFeedback resource={fleet.signals} label="signals" onRetry={() => void (fleet.inventory.data ? fleet.reloadSignals() : fleet.reloadInventory())} emptyMessage="No devices to check. Register a device first." />
         <SectionFeedback resource={fleet.locations} label="locations" onRetry={() => void fleet.reloadLocations()} />
         <div className="dashboard-signal-list">{fleet.signals.data?.map(({ device, telemetry, error }) => <Link className="dashboard-signal-row" to={`/devices/${device.id}`} key={device.id}>
           <div><strong>{device.name}</strong><span>{device.locationId ? locationById.get(device.locationId) ?? "Location unavailable" : "No location"}</span><small>Registered: {device.status}</small></div>

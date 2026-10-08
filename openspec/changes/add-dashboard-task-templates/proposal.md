@@ -28,7 +28,7 @@
 ## Dependencies And Delivery
 
 - [add-dashboard-visual-editor](../add-dashboard-visual-editor/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [add-dashboard-widget-query-engine](../add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 Energy template имеет capability gate на [add-dashboard-energy-aggregates](../add-dashboard-energy-aggregates/proposal.md), не hard dependency личного первого релиза.
 

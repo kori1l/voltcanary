@@ -24,5 +24,6 @@ public record MlDatasetSummaryDto(
         String artifactUri,
         String artifactHash,
         String immutableRowReference,
-        String dataHash) {
+        String dataHash,
+        UUID accountId) {
 }

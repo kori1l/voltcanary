@@ -135,3 +135,14 @@ patches:
           hostPath:
             path: /run/desktop/mnt/host/d/canary/voltcanary/frontend
             type: Directory
+  - target:
+      kind: Deployment
+      name: dashboard-service
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: backend-workspace
+          hostPath:
+            path: /run/desktop/mnt/host/d/canary/voltcanary/backend
+            type: Directory

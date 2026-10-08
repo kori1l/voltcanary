@@ -1,6 +1,7 @@
 import { TelemetryChart } from "../../telemetry/telemetryApi";
 import { humanizeMetricKey, inferMetricUnit } from "../../features/telemetry/model/telemetry.utils";
 import { toDateTimeLocalValue } from "./deviceDetailsFormatting";
+import { draftScope, readScopedDraft, saveScopedDraft, sessionUserId } from "../../components/scopedDrafts";
 
 export type ChartMetricConfig = { key: string; label: string; unit: string };
 export type ChartDensity = "compact" | "balanced" | "detailed";
@@ -83,11 +84,10 @@ export function readDashboardChartPreferences(deviceId: string | undefined): Das
     return DEFAULT_DASHBOARD_CHART_PREFERENCES;
   }
   try {
-    const raw = window.localStorage.getItem(dashboardChartPreferencesKey(deviceId));
-    if (!raw) {
+    const parsed = readScopedDraft(draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"), (value) => value as Partial<DashboardChartPreferences>);
+    if (!parsed) {
       return DEFAULT_DASHBOARD_CHART_PREFERENCES;
     }
-    const parsed = JSON.parse(raw) as Partial<DashboardChartPreferences>;
     return {
       selectedMetricKeys: Array.isArray(parsed.selectedMetricKeys) && parsed.selectedMetricKeys.length > 0
         ? parsed.selectedMetricKeys.filter((key): key is string => typeof key === "string")
@@ -105,7 +105,7 @@ export function readDashboardChartPreferences(deviceId: string | undefined): Das
 }
 
 export function writeDashboardChartPreferences(deviceId: string, preferences: DashboardChartPreferences) {
-  window.localStorage.setItem(dashboardChartPreferencesKey(deviceId), JSON.stringify(preferences));
+  saveScopedDraft(draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"), preferences, Object.keys(DEFAULT_DASHBOARD_CHART_PREFERENCES));
 }
 
 export function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo: string) {

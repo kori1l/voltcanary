@@ -154,6 +154,8 @@ public class DeviceService {
             Integer offset) {
         Account account = accountService.currentAccount(user);
         return deviceRepository.findByAccountIdOrderByCreatedAtAsc(account.getId()).stream()
+                .sorted(java.util.Comparator.comparing(Device::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                        .thenComparing(Device::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .filter(device -> locationId == null || locationId.equals(device.getLocationId()))
                 .filter(device -> type == null || type.isBlank() || type.equalsIgnoreCase(toDeviceType(device).getCode()))
                 .filter(device -> status == null || status == device.getStatus())

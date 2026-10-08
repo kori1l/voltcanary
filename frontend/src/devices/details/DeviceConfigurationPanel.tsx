@@ -1,4 +1,6 @@
 import { formatEnum } from "./deviceDetailsFormatting";
+import { Link } from "react-router-dom";
+import { activationRoute } from "../DeviceActivationSummary";
 import { CsvImportPreview, inspectImportCsv } from "../CsvImportPreview";
 import { AnalyticsConfigurationFields } from "../AnalyticsConfigurationFields";
 
@@ -102,6 +104,7 @@ export function DeviceConfigurationPanel({ registry, sourceToken }: { registry: 
                         <span>{formatEnum(source.sourceType)} - {formatEnum(source.protocol)}</span>
                       </div>
                       <div className="action-row">
+                        <Link className="ghost-button button-link" to={activationRoute(source.deviceId, source.id)}>Open activation</Link>
                         <button className="ghost-button" type="button" onClick={() => void rotateSourceToken(source.id)} disabled={isRegistryBusy}>
                           Rotate token
                         </button>

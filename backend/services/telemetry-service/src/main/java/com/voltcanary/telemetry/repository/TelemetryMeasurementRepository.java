@@ -139,6 +139,7 @@ public class TelemetryMeasurementRepository {
             Instant from,
             Instant to,
             Instant cursor,
+            String cursorSourceId,
             int limit) {
         Instant effectiveCursor = cursor == null ? from.minusNanos(1) : cursor;
         return jdbcTemplate.query("""
@@ -148,10 +149,10 @@ public class TelemetryMeasurementRepository {
                   and metric_name = ?
                   and recorded_at >= ?
                   and recorded_at <= ?
-                  and recorded_at > ?
-                order by recorded_at asc
+                  and (recorded_at > ? or (recorded_at = ? and source_id > ?))
+                order by recorded_at asc, source_id asc
                 limit ?
-                """, this::mapRow, deviceId, metricName, Timestamp.from(from), Timestamp.from(to), Timestamp.from(effectiveCursor), limit);
+                """, this::mapRow, deviceId, metricName, Timestamp.from(from), Timestamp.from(to), Timestamp.from(effectiveCursor), Timestamp.from(effectiveCursor), cursorSourceId, limit);
     }
 
     public List<String> findMetricNamesByDeviceId(UUID deviceId) {
@@ -170,6 +171,13 @@ public class TelemetryMeasurementRepository {
                 where device_id = ? and source_id = ? and recorded_at = ?
                 """, Long.class, deviceId, sourceId, Timestamp.from(timestamp));
         return count == null ? 0 : count;
+    }
+
+    public List<String> findMetricNamesByDeviceIdAndRange(UUID deviceId, Instant from, Instant to) {
+        return jdbcTemplate.queryForList("""
+                select distinct metric_name from telemetry.measurements
+                where device_id=? and recorded_at>=? and recorded_at<=? order by metric_name
+                """, String.class, deviceId, Timestamp.from(from), Timestamp.from(to));
     }
 
     private TelemetryMeasurement mapRow(ResultSet rs, int rowNum) throws SQLException {

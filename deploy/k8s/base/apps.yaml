@@ -548,3 +548,72 @@ spec:
           emptyDir: {}
         - name: maven-cache
           emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+  namespace: voltcanary
+spec:
+  selector:
+    app: dashboard-service
+  ports:
+    - name: http
+      port: 8089
+      targetPort: 8089
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-service
+  namespace: voltcanary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard-service
+  template:
+    metadata:
+      labels:
+        app: dashboard-service
+    spec:
+      containers:
+        - name: dashboard-service
+          image: maven:3.9-eclipse-temurin-21
+          workingDir: /workspace/backend
+          command: ["/bin/sh", "-c"]
+          args: ["mvn -pl services/dashboard-service -am -Dmaven.test.skip=true install && mvn -f services/dashboard-service/pom.xml spring-boot:run"]
+          envFrom:
+            - configMapRef:
+                name: voltcanary-config
+            - secretRef:
+                name: voltcanary-secrets
+          ports:
+            - containerPort: 8089
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8089
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8089
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8089
+            periodSeconds: 20
+          volumeMounts:
+            - name: backend-workspace
+              mountPath: /workspace/backend
+            - name: maven-cache
+              mountPath: /root/.m2
+      volumes:
+        - name: backend-workspace
+          emptyDir: {}
+        - name: maven-cache
+          emptyDir: {}

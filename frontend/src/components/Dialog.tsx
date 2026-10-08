@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useWorkflowDraft } from "./workflowDraftContext";
 
 const CloseContext = createContext<() => void>(() => {});
 
@@ -16,6 +17,7 @@ export function Dialog({ title, children, footer, onClose, dirty = false, busy =
   const titleId = useId();
   const [discarding, setDiscarding] = useState(false);
   const [edited, setEdited] = useState(false);
+  useWorkflowDraft(dirty || edited, onClose, false);
   const returnFocus = useRef<HTMLElement | null>(null);
   const keepEditing = useRef<HTMLButtonElement>(null);
   useEffect(() => {

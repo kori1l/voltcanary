@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
 import { AlertResponse, AlertRule, NotificationAttemptResponse } from "../../alerts/alertsApi";
 import { Device } from "../../devices/devicesApi";
+import { SectionFeedback } from "../../components/SectionFeedback";
+import { initialResource, type SectionResource } from "../../components/useSectionResource";
+import { useEvidenceClock } from "../../components/useEvidenceClock";
 export function AlertInbox({
   alerts,
   deviceById,
@@ -8,20 +11,23 @@ export function AlertInbox({
   ruleById,
   attemptsByAlert,
   expandedAttempts,
-  loadingAttempts,
+  onRetryAttempts,
   onAttempts,
   onUpdate,
+  isPending = () => false,
 }: {
   alerts: AlertResponse[];
   deviceById: Map<string, Device>;
   locationById: Map<string, string>;
   ruleById: Map<string, AlertRule>;
-  attemptsByAlert: Record<string, NotificationAttemptResponse[]>;
+  attemptsByAlert: Record<string, SectionResource<NotificationAttemptResponse[]>>;
   expandedAttempts: Record<string, boolean>;
-  loadingAttempts: string | null;
+  onRetryAttempts: (alertId: string) => Promise<void>;
   onAttempts: (alertId: string) => Promise<void>;
   onUpdate: (alertId: string, action: "ack" | "resolve") => Promise<void>;
+  isPending?: (alertId: string, action: "ack" | "resolve") => boolean;
 }) {
+  useEvidenceClock();
   return (
     <section className="panel alert-inbox-panel">
       <div className="section-header">
@@ -47,7 +53,7 @@ export function AlertInbox({
             const device = deviceById.get(alert.deviceId);
             const location = device ? locationById.get(device.locationId ?? "") : null;
             const rule = alert.ruleId ? ruleById.get(alert.ruleId) : null;
-            const attempts = attemptsByAlert[alert.id] ?? [];
+            const attempts = attemptsByAlert[alert.id] ?? initialResource<NotificationAttemptResponse[]>();
             return (
               <article className={`alert-inbox-item severity-${alert.severity.toLowerCase()}`} key={alert.id}>
                 <div className="alert-inbox-row">
@@ -78,16 +84,16 @@ export function AlertInbox({
                         Rule
                       </Link>
                     ) : null}
-                    <button className="ghost-button" type="button" onClick={() => void onAttempts(alert.id)}>
+                    <button className="ghost-button" type="button" aria-label={`${expandedAttempts[alert.id] ? "Hide" : "Review"} delivery attempts for ${alert.title}`} onClick={() => void onAttempts(alert.id)}>
                       {expandedAttempts[alert.id] ? "Hide" : "Details"}
                     </button>
                     {alert.status === "OPEN" ? (
-                      <button className="primary-button" type="button" onClick={() => void onUpdate(alert.id, "ack")}>
-                        Ack
+                      <button className="primary-button" type="button" aria-label={`Acknowledge ${alert.title}`} disabled={isPending(alert.id, "ack")} onClick={() => void onUpdate(alert.id, "ack")}>
+                        Acknowledge
                       </button>
                     ) : null}
                     {alert.status === "ACKNOWLEDGED" ? (
-                      <button className="primary-button" type="button" onClick={() => void onUpdate(alert.id, "resolve")}>
+                      <button className="primary-button" type="button" aria-label={`Resolve ${alert.title}`} disabled={isPending(alert.id, "resolve")} onClick={() => void onUpdate(alert.id, "resolve")}>
                         Resolve
                       </button>
                     ) : null}
@@ -102,7 +108,7 @@ export function AlertInbox({
                   <div className="alert-inbox-details">
                     <p className="status-note">Assignee: {alert.assignedTo ? "Recorded by the server" : "Unassigned"}. Assignment changes are unavailable in the current API.</p>
                     <AlertTrace alert={alert} />
-                    <NotificationAttempts attempts={attempts} isLoading={loadingAttempts === alert.id} />
+                    <NotificationAttempts resource={attempts} onRetry={() => void onRetryAttempts(alert.id)} />
                   </div>
                 ) : null}
               </article>
@@ -141,16 +147,11 @@ function AlertTrace({ alert }: { alert: AlertResponse }) {
   );
 }
 
-function NotificationAttempts({ attempts, isLoading }: { attempts: NotificationAttemptResponse[]; isLoading: boolean }) {
-  if (isLoading) {
-    return <p className="notification-attempts">Loading delivery attempts...</p>;
-  }
-  if (attempts.length === 0) {
-    return <p className="notification-attempts">No delivery attempts recorded.</p>;
-  }
+function NotificationAttempts({ resource, onRetry }: { resource: SectionResource<NotificationAttemptResponse[]>; onRetry: () => void }) {
   return (
     <div className="notification-attempts">
-      {attempts.map((attempt) => (
+      <SectionFeedback resource={resource} label="delivery attempts" onRetry={onRetry} emptyMessage="No delivery attempts recorded." />
+      {resource.data?.map((attempt) => (
         <div className="notification-attempt-row" key={attempt.id}>
           <span>{formatEnum(attempt.channelType)}</span>
           <strong>{formatEnum(attempt.status)}</strong>

@@ -1,9 +1,12 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { PredictionResponse } from "../../../analytics/analyticsApi";
 import { approveMlModel, archiveMlModel, MlDatasetSummary, MlDeploymentMode, MlDeploymentPolicy, MlDeploymentScope, MlFeatureSnapshotResponse, MlLabelType, MlLifecycleStatusFilter, MlModelVersion, MlTrainingRun, rejectMlModel, resolveDeploymentPolicy, saveDeploymentPolicy } from "../../../analytics/mlModuleApi";
 import { safeMlError } from "../../../analytics/mlSettingsApi";
 import { Device, DeviceType } from "../../../devices/devicesApi";
 import { useActionConfirmation } from "../../../components/useActionConfirmation";
+import { useEntityCommands } from "../../../components/useEntityCommands";
+import { CommandFeedback } from "../../../components/CommandFeedback";
+import { markWorkflowDraftSaved } from "../../../components/workflowDraftContext";
 
 const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
 
@@ -21,29 +24,30 @@ function StatusFilterSelect(props: {
     </label>
   );
 }
-function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
+function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onConfirmed?: () => void; isDeletePending?: (id: string) => boolean; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
   const confirmation = useActionConfirmation();
-  async function archive(model: MlModelVersion) {
-    try { const reason = await confirmation.confirm({ title: "Archive model", object: `${model.modelKey} v${model.version}`, impact: "Archives this model version while retaining its artifact and lineage history. The server validates model state and references; archive has no impact-preview endpoint.", reasonRequired: true }); if (!reason) return; await archiveMlModel(model.id,reason); await props.onChanged(); } catch (error) { props.setError(safeMlError(error)); }
-  }
-  async function reviewModel(model: MlModelVersion, action: "approve" | "reject") {
-    try {
-      const reason = await confirmation.confirm({ title: `${action === "approve" ? "Approve" : "Reject"} model`, object: `${model.modelKey} v${model.version}`, impact: action === "approve" ? "Make this version eligible for deployment selection. Approval does not activate a policy; server promotion gates remain required." : "Reject this model version for deployment. Existing policy and lifecycle restrictions are enforced by the server.", reasonRequired: true });
-      if (!reason) return;
-      await (action === "approve" ? approveMlModel(model.id, reason) : rejectMlModel(model.id, reason));
-      await props.onChanged();
-    } catch (error) { props.setError(safeMlError(error)); }
+  const commands = useEntityCommands();
+  const [savedModels, setSavedModels] = useState<Record<string, MlModelVersion>>({});
+  async function modelCommand(model: MlModelVersion, action: "approve" | "reject" | "archive") {
+    let reason = "";
+    const label = `${action[0].toUpperCase()}${action.slice(1)} ${model.modelKey} v${model.version}`;
+    await commands.run(`model:${model.id}:${action}`, { label,
+      review: async () => { const answer = await confirmation.confirm({ title: `${action[0].toUpperCase()}${action.slice(1)} model`, object: `${model.modelKey} v${model.version}`, impact: action === "approve" ? "Make this version eligible for deployment selection. Approval does not activate a policy; server promotion gates remain required." : action === "reject" ? "Reject this model version for deployment. Existing policy and lifecycle restrictions are enforced by the server." : "Archives this model version while retaining its artifact and lineage history. The server validates model state and references; archive has no impact-preview endpoint.", reasonRequired: true }); reason = answer ?? ""; return Boolean(answer); },
+      mutate: () => action === "approve" ? approveMlModel(model.id, reason) : action === "reject" ? rejectMlModel(model.id, reason) : archiveMlModel(model.id, reason),
+      onCommitted: (saved) => { props.onConfirmed?.(); setSavedModels((current) => ({ ...current, [model.id]: saved })); }, refresh: props.onChanged });
   }
   return (
     <section className="panel">
       {confirmation.dialog}
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
       <div className="section-header">
         <div>
           <h2>Model registry</h2>
         </div>
         <StatusFilterSelect label="Model status filter" value={props.statusFilter} onChange={props.onFilterChange} />
       </div>
-      {props.modelsAvailable === false ? <p>Model records unavailable or loading.</p> : props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((model) => {
+      {props.modelsAvailable === false ? <p>Model records unavailable or loading.</p> : props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((record) => {
+        const model = savedModels[record.id] ?? record;
         const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
         const approveBlocked = Boolean(gates && !gates.promotionEligible);
         const modelLabel = `${model.modelKey} v${model.version}`;
@@ -59,17 +63,17 @@ function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean;
                 <button
                   aria-label={`Approve ${modelLabel}`}
                   className="ghost-button"
-                  disabled={approveBlocked}
-                  onClick={() => void reviewModel(model, "approve")}
+                  disabled={approveBlocked || commands.isPending(`model:${model.id}:approve`)}
+                  onClick={() => void modelCommand(model, "approve")}
                   title={approveBlocked ? "Promotion gates must pass before approval." : undefined}
                   type="button"
                 >
                   Approve
                 </button>
               )}
-              {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" onClick={() => void reviewModel(model, "reject")} type="button">Reject</button>}
-              {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" onClick={() => void archive(model)} type="button">Archive</button>}
-              {["CANDIDATE", "REJECTED"].includes(model.status) && <button aria-label={`Delete ${modelLabel}`} className="ghost-button" onClick={() => void props.onDelete(model)} type="button">Delete</button>}
+              {model.status !== "REJECTED" && model.status !== "ACTIVE" && <button aria-label={`Reject ${modelLabel}`} className="ghost-button" disabled={commands.isPending(`model:${model.id}:reject`)} onClick={() => void modelCommand(model, "reject")} type="button">Reject</button>}
+              {model.status !== "ACTIVE" && <button aria-label={`Archive ${modelLabel}`} className="ghost-button" disabled={commands.isPending(`model:${model.id}:archive`)} onClick={() => void modelCommand(model, "archive")} type="button">Archive</button>}
+              {["CANDIDATE", "REJECTED"].includes(model.status) && <button aria-label={`Delete ${modelLabel}`} className="ghost-button" disabled={props.isDeletePending?.(model.id)} onClick={() => void props.onDelete(model)} type="button">Delete</button>}
             </div>
           </div>
         );
@@ -156,14 +160,19 @@ function GenericModelMetrics({ model }: { model: MlModelVersion }) {
 }
 
 function PoliciesTab(props: {
+  selectedModelId?: string;
+  selectedDeviceId?: string | null;
+  onModelSelected?: (modelId: string) => void;
+  onPolicySelected?: (policyId: string) => void;
   devices: Device[];
   deviceTypes: DeviceType[];
   models: MlModelVersion[];
   policies: MlDeploymentPolicy[];
   policiesAvailable?: boolean;
   statusFilter: MlLifecycleStatusFilter;
-  onChanged: () => Promise<void>;
+  onChanged: () => Promise<void>; onConfirmed?: () => void;
   onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
+  isLifecyclePending?: (id: string, action: string) => boolean;
   onLifecycle: (policy: MlDeploymentPolicy, action: "disable" | "delete") => Promise<void>;
   setError: (value: string | null) => void;
 }) {
@@ -177,36 +186,29 @@ function PoliciesTab(props: {
   const [fallbackEnabled, setFallbackEnabled] = useState(true);
   const [resolved, setResolved] = useState<string | null>(null);
   const confirmation = useActionConfirmation();
-  const [saving, setSaving] = useState(false);
+  const submittedPolicy = useRef<{ scope: string; deviceId: string; deviceType: string; modelVersionId: string; mode: string } | null>(null);
+  const commands = useEntityCommands();
+  const saving = commands.isBlocked("policy:save");
   const validPolicy = (mode === "DISABLED" || deployableModels.some((model) => model.id === modelVersionId)) && (scope !== "DEVICE" || Boolean(deviceId)) && (scope !== "DEVICE_TYPE" || Boolean(deviceType)) && (mode !== "CANARY" || (Number.isFinite(canaryPercent) && canaryPercent >= 0 && canaryPercent <= 100));
 
   useEffect(() => {
+    if (props.selectedModelId && props.selectedModelId !== modelVersionId) { setModelVersionId(props.selectedModelId); return; }
     if (!modelVersionId && deployableModels[0]) {
       setModelVersionId(deployableModels[0].id);
+      props.onModelSelected?.(deployableModels[0].id);
     }
-  }, [deployableModels, modelVersionId]);
+  }, [deployableModels, modelVersionId, props.selectedModelId]);
+  useEffect(() => { if (props.selectedDeviceId !== undefined) { setDeviceId(props.selectedDeviceId ?? ""); setScope(props.selectedDeviceId ? "DEVICE" : "ACCOUNT"); } }, [props.selectedDeviceId]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!validPolicy || saving) return;
-    const reason = await confirmation.confirm({ title: "Apply deployment policy", object: `${scope === "DEVICE" ? props.devices.find((device) => device.id === deviceId)?.name ?? deviceId : scope === "DEVICE_TYPE" ? deviceType : "Account defaults"} · ${mode}`, impact: `${mode === "SHADOW" ? "Evaluates the model separately from the primary serving path." : mode === "CANARY" ? `Uses the model for ${canaryPercent}% of the configured canary cohort.` : mode === "ACTIVE" ? "Uses this approved model for eligible predictions." : "Disables the selected deployment scope."} Model: ${mode === "DISABLED" ? "none" : deployableModels.find((model) => model.id === modelVersionId)?.modelKey ?? modelVersionId}. Baseline fallback ${fallbackEnabled ? "enabled" : "disabled"}. More specific device policies take precedence over type and account settings.`, reasonRequired: true });
-    if (reason === null) return;
-    setSaving(true);
-    try {
-      await saveDeploymentPolicy({
-        scope,
-        deviceId: scope === "DEVICE" ? deviceId || null : null,
-        deviceType: scope === "DEVICE_TYPE" ? deviceType || null : null,
-        modelVersionId: mode === "DISABLED" ? null : modelVersionId || null,
-        mode,
-        canaryPercent: mode === "CANARY" ? canaryPercent : null,
-        fallbackEnabled,
-        reason,
-      });
-      await props.onChanged();
-    } catch (error) {
-      props.setError(safeMlError(error));
-    } finally { setSaving(false); }
+    submittedPolicy.current = { scope, deviceId: scope === "DEVICE" ? deviceId : "", deviceType: scope === "DEVICE_TYPE" ? deviceType : "", modelVersionId: mode === "DISABLED" ? "" : modelVersionId, mode };
+    let reason = "";
+    await commands.run("policy:save", { label: "Apply deployment policy", nonIdempotent: true,
+      review: async () => { const answer = await confirmation.confirm({ title: "Apply deployment policy", object: `${scope === "DEVICE" ? props.devices.find((device) => device.id === deviceId)?.name ?? deviceId : scope === "DEVICE_TYPE" ? deviceType : "Account defaults"} · ${mode}`, impact: `${mode === "SHADOW" ? "Evaluates the model separately from the primary serving path." : mode === "CANARY" ? `Uses the model for ${canaryPercent}% of the configured canary cohort.` : mode === "ACTIVE" ? "Uses this approved model for eligible predictions." : "Disables the selected deployment scope."} Model: ${mode === "DISABLED" ? "none" : deployableModels.find((model) => model.id === modelVersionId)?.modelKey ?? modelVersionId}. Baseline fallback ${fallbackEnabled ? "enabled" : "disabled"}. More specific device policies take precedence over type and account settings.`, reasonRequired: true }); reason = answer ?? ""; return answer !== null; },
+      mutate: () => saveDeploymentPolicy({ scope, deviceId: scope === "DEVICE" ? deviceId || null : null, deviceType: scope === "DEVICE_TYPE" ? deviceType || null : null, modelVersionId: mode === "DISABLED" ? null : modelVersionId || null, mode, canaryPercent: mode === "CANARY" ? canaryPercent : null, fallbackEnabled, reason }),
+      onCommitted: (savedPolicy) => { props.onConfirmed?.(); props.onPolicySelected?.(savedPolicy.id); markWorkflowDraftSaved("ml-policy"); }, refresh: props.onChanged });
   }
 
   async function resolve() {
@@ -221,12 +223,14 @@ function PoliciesTab(props: {
   return (
     <div className="ml-workflow-grid">
       {confirmation.dialog}
-      <form className="panel ml-workflow-form" onSubmit={submit}>
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
+      {commands.outcomes["policy:save"]?.phase === "unknown-result" ? <div><p>Review deployment policies before submitting again.</p>{props.policies.filter((policy) => submittedPolicy.current && policy.scope === submittedPolicy.current.scope && policy.mode === submittedPolicy.current.mode && (policy.deviceId ?? "") === submittedPolicy.current.deviceId && (policy.deviceType ?? "") === submittedPolicy.current.deviceType && (policy.modelVersionId ?? "") === submittedPolicy.current.modelVersionId).map((policy) => <button type="button" key={policy.id} onClick={() => { commands.reconcile("policy:save", policy); props.onPolicySelected?.(policy.id); }}>Use matching policy {policy.id} · {policy.mode}</button>)}</div> : null}
+      <form className="panel ml-workflow-form" data-draft-id="ml-policy" onSubmit={submit}>
         <h2>Deployment policy editor</h2>
         <div className="ml-control-grid">
           <label>Scope<select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}><option value="ACCOUNT">Account</option><option value="DEVICE_TYPE">Device type</option><option value="DEVICE">Device</option></select></label>
           <label>Mode<select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}><option value="SHADOW">Shadow</option><option value="CANARY">Canary</option><option value="ACTIVE">Active</option><option value="DISABLED">Disabled</option></select></label>
-          <label>Model<select value={modelVersionId} onChange={(e) => setModelVersionId(e.target.value)}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version} / {modelOriginLabel(model)}</option>)}</select></label>
+          <label>Model<select value={modelVersionId} onChange={(e) => { setModelVersionId(e.target.value); props.onModelSelected?.(e.target.value); }}><option value="">No model</option>{deployableModels.map((model) => <option key={model.id} value={model.id}>{model.modelKey} v{model.version} / {modelOriginLabel(model)}</option>)}</select></label>
           {scope === "DEVICE" && (
             <label>
               Device
@@ -264,8 +268,8 @@ function PoliciesTab(props: {
             <strong>{policy.scope} / {policy.mode}</strong>
             <span>{policy.modelVersionId ?? "baseline fallback"} / fallback {policy.fallbackEnabled ? "on" : "off"}</span>
             <div className="action-row action-row-start">
-              {policy.mode !== "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "disable")} type="button">Disable</button>}
-              {policy.mode === "DISABLED" && <button className="ghost-button" onClick={() => void props.onLifecycle(policy, "delete")} type="button">Delete</button>}
+              {policy.mode !== "DISABLED" && <button aria-label={`Disable policy ${policy.scope} ${policy.id}`} className="ghost-button" disabled={props.isLifecyclePending?.(policy.id, "disable")} onClick={() => void props.onLifecycle(policy, "disable")} type="button">Disable</button>}
+              {policy.mode === "DISABLED" && <button aria-label={`Delete policy ${policy.scope} ${policy.id}`} className="ghost-button" disabled={props.isLifecyclePending?.(policy.id, "delete")} onClick={() => void props.onLifecycle(policy, "delete")} type="button">Delete</button>}
             </div>
           </div>
         ))}

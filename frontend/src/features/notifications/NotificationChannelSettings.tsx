@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   createNotificationChannel,
   deleteNotificationChannel,
@@ -15,6 +15,9 @@ import {
 } from "./notificationChannelForm";
 import { NotificationChannelOperations } from "./NotificationChannelOperations";
 import { useActionConfirmation } from "../../components/useActionConfirmation";
+import { CommandFeedback } from "../../components/CommandFeedback";
+import { useEntityCommands } from "../../components/useEntityCommands";
+import { markWorkflowDraftSaved } from "../../components/workflowDraftContext";
 
 const channelTypes: NotificationChannelType[] = ["WEBHOOK", "EMAIL", "TELEGRAM"];
 const parseModes = ["", "Markdown", "MarkdownV2", "HTML"] as const;
@@ -40,7 +43,10 @@ export function NotificationChannelSettings() {
   const [draft, setDraft] = useState<NotificationChannelDraft>(initialDraft);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isBusy, setIsBusy] = useState(false);
+  const commands = useEntityCommands();
+  const isBusy = commands.isBlocked("channel:create");
+  const uncertainCreate = useRef<{ name: string; type: string; previous: Set<string> } | null>(null);
+  const [matchingRecords, setMatchingRecords] = useState<NotificationChannelResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
   const confirmation = useActionConfirmation();
 
@@ -51,24 +57,15 @@ export function NotificationChannelSettings() {
   async function loadChannels() {
     setError(null);
     try {
-      setChannels(await listNotificationChannels());
+      const records = await listNotificationChannels();
+      setChannels(records);
       setLoaded(true);
+      const uncertain = uncertainCreate.current;
+      if (uncertain) setMatchingRecords(records.filter((item) => !uncertain.previous.has(item.id) && item.name === uncertain.name && item.channelType === uncertain.type));
+      return true;
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load notification channels");
-    }
-  }
-
-  async function run(action: () => Promise<void>) {
-    if (isBusy) return;
-    setIsBusy(true);
-    setMessage(null);
-    setError(null);
-    try {
-      await action();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Request failed");
-    } finally {
-      setIsBusy(false);
+      setError("Channel inventory unavailable. Retry the read to refresh current records.");
+      return false;
     }
   }
 
@@ -78,50 +75,54 @@ export function NotificationChannelSettings() {
 
   async function addChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await run(async () => {
-      await createNotificationChannel(createNotificationChannelRequestFromDraft(draft));
-      setDraft((current) => ({
-        ...initialDraft,
-        channelType: current.channelType,
-        name: `${formatEnum(current.channelType)} channel`,
-      }));
-      setChannels(await listNotificationChannels());
-      setMessage("Notification channel added");
+    let submitted;
+    try { submitted = createNotificationChannelRequestFromDraft(draft); }
+    catch { setError("Review the channel fields. Provide its required destination and use a server credential reference."); return; }
+    uncertainCreate.current = { name: submitted.name, type: submitted.channelType, previous: new Set(channels.map((channel) => channel.id)) };
+    await commands.run("channel:create", {
+      label: "Add notification channel", nonIdempotent: true,
+      mutate: () => createNotificationChannel(submitted),
+      onCommitted: (channel) => {
+        uncertainCreate.current = null;
+        setMatchingRecords([]);
+        setChannels((current) => [channel, ...current.filter((item) => item.id !== channel.id)]);
+        setMessage(`Notification channel added: ${channel.id}`);
+        setDraft((current) => ({ ...initialDraft, channelType: current.channelType, name: `${formatEnum(current.channelType)} channel` }));
+        markWorkflowDraftSaved("notification-channel");
+      }, refresh: loadChannels,
     });
   }
 
   async function setChannelEnabled(channel: NotificationChannelResponse, enabled: boolean) {
-    await run(async () => {
-      const updated = enabled ? await enableNotificationChannel(channel.id) : await disableNotificationChannel(channel.id);
-      setChannels((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage(`Notification channel ${enabled ? "enabled" : "disabled"}`);
-    });
+    await commands.run(`channel:${channel.id}:toggle`, { label: `${channel.name} ${enabled ? "enable" : "disable"}`,
+      mutate: () => enabled ? enableNotificationChannel(channel.id) : disableNotificationChannel(channel.id),
+      onCommitted: (updated) => { setChannels((current) => current.map((item) => item.id === updated.id ? updated : item)); setMessage(`Notification channel ${enabled ? "enabled" : "disabled"}`); }, refresh: loadChannels });
   }
 
   async function removeChannel(channel: NotificationChannelResponse) {
-    if (await confirmation.confirm({ title: "Delete notification channel", object: channel.name, impact: "Removes this delivery destination. Rules or preferences referencing it will no longer deliver through it." }) === null) return;
-    await run(async () => {
-      await deleteNotificationChannel(channel.id);
-      setChannels((current) => current.filter((item) => item.id !== channel.id));
-      setMessage("Notification channel deleted");
-    });
+    await commands.run(`channel:${channel.id}:delete`, { label: `Delete ${channel.name}`,
+      review: async () => await confirmation.confirm({ title: "Delete notification channel", object: channel.name, impact: "Removes this delivery destination. Rules or preferences referencing it will no longer deliver through it." }) !== null,
+      mutate: () => deleteNotificationChannel(channel.id),
+      onCommitted: () => { setChannels((current) => current.filter((item) => item.id !== channel.id)); setMessage("Notification channel deleted"); }, refresh: loadChannels });
   }
 
   return (
     <section className="panel notification-channel-panel">
       {confirmation.dialog}
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
+      {commands.outcomes["channel:create"]?.phase === "unknown-result" ? <div className="status-note"><p>Review matching records before creating another channel. A matching name does not prove which request created it.</p>{matchingRecords.map((record) => <div key={record.id}><span>{record.name} · {record.channelType} · {record.id}</span><button type="button" className="ghost-button" onClick={() => { commands.reconcile("channel:create", record); uncertainCreate.current = null; setMatchingRecords([]); setMessage(`Existing channel confirmed: ${record.id}`); }}>Use matching channel</button></div>)}</div> : null}
       <div className="section-header">
         <div>
           <h2>Notification Channels</h2>
           <p>{loaded ? `${channels.length} configured` : "Channel inventory unavailable"}</p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void loadChannels()} disabled={isBusy}>
+        <button className="ghost-button" type="button" onClick={() => void loadChannels()}>
           Refresh
         </button>
       </div>
       {message ? <div className="success-message account-message">{message}</div> : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
-      <form className="notification-channel-form notification-channel-form-wide" onSubmit={addChannel}>
+      <form className="notification-channel-form notification-channel-form-wide" data-draft-id="notification-channel" onSubmit={addChannel}>
         <label>Channel name<input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} placeholder="Channel name" /></label>
         <label>Channel type<select
           aria-label="Channel type"
@@ -210,15 +211,15 @@ export function NotificationChannelSettings() {
                   </span>
                 </div>
                 <div className="action-row">
-                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={isBusy}>
+                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={commands.isPending(`channel:${channel.id}:toggle`)}>
                     {channel.enabled ? "Disable" : "Enable"}
                   </button>
-                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={isBusy}>
+                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={commands.isPending(`channel:${channel.id}:delete`)}>
                     Delete
                   </button>
                 </div>
               </div>
-              <NotificationChannelOperations channel={channel} disabled={isBusy} />
+              <NotificationChannelOperations channel={channel} />
             </article>
           ))}
         </div>

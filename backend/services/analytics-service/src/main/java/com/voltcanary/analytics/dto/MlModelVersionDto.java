@@ -28,5 +28,6 @@ public record MlModelVersionDto(
         boolean systemHeuristic,
         UUID approvedBy,
         Instant approvedAt,
-        Instant createdAt) {
+        Instant createdAt,
+        UUID trainingRunId) {
 }

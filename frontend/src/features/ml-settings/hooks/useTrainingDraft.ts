@@ -1,5 +1,7 @@
 import { Dispatch, SetStateAction, useEffect, useState } from "react";
 import { MlFeatureSnapshotResponse } from "../../../analytics/mlModuleApi";
+import { decodeDraftFields, draftScope } from "../../../components/scopedDrafts";
+import { useScopedDraftValue } from "../../../components/useScopedDraftValue";
 
 export type TrainingDraft = {
   datasetVersionId: string;
@@ -11,19 +13,23 @@ export type TrainingDraft = {
   minimumLabelCoverage: number;
 };
 
-export function useTrainingDraft(accountId: string) {
-  return usePersistedDraft<TrainingDraft>(
-    `voltcanary.ml.${accountId}.training.ANOMALY_DETECTION.training-run`,
-    {
-      datasetVersionId: "",
-      featureSnapshotId: "",
-      modelFamily: "ANOMALY_DETECTION",
+export function useTrainingDraft(accountId: string, datasetVersionId = "new", selection?: { snapshotId: string; family: TrainingDraft["modelFamily"]; horizonDays: number | null }) {
+  const initial: TrainingDraft = {
+      datasetVersionId: datasetVersionId === "new" ? "" : datasetVersionId,
+      featureSnapshotId: selection?.snapshotId ?? "",
+      modelFamily: selection?.family ?? "ANOMALY_DETECTION",
       algorithm: "baseline-statistical-anomaly-v1",
-      failureHorizonDays: 14,
+      failureHorizonDays: selection?.horizonDays ?? 14,
       minimumPositiveLabels: 20,
       minimumLabelCoverage: 0.8,
-    },
-  );
+    };
+  const scope = draftScope(accountId, `training.${datasetVersionId || "new"}`, "new-run-v1");
+  return useScopedDraftValue(scope, initial, (data) => {
+    const decoded = decodeDraftFields(data, initial);
+    if (decoded?.modelFamily && !["ANOMALY_DETECTION", "FAILURE_PREDICTION"].includes(decoded.modelFamily)) return null;
+    if (datasetVersionId !== "new" && decoded?.datasetVersionId && decoded.datasetVersionId !== datasetVersionId) return null;
+    return decoded;
+  }, `voltcanary.ml.${accountId}.training.ANOMALY_DETECTION.training-run`);
 }
 
 export function trainingBlockReason(
@@ -52,50 +58,4 @@ export function trainingBlockReason(
     return `Feature snapshot horizon ${selectedSnapshot.horizonDays} must match training horizon ${failureHorizonDays}.`;
   }
   return null;
-}
-
-function usePersistedDraft<T>(key: string, initialValue: T) {
-  const initialDraft = readDraft<T>(key);
-  const [restored, setRestored] = useState(Boolean(initialDraft));
-  const [value, setValue] = useState<T>(() => {
-    if (initialDraft) {
-      return { ...initialValue, ...initialDraft };
-    }
-    return initialValue;
-  });
-
-  useEffect(() => {
-    const stored = readDraft<T>(key);
-    setValue(stored ? { ...initialValue, ...stored } : initialValue);
-    setRestored(Boolean(stored));
-  }, [key]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Draft persistence is best effort; server state remains authoritative.
-    }
-  }, [key, value]);
-
-  function clearDraft() {
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // Ignore storage failures.
-    }
-    setValue(initialValue);
-    setRestored(false);
-  }
-
-  return [value, setValue as Dispatch<SetStateAction<T>>, clearDraft, restored] as const;
-}
-
-function readDraft<T>(key: string): Partial<T> | null {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as Partial<T>) : null;
-  } catch {
-    return null;
-  }
 }

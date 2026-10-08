@@ -53,3 +53,29 @@ Session details SHALL present status, creation, expiry and available context bef
 - **WHEN** revoke is requested
 - **THEN** the affected scope is shown and confirmed without exposing access or refresh token values.
 
+### Requirement: Safe return routes and coordinated session recovery
+
+Authentication recovery SHALL preserve a validated relative application route, coordinate simultaneous refresh attempts, and transition to expired-session login once when refresh is definitively rejected.
+
+#### Scenario: Concurrent expiry
+
+- **GIVEN** several independent reads return 401
+- **WHEN** the access token must be refreshed
+- **THEN** one refresh is performed, waiting reads share its outcome and successful login restores device metric interval context.
+
+#### Scenario: Unsafe return destination
+
+- **GIVEN** returnTo points to //external.example or an authentication loop
+- **WHEN** login completes
+- **THEN** the application ignores that destination and uses a safe internal default.
+
+### Requirement: Recovery guidance matches configured delivery
+
+Recovery screens SHALL explain available configured delivery and token fallback without asserting an email was delivered when that result is unknown.
+
+#### Scenario: Delivery unavailable
+
+- **GIVEN** a reset request uses a disabled or unconfirmed delivery configuration
+- **WHEN** a response is displayed
+- **THEN** the user receives accurate next steps without fabricated delivery success or disclosure of account existence.
+

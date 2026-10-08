@@ -598,3 +598,28 @@ Resolution audit payload includes the reason:
   "reason": "Operator confirmed expected load test."
 }
 ```
+
+## Console page continuation (2026-10-08)
+
+The inbox uses the existing `GET /alerts/page` with `page` and `size=100` plus
+the existing authorized filters. Its response is `{content, page, size,
+totalElements, totalPages, hasNext}`. Ordering is `createdAt DESC, id DESC`.
+The classic `GET /alerts` retains its bounded array payload for device/dashboard
+consumers. No cursor endpoint or response migration was introduced.
+
+Page totals come from the server. The console's combined Active (OPEN +
+ACKNOWLEDGED) view filters the returned page locally and labels its total unknown.
+It still follows server hasNext even if the current page has no active records.
+Severity sorting applies within the loaded page. A separate summary read is
+scoped to filters and does not rerun merely when moving to another page.
+
+## Dashboard incident owner read
+
+Internal POST `/internal/dashboard/incidents` requires an internal token and
+signed viewer bearer and renews the active owner/device scope, even with legacy
+authorization disabled. Full-scope counts distinguish active OPEN/ACKNOWLEDGED,
+critical active and alerts created in the half-open interval. Stable pages≤50
+have separate total/hasNext; notification attempts are not counted. The result
+contains no incident write actions and reads do not acknowledge, resolve or send
+notifications. Its typed wire contract and snapshot consistency limits are in
+[dashboard-api.md](dashboard-api.md). Existing alert routes remain unchanged.

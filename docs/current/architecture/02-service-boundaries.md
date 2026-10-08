@@ -9,6 +9,7 @@ through APIs or events, not by reading another service database directly.
 | Service | Owns | Does Not Own |
 | --- | --- | --- |
 | `api-gateway` | Public routing boundary, CORS, correlation ID, JWT validation, role checks, request size and rate limits | Business data |
+| `dashboard-service` | Private definitions, author drafts, immutable revisions, preferences, publication idempotency and lifecycle audit | Raw telemetry, business aggregates, resource ownership, team grants |
 | `identity-service` | Users, roles, refresh tokens, login audit | Devices, telemetry, analytics results |
 | `device-service` | Accounts, locations, devices, device types, sensors, data sources, analytics config, maintenance windows | Raw telemetry, risk score history, alerts |
 | `ingestion-service` | Ingestion validation state, source runtime-config read model, idempotency/rate-limit correctness state, active connector leases | Canonical telemetry storage, device source ownership |
@@ -317,6 +318,12 @@ REST API:
 REST is used for synchronous commands and queries:
 
 - frontend -> api-gateway
+- dashboard-service -> identity `/auth/me` and device `/accounts/current`/owned resource reads through `DashboardOwnership`; private storage through `DashboardStorage`
+- dashboard widget queries -> identity plus read-only device active scope and fixed
+  internal device/telemetry/analytics/alert batch ports through `DashboardEvidenceReads`.
+  Domain owners keep full-scope SQL aggregates; dashboard owns typed intent,
+  scope/time composition, per-panel state and authorization-renewed cache.
+  Query reads never bootstrap an account or invoke ML/inference/job/notification commands.
 - api-gateway -> Java services
 - analytics-service -> ml-service
 - simulator-service -> ingestion-service

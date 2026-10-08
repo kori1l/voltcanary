@@ -31,11 +31,10 @@ export function WorkflowPipelineRail(props: {
             <strong>{step.label}</strong>
             <span>{step.status}</span>
             <small>{step.detail}</small>
-            <button type="button" className="ghost-button" onClick={() => props.onStep(step.id)}>{step.status === "ready" ? "Review" : "Resolve prerequisite"} {step.label}</button>
+            <button type="button" className="ghost-button" onClick={() => props.onStep(step.id)}>{["queued", "running"].includes(step.status) ? "Review progress" : ["unavailable", "loading", "stale"].includes(step.status) ? "Verify" : step.status === "ready" ? "Review" : "Resolve prerequisite"} {step.label}</button>
           </li>
         ))}
       </ol></details>
     </section>
   );
 }
-

@@ -19,10 +19,12 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 1. Run `npm run openspec:list` unless the user already named a change.
 2. If the user named a change, run `npm run openspec:apply -- <change-id>`
    before editing implementation files.
-3. If no change was named, ask which active change to apply. If the user asks
-   for the next active notification or ML work, choose from the currently active
-   output of `openspec:list`; do not use archived changes or stale hard-coded
-   sequences.
+3. If no change was named and the user asks for the next change, select from
+   the current `openspec:list` using the applicable sequence below. Honor an
+   explicit UI/UX, dashboard, notification or ML scope; check prerequisites
+   before applying. Ask for change selection only when no applicable sequence
+   or unambiguous active target resolves the request. Never select archived
+   changes or infer completion merely from absence in the active list.
 4. Read the applied change's `proposal.md`, `design.md`, `tasks.md`, and changed
    specs under `openspec/changes/<change-id>/specs/`.
 5. Follow the task checkbox format printed by `openspec:apply`. Check a box only
@@ -51,6 +53,22 @@ pass only if the adapter work still goes through the new port, snapshot request,
 provider registry, and focused frontend notification settings modules. Do not
 add provider-specific delivery branches directly to alert lifecycle code or large
 route pages.
+
+## UI/UX And Dashboard Work Sequence
+
+For requests to implement, continue or select the next UI/UX/dashboard change,
+read [the execution sequence](references/ui-dashboard-sequence.md). It owns
+the default order, scope filters, continuation and prerequisite selection rules.
+Use the current active list and each proposal's dependencies; the reference
+does not authorize implementing changes when the user only asks to plan or
+document their order.
+
+The [program index](../../../openspec/changes/README.md) owns requirement
+coverage and dependency explanations. Keep its summary aligned when changing
+the execution policy; do not copy the full queue into AGENTS.md or other
+surface skills. Explicitly named changes and user-specified priorities take
+precedence over the default queue, while technical dependencies must still be
+resolved.
 
 ## Context
 

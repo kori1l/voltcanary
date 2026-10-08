@@ -67,13 +67,13 @@ export function SettingsPage() {
           <div className="section-header">
             <div>
               <h2>Profile</h2>
-              <p>{profile ? `${profile.email} / ${profile.role}` : "Loading profile"}</p>
+              <p>{profile ? `${profile.email} / ${profile.role}` : profileSection.status === "loading" ? "Loading profile" : "Profile unavailable"}</p>
             </div>
           </div>
           <dl className="detail-list">
             <div>
               <dt>Email</dt>
-              <dd>{profile?.email ?? "loading"}</dd>
+              <dd>{profile?.email ?? "Unavailable"}</dd>
             </div>
             <div>
               <dt>Role</dt>

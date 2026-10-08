@@ -1,1 +1,9 @@
 replicaCount: 1
+dashboard:
+  enabled: false
+  image: voltcanary/dashboard-service:dev
+  sourceRuntime: false
+  backendHostPath: ""
+  configMap: voltcanary-config
+  secret: voltcanary-secrets
+  initializeDatabase: false

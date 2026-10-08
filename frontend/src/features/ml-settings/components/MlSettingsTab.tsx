@@ -2,6 +2,7 @@ import { FormEvent } from "react";
 import { PredictionResponse } from "../../../analytics/analyticsApi";
 import { MlSettingsResponse, MlSettingsValues } from "../../../analytics/mlSettingsApi";
 import { Device } from "../../../devices/devicesApi";
+import { loadDeviceOptions } from "../../../devices/fleetEntityOptions";
 import { EntitySelector } from "../../../components/EntitySelector";
 import { useActionConfirmation } from "../../../components/useActionConfirmation";
 
@@ -34,11 +35,11 @@ export function SettingsTab(props: {
             <h2>Scope</h2>
             <p>Account defaults or a per-device override.</p>
           </div>
-          <span className="status-badge">{props.effective?.source ?? "LOADING"}</span>
+          <span className="status-badge">{props.effective?.source ?? (props.busy ? "LOADING" : "UNAVAILABLE")}</span>
         </div>
         <div className="action-row action-row-start">
           <button className="ghost-button" onClick={() => void props.loadAccount()} type="button">Account defaults</button>
-          <EntitySelector label="Prediction device" options={props.devices.map((device) => ({ id: device.id, name: deviceLabel(device), status: device.status }))} value={props.deviceId} onChange={props.setDeviceId} />
+          <EntitySelector loadOptions={loadDeviceOptions} label="Prediction device" options={props.devices.map((device) => ({ id: device.id, name: deviceLabel(device), status: device.status }))} value={props.deviceId} onChange={props.setDeviceId} />
           <details><summary>Advanced device identifier</summary><label>Device ID<input value={props.deviceId} onChange={(e) => props.setDeviceId(e.target.value)} /></label></details>
           <button className="ghost-button" onClick={() => void props.loadDevice()} type="button">Load device</button>
         </div>

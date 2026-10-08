@@ -328,3 +328,36 @@ tokens and other secrets are not logged.
 OpenAPI is exposed by springdoc at `/v3/api-docs` and Swagger UI at
 `/swagger-ui.html`. Public APIs use bearer authentication through the gateway;
 internal endpoints require `X-Internal-Service-Token`.
+
+## Fleet continuation (2026-10-08)
+
+`GET /devices` and `GET /locations` retain array responses and owner/account
+lifecycle checks. Search/filter is applied before offset/limit; ties use
+`createdAt ASC, id ASC`. Limits remain 1–200. These arrays supply no authoritative
+total. The console reads 101 records for 100 visible rows, and entity choices
+read 51 for 50 additions. Overfetch supplies continuation, never a fleet count.
+
+`GET /maintenance-operations` retains its array contract, filters by account,
+range, cancellation/status and device/location membership before pagination,
+and orders by `startAt ASC, id ASC`. The console exposes 100 visible records
+with overfetch. Search/type apply to the loaded operation page and device roster;
+they are not advertised as backend full-scope queries. Existing
+`GET /maintenance-operations/{id}` resolves authorized off-page selection.
+Offset pagination is stable for ties; concurrent insert/delete can still shift
+positions. The frontend does not claim snapshot consistency or cache a total.
+
+## Additive dashboard owner reads
+
+Internal POST `/internal/dashboard/scope` resolves the signed viewer's existing
+active account without account creation. It requires the internal service token
+and bearer, ignores supplied owner/role headers, returns full requested/evaluated/
+denied counts and authorized device/location/cadence metadata, and rejects scopes
+over500. Fixed/dynamic device IDs, location subtree, type and location.tags are
+supported; device tags are explicitly unavailable. Source configuration secrets
+are never included. An UNBOUND request supplies a read-only active actor check.
+
+Internal POST `/internal/dashboard/maintenance` uses the common-web typed owner
+read request and renewed scope, half-open window overlap, full distinct operation
+count and stable pages≤50. Suppression and analytics/ML exclusions remain separate
+flags; these reads perform no maintenance mutation. See the complete shared
+request/result/error and query contract in [dashboard-api.md](dashboard-api.md).

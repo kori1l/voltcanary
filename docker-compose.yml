@@ -4,6 +4,7 @@ x-postgres-env: &postgres-env
   POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
   POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
+  DASHBOARD_POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}
   POSTGRES_ADDITIONAL_DATABASES: ${POSTGRES_ADDITIONAL_DATABASES:-voltcanary_identity voltcanary_device voltcanary_analytics voltcanary_alerts voltcanary_simulator voltcanary_ai_agent}
 
 x-timescale-env: &timescale-env
@@ -19,12 +20,13 @@ x-java-app: &java-app
   volumes:
     - ./backend:/workspace/backend
     - maven-cache:/root/.m2
-  environment:
+  environment: &java-app-env
     SPRING_PROFILES_ACTIVE: local
     SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     POSTGRES_HOST: postgres
     POSTGRES_PORT: 5432
     POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
+    DASHBOARD_POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}
     POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
     JWT_SECRET: ${JWT_SECRET:-change_me}
@@ -54,6 +56,7 @@ x-java-app: &java-app
     ALERT_SERVICE_URI: http://alert-service:8086
     SIMULATOR_SERVICE_URI: http://simulator-service:8087
     AI_AGENT_SERVICE_URI: http://ai-agent-service:8088
+    DASHBOARD_SERVICE_URI: http://dashboard-service:8089
     ML_SERVICE_URI: http://ml-service:8090
     INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
     INGESTION_MQTT_ENABLED: ${INGESTION_MQTT_ENABLED:-false}
@@ -515,6 +518,22 @@ services:
       AI_AGENT_SECRET_KEY_VERSION: ${AI_AGENT_SECRET_KEY_VERSION:-v1}
     ports:
       - "${AI_AGENT_SERVICE_PORT:-8088}:8088"
+
+  dashboard-service:
+    <<: *java-app
+    command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/dashboard-service -am -Dmaven.test.skip=true install' && mvn -f services/dashboard-service/pom.xml spring-boot:run"
+    environment:
+      <<: *java-app-env
+      DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}
+    depends_on:
+      postgres-database-init:
+        condition: service_completed_successfully
+      identity-service:
+        condition: service_started
+      device-service:
+        condition: service_started
+    ports:
+      - "${DASHBOARD_SERVICE_PORT:-8089}:8089"
 
   ml-service:
     image: python:3.12-slim

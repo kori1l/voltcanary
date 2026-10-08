@@ -158,7 +158,7 @@ describe("SettingsPage notification settings", () => {
     await userEvent.type(screen.getByPlaceholderText("Credentials ref"), "vault://alerts/email/ops");
     await userEvent.click(screen.getByRole("button", { name: /add channel/i }));
 
-    await waitFor(() => expect(screen.getByText("Notification channel added")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Notification channel added:/)).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText("Channel type"), "TELEGRAM");
     await userEvent.clear(screen.getByPlaceholderText("Credentials ref"));
     await userEvent.type(screen.getByPlaceholderText("Credentials ref"), "vault://alerts/telegram/ops");

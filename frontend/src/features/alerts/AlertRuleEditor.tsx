@@ -1,20 +1,44 @@
 import { FormEvent, useState } from "react";
-import { AlertRule, AlertRuleRequest, AlertRuleTestResponse, createAlertRule, NotificationChannelResponse, testAlertRule, updateAlertRule } from "../../alerts/alertsApi";
+import { AlertRule, AlertRuleRequest, AlertRuleTestResponse, createAlertRule, NotificationChannelResponse, testAlertRule, updateAlertRule, listAlertRules } from "../../alerts/alertsApi";
 import { Device, Location } from "../../devices/devicesApi";
 import { EntitySelector } from "../../components/EntitySelector";
 import { DEFAULT_METRIC_DEFINITIONS } from "../telemetry/model/telemetry.constants";
 import { getMetricDefinition } from "../telemetry/model/telemetry.utils";
 import { TimezoneNote } from "../../components/TimeDisplay";
+import { decodeDraftFields, draftScope, sessionUserId } from "../../components/scopedDrafts";
+import { useScopedDraftValue } from "../../components/useScopedDraftValue";
+import { markWorkflowDraftSaved, useWorkflowDraft } from "../../components/workflowDraftContext";
+import { CommandFeedback } from "../../components/CommandFeedback";
+import { useEntityCommands } from "../../components/useEntityCommands";
 const conditions = ["BASELINE_MULTIPLIER", "ABOVE_THRESHOLD", "BELOW_THRESHOLD", "GROWTH_RATE", "LONG_HIGH_RUN", "MISSING_TELEMETRY"];
 export function AlertRuleEditor({ existing, devices, locations, channels, metric = "activePowerW", deviceId, from, to, onSaved, onCancel }: {
   existing?: AlertRule; devices: Device[]; locations: Location[]; channels: NotificationChannelResponse[]; metric?: string; deviceId?: string | null; from?: string | null; to?: string | null;
   onSaved: (rule: AlertRule) => void; onCancel?: () => void;
 }) {
-  const [draft, setDraft] = useState<AlertRuleRequest>(() => existing ? {
+  const commands = useEntityCommands();
+  const [matchingRecords, setMatchingRecords] = useState<AlertRule[]>([]);
+  const commandKey = existing ? `rule:${existing.id}:update` : "rule:create";
+  const initial: AlertRuleRequest = existing ? {
     name: existing.name, description: existing.description, ruleType: existing.ruleType, enabled: existing.enabled, scopeType: existing.scopeType, scopeId: existing.scopeId, deviceType: existing.deviceType,
     metric: existing.metric, conditionType: existing.conditionType, threshold: existing.threshold, thresholdUnit: existing.thresholdUnit, baselineMultiplier: existing.baselineMultiplier, minPoints: existing.minPoints, severity: existing.severity,
     cooldownSeconds: existing.cooldownSeconds, deduplicationWindowSeconds: existing.deduplicationWindowSeconds, notificationChannelIds: existing.notificationChannelIds, config: existing.config,
-  } : { name: "Power spike rule", ruleType: "POWER_SPIKE", enabled: true, scopeType: deviceId ? "DEVICE" : "FLEET", scopeId: deviceId || null, metric, conditionType: "BASELINE_MULTIPLIER", threshold: null, baselineMultiplier: 1.8, severity: "WARNING", cooldownSeconds: 900, deduplicationWindowSeconds: 900, notificationChannelIds: [], config: {} });
+  } : { name: "Power spike rule", ruleType: "POWER_SPIKE", enabled: true, scopeType: deviceId ? "DEVICE" : "FLEET", scopeId: deviceId || null, metric, conditionType: "BASELINE_MULTIPLIER", threshold: null, baselineMultiplier: 1.8, severity: "WARNING", cooldownSeconds: 900, deduplicationWindowSeconds: 900, notificationChannelIds: [], config: {} };
+  const scope = draftScope(existing?.accountId ?? sessionUserId(), existing?.id ?? "new-alert-rule", String(existing?.version ?? "new-v1"));
+  const { config: initialConfig, ...persistedInitial } = initial;
+  const allowedFields = [...Object.keys(persistedInitial), "description", "deviceType", "thresholdUnit", "minPoints"];
+  const [draft, setDraft, clearDraft, recovered] = useScopedDraftValue(scope, initial, (value) => {
+    const { threshold, baselineMultiplier, minPoints, ...nonNumeric } = value;
+    const { threshold: initialThreshold, baselineMultiplier: initialMultiplier, minPoints: initialPoints, ...defaults } = persistedInitial;
+    const fields = decodeDraftFields(nonNumeric, { ...defaults, description: defaults.description ?? null, deviceType: defaults.deviceType ?? null, thresholdUnit: defaults.thresholdUnit ?? null }) as Partial<AlertRuleRequest> | null;
+    if (!fields || fields.conditionType && !conditions.includes(fields.conditionType) || fields.scopeType && !["FLEET", "LOCATION", "DEVICE_TYPE", "DEVICE"].includes(fields.scopeType)) return null;
+    for (const [key, field] of Object.entries({ threshold, baselineMultiplier, minPoints })) {
+      if (field === undefined) continue;
+      if (field !== null && (typeof field !== "number" || !Number.isFinite(field))) return null;
+      (fields as Record<string, unknown>)[key] = field;
+    }
+    return fields;
+  }, undefined, allowedFields);
+  useWorkflowDraft(recovered, clearDraft);
   const local = (value: string | null | undefined, fallback: number) => { const date = value && Number.isFinite(Date.parse(value)) ? new Date(value) : new Date(fallback); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 19); };
   const [testFrom, setTestFrom] = useState(local(from, Date.now() - 86_400_000));
   const [testTo, setTestTo] = useState(local(to, Date.now()));
@@ -33,10 +57,13 @@ export function AlertRuleEditor({ existing, devices, locations, channels, metric
     setBusy(true); setError(null);
     try {
       if (test) setResult(await testAlertRule({ deviceId: draft.scopeType === "DEVICE" ? draft.scopeId || undefined : undefined, rule: payload(), from: new Date(testFrom).toISOString(), to: new Date(testTo).toISOString() }));
-      else onSaved(existing ? await updateAlertRule(existing.id, payload()) : await createAlertRule(payload()));
+      else { await commands.run(commandKey, { label: existing ? "Save rule" : "Create rule", nonIdempotent: !existing, mutate: () => existing ? updateAlertRule(existing.id, payload()) : createAlertRule(payload()), onCommitted: (saved) => { clearDraft(); markWorkflowDraftSaved("alert-rule"); onSaved(saved); }, refresh: async () => { const records = await listAlertRules(); if (!Array.isArray(records)) throw new Error("Unavailable rules"); setMatchingRecords(records.filter((rule) => rule.name === draft.name && rule.metric === draft.metric && rule.scopeType === draft.scopeType && rule.scopeId === draft.scopeId)); return true; } }); }
     } catch (error) { setError(error instanceof Error ? error.message : "Rule request failed"); } finally { setBusy(false); }
   }
-  return <form className="form-stack" onSubmit={(event: FormEvent) => { event.preventDefault(); void execute(false); }}>
+  return <form className="form-stack" data-draft-id="alert-rule" onSubmit={(event: FormEvent) => { event.preventDefault(); void execute(false); }}>
+    <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
+    {commands.outcomes[commandKey]?.phase === "unknown-result" ? <div><p>Review matching rules before creating another. Names do not establish request identity.</p>{matchingRecords.map((rule) => <button type="button" key={rule.id} onClick={() => { commands.reconcile(commandKey, rule); clearDraft(); onSaved(rule); }}>Use matching rule {rule.name} · {rule.id}</button>)}</div> : null}
+    {recovered ? <p role="status">Recovered rule draft for this account and base version. Review before saving.</p> : null}
     <h3>{existing ? `Edit ${existing.name}` : "Create rule"}</h3><div className="form-grid-two">
     <label>Rule name<input required value={draft.name} onChange={(event) => update({ name: event.target.value })} /></label>
     <label>Rule type<select value={draft.ruleType} onChange={(event) => update({ ruleType: event.target.value })}>{["POWER_SPIKE", "CONSUMPTION_GROWTH", "LONG_CYCLE", "THRESHOLD", "OFFLINE"].map((value) => <option key={value}>{value}</option>)}</select></label>
@@ -54,6 +81,6 @@ export function AlertRuleEditor({ existing, devices, locations, channels, metric
     <p className="status-note">If {getMetricDefinition(draft.metric).name} satisfies {draft.conditionType.replace(/_/g, " ").toLowerCase()} {thresholdRequired ? draft.threshold : multiplierRequired ? `× ${draft.baselineMultiplier}` : pointsRequired ? `over at least ${draft.minPoints ?? "?"} points` : ""}, then create a {draft.severity.toLowerCase()} alert for {draft.scopeType.toLowerCase()} and route to {draft.notificationChannelIds?.length ?? 0} selected channels.</p>
     <fieldset><legend>Test interval</legend><TimezoneNote /><div className="form-grid-two"><label>Test from<input type="datetime-local" step="1" value={testFrom} onChange={(event) => { setTestFrom(event.target.value); setResult(null); }} /></label><label>Test to<input type="datetime-local" step="1" value={testTo} onChange={(event) => { setTestTo(event.target.value); setResult(null); }} /></label></div><button className="ghost-button" type="button" disabled={busy || !valid || !validInterval} onClick={() => void execute(true)}>Test rule</button></fieldset>
     {result ? <p className="status-note" role="status">Test only: {result.previewTitle}. {result.previewDescription} Evaluation: {result.evaluationStatus}; matches: {result.matchCount}. No rule was created by this test.</p> : null}
-    {error ? <p className="error-message" role="alert">{error}</p> : null}<div className="action-row">{onCancel ? <button className="ghost-button" type="button" onClick={onCancel}>Cancel editing</button> : null}<button className="primary-button" disabled={busy || !valid}>{busy ? "Saving..." : existing ? "Save rule" : "Create rule"}</button></div>
+    {error ? <p className="error-message" role="alert">{error}</p> : null}<div className="action-row">{onCancel ? <button className="ghost-button" type="button" onClick={onCancel}>Cancel editing</button> : null}<button className="primary-button" disabled={busy || commands.isBlocked(commandKey) || !valid}>{busy ? "Saving..." : existing ? "Save rule" : "Create rule"}</button></div>
   </form>;
 }

@@ -256,6 +256,12 @@ export interface AlertRuleTestResponse {
 export function listAlerts(filters: AlertFilters = {}) {
   return apiRequest<AlertResponse[]>(`/alerts${query(filters)}`);
 }
+export interface AlertPageResponse { content: AlertResponse[]; page: number; size: number; totalElements: number; totalPages: number; hasNext: boolean }
+export function listAlertPage(filters: AlertFilters = {}, page = 0, size = 100, signal?: AbortSignal) {
+  const params = new URLSearchParams(query(filters).replace(/^\?/, ""));
+  params.delete("limit"); params.set("page", String(page)); params.set("size", String(size));
+  return apiRequest<AlertPageResponse>(`/alerts/page?${params}`, { signal });
+}
 
 export function getAlertSummary(filters: AlertFilters = {}) {
   return apiRequest<AlertSummaryResponse>(`/alerts/summary${query(filters)}`);

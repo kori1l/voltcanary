@@ -47,15 +47,6 @@ export function MaintenanceAgenda({
         <article
           className={`maintenance-agenda-row${operation.id === selectedOperationId ? " maintenance-agenda-row-selected" : ""}`}
           key={operation.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelect(operation.id)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelect(operation.id);
-            }
-          }}
         >
           <span className={`status-pill status-pill-${operation.status.toLowerCase()}`}>{formatEnum(operation.status)}</span>
           <strong>{operation.title}</strong>
@@ -67,13 +58,14 @@ export function MaintenanceAgenda({
             {operation.excludeFromMl ? <i>ML</i> : null}
           </span>
           <span className="maintenance-agenda-actions">
+            <button className="ghost-button" type="button" aria-label={`Open maintenance ${operation.title}`} onClick={() => onSelect(operation.id)}>Open</button>
             {operation.status === "ACTIVE" ? (
-              <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); void onFinish(operation); }} disabled={isBusy}>
+              <button className="ghost-button" type="button" aria-label={`Finish maintenance ${operation.title} now`} onClick={() => void onFinish(operation)} disabled={isBusy}>
                 Finish now
               </button>
             ) : null}
             {operation.status === "ACTIVE" || operation.status === "SCHEDULED" ? (
-              <button className="ghost-button" type="button" onClick={(event) => { event.stopPropagation(); void onCancel(operation); }} disabled={isBusy}>
+              <button className="ghost-button" type="button" aria-label={`Cancel maintenance ${operation.title}`} onClick={() => void onCancel(operation)} disabled={isBusy}>
                 Cancel
               </button>
             ) : null}

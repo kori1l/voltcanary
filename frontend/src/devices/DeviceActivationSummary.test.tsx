@@ -1,0 +1,34 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, expect, it, vi } from "vitest";
+import { ApiError } from "../api/client";
+import { getLatestTelemetry } from "../telemetry/telemetryApi";
+import { getSimulationStatus } from "../simulation/simulationApi";
+import { DeviceActivationSummary, activationRoute } from "./DeviceActivationSummary";
+import type { Device, DataSource } from "./devicesApi";
+import { safeReturnTo } from "../app/consoleRouteContext";
+vi.mock("../telemetry/telemetryApi", () => ({ getLatestTelemetry: vi.fn() }));
+vi.mock("../simulation/simulationApi", () => ({ getSimulationStatus: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+const device = { id: "device-canonical", name: "New fridge", type: "FRIDGE", status: "ACTIVE" } as Device;
+const source: DataSource = { id: "source-canonical", deviceId: device.id, sourceType: "SMART_PLUG", protocol: "REST", externalId: "plug-1" };
+it("waits for telemetry evidence rather than inferring connectivity from ACTIVE registration", async () => {
+  vi.mocked(getLatestTelemetry).mockRejectedValueOnce(new ApiError("No reading", 404)).mockResolvedValue({ deviceId: device.id, timestamp: "2026-10-08T10:00:00Z", readings: { activePowerW: 0 } });
+  render(<MemoryRouter><DeviceActivationSummary device={device} source={source} /></MemoryRouter>);
+  await screen.findByText("No measurement confirmed. Connect the sender, then refresh measurements.");
+  expect(screen.getByText("Awaiting first confirmed measurement")).toBeInTheDocument();
+  expect(screen.queryByText(/Device measurement observed/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByText("Refresh measurements"));
+  expect(await screen.findByText(/Device measurement observed · 2026-10-08T10:00:00Z/)).toBeInTheDocument();
+  expect(getLatestTelemetry).toHaveBeenCalledTimes(2); expect(getSimulationStatus).not.toHaveBeenCalled();
+});
+it("uses returned simulator failure and preserves an activation deep link through session recovery", async () => {
+  vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("No reading", 404));
+  vi.mocked(getSimulationStatus).mockResolvedValue({ runId: "run-canonical", status: "FAILED", generatedPoints: 0 } as Awaited<ReturnType<typeof getSimulationStatus>>);
+  render(<MemoryRouter><DeviceActivationSummary device={device} source={{ ...source, sourceType: "SIMULATOR" }} /></MemoryRouter>);
+  expect(await screen.findByText(/Simulator: FAILED · run-canonical/)).toBeInTheDocument();
+  const route = activationRoute(device.id, source.id);
+  expect(safeReturnTo(route)).toBe(route);
+  expect(screen.getByText("Review source credential action")).toHaveAttribute("href", `/devices/${device.id}?tab=configuration`);
+});

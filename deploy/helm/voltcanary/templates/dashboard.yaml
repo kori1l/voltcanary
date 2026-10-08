@@ -1,0 +1,71 @@
+{{- if .Values.dashboard.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+spec:
+  selector:
+    app: dashboard-service
+  ports:
+    - name: http
+      port: 8089
+      targetPort: 8089
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard-service
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: dashboard-service
+  template:
+    metadata:
+      labels:
+        app: dashboard-service
+    spec:
+      containers:
+        - name: dashboard-service
+          image: {{ .Values.dashboard.image | quote }}
+          {{- if .Values.dashboard.sourceRuntime }}
+          workingDir: /workspace/backend
+          command: ["/bin/sh", "-c"]
+          args: ["mvn -pl services/dashboard-service -am -Dmaven.test.skip=true install && mvn -f services/dashboard-service/pom.xml spring-boot:run"]
+          volumeMounts:
+            - name: backend-workspace
+              mountPath: /workspace/backend
+            - name: maven-cache
+              mountPath: /root/.m2
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Values.dashboard.configMap }}
+            - secretRef:
+                name: {{ .Values.dashboard.secret }}
+          ports:
+            - containerPort: 8089
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8089
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8089
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8089
+      {{- if .Values.dashboard.sourceRuntime }}
+      volumes:
+        - name: backend-workspace
+          hostPath:
+            path: {{ required "dashboard.backendHostPath is required for sourceRuntime" .Values.dashboard.backendHostPath | quote }}
+            type: Directory
+        - name: maven-cache
+          emptyDir: {}
+      {{- end }}
+{{- end }}

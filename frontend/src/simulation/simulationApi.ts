@@ -87,8 +87,8 @@ export function stopSimulation(deviceId: string) {
   return apiRequest<SimulationRun>(`/simulation/devices/${deviceId}/stop`, { method: "POST" });
 }
 
-export function getSimulationStatus(deviceId: string) {
-  return apiRequest<SimulationRun>(`/simulation/devices/${deviceId}/status`);
+export function getSimulationStatus(deviceId: string, signal?: AbortSignal) {
+  return apiRequest<SimulationRun>(`/simulation/devices/${deviceId}/status`, { signal });
 }
 
 export function getSimulationRuns(deviceId: string) {

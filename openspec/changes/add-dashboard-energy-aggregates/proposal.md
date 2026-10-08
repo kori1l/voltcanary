@@ -27,7 +27,7 @@ energyWh — cumulative meter reading. Сумма readings или разница
 
 ## Dependencies And Delivery
 
-- [add-dashboard-widget-query-engine](../add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 
 ## Impact

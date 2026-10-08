@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { clearTokens, getRefreshToken } from "../api/client";
+import { clearTokens, getRefreshToken, sessionIdentityRevision, subscribeSession } from "../api/client";
 import { logout as logoutRequest, me, MeResponse } from "../auth/authApi";
 import { AssistantDrawer } from "../aiAgent/AssistantDrawer";
 import { BrandLogo } from "../components/BrandLogo";
+import { WorkflowDraftProvider } from "../components/WorkflowDraftGuard";
+import { TaskEvidenceProvider } from "../aiAgent/taskEvidence";
 
 const userNavigation = [
   { to: "/devices", label: "Devices" },
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/settings", label: "Settings" },
-  { to: "/settings/ml", label: "ML Settings" },
+  { to: "/settings/ml", label: "ML workspace" },
 ];
 
 const adminNavigation = [
@@ -22,10 +24,14 @@ const adminNavigation = [
   { to: "/ai-agent/settings", label: "AI Settings" },
   { to: "/account", label: "Admin" },
   { to: "/settings", label: "Settings" },
-  { to: "/settings/ml", label: "ML Settings" },
+  { to: "/settings/ml", label: "ML workspace" },
 ];
 
 export function AppLayout() {
+  const identity = useSyncExternalStore(subscribeSession, sessionIdentityRevision);
+  return <WorkflowDraftProvider key={identity}><TaskEvidenceProvider><AppLayoutScreen /></TaskEvidenceProvider></WorkflowDraftProvider>;
+}
+function AppLayoutScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -89,7 +95,9 @@ export function AppLayout() {
           </button>
         </div>
         <nav id="console-navigation" aria-label="Main navigation" className={`nav${navigationOpen ? " nav-open" : ""}`}>
-          {navigation.map((item) => (
+          {["Operations", "ML workspace", "Personal settings", "Administration"].map((group) => {
+            const items = navigation.filter((item) => (item.to === "/settings/ml" ? "ML workspace" : item.to === "/settings" ? "Personal settings" : ["/account", "/ai-agent", "/ai-agent/settings"].includes(item.to) ? "Administration" : "Operations") === group);
+            return items.length ? <div className="nav-group" key={group}><span className="nav-group-label">{group}</span>{items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -98,7 +106,8 @@ export function AppLayout() {
             >
               {item.label}
             </NavLink>
-          ))}
+          ))}</div> : null;
+          })}
         </nav>
         <button className="ghost-button sidebar-logout" type="button" onClick={logout}>
           Logout

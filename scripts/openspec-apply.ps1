@@ -30,7 +30,7 @@ $changePath = Join-Path $root "openspec\changes\$ChangeId"
 $archivePath = Join-Path $root "openspec\archive\$ChangeId"
 
 Write-Host "== OpenSpec active changes =="
-$listOutputFile = New-TemporaryFile
+$listOutputFile = [System.IO.Path]::GetTempFileName()
 try {
     & node .\node_modules\@fission-ai\openspec\bin\openspec.js list *> $listOutputFile
     $listExitCode = $LASTEXITCODE

@@ -5,7 +5,7 @@ export function MetricStatsBar({ metric, statistics }: { metric: MetricDefinitio
   return (
     <div className="metric-detail-stats">
       <article>
-        <span>Latest</span>
+        <span>Latest in range</span>
         <strong>{formatMetricValue(statistics.latest, metric.unit)}</strong>
       </article>
       <article>

@@ -1,4 +1,5 @@
 import { MaintenanceOutcomeEditor } from "./MaintenanceOutcomeEditor";
+import { DeviceChoiceAdder } from "../devices/DeviceChoiceAdder";
 import { MaintenanceFields, validMaintenanceInterval } from "./MaintenanceFields";
 import { FormEvent, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -93,7 +94,7 @@ export interface MaintenanceOperationFormRequest {
 export function MaintenanceOperationDrawer({
   mode,
   operation,
-  devices,
+  devices: suppliedDevices,
   locations,
   typeByCode,
   operations,
@@ -119,6 +120,8 @@ export function MaintenanceOperationDrawer({
   onClose: () => void;
   onSubmit: (request: MaintenanceOperationFormRequest) => void;
 }) {
+  const [discoveredDevices, setDiscoveredDevices] = useState<Device[]>([]);
+  const devices = useMemo(() => [...new Map([...suppliedDevices, ...discoveredDevices].map((device) => [device.id, device])).values()], [suppliedDevices, discoveredDevices]);
   const [title, setTitle] = useState(operation?.title ?? "Planned maintenance");
   const [description, setDescription] = useState(operation?.description ?? "");
   const [startAt, setStartAt] = useState(operation ? toDateTimeLocalValue(new Date(operation.startAt)) : defaultStart);
@@ -163,6 +166,7 @@ export function MaintenanceOperationDrawer({
       <DialogClose /><button className="primary-button" type="submit" form="maintenance-operation-form" disabled={isBusy || selectedDeviceIds.length === 0 || !validMaintenanceInterval(startAt, endAt)}>{isBusy ? "Saving..." : mode === "edit" ? "Save changes" : "Schedule maintenance"}</button>
     </>}>
         <p>{selectedDeviceIds.length} selected devices</p>
+        <DeviceChoiceAdder onAdd={(device) => { setDiscoveredDevices((current) => [...current.filter((item) => item.id !== device.id), device]); setSelectedDeviceIds((current) => [...new Set([...current, device.id])]); }} />
         {error ? <p className="error-message" role="alert">{error}</p> : null}
         <form id="maintenance-operation-form" className="maintenance-drawer-form" onSubmit={submit}>
           <MaintenanceFields draft={{ title, description, startAt, endAt, suppressAlerts, excludeFromAnalytics, excludeFromMl }} onChange={(update) => { if (update.title !== undefined) setTitle(update.title); if (update.description !== undefined) setDescription(update.description); if (update.startAt !== undefined) setStartAt(update.startAt); if (update.endAt !== undefined) setEndAt(update.endAt); if (update.suppressAlerts !== undefined) setSuppressAlerts(update.suppressAlerts); if (update.excludeFromAnalytics !== undefined) setExcludeFromAnalytics(update.excludeFromAnalytics); if (update.excludeFromMl !== undefined) setExcludeFromMl(update.excludeFromMl); }} />          <div className="maintenance-device-selector">

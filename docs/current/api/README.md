@@ -21,6 +21,7 @@ boundaries; service docs define request/response behavior and compatibility.
 | `analytics-service` baselines, features, anomalies, risk, recommendations | [analytics-api.md](analytics-api.md) |
 | `alert-service` alerts, rules, notification channels and attempts | [alerts-api.md](alerts-api.md) |
 | `ai-agent-service` plan creation/execution and model provider configuration | [ai-agent-api.md](ai-agent-api.md) |
+| `dashboard-service` private definitions, author drafts, publication/history and preferences | [dashboard-api.md](dashboard-api.md) |
 | `analytics-service` ML lifecycle facade and private `ml-service` runtime contracts | [ml-api.md](ml-api.md) |
 
 ## Current Vs Target

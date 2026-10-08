@@ -1,0 +1,32 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { TelemetryValuesTable } from "./TelemetryValuesTable";
+import { getTelemetryExportPage } from "../../../telemetry/telemetryApi";
+import { EventTimeline } from "./EventTimeline";
+vi.mock("../../../telemetry/telemetryApi", () => ({ getTelemetryExportPage: vi.fn() }));
+afterEach(() => { cleanup(); vi.resetAllMocks(); });
+it("loads one authorized values page on demand and follows tied timestamp source cursors", async () => {
+  const range = { from: "2026-10-07T12:00:00Z", to: "2026-10-08T12:00:00Z" };
+  vi.mocked(getTelemetryExportPage).mockResolvedValueOnce({ deviceId: "device", metric: "temperatureC", points: [{ timestamp: range.from, value: 0, sourceId: "source-A", quality: "BACKFILL" }], nextCursor: range.from, nextCursorSourceId: "source-A" }).mockResolvedValueOnce({ deviceId: "device", metric: "temperatureC", points: [{ timestamp: range.from, value: -20, sourceId: "source-B", quality: "OK" }], nextCursor: null });
+  const view = render(<TelemetryValuesTable deviceId="device" metric="temperatureC" unit="C" range={range}/>);
+  expect(getTelemetryExportPage).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Inspect raw values" }));
+  await screen.findByText("BACKFILL"); expect(screen.getByText("0 C")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Next values page" }));
+  await screen.findByText("-20 C");
+  expect(getTelemetryExportPage).toHaveBeenLastCalledWith("device", "temperatureC", range.from, range.to, range.from, expect.any(AbortSignal), "source-A");
+  expect(screen.getByRole("button", { name: "Next values page" })).toBeDisabled();
+  view.rerender(<TelemetryValuesTable deviceId="other-device" metric="temperatureC" unit="C" range={range}/>);
+  expect(screen.queryByText("source-B")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Inspect raw values" })).toBeInTheDocument();
+});
+it("makes event eight reachable through named controls and retains the page after selection", () => {
+  const events = Array.from({ length: 10 }, (_, index) => ({ id: `event-${index}`, title: `Event ${index}`, timestamp: "2026-10-08T12:00:00Z", type: "custom" as const, severity: "warning" as const }));
+  const selected = vi.fn();
+  const view = render(<EventTimeline events={events} onSelectEvent={selected}/>);
+  fireEvent.click(screen.getByRole("button", { name: "Next events" }));
+  fireEvent.click(screen.getByRole("button", { name: /Event 8/ }));
+  expect(selected).toHaveBeenCalledWith("event-8");
+  view.rerender(<EventTimeline events={[...events]} selectedEventId="event-8" onSelectEvent={selected}/>);
+  expect(screen.getByRole("button", { name: /Event 8/ })).toHaveClass("timeline-event-selected");
+});

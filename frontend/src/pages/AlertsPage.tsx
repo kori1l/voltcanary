@@ -25,6 +25,15 @@ import { useAlertConsoleData } from "../features/alerts/useAlertConsoleData";
 import { SectionFeedback } from "../components/SectionFeedback";
 import { useActionConfirmation } from "../components/useActionConfirmation";
 import { AlertRuleEditor } from "../features/alerts/AlertRuleEditor";
+import { useEntityResources } from "../components/useEntityResources";
+import { ReadRefresh } from "../components/ReadRefresh";
+import { useConsoleQuery } from "../app/useConsoleQuery";
+import { CommandFeedback } from "../components/CommandFeedback";
+import { useEntityCommands } from "../components/useEntityCommands";
+import { PageNavigation } from "../components/PageNavigation";
+import { loadDeviceOptions } from "../devices/fleetEntityOptions";
+import { EntitySelector } from "../components/EntitySelector";
+import { useTaskEvidence } from "../aiAgent/taskEvidence";
 
 const ALERT_LIMIT = 100;
 
@@ -37,18 +46,19 @@ function parseAlertView(value: string | null): "inbox" | "rules" {
 
 export function AlertsPage() {
   const confirmation = useActionConfirmation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [attemptsByAlert, setAttemptsByAlert] = useState<Record<string, NotificationAttemptResponse[]>>({});
+  const commands = useEntityCommands();
+  const query = useConsoleQuery();
+  const searchParams = query.params;
+  const attempts = useEntityResources<NotificationAttemptResponse[]>("alert-history");
   const [expandedAttempts, setExpandedAttempts] = useState<Record<string, boolean>>({});
-  const [activeView, setActiveView] = useState<"inbox" | "rules">(() => parseAlertView(searchParams.get("view")));
-  const [deviceFilter, setDeviceFilter] = useState("all");
-  const [severityFilter, setSeverityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [ruleFilter, setRuleFilter] = useState(() => searchParams.get("ruleId") ?? "all");
+  const [activeView, setActiveView] = query.state<"inbox" | "rules">("view", "inbox");
+  const [deviceFilter, setDeviceFilter] = query.state<string>("deviceId", "all");
+  const [severityFilter, setSeverityFilter] = query.state<string>("severity", "all");
+  const [statusFilter, setStatusFilter] = query.state<string>("status", "all");
+  const [ruleFilter, setRuleFilter] = query.state<string>("ruleId", "all");
   const [ruleMessage, setRuleMessage] = useState<string | null>(null);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
-  const [sortOrder, setSortOrder] = useState("severity");
-  const [loadingAttempts, setLoadingAttempts] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = query.state<string>("sort", "severity");
   const [error, setError] = useState<string | null>(null);
 
   const serverStatusFilter = statusFilter === "active" || statusFilter === "all" ? undefined : statusFilter;
@@ -60,105 +70,65 @@ export function AlertsPage() {
     limit: ALERT_LIMIT,
   };
 
-  const data = useAlertConsoleData(requestFilters);
+  const [offsetValue] = query.state<string>("offset", "0");
+  const offset = Math.floor(Number(offsetValue) / 100) * 100;
+  const data = useAlertConsoleData(requestFilters, offset / 100);
   const alerts = data.alerts.data ?? [];
   const summary = data.summary.data;
   const channels = data.channels.data ?? [];
   const rules = data.rules.data ?? [];
   const devices = data.devices.data ?? [];
   const locations = data.locations.data ?? [];
+  const selectedIncident = alerts.find((alert) => alert.id === query.params.get("alertId"));
+  useTaskEvidence({ names: { incident: selectedIncident?.title || selectedIncident?.alertType, device: devices.find((device) => device.id === deviceFilter)?.name } });
   const isLoading = data.alerts.refreshing || data.summary.refreshing;
   const load = data.load;
   const setRules = data.rules.update;
 
   useEffect(() => {
-    void load();
-  }, [deviceFilter, severityFilter, statusFilter, ruleFilter]);
-
-  useEffect(() => {
-    const urlRuleId = searchParams.get("ruleId") ?? "all";
-    const urlView = searchParams.get("view");
-    const urlMetric = searchParams.get("metric");
-    const urlDeviceId = searchParams.get("deviceId");
-    setRuleFilter(urlRuleId);
-    if (urlRuleId !== "all") {
-      setActiveView("inbox");
-    }
-    if (urlView) {
-      setActiveView(parseAlertView(urlView));
-    }
-  }, [searchParams]);
+    void load(false);
+  }, [deviceFilter, severityFilter, statusFilter, ruleFilter, offset]);
 
   function updateRuleFilter(nextRuleId: string) {
-    setRuleFilter(nextRuleId);
-    const nextSearchParams = new URLSearchParams(searchParams);
-    if (nextRuleId === "all") {
-      nextSearchParams.delete("ruleId");
-    } else {
-      nextSearchParams.set("ruleId", nextRuleId);
-    }
-    setSearchParams(nextSearchParams);
+    query.update({ ruleId: nextRuleId === "all" ? null : nextRuleId, offset: null });
+    setActiveView("inbox");
   }
 
   async function updateStatus(alertId: string, action: "ack" | "resolve") {
-    setError(null);
-    try {
-      if (action === "ack") {
-        await acknowledgeAlert(alertId);
-      } else {
-        const alert = alerts.find((item) => item.id === alertId);
-        const reason = await confirmation.confirm({ title: "Resolve alert", object: alert?.title ?? alertId, impact: "This marks the incident resolved and records your reason in its history.", reasonRequired: true });
-        if (reason === null) {
-          return;
-        }
-        await resolveAlert(alertId, reason);
-      }
-      await load();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to update alert");
-    }
+    let reason = "";
+    const alert = alerts.find((item) => item.id === alertId);
+    await commands.run(`alert:${alertId}:${action}`, { label: `${action === "ack" ? "Acknowledge" : "Resolve"} ${alert?.title ?? "alert"}`,
+      review: action === "resolve" ? async () => { const answer = await confirmation.confirm({ title: "Resolve alert", object: alert?.title ?? alertId, impact: "This marks the incident resolved and records your reason in its history.", reasonRequired: true }); reason = answer ?? ""; return answer !== null; } : undefined,
+      mutate: () => action === "ack" ? acknowledgeAlert(alertId) : resolveAlert(alertId, reason),
+      onCommitted: (updated) => data.alerts.update((current) => current.map((item) => item.id === (updated.alertId ?? updated.id ?? alertId) ? { ...item, status: action === "ack" ? "ACKNOWLEDGED" : "RESOLVED", resolutionReason: action === "resolve" ? reason : item.resolutionReason } : item)), refresh: load,
+    });
   }
 
   async function toggleAttempts(alertId: string) {
     const nextExpanded = !expandedAttempts[alertId];
     setExpandedAttempts((current) => ({ ...current, [alertId]: nextExpanded }));
-    if (!nextExpanded || attemptsByAlert[alertId]) {
+    if (nextExpanded) query.update({ alertId });
+    if (!nextExpanded || attempts.items[alertId]?.data) {
       return;
     }
-    setLoadingAttempts(alertId);
-    setError(null);
-    try {
-      const attempts = await listNotificationAttempts(alertId);
-      setAttemptsByAlert((current) => ({ ...current, [alertId]: attempts }));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load notification attempts");
-    } finally {
-      setLoadingAttempts(null);
-    }
+    await retryAttempts(alertId);
+  }
+
+  async function retryAttempts(alertId: string) {
+    await attempts.load(alertId, () => listNotificationAttempts(alertId), (items) => !items.length);
   }
 
   async function setRuleEnabled(rule: AlertRule, enabled: boolean) {
-    setError(null);
-    try {
-      const updated = enabled ? await enableAlertRule(rule.id) : await disableAlertRule(rule.id);
-      setRules((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to update rule");
-    }
+    await commands.run(`rule:${rule.id}:toggle`, { label: `${enabled ? "Enable" : "Disable"} ${rule.name}`,
+      mutate: () => enabled ? enableAlertRule(rule.id) : disableAlertRule(rule.id),
+      onCommitted: (updated) => setRules((current) => current.map((item) => item.id === updated.id ? updated : item)), refresh: load });
   }
 
   async function removeRule(rule: AlertRule) {
-    if (await confirmation.confirm({ title: "Delete rule", object: rule.name, impact: "Removes this rule from future evaluation. Existing alert history remains." }) === null) return;
-    setError(null);
-    try {
-      await deleteAlertRule(rule.id);
-      setRules((current) => current.filter((item) => item.id !== rule.id));
-      if (ruleFilter === rule.id) {
-        updateRuleFilter("all");
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to delete rule");
-    }
+    await commands.run(`rule:${rule.id}:delete`, { label: `Delete ${rule.name}`,
+      review: async () => await confirmation.confirm({ title: "Delete rule", object: rule.name, impact: "Removes this rule from future evaluation. Existing alert history remains." }) !== null,
+      mutate: () => deleteAlertRule(rule.id),
+      onCommitted: () => { setRules((current) => current.filter((item) => item.id !== rule.id)); if (ruleFilter === rule.id) updateRuleFilter("all"); }, refresh: load });
   }
 
   const deviceById = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
@@ -184,6 +154,7 @@ export function AlertsPage() {
   return (
     <>
       {confirmation.dialog}
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
       <header className="page-header page-header-row">
         <div>
           <h1>Alerts</h1>
@@ -221,7 +192,8 @@ export function AlertsPage() {
       </section>
 
       <SectionFeedback resource={data.summary} label="alert summary" onRetry={() => void data.summary.load(() => getAlertSummary(requestFilters))} />
-      <SectionFeedback resource={data.alerts} label="alert inbox" onRetry={() => void data.alerts.load(() => listAlerts(requestFilters), (items) => !items.length)} />
+      <ReadRefresh scope={JSON.stringify([requestFilters, offset])} refresh={load} />
+      <SectionFeedback resource={data.alerts} label="alert inbox" onRetry={() => void load(false)} />
       <SectionFeedback resource={data.devices} label="device names" onRetry={() => void data.devices.load(listDevices)} />
       <SectionFeedback resource={data.locations} label="location names" onRetry={() => void data.locations.load(listLocations)} />
       <SectionFeedback resource={data.rules} label="alert rules" onRetry={() => void data.rules.load(listAlertRules)} />
@@ -240,15 +212,8 @@ export function AlertsPage() {
 
       {activeView === "inbox" ? <section className="panel alerts-filter-panel">
         <div className="inventory-toolbar">
-          <label>Device<select value={deviceFilter} onChange={(event) => setDeviceFilter(event.target.value)}>
-            <option value="all">All devices</option>
-            {devices.map((device) => (
-              <option value={device.id} key={device.id}>
-                {device.name}
-              </option>
-            ))}
-          </select></label>
-          <label>Severity<select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
+          <EntitySelector label="Device" loadOptions={loadDeviceOptions} options={devices.map((device) => ({ id: device.id, name: device.name }))} value={deviceFilter === "all" ? "" : deviceFilter} onChange={(id) => query.update({ deviceId: id || null, offset: null })} />
+          <label>Severity<select value={severityFilter} onChange={(event) => query.update({ severity: event.target.value === "all" ? null : event.target.value, offset: null })}>
             <option value="all">All severities</option>
             {severities.map((severity) => (
               <option value={severity} key={severity}>
@@ -256,7 +221,7 @@ export function AlertsPage() {
               </option>
             ))}
           </select></label>
-          <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <label>Status<select value={statusFilter} onChange={(event) => query.update({ status: event.target.value === "all" ? null : event.target.value, offset: null })}>
             <option value="active">Active only</option>
             <option value="all">All statuses</option>
             <option value="OPEN">Open</option>
@@ -299,13 +264,13 @@ export function AlertsPage() {
                 </div>
                 <div className="action-row">
                   <button type="button" className="ghost-button" onClick={() => setEditingRule(rule)}>Edit rule</button>
-                  <button className="ghost-button" type="button" onClick={() => void setRuleEnabled(rule, !rule.enabled)}>
+                  <button className="ghost-button" type="button" disabled={commands.isPending(`rule:${rule.id}:toggle`)} onClick={() => void setRuleEnabled(rule, !rule.enabled)}>
                     {rule.enabled ? "Disable" : "Enable"}
                   </button>
                   <Link className="ghost-button button-link" to={`/alerts?ruleId=${encodeURIComponent(rule.id)}`}>
                     View alerts
                   </Link>
-                  <button className="ghost-button" type="button" onClick={() => void removeRule(rule)}>
+                  <button className="ghost-button" type="button" disabled={commands.isPending(`rule:${rule.id}:delete`)} onClick={() => void removeRule(rule)}>
                     Delete
                   </button>
                 </div>
@@ -318,17 +283,20 @@ export function AlertsPage() {
       {error ? <div className="error-message">{error}</div> : null}
       {activeView === "inbox" && isLoading ? <section className="panel">Loading alerts...</section> : null}
 
+      {activeView === "inbox" ? <PageNavigation offset={offset} size={100} hasMore={data.pagination?.hasNext ?? false} loading={isLoading} loaded={visibleAlerts.length} total={statusFilter === "active" ? undefined : data.pagination?.totalElements} onChange={(next) => query.update({ offset: next || null })} /> : null}
+      <button type="button" className="ghost-button" onClick={() => query.update({ deviceId: null, severity: null, status: null, ruleId: null, offset: null })}>Clear filters</button>
       {activeView === "inbox" && data.alerts.data !== null ? (
         <AlertInbox
           alerts={visibleAlerts}
           deviceById={deviceById}
           locationById={locationById}
           ruleById={ruleById}
-          attemptsByAlert={attemptsByAlert}
+          attemptsByAlert={attempts.items}
           expandedAttempts={expandedAttempts}
-          loadingAttempts={loadingAttempts}
+          onRetryAttempts={retryAttempts}
           onAttempts={toggleAttempts}
           onUpdate={updateStatus}
+          isPending={(id, action) => commands.isPending(`alert:${id}:${action}`)}
         />
       ) : null}
     </>

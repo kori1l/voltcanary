@@ -100,6 +100,7 @@ voltcanary/
 | Alert Service | Java / Spring Boot | 8086 | `backend/services/alert-service` |
 | Simulator Service | Java / Spring Boot | 8087 | `backend/services/simulator-service` |
 | AI Agent Service | Java / Spring Boot | 8088 | `backend/services/ai-agent-service` |
+| Dashboard Service | Java / Spring Boot, JDBC | 8089 | `backend/services/dashboard-service` |
 | ML Service | Python / FastAPI | 8090 | `ml-service` |
 | Frontend | React / Vite | 3000 | `frontend` |
 

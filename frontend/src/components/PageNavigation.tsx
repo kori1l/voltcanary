@@ -1,0 +1,3 @@
+export function PageNavigation({ offset, size, hasMore, loading, loaded, onChange, total }: { offset: number; size: number; hasMore: boolean; loading: boolean; loaded: number; onChange: (offset: number) => void; total?: number }) {
+  return <nav aria-label="Record pages" className="action-row"><button type="button" className="ghost-button" disabled={offset === 0 || loading} onClick={() => onChange(Math.max(0, offset - size))}>Previous page</button><span role="status">Page {Math.floor(offset / size) + 1} · {loaded} loaded · {total === undefined ? "Total unknown" : `${total} total`}</span><button type="button" className="ghost-button" disabled={!hasMore || loading} onClick={() => onChange(offset + size)}>Next page</button></nav>;
+}

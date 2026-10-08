@@ -7,4 +7,5 @@ resources:
   - infra.yaml
   - redpanda-minio.yaml
   - apps.yaml
+  - dashboard-database-init.yaml
   - ml-frontend.yaml

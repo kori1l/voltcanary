@@ -10,6 +10,7 @@ import {
 describe("deviceTelemetryModel", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("voltcanary.accessToken", `${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`);
   });
 
   it("falls back to safe chart preferences when storage is missing or malformed", () => {

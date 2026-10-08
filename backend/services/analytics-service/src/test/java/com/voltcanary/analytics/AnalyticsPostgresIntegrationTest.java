@@ -59,6 +59,32 @@ class AnalyticsPostgresIntegrationTest {
     @MockitoBean
     private MlClient mlClient;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private com.voltcanary.analytics.repository.DashboardAnalyticsRepository dashboardReads;
+
+    @Test
+    void dashboardReadsStoredEvidenceWithoutInferenceOrJobsAndQualifiesAccount() {
+        UUID user = UUID.randomUUID(), account = UUID.randomUUID(), device = UUID.randomUUID();
+        Instant asOf = Instant.parse("2026-10-08T12:00:00Z");
+        jdbc.update("insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
+                UUID.randomUUID(), device, account, 0, "LOW", java.sql.Timestamp.from(asOf.minusSeconds(1)));
+        jdbc.update("insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
+                UUID.randomUUID(), device, UUID.randomUUID(), 99, "HIGH", java.sql.Timestamp.from(asOf));
+        jdbc.update("insert into prediction_results(id,device_id,account_id,model_name,prediction_json,created_at,shadow_prediction) values(?,?,?,?,?,?,false)",
+                UUID.randomUUID(), device, account, "fixture", "{\"modelFamily\":\"heuristic\",\"horizonDays\":7,\"sourceToken\":\"must-not-leak\"}", java.sql.Timestamp.from(asOf));
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(asOf.minusSeconds(86400), asOf, asOf, null, null);
+        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(user, account, List.of(device), frame,
+                java.util.Set.of(), List.of(device), 20, 0, "ACTIVE", List.of());
+        long before = jdbc.queryForObject("select count(*) from analytics_jobs", Long.class);
+        var result = dashboardReads.read(request, List.of(device));
+        assertThat(result.path("risks").get(0).path("score").asDouble()).isZero();
+        assertThat(result.path("predictions").get(0).path("horizonDays").asInt()).isEqualTo(7);
+        assertThat(result.toString()).doesNotContain("sourceToken", "must-not-leak");
+        assertThat(jdbc.queryForObject("select count(*) from analytics_jobs", Long.class)).isEqualTo(before);
+        org.mockito.Mockito.verifyNoInteractions(mlClient, telemetryClient);
+        assertThat(restTemplate.postForEntity("/internal/dashboard/analytics", request, String.class).getStatusCode().is4xxClientError()).isTrue();
+    }
+
     @Test
     void recalculatePersistsPredictionResultInPostgres() {
         UUID deviceId = UUID.randomUUID();

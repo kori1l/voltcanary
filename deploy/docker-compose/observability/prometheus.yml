@@ -19,6 +19,7 @@ scrape_configs:
           - telemetry-service:8084
           - analytics-service:8085
           - alert-service:8086
+          - dashboard-service:8089
 
   - job_name: redpanda
     metrics_path: /public_metrics

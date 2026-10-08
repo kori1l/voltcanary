@@ -1,3 +1,4 @@
+import type { TelemetryChart } from "../../../telemetry/telemetryApi";
 export type MetricStatus = "normal" | "warning" | "critical" | "stale" | "no_data";
 export type MetricKind = "gauge" | "counter" | "accumulator" | "signal";
 export type TelemetrySampleQuality = "good" | "partial" | "bad";
@@ -76,6 +77,7 @@ export interface DeviceHealth {
 }
 
 export interface TelemetryMetricOverview {
+  evidence?: TelemetryChart;
   definition: MetricDefinition;
   status: MetricStatus;
   statistics: MetricStatistics;
@@ -104,6 +106,7 @@ export interface RelatedSignal {
 }
 
 export interface MetricDetailResponse {
+  evidence?: TelemetryChart;
   deviceId: string;
   metric: MetricDefinition;
   status: MetricStatus;

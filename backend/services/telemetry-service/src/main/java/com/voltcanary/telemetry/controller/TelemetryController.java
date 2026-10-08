@@ -6,6 +6,7 @@ import com.voltcanary.telemetry.dto.TelemetryExportResponse;
 import com.voltcanary.telemetry.dto.TelemetryLatestResponse;
 import com.voltcanary.telemetry.dto.TelemetryMetricResponse;
 import com.voltcanary.telemetry.dto.TelemetryQualityResponse;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import com.voltcanary.telemetry.service.TelemetryAccessService;
 import com.voltcanary.telemetry.service.TelemetryQueryService;
 import java.time.Instant;
@@ -63,6 +64,7 @@ public class TelemetryController {
             @RequestParam("from") Instant from,
             @RequestParam("to") Instant to,
             @RequestParam(value = "cursor", required = false) Instant cursor,
+            @RequestParam(value = "cursorSourceId", required = false) String cursorSourceId,
             @RequestParam(value = "limit", required = false, defaultValue = "500") int limit,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -71,7 +73,23 @@ public class TelemetryController {
         telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
         requireAcceptedRange(from, to);
         int effectiveLimit = Math.max(1, Math.min(limit, validationProperties.getMaxExportPageSize()));
-        return telemetryQueryService.export(deviceId, metric, from, to, cursor, effectiveLimit);
+        return telemetryQueryService.export(deviceId, metric, from, to, cursor, cursorSourceId, effectiveLimit);
+    }
+
+    @GetMapping("/readings/envelope")
+    public TelemetryEnvelopeResponse envelope(
+            @PathVariable("deviceId") UUID deviceId,
+            @RequestParam("metric") String metric,
+            @RequestParam("from") Instant from, @RequestParam("to") Instant to,
+            @RequestParam(value="buckets", defaultValue="200") int buckets,
+            @RequestHeader(value="X-User-Id", required=false) String userId,
+            @RequestHeader(value="X-User-Role", required=false) String role,
+            @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
+            @RequestHeader(value="X-Internal-Service-Token", required=false) String internalServiceToken) {
+        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        requireAcceptedRange(from, to);
+        if (buckets < 1 || buckets > 250) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "buckets must be between 1 and 250");
+        return telemetryQueryService.envelope(deviceId, metric, from, to, buckets);
     }
 
     @GetMapping("/latest")
@@ -100,12 +118,18 @@ public class TelemetryController {
     @GetMapping("/metrics")
     public List<TelemetryMetricResponse> metrics(
             @PathVariable("deviceId") UUID deviceId,
+            @RequestParam(value="from", required=false) Instant from,
+            @RequestParam(value="to", required=false) Instant to,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-User-Role", required = false) String role,
             @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
             @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
         telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
-        return telemetryQueryService.getMetrics(deviceId);
+        if (from == null && to == null) return telemetryQueryService.getMetrics(deviceId);
+        Instant effectiveTo = to == null ? Instant.now() : to;
+        Instant effectiveFrom = from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
+        requireAcceptedRange(effectiveFrom, effectiveTo);
+        return telemetryQueryService.getMetrics(deviceId, effectiveFrom, effectiveTo);
     }
 
     private void requireAcceptedRange(Instant from, Instant to) {

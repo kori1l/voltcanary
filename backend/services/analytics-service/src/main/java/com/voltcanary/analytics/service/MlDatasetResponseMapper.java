@@ -41,7 +41,8 @@ public class MlDatasetResponseMapper {
                 version.getArtifactUri(),
                 version.getArtifactHash(),
                 version.getImmutableRowReference(),
-                version.getDataHash());
+                version.getDataHash(),
+                version.getAccountId());
     }
 
     public MlValidationReportDto validationReport(MlValidationReport report) {

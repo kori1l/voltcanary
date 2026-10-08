@@ -37,18 +37,17 @@ export function mapTelemetryOverview({
 }): TelemetryOverviewResponse {
   const metrics = Object.entries(charts)
     .map(([metricKey, chart]) => {
-      const definition = getMetricDefinition(metricKey);
+      const definition = { ...getMetricDefinition(metricKey), ...(chart.unit ? { unit: chart.unit } : {}) };
       const series = chart.points.map((point): TelemetrySample => ({
         timestamp: point.timestamp,
         metricKey,
         value: point.value,
-        quality: "good",
       }));
       const threshold = thresholdFor(metricKey, metricKey === "activePowerW" && baseline ? {
         warningMax: baseline.p90,
         spikeThreshold: baseline.p90,
       } : undefined);
-      const computedEvents = detectTelemetryEvents(definition, series, threshold);
+      const computedEvents = chart.aggregationMode ? [] : detectTelemetryEvents(definition, series, threshold);
       const analyticsEvents = (anomalies ?? [])
         .filter((anomaly) => metricKey === "activePowerW" && Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to))
         .map((anomaly): TelemetryEvent => ({
@@ -63,8 +62,12 @@ export function mapTelemetryOverview({
           threshold: threshold?.spikeThreshold,
         }));
       const events = mergeEvents([...analyticsEvents, ...computedEvents]);
-      const statistics = calculateStatistics(series, events);
-      const status = determineMetricStatus(statistics, threshold, latestTimestamp);
+      const statistics = chart.summary ? {
+        latest: chart.summary.lastValue, min: chart.summary.min, max: chart.summary.max, avg: chart.summary.average,
+        p95: chart.summary.p95, p99: chart.summary.p99, samplesCount: chart.summary.count,
+        anomaliesCount: analyticsEvents.length, alertsCount: analyticsEvents.filter((event) => event.severity !== "info").length,
+      } : calculateStatistics(series, events);
+      const status = determineMetricStatus(statistics, threshold, chart.summary?.lastAt ?? series[series.length - 1]?.timestamp ?? null);
       return {
         definition,
         status,
@@ -72,18 +75,23 @@ export function mapTelemetryOverview({
         threshold,
         series,
         conclusion: metricConclusion(definition, status, statistics),
+        evidence: chart,
       };
     })
     .sort((first, second) => first.definition.order - second.definition.order || first.definition.name.localeCompare(second.definition.name));
 
   const selectedMetrics = metrics.filter((metric) => selectedMetricKeys.includes(metric.definition.key));
   const health = determineDeviceHealth(selectedMetrics.length > 0 ? selectedMetrics : metrics, latestTimestamp);
+  if (metrics.some((metric) => metric.evidence?.aggregationMode === "MIN_MAX_ENVELOPE")) health.reason = "Threshold comparison uses historical interval evidence; it does not establish current device state.";
+  const qualityCounts = metrics.flatMap((metric) => Object.entries(metric.evidence?.qualityCounts ?? {}));
+  if (metrics.length && !metrics.every((metric) => metric.evidence?.qualityCounts)) health.dataQuality = "unknown";
+  else if (qualityCounts.some(([flag, count]) => count > 0 && !["OK", "BACKFILL"].includes(flag))) health.dataQuality = "partial";
   return {
     deviceId,
     range,
     health,
     metrics,
-    events: mergeEvents([...(anomalies ?? []).filter((anomaly) => Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to)).map((anomaly): TelemetryEvent => ({ id: anomaly.id, timestamp: anomaly.detectedAt, metricKey: "activePowerW", type: "custom", severity: normalizeSeverity(anomaly.severity), title: anomaly.type.replace(/_/g, " "), description: anomaly.description })), ...metrics.flatMap((metric) => metric.statistics.alertsCount > 0 || metric.status !== "normal"
+    events: mergeEvents([...(anomalies ?? []).filter((anomaly) => Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to)).map((anomaly): TelemetryEvent => ({ id: anomaly.id, timestamp: anomaly.detectedAt, metricKey: "activePowerW", type: "custom", severity: normalizeSeverity(anomaly.severity), title: anomaly.type.replace(/_/g, " "), description: anomaly.description })), ...metrics.flatMap((metric) => metric.evidence?.aggregationMode ? [] : metric.statistics.alertsCount > 0 || metric.status !== "normal"
       ? detectTelemetryEvents(metric.definition, metric.series, metric.threshold)
       : detectTelemetryEvents(metric.definition, metric.series, metric.threshold).slice(0, 2))]),
   };
@@ -104,6 +112,7 @@ export function mapMetricDetail(
   return {
     deviceId: overview.deviceId,
     metric: metric.definition,
+    evidence: metric.evidence,
     status: metric.status,
     statistics: metric.statistics,
     threshold: metric.threshold,

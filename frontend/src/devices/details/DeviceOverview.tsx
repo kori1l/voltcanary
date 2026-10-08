@@ -3,7 +3,9 @@ import { Device } from "../devicesApi";
 import { LatestTelemetry } from "../../telemetry/telemetryApi";
 import { RiskResponse } from "../../analytics/analyticsApi";
 import { TimeDisplay } from "../../components/TimeDisplay";
+import { useEvidenceClock } from "../../components/useEvidenceClock";
 export function DeviceOverview({ device, latest, risk }: { device: Device; latest: LatestTelemetry | null; risk: RiskResponse | null }) {
+  useEvidenceClock();
   const fresh = latest && Date.now() - Date.parse(latest.timestamp) < 300_000 && Date.parse(latest.timestamp) <= Date.now() + 60_000;
   return <section className="panel form-stack"><h2>Current evidence</h2><dl className="metadata-list">
     <div><dt>Registration</dt><dd>{device.status}</dd></div><div><dt>Telemetry freshness</dt><dd>{latest ? fresh ? "Recent sample" : "Old sample" : "Unavailable"}</dd></div>

@@ -1502,36 +1502,6 @@ a {
   opacity: 0.75;
 }
 
-.metric-card:nth-child(2)::before {
-  background: #2563eb;
-}
-
-.metric-card:nth-child(3)::before {
-  background: #0891b2;
-}
-
-.metric-card:nth-child(4)::before {
-  background: #d97706;
-}
-
-.metric-card:nth-child(2) {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.9)),
-    #eff6ff;
-}
-
-.metric-card:nth-child(3) {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(236, 254, 255, 0.72)),
-    #ecfeff;
-}
-
-.metric-card:nth-child(4) {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 251, 235, 0.8)),
-    #fffbeb;
-}
-
 .metric-card span {
   color: var(--muted);
   font-size: 14px;
@@ -1542,18 +1512,6 @@ a {
   font-size: 22px;
   font-weight: 760;
   letter-spacing: -0.02em;
-}
-
-.metric-card:nth-child(2) strong {
-  color: #2563eb;
-}
-
-.metric-card:nth-child(3) strong {
-  color: #0891b2;
-}
-
-.metric-card:nth-child(4) strong {
-  color: #d97706;
 }
 
 .analytics-grid {
@@ -6041,9 +5999,9 @@ code {
 }
 
 .tab-button-active {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--text);
-  background: var(--accent-soft);
+  background: var(--primary-soft);
 }
 
 .simulation-panel {
@@ -6473,9 +6431,9 @@ code {
 }
 
 .tab-button-active {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--text);
-  background: var(--accent-soft);
+  background: var(--primary-soft);
 }
 
 .simulation-panel {

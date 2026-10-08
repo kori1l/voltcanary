@@ -60,11 +60,11 @@ export function TelemetryToolbar({
             <TimezoneNote />
             <label>
               <span>From</span>
-              <input type="datetime-local" step="1" value={customFrom} onChange={(event) => onCustomFromChange(event.target.value)} />
+              <input type="datetime-local" step="1" value={customFrom} onInput={(event) => onCustomFromChange(event.currentTarget.value)} onChange={(event) => onCustomFromChange(event.target.value)} />
             </label>
             <label>
               <span>To</span>
-              <input type="datetime-local" step="1" value={customTo} onChange={(event) => onCustomToChange(event.target.value)} />
+              <input type="datetime-local" step="1" value={customTo} onInput={(event) => onCustomToChange(event.currentTarget.value)} onChange={(event) => onCustomToChange(event.target.value)} />
             </label>
           </div>
         ) : null}

@@ -2,9 +2,10 @@ import { useAssistantPlan } from "./useAssistantPlan";
 import { buildAssistantContext } from "./assistantContext";
 import { AssistantContextSummary } from "./AssistantContextSummary";
 import { PlanReview } from "./PlanReview";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Dialog } from "../components/Dialog";
+import { useCurrentTaskEvidence } from "./taskEvidence";
 
 
 const DEFAULT_PROMPTS = [
@@ -15,9 +16,13 @@ const DEFAULT_PROMPTS = [
 
 export function AssistantDrawer() {
   const location = useLocation();
+  const evidence = useCurrentTaskEvidence();
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState(DEFAULT_PROMPTS[0]);
-  const context = useMemo(() => buildAssistantContext(location.pathname, location.search), [location.pathname, location.search]);
+  const context = useMemo(() => buildAssistantContext(location.pathname, location.search, evidence), [location.pathname, location.search, evidence]);
+  const prompts = context.page === "ML workspace" ? ["Explain readiness of the selected dataset, snapshot and training lineage.", "Review selected model approval and deployment configuration.", "Explain the next step for this ML family and horizon."] : context.page === "Maintenance" ? ["Review the selected maintenance operation and interval.", "Explain exclusion and outcome evidence for this maintenance scope.", "Suggest the next maintenance check from recorded evidence."] : context.page === "Alerts" ? ["Explain the selected incident and recorded delivery evidence.", "Suggest the next check for the filtered incidents.", "Review the selected rule and telemetry interval."] : context.page === "Devices" ? ["Explain telemetry and risk freshness within the current inventory filters.", "Help review activation of a selected device.", "Suggest the next fleet evidence check."] : DEFAULT_PROMPTS;
+  const previousDefault = useRef(DEFAULT_PROMPTS[0]);
+  useEffect(() => { setMessage((current) => current === previousDefault.current ? prompts[0] : current); previousDefault.current = prompts[0]; }, [context.page]);
 
   const { plan, error, isPlanning, submit } = useAssistantPlan(message, JSON.stringify(context));
 
@@ -38,7 +43,7 @@ export function AssistantDrawer() {
             </form>
 
             <div className="assistant-prompt-list">
-              {DEFAULT_PROMPTS.map((prompt) => (
+              {prompts.map((prompt) => (
                 <button type="button" key={prompt} onClick={() => setMessage(prompt)}>
                   {prompt}
                 </button>

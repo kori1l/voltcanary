@@ -9,6 +9,12 @@ import { buildAssistantContext, inspectAssistantContext, redactAssistantDetails 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const plan: AgentPlan = { planId: "plan-id", summary: "Inspect kitchen fridge", explanation: "Reviewed device scope", confirmationRequired: true, safetyNotes: [], actions: [{ id: "step", tool: "disable_device", title: "Disable kitchen fridge", description: "Change registration status", requiresConfirmation: true, parameters: { deviceId: "canonical-device", apiKey: "hidden-value" } }] };
 describe("assistant review boundary", () => {
+  it("projects selected ML and maintenance task names without credentials", () => {
+    const context = buildAssistantContext("/settings/ml", "?tab=training&scope=device&deviceId=device-1&datasetVersionId=dataset-1&horizonDays=7&token=hidden", { names: { dataset: "July readings", device: "Kitchen fridge", password: "hidden" } as never });
+    expect(context).toMatchObject({ page: "ML workspace", deviceId: "device-1", searchParams: { tab: "training", horizonDays: "7" }, names: { dataset: "July readings", device: "Kitchen fridge" } });
+    expect(JSON.stringify(context)).not.toContain("hidden");
+    expect(buildAssistantContext("/maintenance", "?operationId=operation-1&from=2026-10-01&to=2026-10-08", { names: { operation: "Inspect compressor" } })).toMatchObject({ page: "Maintenance", names: { operation: "Inspect compressor" }, searchParams: { operationId: "operation-1" } });
+  });
   it("cancellation sends no execution request; confirmation executes only the reviewed plan once", async () => {
     const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ planId: plan.planId, status: "COMPLETED", actions: [{ actionId: "step", tool: "disable_device", status: "SUCCEEDED", result: { route: "/devices/canonical-device" }, error: null }] }), { status: 200 }));
     render(<MemoryRouter><PlanReview plan={plan} /></MemoryRouter>);

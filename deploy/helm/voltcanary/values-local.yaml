@@ -1,1 +1,7 @@
 replicaCount: 1
+dashboard:
+  enabled: true
+  image: maven:3.9-eclipse-temurin-21
+  sourceRuntime: true
+  backendHostPath: /run/desktop/mnt/host/d/canary/voltcanary/backend
+  initializeDatabase: true

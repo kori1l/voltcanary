@@ -19,7 +19,6 @@ import com.voltcanary.device.repository.LocationRepository;
 import com.voltcanary.device.repository.MaintenanceOperationRepository;
 import com.voltcanary.device.repository.MaintenanceWindowRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -30,7 +29,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,19 +82,14 @@ public class MaintenanceOperationService {
         String normalizedStatus = normalizeStatus(status);
         List<UUID> normalizedDeviceIds = normalizeDeviceIds(deviceIds);
         List<MaintenanceOperationResponse> responses = operationRepository.findAll(
-                        operationSpec(account.getId(), from, to, includeCancelled),
+                        MaintenanceOperationFilters.matching(account.getId(), from, to, normalizedStatus, includeCancelled, normalizedDeviceIds, locationId),
                         PageRequest.of(
                                 0,
                                 normalizedOffset(offset) + normalizedLimit(limit),
-                                Sort.by(Sort.Direction.ASC, "startAt")))
+                                Sort.by(Sort.Direction.ASC, "startAt", "id")))
                 .getContent()
                 .stream()
                 .map(this::toResponse)
-                .filter(response -> normalizedStatus == null || normalizedStatus.equals(response.status()))
-                .filter(response -> normalizedDeviceIds.isEmpty() || response.devices().stream()
-                        .anyMatch(device -> normalizedDeviceIds.contains(device.deviceId())))
-                .filter(response -> locationId == null || response.devices().stream()
-                        .anyMatch(device -> locationId.equals(device.locationId())))
                 .skip(normalizedOffset(offset))
                 .toList();
         return responses;
@@ -344,27 +337,6 @@ public class MaintenanceOperationService {
                 location == null ? null : location.getName(),
                 window.getId(),
                 status(window, Instant.now()));
-    }
-
-    private Specification<MaintenanceOperation> operationSpec(
-            UUID accountId,
-            Instant from,
-            Instant to,
-            boolean includeCancelled) {
-        return (root, query, criteriaBuilder) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(criteriaBuilder.equal(root.get("accountId"), accountId));
-            if (!includeCancelled) {
-                predicates.add(criteriaBuilder.isNull(root.get("cancelledAt")));
-            }
-            if (from != null) {
-                predicates.add(criteriaBuilder.greaterThan(root.get("endAt"), from));
-            }
-            if (to != null) {
-                predicates.add(criteriaBuilder.lessThan(root.get("startAt"), to));
-            }
-            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
-        };
     }
 
     private String status(MaintenanceOperation operation, Instant now) {

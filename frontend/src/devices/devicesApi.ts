@@ -163,12 +163,12 @@ function query<T extends object>(params: T) {
   return value ? `?${value}` : "";
 }
 
-export function listDevices(params: DeviceListParams = {}) {
-  return apiRequest<Device[]>(`/devices${query(params)}`);
+export function listDevices(params: DeviceListParams = {}, signal?: AbortSignal) {
+  return apiRequest<Device[]>(`/devices${query(params)}`, { signal });
 }
 
-export function getDevice(deviceId: string) {
-  return apiRequest<Device>(`/devices/${deviceId}`);
+export function getDevice(deviceId: string, signal?: AbortSignal) {
+  return apiRequest<Device>(`/devices/${deviceId}`, { signal });
 }
 
 export function updateDevice(deviceId: string, request: CreateDeviceRequest) {
@@ -190,8 +190,8 @@ export function decommissionDevice(deviceId: string) {
   return apiRequest<Device>(`/devices/${deviceId}/decommission`, { method: "POST" });
 }
 
-export function listLocations(params: LocationListParams = {}) {
-  return apiRequest<Location[]>(`/locations${query(params)}`);
+export function listLocations(params: LocationListParams = {}, signal?: AbortSignal) {
+  return apiRequest<Location[]>(`/locations${query(params)}`, { signal });
 }
 
 export function createLocation(request: CreateLocationRequest | string) {

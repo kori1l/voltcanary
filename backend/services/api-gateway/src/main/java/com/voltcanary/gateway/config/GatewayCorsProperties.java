@@ -11,8 +11,8 @@ public class GatewayCorsProperties {
 
     private List<String> allowedOriginPatterns = new ArrayList<>(List.of("http://localhost:3000"));
     private List<String> allowedMethods = new ArrayList<>(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
-    private List<String> allowedHeaders = new ArrayList<>(List.of("Authorization", "Content-Type", "X-Correlation-Id"));
-    private List<String> exposedHeaders = new ArrayList<>(List.of("X-Correlation-Id"));
+    private List<String> allowedHeaders = new ArrayList<>(List.of("Authorization", "Content-Type", "X-Correlation-Id", "If-Match", "If-None-Match", "Idempotency-Key"));
+    private List<String> exposedHeaders = new ArrayList<>(List.of("X-Correlation-Id", "ETag", "Retry-After"));
     private boolean allowCredentials = true;
 
     public List<String> getAllowedOriginPatterns() {

@@ -31,6 +31,8 @@ data:
   MINIO_ACCESS_KEY: voltcanary
   IDENTITY_SERVICE_URI: http://identity-service:8081
   DEVICE_SERVICE_URI: http://device-service:8082
+  DASHBOARD_SERVICE_URI: http://dashboard-service:8089
+  DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/voltcanary_dashboard
   IDENTITY_KAFKA_PUBLISH_ENABLED: "true"
   IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED: "false"
   IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED: "true"

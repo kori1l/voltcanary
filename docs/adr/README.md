@@ -16,6 +16,7 @@ new ADR for a new durable decision.
 | [ADR-006](ADR-006-use-kubernetes.md) | Use Kubernetes |
 | [ADR-009](ADR-009-unified-telemetry-ingestion-service.md) | Use a unified telemetry ingestion service |
 | [ADR-010](ADR-010-maintenance-window-platform.md) | Use device-owned maintenance windows with projections |
+| [ADR-011](ADR-011-private-dashboard-domain.md) | Persist private dashboard definitions in a dedicated service |
 
 ## Related Docs
 

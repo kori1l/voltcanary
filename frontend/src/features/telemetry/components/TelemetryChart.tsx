@@ -1,4 +1,6 @@
-import { type PointerEvent, useState } from "react";
+import { type PointerEvent, useId, useState } from "react";
+import type { TelemetryChart as ChartEvidence } from "../../../telemetry/telemetryApi";
+import { sampleDisplayEvidence } from "../model/displaySampling";
 import { MetricThreshold, TelemetryEvent, TelemetryOverviewResponse, TelemetrySample } from "../model/telemetry.types";
 import { formatCompactNumber, formatMetricValue, formatShortTime } from "../model/telemetry.utils";
 import { splitSampleSegments } from "../model/chartSegments";
@@ -17,6 +19,7 @@ export function TelemetryChart({
   enableRangeSelection = false,
   onRangeSelect,
   mode = "compact",
+  evidence,
 }: {
   series: TelemetrySample[];
   label: string;
@@ -29,11 +32,15 @@ export function TelemetryChart({
   enableRangeSelection?: boolean;
   onRangeSelect?: (from: string, to: string) => void;
   mode?: "compact" | "detailed";
+  evidence?: ChartEvidence;
 }) {
   const [hovered, setHovered] = useState<{ sample: RenderSample; x: number; y: number; event?: TelemetryEvent } | null>(null);
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
-  const renderSeries = buildRenderSeries(series, maxDisplayPoints, range);
-  const values = renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value));
+  const summaryId = useId();
+  const bounded = series.filter((sample) => Date.parse(sample.timestamp) >= Date.parse(range.from) && Date.parse(sample.timestamp) <= Date.parse(range.to));
+  const display = sampleDisplayEvidence(bounded, maxDisplayPoints, threshold, evidence?.buckets, evidence?.rawPointCount);
+  const renderSeries = display.points;
+  const values = [...renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value)), ...display.buckets.flatMap((bucket) => [bucket.min, bucket.max])];
   const width = 820;
   const height = 330;
   const padding = { top: 28, right: 28, bottom: 54, left: 58 };
@@ -125,11 +132,13 @@ export function TelemetryChart({
 
   return (
     <div className={`chart-wrap annotated-chart chart-${mode === "detailed" ? "large" : "normal"}`}>
+      <p id={summaryId} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} threshold crossings preserved.`}</p>
       <svg
         className={canSelectRange ? "chart-range-selectable" : undefined}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={`${label} chart`}
+        aria-describedby={summaryId}
         onPointerDown={startRangeSelection}
         onPointerMove={updateRangeSelection}
         onPointerUp={finishRangeSelection}
@@ -170,9 +179,14 @@ export function TelemetryChart({
           </g>
         ))}
 
+        {display.buckets.map((bucket, index) => {
+          const x = xForTime(new Date((Date.parse(bucket.from) + Date.parse(bucket.to)) / 2).toISOString());
+          const description = `${label}: ${bucket.from} to ${bucket.to}, min ${formatMetricValue(bucket.min, unit)}, max ${formatMetricValue(bucket.max, unit)}, ${bucket.count} source points, ${bucket.gapCount} gaps. Envelope, sequence unknown.`;
+          return <g key={index} tabIndex={0} role="img" aria-label={description}><title>{description}</title><line className="telemetry-envelope-line" x1={x} x2={x} y1={yForValue(bucket.min)} y2={yForValue(bucket.max)} /><circle cx={x} cy={yForValue(bucket.min)} r={3}/><circle cx={x} cy={yForValue(bucket.max)} r={3}/></g>;
+        })}
         {splitSampleSegments(renderSeries).map((segment, index) => <polyline key={index} points={segment.map((sample) => `${xForTime(sample.timestamp)},${yForValue(sample.value!)}`).join(" ")} />)}
 
-        {coordinates.length === 0 ? (
+        {coordinates.length === 0 && display.buckets.length === 0 ? (
           <text className="chart-axis-label" x={(padding.left + width - padding.right) / 2} y={(padding.top + height - padding.bottom) / 2} textAnchor="middle">
             No samples in selected range
           </text>
@@ -247,25 +261,6 @@ export function TelemetryChart({
       ) : null}
     </div>
   );
-}
-
-function buildRenderSeries(series: TelemetrySample[], maxPoints: number, range: TelemetryOverviewResponse["range"]): RenderSample[] {
-  const bounded = [...series].filter((sample) => Date.parse(sample.timestamp) >= Date.parse(range.from) && Date.parse(sample.timestamp) <= Date.parse(range.to)).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  const segments = splitSampleSegments(bounded);
-  return segments.flatMap((segment, index) => [...(index ? [{ ...segment[0], value: null }] : []), ...sampleSeries(segment, maxPoints)]);
-}
-function sampleSeries(series: TelemetrySample[], maxPoints: number): RenderSample[] {
-  if (series.length <= maxPoints) {
-    return series;
-  }
-  const lastIndex = series.length - 1;
-  const values = series.map((sample) => sample.value ?? Number.NEGATIVE_INFINITY);
-  const maxIndex = values.reduce((currentIndex, value, index) => (value > values[currentIndex] ? index : currentIndex), 0);
-  const indexes = new Set<number>([0, lastIndex, maxIndex]);
-  for (let index = 1; index < maxPoints - 1; index += 1) {
-    indexes.add(Math.round((index / (maxPoints - 1)) * lastIndex));
-  }
-  return [...indexes].sort((first, second) => first - second).map((sourceIndex) => series[sourceIndex]);
 }
 
 function xForTimestamp(range: TelemetryOverviewResponse["range"], timestamp: string, left: number, right: number) {

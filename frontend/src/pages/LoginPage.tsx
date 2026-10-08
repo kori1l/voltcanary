@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { safeReturnTo } from "../app/consoleRouteContext";
 import { setTokens } from "../api/client";
 import { login } from "../auth/authApi";
 import { AuthShell } from "../auth/AuthShell";
@@ -7,6 +8,7 @@ import { PasswordField } from "../auth/PasswordField";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export function LoginPage() {
     try {
       const tokens = await login({ email, password });
       setTokens(tokens.accessToken, tokens.refreshToken);
-      navigate("/devices", { replace: true });
+      navigate(safeReturnTo(params.get("returnTo")), { replace: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Login failed");
     } finally {
@@ -30,6 +32,7 @@ export function LoginPage() {
 
   return (
     <AuthShell title="Sign in" description="Access your devices and operational console.">
+        {params.get("reason") === "expired" ? <p role="status">Your session expired. Sign in to return to your task.</p> : null}
         <form className="form-stack" onSubmit={onSubmit}>
           <label>
             Email

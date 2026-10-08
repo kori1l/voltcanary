@@ -29,8 +29,13 @@ spring:
                   - Authorization
                   - Content-Type
                   - X-Correlation-Id
+                  - If-Match
+                  - If-None-Match
+                  - Idempotency-Key
                 exposed-headers:
                   - X-Correlation-Id
+                  - ETag
+                  - Retry-After
                 allow-credentials: true
           routes:
             - id: identity-service
@@ -82,6 +87,10 @@ spring:
               predicates:
                 - Path=/simulation/**
 
+            - id: dashboard-service
+              uri: ${DASHBOARD_SERVICE_URI:http://localhost:8089}
+              predicates:
+                - Path=/dashboards/**,/dashboard-preferences/**,/dashboard-widget-types
             - id: ai-agent-service
               uri: ${AI_AGENT_SERVICE_URI:http://localhost:8088}
               predicates:
@@ -119,8 +128,13 @@ app:
         - Authorization
         - Content-Type
         - X-Correlation-Id
+        - If-Match
+        - If-None-Match
+        - Idempotency-Key
       exposed-headers:
         - X-Correlation-Id
+        - ETag
+        - Retry-After
       allow-credentials: true
     downstream-health:
       enabled: ${GATEWAY_DOWNSTREAM_HEALTH_ENABLED:false}
@@ -134,6 +148,7 @@ app:
         alert-service: ${ALERT_SERVICE_URI:http://localhost:8086}
         simulator-service: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
         ai-agent-service: ${AI_AGENT_SERVICE_URI:http://localhost:8088}
+        dashboard-service: ${DASHBOARD_SERVICE_URI:http://localhost:8089}
 
 server:
   port: 8080

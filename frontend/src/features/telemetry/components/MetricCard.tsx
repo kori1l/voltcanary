@@ -29,7 +29,7 @@ export function MetricCard({
       </div>
       <div className="telemetry-card-stats">
         <span>
-          Latest <strong>{formatMetricValue(metric.statistics.latest, metric.definition.unit)}</strong>
+          Latest in range <strong>{formatMetricValue(metric.statistics.latest, metric.definition.unit)}</strong>
         </span>
         <span>
           Avg <strong>{formatMetricValue(metric.statistics.avg, metric.definition.unit)}</strong>
@@ -41,10 +41,11 @@ export function MetricCard({
           Max <strong>{formatMetricValue(metric.statistics.max, metric.definition.unit)}</strong>
         </span>
         <span>
-          Alerts <strong>{metric.statistics.alertsCount}</strong>
+          Evidence events <strong>{metric.statistics.alertsCount}</strong>
         </span>
       </div>
       <TelemetryChart
+        evidence={metric.evidence}
         series={metric.series}
         label={metric.definition.name}
         unit={metric.definition.unit}

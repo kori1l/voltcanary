@@ -67,6 +67,31 @@ class AlertPostgresKafkaIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired private com.voltcanary.alert.repository.DashboardIncidentRepository dashboardReads;
+
+    @Test
+    void dashboardFullIncidentCountsAreIndependentOfRowsAndNeverDeliverNotifications() {
+        UUID user = UUID.randomUUID(), account = UUID.randomUUID(), device = UUID.randomUUID();
+        Instant asOf = Instant.parse("2026-10-08T12:00:00Z");
+        java.util.ArrayList<Object[]> rows = new java.util.ArrayList<>();
+        for (int index = 0; index < 250; index++) rows.add(new Object[]{UUID.randomUUID(), device, account,
+                "dashboard-" + UUID.randomUUID(), "Fixture", "Fixture", "CRITICAL", "OPEN", java.sql.Timestamp.from(asOf.minusSeconds(index + 1))});
+        jdbc.batchUpdate("insert into alerts(id,device_id,account_id,deduplication_key,title,description,severity,status,created_at) values(?,?,?,?,?,?,?,?,?)", rows);
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(asOf.minusSeconds(86400), asOf, asOf, null, null);
+        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(user, account, List.of(device), frame,
+                java.util.Set.of(), List.of(), 20, 0, "ACTIVE", List.of());
+        var result = dashboardReads.read(request, List.of(device));
+        assertThat(result.path("activeNow").asInt()).isEqualTo(250);
+        assertThat(result.path("criticalOpenNow").asInt()).isEqualTo(250);
+        assertThat(result.path("createdInInterval").asInt()).isEqualTo(250);
+        assertThat(result.path("rows").size()).isEqualTo(20);
+        assertThat(result.path("total").asInt()).isEqualTo(250);
+        assertThat(result.path("hasNext").asBoolean()).isTrue();
+        assertThat(result.path("rows").get(0).path("actions").size()).isZero();
+        assertThat(restTemplate.postForEntity("/internal/dashboard/incidents", request, String.class).getStatusCode().is4xxClientError()).isTrue();
+    }
+
     @Test
     void consumesAnomalyEventAndPersistsAlertInPostgres() throws Exception {
         UUID deviceId = UUID.randomUUID();

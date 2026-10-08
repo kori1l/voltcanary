@@ -7,6 +7,8 @@ import com.voltcanary.telemetry.dto.TelemetryLatestResponse;
 import com.voltcanary.telemetry.dto.TelemetryMetricResponse;
 import com.voltcanary.telemetry.dto.TelemetryQualityResponse;
 import com.voltcanary.telemetry.dto.TelemetryReadingResponse;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
+import com.voltcanary.telemetry.repository.TelemetryEnvelopeRepository;
 import com.voltcanary.telemetry.domain.TelemetryMeasurement;
 import com.voltcanary.telemetry.repository.TelemetryQualityFlagRepository;
 import com.voltcanary.telemetry.repository.TelemetryReadingRepository;
@@ -27,16 +29,18 @@ public class TelemetryQueryService {
     private final TelemetryReadingRepository readingRepository;
     private final TelemetryQualityFlagRepository qualityFlagRepository;
     private final MetricCatalog metricCatalog;
+    private final TelemetryEnvelopeRepository envelopes;
 
     public TelemetryQueryService(
             TelemetryMeasurementRepository measurementRepository,
             TelemetryReadingRepository readingRepository,
             TelemetryQualityFlagRepository qualityFlagRepository,
-            MetricCatalog metricCatalog) {
+            MetricCatalog metricCatalog, TelemetryEnvelopeRepository envelopes) {
         this.measurementRepository = measurementRepository;
         this.readingRepository = readingRepository;
         this.qualityFlagRepository = qualityFlagRepository;
         this.metricCatalog = metricCatalog;
+        this.envelopes = envelopes;
     }
 
     public List<TelemetryReadingResponse> getReadings(UUID deviceId) {
@@ -49,6 +53,10 @@ public class TelemetryQueryService {
                         reading.getReceivedAt(),
                         reading.getMetricsJson()))
                 .toList();
+    }
+
+    public TelemetryEnvelopeResponse envelope(UUID deviceId, String metric, Instant from, Instant to, int buckets) {
+        return envelopes.read(deviceId, metric, from, to, buckets);
     }
 
     public Optional<TelemetryReadingResponse> getLatest(UUID deviceId) {
@@ -90,6 +98,7 @@ public class TelemetryQueryService {
             Instant from,
             Instant to,
             Instant cursor,
+            String cursorSourceId,
             int limit) {
         List<TelemetryMeasurement> page = measurementRepository.findSeriesPage(
                 deviceId,
@@ -97,17 +106,19 @@ public class TelemetryQueryService {
                 from,
                 to,
                 cursor,
+                cursorSourceId,
                 limit + 1);
         List<TelemetryMeasurement> visible = page.size() > limit ? page.subList(0, limit) : page;
         List<TelemetryChartPointResponse> points = visible.stream()
                 .map(measurement -> new TelemetryChartPointResponse(
                         measurement.recordedAt(),
-                        measurement.metricValue()))
+                        measurement.metricValue(), measurement.sourceId(), measurement.quality().name()))
                 .toList();
         String nextCursor = page.size() > limit
                 ? visible.getLast().recordedAt().toString()
                 : null;
-        return new TelemetryExportResponse(deviceId, metric, points, nextCursor);
+        return new TelemetryExportResponse(deviceId, metric, points, nextCursor,
+                page.size() > limit ? visible.getLast().sourceId() : null);
     }
 
     public List<TelemetryQualityResponse> getQuality(UUID deviceId) {
@@ -123,7 +134,12 @@ public class TelemetryQueryService {
     }
 
     public List<TelemetryMetricResponse> getMetrics(UUID deviceId) {
-        List<String> presentMetrics = measurementRepository.findMetricNamesByDeviceId(deviceId);
+        return getMetrics(deviceId, null, null);
+    }
+
+    public List<TelemetryMetricResponse> getMetrics(UUID deviceId, Instant from, Instant to) {
+        List<String> presentMetrics = from == null ? measurementRepository.findMetricNamesByDeviceId(deviceId)
+                : measurementRepository.findMetricNamesByDeviceIdAndRange(deviceId, from, to);
         return metricCatalog.all().stream()
                 .filter(entry -> presentMetrics.contains(entry.getKey()))
                 .map(entry -> new TelemetryMetricResponse(

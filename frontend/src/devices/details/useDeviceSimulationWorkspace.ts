@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { readDeviceSourcePreference, writeDeviceSourcePreference } from "../deviceSourcePreferences";
 import { createDataSourceToken, updateDataSource } from "../devicesApi";
 import {
   getSimulationConfig,
@@ -299,19 +300,4 @@ export function useDeviceSimulationWorkspace({
     resetYamlTemplate,
     syncSourceToken,
   };
-}
-
-function deviceSourcePreferenceKey(deviceId: string) {
-  return `voltcanary.deviceSource.${deviceId}`;
-}
-
-function readDeviceSourcePreference(deviceId: string | undefined) {
-  if (!deviceId) {
-    return null;
-  }
-  return window.localStorage.getItem(deviceSourcePreferenceKey(deviceId));
-}
-
-function writeDeviceSourcePreference(deviceId: string, value: string) {
-  window.localStorage.setItem(deviceSourcePreferenceKey(deviceId), value);
 }

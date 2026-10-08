@@ -28,6 +28,7 @@ export type MlLabelType =
 export type MlLabelSource = "MANUAL" | "ALERT_OUTCOME" | "MAINTENANCE_OUTCOME" | "IMPORTED";
 
 export interface MlDatasetSummary {
+  accountId?: string | null;
   datasetId: string;
   datasetVersionId: string;
   name: string;
@@ -281,6 +282,8 @@ export interface MlHorizonLabelGenerationResponse {
 }
 
 export interface MlTrainingRun {
+  hyperparametersJson?: string | null;
+  metricsJson?: string | null;
   id: string;
   accountId: string;
   datasetVersionId: string;
@@ -587,8 +590,17 @@ function trainingRunAction(runId: string, action: "archive" | "delete", reason: 
   });
 }
 
-export function listMlModels(statusFilter: MlLifecycleStatusFilter = "default") {
-  return apiRequest<MlModelVersion[]>(`/analytics/ml/models${statusFilterQuery(statusFilter)}`);
+type MlModelWire = MlModelVersion & { compatibleDeviceTypesJson?: string | null; supportedMetricsJson?: string | null; evaluationMetricsJson?: string | null };
+export function readModelMetadata(model: MlModelWire): MlModelVersion {
+  const parse = (value: string | null | undefined): unknown => { try { return value ? JSON.parse(value) : null; } catch { return null; } };
+  const strings = (value: unknown): string[] => Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
+  const metrics = model.evaluationMetrics ?? parse(model.evaluationMetricsJson);
+  return { ...model, trainingRunId: model.trainingRunId ?? null, compatibleDeviceTypes: model.compatibleDeviceTypes ?? strings(parse(model.compatibleDeviceTypesJson)), supportedMetrics: model.supportedMetrics ?? strings(parse(model.supportedMetricsJson)), evaluationMetrics: metrics && typeof metrics === "object" && !Array.isArray(metrics) ? metrics as Record<string, unknown> : {} };
+}
+export async function listMlModels(statusFilter: MlLifecycleStatusFilter = "default") {
+  const models = await apiRequest<MlModelWire[]>(`/analytics/ml/models${statusFilterQuery(statusFilter)}`);
+  if (!Array.isArray(models)) throw new Error("Model inventory unavailable: invalid list response");
+  return models.map(readModelMetadata);
 }
 
 export function approveMlModel(modelVersionId: string, reason: string) {
@@ -611,11 +623,11 @@ export function previewMlModelLifecycle(modelVersionId: string, action: "delete"
   return apiRequest<MlLifecycleImpact>(`/analytics/ml/models/${modelVersionId}/lifecycle-impact?action=${action}`);
 }
 
-function modelAction(modelVersionId: string, action: "approve" | "reject" | "archive" | "delete", reason: string) {
-  return apiRequest<MlModelVersion>(`/analytics/ml/models/${modelVersionId}/${action}`, {
+async function modelAction(modelVersionId: string, action: "approve" | "reject" | "archive" | "delete", reason: string) {
+  return readModelMetadata(await apiRequest<MlModelWire>(`/analytics/ml/models/${modelVersionId}/${action}`, {
     method: "POST",
     body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
-  });
+  }));
 }
 
 export function listDeploymentPolicies(statusFilter: MlLifecycleStatusFilter = "default") {

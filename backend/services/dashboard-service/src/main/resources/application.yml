@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: dashboard-service
+  datasource:
+    url: ${DASHBOARD_DB_URL:jdbc:postgresql://localhost:5432/voltcanary_dashboard}
+    username: ${POSTGRES_USER:voltcanary}
+    password: ${POSTGRES_PASSWORD:voltcanary}
+  flyway:
+    enabled: true
+server:
+  port: 8089
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+app:
+  dashboard:
+    identity-base-url: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+    device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    ownership-timeout: 3s
+    read:
+      device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+      telemetry-base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+      analytics-base-url: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+      alert-base-url: ${ALERT_SERVICE_URI:http://localhost:8086}
+      internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+      timeout: 4s
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}

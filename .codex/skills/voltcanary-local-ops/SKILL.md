@@ -35,6 +35,7 @@ Default local ports:
 - Frontend: `3000`
 - API Gateway: `8080`
 - Java services: `8081` through `8086`
+- Simulator: `8087`; AI Agent: `8088`; private dashboard domain: `8089`
 - ML service: `8090`
 - PostgreSQL: `5432`
 - TimescaleDB: `5433`

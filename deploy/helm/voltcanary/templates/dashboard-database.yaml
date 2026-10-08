@@ -1,0 +1,35 @@
+{{- if and .Values.dashboard.enabled .Values.dashboard.initializeDatabase }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dashboard-database-init-v1
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-dashboard-database
+          image: postgres:16-alpine
+          envFrom:
+            - configMapRef:
+                name: {{ .Values.dashboard.configMap }}
+            - secretRef:
+                name: {{ .Values.dashboard.secret }}
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dashboard.secret }}
+                  key: POSTGRES_PASSWORD
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
+              SELECT 'CREATE DATABASE voltcanary_dashboard'
+              WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='voltcanary_dashboard')
+              \gexec
+              SQL
+{{- end }}
