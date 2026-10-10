@@ -456,3 +456,311 @@ Device details is 122.19 kB, ML workspace 151.50 kB, authenticated shell 8.75 kB
 shared dependencies also load on demand. CSS is 103.69 kB (18.45 gzip).
 Login initial API requests remain zero in both before/after actual-App fixtures.
 This demonstrates delivery separation and size, not measured latency improvement.
+
+## Personal dashboard editor (2026-10-09)
+
+USER navigation has one Dashboards entry with available dashboards as child
+links and an authorized personal default on /dashboard. Metadata listing supports favorites, archive, search and sort;
+blank/copy creates an independent private author draft. The editor configures
+registered typed widgets through Data, Calculation/time, Presentation and
+internal Drill-down fields. Units come from actual registered telemetry metrics.
+Unsupported types remain opaque and cannot be configured as working KPIs.
+
+View contains no edit controls. Edit uses twelve/six/one columns, collision
+packing, manifest minimum sizes, sections, twenty Undo/Redo steps and pointer or
+keyboard move/resize controls. Mobile order is independent. Changes autosave
+at two seconds; failed saves retain only safe actor/account/dashboard/base-scoped
+metadata recovery. Navigation offers Keep/Discard. Publication requires an
+explicit reviewed summary and creates immutable history. A 409 compares the
+latest server draft with local fields before load, independent copy or reviewed
+reapplication. Archive clears favorites/default; restore retains identity.
+
+Runtime device/location/time changes require Apply and remain in the safe URL
+or explicitly saved personal defaults. They do not publish dashboard defaults.
+Viewer polling reads intersecting panels only, pauses when hidden and backs off
+on failures. Off/30 seconds/1 minute/5 minutes and manual refresh are available.
+Snapshot/source/measurement clocks and stale failures remain visible. Kiosk is
+an authenticated view with editing, publication and preference mutations absent.
+
+Verification: 62 frontend files/183 tests passed, then eight focused dashboard
+tests passed after adding the twenty-step history assertion. Typecheck/build and
+29 dashboard-service Maven tests passed. The USER workflow fixture covers three
+registered devices, create/real-query-shaped preview/publish/default/new mount,
+archive fallback and absence of ADMIN navigation. Real local browser integration
+used an existing ADMIN owner (private rights have no ADMIN bypass), three actual
+demo device bindings and a fleet widget; fixed latest values retained their old
+measurement timestamps. Two real tabs produced 409 and reviewed reapplication.
+Keyboard reorder retained focus; a single-pointer menu needs no dragging.
+Authored 200% text fitted native viewport widths 360/390/768/1024/1280/1440
+without document overflow. This is not native browser zoom or a touchscreen
+hardware test. Editor commit measured 11.50ms from definition receipt in the
+local development browser, excluding definition/evidence API latency; this is
+not a production latency or capacity claim. Generated logs live in ignored
+artifacts/dashboard-editor-*; recovery never stores query values or credentials.
+Additional final verification: focused dashboard/query/app tests 27 passed;
+viewer keeps previously read offscreen panels in the same context to prevent
+layout-driven request loops, and a regression test verifies context isolation.
+Actual browser archive/restore preserved ID, final archive cleared the default,
+and authenticated kiosk hides global navigation and the assistant. A stale
+lifecycle ETag returns 409; reload/reconfirm is available without auto-retry.
+Final full regression after kiosk/visibility fixes: 62 files, 185 tests passed
+(2026-10-09). Focused typecheck/build passed; archive/default fallback also
+verified against real local services after the request-loop correction.
+
+## Business task template acceptance (2026-10-09)
+
+Versioned task catalog and binding wizard are implemented for Shift, My devices,
+Refrigeration and Technician. Optional café/store/laundry/property/workshop/IT/
+service/home guidance does not change authorization. The Energy card explains
+its unavailable aggregate capability. Templates contain symbolic slots; current
+canonical bindings are resolved before private draft creation. Missing metrics
+have explicit remove/keep-unbound choices. Registered units remain separate;
+DEMO equipment and panel titles are labeled. Imported foreign UUIDs are not
+accepted as ready bindings; current resource authorization and rebinding apply.
+Supported v1 snapshots are independent, with source-version context notes.
+Unsupported future versions are disabled with a blank/supported-version fallback.
+
+Focused tests cover missing temperature with measured power retained, absent
+energy capability, foreign/removed device rebinding, independent version copies,
+canonical units and exact retry snapshot/key. Backend verifies active ownership
+on catalog reads, rolling six-hour windows, unbound no_data without evidence
+fanout and high/unknown risk presentation with null unknown scores. Browser
+checks use existing local demo records and private owner permissions.
+
+Usability observations here are agent-performed manager/owner/technician task
+walkthroughs with elapsed timestamps, not a human participant study. The targets
+(creation<=180s/configuration<=90s) describe these exercised local workflows;
+no claim about real pilot participants, comprehension rates, production latency
+or capacity follows. Unknown/no_data/stale/demo/scope are inspected separately
+and never interpreted as zero/healthy, role upgrades or live fresh measurements.
+
+Measured role walkthroughs (agent, local demo data):
+
+| Task persona | Creation to editor | Configuration action | Observation |
+| --- | ---: | ---: | --- |
+| Manager / Refrigeration | 61.401s | 0.594s | Recorded temperature and W in separate panels, old timestamps visible, explicit publish |
+| Owner / My devices | 88.689s | 0.335s | Three named devices; retry after local service restart preserved reviewed snapshot; no_data series not replaced by zero |
+| Technician | 8.322s | 4.767s | Recorded risk filter, no assignment API controls, next-seven-day maintenance, explicit context note |
+
+Creation clocks include intervening inspection/tool time; configuration clocks
+cover the exercised local change/save action, not human reading or learning.
+Each result is below180s/90s in this limited agent walkthrough. There were no
+agent reinterpretations of unknown as healthy or of zero as missing. Human
+misinterpretation rate is unknown. An additional Shift browser snapshot verified
+an exact six-hour power interval (18:21:29Z to00:21:29Z) and no_data for old
+out-of-window demo measurements. All four created test dashboards were published
+as independent v1 and archived through the normal reversible lifecycle; no
+personal default was assigned. Gateway/identity/dashboard Maven suite passed;
+final dashboard suite33 passed. Full frontend64 files/189 tests, final focused
+10 files/31 tests, typecheck/build, strict OpenSpec35 and structure passed.
+Ignored evidence: artifacts/dashboard-templates-*. AGENTS/skills remain valid.
+
+### Working screen interaction
+
+The private dashboard editor now places the active screen canvas below compact
+save/undo/publish/layout controls. Dashboard metadata/runtime and secondary
+arrangement controls use disclosures. Add screen offers Blank, Monitoring,
+Analytics and Incidents starts with distinct panels. Measurement panels start
+explicitly UNBOUND until equipment and a registered metric are selected.
+A keyboard-accessible native selector switches named working screens. Screen names
+describe work rather than permission roles. Screen settings rename/reorder;
+removing a screen explicitly transfers its widgets to the first remaining screen.
+Widget transfer selects the destination and focuses the widget. Undo restores
+the entire definition including screen ownership and layouts.
+
+Add uses the header palette and explicit grid drops; relative placement of an
+existing panel is available in panel settings → Layout.
+Side directions explain minimum-width restrictions; mobile uses above/below.
+Selected positions are pinned before downward collision resolution; unaffected
+screens, sections and breakpoint layouts retain their positions. Normal empty
+legacy layouts are accepted and new placements persist after editing.
+
+Recorded KPI values emphasize numbers/units, including actual zero. History
+uses observed envelope buckets with no invented lines across gaps. Incident,
+risk and maintenance rows use recorded owner fields. Technical evidence is in
+closed details; no_data/unknown/denied retain their existing distinct meanings.
+Review publication checks all screens, including inactive denied configuration,
+before showing explicit confirmation. This flow adds no team sharing or role
+assignment.
+
+Working-screen verification (2026-10-09, local Compose): an isolated USER account
+with three explicitly DEMO devices and72 synthetic stored W samples created
+Monitoring/Analytics/Incidents through the real UI (4/2/3 widgets). Fixed bindings
+showed111W on Monitoring and a24-sample mean133.5W plus the observed history on
+Analytics. Incidents displayed three UNKNOWN records with unavailable score/time;
+empty incident/maintenance facts stayed no_data. All three screens were checked,
+published as immutable v1 and reopened; Analytics selection survived reload and
+authenticated kiosk. No personal default or team permission was assigned.
+
+Pointer/keyboard checks exercised above/below/left/right, pinned collision
+displacement, undo restoration, tab ArrowRight/manual Enter activation, widget
+transfer with destination focus, and separate mobile order with unchanged desktop
+positions. Editor and viewer checks covered360/390/768/1024/1280/1440 widths with
+no document horizontal overflow. Rapid switching no longer reports transport
+cancellation as connectivity failure; screen snapshots are isolated. An actual
+409 during dev reload preserved local screen/layout changes; reviewed Load latest
+restored the server draft while the published v1 stayed unchanged.
+
+Backend dashboard suite35 passed, including real PostgreSQL screen lifecycle.
+Full frontend68 files/200 tests passed; final focused dashboard22 tests and the
+two workflow tests passed after the focus/link adjustment. Typecheck/build,
+strict OpenSpec36 and structure passed. The first unlimited frontend run hit two
+five-second timeouts during simultaneous service builds; both passed separately,
+then the full suite passed with maxWorkers2. Evidence is ignored under
+artifacts/dashboard-screens-*. This is an agent workflow check, not a human
+usability study, native zoom/speech verification, production or capacity claim.
+MinIO's unavailable default image was not changed; the exercised services ran
+with existing infrastructure and --no-deps, without MinIO/ML verification.
+AGENTS/skills still describe the repository workflow correctly.
+## Dashboard card movement
+
+The private editor keeps the dashboard title, save state, primary actions and
+working-screen selection in the header. The full dashboard list is accessible
+from settings; dashboard child links are in the left navigation. Destination
+explanations and responsive settings are in the right drawer.
+A dashboard contains named
+working screens; cards contain the numbers, charts, tables and notes on them.
+Saving a draft preserves its placement. Publishing updates the viewing version;
+selecting it as the personal start page remains a separate explicit action.
+
+Edit shows a 12/6/1-column placement grid. Each card has a visible title/drag
+header and SVG Edit/Add controls. Drag the header to free grid space;
+resize with the right edge, bottom edge or corner. The snapped layout commits
+once on release, preserving manifest minimum sizes and collision prevention.
+Escape or release outside the canvas cancels movement. Chart interaction and
+touch scrolling remain available outside the drag header. Keyboard movement and
+size presets remain in panel settings → Layout, with disabled boundary commands.
+Undo/Redo and two-second autosave use the existing draft history. Settings have
+Data, Calculation, Appearance and Navigation sections in the right drawer.
+
+Movement/resizing changes only the selected screen and responsive layout;
+other screens, breakpoints and the immutable published revision are preserved.
+Viewers and kiosks keep a static grid without edit titles or resize handles.
+The editor uses react-grid-layout and lucide-react; existing telemetry chart
+rendering and backend-qualified evidence calculations remain unchanged.
+
+Chart descriptions remain accessible, and gaps retain their original rendering.
+Text in a user-created context-note panel is intentional content and is retained.
+
+View information controls appear on hover or keyboard focus; touch exposes them
+directly. Edit headers and primary controls are always visible. Working screens remain independent and only the active screen is read.
+Final minimal presentation supersedes the earlier 177/232px layout measurements:
+the desktop editor canvas begins at approximately 80px with collapsed navigation.
+
+### Grid editor verification — 2026-10-09
+
+Integration tests exercise the installed grid with mouse down/move/up events
+for movement and corner resizing, cancellation and read-only/locked states.
+Browser inspection confirms grid guides, eight visible corner handles, settings
+sections and no page overflow in the populated demo. Browser control is DOM-only,
+so a physical mouse drag in the live browser is not independently verified.
+
+### Visual widget palette — 2026-10-09
+
+Add widget opens a nonmodal right palette alongside the active grid. Search
+filters visual cards for charts, current values, statistics, incidents, energy
+and other server-manifest types. Drag a supported card onto the grid to preview
+its size and snapped position; dropping inserts the panel and opens its right
+configuration drawer. Add buttons provide the keyboard/mobile equivalent and
+use a free position. The header is the single palette entry; there are no
+repeated tile Add buttons. Unsupported types show their dependency and cannot
+be dragged or added. The 24-widget limit covers all screens.
+
+Unconfigured measurement panels start unbound until equipment and a metric are
+selected. Visual palette previews contain no fabricated measurement values.
+Drop changes only the active screen/section and responsive layout; collision
+positions, Undo and draft autosave are preserved. Closing the configuration
+leaves an explicitly unconfigured card; Undo can remove the insertion.
+
+The installed grid external-drop pipeline is covered by integration tests,
+including rejected payloads, placeholder mapping and other layout preservation.
+Live browser native drag was available in this verification: dragging Current
+value from the palette into free grid space opened its configuration. The test
+insertions were undone without resetting the user's prior layouts/screens.
+
+### Panel actions in settings — 2026-10-09
+
+The card ellipsis and its floating form were removed. Edit opens the right
+settings drawer; Layout contains size presets, keyboard movement, relative
+placement, screen/section selection, duplicate and delete. Layout actions update
+the draft immediately with existing undo/autosave and locks; data configuration
+still uses Apply changes. Removing a panel closes its drawer. Unsupported catalog
+types retain layout/management access without enabling data configuration.
+
+### Panel information and navigation polish — 2026-10-09
+
+Add widget in the header is the only palette entry; the repeated tile plus was
+removed. Panel information uses label/value rows, full-width nested groups,
+wrapped identifiers, readable UTC timestamps and expandable record lists showing
+20 entries at a time with an explicit Show more button. Opening information still
+uses the current authorized snapshot without another evidence request.
+
+Desktop navigation has one workspace-header toggle with distinct PanelLeft SVG
+states. Sidebar links use consistent SVG icons. On mobile the header opens a
+native left navigation drawer; X, Escape or backdrop dismiss it and restore focus.
+Navigation closes after route selection. There is no duplicate sidebar hamburger
+or separate Menu/Close menu control. Kiosk remains without navigation controls.
+
+### Drag restoration and configurable grid — 2026-10-10
+
+During drag/resize, collision previews recompute from the gesture's original
+layout. Neighbours return when the active panel no longer overlaps them; the
+cursor path does not accumulate displacement. Returning to the starting position
+creates no layout edit. Final overlap retains deterministic collision prevention.
+Escape and outside release still cancel; completed gestures remain one Undo step.
+
+Grid in the header opens the right drawer. Choose Computer/Tablet/Phone and enter
+Columns (1–48), Row height (16–160px) and Spacing (0–32px), then Apply grid size.
+Settings save for the current screen/profile and survive reload/publication/copy.
+Existing defaults remain 12/6/1, 48px and 12px. Other screens/profiles are preserved.
+Panel settings → Layout also has exact Width (columns) and Height (rows) fields.
+Show grid guides is an editor-only toggle. Compact this layout explicitly removes
+empty rows in the current profile and can be undone.
+
+Panel minima are one column and one row, using edge/corner resize or exact
+Width/Height fields in Layout settings. Separate insertion defaults preserve
+normal 6x5 charts and 3x3 summary sizes. View uses the same fixed grid row height
+as Edit; excess content scrolls locally. Dashboard plots measure their available
+SVG area and recompute geometry without stretching labels or letterboxing tall
+cards. Other telemetry pages retain default sizing. Very short cards reveal the
+edit toolbar on hover or keyboard focus to leave space for their content.
+
+### Unified dashboard navigation — 2026-10-10
+The sidebar exposes one Dashboards entry for users and administrators. It opens
+the /dashboards list and is active across catalog, viewing and editing routes.
+All dashboards in viewer Manage settings or editor Dashboard settings opens the existing
+catalog (/dashboards), also opened by selecting the Dashboards parent entry.
+Copying and preferences reside in the concrete dashboard settings. The
+separate My dashboards sidebar and workspace-header entries are removed. Screens
+remain the existing selector within each dashboard. Stored routes and data are
+unchanged.
+
+The dashboard catalog is a compact list. New dashboard opens a creation drawer
+with Blank/Templates choices. Copy, favorites and personal default are commands
+in concrete dashboard settings. Viewer Dashboard settings also contains runtime
+filters, period, refresh interval, manual refresh and kiosk entry; no runtime
+control bar appears over the canvas. The refresh timer belongs to the viewer,
+so closing the settings drawer does not stop automatic refresh. Existing auth,
+visibility pause and exponential backoff behavior are preserved.
+
+Available active dashboards appear as child links under Dashboards in the left
+navigation. Published dashboards open View; unpublished dashboards open Edit.
+The current child is highlighted on both routes. Names are loaded through the
+existing actor-scoped paginated metadata endpoint; archived items remain in the
+catalog archive filter. Sidebar hide/restore and mobile drawer behavior persist.
+Viewer settings have Data and time, Refresh and Manage sections with vertical
+fields and distinct management groups.
+
+### Dashboard management from navigation (2026-10-10)
+The Dashboards parent link opens /dashboards directly; child links open concrete
+dashboards. The sidebar contains navigation links only. Creation and group
+visibility controls are in the catalog.
+There is no search field in the sidebar; search and sorting remain in the catalog.
+Each catalog row has an Actions button that opens management for that
+concrete dashboard: default, favorites, independent copy, edit, menu visibility
+and permission-checked archive/restore. Archive requires confirmation and the
+fresh draft etag; hiding changes only personal navigation. Hidden and Archived
+filters allow recovery. Expanded state and hidden ids persist locally per user
+in this browser, with an in-memory fallback if storage is unavailable. Published
+items open View and unpublished active items open Edit. Legacy catalog links and
+viewer runtime settings remain supported. Backend contracts are unchanged.

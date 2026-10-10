@@ -6471,3 +6471,43 @@ code {
 .ml-settings-form small { color: var(--text-muted, #64748b); font-weight: 400; }
 .ml-scope { margin-bottom: 1rem; }
 .mono-value { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+.app-shell-navigation-hidden{grid-template-columns:minmax(0,1fr)}
+.sidebar[hidden]{display:none}
+.sidebar-heading .dashboard-navigation-toggle{margin-left:auto;padding:4px 8px}
+.navigation-restore{margin-bottom:8px}
+.console-dialog.console-dialog-side{position:fixed;inset:0 0 0 auto;margin:0;width:min(480px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;border-radius:0;border-width:0 0 0 1px;box-shadow:-12px 0 40px #0002;animation:console-drawer-in .15s ease-out}
+.console-dialog-side .console-dialog-body{overflow:auto;min-height:0}
+@keyframes console-drawer-in{from{transform:translateX(40px);opacity:.6}to{transform:translateX(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.console-dialog.console-dialog-side{animation:none}}
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.app-shell.app-shell-navigation-hidden{grid-template-columns:minmax(0,1fr)}
+
+/* One header toggle, with a native left navigation drawer on mobile. */
+.sidebar[hidden]{display:none!important}
+.dashboard-navigation-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:6px;border:1px solid var(--border);border-radius:7px}
+.navigation-restore{margin-bottom:10px}
+.console-dialog-close{display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:5px}
+.console-dialog.console-dialog-side-left{left:0;right:auto;width:min(290px,calc(100vw - 40px));border-left:0;border-right:1px solid var(--border)}
+.console-dialog-side-left .console-dialog-body{display:flex;flex-direction:column;gap:20px}
+.console-dialog-side-left .nav{display:flex;flex-direction:column;gap:8px}
+.console-dialog-side-left .sidebar-logout{margin-top:auto;width:100%}
+@media(max-width:767px){.app-shell{grid-template-columns:minmax(0,1fr)}.dashboard-navigation-toggle{width:36px;height:36px}.console-dialog-side-left .nav-group{display:flex;flex-direction:column;gap:6px}}
+
+.sidebar .nav-link,.console-dialog-side-left .nav-link{display:flex;align-items:center;gap:10px}
+.sidebar .nav-link svg,.console-dialog-side-left .nav-link svg{flex:none;color:var(--muted)}
+
+.dashboard-sidebar-items{display:flex;flex-direction:column;gap:3px;padding:2px 0 8px 27px;border-left:1px solid var(--border);margin:0 10px 0 22px;max-height:260px;overflow:auto}
+.dashboard-sidebar-link{display:block;padding:7px 8px;border-radius:6px;font-size:13px;color:var(--muted);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dashboard-sidebar-link:hover,.dashboard-sidebar-link:focus-visible{background:var(--surface-muted);color:var(--text)}
+.dashboard-sidebar-link.active{background:#ede9fe;color:#4338ca;font-weight:600}
+
+.dashboard-menu-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:4px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}
+.dashboard-menu-icon:hover,.dashboard-menu-icon:focus-visible{background:#ede9fe;color:#4338ca}
+.dashboard-menu-icon:disabled{opacity:.5;cursor:default}
+.dashboard-sidebar-items{padding-left:14px;margin-left:22px;margin-right:0}
+.dashboard-catalog-list li>a{min-width:0;flex:1;overflow-wrap:anywhere}
+.dashboard-catalog-list li>small{margin-left:auto}
+.console-dialog-side .dashboard-toolbar{display:flex;flex-wrap:wrap;gap:12px}
+.console-dialog-side .dashboard-toolbar>label{min-width:0;flex:1 1 150px}
+
+.console-dialog-side .dashboard-catalog-actions{margin-bottom:14px}

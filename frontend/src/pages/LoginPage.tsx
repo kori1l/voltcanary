@@ -22,7 +22,7 @@ export function LoginPage() {
     try {
       const tokens = await login({ email, password });
       setTokens(tokens.accessToken, tokens.refreshToken);
-      navigate(safeReturnTo(params.get("returnTo")), { replace: true });
+      navigate(params.has("returnTo") ? safeReturnTo(params.get("returnTo")) : "/dashboard", { replace: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Login failed");
     } finally {

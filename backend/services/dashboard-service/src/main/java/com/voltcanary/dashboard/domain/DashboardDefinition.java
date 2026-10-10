@@ -11,7 +11,23 @@ public record DashboardDefinition(
         JsonNode defaultContext,
         List<JsonNode> sections,
         List<Widget> widgets,
-        JsonNode layouts) {
+        JsonNode layouts,
+        List<Screen> screens) {
+
+    public DashboardDefinition {
+        screens = screens == null ? List.of() : List.copyOf(screens);
+    }
+
+    public DashboardDefinition(int schemaVersion, String name, String description, JsonNode defaultContext,
+            List<JsonNode> sections, List<Widget> widgets, JsonNode layouts) {
+        this(schemaVersion, name, description, defaultContext, sections, widgets, layouts, List.of());
+    }
+
+    public record Screen(String id, String title, List<String> widgetIds, JsonNode grid) {
+        public Screen(String id, String title, List<String> widgetIds) {
+            this(id, title, widgetIds, null);
+        }
+    }
 
     public record Widget(
             String id,

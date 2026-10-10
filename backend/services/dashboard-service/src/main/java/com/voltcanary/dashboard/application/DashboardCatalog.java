@@ -67,7 +67,7 @@ public class DashboardCatalog {
                             : storage.draft(id).definition();
                     DashboardDefinition safe = bindings.safeCopy(authorization, actor, original);
                     DashboardDefinition copied = new DashboardDefinition(safe.schemaVersion(), name, safe.description(),
-                            safe.defaultContext(), safe.sections(), safe.widgets(), safe.layouts());
+                            safe.defaultContext(), safe.sections(), safe.widgets(), safe.layouts(), safe.screens());
                     validation.validate(copied);
                     return insert(actor, copied, "COPIED");
                 });

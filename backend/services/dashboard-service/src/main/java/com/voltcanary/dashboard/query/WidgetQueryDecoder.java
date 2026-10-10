@@ -55,6 +55,9 @@ public class WidgetQueryDecoder {
     }
 
     public Config config(Widget widget, Manifest manifest) {
+        if (widget.query()!=null && widget.query().has("independentMetersConfirmed") && !widget.query().path("independentMetersConfirmed").isBoolean()) {
+            throw failure("VALIDATION_ERROR","Meter independence must be an explicit boolean","independentMetersConfirmed");
+        }
         Config parsed = widget.query() == null || widget.query().isNull()
                 ? new Config(null, null, null, null, null, 20, 0, null, null, null, List.of(), List.of())
                 : decode(widget.query(), Config.class, "query");
@@ -84,7 +87,7 @@ public class WidgetQueryDecoder {
         }
         return new Config(parsed.metric(), parsed.unit(), parsed.reducer(), parsed.time(), parsed.compare(), rows,
                 parsed.offset(), parsed.freshnessPolicy(), parsed.cadenceSeconds(), parsed.incidentMode(), series,
-                parsed.columns() == null ? List.of() : parsed.columns());
+                parsed.columns() == null ? List.of() : parsed.columns(),parsed.independentMetersConfirmed());
     }
 
     private <T> T decode(JsonNode value, Class<T> type, String field) {

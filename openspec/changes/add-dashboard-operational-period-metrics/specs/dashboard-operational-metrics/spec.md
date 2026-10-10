@@ -30,4 +30,4 @@ Cycle energy and uptime SHALL depend on confirmed complete facts and qualified e
 
 - **GIVEN** two confirmed downtime intervals overlap and a completed cycle lacks a boundary energy sample
 - **WHEN** period metrics are calculated
-- **THEN** downtime is unioned once, energy-per-cycle is partial/unavailable and denominators and exclusions are visible.
+- **THEN** downtime is unioned once, energy-per-cycle retains a visible compact partial/unavailable state, and authorized denominators and exclusions are available in panel information and optionally inline calculation annotations.

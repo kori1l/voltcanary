@@ -24,6 +24,8 @@ public class QueryReadScheduler {
             DashboardActor actor, Map<Key, CompletableFuture<JsonNode>> memo) {
         return memo.computeIfAbsent(new Key(owner, request), key -> CompletableFuture.supplyAsync(() -> switch (owner) {
             case "telemetry" -> reads.telemetry(authorization, actor, request);
+            case "energy" -> reads.energy(authorization,actor,request);
+            case "energy-validation" -> reads.energyValidation(authorization,actor,request);
             case "analytics" -> reads.analytics(authorization, actor, request);
             case "incidents" -> reads.incidents(authorization, actor, request);
             case "maintenance" -> reads.maintenance(authorization, actor, request);

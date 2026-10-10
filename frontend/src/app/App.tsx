@@ -14,7 +14,9 @@ const loadAlerts = () => import("../pages/AlertsPage").then((m) => ({ default: m
 const loadAi = () => import("../pages/AiAgentPage").then((m) => ({ default: m.AiAgentPage }));
 const loadAiSettings = () => import("../pages/AiAgentSettingsPage").then((m) => ({ default: m.AiAgentSettingsPage }));
 const loadAccount = () => import("../pages/AccountPage").then((m) => ({ default: m.AccountPage }));
-const loadDashboard = () => import("../pages/DashboardPage").then((m) => ({ default: m.DashboardPage }));
+const loadDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.DashboardDefaultPage }));
+const loadDashboards = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardsPage }));
+const loadPersonalDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardPage }));
 const loadDevice = () => import("../pages/DeviceDetailsPage").then((m) => ({ default: m.DeviceDetailsPage }));
 const loadDevices = () => import("../pages/DevicesPage").then((m) => ({ default: m.DevicesPage }));
 const loadSettings = () => import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage }));
@@ -47,8 +49,11 @@ export function appRouteElements() {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<Navigate to="/devices" replace />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<RouteDelivery load={loadDashboard} label="dashboard" />} />
+        <Route path="/dashboards" element={<RouteDelivery load={loadDashboards} label="my dashboards" />} />
+        <Route path="/dashboards/:dashboardId" element={<RouteDelivery load={loadPersonalDashboard} label="personal dashboard" />} />
+        <Route path="/dashboards/:dashboardId/edit" element={<RouteDelivery load={loadPersonalDashboard} label="dashboard editor" />} />
         <Route path="/devices" element={<RouteDelivery load={loadDevices} label="devices" />} />
         <Route path="/maintenance" element={<RouteDelivery load={loadMaintenance} label="maintenance" />} />
         <Route path="/devices/:deviceId" element={<RouteDelivery load={loadDevice} label="device details" />} />

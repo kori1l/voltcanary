@@ -361,3 +361,32 @@ read request and renewed scope, half-open window overlap, full distinct operatio
 count and stable pages≤50. Suppression and analytics/ML exclusions remain separate
 flags; these reads perform no maintenance mutation. See the complete shared
 request/result/error and query contract in [dashboard-api.md](dashboard-api.md).
+
+## Energy meter metadata
+
+GET `/devices/{deviceId}/energy-meter` reads ordered registry epochs. PUT on the
+same route explicitly appends a version with `expectedRevision`, `physicalMeterId`,
+optional `parentPhysicalMeterId`, canonical registered `sourceId`, saved
+`authoritativeMethod` (COUNTER_DELTA or POWER_INTEGRAL), `maxGapSeconds` (1–86400),
+`effectiveFrom` UTC and up to32 counter events (`at`, RESET/ROLLOVER/REPLACEMENT,
+`rolloverWh` for a known rollover). A source must belong to the owned device;
+metadata is not a source credential. At most32 ordered epochs per device are
+supported. A newer epoch closes the previous one; physical/source identity changes
+never merge their readings into one counter segment.
+
+Both routes require the existing active owning account; reads do not create it.
+Foreign devices return404, inactive accounts403, stale expected versions409 and
+invalid source/time/topology422. Writes lock and recheck the active account,
+preserve raw measurements, record an audit action and update device metadata time.
+V016 stores these records with cascading owner/device lifecycle constraints.
+Current epochs have an explicit unique active marker, compatible with PostgreSQL
+and the H2 validation baseline. Counter declarations are typed serialized metadata.
+
+The registry validates current parent relationships as an acyclic graph and rejects
+conflicting parents for aliases of one physical meter. Returned ancestor IDs use a
+conservative closure of recorded topology edges: ambiguous/missing/cyclic historical
+ancestry is marked incomplete. Aggregation cannot silently use this uncertainty as
+independence. Scope responses include owned energy epochs and declarations, without
+source configuration/credentials. Supplemental reset declarations can qualify older
+readings from the same physical/source identity; historical queries use the freshly
+renewed registry snapshot, not reconstructed past metadata visibility.

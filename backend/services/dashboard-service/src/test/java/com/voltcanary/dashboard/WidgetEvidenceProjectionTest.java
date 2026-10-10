@@ -33,6 +33,29 @@ class WidgetEvidenceProjectionTest {
         result.putArray("registeredMetrics").addObject().put("key", "activePowerW").put("unit", "W");
         return result;
     }
+    @Test void energyKeepsCoverageAndUndefinedZeroBaselinePercentage() {
+        var energy=source();
+        energy.putObject("period").put("energyKWh",0.5).put("coverage","PARTIAL").put("coverageFraction",0.5).put("estimate",false);
+        energy.putObject("baseline").put("energyKWh",0).put("coverage","COMPLETE").put("coverageFraction",1);
+        var result=projection.project(widget("energy-period"),config,frame,scope,Map.of("energy",energy));
+        assertThat(result.path("energy").path("coverage").asText()).isEqualTo("PARTIAL");
+        assertThat(result.path("comparison").path("difference").asDouble()).isEqualTo(0.5);
+        assertThat(result.path("comparison").path("percent").isNull()).isTrue();
+        assertThat(result.path("comparison").path("reason").asText()).isEqualTo("zero_baseline");
+        assertThat(result.path("peakMeaning").asText()).contains("NOT_SIMULTANEOUS_FLEET_PEAK");
+    }
+    @Test void taskRiskShowsHighAndMissingRecordsWithoutInventingScores() {
+        var riskWidget = new Widget("risk", "risk-list", 1, "Risk", null, null,
+                mapper.createObjectNode().put("riskFilter", "HIGH_OR_UNKNOWN"), null, null);
+        var source = source();source.putArray("risks");
+        var unknown = projection.project(riskWidget, config, frame, scope, Map.of("analytics", source));
+        assertThat(unknown.path("rows").get(0).path("level").asText()).isEqualTo("UNKNOWN");
+        assertThat(unknown.path("rows").get(0).path("score").isNull()).isTrue();
+        source.withArray("risks").addObject().put("deviceId", device.toString()).put("level", "LOW").put("score", 0.1);
+        assertThat(projection.project(riskWidget, config, frame, scope, Map.of("analytics", source)).path("total").asInt()).isZero();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)source.path("risks").get(0)).put("level", "HIGH").put("score", 0.8);
+        assertThat(projection.project(riskWidget, config, frame, scope, Map.of("analytics", source)).path("total").asInt()).isEqualTo(1);
+    }
     @Test void zeroSummaryBaselineAndManualAgeStayExplicit() {
         var source = source();
         source.putArray("summaries").addObject().put("metric", "activePowerW").put("unit", "W").put("mean", 0).put("sampleCount", 500).put("deviceCount", 1);

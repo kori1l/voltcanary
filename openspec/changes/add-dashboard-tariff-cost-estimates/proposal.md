@@ -28,9 +28,15 @@
 ## Dependencies And Delivery
 
 - [add-dashboard-energy-aggregates](../add-dashboard-energy-aggregates/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [add-dashboard-visual-editor](../add-dashboard-visual-editor/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-visual-editor](../archive/2026-10-09-add-dashboard-visual-editor/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 Workspace тарифы additionally требуют [add-workspace-resource-membership](../add-workspace-resource-membership/proposal.md); личные account тарифы этого не требуют.
+
+## Presentation compatibility
+
+This extension preserves named working screens, explicit placement and minimal
+visualization defaults; the shared UI baseline and evidence disclosures are
+specified in [design.md](design.md#dashboard-presentation-baseline).
 
 ## Impact
 

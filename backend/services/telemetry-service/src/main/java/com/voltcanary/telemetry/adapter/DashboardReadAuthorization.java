@@ -37,6 +37,13 @@ public class DashboardReadAuthorization {
     }
 
     public List<UUID> authorize(String token, String authorization, DashboardOwnerReadRequest request) {
+        JsonNode scope = renewedScope(token,authorization,request);
+        List<UUID> allowed = new ArrayList<>();
+        scope.path("devices").forEach(device -> allowed.add(UUID.fromString(device.path("id").asText())));
+        return List.copyOf(allowed);
+    }
+
+    public JsonNode renewedScope(String token, String authorization, DashboardOwnerReadRequest request) {
         if (token == null || authorization == null || !authorization.startsWith("Bearer ")
                 || !MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), internalToken.getBytes(StandardCharsets.UTF_8))) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated internal read is required");
@@ -72,7 +79,7 @@ public class DashboardReadAuthorization {
                 }
                 allowed.add(id);
             }
-            return List.copyOf(allowed);
+            return scope;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw unavailable();

@@ -30,8 +30,14 @@
 - [add-workspace-resource-membership](../add-workspace-resource-membership/proposal.md) — prerequisite перед интеграционной приёмкой.
 - [add-private-dashboard-domain](../archive/2026-10-08-add-private-dashboard-domain/proposal.md) — prerequisite перед интеграционной приёмкой.
 - [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
-- [add-dashboard-visual-editor](../add-dashboard-visual-editor/proposal.md) — prerequisite перед интеграционной приёмкой.
+- [add-dashboard-visual-editor](../archive/2026-10-09-add-dashboard-visual-editor/proposal.md) — prerequisite перед интеграционной приёмкой.
 
+
+## Presentation compatibility
+
+This extension preserves named working screens, explicit placement and minimal
+visualization defaults; the shared UI baseline and evidence disclosures are
+specified in [design.md](design.md#dashboard-presentation-baseline).
 
 ## Impact
 

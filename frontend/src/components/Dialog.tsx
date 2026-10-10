@@ -1,3 +1,4 @@
+import {X} from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useWorkflowDraft } from "./workflowDraftContext";
 
@@ -9,9 +10,9 @@ export function DialogClose({ children = "Cancel" }: { children?: ReactNode }) {
 }
 
 // Native modal dialogs provide top-layer isolation, focus containment and Escape.
-export function Dialog({ title, children, footer, onClose, dirty = false, busy = false, wide = false, guardChanges = false }: {
+export function Dialog({ id, title, children, footer, onClose, dirty = false, busy = false, wide = false, guardChanges = false, side = false }: {
   title: string; children: ReactNode; footer?: ReactNode; onClose: () => void;
-  dirty?: boolean; busy?: boolean; wide?: boolean; guardChanges?: boolean;
+  id?:string; dirty?: boolean; busy?: boolean; wide?: boolean; guardChanges?: boolean; side?:boolean|"left";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -46,8 +47,8 @@ export function Dialog({ title, children, footer, onClose, dirty = false, busy =
     else onClose();
   }
 
-  return <CloseContext.Provider value={requestClose}><dialog ref={ref} className={`console-dialog${wide ? " console-dialog-wide" : ""}`} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); requestClose(); }}>
-    <header className="console-dialog-header"><h2 id={titleId}>{title}</h2><button type="button" className="ghost-button" onClick={requestClose} disabled={busy}>Close</button></header>
+  return <CloseContext.Provider value={requestClose}><dialog id={id} ref={ref} className={`console-dialog${wide ? " console-dialog-wide" : ""}${side ? " console-dialog-side" : ""}${side==="left"?" console-dialog-side-left":""}`} aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); requestClose(); }} onClick={(event)=>{if(side!=="left" || event.target!==event.currentTarget)return;const bounds=event.currentTarget.getBoundingClientRect();if(event.clientX<bounds.left || event.clientX>bounds.right || event.clientY<bounds.top || event.clientY>bounds.bottom)requestClose();}}>
+    <header className="console-dialog-header"><h2 id={titleId}>{title}</h2><button type="button" className="ghost-button console-dialog-close" aria-label="Close" title="Close" onClick={requestClose} disabled={busy}><X size={20} aria-hidden="true"/></button></header>
     <div className="console-dialog-body" onChangeCapture={() => { if (guardChanges) setEdited(true); }}>{children}</div>
     {discarding ? <footer className="console-dialog-footer" role="alert">
       <p>You have unsaved changes. Discard them?</p>

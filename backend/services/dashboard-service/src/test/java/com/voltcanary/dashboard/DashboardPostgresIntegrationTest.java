@@ -103,7 +103,7 @@ class DashboardPostgresIntegrationTest {
         String id = request(post("/dashboards"), owner, body, "query-create", null, 201).path("id").asText();
         var catalog = request(get("/dashboard-widget-types"), owner, null, null, null, 200);
         assertThat(catalog.size()).isEqualTo(15);
-        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(11);
+        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(13);
         var draft = request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200);
         var preview = request(post("/dashboards/" + id + "/query-validation"), owner,
                 mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 200);
@@ -118,6 +118,27 @@ class DashboardPostgresIntegrationTest {
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("revision", 99), null, null, 404);
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 409);
         assertThat(jdbc.queryForObject("select count(*) from dashboard_revisions where dashboard_id=?", Long.class, UUID.fromString(id))).isEqualTo(1);
+    }
+
+    @Test
+    void namedScreensSurvivePublicationCopyAndRollbackWhileDraftEditsStayPrivate() throws Exception {
+        String owner = actor();ObjectNode body = body("Working screens");var definition = (ObjectNode)body.path("definition");
+        definition.withArray("widgets").addObject().put("id", "note").put("type", "context-note").put("typeVersion", 1).put("title", "Context").putObject("payload").put("text", "Recorded context");
+        var screens = definition.putArray("screens");screens.addObject().put("id", "monitoring").put("title", "Monitoring").putArray("widgetIds").add("note");
+        screens.addObject().put("id", "analytics").put("title", "Analytics").putArray("widgetIds");screens.addObject().put("id", "incidents").put("title", "Incidents").putArray("widgetIds");
+        String id = request(post("/dashboards"), owner, body, "screens-create", null, 201).path("id").asText();
+        var draft = request(get("/dashboards/"+id+"/draft"),owner,null,null,null,200);publish(owner,id,draft,"screens-publish",200);
+        var fresh = request(get("/dashboards/"+id+"/draft"),owner,null,null,null,200);
+        var changed = fresh.path("definition").deepCopy();((ObjectNode)changed.path("screens").get(0)).put("title","Changed draft");
+        var save = mapper.createObjectNode().put("baseRevision",1);save.set("definition",changed);
+        var saved = request(put("/dashboards/"+id+"/draft"),owner,save,null,etag(fresh),200);
+        var published = request(get("/dashboards/"+id),owner,null,null,null,200);
+        assertThat(published.path("definition").path("screens").get(0).path("title").asText()).isEqualTo("Monitoring");
+        String copy = request(post("/dashboards/"+id+"/copy"),owner,mapper.createObjectNode().put("name","Screen copy"),"screens-copy",null,201).path("id").asText();
+        assertThat(request(get("/dashboards/"+copy+"/draft"),owner,null,null,null,200).path("definition").path("screens").size()).isEqualTo(3);
+        var rollback = request(put("/dashboards/"+id+"/draft"),owner,mapper.createObjectNode().put("baseRevision",1).put("sourceRevision",1),null,etag(saved),200);
+        assertThat(rollback.path("definition").path("screens").get(0).path("title").asText()).isEqualTo("Monitoring");
+        request(get("/dashboards/"+id),actor(),null,null,null,404);
     }
 
     @Test

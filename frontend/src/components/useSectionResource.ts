@@ -31,6 +31,10 @@ export function useSectionResource<T>(scope = "default") {
       return data;
     } catch (error) {
       if (generation !== request.current) return null;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setStored((previous) => previous.scope === scope ? { scope, state: { ...previous.state, status: previous.state.status === "loading" ? "idle" : previous.state.status, refreshing: false } } : previous);
+        return null;
+      }
       setStored((previous) => ({ scope, state: failedResource(previous.scope === scope ? previous.state : initial<T>(), error) }));
       return null;
     }

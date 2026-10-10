@@ -1,0 +1,24 @@
+import {cleanup,render,screen,waitFor} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {MemoryRouter} from "react-router-dom";
+import {afterEach,expect,it,vi} from "vitest";
+import {getDashboardPreferences,type DashboardView} from "../../../dashboards/dashboardsApi";
+import {queryDashboard} from "../../../dashboards/dashboardQueriesApi";
+import {blankDashboard} from "../model/dashboardLayout";
+import {DashboardViewer} from "./DashboardViewer";
+vi.mock("../../../dashboards/dashboardsApi",async(importOriginal)=>({...await importOriginal<typeof import("../../../dashboards/dashboardsApi")>(),getDashboardPreferences:vi.fn()}));
+vi.mock("../../../dashboards/dashboardQueriesApi",()=>({queryDashboard:vi.fn()}));
+afterEach(()=>{cleanup();vi.resetAllMocks();});
+it("requests only the active screen and preserves the chosen screen in kiosk and edit links",async()=>{
+  vi.mocked(getDashboardPreferences).mockResolvedValue({defaultDashboardId:null,favorites:[],defaultContext:{},etag:"prefs",updatedAt:null,fallbackReason:null});
+  vi.mocked(queryDashboard).mockImplementation(async(id,request)=>({dashboardId:id,revision:1,draftEtag:null,contextHash:"scope",asOf:"2026-10-09T12:00:00Z",returnedAt:"2026-10-09T12:00:01Z",cached:false,panels:(request.widgetIds ?? []).map((id)=>({widgetId:id,status:"ready",data:{counts:{registered:1}},contextHash:"scope",time:null,requestedCount:1,evaluatedCount:1,receivedAt:"2026-10-09T12:00:01Z",measuredAt:null,provenance:{},errorCode:null,explanation:null}))}));
+  const widgets=["monitor","analysis"].map((id)=>({id,type:"fleet-count",typeVersion:1,title:id,binding:{mode:"ALL" as const},query:{},presentation:{},navigation:{},payload:{}}));
+  const view:DashboardView={dashboard:{id:"owned",accountId:"account",ownerUserId:"owner",name:"Working screens",description:"",status:"ACTIVE",publishedRevision:1,createdAt:"",updatedAt:""},definition:{...blankDashboard("Working screens"),widgets,screens:[{id:"monitoring",title:"Monitoring",widgetIds:["monitor"]},{id:"analytics",title:"Analytics",widgetIds:["analysis"]}]},revision:1,permissions:["view","edit"],draftEtag:"draft",unsupportedWidgetIds:[]};
+  render(<MemoryRouter initialEntries={["/dashboards/owned"]}><DashboardViewer view={view} reload={async()=>{}}/></MemoryRouter>);
+  await waitFor(()=>expect(queryDashboard).toHaveBeenCalled());expect(vi.mocked(queryDashboard).mock.calls[0][1].widgetIds).toEqual(["monitor"]);
+  await userEvent.selectOptions(screen.getByRole("combobox",{name:"Working screens"}),"analytics");await waitFor(()=>expect(vi.mocked(queryDashboard).mock.calls.some((call)=>call[1].widgetIds?.includes("analysis"))).toBe(true));
+  const requests=vi.mocked(queryDashboard).mock.calls.map((call)=>call[1].widgetIds);expect(requests.every((ids)=>ids?.length===1)).toBe(true);
+  expect(screen.queryByRole("combobox",{name:"Read refresh"})).not.toBeInTheDocument();await userEvent.click(screen.getByRole("button",{name:"Dashboard settings"}));expect(screen.getByRole("dialog",{name:"Dashboard settings"})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button",{name:"Refresh"}));expect(screen.getByRole("combobox",{name:"Read refresh"})).toBeInTheDocument();await userEvent.click(screen.getByRole("button",{name:"Manage"}));
+  expect(screen.getByRole("link",{name:"Open kiosk"})).toHaveAttribute("href","/dashboards/owned?screenId=analytics&kiosk=true");expect(screen.getByRole("link",{name:"Edit draft"})).toHaveAttribute("href","/dashboards/owned/edit?screenId=analytics");
+});

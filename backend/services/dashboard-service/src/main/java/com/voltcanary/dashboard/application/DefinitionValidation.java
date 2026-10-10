@@ -20,6 +20,7 @@ public class DefinitionValidation {
     private static final Pattern EXECUTABLE = Pattern.compile(
             "(?is)(<\\s*/?\\s*[a-z]+(?:\\s|>)|javascript\\s*:|data\\s*:|https?\\s*:\\s*//|Bearer\\s+\\S+|-----BEGIN .*PRIVATE KEY-----)");
     private final ObjectMapper mapper;
+    private final ScreenGridValidation grids = new ScreenGridValidation();
 
     public DefinitionValidation(ObjectMapper mapper) {
         this.mapper = mapper;
@@ -55,8 +56,35 @@ public class DefinitionValidation {
         require(tree.toString().getBytes(StandardCharsets.UTF_8).length <= 131072,
                 "definition", "Definition exceeds 128 KiB");
         inspect(tree, "definition", 0);
-        validateLayouts(definition.layouts(), ids);
+        validateScreens(definition, ids);
+        validateLayouts(definition, ids);
         return definition;
+    }
+
+    private void validateScreens(DashboardDefinition definition, Set<String> widgetIds) {
+        require(definition.screens().size() <= 8, "screens", "At most 8 screens are allowed");
+        if (definition.screens().isEmpty()) return;
+        Set<String> screenIds = new HashSet<>();
+        Set<String> assigned = new HashSet<>();
+        for (DashboardDefinition.Screen screen : definition.screens()) {
+            require(screen != null && screen.id() != null && screen.id().matches("[A-Za-z0-9_-]{1,80}")
+                    && screenIds.add(screen.id()), "screens.id", "Screen IDs must be unique safe identifiers");
+            require(screen.title() != null && !screen.title().isBlank() && screen.title().length() <= 80,
+                    "screens.title", "Screen title must contain 1–80 characters");
+            require(screen.widgetIds() != null && screen.widgetIds().size() <= 24,
+                    "screens.widgetIds", "Screen must list at most 24 existing widgets");
+            grids.validate(screen.grid());
+            for (String id : screen.widgetIds()) require(widgetIds.contains(id) && assigned.add(id),
+                    "screens.widgetIds", "Each widget must belong to exactly one screen");
+        }
+        require(assigned.equals(widgetIds), "screens.widgetIds", "Every widget must belong to a screen");
+        for (JsonNode section : definition.sections()) if (section.hasNonNull("screenId")) {
+            String screenId = section.path("screenId").asText();
+            require(screenIds.contains(screenId), "sections.screenId", "Section screen must exist");
+            var screen = definition.screens().stream().filter(item -> item.id().equals(screenId)).findFirst().orElseThrow();
+            section.path("widgetIds").forEach(id -> require(screen.widgetIds().contains(id.asText()),
+                    "sections.widgetIds", "Section widgets must belong to its screen"));
+        }
     }
 
     public void validatePayload(JsonNode payload) {
@@ -106,15 +134,12 @@ public class DefinitionValidation {
         }
     }
 
-    private void validateLayouts(JsonNode layouts, Set<String> widgetIds) {
+    private void validateLayouts(DashboardDefinition definition, Set<String> widgetIds) {
+        JsonNode layouts = definition.layouts();
         require(layouts != null && layouts.isObject(), "layouts", "Layouts must be an object");
         layouts.fields().forEachRemaining(entry -> {
-            int columns = switch (entry.getKey()) {
-                case "desktop" -> 12;
-                case "tablet" -> 8;
-                case "mobile" -> 1;
-                default -> throw new DashboardFailure("VALIDATION_ERROR", "Unknown layout breakpoint", "layouts");
-            };
+            require(Set.of("desktop", "tablet", "mobile").contains(entry.getKey()),
+                    "layouts", "Unknown layout breakpoint");
             JsonNode positions = entry.getValue();
             require(positions.isArray() && positions.size() <= 24, "layouts", "Layout must contain at most 24 positions");
             Set<String> placed = new HashSet<>();
@@ -125,6 +150,7 @@ public class DefinitionValidation {
                     require(position.path(coordinate).isIntegralNumber() && position.path(coordinate).canConvertToInt(),
                             "layouts." + coordinate, "Layout coordinates must be bounded integers");
                 }
+                int columns = grids.columns(definition, position.path("widgetId").asText(), entry.getKey());
                 int x = position.path("x").asInt();
                 int y = position.path("y").asInt();
                 int w = position.path("w").asInt();

@@ -30,6 +30,12 @@ energyWh — cumulative meter reading. Сумма readings или разница
 - [add-dashboard-widget-query-engine](../archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 
+## Presentation compatibility
+
+This extension preserves named working screens, explicit placement and minimal
+visualization defaults; the shared UI baseline and evidence disclosures are
+specified in [design.md](design.md#dashboard-presentation-baseline).
+
 ## Impact
 
 - `backend/services/telemetry-service/`

@@ -21,8 +21,8 @@ public class WidgetManifests {
             manifest("location-matrix", "Single-account location evidence", "MATRIX", List.of(), 0, 0, "COLUMN_TIME_BASIS"),
             manifest("prediction-evidence", "Recorded prediction evidence", "PREDICTION", List.of(), 0, 50, "SNAPSHOT"),
             manifest("context-note", "Operator context note", "NOTE", List.of(), 0, 0, "NONE"),
-            unsupported("energy-period", "Verified energy methods are required"),
-            unsupported("peak-and-ranking", "Energy aggregation and ranking are required"),
+            manifest("energy-period", "Energy consumption and coverage", "ENERGY", List.of(), 0, 0, "INTERVAL"),
+            manifest("peak-and-ranking", "Energy and recorded equipment peak ranking", "ENERGY_RANKING", List.of(), 0, 0, "INTERVAL"),
             unsupported("estimated-cost", "Energy and versioned tariffs are required"),
             unsupported("uptime-or-cycle", "Confirmed downtime/cycle contracts are required"));
 
@@ -37,10 +37,14 @@ public class WidgetManifests {
     private Manifest manifest(String type, String title, String resultType, List<Reducer> reducers,
             int series, int detail, String basis) {
         return new Manifest(type, 1, title, resultType, true, null, reducers,
-                reducers.isEmpty() ? List.of() : UNITS, series, detail, 50, basis);
+                reducers.isEmpty() ? List.of() : UNITS, series, detail, 50, basis, size(type));
     }
 
     private Manifest unsupported(String type, String reason) {
-        return new Manifest(type, 1, type, "UNSUPPORTED", false, reason, List.of(), List.of(), 0, 0, 0, "NONE");
+        return new Manifest(type, 1, type, "UNSUPPORTED", false, reason, List.of(), List.of(), 0, 0, 0, "NONE", size(type));
+    }
+
+    private QueryTypes.SizeConstraints size(String type) {
+        return new QueryTypes.SizeConstraints(1, 1, 1, 1);
     }
 }

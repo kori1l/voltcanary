@@ -49,6 +49,47 @@ class DevicePostgresIntegrationTest {
     @Autowired private com.voltcanary.device.repository.DashboardMaintenanceRepository dashboardMaintenance;
 
     @Test
+    void energyMeterRevisionsAreOwnerScopedOrderedAndRejectTopologyCycles() {
+        UUID user=UUID.randomUUID();
+        HttpHeaders owner=headersFor(user,"energy-owner@example.invalid");
+        AccountResponse account=restTemplate.exchange("/accounts/current",HttpMethod.GET,new HttpEntity<>(owner),AccountResponse.class).getBody();
+        HttpHeaders foreign=headersFor(UUID.randomUUID(),"energy-foreign@example.invalid");
+        restTemplate.exchange("/accounts/current",HttpMethod.GET,new HttpEntity<>(foreign),AccountResponse.class);
+        UUID type=jdbc.queryForObject("SELECT id FROM device_types WHERE code='FRIDGE'",UUID.class);
+        UUID parentDevice=UUID.randomUUID(),childDevice=UUID.randomUUID();
+        for(UUID id:new UUID[]{parentDevice,childDevice}) {
+            jdbc.update("INSERT INTO devices(id,account_id,device_type_id,name,status,created_at,updated_at) VALUES (?,?,?,'DEMO meter','ACTIVE',now(),now())",id,account.id(),type);
+        }
+        UUID parent=UUID.randomUUID(),child=UUID.randomUUID();
+        var sourceBody=java.util.Map.of("sourceType","SMART_PLUG","protocol","REST","externalId","DEMO-meter-source");
+        String parentSource=restTemplate.exchange("/devices/"+parentDevice+"/data-sources",HttpMethod.POST,new HttpEntity<>(sourceBody,owner),com.voltcanary.device.dto.DataSourceResponse.class).getBody().id().toString();
+        String childSource=restTemplate.exchange("/devices/"+childDevice+"/data-sources",HttpMethod.POST,new HttpEntity<>(sourceBody,owner),com.voltcanary.device.dto.DataSourceResponse.class).getBody().id().toString();
+        java.time.Instant start=java.time.Instant.parse("2026-10-08T00:00:00Z");
+        var initial=new com.voltcanary.device.dto.EnergyMeterRequest(0,parent,null,parentSource,"COUNTER_DELTA",900,start,java.util.List.of());
+        String path="/devices/"+parentDevice+"/energy-meter";
+        var created=restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(initial,owner),com.voltcanary.common.web.EnergyMeterDefinition.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(created.getBody().revision()).isEqualTo(1);
+        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(initial,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(restTemplate.exchange(path,HttpMethod.GET,new HttpEntity<>(foreign),String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(initial,foreign),String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        var foreignSource=new com.voltcanary.device.dto.EnergyMeterRequest(0,child,parent,parentSource,"POWER_INTEGRAL",900,start,java.util.List.of());
+        assertThat(restTemplate.exchange("/devices/"+childDevice+"/energy-meter",HttpMethod.PUT,new HttpEntity<>(foreignSource,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        var childRequest=new com.voltcanary.device.dto.EnergyMeterRequest(0,child,parent,childSource,"POWER_INTEGRAL",900,start,java.util.List.of());
+        assertThat(restTemplate.exchange("/devices/"+childDevice+"/energy-meter",HttpMethod.PUT,new HttpEntity<>(childRequest,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        var cycle=new com.voltcanary.device.dto.EnergyMeterRequest(1,parent,child,parentSource,"COUNTER_DELTA",900,start.plusSeconds(3600),java.util.List.of());
+        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(cycle,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        var replacement=new com.voltcanary.device.dto.EnergyMeterRequest(1,UUID.randomUUID(),null,parentSource,"COUNTER_DELTA",900,start.plusSeconds(3600),java.util.List.of());
+        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(replacement,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        var history=restTemplate.exchange(path,HttpMethod.GET,new HttpEntity<>(owner),com.voltcanary.common.web.EnergyMeterDefinition[].class).getBody();
+        assertThat(history).hasSize(2);
+        assertThat(history[0].effectiveTo()).isEqualTo(start.plusSeconds(3600));
+        assertThat(history[1].physicalMeterId()).isEqualTo(replacement.physicalMeterId());
+        jdbc.update("UPDATE accounts SET status='DISABLED' WHERE id=?",account.id());
+        assertThat(restTemplate.exchange(path,HttpMethod.GET,new HttpEntity<>(owner),String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void laterDevicesAndFilteredMaintenanceRemainReachableAndOwnerScoped() {
         UUID user = UUID.randomUUID();
         HttpHeaders headers = headersFor(user, "pagination@example.com");

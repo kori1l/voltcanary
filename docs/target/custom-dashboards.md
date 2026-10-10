@@ -121,16 +121,26 @@ tokens для прототипа, не основание ломать establish
 не перезаписывается при открытии телефона. Mobile порядок хранится отдельно,
 по умолчанию соответствует section/order; пользователь может изменить его.
 
-**DB-14.** Перемещение и размеры доступны через меню «Выше/Ниже/В секцию» и
+**DB-14.** Перемещение и добавление доступны относительно выбранного виджета
+«Выше/Ниже/Слева/Справа», через drag handle и равноценные кнопки; недоступная
+боковая позиция объясняется. Размеры доступны через меню
 «Малый/Средний/Большой», клавиатуру и pointer без удержания drag. Фокус остаётся
 на перемещённой карточке; изменение позиции озвучивается. График имеет
-текстовое резюме и доступный список значений; таблица локально прокручивается,
+доступное текстовое резюме и сведения по запросу; обычное резюме не занимает
+место под графиком. Таблица локально прокручивается,
 заголовок страницы и основные команды остаются достижимыми при 200% text zoom.
 
 **DB-15.** Sections имеют название и collapsed state; скрытие пользовательское,
-не скрывает глобальную ошибку/свежесть экрана. Заголовок показывает имя,
-scope, period/timezone, private/shared, Edit и last refresh. Один primary action
-на задачу. Цвет статуса привязан к смыслу; декоративный цвет серии не означает
+не скрывает глобальную ошибку/свежесть экрана. Каждый dashboard содержит набор
+именованных рабочих экранов со своими виджетами и независимой раскладкой;
+Overview и Analytics не обязательны. Компактная шапка содержит имя, selector
+активного экрана и основные команды. Настройки и фильтры открываются справа,
+левая навигация скрывается и возвращается с освобождением ширины canvas.
+Scope, period/timezone, private/shared и успешный last refresh доступны по
+запросу; stale и ошибки связи остаются видимыми. Один primary action
+на задачу. Заголовки виджетов, легенды, расчётные пояснения, сравнения и inline
+details по умолчанию выключены и включаются в настройках; оси графика по
+умолчанию включены и тоже настраиваются. Цвет статуса привязан к смыслу; декоративный цвет серии не означает
 аварийность. Threshold labels видимы текстом. Нет редактируемого HTML или
 пользовательского кода в note/link widget.
 
@@ -247,13 +257,16 @@ count учитывается incident ID один раз, а не число not
 
 **DB-26.** Quality provenance: requested scope, evaluated scope, metric/source,
 window, excluded intervals, last data timestamp, received/query time, reducer,
-method, sample count и coverage definition. Coverage measured intervals не
+method, sample count и coverage definition доступны в panel information;
+inline annotations включаются явно. Compact partial/stale/estimate/no-access
+states остаются видимыми независимо от этих настроек. Coverage measured intervals не
 выводится из registration count. Для time-weighted mean фиксируется weighting;
 арифметическое mean sparse samples не именуется mean consumption per hour.
 
 **DB-27.** Raw energy/telemetry включает фактический расход во время обслуживания;
 derived analytics использует исключения своих contracts. UI указывает, какой
-набор показан. Риск/ML отображает window, calculatedAt, family/horizon и
+набор показан, в сведениях панели и при включённых inline annotations.
+Риск/ML сохраняет в сведениях window, calculatedAt, family/horizon и
 confidence; confidence не accuracy, heuristic не trained prediction.
 Нет универсального «через N дней сломается» из score.
 
@@ -264,7 +277,7 @@ confidence; confidence не accuracy, heuristic не trained prediction.
 | DB-28 | Каждый widget имеет idle/loading/ready/empty/partial/stale/error/no-access/unsupported. Successfully empty и error различимы. Known zero показывается только после успешного расчёта; unknown никогда не становится 0 |
 | DB-29 | При failed refresh сохраняются только ранее разрешённые значения с measuredAt и «Обновление не удалось». Scope change не сохраняет неподписанные values предыдущего scope. Ошибка одной зависимости не блокирует остальные widgets; общая ошибка группируется в компактный banner |
 | DB-30 | Обновление manual/off/30 s/1 min/5 min; по умолчанию 1 min для live templates, off для fixed historical. Min 30 s, jitter, backoff после ошибок; hidden browser tab и невидимые/collapsed panels не поллят постоянно. Resume сначала переоценивает права и freshness |
-| DB-31 | Relative ages обновляются по часам без fetch; shared live screen постоянно показывает timezone/last refresh и «Данные устарели». Ошибку связи нельзя скрыть настройкой widget visibility. Kiosk режим — отдельная авторизованная сессия без edit/actions; anonymous/public kiosk вне scope |
+| DB-31 | Relative ages обновляются по часам без fetch; shared live screen предоставляет timezone/last refresh в сведениях и постоянно показывает stale timing при устаревших данных. Ошибку связи нельзя скрыть настройкой widget visibility. Kiosk режим — отдельная авторизованная сессия без edit/actions; anonymous/public kiosk вне scope |
 | DB-32 | Requests отменяются при изменении scope/period; response содержит context hash и asOf. Результат старого context не отображается. Refresh telemetry не вызывает recalculate, training, source token rotation или отправку notification |
 
 ## 8. Владение, совместная работа и аудит
@@ -476,3 +489,35 @@ AGENTS.md и project skills не требуют изменений: workflow и 
 - [W3C: Dragging Movements](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements.html)
   требует pointer-альтернативу dragging; клавиатурная доступность проверяется
   дополнительно. DB-14 предусматривает оба способа.
+
+### Visual editor implementation checkpoint (2026-10-09)
+
+DB-01/02/03/05/06/07/08/09/10/11/12/13/14/15/22/28/29/30/31/32/43 now have
+private editor integration: USER entry, catalog/copy, typed configuration,
+explicit draft/publication/conflict lifecycle, responsive layouts, personal
+runtime/defaults and authenticated kiosk. Acceptance details and instrument
+limits are in docs/current/flows/console-interface.md. Task templates, energy,
+workspace membership, team publication, tariffs and operational metrics remain
+planned; unavailable widget types explain their dependencies. Authored enlarged
+text evidence does not replace deferred native zoom/speech verification.
+
+### Business task template checkpoint (2026-10-09)
+
+DB-03/04/05/16/17/18/22 and W01/02/03/07/08/09/10/12/13 now have the
+versioned task catalog and reviewed binding workflow. Shift, My devices,
+Refrigeration (FRIDGE) and Technician create private independent snapshots;
+W04/05/06 Energy remains capability-gated with explicit explanation.
+Current contracts and measured agent persona walkthroughs are documented in
+current dashboard API/console flow. They are not human usability research.
+
+### Named working screens and placement checkpoint (2026-10-09)
+
+The user-prioritized refinement adds up to8 named screens inside a private
+dashboard, each with its own panels and layouts. Monitoring, Analytics and
+Incidents are optional starts, editable independently. Relative insertion and
+movement expose above/below/left/right with width-aware alternatives and undo.
+Legacy dashboards remain one Overview screen. Recorded KPI/chart/table content
+and compact editing controls make the canvas the primary working area. Current
+contract/interaction details are in the dashboard API and console flow.
+Energy, workspace/team publication, tariffs and operational domain metrics
+remain governed by their separate active changes.

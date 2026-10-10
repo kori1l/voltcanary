@@ -85,6 +85,14 @@ class DashboardWidgetQueriesTest {
     }
     private DashboardWidgetQueries.Request request(boolean force) { return new DashboardWidgetQueries.Request(null, null, null, force); }
 
+    @Test void explicitlyUnboundMeasurementsReturnNoDataWithoutOwnerEvidence() {
+        definition(List.of(widget("missing", "latest-value", mapper.createObjectNode().put("mode", "UNBOUND"))));
+        var result = queries.query("Bearer fixture", actor, id, request(false));
+        assertThat(result.panels().getFirst().status()).isEqualTo("no_data");
+        assertThat(result.panels().getFirst().data()).isNull();
+        verify(reads, never()).telemetry(anyString(), any(), any());
+    }
+
     @Test void full250ScopeAndIdenticalPanelsDeduplicateAndRenewAuthorizationBeforeCache() {
         definition(List.of(widget("first", "fleet-count", null), widget("second", "fleet-count", null)));
         var first = queries.query("Bearer fixture", actor, id, request(false));

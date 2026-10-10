@@ -16,6 +16,34 @@ Before topology contract, aggregate requires explicit independent meters selecti
 ## Acceptance
 10000→10500Wh gives0.5kWh;reset to100Wh never creates giant negative/positive;2h constant1000W gives2kWh under complete coverage. min/max envelope not integration input, sparse uneven sampling time weighting. W05/W06 and Energy template activated only on verified capability. Tests and bounded 30d profile evidence.
 
+## Dashboard navigation and grid baseline
+
+Follow [dashboard navigation](../../specs/dashboard-navigation/spec.md),
+[clean sidebar and catalog management](../../specs/dashboard-sidebar-management/spec.md)
+and [numeric grids and flexible panels](../../specs/dashboard-grid-restoration/spec.md).
+The Dashboards parent opens /dashboards; child links open concrete dashboards.
+The sidebar contains links only. Search, creation, item actions and menu visibility
+belong in the catalog; runtime data/time/refresh controls stay in structured right
+settings. Do not add another My dashboards destination, sidebar action icons or a
+permanent toolbar above the canvas. Menu hiding is a personal local preference,
+not archive, sharing or a resource grant. New panels retain numeric grid profiles,
+manifest minima down to 1x1 where supported, and charts use their available height.
+
+## Dashboard presentation baseline
+
+Use the established [working screens](../../specs/dashboard-working-screens/spec.md),
+[compact workspace](../../specs/compact-dashboard-workspace/spec.md) and
+[minimal presentation](../../specs/minimal-dashboard-presentation/spec.md) contracts.
+New panels belong to the user-selected named screen and support explicit
+above/below/left/right placement within responsive bounds. Configuration uses
+the right drawer; navigation remains hideable. Healthy panels default to the
+visualization and units, with optional titles, legends, calculations, comparisons
+and inline details. Authorized scope, methods, denominators and provenance remain
+available in panel information. Partial, stale, estimate, unavailable and denied
+states stay visible as compact indicators. Screens and layouts survive copy and
+publication; queries read only active-screen facts and publication validates all
+screens. Task/persona screen names never grant resource permissions.
+
 ## Failure Modes And Compatibility
 
 Implementation обязана сохранить canonical IDs, tenant/account lifecycle и server

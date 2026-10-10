@@ -17,6 +17,7 @@ import com.voltcanary.dashboard.query.QueryTypes.Config;
 import com.voltcanary.dashboard.query.QueryTypes.Frame;
 import com.voltcanary.dashboard.query.QueryTypes.Manifest;
 import com.voltcanary.dashboard.query.QueryTypes.Panel;
+import com.voltcanary.dashboard.query.QueryTypes.ScopeMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,6 +86,8 @@ public class DashboardWidgetQueries {
                 Config config = decoder.config(widget, manifest.get());
                 ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo);
                 if (scope.deniedBindingCount() > 0) throw new DashboardFailure("NO_ACCESS", "Resource binding is no longer accessible");
+                if (decoder.scope(widget.binding()).mode() == ScopeMode.UNBOUND)
+                    throw new DashboardFailure("UNBOUND_RESOURCE", "No equipment is bound; unavailable measurements are not inferred");
                 if (manifest.get().maxDetailDevices() > 0 && scope.evaluatedCount() > manifest.get().maxDetailDevices())
                     throw new DashboardFailure("LIMIT_EXCEEDED", "Detail scope exceeds the widget device limit");
                 if ("latest-value".equals(widget.type()) && (scope.evaluatedCount() != 1 || config.metric() == null))
@@ -107,6 +110,14 @@ public class DashboardWidgetQueries {
                             new ReadRequest(List.of(), actor.accountId(), frame, Set.of(), List.of(), 1, 0, "ACTIVE", List.of()),
                             authorization, actor, new HashMap<>()).get(5, TimeUnit.SECONDS);
                     projection.registered(config, capabilities);
+                }
+                if (validateOnly && List.of("energy-period","peak-and-ranking").contains(widget.type())) {
+                    var read=new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).sorted().toList(),actor.accountId(),frame,
+                            Set.of(),List.of(),config.rows(),config.offset(),"ACTIVE",List.of(),config.independentMetersConfirmed());
+                    JsonNode validated=scheduler.read("energy-validation",read,authorization,actor,new HashMap<>()).get(5,TimeUnit.SECONDS);
+                    if (validated.path("deniedBindingCount").asLong()>0) throw new DashboardFailure("NO_ACCESS","Meter resource access changed");
+                    if (!validated.path("validationOnly").asBoolean() || validated.path("evaluatedCount").asLong(-1)!=scope.devices().size())
+                        throw new DashboardFailure("INVALID_READ_RESPONSE","Invalid meter validation response");
                 }
                 prepared.add(new Prepared(widget, config, scope, frame, null));
             } catch (DashboardFailure failure) {
@@ -215,10 +226,10 @@ public class DashboardWidgetQueries {
         config.series().forEach(series -> metrics.add(series.metric()));
         return new ReadRequest(ids, actor.accountId(), panel.frame(), metrics,
                 manifests.find(panel.widget().type(), panel.widget().typeVersion()).orElseThrow().maxDetailDevices() > 0 ? ids : List.of(),
-                config.rows(), config.offset(), config.incidentMode() == null ? "ACTIVE" : config.incidentMode().name(), config.series());
+                config.rows(), config.offset(), config.incidentMode() == null ? "ACTIVE" : config.incidentMode().name(), config.series(),config.independentMetersConfirmed());
     }
     private Panel failed(Prepared panel, String hash, DashboardFailure failure) {
-        String status = switch (failure.code()) { case "NO_ACCESS" -> "no_access"; case "UNSUPPORTED_WIDGET" -> "unsupported";
+        String status = switch (failure.code()) { case "UNBOUND_RESOURCE" -> "no_data"; case "NO_ACCESS" -> "no_access"; case "UNSUPPORTED_WIDGET" -> "unsupported";
             case "VALIDATION_ERROR", "LIMIT_EXCEEDED" -> "invalid"; default -> "unavailable"; };
         return new Panel(panel.widget().id(), status, null, hash, panel.frame(), 0, 0, Instant.now(), null,
                 mapper.createObjectNode().put("readOnly", true), failure.code(), failure.getMessage());
@@ -251,6 +262,8 @@ public class DashboardWidgetQueries {
         return switch (panel.widget().type()) {
             case "latest-value" -> data.path("value").isNull();
             case "metric-summary" -> data.path("summary").isNull();
+            case "energy-period" -> !data.path("energy").hasNonNull("energyKWh");
+            case "peak-and-ranking" -> data.path("energy").path("energyRanking").isEmpty() && data.path("energy").path("peakRanking").isEmpty();
             case "time-series" -> !data.path("series").isArray() || data.path("series").isEmpty()
                     || java.util.stream.StreamSupport.stream(data.path("series").spliterator(), false).allMatch(series -> series.path("buckets").isEmpty());
             case "risk-list", "prediction-evidence" -> data.path("total").asInt() == 0;

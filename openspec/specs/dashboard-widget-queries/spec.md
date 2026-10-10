@@ -1,7 +1,7 @@
 # dashboard-widget-queries Specification
 
 ## Purpose
-TBD - created by archiving change add-dashboard-widget-query-engine. Update Purpose after archive.
+Define typed authorized widget queries, honest aggregate evidence and bounded isolated reads.
 ## Requirements
 ### Requirement: Typed authorized query context
 
@@ -11,7 +11,7 @@ Widget queries SHALL use validated server manifests and an authorized saved revi
 
 - **GIVEN** a location filter changes and a fixed kitchen widget exists
 - **WHEN** the dashboard is queried
-- **THEN** dynamic panels use the new authorized location, fixed bindings retain their visible override and no foreign UUID expands access.
+- **THEN** dynamic panels use the new authorized location, fixed bindings retain their explicit override in panel information and filter settings, and no foreign UUID expands access; normal scope metadata does not require a permanent footer.
 
 #### Scenario: Calendar DST and late response
 
@@ -66,4 +66,3 @@ Catalog capabilities SHALL expose supported units, reducers and limits with at m
 - **GIVEN** temperature or a newer typeVersion is absent
 - **WHEN** preview or normal query occurs
 - **THEN** the missing capability is explained, unsupported data is not fabricated, and supported panels continue to work.
-

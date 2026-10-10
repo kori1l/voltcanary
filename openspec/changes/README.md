@@ -1,7 +1,7 @@
 # UI/UX и пользовательские дашборды: active OpenSpec program
 
 Дата: 7 октября 2026; checkpoint 2026-10-09. **Программа из 16 changes: первые семь, private dashboard domain и widget query engine закрыты и архивированы (UTC archive date 2026-10-08). Accessibility/page delivery принят по указанию пользователя с исключением непроведённых native zoom/speech проверок.**
-48 delta requirements, 87 GIVEN/WHEN/THEN scenarios, 225 задач исходного плана; 122 задачи закрыты: 78 в первых шести, 13 в accessibility/page delivery (две с явно документированным исключением приёмки), 15 в private dashboard domain и 16 в widget query engine. 2026-10-09 пользователь возобновил выполнение активной очереди по порядку, затем разрешил закрыть и архивировать accessibility с ограничениями инструментов. Следующий change по очереди — visual editor; не начат. Native проверки не считаются пройденными; процедура отложенной проверки приведена в docs/current/flows/console-interface.md.
+48 delta requirements, 87 GIVEN/WHEN/THEN scenarios, 225 задач исходного плана; 152 задачи закрыты: 78 в первых шести, 13 в accessibility/page delivery (две с явно документированным исключением приёмки), 15 в private dashboard domain 16 в widget query engine и 16 в visual editor и 14 в task templates. 2026-10-09 пользователь возобновил выполнение активной очереди по порядку, затем разрешил закрыть и архивировать accessibility с ограничениями инструментов. Visual editor реализован, проверен и архивирован 2026-10-09. Task templates реализован, проверен и архивирован 2026-10-09. По уточнению пользователя приоритет перед energy — набор именованных рабочих экранов и явное размещение виджетов. Native проверки не считаются пройденными; процедура отложенной проверки приведена в docs/current/flows/console-interface.md.
 Числа описывают этот план, не выполненные проверки или завершённые feature.
 
 Источники: [UI/UX audit](../../docs/target/ui-design-requirements.md),
@@ -14,6 +14,43 @@
 
 ## Changes And Dependencies
 
+Следующее уточнение пользователя — убрать текст из графиков и ещё уменьшить
+верхнюю панель — выполнено:
+[минимальные подписи панелей](archive/2026-10-09-minimal-dashboard-presentation/proposal.md).
+Четыре дополнительные задачи закрыты отдельно от исходного плана. Вместо
+вкладок используется селектор экранов; заголовки, легенды, пояснения, сравнения
+и подробности включаются в настройках. Состояния stale/partial/estimate/denied
+сохраняются. Desktop холст начинается на80px, mobile со скрытой навигацией
+на144px. Проверены сохранение опций и reload; frontend212 тестов,
+typecheck/build, OpenSpec39 и structure прошли. Исходные energy и последующие
+changes продолжают оставаться активными.
+
+Уточнение компактного рабочего места выполнено:
+[холст, правая панель и скрываемая навигация](archive/2026-10-09-compact-dashboard-workspace/proposal.md).
+Ещё четыре дополнительные задачи закрыты отдельно от исходной программы.
+Верхняя панель компактна; настройки открываются справа; левую навигацию можно
+скрыть и восстановить. Browser: desktop панели начинаются на177px,
+mobile390px — на232px без горизонтального overflow. Frontend210 тестов,
+финальные35 dashboard/dialog тестов, typecheck/build и strict/structure прошли.
+
+Приоритетное исправление перемещения карточек выполнено и архивировано:
+[перемещение на холсте](archive/2026-10-09-improve-dashboard-card-movement/proposal.md).
+Четыре дополнительные задачи закрыты отдельно от исходных 225: ручка Drag,
+подсветка направления, отмена, видимые кнопки, независимые раскладки и
+сохранение/перезагрузка. Полный frontend: 70 файлов, 209 тестов; после финальных
+уточнений 32 dashboard-теста, typecheck и build прошли. Pointer-проверки
+автоматические; физический drag в DOM-only браузере не проводился.
+Energy и следующие исходные changes остаются активными до завершения их
+собственной приёмки.
+
+Дополнительное уточнение пользователя от2026-10-09 выполнено и архивировано:
+[набор рабочих экранов и явное размещение](archive/2026-10-09-improve-dashboard-screen-navigation-and-placement/proposal.md).
+Его10 задач закрыты отдельно от225 задач исходной программы. Monitoring,
+Analytics и Incidents имеют свои панели; legacy, публикация, клавиатурный
+перенос и независимая mobile-раскладка проверены. Backend35, frontend200,
+typecheck/build, strict OpenSpec36 и structure прошли. Приоритетное уточнение
+завершено перед продолжением очереди с `add-dashboard-energy-aggregates`.
+
 | № | Change | Результат | Этап | Hard dependencies |
 | --- | --- | --- | --- | --- |
 | 1 | [fix-console-evidence-state-transitions](archive/2026-10-08-fix-console-evidence-state-transitions/proposal.md) | Достоверные состояния ресурсов и свежесть данных | UI P0 | Baseline |
@@ -25,8 +62,8 @@
 | 7 | [improve-console-accessibility-and-page-delivery](archive/2026-10-08-improve-console-accessibility-and-page-delivery/proposal.md) | Доступность, мобильные рабочие экраны и загрузка по маршрутам | UI P1/P2 | `fix-console-evidence-state-transitions`, `improve-console-command-feedback`, `improve-console-context-and-session-recovery` |
 | 8 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | Серверные личные дашборды, версии и предпочтения | Dashboards 1 | Baseline |
 | 9 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Типизированные запросы виджетов и полные агрегаты | Dashboards 1 | `add-private-dashboard-domain`, `fix-console-evidence-state-transitions`, `improve-telemetry-history-and-readable-evidence` |
-| 10 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | Визуальный редактор и персональный стартовый экран | Dashboards 1 | `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `improve-console-context-and-session-recovery`, `improve-console-accessibility-and-page-delivery` |
-| 11 | [add-dashboard-task-templates](add-dashboard-task-templates/proposal.md) | Бизнес-шаблоны и привязка к реальным данным | Dashboards 1 | `add-dashboard-visual-editor`, `add-dashboard-widget-query-engine` |
+| 10 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | Визуальный редактор и персональный стартовый экран | Dashboards 1 | `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `improve-console-context-and-session-recovery`, `improve-console-accessibility-and-page-delivery` |
+| 11 | [add-dashboard-task-templates](archive/2026-10-09-add-dashboard-task-templates/proposal.md) | Бизнес-шаблоны и привязка к реальным данным | Dashboards 1 | `add-dashboard-visual-editor`, `add-dashboard-widget-query-engine` |
 | 12 | [add-workspace-resource-membership](add-workspace-resource-membership/proposal.md) | Workspace, участники и отдельные права на ресурсы | Dashboards 2 prerequisite | `add-private-dashboard-domain` |
 | 13 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | Командные дашборды, публикация и совместный доступ | Dashboards 2 | `add-workspace-resource-membership`, `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `add-dashboard-visual-editor` |
 | 14 | [add-dashboard-energy-aggregates](add-dashboard-energy-aggregates/proposal.md) | Расход энергии, покрытие и защита от двойного счёта | Dashboards 1 extension | `add-dashboard-widget-query-engine` |
@@ -109,21 +146,21 @@ Energy template capability-gated до настоящих aggregates. Явный 
 
 | Product requirement | Primary owner | Supporting integration |
 | --- | --- | --- |
-| DB-01 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
-| DB-02 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-team-dashboard-publication` |
-| DB-03 | [add-dashboard-task-templates](add-dashboard-task-templates/proposal.md) | `add-dashboard-visual-editor` |
-| DB-04 | [add-dashboard-task-templates](add-dashboard-task-templates/proposal.md) | — |
-| DB-05 | [add-dashboard-task-templates](add-dashboard-task-templates/proposal.md) | `add-dashboard-visual-editor`, `add-team-dashboard-publication` |
-| DB-06 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
-| DB-07 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
-| DB-08 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-private-dashboard-domain` |
+| DB-01 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
+| DB-02 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-team-dashboard-publication` |
+| DB-03 | [add-dashboard-task-templates](archive/2026-10-09-add-dashboard-task-templates/proposal.md) | `add-dashboard-visual-editor` |
+| DB-04 | [add-dashboard-task-templates](archive/2026-10-09-add-dashboard-task-templates/proposal.md) | — |
+| DB-05 | [add-dashboard-task-templates](archive/2026-10-09-add-dashboard-task-templates/proposal.md) | `add-dashboard-visual-editor`, `add-team-dashboard-publication` |
+| DB-06 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
+| DB-07 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
+| DB-08 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-private-dashboard-domain` |
 | DB-09 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-dashboard-visual-editor` |
 | DB-10 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-dashboard-visual-editor`, `add-team-dashboard-publication` |
-| DB-11 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-team-dashboard-publication` |
+| DB-11 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-team-dashboard-publication` |
 | DB-12 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-dashboard-visual-editor` |
-| DB-13 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
-| DB-14 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
-| DB-15 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | — |
+| DB-13 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
+| DB-14 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
+| DB-15 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | — |
 | DB-16 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-task-templates` |
 | DB-17 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-task-templates`, `add-dashboard-tariff-cost-estimates`, `add-dashboard-operational-period-metrics` |
 | DB-18 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-task-templates` |
@@ -138,8 +175,8 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | DB-27 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-energy-aggregates`, `add-dashboard-operational-period-metrics` |
 | DB-28 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-visual-editor` |
 | DB-29 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-visual-editor` |
-| DB-30 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-dashboard-widget-query-engine` |
-| DB-31 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-dashboard-widget-query-engine`, `add-team-dashboard-publication` |
+| DB-30 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-dashboard-widget-query-engine` |
+| DB-31 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-dashboard-widget-query-engine`, `add-team-dashboard-publication` |
 | DB-32 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-visual-editor` |
 | DB-33 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-workspace-resource-membership` |
 | DB-34 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership`, `add-dashboard-tariff-cost-estimates` |
@@ -151,7 +188,7 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | DB-40 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-private-dashboard-domain` |
 | DB-41 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | — |
 | DB-42 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | — |
-| DB-43 | [add-dashboard-visual-editor](add-dashboard-visual-editor/proposal.md) | `add-private-dashboard-domain`, `add-dashboard-widget-query-engine` |
+| DB-43 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-private-dashboard-domain`, `add-dashboard-widget-query-engine` |
 
 ## Widget W01–W15 Coverage
 
@@ -185,3 +222,66 @@ contract действительно меняется. Evidence сохраняе�
 В созданных changes отсутствуют completed checkboxes. Main specs и application
 code для этой подготовки не менялись. AGENTS.md/skills не меняются: workflow
 остаётся прежним.
+
+## Dashboard concept alignment — 2026-10-09
+
+The current product baseline is [named working screens](../specs/dashboard-working-screens/spec.md),
+[card movement](../specs/dashboard-card-movement/spec.md),
+[compact workspace](../specs/compact-dashboard-workspace/spec.md) and
+[minimal presentation](../specs/minimal-dashboard-presentation/spec.md).
+Each screen has its own widget set and responsive layout; no Overview/Analytics
+screens are mandatory. Configuration is in the right drawer, left navigation
+is optional, and normal evidence prose does not occupy the canvas.
+Energy, tariff, operational and team extensions inherit this baseline; optional
+comparisons and information disclosures do not weaken coverage or authorization.
+Local synthetic demo content illustrates these layouts and is not a mandatory
+seed, fabricated production evidence or acceptance of the five pending changes.
+This audit updates current specs and active plans, preserves archived history and
+leaves implementation task checkboxes unchanged.
+
+The grid-editing refinement replaces hand-written card-edge dragging with
+react-grid-layout, explicit resize handles and a visible Edit grid. Lucide SVG
+controls and named settings sections replace symbolic primary editing controls;
+keyboard movement remains in panel options. Physical browser gestures are not
+independently verified with the DOM-only tooling; installed-library mouse-event
+integration tests and live UI inspection are recorded in the change design.
+
+Grid editing completed and archived as
+[2026-10-09-improve-dashboard-grid-editing](archive/2026-10-09-improve-dashboard-grid-editing/proposal.md)
+with four verified tasks. The original five pending changes remain active.
+
+The [visual widget palette](archive/2026-10-09-add-dashboard-widget-palette/proposal.md)
+was implemented and archived with four verified tasks. Add widget now opens
+a nonmodal catalog with search and drag-to-grid previews, plus keyboard/mobile
+Add buttons. Native browser dragging, configuration opening and Undo were
+exercised; the original five pending changes remain active.
+
+Panel arrangement and management actions now live in the right settings drawer
+under Layout. The card ellipsis/floating form is removed; pointer grid gestures
+and keyboard alternatives remain. This refinement changes presentation only and
+does not complete the original five pending changes.
+
+The panel-settings refinement was completed and archived as
+[2026-10-09-move-dashboard-panel-actions-to-settings](archive/2026-10-09-move-dashboard-panel-actions-to-settings/proposal.md)
+with three verified tasks; the original five pending changes remain active.
+
+The [panel-information/navigation refinement](archive/2026-10-09-polish-dashboard-details-and-navigation/proposal.md)
+was completed and archived with four verified tasks. Tile Add buttons were
+removed, evidence disclosures reformatted and desktop/mobile navigation
+consolidated. The original five pending changes remain active.
+
+## Dashboard navigation alignment - 2026-10-10
+
+[Dashboard navigation](../specs/dashboard-navigation/spec.md) and
+[sidebar/catalog management](../specs/dashboard-sidebar-management/spec.md)
+own the current agreed entry points. Dashboards opens /dashboards; its children
+open concrete dashboards. The sidebar contains links only, while creation,
+search, item management and personal menu visibility belong in the catalog.
+Data/time/refresh use structured right settings; the canvas remains compact.
+There is no separate My dashboards destination. The personal startup/default
+route /dashboard remains supported independently of the catalog menu entry.
+[Grid restoration and sizing](../specs/dashboard-grid-restoration/spec.md)
+requires reversible neighbour previews, numeric per-screen grids, flexible panel
+sizes and charts filling their available area. The four active dashboard
+extensions inherit these contracts. Their implementation tasks remain unchecked;
+this documentation audit does not deliver their pending domain capabilities.

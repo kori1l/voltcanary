@@ -24,6 +24,7 @@ public class WidgetEvidenceProjection {
     public List<String> owners(String type) {
         return switch (type) {
             case "fleet-count", "latest-value", "time-series", "metric-summary" -> List.of("telemetry");
+            case "energy-period","peak-and-ranking" -> List.of("energy");
             case "quality-and-freshness" -> List.of("telemetry", "analytics");
             case "risk-list", "prediction-evidence" -> List.of("analytics");
             case "incident-list" -> List.of("incidents");
@@ -54,6 +55,8 @@ public class WidgetEvidenceProjection {
             case "quality-and-freshness" -> "QUALITY";
             case "location-matrix" -> "MATRIX";
             case "prediction-evidence" -> "PREDICTION";
+            case "energy-period" -> "ENERGY";
+            case "peak-and-ranking" -> "ENERGY_RANKING";
             default -> "NOTE";
         };
         ObjectNode result = mapper.createObjectNode().put("resultType", resultType).put("widgetType", widget.type())
@@ -75,13 +78,35 @@ public class WidgetEvidenceProjection {
             case "latest-value" -> latest(result, config, scope, evidence.get("telemetry"));
             case "time-series" -> series(result, config, evidence.get("telemetry"));
             case "metric-summary" -> summary(result, config, evidence.get("telemetry"));
-            case "risk-list" -> page(result, "risks", config, evidence.get("analytics"));
+            case "energy-period","peak-and-ranking" -> energy(result,evidence.get("energy"));
+            case "risk-list" -> page(result, "risks", config, taskRisks(widget, scope, evidence.get("analytics")));
             case "prediction-evidence" -> page(result, "predictions", config, evidence.get("analytics"));
             case "location-matrix" -> matrix(result, config, frame, scope, evidence);
             case "context-note" -> note(result, widget);
             default -> { }
         }
         return result;
+    }
+
+    private void energy(ObjectNode result,JsonNode source) {
+        JsonNode period=source.path("period");
+        if (!period.isObject()) throw new DashboardFailure("INVALID_READ_RESPONSE","Energy owner period is missing");
+        result.set("energy",period);
+        Double current=energyNumber(period,"energyKWh");
+        JsonNode previous=source.path("baseline");
+        Double baseline=energyNumber(previous,"energyKWh");
+        result.set("comparison",mapper.valueToTree(QueryTypes.Comparison.of(current,baseline)));
+        result.set("baselineEnergy",previous);
+        result.put("peakMeaning","HIGHEST_RECORDED_EQUIPMENT_POWER_NOT_SIMULTANEOUS_FLEET_PEAK");
+        result.put("scopeWarning",source.path("scopeWarning").asText());
+    }
+
+    private Double energyNumber(JsonNode period,String key) {
+        if (!period.hasNonNull(key)) return null;
+        JsonNode value=period.path(key);
+        if (!value.isNumber() || !Double.isFinite(value.asDouble()) || value.asDouble()<0)
+            throw new DashboardFailure("INVALID_READ_RESPONSE","Energy evidence must be finite nonnegative recorded values");
+        return value.asDouble();
     }
     private void freshness(ObjectNode result, Config config, Frame frame, ScopeSnapshot scope, JsonNode telemetry) {
         ObjectNode counts = result.putObject("counts");
@@ -158,6 +183,20 @@ public class WidgetEvidenceProjection {
     private Double number(JsonNode row, String field) { return row != null && row.path(field).isNumber() ? row.get(field).asDouble() : null; }
     private void unit(Config config, String unit) {
         if (config.unit() != null && !config.unit().equals(unit)) throw new DashboardFailure("VALIDATION_ERROR", "Source unit differs from the selected canonical unit");
+    }
+    private JsonNode taskRisks(Widget widget, ScopeSnapshot scope, JsonNode source) {
+        if (widget.presentation() == null || !"HIGH_OR_UNKNOWN".equals(widget.presentation().path("riskFilter").asText())) return source;
+        ObjectNode selected = source.deepCopy();
+        ArrayNode rows = selected.putArray("risks");
+        java.util.Set<String> known = new java.util.HashSet<>();
+        source.path("risks").forEach(row -> {
+            known.add(row.path("deviceId").asText());
+            if (List.of("HIGH", "CRITICAL", "UNKNOWN").contains(row.path("level").asText()) || !row.path("score").isNumber()) rows.add(row);
+        });
+        scope.devices().stream().filter(device -> !known.contains(device.id().toString())).forEach(device -> rows.addObject()
+                .put("deviceId", device.id().toString()).put("level", "UNKNOWN").putNull("score").putNull("measuredAt")
+                .put("explanation", "No stored risk record; unknown is not healthy"));
+        return selected;
     }
     private void page(ObjectNode result, String key, Config config, JsonNode source) {
         JsonNode records = source.path(key);

@@ -30,4 +30,4 @@ Cost widgets SHALL be estimates derived from qualified energy and effective tari
 
 - **GIVEN** qualified energy and one effective rate cover the full interval
 - **WHEN** the widget is rendered
-- **THEN** the decimal estimate states currency, tariff version, energy method and taxes/fees policy.
+- **THEN** the decimal estimate shows its currency and a compact estimate indicator; authorized tariff version, energy method and taxes/fees policy remain available in panel information and appear inline only when the relevant annotations are enabled.

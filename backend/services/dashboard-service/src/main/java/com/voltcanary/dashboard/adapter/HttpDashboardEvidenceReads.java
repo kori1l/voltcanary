@@ -64,6 +64,23 @@ public class HttpDashboardEvidenceReads implements DashboardEvidenceReads {
     }
 
     @Override
+    public JsonNode energy(String authorization,DashboardActor actor,ReadRequest request) {
+        return read(properties.telemetryBaseUrl(),"/internal/dashboard/energy",authorization,energyBody(actor,request));
+    }
+
+    @Override
+    public JsonNode energyValidation(String authorization,DashboardActor actor,ReadRequest request) {
+        return read(properties.telemetryBaseUrl(),"/internal/dashboard/energy-validation",authorization,energyBody(actor,request));
+    }
+
+    private JsonNode energyBody(DashboardActor actor,ReadRequest request) {
+        var body=mapper.createObjectNode().put("independentMetersConfirmed",request.independentMetersConfirmed());
+        var scope=(com.fasterxml.jackson.databind.node.ObjectNode)requestBody(actor,request);
+        scope.remove("independentMetersConfirmed");
+        return body.set("scope",scope);
+    }
+
+    @Override
     public JsonNode analytics(String authorization, DashboardActor actor, ReadRequest request) {
         return read(properties.analyticsBaseUrl(), "/internal/dashboard/analytics", authorization, requestBody(actor, request));
     }
@@ -95,6 +112,7 @@ public class HttpDashboardEvidenceReads implements DashboardEvidenceReads {
                 throw failed("NO_ACCESS", "Current resource access is unavailable");
             }
             if (response.statusCode() == 422) {
+                if (path.startsWith("/internal/dashboard/energy")) throw failed("VALIDATION_ERROR","Review distinct physical meters and their independence; use a supported non-overlapping scope and period");
                 throw failed("LIMIT_EXCEEDED", "Typed owner read requires a narrower supported scope");
             }
             if (response.statusCode() != 200) {

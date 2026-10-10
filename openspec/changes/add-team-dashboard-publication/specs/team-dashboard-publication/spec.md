@@ -24,7 +24,7 @@ Sharing preview SHALL report widget usability without granting resources, and ea
 
 - **GIVEN** a shared dashboard references a larger fleet
 - **WHEN** viewers query with different resource grants
-- **THEN** each receives its own authorized subset with clear scope labeling; hidden fleet totals or names cannot be inferred from supplied metadata.
+- **THEN** each receives its own authorized subset with scope explained in panel information and filters, with compact indicators for partial or unavailable evidence; hidden fleet totals or names cannot be inferred from supplied metadata and normal scope text does not require a permanent footer.
 
 #### Scenario: Grant revoked during shared display
 

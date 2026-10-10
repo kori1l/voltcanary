@@ -67,6 +67,39 @@ class TelemetryKafkaTimescaleIntegrationTest {
     private TestRestTemplate restTemplate;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private com.voltcanary.telemetry.repository.DashboardTelemetryRepository dashboardReads;
+    @Autowired private com.voltcanary.telemetry.service.EnergyPeriodReadService energyReads;
+    @Autowired private com.fasterxml.jackson.databind.ObjectMapper energyMapper;
+
+    @Test
+    void rawEnergyUsesCanonicalSourcesFullBoundaryReadingsAndAccountIsolation() {
+        UUID account=UUID.randomUUID(),foreign=UUID.randomUUID(),counter=UUID.randomUUID(),power=UUID.randomUUID();
+        Instant from=Instant.now().minusSeconds(7200).truncatedTo(java.time.temporal.ChronoUnit.MILLIS),to=from.plusSeconds(7200);
+        List<Object[]> values=List.of(
+                new Object[]{account,counter,"source",Timestamp.from(from),"energyWh",10000,"Wh","OK",Timestamp.from(from),Timestamp.from(from)},
+                new Object[]{account,counter,"source",Timestamp.from(to),"energyWh",10500,"Wh","OK",Timestamp.from(to),Timestamp.from(to)},
+                new Object[]{foreign,counter,"source",Timestamp.from(from.plusSeconds(3600)),"energyWh",999999,"Wh","OK",Timestamp.from(to),Timestamp.from(to)},
+                new Object[]{account,power,"source",Timestamp.from(from),"activePowerW",1000,"W","OK",Timestamp.from(from),Timestamp.from(from)},
+                new Object[]{account,power,"source",Timestamp.from(to),"activePowerW",1000,"W","OK",Timestamp.from(to),Timestamp.from(to)});
+        jdbc.batchUpdate("INSERT INTO telemetry.measurements(account_id,device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",values);
+        var scope=energyMapper.createObjectNode();
+        var devices=scope.putArray("devices");
+        for(UUID id:List.of(counter,power)) {
+            var definition=new com.voltcanary.common.web.EnergyMeterDefinition(1,UUID.randomUUID(),null,"source",id.equals(counter)?"COUNTER_DELTA":"POWER_INTEGRAL",7200,from,null,List.of());
+            var device=devices.addObject().put("id",id.toString()).put("name","DEMO energy meter");
+            device.set("energyMeters",energyMapper.valueToTree(List.of(definition)));
+        }
+        var frame=new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(from,to,to.plusSeconds(1),null,null);
+        var base=new com.voltcanary.common.web.DashboardOwnerReadRequest(UUID.randomUUID(),account,List.of(counter,power),frame,java.util.Set.of(),List.of(),20,0,"ACTIVE",List.of());
+        var request=new com.voltcanary.common.web.DashboardEnergyReadRequest(base,true);
+        var result=energyReads.read(request,scope);
+        assertThat(result.path("period").path("energyKWh").asDouble()).isEqualTo(2.5);
+        assertThat(result.path("period").path("coverage").asText()).isEqualTo("COMPLETE");
+        assertThat(result.path("authorizedDeviceIds")).hasSize(2);
+        assertThat(result.path("maintenancePolicy").asText()).isEqualTo("RAW_CONSUMPTION_INCLUDES_MAINTENANCE");
+        assertThat(result.toString()).doesNotContain("999999");
+        assertThat(restTemplate.postForEntity("/internal/dashboard/energy",request,String.class).getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        assertThat(restTemplate.postForEntity("/internal/dashboard/energy-validation",request,String.class).getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+    }
 
     @Test
     void dashboardReducersUseFullHalfOpenScopeAndPreserveZeroLateExtremaAndQuality() {

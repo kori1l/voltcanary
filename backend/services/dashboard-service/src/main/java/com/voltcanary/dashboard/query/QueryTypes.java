@@ -12,7 +12,7 @@ public final class QueryTypes {
 
     public enum ScopeMode { ALL, DYNAMIC, FIXED, UNBOUND }
     public enum TimeMode { INHERITED, RELATIVE, CALENDAR, FIXED }
-    public enum Preset { LAST_24_HOURS, LAST_7_DAYS, LAST_30_DAYS, TODAY, WEEK_TO_DATE, MONTH_TO_DATE, NEXT_7_DAYS, NEXT_30_DAYS }
+    public enum Preset { LAST_6_HOURS, LAST_24_HOURS, LAST_7_DAYS, LAST_30_DAYS, TODAY, WEEK_TO_DATE, MONTH_TO_DATE, NEXT_7_DAYS, NEXT_30_DAYS }
     public enum CompareMode { NONE, PREVIOUS, MANUAL }
     public enum Reducer { RAW, AVG, MIN, MAX, MEAN, P95 }
     public enum FreshnessPolicy { PERIODIC, SPARSE, MANUAL }
@@ -39,7 +39,11 @@ public final class QueryTypes {
 
     public record Config(String metric, String unit, Reducer reducer, Time time,
             Compare compare, int rows, int offset, FreshnessPolicy freshnessPolicy,
-            Long cadenceSeconds, IncidentMode incidentMode, List<Series> series, List<String> columns) {
+            Long cadenceSeconds, IncidentMode incidentMode, List<Series> series, List<String> columns, boolean independentMetersConfirmed) {
+        public Config(String metric,String unit,Reducer reducer,Time time,Compare compare,int rows,int offset,
+                FreshnessPolicy freshnessPolicy,Long cadenceSeconds,IncidentMode incidentMode,List<Series> series,List<String> columns) {
+            this(metric,unit,reducer,time,compare,rows,offset,freshnessPolicy,cadenceSeconds,incidentMode,series,columns,false);
+        }
     }
 
     public record Series(UUID deviceId, String metric) {
@@ -68,7 +72,11 @@ public final class QueryTypes {
 
     public record Manifest(String type, int typeVersion, String title, String resultType,
             boolean supported, String dependency, List<Reducer> reducers, List<String> units,
-            int maxSeries, int maxDetailDevices, int maxRows, String timeBasis) {
+            int maxSeries, int maxDetailDevices, int maxRows, String timeBasis, SizeConstraints sizeConstraints) {
+    }
+
+    public record SizeConstraints(int desktopMinColumns, int tabletMinColumns,
+            int mobileMinColumns, int minRows) {
     }
 
     public record Panel(String widgetId, String status, JsonNode data, String contextHash, Frame time,

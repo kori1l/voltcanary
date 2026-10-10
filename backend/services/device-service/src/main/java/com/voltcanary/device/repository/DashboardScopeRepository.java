@@ -28,10 +28,12 @@ public class DashboardScopeRepository {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final EnergyMeterRepository meters;
 
-    public DashboardScopeRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public DashboardScopeRepository(JdbcTemplate jdbc, ObjectMapper mapper, EnergyMeterRepository meters) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.meters = meters;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -75,11 +77,12 @@ public class DashboardScopeRepository {
                 row.getString("name"), row.getString("code"), row.getObject("location_id", UUID.class), row.getString("status"),
                 null, "dashboard_default", "PERIODIC", row.getTimestamp("updated_at").toInstant()), parameters.toArray());
         Map<UUID, SourceCadence> cadences = cadences(devices.stream().map(DeviceEntry::id).toList());
+        var energyMeters = meters.definitions(accountId,devices.stream().map(DeviceEntry::id).toList());
         List<DeviceEntry> enriched = devices.stream().map(device -> {
             SourceCadence cadence = cadences.get(device.id());
             return new DeviceEntry(device.id(), device.name(), device.type(), device.locationId(), device.registrationStatus(),
                     cadence == null ? null : cadence.seconds(), cadence != null && cadence.seconds() != null ? "source_configuration" : "dashboard_default",
-                    cadence == null ? "PERIODIC" : cadence.policy(), device.updatedAt());
+                    cadence == null ? "PERIODIC" : cadence.policy(), device.updatedAt(),energyMeters.getOrDefault(device.id(),List.of()));
         }).toList();
         Set<UUID> relevantLocations = new HashSet<>(request.locationIds());
         devices.stream().map(DeviceEntry::locationId).filter(java.util.Objects::nonNull).forEach(relevantLocations::add);

@@ -35,6 +35,7 @@ public class QueryTimeResolver {
             Preset preset = selected.preset() == null ? Preset.LAST_24_HOURS : selected.preset();
             LocalDate today = asOf.atZone(zone).toLocalDate();
             from = switch (preset) {
+                case LAST_6_HOURS -> asOf.minus(Duration.ofHours(6));
                 case LAST_24_HOURS -> asOf.minus(Duration.ofDays(1));
                 case LAST_7_DAYS -> asOf.minus(Duration.ofDays(7));
                 case LAST_30_DAYS -> asOf.minus(Duration.ofDays(30));

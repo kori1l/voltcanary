@@ -12,7 +12,7 @@ export interface DashboardScope {
 }
 export interface DashboardTime {
   mode?: "INHERITED" | "RELATIVE" | "CALENDAR" | "FIXED";
-  preset?: "LAST_24_HOURS" | "LAST_7_DAYS" | "LAST_30_DAYS" | "TODAY" | "WEEK_TO_DATE" | "MONTH_TO_DATE" | "NEXT_7_DAYS" | "NEXT_30_DAYS";
+  preset?: "LAST_6_HOURS" | "LAST_24_HOURS" | "LAST_7_DAYS" | "LAST_30_DAYS" | "TODAY" | "WEEK_TO_DATE" | "MONTH_TO_DATE" | "NEXT_7_DAYS" | "NEXT_30_DAYS";
   timezone?: string;
   from?: string;
   to?: string;
@@ -71,6 +71,7 @@ export interface WidgetManifest {
   maxDetailDevices: number;
   maxRows: number;
   timeBasis: string;
+  sizeConstraints?: { desktopMinColumns: number; tabletMinColumns: number; mobileMinColumns: number; minRows: number };
 }
 export function queryDashboard(id: string, request: DashboardQueryRequest, signal?: AbortSignal) {
   return apiRequest<DashboardQueryBatch>(`/dashboards/${encodeURIComponent(id)}/query`, {

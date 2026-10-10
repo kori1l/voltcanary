@@ -50,7 +50,9 @@ Unknown type/version retains safe payload/query/presentation as opaque JSON;
 it is inert. View responses list only unavailable types/versions in
 unsupportedWidgetIds; the additive typed catalog and query contract follows below.
 
-Layouts use desktop12/tablet8/mobile1 columns with existing unique widgetId and
+Wire layouts accept desktop12/tablet8/mobile1 columns for compatibility; the
+visual editor uses12/6/1 and clamps legacy tablet placements into six columns.
+Layouts have existing unique widgetId and
 bounded integer x/y/w/h. Definitions are limited to128KiB, nesting12, object64
 fields, arrays500, strings4000. Resource UUID selections are validated and checked
 against owner-scoped device/location APIs. Query is an object, never executable
@@ -66,8 +68,11 @@ transaction lock, including simultaneous create/restore. Drafts remain separate
 from published definitions. Archive clears the personal default/favorite and
 returns DEFAULT_ARCHIVED; unavailable default reads omit its ID and explain
 DEFAULT_UNAVAILABLE. Restore retains identity but does not automatically reset
-the personal default. The existing fixed `/dashboard` UI remains until editor
-integration; no browser-storage definitions are imported.
+the personal default. `/dashboard` resolves the authorized personal default;
+missing or archived defaults show the system overview with a fallback reason.
+`/dashboard?overview=true` opens that overview explicitly. `/dashboards` lists
+personal metadata; `/dashboards/{id}` views publication and `/edit` edits the
+private author draft. No browser-storage definitions are imported automatically.
 
 ## Verification
 
@@ -90,7 +95,8 @@ not capacity, team-sharing or production deployment evidence.
 
 `GET /dashboard-widget-types` requires the same active personal actor and returns
 versioned manifests: type/typeVersion/title/resultType/supported/dependency,
-reducers, canonical units, maxSeries/maxDetailDevices/maxRows and timeBasis.
+reducers, canonical units, maxSeries/maxDetailDevices/maxRows, timeBasis and
+additive sizeConstraints (desktopMinColumns/tabletMinColumns/mobileMinColumns/minRows).
 Supported v1: fleet-count, latest-value, time-series, metric-summary,
 incident-list, maintenance-agenda, risk-list, quality-and-freshness,
 location-matrix, prediction-evidence and context-note. Energy-period,
@@ -202,3 +208,119 @@ ten authorization-renewed warm reads and an actual stopped telemetry dependency,
 restoring telemetry in finally. Sanitized ignored evidence reports milliseconds,
 panel states and whether cold≤2s/warm p95≤5s were met. It makes no ingestion,
 soak, scaling, production or capacity claim.
+
+## Versioned business task templates
+
+GET /dashboard-templates renews the signed active personal actor through the
+same ownership boundary before returning shared, resource-free v1 definitions.
+Each entry carries id/version/title/task/persona/segments, available/explanation,
+period/seriesHours, symbolic slots and panels (key/type/title/slot/metric/unit,
+query defaults and safe internal drill-down). Symbols are primary/equipment/
+location; templates contain no owner/account/device UUID or credentials.
+Shift, My devices, Refrigeration and Technician are available. Energy is gated
+by the actual energy-period manifest; it is unavailable until verified methods
+exist. Persona/business labels never change permissions.
+
+The binding wizard resolves current authorized device/location choices and
+registered metrics/canonical units, rejects removed or foreign selections and
+duplicate devices, and reports the resolved scope before creation. A location
+selection covers its exact location; descendants must be explicitly selected.
+Missing panels may be removed or kept annotated with UNBOUND and no_data;
+no owner measurement read occurs for an explicitly unbound panel. The private
+create endpoint rechecks all canonical resource references. A source-version
+context note is copied with the independent definition; subsequent template
+changes do not mutate its draft or immutable publication. Transport retries use
+the same reviewed definition (including widget IDs) and idempotency key.
+
+Shift power series uses a rolling LAST_6_HOURS preset; other measurement task
+panels use24h, and maintenance has its own NEXT_7_DAYS interval. Celsius and
+power remain separate panels. My devices supports up to six distinct equipment
+bindings, each with a named latest-value panel. Task risk presentation may use
+HIGH_OR_UNKNOWN: full authorized stored records are filtered before pagination,
+HIGH/CRITICAL records retained, missing risk records labeled UNKNOWN with null
+score/time. Unknown does not imply healthy. Assignment, tariffs and confirmed
+cycles remain unavailable, with explicit guidance rather than inferred facts.
+
+## Named working screens
+
+Schema version1 accepts optional `screens: [{id,title,widgetIds}]` in the same
+definition stored by create/draft/publish/copy/rollback. Missing or empty screens
+mean one Overview screen containing all widgets. Explicit definitions allow up
+to8 screens, unique safe IDs and nonempty titles up to80 characters; every widget
+belongs to exactly one screen. Unknown/repeated/unassigned widget references are
+rejected. The24-widget and128KiB definition bounds apply across all screens.
+Sections may include `screenId`; their widgets must belong to that screen.
+Screen titles are work labels and confer no authorization.
+
+Layout coordinates are local to a screen/section surface. The editor uses
+12/6/1 columns for desktop/tablet/mobile and independent positions; the API
+continues accepting the legacy eight-column tablet bound. One immutable
+publication includes all screens; subsequent edits do not alter it. Viewer
+`screenId` selects a screen in the authorized revision, with visible fallback
+to the first screen for unknown IDs. Kiosk preserves this choice. Evidence
+requests include only visible widgets on the active screen. Publication validation
+omits `widgetIds` to check configuration/access across all screens without
+reading inactive widget measurements; invalid/denied/unavailable results block
+confirmation. Existing session/ownership/ETag boundaries remain applicable.
+
+## Energy panels
+
+`energy-period` and `peak-and-ranking` v1 are supported interval widgets using the
+telemetry energy owner port. Saved query intent may include the explicit boolean
+`independentMetersConfirmed` and existing comparison settings. Validation checks all
+meter boundaries without measurement fanout; a denied/invalid owner response blocks
+publication. Fresh meter metadata participates in the authorized cache fingerprint.
+No counter/power values are added together for the same epoch: its saved registry
+method is authoritative. Null/partial/estimate/zero states remain distinct.
+
+Energy comparisons expose covered-energy absolute change and undefined percent when
+the baseline is zero or unavailable, together with both periods' coverage/methods.
+The Energy task template now uses verified energy/peak capabilities and requires a
+reviewed physical meter boundary. Tariff cost and confirmed cycle widgets remain
+separate dependencies. Source/method/gap/replacement/reset setup is available from
+energy widget configuration through the owned device registry API; writes are explicit
+and optimistic, while source credentials are neither read nor stored in drafts.
+## Panel annotation preferences
+
+Existing widget `presentation` JSON can retain boolean `showTitle`, `showLegend`,
+`showCalculation`, `showComparison`, `showDetails` and `showAxes`. The console
+uses false defaults for the first five and a true default for axes. Only explicit
+booleans enable optional annotations; unknown fields are retained. These fields
+change presentation, never query scope, data authorization, source calculation
+or draft/publication concurrency. On-demand panel information remains available
+independently of inline-detail preference, and exceptional states remain visible.
+
+### Grid editing compatibility
+
+The editor uses react-grid-layout for drag and resize gestures and maps its
+item identifiers back to existing `widgetId,x,y,w,h` placements. Only a completed
+gesture changes the active screen's selected responsive layout. Draft ETags,
+autosave, Undo/Redo, all-screen publication validation and per-viewer evidence
+queries retain their existing contracts. Visible Edit titles and controls are
+editing chrome; they do not enable optional View annotations. No new API or
+server-computed energy/telemetry values are introduced by the grid library.
+
+The visual widget palette consumes the existing widget manifests and maps the
+grid's temporary drop ID to a new persisted widget ID. Only supported types can
+be inserted; schemaVersion, ETags, publication and query contracts are unchanged.
+New measurement panels are unbound pending explicit equipment/metric selection.
+
+### Custom screen grid profiles
+
+`definition.screens[].grid` is optional and maps `desktop`, `tablet`, `mobile`
+to complete integer profiles `{columns, rowHeight, gap}`. Bounds: columns 1–48,
+rowHeight 16–160 CSS px, gap 0–32 CSS px. Missing profiles render with the existing
+12/6/1-column, 48px-row, 12px-gap defaults. Legacy tablet placement validation
+continues accepting up to 8 columns when no explicit profile exists.
+
+Placements on a configured screen must fit that profile's columns; server
+validation rejects noninteger, unknown or out-of-range settings. Settings are
+stored in the existing JSON definition and immutable revisions; copy retains
+them. No SQL migration or resource grant changes are involved. The editor
+clamps/reflows positions when reducing columns and only changes that screen and
+responsive profile. Draft ETags, all-screen validation and explicit publication
+retain their contracts. Numeric panel width/height use the same column/row units.
+
+Widget manifest sizeConstraints now allow one column and one row on every
+profile. These are resize minima; the console maintains separate, useful
+insertion defaults. Placement validation continues to accept 1�100 rows.

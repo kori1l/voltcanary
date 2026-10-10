@@ -1,4 +1,4 @@
-import { type PointerEvent, useId, useState } from "react";
+import { type PointerEvent, useId, useState, useRef, useLayoutEffect } from "react";
 import type { TelemetryChart as ChartEvidence } from "../../../telemetry/telemetryApi";
 import { sampleDisplayEvidence } from "../model/displaySampling";
 import { MetricThreshold, TelemetryEvent, TelemetryOverviewResponse, TelemetrySample } from "../model/telemetry.types";
@@ -20,6 +20,9 @@ export function TelemetryChart({
   onRangeSelect,
   mode = "compact",
   evidence,
+  showSummary = true,
+  showAxes = true,
+  fillContainer = false,
 }: {
   series: TelemetrySample[];
   label: string;
@@ -33,6 +36,9 @@ export function TelemetryChart({
   onRangeSelect?: (from: string, to: string) => void;
   mode?: "compact" | "detailed";
   evidence?: ChartEvidence;
+  showSummary?:boolean;
+  showAxes?:boolean;
+  fillContainer?:boolean;
 }) {
   const [hovered, setHovered] = useState<{ sample: RenderSample; x: number; y: number; event?: TelemetryEvent } | null>(null);
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
@@ -41,9 +47,24 @@ export function TelemetryChart({
   const display = sampleDisplayEvidence(bounded, maxDisplayPoints, threshold, evidence?.buckets, evidence?.rawPointCount);
   const renderSeries = display.points;
   const values = [...renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value)), ...display.buckets.flatMap((bucket) => [bucket.min, bucket.max])];
-  const width = 820;
-  const height = 330;
-  const padding = { top: 28, right: 28, bottom: 54, left: 58 };
+  const svgRef=useRef<SVGSVGElement>(null);
+  const [dimensions,setDimensions]=useState({width:820,height:330});
+  useLayoutEffect(()=>{
+    const element=svgRef.current;
+    if(!fillContainer || !element || typeof ResizeObserver==="undefined")return;
+    const observer=new ResizeObserver(([entry])=>{
+      if(entry.contentRect.width>0 && entry.contentRect.height>0){
+        const next={width:entry.contentRect.width,height:entry.contentRect.height};
+        setDimensions((prior)=>prior.width===next.width && prior.height===next.height?prior:next);
+      }
+    });
+    observer.observe(element);
+    return ()=>observer.disconnect();
+  },[fillContainer]);
+  const {width,height}=fillContainer?dimensions:{width:820,height:330};
+  const padding = fillContainer
+    ? {top:Math.min(12,height*.12),right:Math.min(20,width*.1),bottom:showAxes?Math.min(48,height*.4):Math.min(12,height*.12),left:showAxes?Math.min(58,width*.3):Math.min(12,width*.1)}
+    : {top:28,right:28,bottom:54,left:58};
   const thresholdEntries = [
     { key: "normalMin", value: threshold?.normalMin },
     { key: "normalMax", value: threshold?.normalMax },
@@ -132,8 +153,9 @@ export function TelemetryChart({
 
   return (
     <div className={`chart-wrap annotated-chart chart-${mode === "detailed" ? "large" : "normal"}`}>
-      <p id={summaryId} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} threshold crossings preserved.`}</p>
+      <p id={summaryId} hidden={!showSummary} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} threshold crossings preserved.`}</p>
       <svg
+        ref={svgRef}
         className={canSelectRange ? "chart-range-selectable" : undefined}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
@@ -149,9 +171,9 @@ export function TelemetryChart({
           return (
             <g key={tick}>
               <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
-              <text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
+              {showAxes?<text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
                 {formatCompactNumber(tick)} {unit}
-              </text>
+              </text>:null}
             </g>
           );
         })}
@@ -237,10 +259,10 @@ export function TelemetryChart({
           );
         })}
 
-        {xTicks.map((tick) => {
+        {showAxes && xTicks.map((tick) => {
           const lines = formatChartTimeLabel(range, tick.timestamp);
           return (
-            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - 28} textAnchor="middle">
+            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - padding.bottom + Math.min(18,padding.bottom*.4)} textAnchor="middle">
               {lines.map((line, index) => (
                 <tspan key={`${line}-${index}`} x={tick.x} dy={index === 0 ? 0 : 14}>
                   {line}

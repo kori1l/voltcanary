@@ -40,7 +40,7 @@ Energy totals and rankings SHALL expose full authorized evaluated scope, coverag
 
 - **GIVEN** counter and power-derived values exist with a zero comparison baseline
 - **WHEN** the energy widget is rendered
-- **THEN** one saved authoritative method is used, absolute delta is shown and percent is undefined; both methods are not added together.
+- **THEN** one saved authoritative method is used, absolute delta is available in panel information and shown inline only when comparison is enabled, and percent is undefined; both methods are not added together.
 
 #### Scenario: Unavailable device during maintenance
 

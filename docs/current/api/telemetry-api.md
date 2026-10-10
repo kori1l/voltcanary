@@ -160,3 +160,42 @@ Raw measurements retain maintenance provenance rather than being removed by
 analytics exclusions. See [dashboard-api.md](dashboard-api.md) for source/time,
 coverage, read-only state and budget semantics. V007 adds an account/device/latest
 index without changing stored measurements.
+
+## Energy owner read
+
+Internal POST `/internal/dashboard/energy` accepts `{scope: DashboardOwnerReadRequest,
+independentMetersConfirmed: boolean}`. `/internal/dashboard/energy-validation`
+uses the same shape and validates scope/meter boundaries without reading measurements.
+Both require the internal token plus signed viewer bearer. Registry scope is renewed
+before any raw read and must match the requested user/account. Meter policies and
+identities come from that registry response, never caller-supplied rules.
+
+COUNTER_DELTA uses Wh/kWh differences within stable physical/source epochs;
+10000→10500Wh yields0.5kWh. A drop or declared reset/replacement excludes the bridge,
+with explicit reset/coverage metadata. Only a declared rollover time/modulus permits
+its wrapped delta. POWER_INTEGRAL uses elapsed-time trapezoids over qualified W/kW
+records and remains an estimate. Counter boundary interpolation also carries an
+estimate label. Canonical timestamps are ordered/deduplicated; conflicting duplicates,
+nonfinite/negative/wrong-family values and non-OK quality form excluded barriers.
+
+Windows are half-open UTC with qualified bracketing samples within the saved gap
+tolerance. Physical/source replacement prohibits cross-epoch bracketing. Contiguous
+policy changes on the same identity retain physical continuity. Excessive gaps are
+excluded, not bridged. No covered interval returns null energy; a qualified constant
+zero returns0. Raw consumption includes maintenance and is not analytics/ML-filtered.
+
+Multiple devices require explicit reviewed independence. Duplicate physical identities
+or known parent/ancestor overlap are rejected before reading; unresolved ancestry cannot
+qualify a multiple-meter total. Invisible physical overlap cannot be inferred from
+software labels. Responses expose full authorized IDs/counts, per-device epochs/methods,
+kWh totals, power extrema and recorded peak times, full-scope energy/peak rankings and
+location totals. Peaks are individual equipment observations, not summed fleet peaks.
+Coverage is covered meter-seconds divided by expected meter-seconds; missing equipment
+remains in that denominator. Totals are partial when coverage is incomplete.
+
+Each frame is bounded to31 days and500 devices; raw reads use at most a one-day margin
+around the current/comparison windows, at most500000 source rows and a three-second
+owner budget. Exceeding a bound requires a narrower query rather than truncating a
+total. Persisted retention is unchanged; missing retained boundary samples reduce
+coverage. API results contain bounded derived evidence, not persisted raw samples in
+dashboard definitions. Query profiles do not establish ingestion or storage capacity.

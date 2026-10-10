@@ -31,6 +31,12 @@
 - [add-dashboard-energy-aggregates](../add-dashboard-energy-aggregates/proposal.md) — prerequisite перед интеграционной приёмкой.
 
 
+## Presentation compatibility
+
+This extension preserves named working screens, explicit placement and minimal
+visualization defaults; the shared UI baseline and evidence disclosures are
+specified in [design.md](design.md#dashboard-presentation-baseline).
+
 ## Impact
 
 - `backend/services/device-service/ (operational facts/schedules)`
