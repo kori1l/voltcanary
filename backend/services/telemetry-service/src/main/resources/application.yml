@@ -1,6 +1,8 @@
 spring:
   application:
     name: telemetry-service
+  flyway:
+    locations: classpath:db/migration,classpath:db/vendor/{vendor}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -44,6 +46,11 @@ info:
     version: 0.1.0
 
 app:
+  variables:
+    enabled: ${VARIABLE_PROCESSING_ENABLED:false}
+    consume-enabled: ${VARIABLE_PROCESSING_ENABLED:false}
+    device-service-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
   kafka:
     consume-enabled: true
   internal:

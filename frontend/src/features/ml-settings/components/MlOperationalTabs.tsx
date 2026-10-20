@@ -24,9 +24,10 @@ function StatusFilterSelect(props: {
     </label>
   );
 }
-function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onConfirmed?: () => void; isDeletePending?: (id: string) => boolean; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
+function ModelsTab(props: { selectedModelId?: string; onClearSelection?: () => void; models: MlModelVersion[]; modelsAvailable?: boolean; statusFilter: MlLifecycleStatusFilter; onChanged: () => Promise<void>; onConfirmed?: () => void; isDeletePending?: (id: string) => boolean; onDelete: (model: MlModelVersion) => Promise<void>; onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>; setError: (value: string | null) => void }) {
   const confirmation = useActionConfirmation();
   const commands = useEntityCommands();
+  const visibleModels=props.selectedModelId?props.models.filter(model=>model.id===props.selectedModelId):props.models;
   const [savedModels, setSavedModels] = useState<Record<string, MlModelVersion>>({});
   async function modelCommand(model: MlModelVersion, action: "approve" | "reject" | "archive") {
     let reason = "";
@@ -46,7 +47,8 @@ function ModelsTab(props: { models: MlModelVersion[]; modelsAvailable?: boolean;
         </div>
         <StatusFilterSelect label="Model status filter" value={props.statusFilter} onChange={props.onFilterChange} />
       </div>
-      {props.modelsAvailable === false ? <p>Model records unavailable or loading.</p> : props.models.length === 0 ? <div className="empty-state">No registered model versions yet.</div> : props.models.map((record) => {
+      {props.selectedModelId?<div className="action-row"><span>Selected prediction model</span><button type="button" className="ghost-button" onClick={props.onClearSelection}>Show all models</button></div>:null}
+      {props.modelsAvailable === false ? <p>Model records unavailable or loading.</p> : visibleModels.length === 0 ? <div className="empty-state">{props.selectedModelId?"Selected model unavailable or outside the current status filter.":"No registered model versions yet."}</div> : visibleModels.map((record) => {
         const model = savedModels[record.id] ?? record;
         const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
         const approveBlocked = Boolean(gates && !gates.promotionEligible);

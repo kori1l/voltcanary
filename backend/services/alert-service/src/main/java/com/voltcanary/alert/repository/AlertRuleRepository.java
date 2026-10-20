@@ -12,4 +12,9 @@ public interface AlertRuleRepository extends JpaRepository<AlertRule, UUID>, Jpa
     List<AlertRule> findByAccountIdOrderByUpdatedAtDesc(UUID accountId);
 
     Optional<AlertRule> findByIdAndAccountId(UUID id, UUID accountId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select rule from AlertRule rule where rule.id=:id and rule.accountId=:accountId")
+    Optional<AlertRule> lockOwned(@org.springframework.data.repository.query.Param("id") UUID id,
+            @org.springframework.data.repository.query.Param("accountId") UUID accountId);
 }

@@ -45,6 +45,9 @@ public class DashboardReadAuthorization {
         validate(request);
         var body = mapper.createObjectNode().put("mode", request.deviceIds().isEmpty() ? "UNBOUND" : "FIXED");
         body.set("deviceIds", mapper.valueToTree(request.deviceIds()));
+        if (request.workspaceId()!=null) {
+            body.put("workspaceId",request.workspaceId().toString()).put("accountId",request.accountId().toString()).put("action","analytics.read");
+        }
         HttpRequest http = HttpRequest.newBuilder(deviceBase.resolve("/internal/dashboard/scope")).timeout(timeout)
                 .header("Authorization", authorization).header("X-Internal-Service-Token", internalToken)
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();

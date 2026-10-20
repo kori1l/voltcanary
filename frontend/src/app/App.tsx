@@ -18,10 +18,13 @@ const loadDashboard = () => import("../pages/PersonalDashboardsPage").then((m) =
 const loadDashboards = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardsPage }));
 const loadPersonalDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardPage }));
 const loadDevice = () => import("../pages/DeviceDetailsPage").then((m) => ({ default: m.DeviceDetailsPage }));
+const loadDeviceVariables = () => import("../pages/DeviceVariablesPage").then((m) => ({ default: m.DeviceVariablesPage }));
 const loadDevices = () => import("../pages/DevicesPage").then((m) => ({ default: m.DevicesPage }));
+const loadVehicles = () => import("../vehicles/VehicleConsole").then((m) => ({ default: m.VehicleConsole }));
 const loadSettings = () => import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage }));
 const loadMaintenance = () => import("../maintenance/MaintenanceCalendarPage").then((m) => ({ default: m.MaintenanceCalendarPage }));
 const loadMl = () => import("../pages/MlSettingsPage").then((m) => ({ default: m.MlSettingsPage }));
+const loadWorkspaces = () => import("../features/workspaces/WorkspaceManagement").then(m=>({default:m.WorkspaceManagement}));
 
 export function RequireAuth({ children }: { children: ReactElement }) {
   const status = useSyncExternalStore(subscribeSession, sessionStatus);
@@ -55,14 +58,17 @@ export function appRouteElements() {
         <Route path="/dashboards/:dashboardId" element={<RouteDelivery load={loadPersonalDashboard} label="personal dashboard" />} />
         <Route path="/dashboards/:dashboardId/edit" element={<RouteDelivery load={loadPersonalDashboard} label="dashboard editor" />} />
         <Route path="/devices" element={<RouteDelivery load={loadDevices} label="devices" />} />
+        <Route path="/vehicles" element={<RouteDelivery load={loadVehicles} label="vehicles" />} />
         <Route path="/maintenance" element={<RouteDelivery load={loadMaintenance} label="maintenance" />} />
         <Route path="/devices/:deviceId" element={<RouteDelivery load={loadDevice} label="device details" />} />
+        <Route path="/devices/:deviceId/variables" element={<RouteDelivery load={loadDeviceVariables} label="device variables" />} />
         <Route path="/alerts" element={<RouteDelivery load={loadAlerts} label="alerts" />} />
         <Route path="/settings" element={<RouteDelivery load={loadSettings} label="settings" />} />
         <Route path="/settings/ml" element={<RouteDelivery load={loadMl} label="ML workspace" />} />
         <Route path="/ai-agent" element={<RouteDelivery load={loadAi} label="AI agent" />} />
         <Route path="/ai-agent/settings" element={<RouteDelivery load={loadAiSettings} label="AI settings" />} />
         <Route path="/account" element={<RouteDelivery load={loadAccount} label="administration" />} />
+        <Route path="/workspaces" element={<RouteDelivery load={loadWorkspaces} label="workspaces" />} />
       </Route>
       <Route path="*" element={<Navigate to={isAuthenticated() ? "/devices" : "/login"} replace />} />
     </>

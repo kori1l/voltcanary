@@ -12,6 +12,10 @@ public class SimulationRunner {
 
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(4);
 
+    public ScheduledFuture<?> scheduleVehicle(UUID runId, Runnable tick, long intervalSeconds) {
+        return executor.scheduleWithFixedDelay(tick, 0, Math.max(1, intervalSeconds), TimeUnit.SECONDS);
+    }
+
     public ScheduledFuture<?> schedule(UUID runId, Runnable tick, long intervalSeconds) {
         return executor.scheduleAtFixedRate(tick, 0, Math.max(1, intervalSeconds), TimeUnit.SECONDS);
     }

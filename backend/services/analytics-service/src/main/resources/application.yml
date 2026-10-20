@@ -16,6 +16,8 @@ spring:
         retry.backoff.ms: 100
 
 app:
+  variables:
+    consume-enabled: ${VARIABLE_ALERTS_ENABLED:false}
   kafka:
     consume-enabled: false
     publish-enabled: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:true}

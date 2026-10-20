@@ -28,18 +28,22 @@ public class SimulationProfileService {
     private final SimulationProfileMapper mapper;
     private final SimulationYamlValidator validator;
     private final SimulationTemplates templates;
+    private final VehicleSimulationTarget target;
+    private final com.voltcanary.simulator.yaml.SimulationYamlParser parser;
 
     public SimulationProfileService(
             SimulationConfigRepository configRepository,
             SimulationProfileVersionWriter versionWriter,
             SimulationProfileMapper mapper,
             SimulationYamlValidator validator,
-            SimulationTemplates templates) {
+            SimulationTemplates templates, VehicleSimulationTarget target, com.voltcanary.simulator.yaml.SimulationYamlParser parser) {
         this.configRepository = configRepository;
         this.versionWriter = versionWriter;
         this.mapper = mapper;
         this.validator = validator;
         this.templates = templates;
+        this.target = target;
+        this.parser = parser;
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +55,13 @@ public class SimulationProfileService {
     @Transactional
     public SimulationConfigResponse save(UUID userId, UUID deviceId, SaveSimulationConfigRequest request) {
         List<ValidationError> errors = validator.validate(request.yamlConfig());
+        if (errors.isEmpty()) {
+            var model = parser.parse(request.yamlConfig());
+            if (!model.profile().equals(request.profile().name()) || !model.protocol().equals(request.protocol().name())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile/protocol must match YAML");
+            }
+            target.require(userId, deviceId, request.dataSourceId(), model);
+        }
         Instant now = Instant.now();
         SimulationConfig config = configRepository.findByDeviceId(deviceId).orElseGet(() -> {
             SimulationConfig created = new SimulationConfig();

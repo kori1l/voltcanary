@@ -9,5 +9,11 @@ public record SimulationPresetResponse(
         List<String> metrics,
         List<String> expectedAlerts,
         String defaultDuration,
-        String defaultInterval) {
+        String defaultInterval,
+        List<String> compatibleProfiles) {
+    public SimulationPresetResponse(String id, String name, String description, List<String> metrics,
+            List<String> expectedAlerts, String defaultDuration, String defaultInterval) {
+        this(id, name, description, metrics, expectedAlerts, defaultDuration, defaultInterval,
+                List.of("GENERIC_APPLIANCE", "FRIDGE", "AIR_CONDITIONER", "BOILER", "PUMP", "HEATER"));
+    }
 }

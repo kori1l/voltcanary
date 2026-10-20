@@ -36,6 +36,10 @@ Future public API versioning belongs in
 
 ## Related Docs
 
+- Workspace, sharing, tariffs, confirmed operations and diagrams: [workspace-dashboard-business-api.md](workspace-dashboard-business-api.md)
+
 - Event contracts: [../events/README.md](../events/README.md)
 - Service boundaries: [../architecture/02-service-boundaries.md](../architecture/02-service-boundaries.md)
 - Security: [../architecture/08-security.md](../architecture/08-security.md)
+
+[Device variable API](device-variables.md): owner definitions, bindings, preview, history and thresholds.

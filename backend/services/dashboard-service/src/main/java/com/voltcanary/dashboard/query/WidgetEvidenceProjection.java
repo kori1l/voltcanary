@@ -23,8 +23,11 @@ public class WidgetEvidenceProjection {
     public WidgetEvidenceProjection(ObjectMapper mapper) { this.mapper = mapper; }
     public List<String> owners(String type) {
         return switch (type) {
+            case "vehicle-map" -> List.of("positions");
             case "fleet-count", "latest-value", "time-series", "metric-summary" -> List.of("telemetry");
             case "energy-period","peak-and-ranking" -> List.of("energy");
+            case "estimated-cost" -> List.of("cost");
+            case "uptime-or-cycle" -> List.of("operations");
             case "quality-and-freshness" -> List.of("telemetry", "analytics");
             case "risk-list", "prediction-evidence" -> List.of("analytics");
             case "incident-list" -> List.of("incidents");
@@ -45,6 +48,7 @@ public class WidgetEvidenceProjection {
                 throw new DashboardFailure("INVALID_READ_RESPONSE", "Owner response resource IDs differ from the authorized scope");
         }
         String resultType = switch (widget.type()) {
+            case "vehicle-map" -> "POSITIONS";
             case "fleet-count" -> "COUNT";
             case "latest-value" -> "VALUE";
             case "time-series" -> "SERIES";
@@ -57,6 +61,8 @@ public class WidgetEvidenceProjection {
             case "prediction-evidence" -> "PREDICTION";
             case "energy-period" -> "ENERGY";
             case "peak-and-ranking" -> "ENERGY_RANKING";
+            case "estimated-cost" -> "COST";
+            case "uptime-or-cycle" -> "OPERATIONS";
             default -> "NOTE";
         };
         ObjectNode result = mapper.createObjectNode().put("resultType", resultType).put("widgetType", widget.type())
@@ -74,11 +80,17 @@ public class WidgetEvidenceProjection {
         });
         if (List.of("latest-value", "metric-summary", "time-series").contains(widget.type())) registered(config, evidence.get("telemetry"));
         switch (widget.type()) {
+            case "vehicle-map" -> {
+                result.set("positions", evidence.get("positions").path("positions"));
+                sources.remove("positions");
+            }
             case "fleet-count", "quality-and-freshness" -> freshness(result, config, frame, scope, evidence.get("telemetry"));
             case "latest-value" -> latest(result, config, scope, evidence.get("telemetry"));
             case "time-series" -> series(result, config, evidence.get("telemetry"));
             case "metric-summary" -> summary(result, config, evidence.get("telemetry"));
             case "energy-period","peak-and-ranking" -> energy(result,evidence.get("energy"));
+            case "estimated-cost" -> {result.set("estimate",evidence.get("cost").path("estimate"));result.set("comparison",evidence.get("cost").path("comparison"));result.set("baseline",evidence.get("cost").path("baseline"));}
+            case "uptime-or-cycle" -> result.set("operations",evidence.get("operations").path("operations"));
             case "risk-list" -> page(result, "risks", config, taskRisks(widget, scope, evidence.get("analytics")));
             case "prediction-evidence" -> page(result, "predictions", config, evidence.get("analytics"));
             case "location-matrix" -> matrix(result, config, frame, scope, evidence);

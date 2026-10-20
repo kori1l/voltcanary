@@ -6,20 +6,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.common.web.DashboardEnergyReadRequest;
+import com.voltcanary.common.web.DashboardEnergyBatchReadRequest;
+import com.voltcanary.common.web.DashboardOwnerReadRequest;
 import com.voltcanary.common.web.EnergyMeterDefinition;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.CounterEvent;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.EventKind;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.Method;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.Policy;
-import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.Reading;
 import com.voltcanary.telemetry.repository.EnergyReadingRepository;
-import com.voltcanary.telemetry.repository.EnergyReadingRepository.StoredReading;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +32,10 @@ import org.springframework.web.server.ResponseStatusException;
 /** Pure meter math composed with freshly authorized registry snapshots and raw telemetry. */
 @Service
 public class EnergyPeriodReadService {
-    private record Meter(UUID deviceId,String name,UUID locationId,List<EnergyMeterDefinition> history) {
+    private record Meter(UUID deviceId,String name,UUID locationId,List<EnergyMeterDefinition> history,
+            List<EnergyMeterWindows.Window> windows) {
     }
+    private record ReadWindow(Instant from, Instant to) { }
     private final EnergyReadingRepository readings;
     private final ObjectMapper mapper;
     private final EnergyPeriodCalculator calculator = new EnergyPeriodCalculator();
@@ -52,7 +53,11 @@ public class EnergyPeriodReadService {
         Instant earliest = frame.compareFrom()!=null && frame.compareFrom().isBefore(frame.from())?frame.compareFrom():frame.from();
         Instant latest = frame.compareTo()!=null && frame.compareTo().isAfter(frame.to())?frame.compareTo():frame.to();
         Instant end = latest.plusSeconds(86400).isAfter(frame.asOf())?frame.asOf():latest.plusSeconds(86400);
-        Map<UUID,List<StoredReading>> stored = readings.read(request.scope().accountId(),meters.stream().map(Meter::deviceId).toList(),earliest.minusSeconds(86400),end);
+        var readWindow = new ReadWindow(earliest.minusSeconds(86400), end);
+        List<EnergyReadingRepository.Range> ranges = ranges(meters, frame.from(), frame.to(), readWindow);
+        if (frame.compareFrom() != null) ranges.addAll(ranges(meters, frame.compareFrom(), frame.compareTo(), readWindow));
+        budget(deadline);
+        var stored = new EnergyReadingIndex(readings.readSelected(request.scope().accountId(), ranges));
         ObjectNode result = mapper.createObjectNode().put("requestedCount",request.scope().deviceIds().size())
                 .put("evaluatedCount",meters.size()).put("deniedBindingCount",request.scope().deviceIds().size()-meters.size())
                 .put("asOf",frame.asOf().toString()).put("queryAt",Instant.now().toString())
@@ -63,8 +68,8 @@ public class EnergyPeriodReadService {
                 .put("scopeWarning","Physical identity and independence are declared registry metadata; hidden overlap is not inferred")
                 .put("rawSampleLimit",500000);
         result.set("authorizedDeviceIds",mapper.valueToTree(meters.stream().map(Meter::deviceId).toList()));
-        result.set("period",period(meters,stored,frame.from(),frame.to(),deadline));
-        if (frame.compareFrom()!=null) result.set("baseline",period(meters,stored,frame.compareFrom(),frame.compareTo(),deadline));
+        result.set("period",period(meters,stored,readWindow,frame.from(),frame.to(),deadline));
+        if (frame.compareFrom()!=null) result.set("baseline",period(meters,stored,readWindow,frame.compareFrom(),frame.compareTo(),deadline));
         else result.putNull("baseline");
         return result;
     }
@@ -74,6 +79,54 @@ public class EnergyPeriodReadService {
         ObjectNode result=mapper.createObjectNode().put("evaluatedCount",meters.size())
                 .put("deniedBindingCount",request.scope().deviceIds().size()-meters.size()).put("validationOnly",true);
         result.set("authorizedDeviceIds",mapper.valueToTree(meters.stream().map(Meter::deviceId).toList()));
+        return result;
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public ObjectNode readBatch(DashboardEnergyBatchReadRequest request,JsonNode renewedScope) {
+        if (request.intervals()==null || request.intervals().isEmpty() || request.intervals().size()>64)
+            throw invalid("Choose1 to64 energy intervals");
+        long deadline = System.nanoTime()+3_000_000_000L;
+        Map<String,List<Meter>> selections = new LinkedHashMap<>();
+        Map<String,ReadWindow> windows = new LinkedHashMap<>();
+        List<EnergyReadingRepository.Range> ranges = new ArrayList<>();
+        for (var interval : request.intervals()) {
+            budget(deadline);
+            if (interval.key()==null || interval.key().length()>100 || selections.containsKey(interval.key())
+                    || interval.deviceIds()==null || interval.deviceIds().isEmpty() || interval.deviceIds().size()>50
+                    || interval.deviceIds().stream().distinct().count()!=interval.deviceIds().size()
+                    || !request.scope().deviceIds().containsAll(interval.deviceIds())
+                    || interval.from()==null || interval.to()==null || !interval.from().isBefore(interval.to())
+                    || Duration.between(interval.from(),interval.to()).compareTo(Duration.ofDays(31))>0
+                    || interval.to().isAfter(request.scope().time().asOf())) throw invalid("Invalid energy batch interval");
+            ObjectNode subset = mapper.createObjectNode();
+            ArrayNode devices = subset.putArray("devices");
+            renewedScope.path("devices").forEach(device -> {
+                if (interval.deviceIds().contains(UUID.fromString(device.path("id").asText()))) devices.add(device);
+            });
+            var scope = request.scope();
+            var frame = new DashboardOwnerReadRequest.TimeFrame(interval.from(),interval.to(),scope.time().asOf(),null,null);
+            var single = new DashboardEnergyReadRequest(new DashboardOwnerReadRequest(scope.userId(),scope.accountId(),interval.deviceIds(),frame,
+                    java.util.Set.of(),List.of(),1,0,"ACTIVE",List.of(),scope.workspaceId()),interval.independentMetersConfirmed());
+            selections.put(interval.key(),prepare(single,subset));
+            Instant end = interval.to().plusSeconds(86400).isAfter(frame.asOf()) ? frame.asOf() : interval.to().plusSeconds(86400);
+            var window = new ReadWindow(interval.from().minusSeconds(86400), end);
+            windows.put(interval.key(), window);
+            ranges.addAll(ranges(selections.get(interval.key()), interval.from(), interval.to(), window));
+        }
+        budget(deadline);
+        var stored = new EnergyReadingIndex(readings.readSelected(request.scope().accountId(), ranges));
+        ObjectNode result = mapper.createObjectNode().put("asOf",request.scope().time().asOf().toString());
+        ObjectNode intervals = result.putObject("intervals");
+        for (var interval : request.intervals()) {
+            budget(deadline);
+            var meters = selections.get(interval.key());
+            ObjectNode value = mapper.createObjectNode().put("evaluatedCount",meters.size())
+                    .put("deniedBindingCount",interval.deviceIds().size()-meters.size());
+            value.set("authorizedDeviceIds",mapper.valueToTree(meters.stream().map(Meter::deviceId).toList()));
+            value.set("period",period(meters,stored,windows.get(interval.key()),interval.from(),interval.to(),deadline));
+            intervals.set(interval.key(),value);
+        }
         return result;
     }
 
@@ -87,7 +140,8 @@ public class EnergyPeriodReadService {
             List<EnergyMeterDefinition> history=device.path("energyMeters").isArray()
                     ?mapper.convertValue(device.path("energyMeters"),new TypeReference<List<EnergyMeterDefinition>>() {}):List.of();
             UUID location=device.hasNonNull("locationId")?UUID.fromString(device.path("locationId").asText()):null;
-            meters.add(new Meter(UUID.fromString(device.path("id").asText()),device.path("name").asText(),location,history));
+            meters.add(new Meter(UUID.fromString(device.path("id").asText()),device.path("name").asText(),location,history,
+                    EnergyMeterWindows.of(history)));
         }
         if (meters.size()>1 && !request.independentMetersConfirmed()) throw invalid("Review independent physical meters before aggregating multiple devices");
         validateBoundary(meters,frame.from(),frame.to());
@@ -115,7 +169,26 @@ public class EnergyPeriodReadService {
         }
     }
 
-    private ObjectNode period(List<Meter> meters,Map<UUID,List<StoredReading>> stored,Instant from,Instant to,long deadline) {
+    private List<EnergyReadingRepository.Range> ranges(List<Meter> meters, Instant from, Instant to, ReadWindow readWindow) {
+        List<EnergyReadingRepository.Range> ranges = new ArrayList<>();
+        for (Meter meter : meters) {
+            for (var window : meter.windows()) {
+                var epoch = window.definition();
+                if (!overlaps(epoch, from, to)) continue;
+                Instant start = readWindow.from().isAfter(window.from()) ? readWindow.from() : window.from();
+                boolean inclusive = window.to() == null || readWindow.to().isBefore(window.to());
+                Instant end = inclusive ? readWindow.to() : window.to();
+                if (start.isAfter(end) || (start.equals(end) && !inclusive)) continue;
+                ranges.add(new EnergyReadingRepository.Range(meter.deviceId(), epoch.sourceId(), "activePowerW", start, end, inclusive));
+                if ("COUNTER_DELTA".equals(epoch.authoritativeMethod())) {
+                    ranges.add(new EnergyReadingRepository.Range(meter.deviceId(), epoch.sourceId(), "energyWh", start, end, inclusive));
+                }
+            }
+        }
+        return ranges;
+    }
+
+    private ObjectNode period(List<Meter> meters,EnergyReadingIndex stored,ReadWindow readWindow,Instant from,Instant to,long deadline) {
         ObjectNode result = mapper.createObjectNode().put("from",from.toString()).put("to",to.toString()).put("unit","kWh")
                 .put("coverageBasis","COVERED_METER_SECONDS_OVER_EXPECTED_METER_SECONDS");
         ArrayNode devices = result.putArray("devices");
@@ -126,8 +199,7 @@ public class EnergyPeriodReadService {
         Map<String,List<ObjectNode>> locations = new LinkedHashMap<>();
         for (Meter meter:meters) {
             budget(deadline);
-            List<StoredReading> samples = stored.getOrDefault(meter.deviceId(),List.of());
-            ObjectNode device = device(meter,samples,from,to,deadline);
+            ObjectNode device = device(meter,stored,readWindow,from,to,deadline);
             devices.add(device);
             covered += device.path("coveredSeconds").asDouble();
             if (device.hasNonNull("energyKWh")) {
@@ -165,7 +237,7 @@ public class EnergyPeriodReadService {
         return result;
     }
 
-    private ObjectNode device(Meter meter,List<StoredReading> samples,Instant from,Instant to,long deadline) {
+    private ObjectNode device(Meter meter,EnergyReadingIndex stored,ReadWindow readWindow,Instant from,Instant to,long deadline) {
         ObjectNode result = mapper.createObjectNode().put("deviceId",meter.deviceId().toString()).put("deviceName",meter.name());
         if (meter.locationId()==null) result.putNull("locationId"); else result.put("locationId",meter.locationId().toString());
         double amount = 0;
@@ -175,14 +247,15 @@ public class EnergyPeriodReadService {
         Double minPower = null;
         Double maxPower = null;
         Instant peakAt = null;
-        for (EnergyMeterDefinition epoch:meter.history()) {
+        for (var window:meter.windows()) {
+            var epoch=window.definition();
             budget(deadline);
             if (!overlaps(epoch,from,to)) continue;
             Instant start = epoch.effectiveFrom().isAfter(from)?epoch.effectiveFrom():from;
             Instant end = epoch.effectiveTo()!=null && epoch.effectiveTo().isBefore(to)?epoch.effectiveTo():to;
             Method method = Method.valueOf(epoch.authoritativeMethod());
             String metric = method==Method.COUNTER_DELTA?"energyWh":"activePowerW";
-            List<Reading> source = physicalReadings(meter,epoch,samples,metric);
+            var source = stored.slice(meter.deviceId(),window,metric,readWindow.from(),readWindow.to());
             // Supplementary historical reset declarations are carried by later metadata revisions.
             List<CounterEvent> events = meter.history().stream().filter(version->version.physicalMeterId().equals(epoch.physicalMeterId())
                     && version.sourceId().equals(epoch.sourceId())).flatMap(version->version.counterEvents().stream())
@@ -195,7 +268,7 @@ public class EnergyPeriodReadService {
             if (calculation.energyKWh()!=null) amount+=calculation.energyKWh();
             covered+=calculation.coveredSeconds();
             estimate |= calculation.estimate();
-            var power = calculator.calculate(physicalReadings(meter,epoch,samples,"activePowerW"),start,end,
+            var power = calculator.calculate(stored.slice(meter.deviceId(),window,"activePowerW",readWindow.from(),readWindow.to()),start,end,
                     new Policy(Method.POWER_INTEGRAL,epoch.sourceId(),epoch.maxGapSeconds(),List.of()));
             if (power.minimumPowerW()!=null && (minPower==null || power.minimumPowerW()<minPower)) minPower=power.minimumPowerW();
             if (power.maximumPowerW()!=null && (maxPower==null || power.maximumPowerW()>maxPower)) {
@@ -211,26 +284,6 @@ public class EnergyPeriodReadService {
         if (maxPower==null) result.putNull("maximumPowerW"); else result.put("maximumPowerW",maxPower);
         if (peakAt==null) result.putNull("maximumPowerAt"); else result.put("maximumPowerAt",peakAt.toString());
         return result;
-    }
-
-    private List<Reading> physicalReadings(Meter meter,EnergyMeterDefinition epoch,List<StoredReading> samples,String metric) {
-        int first=meter.history().indexOf(epoch);
-        int last=first;
-        while (first>0 && sameIdentity(meter.history().get(first-1),epoch)
-                && meter.history().get(first-1).effectiveTo()!=null
-                && meter.history().get(first-1).effectiveTo().equals(meter.history().get(first).effectiveFrom())) first--;
-        while (last+1<meter.history().size() && sameIdentity(meter.history().get(last+1),epoch)
-                && meter.history().get(last).effectiveTo()!=null
-                && meter.history().get(last).effectiveTo().equals(meter.history().get(last+1).effectiveFrom())) last++;
-        Instant physicalFrom=meter.history().get(first).effectiveFrom();
-        Instant physicalTo=meter.history().get(last).effectiveTo();
-        return samples.stream().filter(sample->sample.metric().equals(metric) && epoch.sourceId().equals(sample.reading().sourceId())
-                && !sample.reading().measuredAt().isBefore(physicalFrom)
-                && (physicalTo==null || sample.reading().measuredAt().isBefore(physicalTo))).map(StoredReading::reading).toList();
-    }
-
-    private boolean sameIdentity(EnergyMeterDefinition left,EnergyMeterDefinition right) {
-        return left.physicalMeterId().equals(right.physicalMeterId()) && left.sourceId().equals(right.sourceId());
     }
 
     private void budget(long deadline) {

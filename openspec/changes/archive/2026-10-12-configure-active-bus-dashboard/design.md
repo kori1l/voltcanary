@@ -1,0 +1,5 @@
+# Design
+
+Persist owner quota overrides in a dedicated dashboard table, bounded 1..1000, default ten. Preserve existing transaction quota checks and owner isolation. Provision only the authorized demo owner limit (50). Dotted metric keys use the same bounded safe configured-field alphabet, parameterized SQL and owned device/account scopes. Extend metric discovery with requested metrics actually present in allowed device measurements. Boolean dashboard series return at most 1000 measured states, otherwise existing extrema envelopes. Render step states with source gaps and Open/Closed door labels. Add a rolling LAST_1_HOUR query preset for live state charts. Publish one active bus dashboard with full-width map then half-width speed and door charts (stacked on mobile). Validate live freshness at creation and all three panel results.
+
+Live selection: previous night buses ceased publishing by 01:39 UTC. Discover and register bus 0020-00004 (route 584) using the anonymous public stream, assign the existing HSL telemetry template and append its explicit source binding. Do not modify the existing published fleet dashboard.

@@ -38,6 +38,18 @@ spring:
                   - Retry-After
                 allow-credentials: true
           routes:
+            - id: workspace-resources
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/workspaces/*/resource-accounts/**,/workspaces/*/resource-grants/**,/workspaces/*/resource-audit/**,/workspaces/*/devices/**,/workspaces/*/maintenance/**
+            - id: workspaces
+              uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+              predicates:
+                - Path=/workspaces/**
+            - id: business-facts
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/energy-tariffs/**,/operational-events/**,/operating-schedules/**
             - id: identity-service
               uri: ${IDENTITY_SERVICE_URI:http://localhost:8081}
               predicates:

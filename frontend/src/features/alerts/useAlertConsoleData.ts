@@ -16,7 +16,10 @@ export function useAlertConsoleData(filters: AlertFilters, page = 0) {
   const locations = useSectionResource<Location[]>();
   useEffect(() => {
     void Promise.allSettled([rules.load(listAlertRules, (data) => !data.length), channels.load(listNotificationChannels, (data) => !data.length), devices.load(listDevices, (data) => !data.length), locations.load(listLocations, (data) => !data.length)]);
-    return () => request.current?.abort();
+    return () => {
+      request.current?.abort();
+      summaryScope.current = null;
+    };
   }, []);
   async function load(refreshSummary = true) {
     request.current?.abort();
@@ -26,7 +29,12 @@ export function useAlertConsoleData(filters: AlertFilters, page = 0) {
       if (!Array.isArray(result.content) || typeof result.hasNext !== "boolean" || !Number.isFinite(result.totalElements)) throw new Error("Incident page unavailable: invalid response");
       return result;
     }, (data) => !data.content.length)];
-    if (refreshSummary || summaryScope.current !== scope) { summaryScope.current = scope; jobs.push(summary.load(() => getAlertSummary(filters))); }
+    if (refreshSummary || summaryScope.current !== scope) {
+      jobs.push(summary.load(() => getAlertSummary(filters)).then((result) => {
+        if (result !== null) summaryScope.current = scope;
+        return result;
+      }));
+    }
     const results = await Promise.allSettled(jobs);
     return results.every((result) => result.status === "fulfilled" && result.value !== null);
   }

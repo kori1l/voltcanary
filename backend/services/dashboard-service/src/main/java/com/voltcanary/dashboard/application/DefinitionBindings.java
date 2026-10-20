@@ -16,13 +16,38 @@ import org.springframework.stereotype.Component;
 public class DefinitionBindings {
     private final DashboardOwnership ownership;
     private final ObjectMapper mapper;
+    private final com.voltcanary.dashboard.port.DashboardEvidenceReads reads;
 
-    public DefinitionBindings(DashboardOwnership ownership, ObjectMapper mapper) {
+    public DefinitionBindings(DashboardOwnership ownership, ObjectMapper mapper,com.voltcanary.dashboard.port.DashboardEvidenceReads reads) {
         this.ownership = ownership;
         this.mapper = mapper;
+        this.reads=reads;
+    }
+
+    public DashboardDefinition template(DashboardDefinition definition) {
+        ObjectNode tree=mapper.valueToTree(definition);
+        tree.putObject("defaultContext");tree.putArray("sections");
+        for(var node:tree.path("widgets")) {
+            ObjectNode widget=(ObjectNode)node;
+            widget.putObject("binding").put("mode","UNBOUND");widget.putObject("query");widget.putObject("navigation");widget.putObject("payload");
+            widget.put("title",widget.path("type").asText());
+        }
+        return mapper.convertValue(tree,DashboardDefinition.class);
     }
 
     public void requireAuthorized(String authorization, DashboardActor actor, DashboardDefinition definition) {
+        if (definition.defaultContext().path("scope").hasNonNull("workspaceId")) {
+            var decoder=new com.voltcanary.dashboard.query.WidgetQueryDecoder(mapper);
+            if (reads==null) throw new DashboardFailure("NO_ACCESS","Workspace resource authority unavailable");
+            for (var widget:definition.widgets()) {
+                var binding=decoder.scope(widget.binding());
+                if (binding.workspaceId()==null) throw new DashboardFailure("NO_ACCESS","Explicit collaboration binding required");
+                var snapshot=reads.scope(authorization,actor,binding);
+                var ids=snapshot.devices().stream().map(com.voltcanary.dashboard.port.DashboardEvidenceReads.Device::id).collect(java.util.stream.Collectors.toSet());
+                if (!ids.containsAll(binding.deviceIds())) throw new DashboardFailure("NO_ACCESS","Rebind inaccessible equipment before publication");
+            }
+            return;
+        }
         if (!unavailable(authorization, actor, mapper.valueToTree(definition)).isEmpty()) {
             throw new DashboardFailure("VALIDATION_ERROR", "Definition contains inaccessible resource bindings", "binding");
         }
@@ -30,6 +55,7 @@ public class DefinitionBindings {
 
     public DashboardDefinition safeCopy(String authorization, DashboardActor actor, DashboardDefinition definition) {
         ObjectNode tree = mapper.valueToTree(definition);
+        stripCollaboration(tree);
         Set<String> denied = unavailable(authorization, actor, tree);
         if (!denied.isEmpty()) {
             clearDenied(tree.path("defaultContext"), denied);
@@ -45,6 +71,12 @@ public class DefinitionBindings {
             clearDenied(tree.path("sections"), denied);
         }
         return mapper.convertValue(tree, DashboardDefinition.class);
+    }
+    private void stripCollaboration(JsonNode tree) {
+        if (tree.isObject()) {
+            ((ObjectNode)tree).remove(java.util.List.of("workspaceId","accountId","authorizationFingerprint"));
+        }
+        tree.forEach(this::stripCollaboration);
     }
 
     private Set<String> unavailable(String authorization, DashboardActor actor, JsonNode tree) {

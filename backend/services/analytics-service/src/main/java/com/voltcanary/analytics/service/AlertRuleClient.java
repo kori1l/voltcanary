@@ -48,4 +48,13 @@ public class AlertRuleClient {
             return List.of();
         }
     }
+
+    public List<AlertRuleSnapshot> effectiveRulesStrict(UUID deviceId) {
+        AlertRuleSnapshot[] response = restClient.get()
+                .uri("/internal/alert-rules/effective?deviceId={deviceId}", deviceId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve().body(AlertRuleSnapshot[].class);
+        if (response == null) throw new IllegalStateException("Rule snapshot unavailable");
+        return Arrays.asList(response);
+    }
 }

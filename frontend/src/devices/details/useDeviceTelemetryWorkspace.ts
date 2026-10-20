@@ -68,7 +68,7 @@ export function useDeviceTelemetryWorkspace({
     }, (data) => data === null || !Object.keys(data.readings).length);
     const result = await resource.load(async () => {
       const numericMetrics = await getTelemetryMetrics(currentDeviceId, chartTimeWindow.from, chartTimeWindow.to, controller.signal);
-      if (!Array.isArray(numericMetrics) || numericMetrics.some((metric) => typeof metric.name !== "string" || typeof metric.unit !== "string" || metric.type !== "number")) throw new Error("Historical metric metadata unavailable: invalid response");
+      if (!Array.isArray(numericMetrics) || numericMetrics.some((metric) => typeof metric.name !== "string" || typeof metric.unit !== "string" || !["number","boolean"].includes(metric.type))) throw new Error("Historical metric metadata unavailable: invalid response");
       const chartResponses = await Promise.allSettled(
         numericMetrics.map((metric) => limiter.current.run(async () => {
           const chart = await getTelemetryEnvelope(currentDeviceId, metric.name, chartTimeWindow.from, chartTimeWindow.to, controller.signal);

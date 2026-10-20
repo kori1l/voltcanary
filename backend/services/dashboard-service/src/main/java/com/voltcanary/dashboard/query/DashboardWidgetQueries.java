@@ -38,7 +38,7 @@ public class DashboardWidgetQueries {
         }
     }
     private record Prepared(Widget widget, Config config, ScopeSnapshot scope, Frame frame, DashboardFailure failure) { }
-    private record Cached(DashboardActor actor, Instant until, Batch batch) { }
+    private record Cached(DashboardActor actor, Instant until, Batch batch, int bytes) { }
     private final QueryDefinitionReader definitions;
     private final WidgetManifests manifests;
     private final WidgetQueryDecoder decoder;
@@ -47,11 +47,18 @@ public class DashboardWidgetQueries {
     private final QueryReadScheduler scheduler;
     private final WidgetEvidenceProjection projection;
     private final ObjectMapper mapper;
-    private final Map<String, Cached> cache = new LinkedHashMap<>();
+    private final CompactDashboardEvidence compact;
+    private final Map<String, Cached> cache = new LinkedHashMap<>(16, 0.75f, true);
 
     public DashboardWidgetQueries(QueryDefinitionReader definitions, WidgetManifests manifests,
             WidgetQueryDecoder decoder, WidgetScopeResolver scopes, QueryTimeResolver time,
             QueryReadScheduler scheduler, WidgetEvidenceProjection projection, ObjectMapper mapper) {
+        this(definitions, manifests, decoder, scopes, time, scheduler, projection, mapper, new CompactDashboardEvidence(mapper));
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public DashboardWidgetQueries(QueryDefinitionReader definitions, WidgetManifests manifests,
+            WidgetQueryDecoder decoder, WidgetScopeResolver scopes, QueryTimeResolver time,
+            QueryReadScheduler scheduler, WidgetEvidenceProjection projection, ObjectMapper mapper, CompactDashboardEvidence compact) {
         this.definitions = definitions;
         this.manifests = manifests;
         this.decoder = decoder;
@@ -60,12 +67,16 @@ public class DashboardWidgetQueries {
         this.scheduler = scheduler;
         this.projection = projection;
         this.mapper = mapper;
+        this.compact = compact;
     }
 
     public Batch query(String authorization, DashboardActor actor, UUID id, Request request) {
         return query(authorization, actor, id, request, false);
     }
     public Batch query(String authorization, DashboardActor actor, UUID id, Request request, boolean validateOnly) {
+        return query(authorization,actor,id,request,validateOnly,null);
+    }
+    public Batch query(String authorization, DashboardActor actor, UUID id, Request request, boolean validateOnly, java.util.function.Consumer<Batch> progress) {
         var resolved = definitions.read(actor, id, request);
         DashboardDefinition definition = resolved.definition();
         int revision = resolved.revision();
@@ -84,12 +95,15 @@ public class DashboardWidgetQueries {
             }
             try {
                 Config config = decoder.config(widget, manifest.get());
-                ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo);
+                ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo, "vehicle-map".equals(widget.type()));
+                scope=scopes.capabilities(authorization,actor,scope,widget.type());
                 if (scope.deniedBindingCount() > 0) throw new DashboardFailure("NO_ACCESS", "Resource binding is no longer accessible");
                 if (decoder.scope(widget.binding()).mode() == ScopeMode.UNBOUND)
                     throw new DashboardFailure("UNBOUND_RESOURCE", "No equipment is bound; unavailable measurements are not inferred");
                 if (manifest.get().maxDetailDevices() > 0 && scope.evaluatedCount() > manifest.get().maxDetailDevices())
                     throw new DashboardFailure("LIMIT_EXCEEDED", "Detail scope exceeds the widget device limit");
+                if ("vehicle-map".equals(widget.type()) && scope.devices().stream().anyMatch(device -> !"VEHICLE".equals(device.type())))
+                    throw new DashboardFailure("VALIDATION_ERROR", "Vehicle map requires a VEHICLE device");
                 if ("latest-value".equals(widget.type()) && (scope.evaluatedCount() != 1 || config.metric() == null))
                     throw new DashboardFailure("VALIDATION_ERROR", "Latest value requires one device and a metric");
                 if ("metric-summary".equals(widget.type()) && config.metric() == null)
@@ -102,26 +116,50 @@ public class DashboardWidgetQueries {
                         ? defaults.time() : runtime.time(), config.time(), config.compare(), asOf);
                 if (!"maintenance-agenda".equals(widget.type()) && frame.to().isAfter(asOf))
                     throw new DashboardFailure("VALIDATION_ERROR", "Future intervals are available only for maintenance");
+                if ("vehicle-map".equals(widget.type()) && java.time.Duration.between(frame.from(), frame.to()).compareTo(java.time.Duration.ofHours(24)) > 0)
+                    throw new DashboardFailure("LIMIT_EXCEEDED", "Vehicle history supports at most 24 hours; narrow the period");
                 var allowed = scope.devices().stream().map(DashboardEvidenceReads.Device::id).collect(java.util.stream.Collectors.toSet());
+                if(scope.workspaceId()!=null) {
+                    config=new Config(config.metric(),config.unit(),config.reducer(),config.time(),config.compare(),config.rows(),config.offset(),config.freshnessPolicy(),config.cadenceSeconds(),config.incidentMode(),config.series().stream().filter(series->allowed.contains(series.deviceId())).toList(),config.columns(),config.independentMetersConfirmed(),config.sourceId(),config.vehicleSources());
+                    if("time-series".equals(widget.type()) && config.series().isEmpty()) throw new DashboardFailure("NO_ACCESS","Current series capabilities are unavailable");
+                }
                 if (config.series().stream().anyMatch(series -> !allowed.contains(series.deviceId())))
                     throw new DashboardFailure("NO_ACCESS", "Series binding is outside the resolved scope");
                 if (validateOnly && List.of("latest-value", "metric-summary", "time-series").contains(widget.type())) {
                     if (capabilities == null) capabilities = scheduler.read("telemetry",
                             new ReadRequest(List.of(), actor.accountId(), frame, Set.of(), List.of(), 1, 0, "ACTIVE", List.of()),
                             authorization, actor, new HashMap<>()).get(5, TimeUnit.SECONDS);
-                    projection.registered(config, capabilities);
+                    Set<String> requestedMetrics = new java.util.HashSet<>();
+                    if (config.metric() != null) requestedMetrics.add(config.metric());
+                    config.series().forEach(series -> requestedMetrics.add(series.metric()));
+                    Set<String> registeredKeys = new java.util.HashSet<>();
+                    capabilities.path("registeredMetrics").forEach(metric -> registeredKeys.add(metric.path("key").asText()));
+                    JsonNode selectedCapabilities = capabilities;
+                    if (!registeredKeys.containsAll(requestedMetrics)) {
+                        selectedCapabilities = scheduler.read("telemetry",
+                                new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).sorted().toList(),
+                                        scope.accountId(), frame, requestedMetrics, List.of(), 1, 0, "ACTIVE", List.of(),
+                                        false, scope.workspaceId(), Set.of()),
+                                authorization, actor, new HashMap<>()).get(5, TimeUnit.SECONDS);
+                    }
+                    projection.registered(config, selectedCapabilities);
                 }
                 if (validateOnly && List.of("energy-period","peak-and-ranking").contains(widget.type())) {
-                    var read=new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).sorted().toList(),actor.accountId(),frame,
-                            Set.of(),List.of(),config.rows(),config.offset(),"ACTIVE",List.of(),config.independentMetersConfirmed());
+                    var read=new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).sorted().toList(),scope.accountId(),frame,
+                            Set.of(),List.of(),config.rows(),config.offset(),"ACTIVE",List.of(),config.independentMetersConfirmed(),scope.workspaceId());
                     JsonNode validated=scheduler.read("energy-validation",read,authorization,actor,new HashMap<>()).get(5,TimeUnit.SECONDS);
                     if (validated.path("deniedBindingCount").asLong()>0) throw new DashboardFailure("NO_ACCESS","Meter resource access changed");
                     if (!validated.path("validationOnly").asBoolean() || validated.path("evaluatedCount").asLong(-1)!=scope.devices().size())
                         throw new DashboardFailure("INVALID_READ_RESPONSE","Invalid meter validation response");
                 }
+                if (validateOnly && "vehicle-map".equals(widget.type()) && !scope.devices().isEmpty()) {
+                    var read = new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).toList(), scope.accountId(), frame,
+                            Set.of(), List.of(), 1, 0, "ACTIVE", List.of(), false, scope.workspaceId(), Set.of(), config.sourceId(),config.vehicleSources());
+                    scheduler.read("positions", read, authorization, actor, new HashMap<>()).get(5, TimeUnit.SECONDS);
+                }
                 prepared.add(new Prepared(widget, config, scope, frame, null));
             } catch (DashboardFailure failure) {
-                if ("LIMIT_EXCEEDED".equals(failure.code())) throw failure;
+                if ("LIMIT_EXCEEDED".equals(failure.code()) && !"vehicle-map".equals(widget.type())) throw failure;
                 prepared.add(new Prepared(widget, null, null, null, failure));
             }
             catch (Exception failure) { prepared.add(new Prepared(widget, null, null, null,
@@ -130,25 +168,39 @@ public class DashboardWidgetQueries {
         // Authorization and source metadata were renewed above, before any cache lookup.
         List<Object> fingerprint = new ArrayList<>();
         for (Prepared panel : prepared) fingerprint.add(panel.scope() == null ? panel.failure().code()
-                : List.of(panel.widget().id(), panel.scope().devices(), panel.scope().locations()));
+                : List.of(panel.widget().id(), panel.scope().devices(), panel.scope().locations(),String.valueOf(panel.scope().authorizationFingerprint())));
         if (validateOnly) {
             String hash = QueryHash.of(mapper, List.of(actor, id, revision, fingerprint, asOf));
             return new Batch(id, revision, request.draftEtag(), hash, asOf, Instant.now(), false, prepared.stream()
                     .map(panel -> panel.failure() != null ? failed(panel, hash, panel.failure())
                             : new Panel(panel.widget().id(), "valid", null, hash, panel.frame(),
                                     Math.toIntExact(panel.scope().requestedCount()), Math.toIntExact(panel.scope().evaluatedCount()),
-                                    Instant.now(), null, mapper.createObjectNode().put("validationOnly", true), null, null)).toList());
+                                    Instant.now(), null, mapper.createObjectNode().put("validationOnly", true).put("scopeHash", scopeHash(panel)), null, null)).toList());
+        }
+        Map<QueryReadScheduler.Key, JsonNode> businessVersions = new HashMap<>();
+        boolean businessValid = true;
+        for (Prepared panel : prepared) if (panel.failure()==null && List.of("estimated-cost","uptime-or-cycle").contains(panel.widget().type())) {
+            String owner = "estimated-cost".equals(panel.widget().type()) ? "cost" : "operations";
+            var read = readRequest(actor,panel);
+            var versionKey = new QueryReadScheduler.Key(owner,read);
+            try {
+                JsonNode version = businessVersions.computeIfAbsent(versionKey, ignored -> scheduler.businessVersion(authorization,actor,read,owner));
+                if (version==null) businessValid=false;
+                else fingerprint.add(List.of(panel.widget().id(), version));
+            } catch (DashboardFailure failure) { businessValid=false; }
         }
         String key = QueryHash.of(mapper, List.of(actor, id, revision, request.draftEtag() == null ? "published" : request.draftEtag(),
-                definition, runtime, fingerprint));
-        boolean safe = prepared.stream().noneMatch(panel -> panel.failure() != null);
+                definition, runtime, fingerprint, request.widgetIds()==null ? List.of() : request.widgetIds()));
+        boolean safe = businessValid && prepared.stream().noneMatch(panel -> "vehicle-map".equals(panel.widget().type())) && prepared.stream().noneMatch(panel -> panel.failure() != null || panel.scope().workspaceId()!=null);
         synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().until().isBefore(asOf));
             if (safe && !request.forceRefresh()) {
                 Cached hit = cache.get(key);
                 if (hit != null) {
                     Batch batch = hit.batch();
-                    return new Batch(id, batch.revision(), batch.draftEtag(), batch.contextHash(), batch.asOf(), Instant.now(), true, batch.panels());
+                    var result = new Batch(id, batch.revision(), batch.draftEtag(), batch.contextHash(), batch.asOf(), Instant.now(), true, batch.panels(), batch.scopes());
+                    if (progress!=null) progress.accept(result);
+                    return result;
                 }
             }
             if (!safe) cache.entrySet().removeIf(entry -> entry.getValue().actor().equals(actor));
@@ -171,9 +223,22 @@ public class DashboardWidgetQueries {
             pending.add(owners);
         }
         List<Panel> panels = new ArrayList<>();
-        for (int index = 0; index < prepared.size(); index++) {
+        var remaining = new java.util.LinkedHashSet<Integer>();
+        for (int i=0;i<prepared.size();i++) remaining.add(i);
+        try {
+        while (!remaining.isEmpty()) {
+            Integer ready = remaining.stream().filter(i -> prepared.get(i).failure()!=null || pending.get(i).values().stream().allMatch(CompletableFuture::isDone)).findFirst().orElse(null);
+            if (ready==null && System.nanoTime()<deadline) {
+                var completions = remaining.stream().map(i -> CompletableFuture.allOf(pending.get(i).values().toArray(CompletableFuture[]::new)).handle((value,error)->null)).toArray(CompletableFuture[]::new);
+                try { CompletableFuture.anyOf(completions).get(Math.max(1,deadline-System.nanoTime()),TimeUnit.NANOSECONDS); }
+                catch (Exception ignored) { }
+                ready = remaining.stream().filter(i -> pending.get(i).values().stream().allMatch(CompletableFuture::isDone)).findFirst().orElse(null);
+            }
+            int index = ready==null ? remaining.iterator().next() : ready;
+            remaining.remove(index);
             Prepared panel = prepared.get(index);
-            if (panel.failure() != null) { panels.add(failed(panel, contextHash, panel.failure())); continue; }
+            if (panel.failure() != null) { panels.add(failed(panel, contextHash, panel.failure())); }
+            else {
             try {
                 Map<String, JsonNode> evidence = new LinkedHashMap<>();
                 for (var source : pending.get(index).entrySet()) {
@@ -184,7 +249,7 @@ public class DashboardWidgetQueries {
                 }
                 ObjectNode data = projection.project(panel.widget(), panel.config(), panel.frame(), panel.scope(), evidence);
                 ObjectNode provenance = mapper.createObjectNode().put("consistency", "OWNER_READ_SNAPSHOTS_SHARED_QUERY_ASOF")
-                        .put("readOnly", true).put("cachedSnapshotMaxAgeSeconds", 30);
+                        .put("readOnly", true).put("cachedSnapshotMaxAgeSeconds", 30).put("scopeHash", scopeHash(panel));
                 evidence.forEach((owner, value) -> {
                     ObjectNode metadata = mapper.createObjectNode();
                     for (String field : List.of("queryAt", "asOf", "intervalBasis", "weighting", "maintenancePolicy", "gapPolicy", "source", "timeBasis", "listTimeBasis", "confidenceMeaning", "riskMeaning"))
@@ -202,7 +267,15 @@ public class DashboardWidgetQueries {
                         : new DashboardFailure(exception instanceof java.util.concurrent.TimeoutException ? "READ_TIMEOUT" : "DEPENDENCY_UNAVAILABLE", "Owner evidence is unavailable");
                 panels.add(failed(panel, contextHash, failure));
             }
+            }
+            if (progress!=null) progress.accept(compact.compact(actor,request,new Batch(id,revision,request.draftEtag(),contextHash,asOf,Instant.now(),false,List.of(panels.getLast()))));
         }
+        } finally {
+            reads.values().forEach(future -> { if (!future.isDone()) future.cancel(true); });
+        }
+        var order = new HashMap<String,Integer>();
+        for (int i=0;i<prepared.size();i++) order.put(prepared.get(i).widget().id(),i);
+        panels.sort(java.util.Comparator.comparingInt(panel -> order.get(panel.widgetId())));
         Batch batch = new Batch(id, revision, request.draftEtag(), contextHash, asOf, Instant.now(), false, List.copyOf(panels));
         reads.values().forEach(future -> {
             if (!future.isDone()) future.cancel(false);
@@ -210,12 +283,21 @@ public class DashboardWidgetQueries {
         if (panels.stream().anyMatch(panel -> "no_access".equals(panel.status()))) synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().actor().equals(actor));
         }
+        Batch wire = compact.compact(actor,request,batch);
+        int bytes;
+        try { bytes=mapper.writeValueAsBytes(wire).length; }
+        catch (Exception failure) { throw new IllegalStateException(failure); }
         if (safe && panels.stream().allMatch(panel -> "ready".equals(panel.status()) || "no_data".equals(panel.status()))
-                && mapper.valueToTree(batch).toString().length() < 2_000_000) synchronized (cache) {
-            while (cache.size() >= 64) cache.remove(cache.keySet().iterator().next());
-            cache.put(key, new Cached(actor, asOf.plusSeconds(30), batch));
+                && bytes <= 8_000_000) synchronized (cache) {
+            cache.remove(key);
+            while (!cache.isEmpty() && (cache.size() >= 64 || cache.values().stream().mapToLong(Cached::bytes).sum()+bytes>16_000_000))
+                cache.remove(cache.keySet().iterator().next());
+            cache.put(key, new Cached(actor, asOf.plusSeconds(30), wire, bytes));
         }
-        return batch;
+        return wire;
+    }
+    public Panel snapshotDetails(String authorization,DashboardActor actor,UUID id,String hash,String widgetId) {
+        return compact.details(authorization,actor,id,hash,widgetId,this);
     }
 
     private ReadRequest readRequest(DashboardActor actor, Prepared panel) {
@@ -224,9 +306,19 @@ public class DashboardWidgetQueries {
         Set<String> metrics = new java.util.TreeSet<>();
         if (config.metric() != null) metrics.add(config.metric());
         config.series().forEach(series -> metrics.add(series.metric()));
-        return new ReadRequest(ids, actor.accountId(), panel.frame(), metrics,
+        return new ReadRequest(ids, panel.scope().accountId(), panel.frame(), metrics,
                 manifests.find(panel.widget().type(), panel.widget().typeVersion()).orElseThrow().maxDetailDevices() > 0 ? ids : List.of(),
-                config.rows(), config.offset(), config.incidentMode() == null ? "ACTIVE" : config.incidentMode().name(), config.series(),config.independentMetersConfirmed());
+                config.rows(), config.offset(), config.incidentMode() == null ? "ACTIVE" : config.incidentMode().name(), config.series(),config.independentMetersConfirmed(),panel.scope().workspaceId(),
+                switch (panel.widget().type()) {
+                    case "fleet-count", "latest-value", "location-matrix" -> Set.of("latest");
+                    case "quality-and-freshness" -> Set.of("latest", "quality");
+                    case "time-series" -> Set.of("series");
+                    case "metric-summary" -> Set.of("summaries");
+                    default -> Set.of();
+                },config.sourceId(),config.vehicleSources());
+    }
+    private String scopeHash(Prepared panel) {
+        return QueryHash.of(mapper, List.of(panel.scope().devices(), panel.scope().locations(), String.valueOf(panel.scope().authorizationFingerprint())));
     }
     private Panel failed(Prepared panel, String hash, DashboardFailure failure) {
         String status = switch (failure.code()) { case "UNBOUND_RESOURCE" -> "no_data"; case "NO_ACCESS" -> "no_access"; case "UNSUPPORTED_WIDGET" -> "unsupported";
@@ -235,6 +327,14 @@ public class DashboardWidgetQueries {
                 mapper.createObjectNode().put("readOnly", true), failure.code(), failure.getMessage());
     }
     private Instant measuredAt(Prepared panel, JsonNode data, Map<String, JsonNode> evidence) {
+        if ("vehicle-map".equals(panel.widget().type())) {
+            if (data.path("positions").has("fleet")) {
+                return java.util.stream.StreamSupport.stream(data.path("positions").path("fleet").spliterator(),false)
+                        .map(item -> parseTime(item.path("position").path("recordedAt")))
+                        .filter(java.util.Objects::nonNull).max(Instant::compareTo).orElse(null);
+            }
+            return parseTime(data.path("positions").path("latest").path("position").path("recordedAt"));
+        }
         if ("metric-summary".equals(panel.widget().type())) return parseTime(data.path("summary").path("measuredAt"));
         if ("latest-value".equals(panel.widget().type())) return parseTime(data.path("value").path("measuredAt"));
         if ("time-series".equals(panel.widget().type())) {
@@ -260,6 +360,7 @@ public class DashboardWidgetQueries {
         if ("context-note".equals(panel.widget().type())) return false;
         if (panel.scope().devices().isEmpty()) return true;
         return switch (panel.widget().type()) {
+            case "vehicle-map" -> data.path("positions").has("fleet") ? java.util.stream.StreamSupport.stream(data.path("positions").path("fleet").spliterator(),false).noneMatch(item -> item.hasNonNull("position")) : !data.path("positions").path("latest").hasNonNull("position");
             case "latest-value" -> data.path("value").isNull();
             case "metric-summary" -> data.path("summary").isNull();
             case "energy-period" -> !data.path("energy").hasNonNull("energyKWh");

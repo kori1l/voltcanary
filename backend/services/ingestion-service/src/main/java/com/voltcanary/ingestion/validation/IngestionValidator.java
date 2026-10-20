@@ -19,6 +19,15 @@ public class IngestionValidator {
     }
 
     public void validate(IncomingTelemetryMessage message) {
+        validate(message, false);
+    }
+
+    public void validate(IncomingTelemetryMessage message, boolean allowMissingConfiguredInputs) {
+        validateEnvelope(message);
+        validateMetrics(message, allowMissingConfiguredInputs);
+    }
+
+    public void validateEnvelope(IncomingTelemetryMessage message) {
         if (message.sourceId() == null || message.sourceId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId is required");
         }
@@ -42,8 +51,15 @@ public class IngestionValidator {
         if (message.metrics().size() > properties.getMaxMetricsPerReading()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many metrics in telemetry reading");
         }
-        boolean hasNumericMetric = false;
+    }
+
+    private void validateMetrics(IncomingTelemetryMessage message, boolean allowMissingConfiguredInputs) {
+        if (!com.voltcanary.common.events.telemetry.GpsMetrics.valid(message.metrics())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "GPS requires a valid coordinate pair, speed and course");
+        }
+        boolean hasNumericMetric = !com.voltcanary.common.events.telemetry.ConfiguredFields.values(message.metrics()).isEmpty();
         for (var entry : message.metrics().entrySet()) {
+            if ("transport".equals(entry.getKey()) || "configuredFields".equals(entry.getKey())) continue; // bounded context validated with GPS above
             if (entry.getKey() == null || entry.getKey().isBlank()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metric name must not be blank");
             }
@@ -66,7 +82,7 @@ public class IngestionValidator {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Metric value must be numeric");
             }
         }
-        if (!hasNumericMetric) {
+        if (!hasNumericMetric && !allowMissingConfiguredInputs) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one numeric metric is required");
         }
     }

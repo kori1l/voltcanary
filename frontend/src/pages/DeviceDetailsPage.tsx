@@ -1,8 +1,10 @@
+import {TelemetryFieldTable} from "../features/telemetry/components/TelemetryFieldTable";
 import { listLocations as detailsLoadLocations } from "../devices/devicesApi";
 import { useTaskEvidence } from "../aiAgent/taskEvidence";
 import { DeviceAlertsPanel } from "../devices/details/DeviceAlertsPanel";
 import { normalizeDeviceTab, buildIncidentSummary, buildIncidentConclusion, buildWhyBullets, buildAnalyticsSummary, buildPredictionInsight, normalizeRiskTone, getRiskInsight, formatInsightText } from "../devices/details/deviceInsightPresentation";
 import { DeviceConfigurationPanel } from "../devices/details/DeviceConfigurationPanel";
+import {VehicleMovementPanel} from "../vehicles/VehicleMovementPanel";
 import { DeviceSimulationPanel } from "../devices/details/DeviceSimulationPanel";
 import { DeviceMetricCard as Metric } from "../devices/details/DeviceMetricCard";
 import { DeviceMaintenancePanel } from "../devices/details/DeviceMaintenancePanel";
@@ -204,7 +206,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
 
       {!isLoading && device ? (
         <>
-          <DeviceTabs activeTab={activeTab} onChange={changeTab}>
+          <DeviceTabs vehicle={device?.type==="VEHICLE"} activeTab={activeTab} onChange={changeTab}>
 
           {suppressingMaintenanceWindow && (activeTab === "telemetry" || activeTab === "analytics" || activeTab === "alerts") ? (
             <section className="maintenance-notice">
@@ -241,6 +243,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
                   </Link>
                 ) : null}
               </section>
+              {deviceId?<TelemetryFieldTable deviceId={deviceId}/>:null}
               <TelemetryOverviewPage
                 overview={telemetryOverview}
                 range={chartTimeRange}
@@ -540,6 +543,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
           ) : null}
 
           {activeTab === "alerts" ? <DeviceAlertsPanel alerts={alerts} /> : null}
+          {activeTab==="movement" && device?.type==="VEHICLE" && deviceId?<VehicleMovementPanel deviceId={deviceId}/>:null}
           </DeviceTabs>
         </>
       ) : null}

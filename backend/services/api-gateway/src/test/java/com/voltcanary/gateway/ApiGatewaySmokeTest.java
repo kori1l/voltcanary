@@ -76,13 +76,22 @@ import reactor.core.publisher.Mono;
                 "spring.cloud.gateway.server.webflux.routes[6].predicates[0]=Path=/devices/correlation",
                 "spring.cloud.gateway.server.webflux.routes[7].id=ingestion-readings-test",
                 "spring.cloud.gateway.server.webflux.routes[7].uri=forward:/internal/ping",
-                "spring.cloud.gateway.server.webflux.routes[7].predicates[0]=Path=/ingestion/readings"
+                "spring.cloud.gateway.server.webflux.routes[7].predicates[0]=Path=/ingestion/readings",
+                "spring.cloud.gateway.server.webflux.routes[8].id=dashboard-delivery-test",
+                "spring.cloud.gateway.server.webflux.routes[8].uri=forward:/internal/ping",
+                "spring.cloud.gateway.server.webflux.routes[8].predicates[0]=Path=/dashboards/delivery-test"
         })
 @AutoConfigureWebTestClient
 class ApiGatewaySmokeTest {
-
     @Autowired
     private WebTestClient webTestClient;
+
+    @Test void dashboardEvidenceUsesPrivateDeliveryHeaders() {
+        webTestClient.get().uri("/dashboards/delivery-test")
+                .header(HttpHeaders.AUTHORIZATION,"Bearer "+jwt(UUID.randomUUID().toString(),"delivery@example.com","USER"))
+                .exchange().expectStatus().isOk().expectHeader().valueEquals("Cache-Control","no-store")
+                .expectHeader().doesNotExist("Content-Encoding");
+    }
 
     @Test
     void contextLoads() {

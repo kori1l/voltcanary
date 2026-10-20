@@ -1,0 +1,2 @@
+# Design
+Map stored responseModelVersionId to modelVersionId (including equivalent direct/snake fields). Do not substitute deployment-policy modelId: fallback may have used another model. Render a model link only for trained evidence with a valid UUID. Use the existing ML workspace tab/models and modelId route context; show the selected authorized model card or explicit unavailable state, with a return to all models. No mutations occur on navigation.

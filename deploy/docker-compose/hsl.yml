@@ -1,0 +1,21 @@
+services:
+  hsl-connector:
+    build: ./deploy/connectors/hsl
+    profiles: [hsl]
+    restart: unless-stopped
+    environment:
+      HSL_CONFIG_PATH: /run/hsl/config.json
+      HSL_INGESTION_URL: http://ingestion-service:8083/ingestion/readings
+    volumes:
+      - ./docker-data/hsl:/run/hsl:ro
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=8m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, health.py]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

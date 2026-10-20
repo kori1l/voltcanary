@@ -54,7 +54,7 @@ public class IngressOrchestrator {
                 new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport),
                 null);
         if (result.accepted()) {
-            return IngestionAcceptedResponse.single("accepted", 1, 0, result.eventId());
+            return IngestionAcceptedResponse.single(result.message(), 1, 0, result.eventId());
         }
         return IngestionAcceptedResponse.single("duplicate", 0, 1, result.eventId());
     }
@@ -93,7 +93,7 @@ public class IngressOrchestrator {
                 IngestionResult result = pipeline.ingest(message);
                 if (result.accepted()) {
                     accepted++;
-                    items.add(new BatchIngestionItemResponse(index, "accepted", result.eventId(), null));
+                    items.add(new BatchIngestionItemResponse(index, result.message(), result.eventId(), null));
                 } else {
                     duplicate++;
                     items.add(new BatchIngestionItemResponse(index, "duplicate", result.eventId(), result.message()));

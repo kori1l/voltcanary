@@ -5,7 +5,7 @@ import { DeviceDetailsTab } from "./DeviceTabs";
 import { ChartTimeRange } from "./deviceTelemetryModel";
 import { formatEnum } from "./deviceDetailsFormatting";
 export function normalizeDeviceTab(value: string | null): DeviceDetailsTab {
-  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "maintenance" || value === "configuration" || value === "simulation") {
+  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "maintenance" || value === "configuration" || value === "simulation" || value === "movement") {
     return value;
   }
   if (value === "registry" || value === "config") {

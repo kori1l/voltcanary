@@ -17,14 +17,16 @@ public class AnalyticsAlertEventHandler {
     private final ProcessedEventService processedEventService;
     private final AlertAnalyticsEventInboxService inboxService;
     private final AlertService alertService;
+    private final VariableAnomalyAdmission variableAdmission;
 
     public AnalyticsAlertEventHandler(
             ProcessedEventService processedEventService,
             AlertAnalyticsEventInboxService inboxService,
-            AlertService alertService) {
+            AlertService alertService, VariableAnomalyAdmission variableAdmission) {
         this.processedEventService = processedEventService;
         this.inboxService = inboxService;
         this.alertService = alertService;
+        this.variableAdmission = variableAdmission;
     }
 
     public boolean handleAnomaly(AnomalyDetectedEvent event) {
@@ -48,7 +50,7 @@ public class AnalyticsAlertEventHandler {
     public boolean replayAnomaly(java.util.UUID inboxEntryId, AnomalyDetectedEvent event) {
         inboxService.markProcessing(inboxEntryId);
         try {
-            Alert alert = alertService.handleAnomaly(event);
+            Alert alert = variableAdmission.accepts(event) ? alertService.handleAnomaly(event) : null;
             boolean firstProcessing = processedEventService.markIfNew(ANOMALY_TOPIC, event.eventId());
             inboxService.markProcessed(inboxEntryId, alert);
             return firstProcessing;

@@ -23,13 +23,21 @@ public class DashboardMaintenanceController {
     private final AuthenticatedUserResolver users;
     private final DashboardScopeReadService scopes;
     private final DashboardMaintenanceRepository repository;
+    private final String serviceToken;
+    @PostMapping("/workspaces/{workspace}/maintenance/query")
+    public ObjectNode workspaceRead(@org.springframework.web.bind.annotation.PathVariable java.util.UUID workspace,
+            @RequestHeader("Authorization") String authorization,@RequestBody DashboardOwnerReadRequest request) {
+        if(request==null || !workspace.equals(request.workspaceId())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Explicit workspace context required");
+        return read(serviceToken,authorization,request);
+    }
 
     public DashboardMaintenanceController(InternalServiceAuth internal, AuthenticatedUserResolver users,
-            DashboardScopeReadService scopes, DashboardMaintenanceRepository repository) {
+            DashboardScopeReadService scopes, DashboardMaintenanceRepository repository,com.voltcanary.device.config.InternalServiceProperties properties) {
         this.internal = internal;
         this.users = users;
         this.scopes = scopes;
         this.repository = repository;
+        serviceToken=properties.getServiceToken();
     }
 
     @PostMapping("/internal/dashboard/maintenance")
@@ -49,7 +57,7 @@ public class DashboardMaintenanceController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid typed maintenance read");
         }
         var scope = scopes.read(user, new DashboardScopeRequest(request.deviceIds().isEmpty() ? "UNBOUND" : "FIXED",
-                Set.copyOf(request.deviceIds()), Set.of(), false, Set.of(), Set.of()));
+                Set.copyOf(request.deviceIds()), Set.of(), false, Set.of(), Set.of(),request.workspaceId(),request.accountId(),"maintenance.read"));
         if (!scope.accountId().equals(request.accountId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Read account does not match current ownership");
         }

@@ -47,6 +47,11 @@ public class DefinitionValidation {
                     && widget.typeVersion() > 0, "widgets.type", "Widget type and positive version are required");
             require(widget.title() != null && widget.title().length() <= 120,
                     "widgets.title", "Widget title exceeds 120 characters");
+            if (widget.presentation() != null && widget.presentation().hasNonNull("visualization")) {
+                require(com.voltcanary.dashboard.domain.VisualizationCompatibility.choices(widget.type())
+                        .contains(widget.presentation().path("visualization").asText()),
+                        "widgets.presentation.visualization", "Visualization is incompatible with this evidence shape");
+            }
             require(widget.binding() == null || widget.binding().isNull() || widget.binding().isObject(),
                     "widgets.binding", "Binding must be an object");
             require(widget.query() == null || widget.query().isNull() || widget.query().isObject(),

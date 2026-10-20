@@ -26,13 +26,11 @@ import { SectionFeedback } from "../components/SectionFeedback";
 import { useActionConfirmation } from "../components/useActionConfirmation";
 import { AlertRuleEditor } from "../features/alerts/AlertRuleEditor";
 import { useEntityResources } from "../components/useEntityResources";
-import { ReadRefresh } from "../components/ReadRefresh";
+import {AlertInboxControls} from "../features/alerts/AlertInboxControls";
 import { useConsoleQuery } from "../app/useConsoleQuery";
 import { CommandFeedback } from "../components/CommandFeedback";
 import { useEntityCommands } from "../components/useEntityCommands";
 import { PageNavigation } from "../components/PageNavigation";
-import { loadDeviceOptions } from "../devices/fleetEntityOptions";
-import { EntitySelector } from "../components/EntitySelector";
 import { useTaskEvidence } from "../aiAgent/taskEvidence";
 
 const ALERT_LIMIT = 100;
@@ -139,17 +137,7 @@ export function AlertsPage() {
       .filter((alert) => (statusFilter === "active" ? alert.status !== "RESOLVED" : true))
       .sort((left, right) => (sortOrder === "severity" ? severityRank(right.severity) - severityRank(left.severity) : sortOrder === "status" ? left.status.localeCompare(right.status) : 0) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   }, [alerts, statusFilter, sortOrder]);
-  const grouped = useMemo(
-    () => ({
-      new: visibleAlerts.filter((alert) => alert.status === "OPEN"),
-      acknowledged: visibleAlerts.filter((alert) => alert.status === "ACKNOWLEDGED"),
-      resolved: visibleAlerts.filter((alert) => alert.status === "RESOLVED"),
-    }),
-    [visibleAlerts],
-  );
-  const mostImportant = grouped.new[0] ?? grouped.acknowledged[0] ?? null;
   const severities = ["CRITICAL", "HIGH", "WARNING", "INFO"];
-  const deviceTypes = Array.from(new Set(devices.map((device) => device.type).filter(Boolean))).sort();
 
   return (
     <>
@@ -164,85 +152,29 @@ export function AlertsPage() {
           Refresh
         </button>
       </header>
-      {activeView === "inbox" ? <label>Sort alerts<select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="severity">Severity, then newest</option><option value="time">Newest first</option><option value="status">Status, then newest</option></select></label> : null}
 
-      <section className="alert-summary-panel">
+
+      <AlertInboxControls view={activeView} onView={setActiveView} device={deviceFilter} devices={devices} onDevice={id=>query.update({deviceId:id || null,offset:null})}
+        severity={severityFilter} severities={severities} onSeverity={value=>query.update({severity:value==="all"?null:value,offset:null})}
+        status={statusFilter} onStatus={value=>query.update({status:value==="all"?null:value,offset:null})}
+        rule={ruleFilter} rules={rules} onRule={updateRuleFilter} sort={sortOrder} onSort={setSortOrder} scope={JSON.stringify([requestFilters,offset])} refresh={load}
+        onClear={()=>query.update({deviceId:null,severity:null,status:null,ruleId:null,offset:null})}/>
+
+      <section className="alert-summary-panel compact-alert-summary">
         <div className="alert-summary-counts">
           <SummaryMetric label="Open" value={summary ? summary.byStatus.OPEN ?? 0 : undefined} />
           <SummaryMetric label="Acknowledged" value={summary ? summary.byStatus.ACKNOWLEDGED ?? 0 : undefined} />
           <SummaryMetric label="Resolved" value={summary ? summary.byStatus.RESOLVED ?? 0 : undefined} />
           <SummaryMetric label="Critical" value={summary ? summary.bySeverity.CRITICAL ?? 0 : undefined} />
         </div>
-        <div className="most-important-alert">
-          <span className="status-pill">Most important</span>
-          {mostImportant ? (
-            <>
-              <strong>{mostImportant.title}</strong>
-              <span>
-                {deviceById.get(mostImportant.deviceId)?.name ?? "Unknown device"} - {formatShortDateTime(mostImportant.createdAt)}
-              </span>
-            </>
-          ) : (
-            <>
-              <strong>{data.alerts.data ? "No active alerts in loaded results" : "Alert evidence unavailable"}</strong>
-              <span>{data.alerts.data ? "There are no open or acknowledged issues in the current filters." : "Load alerts before drawing conclusions."}</span>
-            </>
-          )}
-        </div>
       </section>
 
       <SectionFeedback resource={data.summary} label="alert summary" onRetry={() => void data.summary.load(() => getAlertSummary(requestFilters))} />
-      <ReadRefresh scope={JSON.stringify([requestFilters, offset])} refresh={load} />
       <SectionFeedback resource={data.alerts} label="alert inbox" onRetry={() => void load(false)} />
       <SectionFeedback resource={data.devices} label="device names" onRetry={() => void data.devices.load(listDevices)} />
       <SectionFeedback resource={data.locations} label="location names" onRetry={() => void data.locations.load(listLocations)} />
       <SectionFeedback resource={data.rules} label="alert rules" onRetry={() => void data.rules.load(listAlertRules)} />
       <SectionFeedback resource={data.channels} label="notification channels" onRetry={() => void data.channels.load(listNotificationChannels)} />
-
-      <section className="panel alerts-filter-panel">
-        <div className="inventory-toolbar">
-          <button className={activeView === "inbox" ? "primary-button" : "ghost-button"} type="button" onClick={() => setActiveView("inbox")}>
-            Inbox
-          </button>
-          <button className={activeView === "rules" ? "primary-button" : "ghost-button"} type="button" onClick={() => setActiveView("rules")}>
-            Rules
-          </button>
-        </div>
-      </section>
-
-      {activeView === "inbox" ? <section className="panel alerts-filter-panel">
-        <div className="inventory-toolbar">
-          <EntitySelector label="Device" loadOptions={loadDeviceOptions} options={devices.map((device) => ({ id: device.id, name: device.name }))} value={deviceFilter === "all" ? "" : deviceFilter} onChange={(id) => query.update({ deviceId: id || null, offset: null })} />
-          <label>Severity<select value={severityFilter} onChange={(event) => query.update({ severity: event.target.value === "all" ? null : event.target.value, offset: null })}>
-            <option value="all">All severities</option>
-            {severities.map((severity) => (
-              <option value={severity} key={severity}>
-                {formatEnum(severity)}
-              </option>
-            ))}
-          </select></label>
-          <label>Status<select value={statusFilter} onChange={(event) => query.update({ status: event.target.value === "all" ? null : event.target.value, offset: null })}>
-            <option value="active">Active only</option>
-            <option value="all">All statuses</option>
-            <option value="OPEN">Open</option>
-            <option value="ACKNOWLEDGED">Acknowledged</option>
-            <option value="RESOLVED">Resolved</option>
-          </select></label>
-          <label>Rule<select value={ruleFilter} onChange={(event) => updateRuleFilter(event.target.value)}>
-            <option value="all">All rules</option>
-            {rules.map((rule) => (
-              <option value={rule.id} key={rule.id}>
-                {rule.name}
-              </option>
-            ))}
-          </select></label>
-          {ruleFilter !== "all" ? (
-            <button className="ghost-button" type="button" onClick={() => updateRuleFilter("all")}>
-              Clear rule
-            </button>
-          ) : null}
-        </div>
-      </section> : null}
 
       {activeView === "rules" ? (
         <section className="panel">
@@ -283,8 +215,7 @@ export function AlertsPage() {
       {error ? <div className="error-message">{error}</div> : null}
       {activeView === "inbox" && isLoading ? <section className="panel">Loading alerts...</section> : null}
 
-      {activeView === "inbox" ? <PageNavigation offset={offset} size={100} hasMore={data.pagination?.hasNext ?? false} loading={isLoading} loaded={visibleAlerts.length} total={statusFilter === "active" ? undefined : data.pagination?.totalElements} onChange={(next) => query.update({ offset: next || null })} /> : null}
-      <button type="button" className="ghost-button" onClick={() => query.update({ deviceId: null, severity: null, status: null, ruleId: null, offset: null })}>Clear filters</button>
+      {activeView === "inbox" && (data.pagination?.hasNext || offset>0) ? <PageNavigation offset={offset} size={100} hasMore={data.pagination?.hasNext ?? false} loading={isLoading} loaded={visibleAlerts.length} total={statusFilter === "active" ? undefined : data.pagination?.totalElements} onChange={(next) => query.update({ offset: next || null })} /> : null}
       {activeView === "inbox" && data.alerts.data !== null ? (
         <AlertInbox
           alerts={visibleAlerts}
@@ -306,7 +237,7 @@ export function AlertsPage() {
 function SummaryMetric({ label, value }: { label: string; value: number | undefined }) {
   return (
     <article>
-      <strong>{value ?? "Unavailable"}</strong>
+      <strong title={value===undefined?"Count unavailable":"Recorded count"}>{value ?? "—"}</strong>
       <span>{label}</span>
     </article>
   );

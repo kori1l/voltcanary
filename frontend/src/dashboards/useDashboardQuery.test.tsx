@@ -10,6 +10,17 @@ const batch = (hash: string): DashboardQueryBatch => ({ dashboardId: "dashboard"
 beforeEach(() => query.mockReset());
 afterEach(() => vi.restoreAllMocks());
 describe("dashboard query scope isolation", () => {
+  it("renders progressive evidence and aborts a manual refresh on unmount",async()=>{
+    query.mockImplementationOnce(async(_id,_request,_signal,progress)=>{progress?.(batch("partial"));return batch("partial");})
+      .mockImplementationOnce(()=>new Promise(()=>{}));
+    const {result,unmount}=renderHook(()=>useDashboardQuery("dashboard",{}));
+    await waitFor(()=>expect(result.current.data?.contextHash).toBe("partial"));
+    act(()=>{void result.current.refresh();});
+    await waitFor(()=>expect(query).toHaveBeenCalledTimes(2));
+    const signal=query.mock.calls[1][2];expect(signal).toBeDefined();
+    expect(result.current.data?.contextHash).toBe("partial");
+    unmount();expect(signal?.aborted).toBe(true);
+  });
   it("clears the old screen snapshot and treats its cancellation as a normal switch",async()=>{
     query.mockResolvedValueOnce(batch("monitoring")).mockImplementationOnce((_id,_request,signal)=>new Promise((_resolve,reject)=>signal?.addEventListener("abort",()=>reject(new DOMException("Obsolete read","AbortError"))))).mockResolvedValueOnce(batch("incidents"));
     const {result,rerender}=renderHook(({screen,ids,enabled})=>useDashboardQuery("dashboard",{widgetIds:ids},enabled,screen),{initialProps:{screen:"monitoring",ids:["a"],enabled:true}});

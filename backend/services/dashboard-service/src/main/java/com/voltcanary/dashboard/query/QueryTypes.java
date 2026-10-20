@@ -12,14 +12,17 @@ public final class QueryTypes {
 
     public enum ScopeMode { ALL, DYNAMIC, FIXED, UNBOUND }
     public enum TimeMode { INHERITED, RELATIVE, CALENDAR, FIXED }
-    public enum Preset { LAST_6_HOURS, LAST_24_HOURS, LAST_7_DAYS, LAST_30_DAYS, TODAY, WEEK_TO_DATE, MONTH_TO_DATE, NEXT_7_DAYS, NEXT_30_DAYS }
+    public enum Preset { LAST_1_HOUR, LAST_6_HOURS, LAST_24_HOURS, LAST_7_DAYS, LAST_30_DAYS, TODAY, WEEK_TO_DATE, MONTH_TO_DATE, NEXT_7_DAYS, NEXT_30_DAYS }
     public enum CompareMode { NONE, PREVIOUS, MANUAL }
     public enum Reducer { RAW, AVG, MIN, MAX, MEAN, P95 }
     public enum FreshnessPolicy { PERIODIC, SPARSE, MANUAL }
     public enum IncidentMode { ACTIVE, CREATED }
 
     public record Scope(ScopeMode mode, Set<UUID> deviceIds, Set<UUID> locationIds,
-            boolean includeSubtree, Set<String> deviceTypes, Set<String> locationTags) {
+            boolean includeSubtree, Set<String> deviceTypes, Set<String> locationTags,UUID workspaceId,UUID accountId) {
+        public Scope(ScopeMode mode,Set<UUID> deviceIds,Set<UUID> locationIds,boolean includeSubtree,Set<String> deviceTypes,Set<String> locationTags) {
+            this(mode,deviceIds,locationIds,includeSubtree,deviceTypes,locationTags,null,null);
+        }
         public static Scope all() {
             return new Scope(ScopeMode.ALL, Set.of(), Set.of(), false, Set.of(), Set.of());
         }
@@ -39,14 +42,23 @@ public final class QueryTypes {
 
     public record Config(String metric, String unit, Reducer reducer, Time time,
             Compare compare, int rows, int offset, FreshnessPolicy freshnessPolicy,
-            Long cadenceSeconds, IncidentMode incidentMode, List<Series> series, List<String> columns, boolean independentMetersConfirmed) {
+            Long cadenceSeconds, IncidentMode incidentMode, List<Series> series, List<String> columns, boolean independentMetersConfirmed, String sourceId, java.util.Map<UUID,String> vehicleSources) {
+        public Config(String metric,String unit,Reducer reducer,Time time,Compare compare,int rows,int offset,
+                FreshnessPolicy freshnessPolicy,Long cadenceSeconds,IncidentMode incidentMode,List<Series> series,List<String> columns,boolean independentMetersConfirmed,String sourceId) {
+            this(metric,unit,reducer,time,compare,rows,offset,freshnessPolicy,cadenceSeconds,incidentMode,series,columns,independentMetersConfirmed,sourceId,null);
+        }
+        public Config(String metric,String unit,Reducer reducer,Time time,Compare compare,int rows,int offset,
+                FreshnessPolicy freshnessPolicy,Long cadenceSeconds,IncidentMode incidentMode,List<Series> series,List<String> columns,boolean independentMetersConfirmed) {
+            this(metric,unit,reducer,time,compare,rows,offset,freshnessPolicy,cadenceSeconds,incidentMode,series,columns,independentMetersConfirmed,null);
+        }
         public Config(String metric,String unit,Reducer reducer,Time time,Compare compare,int rows,int offset,
                 FreshnessPolicy freshnessPolicy,Long cadenceSeconds,IncidentMode incidentMode,List<Series> series,List<String> columns) {
             this(metric,unit,reducer,time,compare,rows,offset,freshnessPolicy,cadenceSeconds,incidentMode,series,columns,false);
         }
     }
 
-    public record Series(UUID deviceId, String metric) {
+    public record Series(UUID deviceId, String metric, UUID variableId, UUID dataSourceId) {
+        public Series(UUID deviceId, String metric) { this(deviceId, metric, null, null); }
     }
 
     public record Frame(Instant from, Instant to, Instant asOf, String timezone, boolean override,
@@ -73,6 +85,10 @@ public final class QueryTypes {
     public record Manifest(String type, int typeVersion, String title, String resultType,
             boolean supported, String dependency, List<Reducer> reducers, List<String> units,
             int maxSeries, int maxDetailDevices, int maxRows, String timeBasis, SizeConstraints sizeConstraints) {
+        @com.fasterxml.jackson.annotation.JsonProperty("visualizations")
+        public List<String> visualizations() {
+            return com.voltcanary.dashboard.domain.VisualizationCompatibility.choices(type);
+        }
     }
 
     public record SizeConstraints(int desktopMinColumns, int tabletMinColumns,
@@ -85,6 +101,10 @@ public final class QueryTypes {
     }
 
     public record Batch(UUID dashboardId, int revision, UUID draftEtag, String contextHash,
-            Instant asOf, Instant returnedAt, boolean cached, List<Panel> panels) {
+            Instant asOf, Instant returnedAt, boolean cached, List<Panel> panels, java.util.Map<String, JsonNode> scopes) {
+        public Batch(UUID dashboardId, int revision, UUID draftEtag, String contextHash,
+                Instant asOf, Instant returnedAt, boolean cached, List<Panel> panels) {
+            this(dashboardId, revision, draftEtag, contextHash, asOf, returnedAt, cached, panels, java.util.Map.of());
+        }
     }
 }

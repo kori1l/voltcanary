@@ -58,6 +58,8 @@ public class TimescalePolicyInitializer implements ApplicationRunner {
         jdbcTemplate.execute("""
                 select add_retention_policy('telemetry.measurements', interval '180 days', if_not_exists => true)
                 """);
+        jdbcTemplate.execute("select create_hypertable('telemetry.positions', 'recorded_at', if_not_exists => true, chunk_time_interval => interval '1 day')");
+        jdbcTemplate.execute("select add_retention_policy('telemetry.positions', interval '180 days', if_not_exists => true)");
         log.info("Timescale policies initialized for telemetry.measurements");
     }
 }

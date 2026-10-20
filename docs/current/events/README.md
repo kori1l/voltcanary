@@ -34,3 +34,5 @@ explicit envelope unless a compatibility requirement says otherwise.
 - Telemetry data flow: [../architecture/03-data-flow.md](../architecture/03-data-flow.md)
 - Consistency and replay: [../architecture/10-consistency-contracts.md](../architecture/10-consistency-contracts.md)
 - Ingestion API: [../api/ingestion-api.md](../api/ingestion-api.md)
+
+[Device variable events](device-variables.md): processing snapshots, accepted measurements and evidence.

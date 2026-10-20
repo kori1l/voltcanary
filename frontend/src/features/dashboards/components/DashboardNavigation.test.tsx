@@ -5,10 +5,12 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {DashboardCatalog} from "./DashboardCatalog";
 import {DashboardNavigation} from "./DashboardNavigation";
 import {getDashboard,getDashboardPreferences,listDashboards,transitionDashboard} from "../../../dashboards/dashboardsApi";
+import {listTeamDashboards} from "../model/dashboardSharingApi";
 import {readDashboardMenu,updateDashboardMenu} from "../model/dashboardMenuPreferences";
 vi.mock("../../../dashboards/dashboardsApi",async(original)=>({...await original<typeof import("../../../dashboards/dashboardsApi")>(),listDashboards:vi.fn(),getDashboard:vi.fn(),getDashboardPreferences:vi.fn(),transitionDashboard:vi.fn()}));
+vi.mock("../model/dashboardSharingApi",()=>({listTeamDashboards:vi.fn()}));
 const item={id:"monitor",name:"Monitoring",ownerUserId:"actor",accountId:"account",description:"",status:"ACTIVE" as const,publishedRevision:1,createdAt:"",updatedAt:""};
-beforeEach(()=>{updateDashboardMenu("navigation-test",()=>({collapsed:false,hidden:[]}));vi.mocked(listDashboards).mockResolvedValue({items:[item],hasNext:false,nextCursor:null});vi.mocked(getDashboardPreferences).mockResolvedValue({defaultDashboardId:null,favorites:[],defaultContext:{},etag:"pref",updatedAt:null,fallbackReason:null});vi.mocked(getDashboard).mockResolvedValue({dashboard:item,definition:null,revision:1,draftEtag:"fresh",permissions:["edit","archive"],unsupportedWidgetIds:[]});});
+beforeEach(()=>{vi.mocked(listTeamDashboards).mockResolvedValue([]);updateDashboardMenu("navigation-test",()=>({collapsed:false,hidden:[]}));vi.mocked(listDashboards).mockResolvedValue({items:[item],hasNext:false,nextCursor:null});vi.mocked(getDashboardPreferences).mockResolvedValue({defaultDashboardId:null,favorites:[],defaultContext:{},etag:"pref",updatedAt:null,fallbackReason:null});vi.mocked(getDashboard).mockResolvedValue({dashboard:item,definition:null,revision:1,draftEtag:"fresh",permissions:["edit","archive"],unsupportedWidgetIds:[]});});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 function setup(){render(<MemoryRouter><Link to="/dashboards">Dashboards</Link><DashboardNavigation actorId="navigation-test"/><Routes><Route path="/" element={null}/><Route path="/dashboard" element={null}/><Route path="/dashboards" element={<DashboardCatalog actorId="navigation-test"/>}/></Routes></MemoryRouter>);}
 it("keeps sidebar links clean and manages group visibility in the catalog",async()=>{
@@ -26,3 +28,5 @@ it("requires archive confirmation and uses the fetched etag",async()=>{
 it("isolates menu choices between actors and persists without server mutations",()=>{
  updateDashboardMenu("actor-a",()=>({collapsed:true,hidden:["a"]}));updateDashboardMenu("actor-b",()=>({collapsed:false,hidden:[]}));expect(readDashboardMenu("actor-b")).toEqual({collapsed:false,hidden:[]});expect(JSON.parse(localStorage.getItem("voltcanary.dashboard-menu.actor-a")!)).toEqual({collapsed:true,hidden:["a"]});
 });
+
+it("shows authorized team dashboards as links without management controls",async()=>{vi.mocked(listTeamDashboards).mockResolvedValue([{...item,id:"shared",name:"Shared equipment"}]);setup();const menu=screen.getByRole("navigation",{name:"Available dashboards"});expect(await within(menu).findByRole("link",{name:"Shared equipment"})).toHaveAttribute("href","/dashboards/shared");expect(within(menu).queryByRole("button")).not.toBeInTheDocument();});

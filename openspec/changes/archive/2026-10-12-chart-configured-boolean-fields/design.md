@@ -1,0 +1,7 @@
+# Design
+
+Use the existing numeric measurement storage for strictly boolean configured fields with 0/1 values and reserved unit boolean. Numeric configured fields cannot use that reserved unit. Raw configuredFields descriptors remain boolean. Metadata advertises type boolean and bounds 0/1; the device graph selector accepts both number and boolean. Format true/false as state labels, with Open/Closed for doorsOpen. No fractional value is displayed as an observed boolean; aggregate fractional values are Mixed states. Lines use step interpolation inside recorded segments only; gaps remain gaps and envelope ranges never claim exact transitions.
+
+A vendor-specific V014 PostgreSQL migration derives states from validated configured descriptors in persisted raw JSON and legacy transport.doorsOpen observations with accepted GPS positions, preserves source/timestamps and excludes invalid/rejected quality records. H2 migration is a no-op counterpart because its normal integration fixtures contain no production JSON history. Insert conflict handling makes migration idempotent relative to existing projected states. No raw JSON rewriting, missing-value filling or historical fabricated values.
+
+Verify false/true projection and JSON preservation, boolean discovery/selection, step/gap behavior and aggregate state formatting, migration on Timescale, and actual recorded HSL door history in the deployed browser.

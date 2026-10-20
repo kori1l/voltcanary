@@ -56,7 +56,14 @@ public class TelemetryQueryService {
     }
 
     public TelemetryEnvelopeResponse envelope(UUID deviceId, String metric, Instant from, Instant to, int buckets) {
-        return envelopes.read(deviceId, metric, from, to, buckets);
+        var evidence = envelopes.read(deviceId, metric, from, to, buckets);
+        if ("boolean".equals(measurementRepository.findUnit(deviceId, metric)) && evidence.rawPointCount() <= 1000) {
+            var points = measurementRepository.findSeries(deviceId, metric, from, to).stream()
+                    .map(value -> new TelemetryChartPointResponse(value.recordedAt(), value.metricValue())).toList();
+            return new TelemetryEnvelopeResponse(deviceId, metric, points, evidence.rawPointCount(), "MEASURED_STATES",
+                    null, evidence.summary(), evidence.qualityCounts());
+        }
+        return evidence;
     }
 
     public Optional<TelemetryReadingResponse> getLatest(UUID deviceId) {
@@ -140,16 +147,12 @@ public class TelemetryQueryService {
     public List<TelemetryMetricResponse> getMetrics(UUID deviceId, Instant from, Instant to) {
         List<String> presentMetrics = from == null ? measurementRepository.findMetricNamesByDeviceId(deviceId)
                 : measurementRepository.findMetricNamesByDeviceIdAndRange(deviceId, from, to);
-        return metricCatalog.all().stream()
-                .filter(entry -> presentMetrics.contains(entry.getKey()))
-                .map(entry -> new TelemetryMetricResponse(
-                        entry.getKey(),
-                        entry.getValue().unit(),
-                        entry.getValue().type(),
-                        entry.getValue().min(),
-                        entry.getValue().max(),
-                        displayName(entry.getKey())))
-                .toList();
+        return presentMetrics.stream().sorted().map(key -> {
+            var definition = metricCatalog.find(key).orElseGet(() -> new MetricCatalog.MetricDefinition(measurementRepository.findUnit(deviceId, key), -1e12, 1e12));
+            boolean state = "boolean".equals(definition.unit());
+            return new TelemetryMetricResponse(key, definition.unit(), state ? "boolean" : definition.type(),
+                    state ? 0 : definition.min(), state ? 1 : definition.max(), displayName(key));
+        }).toList();
     }
 
     private List<TelemetryMeasurement> aggregateSeries(

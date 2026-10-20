@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +25,25 @@ class SourceResolverTest {
     private final SourceResolver resolver = new SourceResolver(
             cache,
             new SourceTokenValidator());
+
+    @Test
+    void coldCacheRecoversAuthenticatedPolicyAndCachesItWithoutRotatingCredentials() {
+        var registry = org.mockito.Mockito.mock(com.voltcanary.ingestion.source.SourceRegistryLookup.class);
+        var coldCache = new SourceRegistryCache();
+        var recovering = new SourceResolver(coldCache, new SourceTokenValidator(), registry);
+        var original = source("valid-test-token", UUID.randomUUID(), "ACTIVE", "REST");
+        var mapping = Map.<String,Object>of("telemetryPolicy", Map.of("fields", java.util.List.of()));
+        var registered = new InternalDataSourceResponse(original.accountId(), original.deviceId(), original.dataSourceId(), original.externalId(),
+                original.sourceType(), original.protocol(), original.status(), original.tokenPrefix(), original.tokenHash(), mapping);
+        org.mockito.Mockito.when(registry.tokenPrefix(original.tokenPrefix())).thenReturn(java.util.Optional.of(registered));
+        assertThat(recovering.resolve(message("valid-test-token")).mapping()).isEqualTo(mapping);
+        assertThat(recovering.resolve(message("valid-test-token")).deviceId()).isEqualTo(original.deviceId());
+        org.mockito.Mockito.verify(registry, org.mockito.Mockito.times(1)).tokenPrefix(original.tokenPrefix());
+        var outage = org.mockito.Mockito.mock(com.voltcanary.ingestion.source.SourceRegistryLookup.class);
+        org.mockito.Mockito.when(outage.tokenPrefix(org.mockito.ArgumentMatchers.anyString())).thenThrow(new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThatThrownBy(() -> new SourceResolver(new SourceRegistryCache(), new SourceTokenValidator(), outage).resolve(message("another-token")))
+                .isInstanceOf(ResponseStatusException.class);
+    }
 
     @Test
     void resolvesValidSourceToken() {

@@ -26,7 +26,7 @@ class SourceRuntimeConfigEventPublisherTest {
     private final SourceRuntimeConfigEventPublisher publisher = new SourceRuntimeConfigEventPublisher(
             outboxService,
             new DeviceKafkaProperties(),
-            new ObjectMapper());
+            new ObjectMapper(), mock(org.springframework.jdbc.core.JdbcTemplate.class));
 
     @Test
     void publishesSourceRuntimeConfigWithoutRawToken() {

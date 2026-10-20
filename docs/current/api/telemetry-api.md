@@ -199,3 +199,80 @@ owner budget. Exceeding a bound requires a narrower query rather than truncating
 total. Persisted retention is unchanged; missing retained boundary samples reduce
 coverage. API results contain bounded derived evidence, not persisted raw samples in
 dashboard definitions. Query profiles do not establish ingestion or storage capacity.
+
+## Vehicle positions
+
+- GET `/telemetry/devices/{deviceId}/positions/latest?sourceId=...&asOf=<UTC>`:
+  deviceId/sourceId/asOf/freshness/nullable position. asOf defaults to server now.
+- GET `/telemetry/devices/{deviceId}/positions?sourceId=...&from=<UTC>&to=<UTC>`:
+  deviceId/sourceId/from/to/points/returnedCount/truncated.
+
+A position has recordedAt/receivedAt/latitude/longitude/nullable speedKmh and
+headingDeg/quality. Both reads require current device access and its external
+sourceId (not the source UUID). Invalid source/range returns400; missing user401,
+denied device403 and unavailable authorization503 follow current conventions.
+Latest selects recordedAt<=asOf, FRESH through30s, STALE above30s, NO_DATA if absent.
+History uses `(from,to]`, at most24h, newest1000 points returned in ascending time;
+truncated explicitly marks omitted earlier points. Narrow the period; v1 has no
+pagination, averages of coordinates or reconstructed trips.
+
+`telemetry.positions` is written transactionally only from accepted atomic GPS
+envelopes, preserving the first accepted device/source/timestamp. Invalid raw
+readings do not appear on maps. Late/backfill points do not replace newer latest
+positions. Timescale policy initialization applies the same180-day retention as
+measurements. H2 uses the portable table/index migration.
+
+POST `/internal/dashboard/positions` accepts `{scope,deviceId,sourceId}` where
+scope is the existing signed owner-read request with exactly one device. It renews
+resource access and source association and returns `{latest,history}`. Snapshot
+latest is capped at min(asOf,to); the route requires bearer and internal token.
+
+## Vehicle monitoring extension
+
+Fleet batches, cursor recordings, owner settings and nullable vehicle fields are specified in [vehicle monitoring](../flows/vehicle-monitoring-verification.md#contracts). V011 is portable; original positions/latest/history bounds are unchanged.
+
+
+## Internal dashboard fleet positions
+
+POST /internal/dashboard/positions accepts the existing scope/deviceId/sourceId or an alternative scope/vehicleSources UUID-to-source object (1-20 exact scope devices). Internal token and signed dashboard authorization are required. All devices and sources are validated before any reads. Fleet response is {fleet: [latestPositionEvidence]}; its timestamps are bounded by scope.time.to/asOf. Missing targets, mixed single/fleet forms or mismatched scope return 400; revoked resource access returns 403. Fleet reads retain nullable optional vehicle metrics and 30-second freshness semantics.
+
+
+### Fleet recorded GPS tracks
+
+The internal dashboard fleet position evidence additionally returns tracks: one PositionHistory per authorized vehicle. The interval is the intersection of the dashboard frame and the final 15 minutes ending at min(asOf,to). Existing 1000-point/history truncation bounds apply per vehicle. All device/source validation precedes these reads. The common map renders colored observed segments and pale straight connectors between discontinuous samples; connectors are visual uncertainty indications and are not stored as GPS observations. Show tracks is enabled by default.
+
+
+## Observed transport context
+
+GPS telemetry may include metrics.transport: a bounded object with routeId (128 chars), routeShortName (64), direction (1/2), destination (200), nextStopId (128), scheduleDeviationSeconds (integer -86400..86400), doorsOpen (boolean), accelerationMs2 (-30..30 finite), scheduledStart (HH:mm), locationSource (GPS/ODO/MAN/DR/N/A). Unknown keys/types, control characters or unbounded values reject the context. A GPS coordinate pair is required. Context is retained in valid raw readings and accepted position snapshots, exposed as point.transport in latest/history/recordings/fleet reads, and excluded from numeric normalized measurements and telemetry.validated.v1 metrics. Older positions return null. Missing fields are not carried forward. Existing tenant/source authorization and observation timestamps are unchanged.
+
+
+## Typed configured fields
+
+GET `/telemetry/devices/{deviceId}/fields?sourceId=<optional>` uses ordinary
+device read authorization and returns typed stored values with key, label,
+type, unit, value, display default, source ID and observation time. It reads the
+latest per-source readings within the bounded latest 100 raw observations;
+values are not carried forward across missing fields. Historical numeric
+series remain discoverable even after storage is disabled. Configured numeric
+fields use normal chart/envelope/export storage and chart discovery; configured
+text fields appear in the device telemetry table; boolean fields appear in both the table and state charts. Custom numeric
+fields are not automatically added to validated analytics events. GPS points
+also contain `fields` descriptors from the same accepted observation, persisted
+in the nullable V013 `positions.configured_fields` column.
+
+Map widgets accept optional `presentation.mapFields: string[]`. Undefined uses
+source display defaults (legacy maps retain their existing display), empty
+shows no metric details. This changes presentation only. Explicit selection
+can display any stored available field; it does not restore values excluded
+from collection. Location geometry still requires stored coordinates.
+
+
+## Boolean telemetry charts
+
+Configured boolean fields are discoverable chart metrics (type boolean, unit boolean, bounds 0/1). Raw JSON retains true/false; measurement series project false to 0 and true to 1. The reserved boolean unit cannot be assigned to numeric fields. Boolean series are excluded from automatic numeric analytics. V014 projects previously stored valid configured boolean observations and legacy accepted transport.doorsOpen positions without changing source times or raw JSON. Rejected observations are excluded. Up to 1000 observations per range are returned as measured states and displayed with step lines, preserving state changes and gaps. Larger ranges use min/max envelopes and do not imply exact transition order. Door chart axes show Closed/Open; other boolean states show False/True, and fractional aggregate statistics show Mixed states.
+
+
+## Active bus dashboard and configured state queries
+
+Active dashboard quota defaults to ten per owner. Bounded owner overrides (1..1000) are stored in dashboard_owner_quotas and checked under the existing owner transaction lock for create/restore/clone. Operators may raise a specific owner without changing other owners. Dashboard metric keys accept safe dotted configured fields; telemetry discovers requested units only from measurements of allowed devices/account. Dashboard boolean series include bounded MEASURED_STATES points up to 1000 observations, otherwise observed min/max envelopes. Boolean points keep original timestamps and raw types; rendering uses step states and preserves gaps. LAST_1_HOUR is a rolling relative query period exposed in widget and runtime settings.

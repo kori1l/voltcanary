@@ -12,12 +12,19 @@ public class SourceResolver {
 
     private final SourceRegistryCache cache;
     private final SourceTokenValidator tokenValidator;
+    private final SourceRegistryLookup registry;
 
     public SourceResolver(
             SourceRegistryCache cache,
             SourceTokenValidator tokenValidator) {
+        this(cache, tokenValidator, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SourceResolver(SourceRegistryCache cache, SourceTokenValidator tokenValidator, SourceRegistryLookup registry) {
         this.cache = cache;
         this.tokenValidator = tokenValidator;
+        this.registry = registry;
     }
 
     public ResolvedSource resolve(IncomingTelemetryMessage message) {
@@ -30,6 +37,7 @@ public class SourceResolver {
 
         String tokenPrefix = tokenValidator.prefix(message.sourceToken());
         InternalDataSourceResponse source = cache.getByTokenPrefix(tokenPrefix)
+                .or(() -> recover(tokenPrefix, true))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token"));
         if (!tokenValidator.matches(message.sourceToken(), source.tokenHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid source token");
@@ -55,6 +63,7 @@ public class SourceResolver {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Source token is required");
         }
         InternalDataSourceResponse source = cache.getByExternalId(message.sourceId())
+                .or(() -> recover(message.sourceId(), false))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source"));
         if (!deviceId.equals(source.deviceId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source");
@@ -67,6 +76,7 @@ public class SourceResolver {
 
     private ResolvedSource resolveMqtt(IncomingTelemetryMessage message) {
         InternalDataSourceResponse source = cache.getByExternalId(message.sourceId())
+                .or(() -> recover(message.sourceId(), false))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown device data source"));
         if (!"ACTIVE".equalsIgnoreCase(source.status())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Data source is not active");
@@ -77,6 +87,13 @@ public class SourceResolver {
         return resolved(source);
     }
 
+    private java.util.Optional<InternalDataSourceResponse> recover(String identity, boolean tokenPrefix) {
+        if (registry == null) return java.util.Optional.empty();
+        var source = tokenPrefix ? registry.tokenPrefix(identity) : registry.externalId(identity);
+        source.ifPresent(item -> cache.put(item, 0L));
+        return tokenPrefix ? cache.getByTokenPrefix(identity) : cache.getByExternalId(identity);
+    }
+
     private ResolvedSource resolved(InternalDataSourceResponse source) {
         return new ResolvedSource(
                 source.accountId(),
@@ -85,6 +102,6 @@ public class SourceResolver {
                 source.externalId(),
                 source.sourceType(),
                 source.protocol(),
-                source.status());
+                source.status(), source.mapping());
     }
 }

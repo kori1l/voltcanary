@@ -27,6 +27,7 @@ public class DashboardErrorHandler {
             case "ACTOR_INACTIVE", "NO_ACCESS" -> 403;
             case "OWNERSHIP_UNAVAILABLE", "DEPENDENCY_UNAVAILABLE", "READ_TIMEOUT", "INVALID_READ_RESPONSE" -> 503;
             case "CONFLICT" -> 409;
+            case "SNAPSHOT_EXPIRED" -> 410;
             case "PRECONDITION_REQUIRED" -> 428;
             case "QUOTA_EXCEEDED", "VALIDATION_ERROR", "LIMIT_EXCEEDED" -> 422;
             default -> 500;

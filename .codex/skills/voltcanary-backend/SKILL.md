@@ -58,6 +58,11 @@ For database changes, add Flyway migrations under the owning service's
 `src/main/resources/db/migration` directory and update OpenSpec/docs when the
 schema or retention semantics change.
 
+Telemetry keeps portable migrations in `db/migration` and database-specific SQL
+in `db/vendor/{vendor}` (PostgreSQL/Timescale and H2), both configured in Flyway.
+Use the vendor location for PostgreSQL-only covering/partial indexes and retain
+H2 compatibility; verify migrations in both environments.
+
 For Kafka changes, update the owning common event type and `docs/events/*.md`
 with topic names, versions, and compatibility expectations.
 

@@ -88,6 +88,15 @@ public class AnalyticsOutboxService {
                 event);
     }
 
+    public void enqueueVariableAnomaly(Anomaly anomaly,
+            com.voltcanary.common.events.analytics.VariableRuleEvidence evidence) {
+        var event = new AnomalyDetectedEvent(anomaly.getId(), anomaly.getDeviceId(), anomaly.getId(),
+                anomaly.getRuleId(), anomaly.getWindowStart(), anomaly.getWindowEnd(), anomaly.getInputHash(),
+                anomaly.getType(), anomaly.getSeverity(), anomaly.getScore(), anomaly.getDescription(), anomaly.getDetectedAt(),
+                "v1", null, "analytics-service", anomaly.getAccountId(), anomaly.getDetectedAt(), evidence);
+        enqueue("variable-anomaly:" + anomaly.getId(), ANOMALY_TOPIC, anomaly.getDeviceId().toString(), event);
+    }
+
     private void enqueue(String eventKey, String topic, String messageKey, Object payload) {
         if (repository.findByEventKey(eventKey).isPresent()) {
             return;

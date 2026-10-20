@@ -39,7 +39,15 @@ public class DashboardTaskTemplates {
                 "LAST_7_DAYS", 24, List.of("primary", "equipment"), List.of(
                     panel("energy", "energy-period", "Covered energy consumption", "equipment", null, null, Map.of("compare", Map.of("mode", "PREVIOUS")), "/devices"),
                     panel("peak", "peak-and-ranking", "Recorded peak and ranking", "equipment", null, null, Map.of(), "/devices"),
-                    panel("cost", "estimated-cost", "Estimated cost requires a versioned tariff", "equipment", null, null, Map.of(), "/devices"), power(), quality())));
+                    panel("cost", "estimated-cost", "Estimated energy cost", "equipment", null, null, Map.of(), "/devices"), power(), quality())),
+            template("workspace-matrix", "Workspace equipment matrix", "Review the intersection of current resource grants", "Manager",
+                List.of("Service","Property"),"LAST_24_HOURS",24,List.of(panel("matrix","location-matrix","Authorized equipment matrix","equipment",null,null,Map.of(),"/devices"),incidents(),maintenance())),
+            template("authorized-cohort", "Authorized cohort", "Compare only currently authorized equipment", "Analyst",
+                List.of("Workshop","IT"),"LAST_7_DAYS",24,List.of(count(),power(),quality())),
+            template("laundry-workshop", "Confirmed production periods", "Review confirmed cycles, observed downtime and energy per cycle", "Operator",
+                List.of("Laundry","Workshop"), "LAST_7_DAYS", 24, List.of(
+                    panel("operations","uptime-or-cycle","Confirmed cycles and observation","equipment",null,null,Map.of(),"/devices"),
+                    panel("energy","energy-period","Covered energy","equipment",null,null,Map.of(),"/devices"),incidents(),maintenance())));
     }
     private Template template(String id, String title, String task, String persona, List<String> segments,
             String period, int hours, List<Panel> panels) {

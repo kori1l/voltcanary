@@ -33,6 +33,11 @@ info:
     version: 0.1.0
 
 app:
+  variables:
+    activation-enabled: ${VARIABLE_ACTIVATION_ENABLED:false}
+  workspace-identity:
+    base-url: ${IDENTITY_SERVICE_URI:http://localhost:8081}
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
   kafka:

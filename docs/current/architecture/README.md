@@ -41,3 +41,5 @@ direction lives under `docs/target`.
 Start with [../../target/architecture.md](../../target/architecture.md). Use it
 as the roadmap-level map; use the numbered docs above for current implemented
 behavior.
+
+[Device variables](device-variables.md): definitions, materialization, graph reads and threshold ownership.

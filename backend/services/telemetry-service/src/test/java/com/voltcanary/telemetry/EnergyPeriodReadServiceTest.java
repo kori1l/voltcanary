@@ -25,6 +25,31 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class EnergyPeriodReadServiceTest {
+    @Test void batchMatchesSingleIntervalsIncludingOldBracketsAndReadsRawOnce() {
+        UUID device=UUID.randomUUID();
+        var history=Map.of(device,List.of(epoch(UUID.randomUUID(),from,null,1)));
+        var samples=Map.of(device,List.of(reading(0,10000,"energyWh","Wh"),reading(3600,10400,"energyWh","Wh"),reading(7200,10800,"energyWh","Wh")));
+        when(repository.readSelected(any(),anyList())).thenReturn(samples);
+        var original=request(List.of(device),false);
+        var intervals=java.util.stream.IntStream.range(0,32).mapToObj(i -> new com.voltcanary.common.web.DashboardEnergyBatchReadRequest.Interval(
+                "interval-"+i,List.of(device),from.plusSeconds(i*100),from.plusSeconds((i+1)*100),false)).toList();
+        var batch=service.readBatch(new com.voltcanary.common.web.DashboardEnergyBatchReadRequest(original.scope(),intervals),scope(history));
+        org.mockito.Mockito.verify(repository,org.mockito.Mockito.times(1)).readSelected(any(),anyList());
+        for (var interval:intervals) {
+            var frame=new DashboardOwnerReadRequest.TimeFrame(interval.from(),interval.to(),original.scope().time().asOf(),null,null);
+            var single=new DashboardEnergyReadRequest(new DashboardOwnerReadRequest(user,account,List.of(device),frame,Set.of(),List.of(),1,0,"ACTIVE",List.of()),false);
+            assertThat(batch.path("intervals").path(interval.key()).path("period")).isEqualTo(service.read(single,scope(history)).path("period"));
+        }
+        assertThat(batch.path("asOf").asText()).isEqualTo(original.scope().time().asOf().toString());
+    }
+
+    @Test void batchRejectsForeignDeviceAndDuplicateIntervalBeforeRawRead() {
+        UUID device=UUID.randomUUID();var request=request(List.of(device),false);
+        var foreign=new com.voltcanary.common.web.DashboardEnergyBatchReadRequest.Interval("foreign",List.of(UUID.randomUUID()),from,from.plusSeconds(60),false);
+        assertThatThrownBy(()->service.readBatch(new com.voltcanary.common.web.DashboardEnergyBatchReadRequest(request.scope(),List.of(foreign)),scope(Map.of(device,List.of()))))
+                .isInstanceOf(ResponseStatusException.class);
+        verifyNoInteractions(repository);
+    }
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
     private final EnergyReadingRepository repository = mock(EnergyReadingRepository.class);
     private final EnergyPeriodReadService service = new EnergyPeriodReadService(repository,mapper);
@@ -57,7 +82,7 @@ class EnergyPeriodReadServiceTest {
         UUID device=UUID.randomUUID();
         var history=Map.of(device,List.of(epoch(UUID.randomUUID(),from,from.plusSeconds(5400),1),
                 epoch(UUID.randomUUID(),from.plusSeconds(5400),null,2)));
-        when(repository.read(any(),anyList(),any(),any())).thenReturn(Map.of(device,List.of(
+        when(repository.readSelected(any(),anyList())).thenReturn(Map.of(device,List.of(
                 reading(0,10000,"energyWh","Wh"),reading(3600,10400,"energyWh","Wh"),
                 reading(5400,50000,"energyWh","Wh"),reading(7200,50100,"energyWh","Wh"))));
         var period=service.read(request(List.of(device),false),scope(history)).path("period");
@@ -71,7 +96,7 @@ class EnergyPeriodReadServiceTest {
         UUID device=UUID.randomUUID();
         UUID physical=UUID.randomUUID();
         var history=Map.of(device,List.of(epoch(physical,from,from.plusSeconds(5400),1),epoch(physical,from.plusSeconds(5400),null,2)));
-        when(repository.read(any(),anyList(),any(),any())).thenReturn(Map.of(device,List.of(
+        when(repository.readSelected(any(),anyList())).thenReturn(Map.of(device,List.of(
                 reading(0,10000,"energyWh","Wh"),reading(3600,10400,"energyWh","Wh"),reading(7200,10800,"energyWh","Wh"))));
         var period=service.read(request(List.of(device),false),scope(history)).path("period");
         assertThat(period.path("energyKWh").asDouble()).isEqualTo(0.8);
@@ -82,7 +107,7 @@ class EnergyPeriodReadServiceTest {
     void aSavedCounterMethodDoesNotAlsoAddPowerIntegration() {
         UUID device=UUID.randomUUID();
         var history=Map.of(device,List.of(epoch(UUID.randomUUID(),from,null,1)));
-        when(repository.read(any(),anyList(),any(),any())).thenReturn(Map.of(device,List.of(
+        when(repository.readSelected(any(),anyList())).thenReturn(Map.of(device,List.of(
                 reading(0,10000,"energyWh","Wh"),reading(7200,10500,"energyWh","Wh"),
                 reading(0,1000,"activePowerW","W"),reading(7200,1000,"activePowerW","W"))));
         var period=service.read(request(List.of(device),false),scope(history)).path("period");
@@ -107,7 +132,7 @@ class EnergyPeriodReadServiceTest {
         UUID known=UUID.randomUUID(),missing=UUID.randomUUID();
         var history=Map.of(known,List.of(epoch(UUID.randomUUID(),from,null,1)),missing,List.<EnergyMeterDefinition>of());
         assertThatThrownBy(()->service.read(request(List.of(known,missing),false),scope(history))).isInstanceOf(ResponseStatusException.class);
-        when(repository.read(any(),anyList(),any(),any())).thenReturn(Map.of(known,List.of(
+        when(repository.readSelected(any(),anyList())).thenReturn(Map.of(known,List.of(
                 reading(0,10000,"energyWh","Wh"),reading(7200,10500,"energyWh","Wh"))));
         var period=service.read(request(List.of(known,missing),true),scope(history)).path("period");
         assertThat(period.path("energyKWh").asDouble()).isEqualTo(0.5);

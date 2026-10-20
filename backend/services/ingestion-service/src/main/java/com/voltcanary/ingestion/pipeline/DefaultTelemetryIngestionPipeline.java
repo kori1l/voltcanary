@@ -37,6 +37,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
     private final IngestionAuditService auditService;
     private final MeterRegistry meterRegistry;
     private final boolean kafkaPublishEnabled;
+    private final com.voltcanary.ingestion.source.SourceProcessingProjection processing;
 
     public DefaultTelemetryIngestionPipeline(
             IngestionValidator ingestionValidator,
@@ -49,7 +50,8 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             KafkaBackpressureService backpressureService,
             IngestionAuditService auditService,
             MeterRegistry meterRegistry,
-            IngestionProperties properties) {
+            IngestionProperties properties,
+            com.voltcanary.ingestion.source.SourceProcessingProjection processing) {
         this.ingestionValidator = ingestionValidator;
         this.payloadNormalizer = payloadNormalizer;
         this.sourceResolver = sourceResolver;
@@ -61,6 +63,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
         this.auditService = auditService;
         this.meterRegistry = meterRegistry;
         this.kafkaPublishEnabled = properties.isKafkaPublishEnabled();
+        this.processing = processing;
     }
 
     @Override
@@ -69,10 +72,30 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
         String outcome = "accepted";
         try {
             backpressureService.check();
-            ingestionValidator.validate(message);
-            IncomingTelemetryMessage normalizedMessage = payloadNormalizer.normalize(message);
-            ResolvedSource source = sourceResolver.resolve(normalizedMessage);
+            ingestionValidator.validateEnvelope(message);
+            ResolvedSource source = sourceResolver.resolve(message);
+            var processingContext = processing.pin(source);
+            if (processingContext != null && message.historicalImport()) {
+                processingContext = new com.voltcanary.common.events.telemetry.ProcessingContext(
+                        processingContext.dataSourceId(), processingContext.generation(), processingContext.digest(), "v1", true);
+            }
+            IncomingTelemetryMessage normalizedMessage = payloadNormalizer.normalize(message, source.mapping());
+            if (processingContext != null && normalizedMessage.metrics().isEmpty()) {
+                normalizedMessage = new IncomingTelemetryMessage(normalizedMessage.sourceId(), normalizedMessage.deviceId(),
+                        normalizedMessage.accountId(), normalizedMessage.occurredAt(), normalizedMessage.receivedAt(),
+                        java.util.Map.of("configuredFields", java.util.Map.of()), normalizedMessage.origin(),
+                        normalizedMessage.context(), normalizedMessage.historicalImport());
+            }
+            processing.validateInputs(source, normalizedMessage.metrics(), processingContext);
             rateLimiter.check(normalizedMessage, source);
+            if (normalizedMessage.metrics().isEmpty()) {
+                outcome = "filtered";
+                sourceUsageRecorder.record(source);
+                meterRegistry.counter("voltcanary.ingestion.readings", "outcome", outcome).increment();
+                auditService.record(outcome, "source_policy", message.correlationId(), source.deviceId(), message.sourceId(), null);
+                return new IngestionResult(true, null, "filtered");
+            }
+            ingestionValidator.validate(normalizedMessage, processingContext != null);
             sourceUsageRecorder.record(source);
             if (!idempotencyService.markIfNew(
                     source.deviceId(),
@@ -110,7 +133,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                     normalizedMessage.correlationId(),
                     "ingestion-service",
                     source.accountId(),
-                    normalizedMessage.occurredAt());
+                    normalizedMessage.occurredAt(), processingContext);
             if (kafkaPublishEnabled) {
                 try {
                     telemetryEventPublisher.publish(event);

@@ -34,6 +34,7 @@ public class DashboardCatalogController {
             List<String> permissions, UUID draftEtag, List<String> unsupportedWidgetIds) {
     }
 
+    private final com.voltcanary.dashboard.sharing.DashboardSharing sharing;
     private final DashboardOwnership ownership;
     private final DashboardCatalog catalog;
     private final DashboardDrafts drafts;
@@ -43,13 +44,14 @@ public class DashboardCatalogController {
 
     public DashboardCatalogController(DashboardOwnership ownership, DashboardCatalog catalog,
             DashboardDrafts drafts, DashboardLifecycle lifecycle, DashboardRequestDecoder decoder,
-            com.voltcanary.dashboard.query.WidgetManifests manifests) {
+            com.voltcanary.dashboard.query.WidgetManifests manifests,com.voltcanary.dashboard.sharing.DashboardSharing sharing) {
         this.ownership = ownership;
         this.catalog = catalog;
         this.drafts = drafts;
         this.lifecycle = lifecycle;
         this.decoder = decoder;
         this.manifests = manifests;
+        this.sharing=sharing;
     }
 
     @GetMapping
@@ -79,10 +81,11 @@ public class DashboardCatalogController {
         var actor = ownership.resolve(authorization);
         Dashboard dashboard = catalog.get(actor, id);
         int requested = revision == null ? dashboard.publishedRevision() : revision;
-        DashboardDefinition definition = requested == 0 ? null : drafts.revision(actor, id, requested).definition();
-        UUID draftEtag = drafts.get(actor, id).etag();
-        List<String> permissions = "ACTIVE".equals(dashboard.status())
-                ? List.of("view", "edit", "publish", "archive", "copy") : List.of("view", "restore", "copy");
+        List<String> permissions=catalog.permissions(actor,id);
+        DashboardDefinition definition = requested == 0 ? null : catalog.definition(actor,id,requested);
+        if (sharing!=null && definition!=null) definition=sharing.viewerDefinition(actor,id,definition);
+        UUID draftEtag = permissions.contains("edit")?drafts.get(actor,id).etag():permissions.contains("archive")?drafts.lifecycleEtag(actor,id):null;
+        if (!"ACTIVE".equals(dashboard.status()) && permissions.contains("archive")) permissions=java.util.stream.Stream.concat(permissions.stream(),java.util.stream.Stream.of("restore")).distinct().toList();
         return ResponseEntity.ok().eTag(id + "-r" + requested + "-" + dashboard.status())
                 .body(new DashboardView(dashboard, definition, requested, permissions, draftEtag,
                         definition == null ? List.of() : definition.widgets().stream()

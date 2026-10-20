@@ -33,3 +33,19 @@ server-side template while keeping save/start as explicit user actions.
 Target direction: simulator remains a telemetry producer used for local demos,
 verification, and repeatable fixtures. It should not become a second ingestion
 or telemetry storage boundary.
+
+## Vehicle GPS producer
+
+VEHICLE_GPS/CITY_LOOP uses existing HTTP sender/token/lifecycle/config versions.
+Preset catalog adds compatibleProfiles: CITY_LOOP only supports VEHICLE_GPS;
+appliance presets retain their profile list. Template default5s/30m/36km/h.
+Save/start validate VEHICLE and SIMULATOR/REST source ownership using
+DEVICE_SERVICE_URL and INTERNAL_SERVICE_TOKEN. Save profile/protocol must match
+YAML. Generator selection is separate from the run manager. GPS uses monotonic
+elapsed time, cumulative geographic distances and fixed-delay scheduling, without
+catch-up burst; appliance scheduling is unchanged. GPS stops at configured duration.
+Stop/restart follows existing leases/history; restart resets the route.
+
+## Vehicle route extension
+
+The GPS generator snapshots optional custom closed routes/waypoint dwell and vehicle metrics per run. Monotonic elapsed drives movement and stops; existing HTTP ingestion remains authoritative. [Contract and verification](../flows/vehicle-monitoring-verification.md).

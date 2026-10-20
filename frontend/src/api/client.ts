@@ -83,12 +83,15 @@ export async function apiTextRequest(
 ): Promise<string> {
   return requestWithAuth<string>(path, options, true, "text");
 }
+export async function apiResponseRequest(path: string, options: RequestInit = {}): Promise<Response> {
+  return requestWithAuth<Response>(path, options, true, "response");
+}
 
 async function requestWithAuth<TResponse>(
   path: string,
   options: RequestInit,
   allowRefresh: boolean,
-  responseType: "json" | "text",
+  responseType: "json" | "text" | "response",
 ): Promise<TResponse> {
   const token = getAccessToken();
   const requestIdentity = identityEpoch;
@@ -126,6 +129,7 @@ async function requestWithAuth<TResponse>(
   if (response.status === 204) {
     return undefined as TResponse;
   }
+  if (responseType === "response") return response as TResponse;
   if (responseType === "text") {
     const body = await response.text();
     if (requestIdentity !== identityEpoch) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);

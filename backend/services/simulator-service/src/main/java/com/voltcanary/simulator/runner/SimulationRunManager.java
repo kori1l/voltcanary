@@ -8,7 +8,7 @@ import com.voltcanary.simulator.domain.SimulationRunStatus;
 import com.voltcanary.simulator.dto.SimulationRunResponse;
 import com.voltcanary.simulator.dto.SimulationRunDetailResponse;
 import com.voltcanary.simulator.dto.SimulationRunEventResponse;
-import com.voltcanary.simulator.generator.GenericApplianceGenerator;
+import com.voltcanary.simulator.generator.SimulationGeneratorSelection;
 import com.voltcanary.simulator.generator.SimulationContext;
 import com.voltcanary.simulator.repository.SimulationConfigRepository;
 import com.voltcanary.simulator.repository.SimulationRunEventRepository;
@@ -45,12 +45,13 @@ public class SimulationRunManager {
     private final SimulationRunEventRepository eventRepository;
     private final SimulationYamlParser parser;
     private final SimulationYamlValidator validator;
-    private final GenericApplianceGenerator generator;
+    private final SimulationGeneratorSelection generator;
     private final TelemetrySenderRegistry senderRegistry;
     private final RunningSimulationRegistry registry;
     private final MeterRegistry meterRegistry;
     private final SimulationRunner simulationRunner;
     private final String leaseOwner;
+    private final com.voltcanary.simulator.service.VehicleSimulationTarget target;
 
     public SimulationRunManager(
             SimulationConfigRepository configRepository,
@@ -58,11 +59,12 @@ public class SimulationRunManager {
             SimulationRunEventRepository eventRepository,
             SimulationYamlParser parser,
             SimulationYamlValidator validator,
-            GenericApplianceGenerator generator,
+            SimulationGeneratorSelection generator,
             TelemetrySenderRegistry senderRegistry,
             RunningSimulationRegistry registry,
             SimulationRunner simulationRunner,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, com.voltcanary.simulator.service.VehicleSimulationTarget target) {
+        this.target = target;
         this.configRepository = configRepository;
         this.runRepository = runRepository;
         this.eventRepository = eventRepository;
@@ -85,6 +87,7 @@ public class SimulationRunManager {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Simulation config is invalid");
         }
         SimulationConfigModel model = parser.parse(config.getYamlConfig());
+        target.require(userId, deviceId, config.getDataSourceId(), model);
         if ("HTTP".equalsIgnoreCase(model.protocol()) && (config.getSourceToken() == null || config.getSourceToken().isBlank())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Simulation source token is missing");
         }
@@ -116,10 +119,10 @@ public class SimulationRunManager {
         event(run.getId(), "STARTING", "Simulation starting");
         meterRegistry.counter("simulator_runs_started_total").increment();
 
-        var future = simulationRunner.schedule(
-                run.getId(),
-                () -> tick(run.getId(), config.getSourceToken(), model, intervalSeconds),
-                intervalSeconds);
+        Runnable tick = () -> tick(run.getId(), config.getSourceToken(), model, intervalSeconds);
+        var future = "VEHICLE_GPS".equals(model.profile())
+                ? simulationRunner.scheduleVehicle(run.getId(), tick, intervalSeconds)
+                : simulationRunner.schedule(run.getId(), tick, intervalSeconds);
         if (!registry.putIfAbsent(deviceId, future)) {
             future.cancel(false);
             stopRun(run, "Stopped because this simulator replica already owns an in-memory run for the device.");
@@ -232,6 +235,11 @@ public class SimulationRunManager {
                 return;
             }
             runRepository.extendLease(runId, leaseOwner, Instant.now().plus(leaseDuration(intervalSeconds)));
+            if ("VEHICLE_GPS".equals(model.profile()) && Instant.now().isAfter(run.getStartedAt().plus(model.duration()))) {
+                registry.remove(run.getDeviceId()).ifPresent(future -> future.cancel(false));
+                stopRun(run, "Configured duration completed");
+                return;
+            }
             long tick = run.getGeneratedPoints() + 1;
             var context = new SimulationContext(
                     runId,
@@ -242,7 +250,7 @@ public class SimulationRunManager {
                     Instant.now(),
                     tick,
                     model);
-            generator.next(context).ifPresent(point -> {
+            generator.forProfile(model.profile()).next(context).ifPresent(point -> {
                 senderRegistry.senderFor(model.protocol()).send(point, sourceToken);
                 run.setGeneratedPoints(tick);
                 run.setLeaseUntil(Instant.now().plus(leaseDuration(intervalSeconds)));
@@ -251,6 +259,7 @@ public class SimulationRunManager {
             });
         } catch (Exception exception) {
             runRepository.findById(runId).ifPresent(run -> {
+                generator.release(run.getId());
                 run.setStatus(SimulationRunStatus.FAILED);
                 run.setLastError(exception.getMessage());
                 run.setStoppedAt(Instant.now());
@@ -283,6 +292,7 @@ public class SimulationRunManager {
     }
 
     private void stopRun(SimulationRun run, String reason) {
+        generator.release(run.getId());
         run.setStatus(SimulationRunStatus.STOPPED);
         run.setStoppedAt(Instant.now());
         run.setStopReason(reason);

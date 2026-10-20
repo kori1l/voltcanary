@@ -6,5 +6,6 @@ public enum SimulationProfile {
     AIR_CONDITIONER,
     BOILER,
     PUMP,
-    HEATER
+    HEATER,
+    VEHICLE_GPS
 }

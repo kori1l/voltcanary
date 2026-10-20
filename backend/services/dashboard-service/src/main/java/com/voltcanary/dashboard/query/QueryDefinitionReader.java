@@ -31,7 +31,8 @@ public class QueryDefinitionReader {
         int revision = request.revision() == null ? dashboard.publishedRevision() : request.revision();
         DashboardDefinition definition;
         if (request.draftEtag() != null) {
-            var draft = storage.draft(id);
+            access.capability(actor,id,"EDIT");
+            var draft = storage.draft(id,actor.userId());
             if (!actor.userId().equals(draft.authorUserId())) {
                 throw new DashboardFailure("NOT_FOUND", "Draft not found");
             }
@@ -41,15 +42,18 @@ public class QueryDefinitionReader {
             definition = draft.definition();
             revision = draft.baseRevision();
         } else {
+            if (revision!=dashboard.publishedRevision()) access.capability(actor,id,"HISTORY");
             definition = storage.revision(id, revision)
                     .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Revision not found")).definition();
         }
+        definition=access.context(id,definition);
+        DashboardDefinition resolvedDefinition=definition;
         if (definition.widgets().size() > 24) {
             throw new DashboardFailure("LIMIT_EXCEEDED", "At most 24 widgets are allowed");
         }
         if (request.widgetIds() != null && (request.widgetIds().size() > 24
                 || request.widgetIds().stream().distinct().count() != request.widgetIds().size()
-                || request.widgetIds().stream().anyMatch(widgetId -> definition.widgets().stream()
+                || request.widgetIds().stream().anyMatch(widgetId -> resolvedDefinition.widgets().stream()
                         .noneMatch(widget -> widget.id().equals(widgetId))))) {
             throw new DashboardFailure("VALIDATION_ERROR", "Visible widget IDs must belong to the saved definition");
         }

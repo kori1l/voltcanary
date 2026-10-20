@@ -79,6 +79,7 @@ export interface CreateDataSourceRequest {
 }
 
 export interface DataSource {
+  mapping?: Record<string, unknown>;
   id: string;
   deviceId: string;
   sourceType: string;

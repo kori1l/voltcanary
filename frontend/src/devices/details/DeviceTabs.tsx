@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Tabs } from "../../components/Tabs";
-export type DeviceDetailsTab = "overview" | "telemetry" | "analytics" | "alerts" | "maintenance" | "configuration" | "simulation";
+export type DeviceDetailsTab = "overview" | "telemetry" | "analytics" | "alerts" | "maintenance" | "configuration" | "simulation" | "movement";
 
 const tabs: { value: DeviceDetailsTab; label: string }[] = [
   { value: "overview", label: "Overview" },
@@ -16,8 +16,9 @@ interface DeviceTabsProps {
   activeTab: DeviceDetailsTab;
   onChange: (tab: DeviceDetailsTab) => void;
   children?: ReactNode;
+  vehicle?:boolean;
 }
 
-export function DeviceTabs({ activeTab, onChange, children }: DeviceTabsProps) {
-  return <Tabs label="Device sections" items={tabs} value={activeTab} onChange={onChange} mobileSelector>{children}</Tabs>;
+export function DeviceTabs({ activeTab, onChange, children, vehicle }: DeviceTabsProps) {
+  return <Tabs label="Device sections" items={vehicle?[...tabs,{value:"movement" as const,label:"Movement"}]:tabs} value={activeTab} onChange={onChange} mobileSelector>{children}</Tabs>;
 }

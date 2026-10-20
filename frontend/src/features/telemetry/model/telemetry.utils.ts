@@ -15,9 +15,13 @@ export function getMetricDefinition(key: string): MetricDefinition {
   };
 }
 
-export function formatMetricValue(value: number | null | undefined, unit: string) {
+export function formatMetricValue(value: number | null | undefined, unit: string, metricKey?:string) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "No data";
+  }
+  if (unit === "boolean") {
+    const doors=metricKey?.endsWith("doorsOpen");
+    return value===0?(doors?"Closed":"False"):value===1?(doors?"Open":"True"):"Mixed states";
   }
   return `${formatCompactNumber(value)}${unit ? ` ${unit}` : ""}`;
 }

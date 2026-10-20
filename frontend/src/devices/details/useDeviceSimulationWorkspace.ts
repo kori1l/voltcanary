@@ -6,8 +6,6 @@ import {
   getSimulationRuns,
   getSimulationStatus,
   getSimulationTemplate,
-  listSimulationPresets,
-  SimulationPreset,
   resetSimulationTemplate,
   saveSimulationConfig,
   SimulationConfig,
@@ -16,6 +14,7 @@ import {
   stopSimulation,
   validateSimulationConfig,
 } from "../../simulation/simulationApi";
+import {useDeviceSimulationPresets} from "../useDeviceSimulationPresets";
 import { DeviceDetailsTab } from "./DeviceTabs";
 import { readSimulationSettings, SimulationSettings, updateSimulationYaml } from "./simulationYaml";
 import { useActionConfirmation } from "../../components/useActionConfirmation";
@@ -38,11 +37,11 @@ export function useDeviceSimulationWorkspace({
   const [simulationMessage, setSimulationMessage] = useState<string | null>(null);
   const [simulationValidation, setSimulationValidation] = useState<{ valid: boolean; message: string }>({ valid: true, message: "YAML is valid" });
   const [isSimulationBusy, setIsSimulationBusy] = useState(false);
-  const [simulationPresets, setSimulationPresets] = useState<SimulationPreset[]>([]);
+  const presetResource=useDeviceSimulationPresets(activeTab==="simulation");
+  const simulationPresets=(presetResource.data ?? []).filter(preset=>preset.compatibleProfiles?preset.compatibleProfiles.includes(simulationProfile):simulationProfile!=="VEHICLE_GPS");
   const [simulationPreset, setSimulationPreset] = useState("NORMAL_OPERATION");
   const confirmation = useActionConfirmation();
   const hasUnsavedSimulation = Boolean(simulationConfig && (simulationYaml !== simulationConfig.yamlConfig || simulationProfile !== simulationConfig.profile || simulationProtocol !== simulationConfig.protocol));
-  useEffect(() => { let live = true; listSimulationPresets().then((presets) => { if (live) setSimulationPresets(presets); }).catch(() => undefined); return () => { live = false; }; }, []);
 
   const simulationSettings = useMemo(() => readSimulationSettings(simulationYaml), [simulationYaml]);
   const simulationSourceId = simulationSettings.sourceId || readDeviceSourcePreference(deviceId) || "plug-001";
@@ -60,6 +59,7 @@ export function useDeviceSimulationWorkspace({
       setSimulationConfig(configResponse);
       setSimulationYaml(configResponse.yamlConfig);
       setSimulationProfile(configResponse.profile);
+      setSimulationPreset(configResponse.profile==="VEHICLE_GPS"?"CITY_LOOP":"NORMAL_OPERATION");
       setSimulationProtocol(configResponse.protocol);
       setSimulationStatus(statusResponse);
       setSimulationRuns(runsResponse);
@@ -172,7 +172,10 @@ export function useDeviceSimulationWorkspace({
 
   function changeSimulationProfile(profile: string) {
     setSimulationProfile(profile);
-    setSimulationYaml((current) => updateSimulationYaml(current, "profile", profile));
+    const preset=profile==="VEHICLE_GPS"?"CITY_LOOP":"NORMAL_OPERATION";
+    setSimulationPreset(preset);
+    void getSimulationTemplate(profile, simulationSettings.sourceId, preset).then(template=>setSimulationYaml(template.yamlConfig));
+    setSimulationMessage("Profile template loaded as an unsaved draft. Save to apply.");
   }
 
   function changeSimulationProtocol(protocol: string) {
@@ -270,6 +273,7 @@ export function useDeviceSimulationWorkspace({
   }
 
   return {
+    presetResource,
     hasUnsavedSimulation,
     simulationPresets,
     simulationPreset,

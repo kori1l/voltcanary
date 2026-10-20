@@ -9,10 +9,19 @@ import org.springframework.stereotype.Component;
 public class SimulationTemplates {
 
     public String template(SimulationProfile profile, String sourceId) {
-        return template(profile, sourceId, "NORMAL_OPERATION");
+        return template(profile, sourceId, profile == SimulationProfile.VEHICLE_GPS ? "CITY_LOOP" : "NORMAL_OPERATION");
     }
 
     public String template(SimulationProfile profile, String sourceId, String preset) {
+        if (profile == SimulationProfile.VEHICLE_GPS) {
+            if (!"CITY_LOOP".equals(preset) && !"NORMAL_OPERATION".equals(preset)) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Preset is incompatible with VEHICLE_GPS");
+            }
+            return VehicleGpsTemplate.yaml(sourceId == null || sourceId.isBlank() ? "sim-car-001" : sourceId);
+        }
+        if ("CITY_LOOP".equals(preset)) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "CITY_LOOP requires VEHICLE_GPS");
+        }
         String normalizedSourceId = sourceId == null || sourceId.isBlank() ? "sim-fridge-001" : sourceId;
         String yaml = """
                 schemaVersion: 1
@@ -81,6 +90,8 @@ public class SimulationTemplates {
     public List<SimulationPresetResponse> presets() {
         List<String> metrics = List.of("activePowerW", "voltageV", "currentA", "energyWh", "rssi");
         return List.of(
+                new SimulationPresetResponse("CITY_LOOP", "City loop", "Virtual GPS movement on a closed Belgrade contour.",
+                        List.of("latitude", "longitude", "speedKmh", "headingDeg"), List.of(), "30m", "5s", List.of("VEHICLE_GPS")),
                 new SimulationPresetResponse(
                         "NORMAL_OPERATION",
                         "Normal operation",

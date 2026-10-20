@@ -45,3 +45,13 @@ it("uses the current interval when an earlier parent workflow resumes after load
   const last = calls[calls.length - 1];
   expect(Date.parse(last[2]) - Date.parse(last[1])).toBe(7 * 86400000);
 });
+
+it("offers configured boolean graphs with zero preserved",async()=>{
+ vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("No latest",404));
+ vi.mocked(getTelemetryMetrics).mockResolvedValue([{name:"transport.doorsOpen",unit:"boolean",type:"boolean",min:0,max:1,displayName:"Doors open"}]);
+ vi.mocked(getTelemetryEnvelope).mockResolvedValue({deviceId:"device-A",metric:"transport.doorsOpen",points:[{timestamp:"2026-10-07T12:00:00Z",value:0}]});
+ const view=renderHook(()=>useDeviceTelemetryWorkspace({deviceId:"device-A",activeTab:"telemetry",searchParams:new URLSearchParams()}));
+ await waitFor(()=>expect(view.result.current.availableChartMetrics).toHaveLength(1));
+ expect(view.result.current.availableChartMetrics[0]).toEqual({key:"transport.doorsOpen",unit:"boolean",label:"Doors open"});
+ expect(view.result.current.charts["transport.doorsOpen"].points[0].value).toBe(0);
+});

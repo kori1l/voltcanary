@@ -31,18 +31,20 @@ public class TelemetryValidatedReconciliationService {
     private final TelemetryReconciliationProperties properties;
     private final TelemetryValidationProperties validationProperties;
     private final MeterRegistry meterRegistry;
+    private final MetricCatalog metricCatalog;
 
     public TelemetryValidatedReconciliationService(
             JdbcTemplate jdbcTemplate,
             TelemetryValidatedPublisher validatedPublisher,
             TelemetryReconciliationProperties properties,
             TelemetryValidationProperties validationProperties,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, MetricCatalog metricCatalog) {
         this.jdbcTemplate = jdbcTemplate;
         this.validatedPublisher = validatedPublisher;
         this.properties = properties;
         this.validationProperties = validationProperties;
         this.meterRegistry = meterRegistry;
+        this.metricCatalog = metricCatalog;
     }
 
     @Scheduled(fixedDelayString = "#{@telemetryReconciliationProperties.interval.toMillis()}")
@@ -111,6 +113,11 @@ public class TelemetryValidatedReconciliationService {
                 from telemetry_readings r
                 where r.received_at <= ?
                   and not exists (
+                    select 1 from variable_measurement_lineage l
+                    where l.device_id=r.device_id and l.external_source_id=r.source_id
+                      and l.recorded_at=r.recorded_at
+                  )
+                  and not exists (
                     select 1
                     from telemetry_event_outbox o
                     where o.reading_id = r.id
@@ -122,8 +129,10 @@ public class TelemetryValidatedReconciliationService {
                     where m.device_id = r.device_id
                       and m.source_id = r.source_id
                       and m.recorded_at = r.recorded_at
+                      and m.metric_name in (%s)
                   )
-                """);
+                """.formatted(metricCatalog.all().stream().map(entry -> "'" + entry.getKey() + "'")
+                        .collect(java.util.stream.Collectors.joining(","))));
         for (int i = 0; i < validationProperties.getBackfillSourcePrefixes().size(); i++) {
             sql.append("  and (r.source_id is null or r.source_id not like ?)\n");
         }
@@ -154,7 +163,10 @@ public class TelemetryValidatedReconciliationService {
                     ps.setString(2, candidate.sourceId());
                     ps.setTimestamp(3, Timestamp.from(candidate.recordedAt()));
                 },
-                (RowCallbackHandler) rs -> metrics.put(rs.getString("metric_name"), rs.getDouble("metric_value")));
+                (RowCallbackHandler) rs -> {
+                    String name = rs.getString("metric_name");
+                    if (metricCatalog.isSupported(name)) metrics.put(name, rs.getDouble("metric_value"));
+                });
         return metrics;
     }
 

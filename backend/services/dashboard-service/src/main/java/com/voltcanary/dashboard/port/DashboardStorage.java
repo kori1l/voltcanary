@@ -14,12 +14,20 @@ import java.util.UUID;
 
 public interface DashboardStorage {
     void lockActor(DashboardActor actor);
+    default void lockDashboard(UUID id) { }
     long activeCount(DashboardActor actor);
+    default int activeLimit(DashboardActor actor) { return 10; }
     Optional<Dashboard> findOwned(DashboardActor actor, UUID id);
+    default Optional<Dashboard> findAny(UUID id) {
+        return Optional.empty();
+    }
     List<Dashboard> list(DashboardActor actor, String status, Cursor cursor, int limit);
     void insert(Dashboard dashboard);
     void update(Dashboard dashboard);
     Draft draft(UUID id);
+    default Draft draft(UUID id,UUID author) {
+        return draft(id);
+    }
     void saveDraft(Draft draft);
     void appendRevision(Revision revision);
     Optional<Revision> revision(UUID id, int revision);

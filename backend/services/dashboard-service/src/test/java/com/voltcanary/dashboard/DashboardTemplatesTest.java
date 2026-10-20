@@ -17,8 +17,8 @@ import static org.mockito.Mockito.verify;
 class DashboardTemplatesTest {
     @Test void catalogIsSymbolicVersionedAndEnergyGated() throws Exception {
         var catalog = new DashboardTaskTemplates(new WidgetManifests()).catalog();
-        assertThat(catalog).hasSize(5);
-        assertThat(catalog.stream().filter(item -> item.available()).toList()).hasSize(5);
+        assertThat(catalog).hasSize(8);
+        assertThat(catalog.stream().filter(item -> item.available()).toList()).hasSize(8);
         assertThat(catalog.stream().filter(item -> item.id().equals("energy")).findFirst().orElseThrow().available()).isTrue();
         String wire = new ObjectMapper().writeValueAsString(catalog);
         assertThat(wire).doesNotContain("ownerUserId", "accountId", "deviceId", "token", "password");

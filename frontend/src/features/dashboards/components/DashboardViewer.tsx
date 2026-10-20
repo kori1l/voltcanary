@@ -1,3 +1,4 @@
+import {useDashboardRefreshPreference} from "../model/useDashboardRefreshPreference";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {SidebarToggle} from "../../../components/NavigationVisibility";
@@ -16,7 +17,7 @@ export function DashboardViewer({view,reload}:{view:DashboardView;reload:()=>Pro
   const query=useConsoleQuery();const kiosk=query.params.get("kiosk")==="true";const definition=view.definition;
   const [screenToolbar,setScreenToolbar]=useState<HTMLDivElement|null>(null);
   const [filtersOpen,setFiltersOpen]=useState(false);
-  const [refreshInterval,setRefreshInterval]=useState(0);
+  const [refreshInterval,setRefreshInterval]=useDashboardRefreshPreference(view.dashboard.id,definition?.widgets.some(widget=>widget.type==="vehicle-map") ?? false);
   const [error,setError]=useState<string|null>(null);const [message,setMessage]=useState("");const [confirm,setConfirm]=useState(false);const [busy,setBusy]=useState(false);const lock=useRef(false);
   const [personalContext,setPersonalContext]=useState<import("../../../dashboards/dashboardsApi").RuntimeContext|null>(null);
   useEffect(()=>{let active=true;void getDashboardPreferences().then((preferences)=>{if(active && Object.keys(preferences.defaultContext ?? {}).length)setPersonalContext(preferences.defaultContext);}).catch(()=>{});return()=>{active=false;};},[view.dashboard.id]);
@@ -36,7 +37,7 @@ export function DashboardViewer({view,reload}:{view:DashboardView;reload:()=>Pro
     {message?<p role="status">{message}</p>:null}{error?<p role="alert">{error}<button className="ghost-button" onClick={()=>void reload().then(()=>{setError(null);setConfirm(false);})}>Reload dashboard before retry</button></p>:null}
     {!definition?<p>This dashboard is a private draft. Configure and preview it in Edit before publication.</p>:view.dashboard.status==="ARCHIVED"?<p>Archived dashboard. Restore it to resume authorized evidence reads.</p>:<>
       {evidence.error?<p role="alert">Connectivity or evidence read failed: {evidence.error}. {evidence.status==="stale"?"Retained evidence is stale.":"No evidence available."}</p>:null}
-      <p className="sr-only" role="status">Snapshot {evidence.data?.asOf ?? "unavailable"}{evidence.data?.cached?" · Cached snapshot":""}.</p>
+      <p className={kiosk || evidence.status==="stale"?"muted-text":"sr-only"} role="status">Snapshot {evidence.data?.asOf ?? "unavailable"}{evidence.data?.cached?" · Cached snapshot":""}.</p>
       {requestedScreen && active?.id!==requestedScreen?<p role="status">Requested screen is unavailable. Showing {active?.title}.</p>:null}
       {active && canvas?<DashboardScreenNavigation definition={definition} activeId={active.id} onSelect={(screenId)=>query.update({screenId})} toolbarTarget={screenToolbar}><h2 className="sr-only">{active.title}</h2><DashboardCanvas definition={canvas} panels={evidence.data?.panels ?? []} stale={evidence.status==="stale"} onRetry={()=>void evidence.refresh()} onVisible={onVisible}/></DashboardScreenNavigation>:null}
     </>}

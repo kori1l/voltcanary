@@ -10,9 +10,10 @@ export function useDeviceSetupRecovery(account: DeviceAccount | null, progress: 
   const [failed, setFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [checkedAccount, setCheckedAccount] = useState<string | null>(null);
   useEffect(() => {
     const saved = readDeviceSetupCheckpoint(account);
-    if (!saved) return;
+    if (!saved) { setCheckedAccount(account?.id ?? null); return; }
     let active = true;
     const controller = new AbortController();
     setRestoring(true); setFailed(false); setError(null);
@@ -31,8 +32,9 @@ export function useDeviceSetupRecovery(account: DeviceAccount | null, progress: 
       if (!active) return;
       progress.current = restored;
       callback.current(saved, restored);
-    })().catch(() => { if (active) { setFailed(true); setError("Saved setup could not be authorized or loaded. Retry these reads before continuing; the device will not be recreated."); } }).finally(() => { if (active) setRestoring(false); });
+    })().catch(() => { if (active) { setFailed(true); setError("Saved setup could not be authorized or loaded. Retry these reads before continuing; the device will not be recreated."); } }).finally(() => { if (active) {setCheckedAccount(account?.id ?? null);setRestoring(false);} });
     return () => { active = false; controller.abort(); };
   }, [account?.id, attempt]);
-  return { restoring, failed, error, retry: () => setAttempt((value) => value + 1) };
+  const pending=Boolean(account && checkedAccount!==account.id && readDeviceSetupCheckpoint(account));
+  return { restoring:restoring || pending, failed, error, retry: () => setAttempt((value) => value + 1) };
 }

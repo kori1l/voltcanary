@@ -72,7 +72,9 @@ public class AlertService {
     public Alert handleAnomaly(AnomalyDetectedEvent event) {
         AlertSeverity severity = anomalySeverity(event.severity());
         String type = valueOrDefault(event.type(), "ANOMALY");
-        String deduplicationKey = deduplicationService.key(event.deviceId(), type, severity, event.detectedAt());
+        String deduplicationKey = event.variableEvidence() == null
+                ? deduplicationService.key(event.deviceId(), type, severity, event.detectedAt())
+                : deduplicationService.anomalyKey(event, severity);
         var existingBySourceEvent = deduplicationService.findBySourceEventId(event.eventId());
         if (existingBySourceEvent.isPresent()) {
             recordDeduplicationHit(existingBySourceEvent.get(), "source_event_id");
@@ -87,7 +89,9 @@ public class AlertService {
                 event.detectedAt())) {
             return null;
         }
-        var activeInWindow = deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.detectedAt());
+        var activeInWindow = event.variableEvidence() == null
+                ? deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.detectedAt())
+                : deduplicationService.activeAnomaly(event, severity);
         if (activeInWindow.isPresent()) {
             recordDeduplicationHit(activeInWindow.get(), "active_window");
             return activeInWindow.get();
@@ -230,6 +234,9 @@ public class AlertService {
             Integer page,
             Integer size) {
         alertAccessService.requirePrivileged(userId, role);
+        UUID ownAccount=alertAccessService.ownAccount(userId);
+        if(accountId!=null && !ownAccount.equals(accountId)) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,"Explicit resource scope required");
+        accountId=ownAccount;
         AlertListFilters normalizedFilters = filters == null
                 ? new AlertListFilters(null, null, null, null, null, null, null, null)
                 : filters;
@@ -374,6 +381,35 @@ public class AlertService {
             alert.setAcknowledgedBy(actorId);
             saveEvent(alert, "ACKNOWLEDGED", actorId, null, null);
             recordAcknowledged(alert, actorId, correlationId);
+        }
+        return toResponse(alert);
+    }
+    @Transactional
+    public AlertResponse workspaceAcknowledge(UUID id,String authorization,UUID workspace,String userId,String correlationId) {
+        Alert alert=load(id);
+        UUID actor=parseUserId(userId);
+        alertAccessService.workspaceAction(authorization,workspace,alert.getAccountId(),actor,alert.getDeviceId(),"incident.ack");
+        if (alert.getStatus()==AlertStatus.OPEN) {
+            alert.setStatus(AlertStatus.ACKNOWLEDGED);
+            alert.setAcknowledgedAt(Instant.now());
+            alert.setAcknowledgedBy(actor);
+            saveEvent(alert,"ACKNOWLEDGED",actor,null,null);
+            recordAcknowledged(alert,actor,correlationId);
+        }
+        return toResponse(alert);
+    }
+    @Transactional
+    public AlertResponse workspaceResolve(UUID id,String reason,String authorization,UUID workspace,String userId,String correlationId) {
+        Alert alert=load(id);
+        UUID actor=parseUserId(userId);
+        alertAccessService.workspaceAction(authorization,workspace,alert.getAccountId(),actor,alert.getDeviceId(),"incident.resolve");
+        if (alert.getStatus()!=AlertStatus.RESOLVED) {
+            alert.setStatus(AlertStatus.RESOLVED);
+            alert.setResolvedAt(Instant.now());
+            alert.setResolvedBy(actor);
+            alert.setResolutionReason(normalizeReason(reason));
+            saveEvent(alert,"RESOLVED",actor,alert.getResolutionReason(),null);
+            recordResolved(alert,actor,correlationId);
         }
         return toResponse(alert);
     }

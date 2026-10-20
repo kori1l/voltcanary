@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,6 +63,8 @@ class DashboardPostgresIntegrationTest {
     @Autowired DashboardPublication publication;
     @MockitoBean DashboardOwnership ownership;
     @MockitoBean com.voltcanary.dashboard.port.DashboardEvidenceReads evidenceReads;
+    @MockitoBean com.voltcanary.dashboard.sharing.DashboardWorkspaceAuthority workspaceAuthority;
+    @Autowired com.voltcanary.dashboard.sharing.DashboardSharing sharing;
     private final ConcurrentHashMap<String, DashboardActor> actors = new ConcurrentHashMap<>();
     private final Set<String> disabled = ConcurrentHashMap.newKeySet();
     private final Set<UUID> deniedDevices = ConcurrentHashMap.newKeySet();
@@ -102,8 +105,8 @@ class DashboardPostgresIntegrationTest {
         widgets.addObject().put("id", "future").put("type", "fleet-count").put("typeVersion", 99).put("title", "Future");
         String id = request(post("/dashboards"), owner, body, "query-create", null, 201).path("id").asText();
         var catalog = request(get("/dashboard-widget-types"), owner, null, null, null, 200);
-        assertThat(catalog.size()).isEqualTo(15);
-        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(13);
+        assertThat(catalog.size()).isEqualTo(16);
+        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(16);
         var draft = request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200);
         var preview = request(post("/dashboards/" + id + "/query-validation"), owner,
                 mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 200);
@@ -118,6 +121,31 @@ class DashboardPostgresIntegrationTest {
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("revision", 99), null, null, 404);
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 409);
         assertThat(jdbc.queryForObject("select count(*) from dashboard_revisions where dashboard_id=?", Long.class, UUID.fromString(id))).isEqualTo(1);
+    }
+    @Test void progressiveTransportAndSnapshotDetailsUseOneAuthorizedRevision() throws Exception {
+        String owner=actor();
+        var body=body("Progressive notes");
+        var widgets=(com.fasterxml.jackson.databind.node.ArrayNode)body.path("definition").path("widgets");
+        for(String name:List.of("first","second"))widgets.addObject().put("id",name).put("type","context-note").put("typeVersion",1).put("title",name)
+                .putObject("payload").put("text","Recorded context "+name);
+        String id=request(post("/dashboards"),owner,body,"progressive-create",null,201).path("id").asText();
+        var draft=request(get("/dashboards/"+id+"/draft"),owner,null,null,null,200);
+        publish(owner,id,draft,"progressive-publish",200);
+        var async=mvc.perform(post("/dashboards/"+id+"/query-progressive").header("Authorization",owner)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"revision\":1}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted()).andReturn();
+        async.getAsyncResult(10000);
+        var response=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(async)).andReturn().getResponse();
+        assertThat(response.getContentType()).startsWith("application/x-ndjson");
+        assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+        var lines=response.getContentAsString().lines().map(line->{try{return mapper.readTree(line);}catch(Exception failure){throw new IllegalStateException(failure);}}).toList();
+        assertThat(lines).hasSize(3);assertThat(lines.getLast().path("complete").asBoolean()).isTrue();
+        assertThat(lines.get(0).path("asOf")).isEqualTo(lines.get(1).path("asOf"));
+        String hash=lines.get(0).path("contextHash").asText();
+        var details=request(get("/dashboards/"+id+"/query-snapshots/"+hash+"/panels/first"),owner,null,null,null,200);
+        assertThat(details.path("data").path("text").asText()).isEqualTo("Recorded context first");
+        disabled.add(owner);
+        request(get("/dashboards/"+id+"/query-snapshots/"+hash+"/panels/first"),owner,null,null,null,403);
     }
 
     @Test
@@ -303,6 +331,40 @@ class DashboardPostgresIntegrationTest {
         String authorization = "Bearer test-" + UUID.randomUUID();
         actors.put(authorization, new DashboardActor(UUID.randomUUID(), UUID.randomUUID()));
         return authorization;
+    }
+
+    @Test
+    void sharedAuthorDraftsKeepPublishSeparateAndRevocationIsImmediate() throws Exception {
+        String owner=actor(),editor=actor(); UUID workspace=UUID.randomUUID();
+        var ownerActor=actors.get(owner);var editorActor=actors.get(editor);
+        when(workspaceAuthority.member(workspace,ownerActor.userId())).thenReturn(new com.voltcanary.common.security.WorkspaceAuthorization.Membership(workspace,ownerActor.userId(),"OWNER",1,List.of()));
+        when(workspaceAuthority.member(workspace,editorActor.userId())).thenReturn(new com.voltcanary.common.security.WorkspaceAuthorization.Membership(workspace,editorActor.userId(),"MEMBER",1,List.of()));
+        when(workspaceAuthority.resources(eq(workspace),eq(ownerActor.accountId()),any(),anyString())).thenAnswer(i->new com.voltcanary.common.security.WorkspaceAuthorization.Decision(workspace,ownerActor.accountId(),i.getArgument(2),i.getArgument(3),Set.of(),"current"));
+        String id=create(owner,"Shared publication").path("id").asText();UUID dashboardId=UUID.fromString(id);
+        var privateDraft=request(get("/dashboards/"+id+"/draft"),owner,null,null,null,200);publish(owner,id,privateDraft,"initial",200);
+        sharing.attach(ownerActor,dashboardId,workspace,true);
+        sharing.grants(ownerActor,dashboardId,List.of(new com.voltcanary.dashboard.sharing.DashboardAudienceRepository.Audience(editorActor.userId(),"USER",List.of("VIEW","EDIT"))),1,true);
+        var ownerDraft=request(get("/dashboards/"+id+"/draft"),owner,null,null,null,200);
+        var editorDraft=request(get("/dashboards/"+id+"/draft"),editor,null,null,null,200);
+        assertThat(ownerDraft.path("etag").asText()).isNotEqualTo(editorDraft.path("etag").asText());
+        var view=request(get("/dashboards/"+id),editor,null,null,null,200);
+        assertThat(view.path("permissions").toString()).doesNotContain("publish");
+        ObjectNode hiddenDefinition = (ObjectNode) body("Hidden GPS").path("definition");
+        ObjectNode hiddenWidget = hiddenDefinition.withArray("widgets").addObject().put("id", "gps").put("type", "vehicle-map").put("typeVersion", 1).put("title", "Private car");
+        String hiddenDeviceId = UUID.randomUUID().toString();
+        hiddenWidget.putObject("binding").put("mode", "FIXED").putArray("deviceIds").add(hiddenDeviceId);
+        hiddenWidget.putObject("query").put("sourceId", "private-gps-source").putObject("vehicleSources").put(hiddenDeviceId,"hidden-fleet-source");
+        var hiddenView = sharing.viewerDefinition(editorActor, dashboardId, mapper.treeToValue(hiddenDefinition, com.voltcanary.dashboard.domain.DashboardDefinition.class));
+        assertThat(mapper.valueToTree(hiddenView).path("widgets").get(0).path("query").has("sourceId")).isFalse();
+        assertThat(mapper.valueToTree(hiddenView).path("widgets").get(0).path("query").path("vehicleSources").size()).isZero();
+        publish(editor,id,editorDraft,"without-publish",403);
+        sharing.grants(ownerActor,dashboardId,List.of(new com.voltcanary.dashboard.sharing.DashboardAudienceRepository.Audience(editorActor.userId(),"USER",List.of("VIEW","EDIT","PUBLISH"))),2,true);
+        publish(editor,id,editorDraft,"editor-publication",200);
+        publish(owner,id,ownerDraft,"stale-author-base",409);
+        sharing.grants(ownerActor,dashboardId,List.of(),3,true);
+        request(get("/dashboards/"+id),editor,null,null,null,403);
+        request(post("/dashboards/"+id+"/query"),editor,mapper.createObjectNode(),null,null,403);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM dashboard_revisions WHERE dashboard_id=?",Long.class,dashboardId)).isEqualTo(2L);
     }
 
     private ObjectNode body(String name) {

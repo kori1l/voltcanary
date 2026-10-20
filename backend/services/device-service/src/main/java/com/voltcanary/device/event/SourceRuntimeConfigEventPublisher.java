@@ -27,14 +27,17 @@ public class SourceRuntimeConfigEventPublisher {
     private final DeviceOutboxService outboxService;
     private final boolean publishEnabled;
     private final ObjectMapper objectMapper;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     public SourceRuntimeConfigEventPublisher(
             DeviceOutboxService outboxService,
             DeviceKafkaProperties kafkaProperties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.outboxService = outboxService;
         this.publishEnabled = kafkaProperties.isPublishEnabled();
         this.objectMapper = objectMapper;
+        this.jdbc = jdbc;
     }
 
     public void publish(UUID accountId, DataSource source) {
@@ -55,7 +58,7 @@ public class SourceRuntimeConfigEventPublisher {
                 source.getStatus().name(),
                 "v1",
                 "v1",
-                objectMap(source.getMappingJson()),
+                processingMapping(source),
                 objectMap(source.getAdapterConfigJson()),
                 credentialReferences(source),
                 source.getTokenPrefix(),
@@ -83,6 +86,19 @@ public class SourceRuntimeConfigEventPublisher {
         java.util.LinkedHashMap<String, String> references = new java.util.LinkedHashMap<>(configuredReferences);
         references.putIfAbsent("ingestionToken", source.getCredentialsRef());
         return Map.copyOf(references);
+    }
+
+    public Map<String, Object> processingMapping(DataSource source) {
+        var mapping = new java.util.LinkedHashMap<String, Object>(objectMap(source.getMappingJson()));
+        mapping.remove("processingGeneration");
+        mapping.remove("processingDigest");
+        jdbc.query("select generation,digest from source_processing_bundles where data_source_id=? order by generation desc limit 1",
+                (row, index) -> {
+                    mapping.put("processingGeneration", row.getLong("generation"));
+                    mapping.put("processingDigest", row.getString("digest"));
+                    return row.getLong("generation");
+                }, source.getId());
+        return Map.copyOf(mapping);
     }
 
     private String homeRegion(DataSource source) {

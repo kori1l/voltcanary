@@ -76,6 +76,10 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                         headers.remove(USER_ID_HEADER);
                         headers.remove(USER_EMAIL_HEADER);
                         headers.remove(USER_ROLE_HEADER);
+                        headers.remove("X-Workspace-Id");
+                        headers.remove("X-Account-Id");
+                        headers.remove("X-Resource-Capabilities");
+                        headers.remove("X-Authorization-Fingerprint");
                         headers.set(USER_ID_HEADER, userId);
                         headers.set(USER_EMAIL_HEADER, userEmail);
                         headers.set(USER_ROLE_HEADER, userRole);
@@ -140,6 +144,10 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                     headers.remove(USER_ID_HEADER);
                     headers.remove(USER_EMAIL_HEADER);
                     headers.remove(USER_ROLE_HEADER);
+                        headers.remove("X-Workspace-Id");
+                        headers.remove("X-Account-Id");
+                        headers.remove("X-Resource-Capabilities");
+                        headers.remove("X-Authorization-Fingerprint");
                 }))
                 .build();
     }

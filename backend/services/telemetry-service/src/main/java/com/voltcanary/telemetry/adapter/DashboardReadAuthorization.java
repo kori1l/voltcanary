@@ -51,6 +51,9 @@ public class DashboardReadAuthorization {
         validate(request);
         var body = mapper.createObjectNode().put("mode", request.deviceIds().isEmpty() ? "UNBOUND" : "FIXED");
         body.set("deviceIds", mapper.valueToTree(request.deviceIds()));
+        if (request.workspaceId()!=null) {
+            body.put("workspaceId",request.workspaceId().toString()).put("accountId",request.accountId().toString()).put("action","telemetry.read");
+        }
         HttpRequest http = HttpRequest.newBuilder(deviceBase.resolve("/internal/dashboard/scope")).timeout(timeout)
                 .header("Authorization", authorization).header("X-Internal-Service-Token", internalToken)
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
@@ -94,8 +97,8 @@ public class DashboardReadAuthorization {
                 || request.detailDeviceIds().size() > 50 || !request.deviceIds().containsAll(request.detailDeviceIds())
                 || request.series().size() > 192 || request.series().stream().anyMatch(series -> series.deviceId() == null
                     || series.metric() == null || !request.detailDeviceIds().contains(series.deviceId())
-                    || !series.metric().matches("[A-Za-z][A-Za-z0-9_]{0,99}"))
-                || request.metrics().size() > 24 || request.metrics().stream().anyMatch(metric -> !metric.matches("[A-Za-z][A-Za-z0-9_]{0,99}"))
+                    || !series.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))
+                || request.metrics().size() > 24 || request.metrics().stream().anyMatch(metric -> !metric.matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))
                 || request.rows() < 1 || request.rows() > 50 || request.offset() < 0 || request.offset() > 1000000
                 || request.time() == null || request.time().asOf() == null
                 || !range(request.time().from(), request.time().to())

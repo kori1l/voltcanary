@@ -9,17 +9,24 @@ import org.springframework.stereotype.Component;
 @Component
 public class MetricCatalog {
 
-    private static final Map<String, MetricDefinition> METRICS = Map.of(
-            "activePowerW", new MetricDefinition("W", -100000.0, 100000.0),
-            "voltageV", new MetricDefinition("V", 0.0, 1000.0),
-            "currentA", new MetricDefinition("A", -1000.0, 1000.0),
-            "energyWh", new MetricDefinition("Wh", 0.0, 1_000_000_000.0),
-            "rssi", new MetricDefinition("dBm", -150.0, 0.0),
-            "temperatureC", new MetricDefinition("C", -50.0, 150.0),
-            "vibrationMmS", new MetricDefinition("mm/s", 0.0, 200.0),
-            "runtimeHours", new MetricDefinition("h", 0.0, 1_000_000.0),
-            "powerFactor", new MetricDefinition("ratio", 0.0, 1.0),
-            "frequencyHz", new MetricDefinition("Hz", 0.0, 1000.0));
+    private static final Map<String, MetricDefinition> METRICS = Map.ofEntries(
+            Map.entry("latitude", new MetricDefinition("deg", -90, 90)),
+            Map.entry("longitude", new MetricDefinition("deg", -180, 180)),
+            Map.entry("speedKmh", new MetricDefinition("km/h", 0, 300)),
+            Map.entry("headingDeg", new MetricDefinition("deg", 0, Math.nextDown(360.0))),
+            Map.entry("ignition", new MetricDefinition("state", 0, 1)),
+            Map.entry("fuelPercent", new MetricDefinition("%", 0, 100)),
+            Map.entry("odometerKm", new MetricDefinition("km", 0, 10000000)),
+            Map.entry("activePowerW", new MetricDefinition("W", -100000.0, 100000.0)),
+            Map.entry("voltageV", new MetricDefinition("V", 0.0, 1000.0)),
+            Map.entry("currentA", new MetricDefinition("A", -1000.0, 1000.0)),
+            Map.entry("energyWh", new MetricDefinition("Wh", 0.0, 1_000_000_000.0)),
+            Map.entry("rssi", new MetricDefinition("dBm", -150.0, 0.0)),
+            Map.entry("temperatureC", new MetricDefinition("C", -50.0, 150.0)),
+            Map.entry("vibrationMmS", new MetricDefinition("mm/s", 0.0, 200.0)),
+            Map.entry("runtimeHours", new MetricDefinition("h", 0.0, 1_000_000.0)),
+            Map.entry("powerFactor", new MetricDefinition("ratio", 0.0, 1.0)),
+            Map.entry("frequencyHz", new MetricDefinition("Hz", 0.0, 1000.0)));
 
     public Optional<MetricDefinition> find(String metricName) {
         return Optional.ofNullable(METRICS.get(metricName));

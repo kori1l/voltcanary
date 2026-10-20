@@ -1,18 +1,20 @@
 import {Info} from "lucide-react";
-import {useState} from "react";
+import {memo,useEffect,useState} from "react";
 import {Dialog} from "../../../components/Dialog";
 import { Link } from "react-router-dom";
 import type { DashboardWidget } from "../../../dashboards/dashboardsApi";
 import type { WidgetQueryPanel } from "../../../dashboards/dashboardQueriesApi";
 import { useEvidenceClock } from "../../../components/useEvidenceClock";
+import {getDashboardPanelInformation} from "../../../dashboards/dashboardQueriesApi";
 import {DashboardEvidenceDetails as Evidence} from "./DashboardEvidenceDetails";
 import {DashboardBusinessEvidence} from "./DashboardBusinessEvidence";
+const StableEvidence=memo(DashboardBusinessEvidence);
 
 export function DashboardWidgetPanel({widget,panel,stale,onRetry}:{widget:DashboardWidget;panel:WidgetQueryPanel|undefined;stale:boolean;onRetry:()=>void}) {
-  useEvidenceClock();
   const [infoOpen,setInfoOpen]=useState(false);
   const safeLink=widget.navigation?.href && /^\/(devices|alerts|maintenance|settings)(\/[A-Za-z0-9_-]+)*$/.test(widget.navigation.href)?widget.navigation.href:null;
   const ready=panel?.status==="ready";
+  const emptyMaintenance=widget.type==="maintenance-agenda" && panel?.status==="no_data" && panel.evaluatedCount>0;
   const data=ready?panel.data:null;
   const {sources,devices,locations,freshness,...primary}=data ?? {};
   const status=panel?({ready:"Recorded evidence",no_data:"No data",no_access:"Access unavailable",unavailable:"Unavailable",unsupported:"Unsupported",invalid:"Configure panel"} as Record<string,string>)[panel.status] ?? panel.status:"Loading";
@@ -21,11 +23,27 @@ export function DashboardWidgetPanel({widget,panel,stale,onRetry}:{widget:Dashbo
   return <div className="dashboard-widget-content" aria-busy={!panel}>
     <button type="button" className="ghost-button dashboard-panel-info-button" title="Panel information" aria-label={`Information for ${widget.title}`} onClick={()=>setInfoOpen(true)}><Info size={15}/></button>
     {stale?<span className="dashboard-state-badge" role="status">Stale</span>:null}
-    {!ready?<span className="dashboard-state-badge" role="status">{status}</span>:null}
+    {!ready && !emptyMaintenance?<span className="dashboard-state-badge" role="status">{status}</span>:null}
+    {emptyMaintenance?<div><p role="status">No maintenance is scheduled for this period.</p><p className="muted-text">No operations overlap the selected period for available equipment.</p>{panel.time?<p className="muted-text">{new Date(panel.time.from).toLocaleString()} – {new Date(panel.time.to).toLocaleString()}</p>:null}<Link to="/maintenance">Open maintenance calendar</Link></div>:null}
     {quality && quality!=="OK"?<span className="dashboard-state-badge">Quality: {String(quality)}</span>:null}
-    {ready?<DashboardBusinessEvidence widget={widget} panel={panel}/>:null}
-    {widget.presentation?.showDetails===true?information():null}
+    {ready?<StableEvidence widget={widget} panel={panel}/>:null}
+    {widget.presentation?.showDetails===true?<Information panel={panel}>{information}</Information>:null}
     {panel && !["ready","no_data","unsupported"].includes(panel.status)?<button className="ghost-button" type="button" onClick={onRetry}>Retry {widget.title}</button>:null}
-    {infoOpen?<Dialog title={`Information for ${widget.title}`} side onClose={()=>setInfoOpen(false)}>{information()}</Dialog>:null}
+    {infoOpen?<Dialog title={`Information for ${widget.title}`} side onClose={()=>setInfoOpen(false)}><Information panel={panel}>{information}</Information></Dialog>:null}
   </div>;
+}
+
+function Information({panel,children}:{panel:WidgetQueryPanel|undefined;children:()=>React.ReactNode}) {
+  useEvidenceClock();
+  const path=panel?.provenance.detailsPath;
+  const [details,setDetails]=useState<{path:string;panel:WidgetQueryPanel}|null>(null),[error,setError]=useState<string|null>(null);
+  useEffect(()=>{
+    setDetails(null);setError(null);
+    if(typeof path!=="string")return;
+    const controller=new AbortController();
+    void getDashboardPanelInformation(path,controller.signal).then(value=>{if(!controller.signal.aborted)setDetails({path,panel:value});})
+      .catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:"Source information unavailable");});
+    return ()=>controller.abort();
+  },[path]);
+  return <>{children()}{error?<p role="alert">{error}</p>:null}{details?.path===path?<details><summary>Full owner source snapshot</summary><Evidence value={details?.panel.data?.sources}/></details>:null}</>;
 }

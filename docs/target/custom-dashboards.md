@@ -521,3 +521,25 @@ and compact editing controls make the canvas the primary working area. Current
 contract/interaction details are in the dashboard API and console flow.
 Energy, workspace/team publication, tariffs and operational domain metrics
 remain governed by their separate active changes.
+
+## Delivered visualization choices - 2026-10-10
+
+[add-dashboard-visualization-types](../../openspec/changes/archive/2026-10-10-add-dashboard-visualization-types/proposal.md)
+adds presentation choices independently of business query types: number, line,
+area, vertical/horizontal and stacked bars, pie and donut. Users choose compatible
+views through palette previews and the right Presentation drawer, retaining
+binding, time, calculation, screen and saved layout. Pie/donut require disjoint
+nonnegative categories and exact authorized totals; partial, missing or zero data
+never becomes an invented complete distribution. Existing visual defaults and
+clean navigation persist. Implemented and accepted on 2026-10-10; see the current verification flow.
+
+### Dashboard program acceptance checkpoint (2026-10-10)
+
+All sixteen original program changes and the additional visualization change
+are implemented, verified and archived. This supersedes the earlier pending
+status of energy, team/workspace, tariff and operational changes. W04/05/06,
+W11/12 and W14/15 use authorized typed evidence and current grants. The local
+demo dashboard has 18 populated synthetic panels with colored comparisons;
+no decorative top stripes are added. Current contracts, reproducible acceptance
+commands and explicit limitations are in
+[the verification flow](../current/flows/workspace-dashboard-business-verification.md).

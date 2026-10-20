@@ -390,3 +390,41 @@ independence. Scope responses include owned energy epochs and declarations, with
 source configuration/credentials. Supplemental reset declarations can qualify older
 readings from the same physical/source identity; historical queries use the freshly
 renewed registry snapshot, not reconstructed past metadata visibility.
+
+## Automobile and virtual GPS source
+
+The device catalog includes `VEHICLE` (Automobile). Register using the existing
+`POST /devices`, with optional locationId/manufacturer/model. A location is its
+organizational base, not the moving GPS position. The virtual GPS sensor is one
+`SIMULATOR`/`REST` data source with a `VEHICLE_GPS` simulation profile; no extra
+Sensor records or Vehicle aggregate are required. Source token handling is unchanged.
+
+Internal authenticated `GET /internal/devices/{deviceId}/position-source?sourceId=...`
+returns deviceId/dataSourceId/sourceId/deviceType/sourceType/protocol, never a
+credential. Owners must authorize the device before source resolution; a source
+from another device is not resolved. This route is not public through the gateway.
+
+## Vehicle fleet authorization
+
+POST /internal/vehicles/position-sources requires the internal service token and {userId,targets:[{deviceId,sourceId}]}. It validates 1–100 current owner VEHICLE/source bindings before returning {allowed:true}; no credentials or GPS coordinates are returned.
+
+
+## Telemetry field templates
+
+Owner-authenticated GET/POST `/devices/telemetry-templates`, PUT
+`/devices/telemetry-templates/{id}` (expected version), and POST
+`/devices/telemetry-templates/assign` manage reusable templates. Another owner's
+template is 404; stale edits are 409; invalid policy is 400. Up to 50 templates
+per owner and 32 fields per template. Assignment accepts `templateId` (null
+restores legacy behavior), `targets: [{deviceId,sourceId}]` or `deviceType` for
+all current owned sources of that type (up to 500). Type assignment is an
+explicit bulk operation, not an automatic default for future sources. Edits
+update assigned sources through the existing transactional source outbox.
+
+Each field contains `path`, `key`, `label`, `type` (number/string/boolean),
+`unit`, `store`, `display`. Paths are relative to canonical incoming metrics
+(e.g. `transport.destination`), bounded dotted property paths without arrays,
+wildcards or executable expressions. Canonical metric keys retain canonical
+types/bounds; latitude and longitude must be stored together. Missing values
+are omitted, false and zero preserved. Existing history is not deleted. Source
+responses include mapping and runtime settings for owner configuration.

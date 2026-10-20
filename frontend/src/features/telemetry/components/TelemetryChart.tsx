@@ -44,7 +44,8 @@ export function TelemetryChart({
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
   const summaryId = useId();
   const bounded = series.filter((sample) => Date.parse(sample.timestamp) >= Date.parse(range.from) && Date.parse(sample.timestamp) <= Date.parse(range.to));
-  const display = sampleDisplayEvidence(bounded, maxDisplayPoints, threshold, evidence?.buckets, evidence?.rawPointCount);
+  const stateSeries=unit==="boolean";
+  const display = sampleDisplayEvidence(bounded, maxDisplayPoints, stateSeries?{...threshold,metricKey:series[0]?.metricKey??label,spikeThreshold:0.5}:threshold, evidence?.buckets??undefined, evidence?.rawPointCount);
   const renderSeries = display.points;
   const values = [...renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value)), ...display.buckets.flatMap((bucket) => [bucket.min, bucket.max])];
   const svgRef=useRef<SVGSVGElement>(null);
@@ -63,7 +64,7 @@ export function TelemetryChart({
   },[fillContainer]);
   const {width,height}=fillContainer?dimensions:{width:820,height:330};
   const padding = fillContainer
-    ? {top:Math.min(12,height*.12),right:Math.min(20,width*.1),bottom:showAxes?Math.min(48,height*.4):Math.min(12,height*.12),left:showAxes?Math.min(58,width*.3):Math.min(12,width*.1)}
+    ? {top:Math.min(12,height*.12),right:Math.min(20,width*.1),bottom:showAxes?Math.min(48,height*.4):Math.min(12,height*.12),left:showAxes?Math.min(unit.length>3?82:58,width*.3):Math.min(12,width*.1)}
     : {top:28,right:28,bottom:54,left:58};
   const thresholdEntries = [
     { key: "normalMin", value: threshold?.normalMin },
@@ -86,8 +87,8 @@ export function TelemetryChart({
   const includeZero = ["W", "Wh", "A"].includes(unit) && safeRawMin >= 0;
   const actualMax = hasValues ? Math.max(...values) : safeRawMax;
   const warningReference = threshold?.warningMax ?? threshold?.spikeThreshold ?? threshold?.criticalMax;
-  const minValue = includeZero ? 0 : safeRawMin - paddingValue;
-  const maxValue = unit === "W"
+  const minValue = stateSeries ? -0.1 : includeZero ? 0 : safeRawMin - paddingValue;
+  const maxValue = stateSeries ? 1.1 : unit === "W"
     ? Math.max(actualMax * 1.15, warningReference !== undefined ? warningReference * 1.3 : actualMax * 1.15, 1)
     : safeRawMax + paddingValue;
   const valueRange = maxValue - minValue || 1;
@@ -148,12 +149,12 @@ export function TelemetryChart({
   const maxPoint = coordinates.reduce((current, next) => ((next.sample.value ?? 0) > (current.sample.value ?? 0) ? next : current), coordinates[0]);
   const isolatedTimes = new Set(splitSampleSegments(renderSeries).filter((segment) => segment.length === 1).map((segment) => segment[0].timestamp));
   const visiblePoints = showPoints ? coordinates : coordinates.filter((coordinate) => isolatedTimes.has(coordinate.sample.timestamp) || (coordinate === maxPoint && isAboveThreshold(coordinate.sample.value, threshold)));
-  const yTicks = [minValue, minValue + valueRange / 2, maxValue];
+  const yTicks = stateSeries?[0,1]:[minValue, minValue + valueRange / 2, maxValue];
   const xTicks = rangeTicks(range, padding.left, width - padding.right);
 
   return (
     <div className={`chart-wrap annotated-chart chart-${mode === "detailed" ? "large" : "normal"}`}>
-      <p id={summaryId} hidden={!showSummary} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} threshold crossings preserved.`}</p>
+      <p id={summaryId} hidden={!showSummary} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} ${stateSeries ? "state changes" : "threshold crossings"} preserved.`}</p>
       <svg
         ref={svgRef}
         className={canSelectRange ? "chart-range-selectable" : undefined}
@@ -172,7 +173,7 @@ export function TelemetryChart({
             <g key={tick}>
               <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
               {showAxes?<text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
-                {formatCompactNumber(tick)} {unit}
+                {stateSeries?formatMetricValue(tick,"boolean",series[0]?.metricKey??evidence?.metric):<>{formatCompactNumber(tick)} {unit}</>}
               </text>:null}
             </g>
           );
@@ -203,10 +204,10 @@ export function TelemetryChart({
 
         {display.buckets.map((bucket, index) => {
           const x = xForTime(new Date((Date.parse(bucket.from) + Date.parse(bucket.to)) / 2).toISOString());
-          const description = `${label}: ${bucket.from} to ${bucket.to}, min ${formatMetricValue(bucket.min, unit)}, max ${formatMetricValue(bucket.max, unit)}, ${bucket.count} source points, ${bucket.gapCount} gaps. Envelope, sequence unknown.`;
+          const description = `${label}: ${bucket.from} to ${bucket.to}, min ${formatMetricValue(bucket.min, unit,series[0]?.metricKey??evidence?.metric)}, max ${formatMetricValue(bucket.max, unit,series[0]?.metricKey??evidence?.metric)}, ${bucket.count} source points, ${bucket.gapCount} gaps. Envelope, sequence unknown.`;
           return <g key={index} tabIndex={0} role="img" aria-label={description}><title>{description}</title><line className="telemetry-envelope-line" x1={x} x2={x} y1={yForValue(bucket.min)} y2={yForValue(bucket.max)} /><circle cx={x} cy={yForValue(bucket.min)} r={3}/><circle cx={x} cy={yForValue(bucket.max)} r={3}/></g>;
         })}
-        {splitSampleSegments(renderSeries).map((segment, index) => <polyline key={index} points={segment.map((sample) => `${xForTime(sample.timestamp)},${yForValue(sample.value!)}`).join(" ")} />)}
+        {splitSampleSegments(renderSeries).map((segment, index) => <polyline key={index} points={segment.flatMap((sample,i)=>stateSeries&&i>0?[`${xForTime(sample.timestamp)},${yForValue(segment[i-1].value!)}`,`${xForTime(sample.timestamp)},${yForValue(sample.value!)}`]:[`${xForTime(sample.timestamp)},${yForValue(sample.value!)}`]).join(" ")} />)}
 
         {coordinates.length === 0 && display.buckets.length === 0 ? (
           <text className="chart-axis-label" x={(padding.left + width - padding.right) / 2} y={(padding.top + height - padding.bottom) / 2} textAnchor="middle">
@@ -236,7 +237,7 @@ export function TelemetryChart({
             onFocus={() => setHovered(coordinate)}
             tabIndex={0}
           >
-            <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit)}`}</title>
+            <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit,coordinate.sample.metricKey)}`}</title>
           </circle>
         ))}
 
@@ -254,7 +255,7 @@ export function TelemetryChart({
               onFocus={() => setHovered({ ...coordinate, event: nearbyEvent })}
               tabIndex={0}
             >
-              <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit)}`}</title>
+              <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit,coordinate.sample.metricKey)}`}</title>
             </circle>
           );
         })}
@@ -275,7 +276,7 @@ export function TelemetryChart({
       {hovered ? (
         <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
           <strong>{formatShortTime(hovered.sample.timestamp)}</strong>
-          <span>{formatMetricValue(hovered.sample.value, unit)}</span>
+          <span>{formatMetricValue(hovered.sample.value, unit,hovered.sample.metricKey)}</span>
           {hovered.sample.synthetic ? <em>No sample</em> : null}
           {isAboveThreshold(hovered.sample.value, threshold) ? <em>Outside threshold</em> : null}
           {hovered.event ? <em>{hovered.event.title}</em> : null}

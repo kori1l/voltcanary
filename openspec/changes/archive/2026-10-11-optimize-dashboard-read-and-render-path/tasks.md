@@ -1,0 +1,12 @@
+## Implementation
+- [x] 1. Compact payload and authorized snapshot details; verify payload reduction and parity.
+- [x] 2. Isolate clocks to information; verify idle chart rendering and age updates.
+- [x] 3. Typed telemetry projections and normalized owner keys; verify deduplication and unused reads.
+- [x] 4. Improve latest SQL without losing historical, out-of-order or observed metric evidence; verify parity and plans.
+- [x] 5. Batch business energy intervals; verify calculator parity and bounded HTTP reads.
+- [x] 6. Batch maintenance page devices; verify query count and account isolation.
+- [x] 7. Progressive panels at one asOf; verify fast panels precede slow owners and access failures.
+- [x] 8. Skeleton layout, refresh indicator and cancellation; verify context/account switch and obsolete responses.
+- [x] 9. Byte-bounded cache and business version invalidation; verify mutation/revocation/force behavior.
+- [x] 10. Private delivery headers; verify no-store and immediate progressive flushes.
+- [x] 11. Align docs and run frontend/backend/OpenSpec/structure checks; record remaining runtime limitations.

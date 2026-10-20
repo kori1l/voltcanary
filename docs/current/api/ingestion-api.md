@@ -302,3 +302,51 @@ ingestion instance.
 Connector leases include an owner and fencing generation. Renew, release,
 polling publication, and subscription forwarding require the current generation;
 a stale owner after failover cannot continue publishing through an old lease.
+
+## GPS metrics
+
+The existing HTTP telemetry envelope supports paired `latitude` and `longitude`
+(finite degrees, [-90,90] and [-180,180]), optional `speedKmh` ([0,300]) and
+`headingDeg` ([0,360)). Each pair belongs to one source/timestamp message.
+Missing counterparts, nonnumeric/nonfinite values and invalid ranges return400;
+telemetry independently validates broker input. Existing source-token resolution,
+idempotency and v1 event envelope remain in effect. Simulator GPS uses this same
+HTTP ingress, never direct database/Kafka publishing.
+
+## Optional vehicle readings
+
+Accepted GPS messages may include ignition (integer0/1), fuelPercent (finite0–100), odometerKm (finite0–10000000). Invalid optional vehicle fields reject the GPS envelope atomically. Appliance envelopes remain compatible.
+
+
+## Observed transport context
+
+GPS telemetry may include metrics.transport: a bounded object with routeId (128 chars), routeShortName (64), direction (1/2), destination (200), nextStopId (128), scheduleDeviationSeconds (integer -86400..86400), doorsOpen (boolean), accelerationMs2 (-30..30 finite), scheduledStart (HH:mm), locationSource (GPS/ODO/MAN/DR/N/A). Unknown keys/types, control characters or unbounded values reject the context. A GPS coordinate pair is required. Context is retained in valid raw readings and accepted position snapshots, exposed as point.transport in latest/history/recordings/fleet reads, and excluded from numeric normalized measurements and telemetry.validated.v1 metrics. Older positions return null. Missing fields are not carried forward. Existing tenant/source authorization and observation timestamps are unchanged.
+
+
+## Configured source field selection
+
+Assigned field templates are snapshotted into `mapping.telemetryPolicy` and
+`mapping.telemetryTemplateId`. Source authentication resolves current mapping
+from runtime events or the reconciled internal registry, including after
+restart. Structural envelope validation precedes authentication; selection
+and strict value/GPS validation precede idempotency and accepted publication.
+Only stored selected values are copied into the accepted event. Empty selected
+observations return a filtered accepted result without publishing a reading.
+Sources without a policy retain legacy validation and normalization.
+
+Selected values carry bounded descriptors under `metrics.configuredFields`:
+`key: {value,type,label,unit,display}`. Up to 32 fields; keys up to 64 characters,
+labels 80, units 24, strings 512 without control characters; numeric values
+must be finite within +/-1e12, and booleans are strictly typed. Numbers already
+using canonical keys also retain canonical bounds. Filtering removes disabled
+fields from raw, numeric and position storage, after configuration propagation.
+The incoming adapter still determines which canonical fields are available.
+
+On a cold cache miss the source resolver reads the protected internal registry
+by token prefix or external ID, then performs the normal hash/device/source/
+protocol checks. Only the prefix and internal service credential are sent; raw
+source keys are not forwarded. Registry failures return 503 without falling
+back to permissive storage. Existing newer runtime events win over cache-miss
+responses. HTTP filtered results use status filtered and eventId null; batch
+items also expose filtered status, with acceptedCount counting acknowledged
+requests rather than published events.

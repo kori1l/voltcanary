@@ -25,11 +25,14 @@ public class DashboardTelemetryRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final MetricCatalog catalog;
+    private final com.voltcanary.telemetry.variable.VariableDashboardSeries variables;
 
-    public DashboardTelemetryRepository(JdbcTemplate jdbc, ObjectMapper mapper, MetricCatalog catalog) {
+    public DashboardTelemetryRepository(JdbcTemplate jdbc, ObjectMapper mapper, MetricCatalog catalog,
+            com.voltcanary.telemetry.variable.VariableDashboardSeries variables) {
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.catalog = catalog;
+        this.variables = variables;
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -55,21 +58,44 @@ public class DashboardTelemetryRepository {
             result.putObject("validationFlagCounts");
             return result;
         }
-        latest(result.putArray("latest"), request, allowed);
-        summaries(result.putArray("summaries"), request, allowed, request.time().from(), request.time().to());
-        if (request.time().compareFrom() != null) {
+        java.util.Set<String> requestedMetrics = new java.util.LinkedHashSet<>(request.metrics());
+        request.series().forEach(selection -> requestedMetrics.add(selection.metric()));
+        request.series().stream().filter(selection -> selection.variableId() != null && allowed.contains(selection.deviceId()))
+                .forEach(selection -> {
+                    registered.add(variables.metadata(selection));
+                    requestedMetrics.remove(selection.metric());
+                });
+        requestedMetrics.removeIf(metric -> catalog.find(metric).isPresent());
+        if (!requestedMetrics.isEmpty()) {
+            List<Object> metricArgs = new ArrayList<>(allowed);
+            metricArgs.add(request.accountId());
+            metricArgs.addAll(requestedMetrics);
+            jdbc.query("SELECT DISTINCT metric_name,unit FROM telemetry.measurements WHERE device_id IN ("
+                    + placeholders(allowed.size()) + ") AND (account_id=? OR account_id IS NULL) AND metric_name IN ("
+                    + placeholders(requestedMetrics.size()) + ")", row -> {
+                if (catalog.find(row.getString("metric_name")).isEmpty()) {
+                    registered.addObject().put("key", row.getString("metric_name")).put("unit", row.getString("unit"));
+                }
+            }, metricArgs.toArray());
+        }
+        ArrayNode latest = result.putArray("latest");
+        if (request.projections().contains("latest")) latest(latest, request, allowed);
+        ArrayNode summaries = result.putArray("summaries");
+        if (request.projections().contains("summaries")) summaries(summaries, request, allowed, request.time().from(), request.time().to());
+        if (request.projections().contains("summaries") && request.time().compareFrom() != null) {
             summaries(result.putArray("baselineSummaries"), request, allowed, request.time().compareFrom(), request.time().compareTo());
         } else {
             result.putArray("baselineSummaries");
         }
-        quality(result, request, allowed);
+        if (request.projections().contains("quality")) quality(result, request, allowed);
         ArrayNode series = result.putArray("series");
-        for (DashboardOwnerReadRequest.Series selection : request.series()) {
+        for (DashboardOwnerReadRequest.Series selection : request.projections().contains("series") ? request.series() : List.<DashboardOwnerReadRequest.Series>of()) {
             if (System.nanoTime() >= deadline) {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Telemetry display read exceeded its budget");
             }
             if (allowed.contains(selection.deviceId())) {
-                series.add(series(request, selection));
+                if (selection.variableId() == null) series.add(series(request, selection));
+                else variables.read(request, selection).forEach(series::add);
             }
         }
         return result;
@@ -79,14 +105,7 @@ public class DashboardTelemetryRepository {
         List<Object> args = new ArrayList<>(ids);
         args.add(request.accountId());
         args.add(Timestamp.from(request.time().asOf()));
-        jdbc.query("""
-                SELECT DISTINCT ON(device_id,metric_name) device_id,metric_name,unit,metric_value,source_id,
-                recorded_at,received_at,quality FROM telemetry.measurements WHERE device_id IN (
-                """ + placeholders(ids.size()) + """
-                ) AND (account_id=? OR account_id IS NULL) AND recorded_at<=? AND metric_name<>'_legacy'
-                AND metric_value BETWEEN -1e308 AND 1e308
-                ORDER BY device_id,metric_name,recorded_at DESC,source_id DESC
-                """, row -> {
+        jdbc.query(LatestTelemetrySql.forDevices(ids.size()), row -> {
             ObjectNode value = target.addObject().put("deviceId", row.getString("device_id"))
                     .put("metric", row.getString("metric_name")).put("unit", row.getString("unit"))
                     .put("value", row.getDouble("metric_value")).put("sourceId", row.getString("source_id"))
@@ -160,12 +179,13 @@ public class DashboardTelemetryRepository {
                   FROM telemetry.measurements WHERE device_id=? AND metric_name=? AND (account_id=? OR account_id IS NULL)
                   AND recorded_at>=? AND recorded_at<? AND metric_value BETWEEN -1e308 AND 1e308
                 ), cadence AS (
-                  SELECT CASE WHEN count(*) FILTER(WHERE recorded_at>previous_at)>=3 THEN greatest(60,
+                  SELECT source_id,CASE WHEN count(*) FILTER(WHERE recorded_at>previous_at)>=3 THEN greatest(60,
                   percentile_cont(0.5) WITHIN GROUP(ORDER BY extract(epoch FROM recorded_at-previous_at))
-                  FILTER(WHERE recorded_at>previous_at)*3) ELSE 900 END seconds FROM raw
+                  FILTER(WHERE recorded_at>previous_at)*3) ELSE 900 END seconds FROM raw GROUP BY source_id
                 ), bins AS (
                   SELECT raw.*,least(199,floor(extract(epoch FROM recorded_at-?)/?*200)) bucket,
-                  extract(epoch FROM recorded_at-previous_at)>cadence.seconds is_gap FROM raw CROSS JOIN cadence
+                  extract(epoch FROM recorded_at-previous_at)>cadence.seconds is_gap FROM raw JOIN cadence
+                  ON raw.source_id IS NOT DISTINCT FROM cadence.source_id
                 ) SELECT bucket,unit,count(*) sample_count,min(metric_value) minimum,max(metric_value) maximum,avg(metric_value) mean,
                 min(recorded_at) first_at,max(recorded_at) last_at,
                 (array_agg(metric_value ORDER BY recorded_at,source_id))[1] first_value,
@@ -185,6 +205,17 @@ public class DashboardTelemetryRepository {
             time(bucket, row, "maximum_at", "maximumAt");
         }, selection.deviceId(), selection.metric(), request.accountId(), Timestamp.from(from), Timestamp.from(to),
                 Timestamp.from(from), java.time.Duration.between(from, to).toNanos() / 1_000_000_000.0);
+        ArrayNode states = mapper.createArrayNode();
+        if (catalog.find(selection.metric()).isEmpty()) jdbc.query("SELECT recorded_at,metric_value FROM telemetry.measurements WHERE device_id=? AND metric_name=?"
+                + " AND (account_id=? OR account_id IS NULL) AND unit='boolean' AND recorded_at>=? AND recorded_at<?"
+                + " ORDER BY recorded_at,source_id LIMIT 1001", row -> {
+            states.addObject().put("timestamp", row.getTimestamp("recorded_at").toInstant().toString())
+                    .put("value", row.getDouble("metric_value"));
+        }, selection.deviceId(), selection.metric(), request.accountId(), Timestamp.from(from), Timestamp.from(to));
+        if (!states.isEmpty() && states.size() <= 1000) {
+            result.put("mode", "MEASURED_STATES").put("unit", "boolean");
+            result.set("points", states);
+        }
         return result;
     }
 

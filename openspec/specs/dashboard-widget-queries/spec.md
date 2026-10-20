@@ -66,3 +66,33 @@ Catalog capabilities SHALL expose supported units, reducers and limits with at m
 - **GIVEN** temperature or a newer typeVersion is absent
 - **WHEN** preview or normal query occurs
 - **THEN** the missing capability is explained, unsupported data is not fabricated, and supported panels continue to work.
+
+### Requirement: Understandable predictive evidence presentation
+Prediction panels SHALL display stored failure risk as a percentage only for valid trained failure-prediction evidence, retain explicit unavailable states, show horizon and confidence distinct from measured accuracy, and permit authorized device drill-down. Optional model and observation-time columns and risk sorting SHALL be saved in widget presentation settings. Sorting SHALL disclose that only the returned bounded page is sorted when further rows exist.
+
+#### Scenario: Analyst prioritizes a trained prediction
+- **GIVEN** an authorized trained FAILURE_PREDICTION row has score 0.72, confidence 0.8 and horizon 7 days
+- **WHEN** the analyst views the prediction panel
+- **THEN** it displays 72% risk, seven days, 80% confidence with its distinct meaning, trained state and the authorized device link.
+
+#### Scenario: Missing or heuristic evidence
+- **GIVEN** a heuristic, unavailable or invalid prediction row
+- **WHEN** the panel renders
+- **THEN** it does not invent a zero failure probability or a trained model, and retains the recorded state and fallback reason.
+
+#### Scenario: Saved presentation and page boundary
+- **GIVEN** optional columns and risk ordering are configured and the response has further rows
+- **WHEN** the saved widget renders
+- **THEN** it honors those columns and ordering while disclosing the displayed page boundary.
+
+### Requirement: Stored prediction model drill-down
+Trained prediction states SHALL link to the exact response model version recorded in authorized evidence. ML workspace SHALL show the selected authorized model card or explicit unavailable state. Missing or invalid identity and heuristic states SHALL remain noninteractive labels. Navigation SHALL NOT trigger inference or deployment mutations.
+#### Scenario: Actual trained model
+- **GIVEN** a stored trained prediction with an actual response model UUID
+- **WHEN** its trained model link is activated
+- **THEN** ML workspace opens the model registry with the corresponding model card selected.
+#### Scenario: Missing or denied model
+- **GIVEN** identity is absent or the requested model is unavailable to the viewer
+- **WHEN** evidence or a model URL is opened
+- **THEN** absent identity remains a label and the registry explicitly reports an unavailable selection without showing another model as the selected one.
+

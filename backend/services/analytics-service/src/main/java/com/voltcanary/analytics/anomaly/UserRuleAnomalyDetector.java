@@ -24,7 +24,8 @@ public class UserRuleAnomalyDetector {
             Instant windowEnd,
             String inputHash,
             Instant now) {
-        if (rule == null || !rule.enabled() || chart == null || chart.points() == null || chart.points().isEmpty()) {
+        if (rule == null || !rule.enabled() || rule.config() != null && rule.config().containsKey("variable")
+                || chart == null || chart.points() == null || chart.points().isEmpty()) {
             return List.of();
         }
         List<TelemetryChartResponse.Point> points = chart.points().stream()

@@ -71,6 +71,23 @@ class TelemetryKafkaTimescaleIntegrationTest {
     @Autowired private com.fasterxml.jackson.databind.ObjectMapper energyMapper;
 
     @Test
+    void booleanHistoryMigrationUsesStoredTrueFalseAndPreservesRejectedRowsAndSourceTime() throws Exception {
+        UUID device = UUID.randomUUID();
+        Instant start = Instant.now().minusSeconds(100).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        for (int index = 0; index < 3; index++) {
+            UUID reading = UUID.randomUUID();
+            String json = "{\"configuredFields\":{\"transport.doorsOpen\":{\"value\":" + (index == 0 ? "false" : "true") + ",\"type\":\"boolean\",\"label\":\"Doors\",\"unit\":\"\",\"display\":true}}}";
+            jdbc.update("insert into telemetry_readings(id,device_id,source_id,recorded_at,received_at,metrics_json) values(?,?,?,?,?,?)", reading, device, "history", Timestamp.from(start.plusSeconds(index)), Timestamp.from(start.plusSeconds(index)), json);
+            if (index == 2) jdbc.update("insert into telemetry_quality_flags(id,reading_id,device_id,flag,created_at) values(?,?,?,?,?)", UUID.randomUUID(), reading, device, "INVALID_VALUE", Timestamp.from(start));
+        }
+        String migration = new org.springframework.core.io.ClassPathResource("db/vendor/postgresql/V014__configured_boolean_state_history.sql").getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        jdbc.execute(migration);
+        jdbc.execute(migration);
+        assertThat(jdbc.queryForList("select metric_value from telemetry.measurements where device_id=? and metric_name='transport.doorsOpen' order by recorded_at", Double.class, device)).containsExactly(0.0,1.0);
+        assertThat(jdbc.queryForObject("select metrics_json from telemetry_readings where device_id=? and recorded_at=?", String.class, device, Timestamp.from(start))).contains("false");
+    }
+
+    @Test
     void rawEnergyUsesCanonicalSourcesFullBoundaryReadingsAndAccountIsolation() {
         UUID account=UUID.randomUUID(),foreign=UUID.randomUUID(),counter=UUID.randomUUID(),power=UUID.randomUUID();
         Instant from=Instant.now().minusSeconds(7200).truncatedTo(java.time.temporal.ChronoUnit.MILLIS),to=from.plusSeconds(7200);

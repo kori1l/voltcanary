@@ -1,7 +1,7 @@
 package com.voltcanary.telemetry.consumer;
 
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
-import com.voltcanary.telemetry.service.TelemetryEventProcessor;
+import com.voltcanary.telemetry.variable.ConfiguredTelemetryHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -14,9 +14,9 @@ public class TelemetryRawConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryRawConsumer.class);
 
-    private final TelemetryEventProcessor telemetryEventProcessor;
+    private final ConfiguredTelemetryHandler telemetryEventProcessor;
 
-    public TelemetryRawConsumer(TelemetryEventProcessor telemetryEventProcessor) {
+    public TelemetryRawConsumer(ConfiguredTelemetryHandler telemetryEventProcessor) {
         this.telemetryEventProcessor = telemetryEventProcessor;
     }
 

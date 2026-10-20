@@ -28,6 +28,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MaintenanceWindowService {
 
+    private final com.voltcanary.device.business.BusinessResourceAuthorization workspaceAccess;
+    private final com.voltcanary.device.repository.DeviceRepository workspaceDevices;
+    private Device scopedDevice(AuthenticatedUser user, UUID workspace, UUID account, UUID deviceId, String action) {
+        workspaceAccess.device(user,account,workspace,action,deviceId);
+        return workspaceDevices.findByIdAndAccountId(deviceId,account).orElseThrow();
+    }
+    @Transactional
+    public MaintenanceWindowResponse workspaceCreate(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,MaintenanceWindowRequest request) {
+        return createForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),request);
+    }
+    @Transactional
+    public MaintenanceWindowResponse workspaceCancel(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id,CancelMaintenanceWindowRequest request) {
+        return cancelForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id,request);
+    }
+    @Transactional
+    public MaintenanceWindowResponse workspaceUpdate(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id,MaintenanceWindowRequest request) {
+        return updateForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id,request);
+    }
+    @Transactional
+    public MaintenanceWindowResponse workspaceFinish(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id) {
+        return finishForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id);
+    }
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 200;
 
@@ -42,12 +64,14 @@ public class MaintenanceWindowService {
             MaintenanceOperationRepository operationRepository,
             MaintenanceWindowRepository repository,
             DeviceAuditService auditService,
-            MaintenanceWindowEventPublisher eventPublisher) {
+            MaintenanceWindowEventPublisher eventPublisher,com.voltcanary.device.business.BusinessResourceAuthorization workspaceAccess,com.voltcanary.device.repository.DeviceRepository workspaceDevices) {
         this.deviceService = deviceService;
         this.operationRepository = operationRepository;
         this.repository = repository;
         this.auditService = auditService;
         this.eventPublisher = eventPublisher;
+        this.workspaceAccess=workspaceAccess;
+        this.workspaceDevices=workspaceDevices;
     }
 
     @Transactional(readOnly = true)
@@ -84,7 +108,9 @@ public class MaintenanceWindowService {
 
     @Transactional
     public MaintenanceWindowResponse create(AuthenticatedUser user, UUID deviceId, MaintenanceWindowRequest request) {
-        Device device = deviceService.findOwned(user, deviceId);
+        return createForDevice(user,deviceService.findOwned(user,deviceId),request);
+    }
+    private MaintenanceWindowResponse createForDevice(AuthenticatedUser user,Device device,MaintenanceWindowRequest request) {
         if (device.getStatus() == DeviceStatus.DECOMMISSIONED) {
             throw new IllegalArgumentException("Decommissioned devices cannot receive maintenance windows");
         }
@@ -131,7 +157,9 @@ public class MaintenanceWindowService {
             UUID deviceId,
             UUID windowId,
             MaintenanceWindowRequest request) {
-        Device device = deviceService.findOwned(user, deviceId);
+        return updateForDevice(user,deviceService.findOwned(user,deviceId),windowId,request);
+    }
+    private MaintenanceWindowResponse updateForDevice(AuthenticatedUser user,Device device,UUID windowId,MaintenanceWindowRequest request) {
         MaintenanceWindow window = loadOwned(device, windowId);
         if (window.getCancelledAt() != null) {
             throw new IllegalArgumentException("Cancelled maintenance windows cannot be updated");
@@ -155,7 +183,9 @@ public class MaintenanceWindowService {
             UUID deviceId,
             UUID windowId,
             CancelMaintenanceWindowRequest request) {
-        Device device = deviceService.findOwned(user, deviceId);
+        return cancelForDevice(user,deviceService.findOwned(user,deviceId),windowId,request);
+    }
+    private MaintenanceWindowResponse cancelForDevice(AuthenticatedUser user,Device device,UUID windowId,CancelMaintenanceWindowRequest request) {
         MaintenanceWindow window = loadOwned(device, windowId);
         if (window.getCancelledAt() == null) {
             window.setCancelledAt(Instant.now());
@@ -171,7 +201,9 @@ public class MaintenanceWindowService {
 
     @Transactional
     public MaintenanceWindowResponse finishNow(AuthenticatedUser user, UUID deviceId, UUID windowId) {
-        Device device = deviceService.findOwned(user, deviceId);
+        return finishForDevice(user,deviceService.findOwned(user,deviceId),windowId);
+    }
+    private MaintenanceWindowResponse finishForDevice(AuthenticatedUser user,Device device,UUID windowId) {
         MaintenanceWindow window = loadOwned(device, windowId);
         Instant now = Instant.now();
         if (window.getCancelledAt() != null) {

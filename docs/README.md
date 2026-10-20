@@ -9,8 +9,10 @@ topic, then follow the folder-level index for the specific contract or runbook.
 | --- | --- | --- |
 | Current system shape | [current](current/README.md) | Entry point for behavior that exists in code today |
 | Target architecture | [target](target/README.md) | Entry point for where the system is going |
+| Device variables and telemetry transformations | [current architecture](current/architecture/device-variables.md) | Opt-in implementation, contracts, operation and remaining release gates; [target](target/device-variables.md) |
 | UI/UX audit and remaining fixes | [target/ui-design-requirements.md](target/ui-design-requirements.md) | Current review, completed redesign baseline, priorities, and acceptance criteria |
 | User-created dashboards | [target/custom-dashboards.md](target/custom-dashboards.md) | Future business/persona scenarios, editor and widgets, permissions, calculation semantics, and acceptance |
+| Dashboard optimization evidence | [research report](current/flows/dashboard-optimization-research.md) | Measured read/render bottlenecks, limits, loading strategy and prioritized future implementation |
 | UI/UX and dashboard implementation proposals | [OpenSpec program](../openspec/changes/README.md) | Proposed changes, delivery order, dependencies, and audit/product requirement coverage |
 | HTTP contracts | [current/api](current/api/README.md) | Public gateway routes and service API contracts implemented in code |
 | Kafka/event contracts | [current/events](current/events/README.md) | Event envelope, topic keys, producer/consumer ownership implemented in code |
@@ -18,6 +20,7 @@ topic, then follow the folder-level index for the specific contract or runbook.
 | Verification | [current/flows](current/flows/README.md) | Canonical E2E runbook, ML verification, maintenance checks |
 | Durable decisions | [adr](adr/README.md) | Historical architecture decisions |
 | Integration notes | [current/integrations](current/integrations/README.md) | Protocol or external integration notes |
+| Real Helsinki vehicle GPS | [HSL connector](current/operations/hsl-live-vehicles.md) | Public MQTT, real devices, common map and verification |
 | Simulator docs | [current/simulation](current/simulation/README.md) | Simulator service, frontend flow, YAML schema |
 | Interview/demo context | [target/talking-points.md](target/talking-points.md) | Non-contract explanatory talking points |
 | Load-test preflight | [current/operations/load-testing.md](current/operations/load-testing.md) | Current executable profile validation, arithmetic and sanitized evidence |
@@ -65,3 +68,6 @@ a later task explicitly asks to reconcile specs.
   behavior into API/event contracts, architecture docs, or operations runbooks.
 - If a doc says a feature is planned but code shows it is implemented,
   update the doc or delete the stale plan.
+
+Vehicle GPS: [setup and map verification](current/flows/vehicle-gps-verification.md).
+Vehicle monitoring: [fleet/history/zones verification](current/flows/vehicle-monitoring-verification.md).

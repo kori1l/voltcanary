@@ -2,6 +2,7 @@ package com.voltcanary.telemetry.controller;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.common.web.DashboardEnergyReadRequest;
+import com.voltcanary.common.web.DashboardEnergyBatchReadRequest;
 import com.voltcanary.telemetry.adapter.DashboardReadAuthorization;
 import com.voltcanary.telemetry.service.EnergyPeriodReadService;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,5 +32,12 @@ public class DashboardEnergyController {
             @RequestHeader(value="Authorization",required=false) String authorization,@RequestBody DashboardEnergyReadRequest request) {
         if (request==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"Energy scope is required");
         return energy.validate(request,access.renewedScope(token,authorization,request.scope()));
+    }
+
+    @PostMapping("/internal/dashboard/energy-batch")
+    public ObjectNode batch(@RequestHeader(value="X-Internal-Service-Token",required=false) String token,
+            @RequestHeader(value="Authorization",required=false) String authorization,@RequestBody DashboardEnergyBatchReadRequest request) {
+        if (request==null || request.scope()==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,"Energy scope is required");
+        return energy.readBatch(request,access.renewedScope(token,authorization,request.scope()));
     }
 }

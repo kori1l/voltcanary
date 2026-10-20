@@ -35,9 +35,6 @@ public class AlertAccessService {
         if (!properties.isEnabled()) {
             return true;
         }
-        if (isPrivileged(role)) {
-            return true;
-        }
         if (userId == null || userId.isBlank()) {
             return false;
         }
@@ -132,6 +129,24 @@ public class AlertAccessService {
         requireAuthenticated(userId);
         if (!isPrivileged(role)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Support or admin role is required");
+        }
+    }
+    public UUID ownAccount(String userId) {
+        requireAuthenticated(userId);
+        try {
+            var response=restClient.get().uri("/internal/accounts/users/{id}/lifecycle",userId)
+                .header("X-Internal-Service-Token",internalServiceToken).retrieve().body(com.fasterxml.jackson.databind.JsonNode.class);
+            if(response==null || !"ACTIVE".equals(response.path("status").asText()) || !userId.equals(response.path("userId").asText()))
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Active owned account required");
+            return UUID.fromString(response.path("accountId").asText());
+        } catch(ResponseStatusException denied) {throw denied;} catch(Exception unavailable) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Account authorization unavailable");
+        }
+    }
+    public void workspaceAction(String authorization,UUID workspace,UUID account,UUID user,UUID device,String action) {
+        var client=new com.voltcanary.common.web.WorkspaceGrantClient(restClient,internalServiceToken);
+        if (!client.require(authorization,workspace,account,user,action,java.util.Set.of(device)).contains(device)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Explicit incident action grant required");
         }
     }
 

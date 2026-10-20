@@ -24,7 +24,7 @@ export function consoleQuery(pathname: string, search: string, allowTransientRan
     else if (key === "setup" && value === "activation") output.set(key, value);
     else if (key === "screenId" && /^[a-zA-Z0-9_-]{1,80}$/.test(value)) output.set(key,value);
     else if (["kiosk","overview"].includes(key) && value==="true") output.set(key,value);
-    else if (key==="period" && ["LAST_6_HOURS","LAST_24_HOURS","LAST_7_DAYS","LAST_30_DAYS","TODAY","WEEK_TO_DATE","MONTH_TO_DATE"].includes(value)) output.set(key,value);
+    else if (key==="period" && ["LAST_1_HOUR","LAST_6_HOURS","LAST_24_HOURS","LAST_7_DAYS","LAST_30_DAYS","TODAY","WEEK_TO_DATE","MONTH_TO_DATE"].includes(value)) output.set(key,value);
     else if (key === "tab" && (pathname === "/settings/ml" ? mlTabs : deviceTabs).includes(value)) output.set(key, value);
     else if (key === "view" && (pathname === "/maintenance" ? ["timeline", "agenda"] : pathname === "/devices" ? ["cards", "table"] : ["inbox", "rules"]).includes(value)) output.set(key, value);
     else if (key === "q" && value.length <= 200 && !/[\u0000-\u001f]/.test(value)) output.set(key, value);

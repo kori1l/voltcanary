@@ -52,20 +52,29 @@ public class DashboardCatalog {
     public Dashboard get(DashboardActor actor, UUID id) {
         return access.owned(actor, id);
     }
+    public java.util.List<String> permissions(DashboardActor actor,UUID id) {
+        return access.permissions(actor,id).stream().map(String::toLowerCase).toList();
+    }
+    public DashboardDefinition definition(DashboardActor actor,UUID id,int revision) {
+        var dashboard=access.owned(actor,id);
+        if (revision!=dashboard.publishedRevision()) access.capability(actor,id,"HISTORY");
+        return storage.revision(id,revision).orElseThrow(()->new DashboardFailure("NOT_FOUND","Revision unavailable")).definition();
+    }
 
     @Transactional
     public Dashboard copy(DashboardActor actor, String authorization, UUID id, String key, JsonNode body, String name) {
-        access.owned(actor, id);
+        access.capability(actor,id,"COPY");
         return idempotency.execute(actor, "/dashboards/" + id + "/copy", key, body, Dashboard.class,
                 saved -> {
-                    access.owned(actor, id);
+                    access.capability(actor,id,"COPY");
                     access.owned(actor, saved.id());
                 }, () -> {
-                    Dashboard source = access.owned(actor, id);
+                    Dashboard source = access.capability(actor,id,"COPY");
+                    if(source.publishedRevision()==0 && !source.ownerUserId().equals(actor.userId())) throw new DashboardFailure("NO_ACCESS","Publish an initial revision before sharing a copy");
                     DashboardDefinition original = source.publishedRevision() > 0
                             ? storage.revision(id, source.publishedRevision()).orElseThrow().definition()
                             : storage.draft(id).definition();
-                    DashboardDefinition safe = bindings.safeCopy(authorization, actor, original);
+                    DashboardDefinition safe = source.ownerUserId().equals(actor.userId())?bindings.safeCopy(authorization, actor, original):bindings.template(original);
                     DashboardDefinition copied = new DashboardDefinition(safe.schemaVersion(), name, safe.description(),
                             safe.defaultContext(), safe.sections(), safe.widgets(), safe.layouts(), safe.screens());
                     validation.validate(copied);

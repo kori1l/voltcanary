@@ -1,4 +1,4 @@
-import {LayoutDashboard,Refrigerator,CalendarDays,Bell,Settings,BrainCircuit,Bot,Users} from "lucide-react";
+import {LayoutDashboard,Refrigerator,CalendarDays,Bell,Settings,BrainCircuit,Bot,Users,Car} from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearTokens, getRefreshToken, sessionIdentityRevision, subscribeSession } from "../api/client";
@@ -12,10 +12,12 @@ import { TaskEvidenceProvider } from "../aiAgent/taskEvidence";
 import {NavigationVisibility,SidebarToggle} from "../components/NavigationVisibility";
 
 const navigationIcons:Record<string,typeof Settings>={"/dashboards":LayoutDashboard,"/devices":Refrigerator,"/maintenance":CalendarDays,"/alerts":Bell,"/settings":Settings,"/settings/ml":BrainCircuit,"/ai-agent":Bot,"/ai-agent/settings":Settings,"/account":Users};
+navigationIcons["/vehicles"]=Car;
 
 const userNavigation = [
   { to: "/dashboards", label: "Dashboards" },
   { to: "/devices", label: "Devices" },
+  { to: "/vehicles", label: "Vehicles" },
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/settings", label: "Settings" },
@@ -25,6 +27,7 @@ const userNavigation = [
 const adminNavigation = [
   { to: "/dashboards", label: "Dashboards" },
   { to: "/devices", label: "Devices" },
+  { to: "/vehicles", label: "Vehicles" },
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
   { to: "/ai-agent", label: "AI Agent" },

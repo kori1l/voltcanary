@@ -38,14 +38,25 @@ public class DashboardScopeRepository {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public DashboardScopeResponse resolve(UUID userId, UUID accountId, DashboardScopeRequest request) {
+        return resolve(userId,accountId,request,null);
+    }
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public DashboardScopeResponse resolve(UUID userId, UUID accountId, DashboardScopeRequest request,Set<UUID> permitted) {
         if ("UNBOUND".equals(request.mode())) {
             return new DashboardScopeResponse(userId, accountId, 0, 0, 0, List.of(), List.of(), false, Instant.now());
         }
-        long denied = deniedBindings(accountId, request.deviceIds(), "devices")
+        long denied = permitted!=null?0:deniedBindings(accountId, request.deviceIds(), "devices")
                 + deniedBindings(accountId, request.locationIds(), "locations");
         Set<UUID> locations = request.includeSubtree() ? subtree(accountId, request.locationIds()) : request.locationIds();
         List<Object> parameters = new ArrayList<>(List.of(accountId));
         String where = " WHERE d.account_id=?";
+        if (permitted!=null) {
+            if (permitted.isEmpty()) where+=" AND false";
+            else {
+                where+=" AND d.id IN ("+placeholders(permitted.size())+")";
+                parameters.addAll(permitted);
+            }
+        }
         if (!request.deviceIds().isEmpty()) {
             where += " AND d.id IN (" + placeholders(request.deviceIds().size()) + ")";
             parameters.addAll(request.deviceIds());
@@ -84,7 +95,7 @@ public class DashboardScopeRepository {
                     cadence == null ? null : cadence.seconds(), cadence != null && cadence.seconds() != null ? "source_configuration" : "dashboard_default",
                     cadence == null ? "PERIODIC" : cadence.policy(), device.updatedAt(),energyMeters.getOrDefault(device.id(),List.of()));
         }).toList();
-        Set<UUID> relevantLocations = new HashSet<>(request.locationIds());
+        Set<UUID> relevantLocations = permitted==null?new HashSet<>(request.locationIds()):new HashSet<>();
         devices.stream().map(DeviceEntry::locationId).filter(java.util.Objects::nonNull).forEach(relevantLocations::add);
         List<LocationEntry> metadata = locationMetadata(accountId, relevantLocations);
         return new DashboardScopeResponse(userId, accountId, count + denied, count, denied, enriched, metadata, false, Instant.now());

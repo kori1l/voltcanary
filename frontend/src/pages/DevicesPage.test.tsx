@@ -47,9 +47,27 @@ it("starts with recognizable location tiles and retains search when switching to
   expect(tile).toHaveClass("device-icon-card");
   expect(tile.querySelector("svg")).not.toBeNull();
   expect(screen.getByRole("heading", { name: "Kitchen" })).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Next page"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Previous page"})).not.toBeInTheDocument();
+  expect(screen.getByText("1 devices on this page")).toBeVisible();
   fireEvent.change(screen.getByLabelText("Search devices"), { target: { value: "Kitchen" } });
   fireEvent.change(screen.getByLabelText("Inventory view"), { target: { value: "table" } });
   await waitFor(() => expect(screen.getByLabelText("Search devices")).toHaveValue("Kitchen"));
   expect(container.querySelector(".device-icon-card")).toBeNull();
   expect(screen.getByRole("table")).toBeInTheDocument();
+});
+it("shows missing risk without a service error and retains inventory when setup references fail",async()=>{
+ vi.spyOn(globalThis,"fetch").mockImplementation(async input=>{
+  const path=new URL(String(input)).pathname;
+  if(path==="/devices")return new Response(JSON.stringify([{id:"owned",name:"Teaching fridge",type:"FRIDGE",status:"ACTIVE",locationId:null}]),{status:200});
+  if(path.endsWith("/latest"))return new Response(JSON.stringify({deviceId:"owned",readings:{},timestamp:new Date().toISOString()}),{status:200});
+  if(path.endsWith("/risk"))return new Response(JSON.stringify({message:"No risk score for device"}),{status:404});
+  return new Response(JSON.stringify({message:"Reference service unavailable"}),{status:503});
+ });
+ render(<MemoryRouter initialEntries={["/devices"]}><DevicesPage/></MemoryRouter>);
+ expect(await screen.findByRole("link",{name:/Teaching fridge/})).toBeVisible();expect(await screen.findByText("Risk not calculated")).toBeVisible();expect(screen.queryByRole("alert")).not.toBeInTheDocument();expect(screen.getByText("Some device options are unavailable")).toBeVisible();
+});
+it("does not request simulation presets during normal inventory browsing",async()=>{
+ const requests:string[]=[];vi.spyOn(globalThis,"fetch").mockImplementation(async input=>{const path=new URL(String(input)).pathname;requests.push(path);return new Response(JSON.stringify([]),{status:200});});
+ render(<MemoryRouter initialEntries={["/devices"]}><DevicesPage/></MemoryRouter>);await screen.findByText("No devices match these filters");expect(requests).not.toContain("/simulation/presets");expect(screen.queryByText("Some device options are unavailable")).not.toBeInTheDocument();
 });

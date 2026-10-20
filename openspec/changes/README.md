@@ -1,4 +1,131 @@
-# UI/UX и пользовательские дашборды: active OpenSpec program
+<a id="device-variables-program"></a>
+
+# Переменные устройств: программа реализации — 2026-10-16
+
+Статус: первая версия реализована в шести changes за opt-in flags.
+Проверки и доказательства отмечены в tasks.md каждого change и в
+[приёмке](../../docs/current/flows/device-variable-verification.md).
+Changes оставлены активными для ревью; это не включение функций в production.
+Текущие контракты: [device variables](../../docs/current/architecture/device-variables.md).
+Общая [целевая архитектура](../../docs/target/device-variables.md) описывает
+владение, данные, контракты, исполнение, ошибки, rollout и границы первой версии.
+Эта программа независима от автомобильных changes и исторической UI/UX очереди.
+Явный запрос на переменные выбирает эту последовательность, а не dashboard-only
+изменения из старой программы. Индекс владеет зависимостями, не runtime readiness.
+
+| Порядок | Change | Ответственность | Зависимости |
+| --- | --- | --- | --- |
+| 1 | [define-device-type-variables](define-device-type-variables/proposal.md) | Definition/revision, type defaults, source bindings, lifecycle в device | Нет внутри программы |
+| 2 | [propagate-variable-processing-contracts](propagate-variable-processing-contracts/proposal.md) | Secret-free bundle events, input contracts, pinned acceptance context, recovery | 1 |
+| 3 | [materialize-device-variable-telemetry](materialize-device-variable-telemetry/proposal.md) | Evaluator/preview, observed+derived storage, lineage, accepted event | 1, 2 |
+| 4 | [query-device-variable-series](query-device-variable-series/proposal.md) | Catalogue/history/latest/export, SQL graph buckets, typed dashboard reads | 3 |
+| 5 | [alert-on-device-variables](alert-on-device-variables/proposal.md) | Source-bound threshold rules, analytics evaluation, alert evidence/lifecycle | 3, 4 |
+| 6 | [configure-device-variable-console](configure-device-variable-console/proposal.md) | Editor/preview/rollout/selectors и сквозная distributed приёмка | 1–5 |
+
+Сценарий приёмки: переменная типа «Температура камеры», raw 235 → 22.7 °C,
+два устройства/источника, история и дашборд, пороговая тревога, новая ревизия,
+повтор старого события после restart, maintenance/backfill/denied access.
+Первые пять этапов можно проверять через API; интерфейс и конечная приёмка
+завершают программу. Нельзя включать источники/правила до готовности consumer
+контрактов. Завершение документации не закрывает implementation tasks.
+
+Покрытие: 29 требований, 58 сценариев WHEN/THEN в delta specs,
+60 implementation/verification задач.
+Произвольный код, stateful окна/межустройственные формулы, исторический
+перерасчёт и автоматические ML-признаки не входят. Graph-only агрегации
+вычисляются при чтении и не создают новые хранимые ряды.
+
+---
+
+Завершено 2026-10-12: [configure-active-bus-dashboard](archive/2026-10-12-configure-active-bus-dashboard/proposal.md)
+
+Завершено 2026-10-12: [chart-configured-boolean-fields](archive/2026-10-12-chart-configured-boolean-fields/proposal.md)
+
+# UI/UX и пользовательские дашборды: завершённая OpenSpec программа
+
+Завершено: [compact-fleet-map-controls](archive/2026-10-11-compact-fleet-map-controls/proposal.md)
+— сворачиваемая таблица транспорта и скрываемые настройки справа сверху карты.
+
+## Реальный транспорт Хельсинки — 2026-10-11
+
+Завершено 2026-10-12: [configure-telemetry-field-templates](archive/2026-10-12-configure-telemetry-field-templates/proposal.md)
+— переиспользуемые шаблоны хранения полей, применение к источникам и типам,
+числа/текст/состояния в телеметрии и независимый выбор полей карты. Проверены
+реальная фильтрация HSL и восстановление конфигурации после перезапуска.
+
+Завершено 2026-10-12: [connect-hsl-night-buses](archive/2026-10-12-connect-hsl-night-buses/proposal.md)
+— пять живых ночных автобусов 570N/600 добавлены к десяти трамваям на одной карте;
+проверены реальные GPS, история, данные рейса и автобусные иконки.
+
+Завершено 2026-10-12: [store-hsl-journey-context](archive/2026-10-12-store-hsl-journey-context/proposal.md)
+— дополнительные данные рейса сохраняются вместе с GPS и доступны в деталях
+выбранного транспорта. Проверены контракты, хранение и готовность развёрнутого
+коннектора; получение живого контекста ожидает возобновления передач трамваев.
+
+[connect-hsl-live-vehicles](archive/2026-10-11-connect-hsl-live-vehicles/proposal.md): HSL HFP MQTT,
+реальные устройства и одна общая карта выбранных трамваев.
+[Эксплуатация и проверка](../../docs/current/operations/hsl-live-vehicles.md).
+
+Завершённое дополнение: [show-fleet-gps-tracks](archive/2026-10-11-show-fleet-gps-tracks/proposal.md)
+— видимые GPS-треки за 15 минут и бледные прямые соединения пропусков.
+
+## Автомобильный мониторинг — 2026-10-11
+
+[expand-vehicle-monitoring-console](expand-vehicle-monitoring-console/proposal.md):
+общая карта, поездки, воспроизведение, экспорт, геозоны и автомобильная эмуляция.
+Базовый GPS-сценарий ниже сохраняет совместимость. Реализация и приёмка:
+[tasks](expand-vehicle-monitoring-console/tasks.md).
+
+## Активное предложение: автомобиль и GPS-карта — 2026-10-11
+
+[add-vehicle-gps-simulation-map](add-vehicle-gps-simulation-map/proposal.md) —
+новый базовый сценарий: VEHICLE, виртуальный GPS-датчик в simulator-service,
+один CITY_LOOP, принятые GPS-точки и карта одного автомобиля в карточке/дашборде.
+Реализация ещё не начата; implementation tasks открыты. План и решения:
+[design](add-vehicle-gps-simulation-map/design.md),
+[tasks](add-vehicle-gps-simulation-map/tasks.md).
+Порядок: контракт/тип → эмулятор → telemetry API → карточка → виджет → приёмка.
+Геозоны, OBD, fleet-map, ML и проигрывание поездок исключены из первой версии.
+Этот change независим от завершённой ниже исторической UI/UX очереди.
+
+## Canonical energy selection — 2026-10-11
+
+Completed change: [narrow-dashboard-energy-reading-selection](archive/2026-10-11-narrow-dashboard-energy-reading-selection/proposal.md).
+Canonical sources and physical boundaries are selected in SQL; streams normalize
+once and use indexed interval bounds with preserved quality diagnostics. Verification
+is recorded in the [research follow-up](../../docs/current/flows/dashboard-optimization-research.md#canonical-energy-selection-follow-up--2026-10-11).
+
+## Dashboard optimization implementation — 2026-10-11
+
+Completed change: [optimize-dashboard-read-and-render-path](archive/2026-10-11-optimize-dashboard-read-and-render-path/proposal.md).
+It applies the research follow-ups: compact evidence/details, isolated clocks,
+typed owner reads, indexed historical latest, interval energy batches,
+maintenance device batches, progressive loading/cancellation, bounded versioned
+cache and private delivery. Implementation verification and deployment limits
+are recorded in the [research report](../../docs/current/flows/dashboard-optimization-research.md#implementation-follow-up--2026-10-11).
+
+## Завершённое исследование — 2026-10-11
+
+[investigate-dashboard-optimization](archive/2026-10-11-investigate-dashboard-optimization/proposal.md)
+выполнен по запросу пользователя. [Отчёт](../../docs/current/flows/dashboard-optimization-research.md)
+содержит HTTP/payload/SQL measurements, изолированные call/render experiments,
+стандартный checklist, ограничения измерений и десять приоритизированных
+рекомендаций. Подтверждены energy-cycle N+1, DTO duplication, тяжёлый latest
+SQL и idle React commits; общий fleet HTTP N+1 не подтверждён. Все 14 задач
+research закрыты. На момент исследования продуктовые оптимизации не внедрялись; proposed follow-up
+scopes приведены в отчёте. Production browser profiling и saturation остаются
+явно непроверенными, а не считаются пройденными.
+
+## Исторический checkpoint исходной программы
+
+Checkpoint 2026-10-10: все 16 исходных changes завершены; 225 задач исходного
+плана закрыты. Последние пять changes и дополнительный visualization change
+(9 задач) проверены и архивированы 2026-10-10. Активных changes нет.
+Энергия, workspace/resources, team publication, тарифы, подтверждённые операции
+и восемь видов представления включены. Результаты и ограничения:
+[приёмка](../../docs/current/flows/workspace-dashboard-business-verification.md).
+Дальнейшие датированные абзацы сохраняют историю предыдущих checkpoints;
+их прежние pending/active статусы не описывают текущую очередь.
 
 Дата: 7 октября 2026; checkpoint 2026-10-09. **Программа из 16 changes: первые семь, private dashboard domain и widget query engine закрыты и архивированы (UTC archive date 2026-10-08). Accessibility/page delivery принят по указанию пользователя с исключением непроведённых native zoom/speech проверок.**
 48 delta requirements, 87 GIVEN/WHEN/THEN scenarios, 225 задач исходного плана; 152 задачи закрыты: 78 в первых шести, 13 в accessibility/page delivery (две с явно документированным исключением приёмки), 15 в private dashboard domain 16 в widget query engine и 16 в visual editor и 14 в task templates. 2026-10-09 пользователь возобновил выполнение активной очереди по порядку, затем разрешил закрыть и архивировать accessibility с ограничениями инструментов. Visual editor реализован, проверен и архивирован 2026-10-09. Task templates реализован, проверен и архивирован 2026-10-09. По уточнению пользователя приоритет перед energy — набор именованных рабочих экранов и явное размещение виджетов. Native проверки не считаются пройденными; процедура отложенной проверки приведена в docs/current/flows/console-interface.md.
@@ -64,11 +191,11 @@ typecheck/build, strict OpenSpec36 и structure прошли. Приоритет
 | 9 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Типизированные запросы виджетов и полные агрегаты | Dashboards 1 | `add-private-dashboard-domain`, `fix-console-evidence-state-transitions`, `improve-telemetry-history-and-readable-evidence` |
 | 10 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | Визуальный редактор и персональный стартовый экран | Dashboards 1 | `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `improve-console-context-and-session-recovery`, `improve-console-accessibility-and-page-delivery` |
 | 11 | [add-dashboard-task-templates](archive/2026-10-09-add-dashboard-task-templates/proposal.md) | Бизнес-шаблоны и привязка к реальным данным | Dashboards 1 | `add-dashboard-visual-editor`, `add-dashboard-widget-query-engine` |
-| 12 | [add-workspace-resource-membership](add-workspace-resource-membership/proposal.md) | Workspace, участники и отдельные права на ресурсы | Dashboards 2 prerequisite | `add-private-dashboard-domain` |
-| 13 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | Командные дашборды, публикация и совместный доступ | Dashboards 2 | `add-workspace-resource-membership`, `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `add-dashboard-visual-editor` |
-| 14 | [add-dashboard-energy-aggregates](add-dashboard-energy-aggregates/proposal.md) | Расход энергии, покрытие и защита от двойного счёта | Dashboards 1 extension | `add-dashboard-widget-query-engine` |
-| 15 | [add-dashboard-tariff-cost-estimates](add-dashboard-tariff-cost-estimates/proposal.md) | Версионированные тарифы и оценка стоимости энергии | Dashboards 3 | `add-dashboard-energy-aggregates`, `add-dashboard-visual-editor` |
-| 16 | [add-dashboard-operational-period-metrics](add-dashboard-operational-period-metrics/proposal.md) | Рабочие расписания, подтверждённые циклы и простой | Dashboards 3 | `add-dashboard-widget-query-engine`, `add-dashboard-energy-aggregates` |
+| 12 | [add-workspace-resource-membership](archive/2026-10-10-add-workspace-resource-membership/proposal.md) | Workspace, участники и отдельные права на ресурсы | Dashboards 2 prerequisite | `add-private-dashboard-domain` |
+| 13 | [add-team-dashboard-publication](archive/2026-10-10-add-team-dashboard-publication/proposal.md) | Командные дашборды, публикация и совместный доступ | Dashboards 2 | `add-workspace-resource-membership`, `add-private-dashboard-domain`, `add-dashboard-widget-query-engine`, `add-dashboard-visual-editor` |
+| 14 | [add-dashboard-energy-aggregates](archive/2026-10-10-add-dashboard-energy-aggregates/proposal.md) | Расход энергии, покрытие и защита от двойного счёта | Dashboards 1 extension | `add-dashboard-widget-query-engine` |
+| 15 | [add-dashboard-tariff-cost-estimates](archive/2026-10-10-add-dashboard-tariff-cost-estimates/proposal.md) | Версионированные тарифы и оценка стоимости энергии | Dashboards 3 | `add-dashboard-energy-aggregates`, `add-dashboard-visual-editor` |
+| 16 | [add-dashboard-operational-period-metrics](archive/2026-10-10-add-dashboard-operational-period-metrics/proposal.md) | Рабочие расписания, подтверждённые циклы и простой | Dashboards 3 | `add-dashboard-widget-query-engine`, `add-dashboard-energy-aggregates` |
 
 Номера — ссылки в программе, не требование выполнять всё строго по очереди.
 Изменения backend private domain можно готовить независимо от UI, но его
@@ -170,7 +297,7 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | DB-22 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-dashboard-visual-editor`, `add-dashboard-task-templates`, `add-team-dashboard-publication` |
 | DB-23 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-energy-aggregates` |
 | DB-24 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | — |
-| DB-25 | [add-dashboard-energy-aggregates](add-dashboard-energy-aggregates/proposal.md) | — |
+| DB-25 | [add-dashboard-energy-aggregates](archive/2026-10-10-add-dashboard-energy-aggregates/proposal.md) | — |
 | DB-26 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-energy-aggregates`, `add-dashboard-tariff-cost-estimates`, `add-dashboard-operational-period-metrics` |
 | DB-27 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-energy-aggregates`, `add-dashboard-operational-period-metrics` |
 | DB-28 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-visual-editor` |
@@ -179,10 +306,10 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | DB-31 | [add-dashboard-visual-editor](archive/2026-10-09-add-dashboard-visual-editor/proposal.md) | `add-dashboard-widget-query-engine`, `add-team-dashboard-publication` |
 | DB-32 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-dashboard-visual-editor` |
 | DB-33 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-workspace-resource-membership` |
-| DB-34 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership`, `add-dashboard-tariff-cost-estimates` |
-| DB-35 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
-| DB-36 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
-| DB-37 | [add-team-dashboard-publication](add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
+| DB-34 | [add-team-dashboard-publication](archive/2026-10-10-add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership`, `add-dashboard-tariff-cost-estimates` |
+| DB-35 | [add-team-dashboard-publication](archive/2026-10-10-add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
+| DB-36 | [add-team-dashboard-publication](archive/2026-10-10-add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
+| DB-37 | [add-team-dashboard-publication](archive/2026-10-10-add-team-dashboard-publication/proposal.md) | `add-workspace-resource-membership` |
 | DB-38 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | — |
 | DB-39 | [add-private-dashboard-domain](archive/2026-10-08-add-private-dashboard-domain/proposal.md) | `add-dashboard-widget-query-engine` |
 | DB-40 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | `add-private-dashboard-domain` |
@@ -198,8 +325,8 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | W02 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W03 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W04 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
-| W05 | [add-dashboard-energy-aggregates](add-dashboard-energy-aggregates/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
-| W06 | [add-dashboard-energy-aggregates](add-dashboard-energy-aggregates/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
+| W05 | [add-dashboard-energy-aggregates](archive/2026-10-10-add-dashboard-energy-aggregates/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
+| W06 | [add-dashboard-energy-aggregates](archive/2026-10-10-add-dashboard-energy-aggregates/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W07 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W08 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W09 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
@@ -207,8 +334,8 @@ Energy template capability-gated до настоящих aggregates. Явный 
 | W11 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Single-account matrix в query engine; workspace scope после team publication. |
 | W12 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
 | W13 | [add-dashboard-widget-query-engine](archive/2026-10-08-add-dashboard-widget-query-engine/proposal.md) | Template/editor используют capability только после implementation query/mathematical contract. |
-| W14 | [add-dashboard-tariff-cost-estimates](add-dashboard-tariff-cost-estimates/proposal.md) | Stage 3; не притворяется готовым widget в первом релизе. |
-| W15 | [add-dashboard-operational-period-metrics](add-dashboard-operational-period-metrics/proposal.md) | Stage 3; не притворяется готовым widget в первом релизе. |
+| W14 | [add-dashboard-tariff-cost-estimates](archive/2026-10-10-add-dashboard-tariff-cost-estimates/proposal.md) | Stage 3; не притворяется готовым widget в первом релизе. |
+| W15 | [add-dashboard-operational-period-metrics](archive/2026-10-10-add-dashboard-operational-period-metrics/proposal.md) | Stage 3; не притворяется готовым widget в первом релизе. |
 
 ## Validation And Scope
 
@@ -285,3 +412,13 @@ requires reversible neighbour previews, numeric per-screen grids, flexible panel
 sizes and charts filling their available area. The four active dashboard
 extensions inherit these contracts. Their implementation tasks remain unchecked;
 this documentation audit does not deliver their pending domain capabilities.
+
+## Varied diagram presentation - 2026-10-10
+
+[add-dashboard-visualization-types](archive/2026-10-10-add-dashboard-visualization-types/proposal.md)
+is an active user-requested extension of the existing editor and palette.
+It adds compatible line/area/bar/stacked/pie/donut presentation alongside numbers,
+without a new navigation destination or duplicate business-query widget types.
+Initial authorized count/series renderers can be delivered independently of the
+five pending domain changes; their future widget evidence inherits compatible
+presentation options. The implementation tasks are not yet complete.

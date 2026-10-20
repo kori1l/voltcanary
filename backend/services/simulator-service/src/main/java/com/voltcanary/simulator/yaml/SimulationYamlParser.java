@@ -39,7 +39,15 @@ public class SimulationYamlParser {
                         parseDuration(schedule.path("duration").asText("0s")),
                         schedule.path("speed").asDouble(1.0)),
                 parseMetrics(root.path("metrics")),
-                parseAnomalies(root.path("anomalies")));
+                parseAnomalies(root.path("anomalies")),
+                root.has("gps") ? parseGps(root.path("gps")) : null);
+    }
+
+    private GpsConfig parseGps(JsonNode gps) {
+        List<GpsConfig.Waypoint> points = new ArrayList<>();
+        gps.path("waypoints").forEach(point -> points.add(new GpsConfig.Waypoint(point.path("latitude").asDouble(), point.path("longitude").asDouble(), point.path("stopSeconds").asInt(0))));
+        return new GpsConfig(gps.path("routeId").asText(), gps.path("speedKmh").asDouble(), List.copyOf(points), gps.path("vehicleMetrics").asBoolean(false),
+                gps.path("initialFuelPercent").asDouble(80), gps.path("consumptionLitresPer100Km").asDouble(8), gps.path("fuelTankLitres").asDouble(50), gps.path("initialOdometerKm").asDouble(0));
     }
 
     Map<String, MetricConfig> parseMetrics(JsonNode metrics) {

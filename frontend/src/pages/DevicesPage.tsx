@@ -17,7 +17,7 @@ import {
   Location,
 } from "../devices/devicesApi";
 import { createDemoDevice, createDeviceWithSource, defaultSourceId, DeviceSourceMode, DeviceSetupProgress, DeviceSetupResult, deviceSetupStep } from "../devices/createDeviceFlow";
-import { listSimulationPresets, SimulationPreset } from "../simulation/simulationApi";
+import { useDeviceSimulationPresets } from "../devices/useDeviceSimulationPresets";
 import { Dialog, DialogClose } from "../components/Dialog";
 import { EntitySelector } from "../components/EntitySelector";
 import { CsvImportPreview, inspectImportCsv } from "../devices/CsvImportPreview";
@@ -25,7 +25,8 @@ import { TimeDisplay } from "../components/TimeDisplay";
 import { useInventoryEvidence } from "../devices/useInventoryEvidence";
 import { useSectionResource } from "../components/useSectionResource";
 import { SectionFeedback } from "../components/SectionFeedback";
-import { ReadRefresh } from "../components/ReadRefresh";
+import {SimulatorStatusIcon} from "../simulation/SimulatorStatusIcon";
+import { DeviceInventoryControls } from "../devices/DeviceInventoryControls";
 import { useEvidenceClock } from "../components/useEvidenceClock";
 import { useConsoleQuery } from "../app/useConsoleQuery";
 import { writeDeviceSourcePreference } from "../devices/deviceSourcePreferences";
@@ -56,7 +57,6 @@ export function DevicesPage() {
   const query = useConsoleQuery();
   const [locations, setLocations] = useState<Location[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-  const [simulationPresets, setSimulationPresets] = useState<SimulationPreset[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [newLocationName, setNewLocationName] = useState("");
   const [newLocationParentId, setNewLocationParentId] = useState("");
@@ -103,6 +103,8 @@ export function DevicesPage() {
   const { latestByDevice, riskByDevice } = evidence;
   useEvidenceClock();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const presetResource=useDeviceSimulationPresets(isCreateOpen && sourceMode==="SIMULATOR");
+  const simulationPresets=(presetResource.data ?? []).filter(preset=>preset.compatibleProfiles?preset.compatibleProfiles.includes(demoProfile):demoProfile!=="VEHICLE_GPS");
   const [isCsvOpen, setIsCsvOpen] = useState(false);
   const [inventoryView, setInventoryView] = query.state<string>("view", "cards");
   const [csvText, setCsvText] = useState("name,type,locationId,manufacturer,model\n");
@@ -159,16 +161,19 @@ export function DevicesPage() {
     return page ? evidence.load(page.slice(0, 100)) : false;
   }
 
+  async function refreshInventory(){
+    const results=await Promise.all([load(),loadReferences()]);return results[0];
+  }
+
   async function loadReferences() {
     const generation = ++referencesGeneration.current;
-    const results = await Promise.allSettled([listLocations({ limit: 200 }), listDeviceTypes(), listSimulationPresets(), getCurrentDeviceAccount()]);
+    const results = await Promise.allSettled([listLocations({ limit: 200 }), listDeviceTypes(), getCurrentDeviceAccount()]);
     if (generation !== referencesGeneration.current) return;
-    const [locationResult, typeResult, presetResult, accountResult] = results;
+    const [locationResult, typeResult, accountResult] = results;
     if (accountResult.status === "fulfilled" && typeof accountResult.value.id === "string" && typeof accountResult.value.userId === "string") setOwnerAccount(accountResult.value);
     if (locationResult.status === "fulfilled") setLocations(locationResult.value);
     if (typeResult.status === "fulfilled") { setDeviceTypes(typeResult.value); if (typeResult.value.length && !typeResult.value.some((item) => item.code === type)) setType(typeResult.value[0].code); }
-    if (presetResult.status === "fulfilled") setSimulationPresets(presetResult.value);
-    const unavailable = results.flatMap((result, index) => result.status === "rejected" ? ["Locations", "Device types", "Simulation presets", "Account recovery scope"][index] : []);
+    const unavailable = results.flatMap((result, index) => result.status === "rejected" ? ["Locations", "Device types", "Account recovery scope"][index] : []);
     setReferenceError(unavailable.length ? `${unavailable.join(", ")} unavailable. Retry these references.` : null);
     setReferencesReady(true);
   }
@@ -340,7 +345,7 @@ export function DevicesPage() {
           <p>Devices connected to your account.</p>
         </div>
         <div className="header-actions">
-          <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
+          <button className="ghost-button" type="button" onClick={() => void refreshInventory()} disabled={isLoading}>
             Refresh devices
           </button>
           <button className="ghost-button" type="button" onClick={() => setIsCsvOpen(true)}>
@@ -355,36 +360,16 @@ export function DevicesPage() {
         </div>
       </header>
 
-      <section className="panel inventory-panel">
-        <ReadRefresh scope={inventoryScope} refresh={load} />
-        <SectionFeedback resource={inventory} label="devices" onRetry={() => void load()} />
-        <div className="inventory-toolbar">
-          <input
-            className="search-input"
-            aria-label="Search devices"
-            value={search}
-            onChange={(event) => query.update({ q: event.target.value || null, offset: null }, true)}
-            placeholder="Search devices..."
-          />
-          <EntitySelector label="Filter by location" options={locations.map((location) => ({ id: location.id, name: locationLabel(location) }))} value={locationFilter === "all" ? "" : locationFilter} onChange={(id) => query.update({ locationId: id || null, offset: null })} loadOptions={locationOptions} />
-          <label>Registration status<select aria-label="Filter by registration status" value={statusFilter} onChange={(event) => query.update({ status: event.target.value === "all" ? null : event.target.value, offset: null })}>
-            <option value="all">All statuses</option>
-            {["ACTIVE", "DISABLED", "OFFLINE", "DECOMMISSIONED"].map((status) => (
-              <option value={status} key={status}>
-                {formatEnum(status)}
-              </option>
-            ))}
-          </select></label>
-        </div>
-
-        <button type="button" className="ghost-button" onClick={() => query.update({ q: null, locationId: null, status: null, offset: null })}>Clear filters</button>
-        {applyingSearch ? <p role="status">Applying search…</p> : null}
-        {referenceError ? <div className="error-message">{referenceError}<button type="button" className="ghost-button" onClick={() => void loadReferences()}>Retry references</button></div> : null}
-        {error ? <div className="error-message">{error}</div> : null}
-        {isLoading ? <div className="empty-state">Loading devices...</div> : null}
-        <label>Inventory view<select value={inventoryView} onChange={(event) => setInventoryView(event.target.value)}><option value="table">Compact table</option><option value="cards">Cards by location</option></select></label>
-        <p className="muted-text">Loaded records belong to this page; fleet total is unknown. Registration status is separate from telemetry freshness.</p>
-        <PageNavigation offset={offset} size={100} hasMore={hasMore} loading={isLoading || applyingSearch} loaded={devices.length} onChange={(next) => query.update({ offset: next || null })} />
+      <section className="panel inventory-panel inventory-panel-compact">
+        <DeviceInventoryControls search={search} onSearch={value=>query.update({q:value || null,offset:null},true)}
+          location={locationFilter} locations={locations.map(location=>({id:location.id,name:locationLabel(location)}))} loadLocations={locationOptions} onLocation={id=>query.update({locationId:id || null,offset:null})}
+          status={statusFilter} onStatus={value=>query.update({status:value==="all"?null:value,offset:null})}
+          view={inventoryView} onView={setInventoryView} scope={inventoryScope} refresh={refreshInventory}
+          onClear={()=>query.update({q:null,locationId:null,status:null,offset:null})}/>
+        <SectionFeedback resource={inventory} label="devices" onRetry={()=>void refreshInventory()} />
+        {applyingSearch?<p role="status">Applying search…</p>:null}
+        {referenceError?<details className="inventory-reference-warning"><summary>Some device options are unavailable</summary><p>{referenceError}</p><button type="button" className="ghost-button" onClick={()=>void loadReferences()}>Retry references</button></details>:null}
+        {error?<div className="error-message" role="alert">{error}</div>:null}
         {!isLoading && hasInventory && devices.length === 0 ? (
           <div className="empty-state">
             <strong>No devices match these filters</strong>
@@ -417,14 +402,14 @@ export function DevicesPage() {
                         <span className="device-card-status">{formatEnum(device.status)}</span>
                         <div className="device-card-signals">
                           <span className={`status-pill status-pill-${risk?.level.toLowerCase() ?? "neutral"}`}>
-                            {risk ? formatEnum(risk.level) : !evidence.risk[device.id] || evidence.risk[device.id].status === "loading" ? "Risk pending" : "Risk unavailable"}
+                            {risk ? formatEnum(risk.level) : !evidence.risk[device.id] || evidence.risk[device.id].status === "loading" ? "Risk pending" : evidence.risk[device.id].status === "empty" ? "Risk not calculated" : "Risk unavailable"}
                           </span>
                           <span>{latest?.readings.activePowerW !== undefined ? `${formatNumber(latest.readings.activePowerW)} W` : "No data"}</span>
                         </div>
                         <span className="device-card-telemetry">{latest ? formatRelativeTime(latest.timestamp) : !evidence.telemetry[device.id] || evidence.telemetry[device.id].status === "loading" ? "Telemetry pending" : evidence.telemetry[device.id].status === "empty" ? "No readings" : "Telemetry unavailable"}</span>
                       </Link>
-                      {evidence.telemetry[device.id] ? <SectionFeedback resource={evidence.telemetry[device.id]} label="telemetry" context={device.name} showFreshness onRetry={() => void evidence.reloadTelemetry(device.id)} /> : null}
-                      {evidence.risk[device.id] ? <SectionFeedback resource={evidence.risk[device.id]} label="risk" context={device.name} showFreshness onRetry={() => void evidence.reloadRisk(device.id)} /> : null}
+                      {evidence.telemetry[device.id] ? <SectionFeedback resource={evidence.telemetry[device.id]} label="telemetry" context={device.name} onRetry={() => void evidence.reloadTelemetry(device.id)} /> : null}
+                      {evidence.risk[device.id] ? <SectionFeedback resource={evidence.risk[device.id]} label="risk" context={device.name} onRetry={() => void evidence.reloadRisk(device.id)} /> : null}
                       </div>
                     );
                   })}
@@ -433,6 +418,9 @@ export function DevicesPage() {
             ))}
           </div>
         )}
+        <footer className="device-inventory-footer">
+          {hasMore || offset>0?<PageNavigation offset={offset} size={100} hasMore={hasMore} loading={isLoading || applyingSearch} loaded={devices.length} onChange={next=>query.update({offset:next || null})}/>:hasInventory?<small>{devices.length} devices on this page</small>:null}
+        </footer>
       </section>
 
       {isCreateOpen ? (
@@ -464,7 +452,7 @@ export function DevicesPage() {
                 ))}
               </div>
 
-              {wizardStep === 0 ? <DeviceWizardBasics name={name} type={type} manufacturer={manufacturer} model={model} deviceTypes={deviceTypes} setName={setName} setType={setType} setManufacturer={setManufacturer} setModel={setModel} /> : null}
+              {wizardStep === 0 ? <DeviceWizardBasics name={name} type={type} manufacturer={manufacturer} model={model} deviceTypes={deviceTypes} setName={setName} setType={(value)=>{setType(value);setDemoProfile(value==="VEHICLE"?"VEHICLE_GPS":"FRIDGE");setDemoPreset(value==="VEHICLE"?"CITY_LOOP":"NORMAL_OPERATION");}} setManufacturer={setManufacturer} setModel={setModel} /> : null}
 
               {wizardStep === 1 ? (
                 <div className="wizard-panel">
@@ -529,19 +517,19 @@ export function DevicesPage() {
                       <span>MQTT telemetry source for gateway and sensor feeds.</span>
                     </button>
                     <button className={sourceMode === "SIMULATOR" ? "source-choice source-choice-active" : "source-choice"} type="button" disabled={Boolean(setupProgress.current.dataSource)} onClick={() => setSourceMode("SIMULATOR")}>
-                      <strong>Simulator/demo source</strong>
+                      <strong>Simulator/demo source <SimulatorStatusIcon resource={presetResource}/></strong>
                       <span>Creates simulator telemetry without editing YAML first.</span>
                     </button>
                   </div>
 
                   {sourceMode === "SIMULATOR" ? (
                     <div className="demo-source-panel">
+                      <SectionFeedback resource={presetResource} label="Simulation presets" onRetry={()=>void presetResource.retry()}/>
                       <div className="form-grid-two">
                         <label>
                           Demo profile
                           <select disabled={Boolean(setupProgress.current.simulationConfig)} value={demoProfile} onChange={(event) => setDemoProfile(event.target.value)}>
-                            <option value="FRIDGE">Fridge</option>
-                            <option value="GENERIC_APPLIANCE">Generic appliance</option>
+                            {type==="VEHICLE"?<option value="VEHICLE_GPS">Vehicle GPS</option>:<><option value="FRIDGE">Fridge</option><option value="GENERIC_APPLIANCE">Generic appliance</option></>}
                           </select>
                         </label>
                         <label>
@@ -556,7 +544,7 @@ export function DevicesPage() {
                         </label>
                       </div>
                       <div className="status-note">
-                        {selectedPreset.detail} Expected metrics include active power, voltage, current, and accumulated energy.
+                        {selectedPreset.detail} {type==="VEHICLE"?"GPS coordinates, speed and course · City loop · 5 seconds · 30 minutes · 36 km/h. Adjust the saved configuration in Demo Tools.":"Expected metrics include active power, voltage, current, and accumulated energy."}
                       </div>
                       <label className="checkbox-row">
                         <input type="checkbox" checked={startDemoImmediately} onChange={(event) => setStartDemoImmediately(event.target.checked)} />

@@ -13,7 +13,7 @@ import { ConsoleRouteContext, useConsoleQuery } from "../app/useConsoleQuery";
 import { useSectionResource } from "../components/useSectionResource";
 import { SectionFeedback } from "../components/SectionFeedback";
 import { PageNavigation } from "../components/PageNavigation";
-import { EntitySelector } from "../components/EntitySelector";
+import {MaintenanceInventoryFilters} from "./MaintenanceInventoryFilters";
 import { useDebouncedValue } from "../components/useDebouncedValue";
 import { useTaskEvidence } from "../aiAgent/taskEvidence";
 import { Device, DeviceType, listDevices, listDeviceTypes, listLocations, Location } from "../devices/devicesApi";
@@ -290,55 +290,13 @@ function MaintenanceCalendarScreen() {
         </div>
       </header>
 
-      <section className="maintenance-workspace">
-        <aside className="maintenance-filter-rail">
-          <label>
-            Search
-            <input value={search} onChange={(event) => query.update({ q: event.target.value || null, offset: null }, true)} placeholder="Device, type, location" />
-          </label>
-          <div className="maintenance-range-filter">
-            <label>
-              From
-              <input type="date" value={toDateInputValue(rangeStart)} onChange={(event) => setStartFromInput(event.target.value)} />
-            </label>
-            <label>
-              To
-              <input type="date" value={toDateInputValue(addDays(rangeEnd, -1))} onChange={(event) => setEndFromInput(event.target.value)} />
-            </label>
-          </div>
-          <EntitySelector label="Location" loadOptions={locationOptions} options={locations.map((location) => ({ id: location.id, name: locationLabel(location) }))} value={locationFilter === "all" ? "" : locationFilter} onChange={(id) => query.update({ locationId: id || null, offset: null })} />
-          <label>
-            Type
-            <select value={typeFilter} onChange={(event) => query.update({ deviceType: event.target.value === "all" ? null : event.target.value, offset: null })}>
-              <option value="all">All types</option>
-              {deviceTypes.map((type) => (
-                <option value={type.code} key={type.code}>
-                  {type.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Status
-            <select value={statusFilter} onChange={(event) => query.update({ status: event.target.value === "all" ? null : event.target.value, offset: null })}>
-              {statusOptions.map((status) => (
-                <option value={status} key={status}>
-                  {status === "all" ? "All statuses" : formatEnum(status)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={includeCancelled} onChange={(event) => query.update({ includeCancelled: event.target.checked, offset: null })} />
-            Show cancelled
-          </label>
-          <div className="maintenance-legend">
-            <span className="maintenance-legend-item"><i className="legend-dot legend-active" /> Active</span>
-            <span className="maintenance-legend-item"><i className="legend-dot legend-scheduled" /> Scheduled</span>
-            <span className="maintenance-legend-item"><i className="legend-dot legend-finished" /> Finished</span>
-            <span className="maintenance-legend-item"><i className="legend-dot legend-cancelled" /> Cancelled</span>
-          </div>
-        </aside>
+      <section className="maintenance-workspace compact-maintenance-workspace">
+        <MaintenanceInventoryFilters search={search} onSearch={value=>query.update({q:value || null,offset:null},true)} from={toDateInputValue(rangeStart)} to={toDateInputValue(addDays(rangeEnd,-1))} onFrom={setStartFromInput} onTo={setEndFromInput}
+          location={locationFilter} locations={locations.map(l=>({id:l.id,name:locationLabel(l)}))} loadLocations={locationOptions} onLocation={id=>query.update({locationId:id || null,offset:null})}
+          type={typeFilter} types={deviceTypes.map(t=>({id:t.code,name:t.displayName}))} onType={value=>query.update({deviceType:value==="all"?null:value,offset:null})}
+          status={statusFilter} statuses={statusOptions} onStatus={value=>query.update({status:value==="all"?null:value,offset:null})}
+          cancelled={includeCancelled} onCancelled={value=>query.update({includeCancelled:value,offset:null})} onClear={()=>query.update({q:null,locationId:null,deviceType:null,status:null,includeCancelled:false,offset:null})}/>
+
 
         <section className="maintenance-calendar-panel">
           <div className="maintenance-calendar-title">
@@ -351,8 +309,6 @@ function MaintenanceCalendarScreen() {
           {error ? <div className="error-message">{error}</div> : null}
           <SectionFeedback resource={operationSection} label="maintenance operations" onRetry={() => void load()} />
           <PageNavigation offset={offset} size={100} hasMore={hasMoreOperations} loading={isLoading} loaded={visibleOperations.length} onChange={(next) => query.update({ offset: next || null })} />
-          <p className="muted-text">Search/type filter the loaded operation page and roster; continue through pages for later records. Total unknown.</p>
-          <button type="button" className="ghost-button" onClick={() => query.update({ q: null, locationId: null, deviceType: null, status: null, includeCancelled: false, offset: null })}>Clear filters</button>
           {hasMoreDevices ? <button type="button" className="ghost-button" disabled={isLoadingRoster} onClick={() => void loadMoreDevices()}>Load more devices</button> : null}
           {referenceError ? <div className="error-message">{referenceError}<button type="button" className="ghost-button" onClick={() => void loadReferences()}>Retry references</button></div> : null}
           {selectedOperationId && !selectedOperation ? <SectionFeedback resource={selectedResource} label="selected operation" onRetry={() => void selectedResource.load(() => getMaintenanceOperation(selectedOperationId))} /> : null}

@@ -26,6 +26,11 @@ public class TelemetryMeasurementRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    public String findUnit(UUID deviceId, String metric) {
+        return jdbcTemplate.query("select unit from telemetry.measurements where device_id=? and metric_name=? order by recorded_at desc limit 1",
+                (row, index) -> row.getString("unit"), deviceId, metric).stream().findFirst().orElse("");
+    }
+
     public int insertAll(Collection<TelemetryMeasurement> measurements) {
         List<TelemetryMeasurement> batch = List.copyOf(measurements);
         if (batch.isEmpty()) {

@@ -16,6 +16,8 @@ spring:
         retry.backoff.ms: 100
 
 app:
+  variables:
+    telemetry-service-base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
   kafka:
     consume-enabled: ${ALERT_KAFKA_CONSUME_ENABLED:false}
   internal:

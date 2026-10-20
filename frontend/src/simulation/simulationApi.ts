@@ -33,6 +33,7 @@ export interface SimulationPreset {
   expectedAlerts: string[];
   defaultDuration: string;
   defaultInterval: string;
+  compatibleProfiles?:string[];
 }
 
 export function getSimulationConfig(deviceId: string) {

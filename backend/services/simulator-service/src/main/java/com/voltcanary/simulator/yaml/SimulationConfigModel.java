@@ -13,7 +13,8 @@ public record SimulationConfigModel(
         TargetConfig target,
         ScheduleConfig schedule,
         Map<String, MetricConfig> metrics,
-        List<AnomalyConfig> anomalies) {
+        List<AnomalyConfig> anomalies,
+        GpsConfig gps) {
 
     public SimulationConfigModel(
             int schemaVersion,
@@ -32,7 +33,13 @@ public record SimulationConfigModel(
                 new TargetConfig(sourceId),
                 new ScheduleConfig(interval, Duration.ZERO, duration, 1.0),
                 Map.of(),
-                List.of());
+                List.of(), null);
+    }
+
+    public SimulationConfigModel(int schemaVersion, String name, String profile, String mode,
+            String protocol, TargetConfig target, ScheduleConfig schedule,
+            Map<String, MetricConfig> metrics, List<AnomalyConfig> anomalies) {
+        this(schemaVersion, name, profile, mode, protocol, target, schedule, metrics, anomalies, null);
     }
 
     public String sourceId() {

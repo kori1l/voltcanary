@@ -57,6 +57,22 @@ public class AlertDeduplicationService {
         return deduplicationKey + ":reopen:" + (sourceEventId == null ? UUID.randomUUID() : sourceEventId);
     }
 
+    public String anomalyKey(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
+        if (event.variableEvidence() == null) return key(event.deviceId(), event.type(), severity, event.detectedAt());
+        return variablePrefix(event, severity) + event.eventId();
+    }
+
+    public Optional<Alert> activeAnomaly(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
+        if (event.variableEvidence() == null) return findActiveInWindow(event.deviceId(), event.type(), severity, event.detectedAt());
+        return alertRepository.findFirstByDeduplicationKeyStartingWithAndStatusNotAndCreatedAtBetweenOrderByCreatedAtDesc(
+                variablePrefix(event, severity), AlertStatus.RESOLVED,
+                event.detectedAt().minusSeconds(event.variableEvidence().deduplicationWindowSeconds()), event.detectedAt());
+    }
+
+    private String variablePrefix(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
+        return "variable:" + event.deviceId() + ":" + event.ruleId() + ":" + event.variableEvidence().dataSourceId() + ":" + severity + ":";
+    }
+
     public Optional<Alert> findExisting(UUID sourceEventId, String deduplicationKey) {
         return findBySourceEventId(sourceEventId)
                 .or(() -> findByDeduplicationKey(deduplicationKey));

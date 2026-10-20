@@ -46,6 +46,8 @@ public class SourceRegistryCache {
         if (source == null || source.dataSourceId() == null) {
             return;
         }
+        Entry existing = byDataSourceId.get(source.dataSourceId());
+        if (existing != null && existing.configVersion() > configVersion) return;
         remove(source.dataSourceId());
         Entry entry = new Entry(source, configVersion);
         byDataSourceId.put(source.dataSourceId(), entry);
@@ -102,7 +104,7 @@ public class SourceRegistryCache {
                 event.protocol(),
                 event.status(),
                 event.tokenPrefix(),
-                event.tokenHash());
+                event.tokenHash(), event.mapping());
     }
 
     private record Entry(InternalDataSourceResponse source, long configVersion) {

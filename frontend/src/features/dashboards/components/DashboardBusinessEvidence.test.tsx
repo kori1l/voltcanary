@@ -4,9 +4,25 @@ import {afterEach,expect,it} from "vitest";
 import type {DashboardWidget} from "../../../dashboards/dashboardsApi";
 import type {WidgetQueryPanel} from "../../../dashboards/dashboardQueriesApi";
 import {DashboardWidgetPanel} from "./DashboardWidgetPanel";
+import {MemoryRouter} from "react-router-dom";
 const widget:DashboardWidget={id:"value",type:"latest-value",typeVersion:1,title:"Power",binding:{mode:"FIXED",deviceIds:["owned"]},query:{metric:"activePowerW"},presentation:{},navigation:{},payload:{}};
 const panel:WidgetQueryPanel={widgetId:"value",status:"ready",data:{resultType:"VALUE",devices:[{id:"owned",name:"Fridge"}],value:{deviceId:"owned",metric:"activePowerW",unit:"W",value:0,measuredAt:"2026-10-09T12:00:00Z",quality:"OK"}},contextHash:"scope",time:null,requestedCount:1,evaluatedCount:1,receivedAt:"2026-10-09T12:00:01Z",measuredAt:"2026-10-09T12:00:00Z",provenance:{},errorCode:null,explanation:null};
 afterEach(cleanup);
+it("distinguishes an empty maintenance plan from denied or unresolved evidence",()=>{
+  const agenda={...widget,type:"maintenance-agenda"};
+  const view=render(<MemoryRouter><DashboardWidgetPanel widget={agenda} panel={{...panel,status:"no_data",data:null}} stale={false} onRetry={()=>{}}/></MemoryRouter>);
+  expect(screen.getByText("No maintenance is scheduled for this period.")).toBeVisible();
+  expect(screen.getByRole("link",{name:"Open maintenance calendar"})).toHaveAttribute("href","/maintenance");
+  view.rerender(<MemoryRouter><DashboardWidgetPanel widget={agenda} panel={{...panel,status:"no_access",data:null}} stale={false} onRetry={()=>{}}/></MemoryRouter>);
+  expect(screen.queryByText("No maintenance is scheduled for this period.")).not.toBeInTheDocument();
+  expect(screen.getByText("Access unavailable")).toBeVisible();
+  view.rerender(<MemoryRouter><DashboardWidgetPanel widget={agenda} panel={{...panel,status:"no_data",evaluatedCount:0,data:null}} stale={false} onRetry={()=>{}}/></MemoryRouter>);
+  expect(screen.queryByText("No maintenance is scheduled for this period.")).not.toBeInTheDocument();
+});
+it("shows authorized maintenance equipment and readable dates with optional exclusion columns",()=>{
+ render(<DashboardWidgetPanel widget={{...widget,type:"maintenance-agenda",presentation:{showMaintenanceFlags:false}}} panel={{...panel,data:{devices:[{id:"owned",name:"Fridge"}],sources:{maintenance:{rows:[{title:"Inspect compressor",deviceIds:["owned","denied"],startAt:"2026-10-10T12:00:00Z",endAt:"2026-10-10T13:00:00Z",suppressAlerts:false,excludeFromMl:true}]}}}}} stale={false} onRetry={()=>{}}/>);
+ expect(screen.getByText("Fridge, Unavailable equipment")).toBeVisible();expect(screen.queryByRole("columnheader",{name:"Exclude from ML"})).not.toBeInTheDocument();expect(screen.getByText(new Date("2026-10-10T12:00:00Z").toLocaleString())).toBeVisible();
+});
 it("defaults to a value without retrieval prose and exposes metadata only on demand",async()=>{
   render(<DashboardWidgetPanel widget={widget} panel={panel} stale={false} onRetry={()=>{}}/>);
   expect(screen.queryByText("Recorded evidence")).not.toBeInTheDocument();expect(screen.queryByText(/^1 of 1$/)).not.toBeInTheDocument();expect(screen.queryByText(/Fridge · activePowerW/)).not.toBeInTheDocument();
@@ -39,4 +55,10 @@ it("never exposes stale values when a panel is denied or has no data",()=>{
 it("plots observed envelope ranges without bridging recorded gaps",()=>{
   const evidence={...panel,widgetId:"series",time:{from:"2026-10-09T10:00:00Z",to:"2026-10-09T12:00:00Z",asOf:"2026-10-09T12:00:00Z",timezone:"UTC",override:false,compareFrom:null,compareTo:null,comparisonBasis:"NONE"},data:{devices:[{id:"owned",name:"Fridge"}],series:[{deviceId:"owned",metric:"activePowerW",buckets:[{minimum:0,maximum:20,first_value:0,last_value:20,sampleCount:3,gapCount:1,firstAt:"2026-10-09T10:00:00Z",lastAt:"2026-10-09T12:00:00Z",minimumAt:"2026-10-09T10:00:00Z",maximumAt:"2026-10-09T12:00:00Z",unit:"W"}]}]}};
   const {container}=render(<DashboardWidgetPanel widget={{...widget,id:"series",type:"time-series"}} panel={evidence} stale={false} onRetry={()=>{}}/>);expect(screen.getByRole("img",{name:"Fridge · activePowerW chart"})).toBeVisible();expect(container.querySelectorAll("polyline")).toHaveLength(0);expect(screen.queryByText(/Blank intervals and gaps are not interpolated/)).not.toBeInTheDocument();expect(screen.getByText(/source points/,{selector:"p"})).not.toBeVisible();
+});
+
+it("renders measured door states with Open/Closed labels and step lines",()=>{
+ const evidence={...panel,widgetId:"doors",time:{from:"2026-10-09T10:00:00Z",to:"2026-10-09T11:00:00Z",asOf:"2026-10-09T11:00:00Z",timezone:"UTC",override:false,compareFrom:null,compareTo:null,comparisonBasis:"NONE"},data:{devices:[{id:"owned",name:"Bus"}],series:[{deviceId:"owned",metric:"transport.doorsOpen",unit:"boolean",mode:"MEASURED_STATES",points:[{timestamp:"2026-10-09T10:00:00Z",value:0},{timestamp:"2026-10-09T10:00:05Z",value:1}],buckets:[]}]}};
+ const {container}=render(<DashboardWidgetPanel widget={{...widget,id:"doors",type:"time-series"}} panel={evidence} stale={false} onRetry={()=>{}}/>);
+ const chart=screen.getByRole("img",{name:"Bus · transport.doorsOpen chart"});expect(chart).toHaveTextContent("Closed");expect(chart).toHaveTextContent("Open");expect(container.querySelector("polyline")?.getAttribute("points")?.split(" ")).toHaveLength(3);
 });

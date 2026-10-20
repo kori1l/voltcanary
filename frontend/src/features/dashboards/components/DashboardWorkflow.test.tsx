@@ -11,21 +11,36 @@ import type {DashboardDraft,DashboardMetadata,DashboardPreferences} from "../../
 vi.mock("../../../auth/authApi",()=>({me:async()=>({role:"USER"}),logout:vi.fn()}));
 vi.mock("../../../aiAgent/AssistantDrawer",()=>({AssistantDrawer:()=>null}));
 afterEach(()=>{cleanup();vi.restoreAllMocks();clearTokens();localStorage.clear();});
+it("keeps publication, export and copy unavailable to a shared editor without those grants",async()=>{
+  const definition=blankDashboard("Shared editor");
+  const metadata:DashboardMetadata={id:"shared",ownerUserId:"owner",accountId:"account",name:definition.name,description:"",status:"ACTIVE",publishedRevision:1,createdAt:"",updatedAt:""};
+  vi.spyOn(globalThis,"fetch").mockImplementation(async(input)=>{
+    const path=new URL(String(input)).pathname;
+    const result=path.endsWith("/query-progressive")?{panels:[]}:path.endsWith("revisions")?{items:[]}:path.endsWith("/me")?{favorites:[],defaultContext:{}}:[];
+    return fixtureResponse(path,result);
+  });
+  render(<MemoryRouter><DashboardEditor metadata={metadata} initial={{dashboardId:"shared",authorUserId:"editor",baseRevision:1,etag:"draft",definition,updatedAt:""}} permissions={["view","edit"]}/></MemoryRouter>);
+  expect(screen.queryByRole("button",{name:"Review publication"})).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"Save draft now"})).toBeEnabled();
+  await userEvent.click(screen.getByRole("button",{name:"Dashboard settings"}));
+  expect(screen.queryByRole("button",{name:"Copy dashboard"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"Export template"})).not.toBeInTheDocument();
+});
 it("blocks publication when an inactive screen fails renewed validation",async()=>{
   const definition={...blankDashboard("Screens"),widgets:["visible","hidden"].map((id)=>({id,type:"fleet-count",typeVersion:1,title:id,binding:{mode:"ALL" as const},query:{},presentation:{},navigation:{},payload:{}})),screens:[{id:"monitor",title:"Monitoring",widgetIds:["visible"]},{id:"analyst",title:"Analytics",widgetIds:["hidden"]}]};
   const metadata:DashboardMetadata={id:"owned",ownerUserId:"owner",accountId:"account",name:"Screens",description:"",status:"ACTIVE",publishedRevision:0,createdAt:"",updatedAt:""};
   const requests:{path:string;body:Record<string,unknown>}[]=[];
   vi.spyOn(globalThis,"fetch").mockImplementation(async(input,init)=>{
     const path=new URL(String(input)).pathname,body=init?.body?JSON.parse(String(init.body)):{};requests.push({path,body});
-    const result=path.endsWith("query-validation")?{panels:[{widgetId:"hidden",status:"no_access"}]}:path.endsWith("/query")?{panels:[{widgetId:"visible",status:"ready",data:{counts:{registered:1}},provenance:{}}]}:path.endsWith("revisions")?{items:[]}:[];
-    return new Response(JSON.stringify(result),{headers:{"Content-Type":"application/json"}});
+    const result=path.endsWith("query-validation")?{panels:[{widgetId:"hidden",status:"no_access"}]}:path.endsWith("/query-progressive")?{panels:[{widgetId:"visible",status:"ready",data:{counts:{registered:1}},provenance:{}}]}:path.endsWith("revisions")?{items:[]}:[];
+    return fixtureResponse(path,result);
   });
   render(<MemoryRouter><DashboardEditor metadata={metadata} initial={{dashboardId:"owned",authorUserId:"owner",baseRevision:0,etag:"saved",definition,updatedAt:""}}/></MemoryRouter>);
   await waitFor(()=>expect(screen.getByRole("button",{name:"Review publication"})).toBeEnabled());
   await userEvent.click(screen.getByRole("button",{name:"Review publication"}));
   expect(await screen.findByText(/1 widgets across the screens need configuration or renewed access/)).toBeInTheDocument();
   expect(requests.find((request)=>request.path.endsWith("query-validation"))?.body).not.toHaveProperty("widgetIds");
-  expect(requests.find((request)=>request.path.endsWith("/query"))?.body.widgetIds).toEqual(["visible"]);
+  expect(requests.find((request)=>request.path.endsWith("/query-progressive"))?.body.widgetIds).toEqual(["visible"]);
   expect(requests.some((request)=>request.path.endsWith("/publish"))).toBe(false);expect(screen.queryByRole("button",{name:"Confirm publish"})).not.toBeInTheDocument();
   expect(screen.getByRole("link",{name:"View published dashboard"})).toHaveAttribute("href","/dashboards/owned?screenId=monitor");
 });
@@ -47,8 +62,8 @@ it("lets USER create, preview three-device facts, publish, default, reload and a
     else if(path==="/dashboards/created/revisions")result={items:[]};
     else if(path==="/dashboard-preferences/me"){if(method==="PUT")preferences={...preferences,...body,etag:"prefs-saved"};result=preferences;}
     else if(path==="/dashboard-widget-types")result=[{type:"fleet-count",typeVersion:1,title:"Fleet registration",resultType:"COUNT",supported:true,reducers:[],units:[],maxSeries:0,maxDetailDevices:0,maxRows:50,timeBasis:"SNAPSHOT"}];
-    else if(path==="/dashboards/created/query" || path==="/dashboards/created/query-validation")result={dashboardId:"created",revision:metadata?.publishedRevision ?? 0,draftEtag:body.draftEtag ?? null,contextHash:"fixture",asOf:"2026-10-09T00:00:00Z",returnedAt:"2026-10-09T00:00:01Z",cached:false,panels:draft.definition.widgets.map((widget)=>({widgetId:widget.id,status:path.endsWith("query-validation")?"valid":"ready",data:{counts:{registered:3,fresh:0,unknown:3}},contextHash:"fixture",time:null,requestedCount:3,evaluatedCount:3,receivedAt:"2026-10-09T00:00:01Z",measuredAt:null,provenance:{},errorCode:null,explanation:null}))};
-    return new Response(JSON.stringify(result),{status:path==="/dashboards" && method==="POST"?201:200,headers:{"Content-Type":"application/json"}});
+    else if(path==="/dashboards/created/query-progressive" || path==="/dashboards/created/query-validation")result={dashboardId:"created",revision:metadata?.publishedRevision ?? 0,draftEtag:body.draftEtag ?? null,contextHash:"fixture",asOf:"2026-10-09T00:00:00Z",returnedAt:"2026-10-09T00:00:01Z",cached:false,panels:draft.definition.widgets.map((widget)=>({widgetId:widget.id,status:path.endsWith("query-validation")?"valid":"ready",data:{counts:{registered:3,fresh:0,unknown:3}},contextHash:"fixture",time:null,requestedCount:3,evaluatedCount:3,receivedAt:"2026-10-09T00:00:01Z",measuredAt:null,provenance:{},errorCode:null,explanation:null}))};
+    return fixtureResponse(path,result,path==="/dashboards" && method==="POST"?201:200);
   });
   function View({entry}:{entry:string}){return <MemoryRouter initialEntries={[entry]}><Routes><Route element={<AppLayout/>}><Route path="/dashboards" element={<PersonalDashboardsPage/>}/><Route path="/dashboards/:dashboardId" element={<PersonalDashboardPage/>}/><Route path="/dashboards/:dashboardId/edit" element={<PersonalDashboardPage/>}/><Route path="/dashboard" element={<DashboardDefaultPage/>}/></Route></Routes></MemoryRouter>;}
   const mounted=render(<View entry="/dashboards"/>);
@@ -77,5 +92,13 @@ it("lets USER create, preview three-device facts, publish, default, reload and a
   reloaded.unmount();const archivedRender=render(<View entry="/dashboard"/>);await screen.findByRole("heading",{name:"USER fleet"});
   await userEvent.click(screen.getByRole("button",{name:"Dashboard settings"}));await userEvent.click(screen.getByRole("button",{name:"Manage"}));await userEvent.click(screen.getByRole("button",{name:"Archive dashboard"}));await userEvent.click(screen.getByRole("button",{name:"Confirm archive"}));await screen.findByText(/Archived dashboard/);
   await userEvent.click(screen.getByRole("link",{name:"Dashboards"}));await screen.findByRole("heading",{name:"Dashboards"});archivedRender.unmount();render(<View entry="/dashboard"/>);await screen.findByText(/DEFAULT_ARCHIVED.*Showing system overview/);
-  expect(preferences.defaultDashboardId).toBeNull();expect(requests.some((request)=>request.path.endsWith("/query") && request.body.revision===1)).toBe(true);
+  expect(preferences.defaultDashboardId).toBeNull();expect(requests.some((request)=>request.path.endsWith("/query-progressive") && request.body.revision===1)).toBe(true);
 },15000);
+
+function fixtureResponse(path:string,result:unknown,status=200){
+  if(path.endsWith("/query-progressive")){
+    const batch={contextHash:"fixture",asOf:"2026-10-09T00:00:00Z",...(result as object)};
+    return new Response(JSON.stringify(batch)+"\n"+JSON.stringify({complete:true,contextHash:batch.contextHash})+"\n",{headers:{"Content-Type":"application/x-ndjson"}});
+  }
+  return new Response(JSON.stringify(result),{status,headers:{"Content-Type":"application/json"}});
+}

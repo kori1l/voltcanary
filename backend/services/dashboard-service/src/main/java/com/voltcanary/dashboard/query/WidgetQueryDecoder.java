@@ -37,7 +37,8 @@ public class WidgetQueryDecoder {
                 parsed.deviceIds() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.deviceIds()),
                 parsed.locationIds() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.locationIds()), parsed.includeSubtree(),
                 parsed.deviceTypes() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.deviceTypes()),
-                parsed.locationTags() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.locationTags()));
+                parsed.locationTags() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.locationTags()),parsed.workspaceId(),parsed.accountId());
+        if ((normalized.workspaceId()==null)!=(normalized.accountId()==null)) throw failure("VALIDATION_ERROR","Workspace binding requires an associated account","scope");
         if (normalized.deviceIds().size() > 500 || normalized.locationIds().size() > 500
                 || normalized.deviceTypes().size() > 50 || normalized.locationTags().size() > 50
                 || (normalized.mode() == ScopeMode.FIXED && normalized.deviceIds().isEmpty() && normalized.locationIds().isEmpty())) {
@@ -61,6 +62,20 @@ public class WidgetQueryDecoder {
         Config parsed = widget.query() == null || widget.query().isNull()
                 ? new Config(null, null, null, null, null, 20, 0, null, null, null, List.of(), List.of())
                 : decode(widget.query(), Config.class, "query");
+        if ("vehicle-map".equals(widget.type())) {
+            Scope binding = scope(widget.binding());
+            boolean fleet = parsed.vehicleSources() != null;
+            boolean validSources = fleet
+                    ? parsed.sourceId() == null && parsed.vehicleSources().keySet().equals(binding.deviceIds())
+                        && parsed.vehicleSources().values().stream().allMatch(source -> source != null && !source.isBlank() && source.length() <= 255)
+                    : binding.deviceIds().size() == 1 && parsed.sourceId() != null && !parsed.sourceId().isBlank() && parsed.sourceId().length() <= 255;
+            if (binding.mode() != ScopeMode.FIXED || binding.deviceIds().isEmpty() || binding.deviceIds().size() > 20 || !binding.locationIds().isEmpty()
+                    || !validSources
+                    || parsed.metric() != null || parsed.reducer() != null || parsed.unit() != null
+                    || parsed.compare() != null || parsed.offset() != 0) {
+                throw failure("VALIDATION_ERROR", "Vehicle map requires fixed vehicles with explicit sources, without reducers or comparison", "query");
+            }
+        }
         List<QueryTypes.Series> series = parsed.series() == null ? List.of() : parsed.series();
         int rows = parsed.rows() == 0 ? 20 : parsed.rows();
         if (rows < 1 || rows > manifest.maxRows() || parsed.offset() < 0 || parsed.offset() > 1000000
@@ -74,12 +89,17 @@ public class WidgetQueryDecoder {
         if (parsed.unit() != null && !manifest.units().contains(parsed.unit())) {
             throw failure("VALIDATION_ERROR", "Unit is unsupported by this widget", "unit");
         }
-        if (parsed.metric() != null && !parsed.metric().matches("[A-Za-z][A-Za-z0-9_]{0,99}")) {
+        if (parsed.metric() != null && !parsed.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}")) {
             throw failure("VALIDATION_ERROR", "Metric must be a registered key", "metric");
         }
         if (series.stream().anyMatch(item -> item == null || item.deviceId() == null || item.metric() == null
-                || !item.metric().matches("[A-Za-z][A-Za-z0-9_]{0,99}"))) {
+                || !item.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))) {
             throw failure("VALIDATION_ERROR", "Series require an owned device and a metric key", "series");
+        }
+        if (series.stream().anyMatch(item -> item.variableId() != null
+                && (item.dataSourceId() == null || !item.metric().equals("var_" + item.variableId().toString().replace("-", "")))
+                || item.variableId() == null && (item.dataSourceId() != null || item.metric().startsWith("var_")))) {
+            throw failure("VALIDATION_ERROR", "Variable series require an explicit variable and source", "series");
         }
         if (parsed.columns() != null && (parsed.columns().size() > 8 || parsed.columns().stream().anyMatch(column ->
                 !List.of("registered", "freshness", "risk", "activeIncidents", "criticalIncidents", "energy").contains(column)))) {
@@ -87,7 +107,7 @@ public class WidgetQueryDecoder {
         }
         return new Config(parsed.metric(), parsed.unit(), parsed.reducer(), parsed.time(), parsed.compare(), rows,
                 parsed.offset(), parsed.freshnessPolicy(), parsed.cadenceSeconds(), parsed.incidentMode(), series,
-                parsed.columns() == null ? List.of() : parsed.columns(),parsed.independentMetersConfirmed());
+                parsed.columns() == null ? List.of() : parsed.columns(),parsed.independentMetersConfirmed(),parsed.sourceId(),parsed.vehicleSources());
     }
 
     private <T> T decode(JsonNode value, Class<T> type, String field) {

@@ -8,8 +8,9 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class WidgetManifests {
-    private static final List<String> UNITS = List.of("W", "V", "A", "Wh", "kWh", "C", "%", "Hz", "dBm", "mm/s", "h", "ratio");
+    private static final List<String> UNITS = List.of("W", "kW", "V", "A", "Wh", "kWh", "C", "°C", "F", "°F", "K", "", "%", "Hz", "dBm", "mm/s", "h", "ratio", "km/h", "deg", "s", "m/s²", "boolean");
     private final List<Manifest> catalog = List.of(
+            manifest("vehicle-map", "Vehicle movement map", "POSITIONS", List.of(), 0, 20, "SNAPSHOT_AND_INTERVAL"),
             manifest("fleet-count", "Fleet registration and freshness", "COUNT", List.of(), 0, 0, "SNAPSHOT"),
             manifest("latest-value", "Latest measured value", "VALUE", List.of(Reducer.RAW), 1, 1, "SNAPSHOT"),
             manifest("time-series", "Measured time series", "SERIES", List.of(Reducer.RAW, Reducer.AVG, Reducer.MIN, Reducer.MAX), 8, 50, "INTERVAL"),
@@ -23,8 +24,8 @@ public class WidgetManifests {
             manifest("context-note", "Operator context note", "NOTE", List.of(), 0, 0, "NONE"),
             manifest("energy-period", "Energy consumption and coverage", "ENERGY", List.of(), 0, 0, "INTERVAL"),
             manifest("peak-and-ranking", "Energy and recorded equipment peak ranking", "ENERGY_RANKING", List.of(), 0, 0, "INTERVAL"),
-            unsupported("estimated-cost", "Energy and versioned tariffs are required"),
-            unsupported("uptime-or-cycle", "Confirmed downtime/cycle contracts are required"));
+            manifest("estimated-cost", "Estimated energy cost", "COST", List.of(), 0, 50, "INTERVAL"),
+            manifest("uptime-or-cycle", "Confirmed operational periods", "OPERATIONS", List.of(), 0, 50, "CONFIRMED_INTERVAL"));
 
     public List<Manifest> all() {
         return catalog;

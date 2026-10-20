@@ -1,3 +1,4 @@
+import {TelemetryTemplatePanel} from "./TelemetryTemplatePanel";
 import { formatEnum } from "./deviceDetailsFormatting";
 import { Link } from "react-router-dom";
 import { activationRoute } from "../DeviceActivationSummary";
@@ -50,6 +51,8 @@ export function DeviceConfigurationPanel({ registry, sourceToken }: { registry: 
   const lastSourceToken = registry.lastSourceToken ?? sourceToken;
   return (<section className="registry-grid">
               {registry.confirmationDialog}
+              <TelemetryTemplatePanel sources={dataSources} onAssigned={()=>loadRegistry()}/>
+              {dataSources[0] ? <section className="panel"><h2>Device variables</h2><p>Calculate and store values from retained source fields, then use them in charts and threshold alerts.</p><Link className="ghost-button button-link" to={`/devices/${dataSources[0].deviceId}/variables`}>Configure variables for this device type</Link></section> : null}
               <section className="panel">
                 <div className="section-header">
                   <div>

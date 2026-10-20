@@ -24,8 +24,8 @@ public class DashboardLifecycle {
     @Transactional
     public Dashboard transition(DashboardActor actor, UUID id, String ifMatch, boolean archive) {
         storage.lockActor(actor);
-        Dashboard current = access.owned(actor, id);
-        Draft draft = storage.draft(id);
+        Dashboard current = access.capability(actor,id,"ARCHIVE");
+        Draft draft = storage.draft(id,actor.userId());
         access.match(ifMatch, draft.etag());
         String nextStatus = archive ? "ARCHIVED" : "ACTIVE";
         if (nextStatus.equals(current.status())) {
@@ -35,7 +35,7 @@ public class DashboardLifecycle {
             access.quota(actor);
         }
         Instant now = Instant.now();
-        Dashboard updated = new Dashboard(id, actor.userId(), actor.accountId(), current.name(),
+        Dashboard updated = new Dashboard(id, current.ownerUserId(), current.accountId(), current.name(),
                 current.description(), nextStatus, current.publishedRevision(), current.schemaVersion(), current.createdAt(), now);
         storage.update(updated);
         storage.saveDraft(new Draft(id, draft.authorUserId(), draft.baseRevision(), UUID.randomUUID(), draft.definition(), now));

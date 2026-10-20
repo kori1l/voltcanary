@@ -42,6 +42,9 @@ export function useSectionResource<T>(scope = "default") {
   const update = useCallback((mutator: (data: T) => T) => {
     setStored((previous) => previous.scope === scope && previous.state.data !== null ? { scope, state: { ...previous.state, data: mutator(previous.state.data) } } : previous);
   }, [scope]);
+  const progress = useCallback((data:T) => {
+    setStored(previous => previous.scope===scope ? {scope,state:{...previous.state,data,status:"ready",refreshing:true}} : previous);
+  },[scope]);
   const waitForDependency = useCallback((error: string | null = null) => {
     request.current += 1;
     setStored({ scope, state: { ...initial<T>(error ? "error" : "waiting-dependency"), error } });
@@ -54,5 +57,5 @@ export function useSectionResource<T>(scope = "default") {
       return { scope, state: { data, status: "ready", error: null, receivedAt: new Date().toISOString(), refreshing: false } };
     });
   }, [scope]);
-  return { ...(stored.scope === scope ? stored.state : initial<T>()), load, update, setData, waitForDependency };
+  return { ...(stored.scope === scope ? stored.state : initial<T>()), load, update, progress, setData, waitForDependency };
 }

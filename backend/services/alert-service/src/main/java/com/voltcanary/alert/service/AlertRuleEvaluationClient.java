@@ -66,7 +66,7 @@ public class AlertRuleEvaluationClient {
                             rule.minPoints(),
                             rule.severity(),
                             from,
-                            to))
+                            to, rule.config()))
                     .retrieve()
                     .body(AnalyticsRuleTestResponse.class);
             if (response == null) {
@@ -122,7 +122,7 @@ public class AlertRuleEvaluationClient {
             Integer minPoints,
             String severity,
             Instant from,
-            Instant to) {
+            Instant to, java.util.Map<String, Object> config) {
     }
 
     private record AnalyticsRuleTestResponse(

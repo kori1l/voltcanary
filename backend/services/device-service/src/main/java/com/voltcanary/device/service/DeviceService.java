@@ -173,8 +173,15 @@ public class DeviceService {
 
     @Transactional
     public DeviceResponse update(AuthenticatedUser user, UUID id, DeviceRequest request) {
-        Device device = findOwned(user, id);
+        Device device = deviceRepository.lockOwned(id, accountService.currentAccount(user).getId())
+                .orElseThrow(() -> new NotFoundException("Device not found"));
         DeviceType deviceType = deviceType(request.type());
+        if (!device.getDeviceTypeId().equals(deviceType.getId())
+                && deviceRepository.countEnabledVariableBindings(device.getId()) > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Disable device variable bindings before changing device type");
+        }
         if (request.locationId() != null) {
             locationService.findOwned(user, request.locationId());
         }

@@ -10,6 +10,7 @@ behavior.
 | Topic | Document |
 | --- | --- |
 | Platform target architecture, current baseline, and target gaps | [architecture.md](architecture.md) |
+| Proposed device variables: definitions, transformations, stored telemetry, charts and threshold alerts | [device-variables.md](device-variables.md) |
 | Production readiness gaps | [production-readiness.md](production-readiness.md) |
 | Target alert lifecycle Kafka topics | [alert-lifecycle-events.md](alert-lifecycle-events.md) |
 | Notification delivery operations target | [notification-delivery-operations.md](notification-delivery-operations.md) |

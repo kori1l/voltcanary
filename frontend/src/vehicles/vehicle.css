@@ -1,0 +1,39 @@
+.vehicle-map-view{display:flex;flex-direction:column;gap:.5rem;width:100%;height:100%;min-height:0}
+.vehicle-map-canvas{flex:1;min-height:160px;width:100%;border-radius:8px;overflow:hidden}
+.vehicle-movement-panel .vehicle-map-canvas{min-height:280px}
+.vehicle-position-summary{display:flex;flex-wrap:wrap;gap:.4rem 1rem;font-size:.8rem}
+.vehicle-follow{display:flex;align-items:center;gap:.4rem;font-size:.85rem}
+.vehicle-marker{font-size:30px;line-height:1;color:#2563eb;text-shadow:0 1px 3px white}
+.vehicle-movement-panel{height:480px;min-height:360px}
+.vehicle-movement-controls{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin-bottom:1rem}
+.vehicle-console{display:flex;flex-direction:column;gap:1rem;min-width:0}
+.vehicle-console label,.vehicle-zone-list label{display:flex;flex-direction:column;gap:.3rem}
+.vehicle-fleet-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:1rem}
+.vehicle-fleet-list{max-height:480px;overflow:auto;display:flex;flex-direction:column;gap:.5rem}
+.vehicle-fleet-list article{display:flex;flex-direction:column;gap:.4rem;padding:.75rem;border:1px solid #dbe2ef;border-radius:8px;background:white}
+.vehicle-fleet-list article.selected{border-color:#2563eb;background:#eff6ff}
+.fleet-map{min-width:0;display:flex;flex-direction:column;gap:.5rem}
+.fleet-map-canvas{height:430px;min-height:260px;border-radius:10px;overflow:hidden}
+.fleet-marker{border:2px solid white;border-radius:50%;background:#2563eb;color:white;width:32px;height:32px;padding:0;cursor:pointer;box-shadow:0 1px 5px #0f172a40;display:flex;align-items:center;justify-content:center}.fleet-marker-glyph{display:flex;align-items:center;justify-content:center;pointer-events:none}.fleet-marker-glyph svg{width:18px;height:18px}.fleet-marker-direction{position:absolute;inset:-5px;pointer-events:none}.fleet-marker-direction::before{content:"";position:absolute;left:calc(50% - 3px);top:0;border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:5px solid #2563eb}.fleet-marker-direction[hidden]{display:none}.fleet-marker.selected .fleet-marker-direction::before{border-bottom-color:#7c3aed}.fleet-marker.stale .fleet-marker-direction::before{border-bottom-color:#64748b}.fleet-marker:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
+.fleet-marker.selected{background:#7c3aed}.fleet-marker.stale{background:#64748b}
+.vehicle-history .vehicle-map-canvas,.vehicle-zone-map .vehicle-map-canvas{min-height:320px}
+.vehicle-playback{display:flex;flex-direction:column;width:100%;margin:.75rem 0}
+.vehicle-zone-list{display:flex;flex-direction:column;gap:1rem;margin:1rem 0}
+.vehicle-zone-list fieldset{display:flex;flex-wrap:wrap;gap:1rem;border:1px solid #dbe2ef;border-radius:8px;padding:1rem}
+.vehicle-zone-list input{max-width:180px}.vehicle-zone-list legend label{flex-direction:row}
+.vehicle-live-summary{display:flex;flex-wrap:wrap;gap:1rem}.vehicle-live-summary p{width:100%}
+.vehicle-events{max-height:320px;overflow:auto;list-style:none;padding:0}
+.simulation-panel .sim-form-section[hidden]{display:none!important}
+@media(max-width:767px){.vehicle-fleet-layout{grid-template-columns:1fr}.vehicle-fleet-list{max-height:220px}.fleet-map-canvas{height:330px}.vehicle-movement-controls>*{max-width:100%}.vehicle-zone-list input{max-width:100%}}
+
+.dashboard-fleet-map{height:100%;min-height:0;display:flex;flex-direction:column;gap:.5rem}.dashboard-fleet-map .fleet-map{flex:1;min-height:0}.dashboard-fleet-map .fleet-map-canvas{height:auto;flex:1;min-height:180px}.dashboard-fleet-readings{display:flex;flex-wrap:wrap;gap:.5rem}
+
+.fleet-map-surface{position:relative;min-height:0;flex:1;display:flex}.fleet-map-surface>.fleet-map-canvas{flex:1;width:100%}
+.fleet-map-settings{position:absolute;top:10px;right:10px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.fleet-settings-toggle{width:32px;height:32px;display:grid;place-items:center;padding:0;border:1px solid #dbe2e8;border-radius:7px;background:#fff;color:#475569;box-shadow:0 1px 4px #0f172a18;cursor:pointer}.fleet-settings-toggle:hover,.fleet-settings-toggle[aria-expanded="true"]{background:#f1f5f9;color:#2563eb}.fleet-settings-toggle:focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+.fleet-settings-panel{width:218px;max-width:calc(100vw - 50px);padding:12px;display:flex;flex-direction:column;gap:11px;background:#fff;border:1px solid #e2e8f0;border-radius:9px;box-shadow:0 6px 24px #0f172a24;font-size:12px;color:#334155}.fleet-settings-panel label{display:flex;flex-direction:row;align-items:center;gap:7px}.fleet-settings-panel small{color:#64748b;font-size:11px;line-height:1.5;border-top:1px solid #e2e8f0;padding-top:9px}.fleet-fit-button{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:6px 9px;color:#334155;cursor:pointer;text-align:left;font-size:12px}
+.dashboard-fleet-table{flex-shrink:0;max-height:190px;overflow:auto;border:1px solid #e2e8f0;border-radius:7px}.dashboard-fleet-table table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}.dashboard-fleet-table th{position:sticky;top:0;z-index:1;background:#f8fafc;color:#64748b;font-size:11px;font-weight:500}.dashboard-fleet-table th,.dashboard-fleet-table td{padding:6px 10px;border-bottom:1px solid #edf1f5;white-space:nowrap}.dashboard-fleet-table tr:last-child td{border-bottom:0}.dashboard-fleet-table tbody tr{cursor:pointer}.dashboard-fleet-table tbody tr:hover{background:#f8fafc}.dashboard-fleet-table tbody tr.selected{background:#f0edff}.fleet-table-name{border:0;background:transparent;padding:0;color:#334155;font-size:12px;font-weight:500;cursor:pointer;text-align:left}.fleet-table-name[aria-pressed="true"]{color:#6d28d9}.fleet-table-name:focus-visible{outline:2px solid #6366f1;outline-offset:2px}.fleet-table-status{display:inline-flex;align-items:center;gap:5px;color:#64748b;font-size:11px}.fleet-table-status>span{width:6px;height:6px;border-radius:50%;background:#94a3b8}.fleet-table-status.fresh>span{background:#22c55e}.fleet-table-status.stale>span{background:#f59e0b}.dashboard-fleet-table .fleet-speed{text-align:right;font-variant-numeric:tabular-nums}.fleet-time{color:#64748b;font-variant-numeric:tabular-nums}.dashboard-fleet-map>small{font-size:11px;color:#64748b}
+
+.dashboard-fleet-table[hidden]{display:none}.fleet-table-toggle{flex-shrink:0;width:100%;display:flex;align-items:center;justify-content:space-between;border:0;border-top:1px solid #e2e8f0;border-radius:0;background:transparent;color:#475569;padding:6px 2px;font-size:12px;cursor:pointer}.fleet-table-toggle:hover{color:#6d28d9}.fleet-table-toggle:focus-visible{outline:2px solid #6366f1;outline-offset:2px}.fleet-table-count{display:inline-block;min-width:20px;margin-left:5px;padding:1px 5px;background:#f1f5f9;border-radius:5px;text-align:center;font-size:11px}
+
+.transport-details{display:flex;flex-wrap:wrap;gap:6px 16px;margin:0;font-size:11px;color:#475569;flex-shrink:0}.transport-details>div{display:flex;gap:5px}.transport-details dt{color:#94a3b8}.transport-details dd{margin:0}

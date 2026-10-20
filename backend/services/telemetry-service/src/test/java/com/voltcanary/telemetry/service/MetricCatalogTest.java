@@ -10,7 +10,7 @@ class MetricCatalogTest {
     private final MetricCatalog catalog = new MetricCatalog();
 
     @Test
-    void exposesTenNumericMetricsForCapacityProfile() {
+    void exposesApplianceAndGpsNumericMetrics() {
         var metricNames = List.of(
                 "activePowerW",
                 "voltageV",
@@ -24,7 +24,7 @@ class MetricCatalogTest {
                 "frequencyHz");
 
         assertThat(metricNames).allSatisfy(metricName -> assertThat(catalog.isSupported(metricName)).as(metricName).isTrue());
-        assertThat(catalog.all()).hasSize(10);
+        assertThat(catalog.all()).hasSize(17);
         assertThat(catalog.find("temperatureC").orElseThrow().unit()).isEqualTo("C");
         assertThat(catalog.find("vibrationMmS").orElseThrow().unit()).isEqualTo("mm/s");
         assertThat(catalog.find("runtimeHours").orElseThrow().unit()).isEqualTo("h");

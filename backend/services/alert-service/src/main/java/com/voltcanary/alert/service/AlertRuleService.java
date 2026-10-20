@@ -52,16 +52,18 @@ public class AlertRuleService {
     private final ObjectMapper objectMapper;
     private final AlertAccessService accessService;
     private final AlertRuleEvaluationClient evaluationClient;
+    private final VariableRuleValidation variableRules;
 
     public AlertRuleService(
             AlertRuleRepository repository,
             ObjectMapper objectMapper,
             AlertAccessService accessService,
-            AlertRuleEvaluationClient evaluationClient) {
+            AlertRuleEvaluationClient evaluationClient, VariableRuleValidation variableRules) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.accessService = accessService;
         this.evaluationClient = evaluationClient;
+        this.variableRules = variableRules;
     }
 
     @Transactional(readOnly = true)
@@ -79,7 +81,11 @@ public class AlertRuleService {
                 equalsIfPresent("ruleType", normalizeOptional(ruleType)),
                 equalsIfPresent("scopeType", normalizeOptional(scopeType)),
                 equalsIfPresent("metric", normalizeMetric(metric)));
-        return repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt")).stream()
+        var found = repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt"));
+        UUID owner = found.stream().anyMatch(rule -> variableRules.applies(rule.getMetric(), variableRules.config(rule)))
+                ? accessService.ownAccount(userId) : null;
+        return found.stream()
+                .filter(rule -> !variableRules.applies(rule.getMetric(), variableRules.config(rule)) || rule.getAccountId().equals(owner))
                 .map(this::toResponse)
                 .toList();
     }
@@ -102,13 +108,21 @@ public class AlertRuleService {
         rule.setCreatedAt(now);
         rule.setUpdatedAt(now);
         applyCreate(rule, request);
+        variableRules.validate(rule, userId, null);
         return toResponse(repository.save(rule));
     }
 
     @Transactional
     public AlertRuleResponse update(UUID id, String userId, String accountId, UpdateAlertRuleRequest request) {
-        AlertRule rule = loadOwned(id, userId, accountId);
+        AlertRule rule = lockOwned(id, userId, accountId);
+        if (variableRules.applies(rule.getMetric(), variableRules.config(rule))) {
+            Object expected = request == null || request.config() == null ? null : request.config().get("expectedVersion");
+            if (!(expected instanceof Number number) || number.intValue() != rule.getVersion()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Variable rule changed; reload");
+            }
+        }
         applyUpdate(rule, request);
+        variableRules.validate(rule, userId, variableRules.applies(rule.getMetric(), variableRules.config(rule)) ? rule.getVersion() : null);
         rule.setVersion(rule.getVersion() + 1);
         rule.setUpdatedBy(parseUuid(userId));
         rule.setUpdatedAt(Instant.now());
@@ -117,8 +131,9 @@ public class AlertRuleService {
 
     @Transactional
     public AlertRuleResponse setEnabled(UUID id, String userId, String accountId, boolean enabled) {
-        AlertRule rule = loadOwned(id, userId, accountId);
+        AlertRule rule = lockOwned(id, userId, accountId);
         rule.setEnabled(enabled);
+        variableRules.validate(rule, userId, null);
         rule.setVersion(rule.getVersion() + 1);
         rule.setUpdatedBy(parseUuid(userId));
         rule.setUpdatedAt(Instant.now());
@@ -127,7 +142,7 @@ public class AlertRuleService {
 
     @Transactional
     public void delete(UUID id, String userId, String accountId) {
-        repository.delete(loadOwned(id, userId, accountId));
+        repository.delete(lockOwned(id, userId, accountId));
     }
 
     @Transactional(readOnly = true)
@@ -143,6 +158,7 @@ public class AlertRuleService {
         draft.setCreatedAt(Instant.now());
         draft.setUpdatedAt(Instant.now());
         applyCreate(draft, request.rule());
+        variableRules.validate(draft, userId, null);
         if (request.deviceId() != null) {
             return evaluationClient.test(request.deviceId(), request.rule(), request.from(), request.to(), userId, correlationId);
         }
@@ -206,8 +222,19 @@ public class AlertRuleService {
     }
 
     private AlertRule loadOwned(UUID id, String userId, String accountId) {
-        return repository.findByIdAndAccountId(id, accountScope(userId, accountId))
+        AlertRule rule = repository.findByIdAndAccountId(id, accountScope(userId, accountId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found"));
+        if (variableRules.applies(rule.getMetric(), variableRules.config(rule))
+                && !accessService.ownAccount(userId).equals(rule.getAccountId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found");
+        }
+        return rule;
+    }
+
+    private AlertRule lockOwned(UUID id, String userId, String accountId) {
+        repository.lockOwned(id, accountScope(userId, accountId))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found"));
+        return loadOwned(id, userId, accountId);
     }
 
     private void applyCreate(AlertRule rule, CreateAlertRuleRequest request) {
@@ -320,7 +347,8 @@ public class AlertRuleService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User context is required");
         }
         try {
-            return UUID.fromString(scope);
+            UUID parsed = UUID.fromString(scope);
+            return accountId == null || accountId.isBlank() ? accessService.ownAccount(userId) : parsed;
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Account scope must be a UUID");
         }
@@ -435,7 +463,7 @@ public class AlertRuleService {
                 rule.getSeverity(),
                 rule.getCooldownSeconds(),
                 rule.getDeduplicationWindowSeconds(),
-                rule.getVersion());
+                rule.getVersion(), rule.getThresholdUnit(), readConfig(rule.getConfigJson()));
     }
 
     private UUID parseUuid(String value) {

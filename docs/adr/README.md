@@ -6,6 +6,8 @@ new ADR for a new durable decision.
 
 ## Decisions
 
+Workspace resources and team publication: [ADR-012](ADR-012-workspace-resource-and-dashboard-grants.md).
+
 | ADR | Decision |
 | --- | --- |
 | [ADR-001](ADR-001-use-monorepo.md) | Use a monorepo |
@@ -22,3 +24,5 @@ new ADR for a new durable decision.
 
 - Current architecture: [../current/architecture/README.md](../current/architecture/README.md)
 - OpenSpec policy: [../../openspec/project.md](../../openspec/project.md)
+
+[ADR-013](ADR-013-device-variable-materialization.md): materialize bounded device variables in telemetry-service.

@@ -34,11 +34,8 @@ public class TelemetryAccessService {
         if (userId == null || userId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
         }
-        if ("ADMIN".equals(role) || "SUPPORT".equals(role)) {
-            return;
-        }
         try {
-            restClient.get()
+            var decision=restClient.get()
                     .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
                     .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
                     .header("X-Internal-Service-Token", internalServiceToken)
@@ -46,7 +43,8 @@ public class TelemetryAccessService {
                     .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
                         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Device access denied");
                     })
-                    .toBodilessEntity();
+                    .body(com.fasterxml.jackson.databind.JsonNode.class);
+            if (decision==null || !decision.path("allowed").asBoolean(false)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Device access denied");
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (Exception exception) {

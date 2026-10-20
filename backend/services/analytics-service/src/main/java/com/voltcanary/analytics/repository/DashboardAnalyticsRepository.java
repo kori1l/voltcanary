@@ -96,10 +96,24 @@ public class DashboardAnalyticsRepository {
     private void metadata(ObjectNode target, String json) {
         try {
             JsonNode source = mapper.readTree(json);
+            JsonNode modelIdentity = source.has("responseModelVersionId") ? source.get("responseModelVersionId")
+                    : source.has("response_model_version_id") ? source.get("response_model_version_id")
+                    : source.has("modelVersionId") ? source.get("modelVersionId") : source.get("model_version_id");
+            if (modelIdentity != null && modelIdentity.isTextual()) {
+                try {
+                    target.put("modelVersionId", UUID.fromString(modelIdentity.asText()).toString());
+                } catch (IllegalArgumentException ignored) {
+                    // Unknown response identity must not become a policy-model link.
+                }
+            }
             for (String key : List.of("modelFamily", "horizonDays", "predictionPath", "predictionStatus",
                     "modelStatus", "failureRiskScore", "datasetVersionId", "featureSnapshotId", "reason")) {
                 String snake = key.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
                 JsonNode value = source.has(key) ? source.get(key) : source.get(snake);
+                if (value == null && "horizonDays".equals(key)) {
+                    value = source.has("failureHorizonDays") ? source.get("failureHorizonDays")
+                            : source.get("failure_horizon_days");
+                }
                 if (value != null && value.isValueNode()) target.set(key, value);
             }
         } catch (Exception ignored) {

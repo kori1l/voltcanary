@@ -65,6 +65,40 @@ class DeviceManagementTest {
     private DeviceAuditService auditService;
 
     @Test
+    void sharedTelemetryTemplatesAreOwnerScopedAndPropagateEditsToAssignedType() {
+        UUID owner = UUID.randomUUID();
+        UUID foreign = UUID.randomUUID();
+        var location = createLocation(owner, "Template devices");
+        var first = createDevice(owner, location.id(), "Template first");
+        var second = createDevice(owner, location.id(), "Template second");
+        var firstSource = createDataSource(owner, first.id(), "template-first-" + owner);
+        var secondSource = createDataSource(owner, second.id(), "template-second-" + owner);
+        var field = Map.of("path", "temperatureC", "key", "temperatureC", "label", "Temperature", "type", "number", "unit", "C", "store", true, "display", true);
+        var edit = Map.of("name", "Fridge readings", "deviceType", "FRIDGE", "policy", Map.of("fields", List.of(field)));
+        var created = restTemplate.exchange("/devices/telemetry-templates", HttpMethod.POST, new HttpEntity<>(edit, headersFor(owner, "template@example.com")), com.voltcanary.device.telemetry.TelemetryTemplates.Template.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        var template = created.getBody();
+        var foreignResult = restTemplate.exchange("/devices/telemetry-templates/assign", HttpMethod.POST,
+                new HttpEntity<>(Map.of("templateId", template.id(), "deviceType", "FRIDGE"), headersFor(foreign, "foreign@example.com")), String.class);
+        assertThat(foreignResult.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        var assignment = restTemplate.exchange("/devices/telemetry-templates/assign", HttpMethod.POST,
+                new HttpEntity<>(Map.of("templateId", template.id(), "deviceType", "FRIDGE"), headersFor(owner, "template@example.com")), String.class);
+        assertThat(assignment.getStatusCode()).as(assignment.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(assignment.getBody()).contains("2");
+        var editedField = new java.util.HashMap<String,Object>(field);
+        editedField.put("store", false);
+        var update = Map.of("name", "Fridge readings", "deviceType", "FRIDGE", "version", 1, "policy", Map.of("fields", List.of(editedField)));
+        var saved = restTemplate.exchange("/devices/telemetry-templates/" + template.id(), HttpMethod.PUT,
+                new HttpEntity<>(update, headersFor(owner, "template@example.com")), String.class);
+        assertThat(saved.getStatusCode()).as(saved.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(dataSourceRepository.findById(firstSource.id()).orElseThrow().getMappingJson()).contains("telemetryPolicy", "\"store\":false");
+        assertThat(dataSourceRepository.findById(secondSource.id()).orElseThrow().getMappingJson()).contains("telemetryPolicy", "\"store\":false");
+        var stale = restTemplate.exchange("/devices/telemetry-templates/" + template.id(), HttpMethod.PUT,
+                new HttpEntity<>(update, headersFor(owner, "template@example.com")), String.class);
+        assertThat(stale.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
     void createsAccountImplicitly() {
         ResponseEntity<AccountResponse> response = restTemplate.exchange(
                 "/accounts/current",

@@ -152,7 +152,7 @@ zero_baseline has no percent. Celsius never has ratio percentages. Units are
 never silently converted or combined.
 
 The batch returns dashboardId/revision/draftEtag/contextHash/asOf/returnedAt/
-cached/panels. Each panel has widgetId, status (ready/no_data/unavailable/
+cached/panels/scopes. Each panel has widgetId, status (ready/no_data/unavailable/
 no_access/unsupported/invalid), nullable data, contextHash, resolved time,
 requestedCount/evaluatedCount, receivedAt/measuredAt, provenance,
 errorCode/explanation. No-access and failed panels contain no previous data.
@@ -196,7 +196,14 @@ reads and a bounded queue; panels have a five-second evidence deadline, HTTP rea
 four seconds, and owner SQL statements three seconds. Scope and actor authorization
 run before cache lookup. A cache key partitions actor/account, immutable revision
 or draftETag, complete definition, typed runtime and fresh authorized metadata
-fingerprint. Up to64 entries live30s; snapshots retain their original asOf and
+fingerprint and selected widget IDs. Read keys normalize unused pagination and
+select only required telemetry latest/summaries/quality/series. Latest-only reads
+use asOf without unrelated comparison/pagination fields. Observed metric keys
+and indexed account/null-account candidates preserve historical latest values
+without a catalogue-only restriction or history cutoff. Up to64 compact entries
+live30s within a16MB serialized-byte LRU budget (8MB per entry). Private cost and
+operations also renew current tariff/fact/schedule version fingerprints before
+reuse, including comparison facts. Workspace evidence remains uncached; snapshots retain their original asOf and
 contextHash, with cached=true/new returnedAt. Failed batches are not cached;
 no-access purges the actor's entries. These are owner read snapshots sharing a
 query asOf, not a distributed transaction or reconstructed incident history.
@@ -324,3 +331,115 @@ retain their contracts. Numeric panel width/height use the same column/row units
 Widget manifest sizeConstraints now allow one column and one row on every
 profile. These are resize minima; the console maintains separate, useful
 insertion defaults. Placement validation continues to accept 1–100 rows.
+
+### Prediction presentation settings
+
+The existing presentation object supports `predictionSort` (`RECENT` or
+`RISK_DESC`), `showPredictionModel` and `showPredictionTime` for prediction-evidence.
+Defaults preserve server ordering and omit optional model/time columns. Risk
+sorting affects only returned rows and retains total/hasNext disclosure. Finite
+failureRiskScore values in [0,1] are rendered as percentages only for stored
+TRAINED_MODEL + FAILURE_PREDICTION rows. Confidence remains distinct from measured
+accuracy; missing or non-ready values stay unavailable. Device links require a
+matching device in authorized panel evidence. These are presentation settings;
+query authorization, stored prediction semantics and inference are unchanged.
+
+Stored `failureHorizonDays` / `failure_horizon_days` is mapped to the existing
+`horizonDays` dashboard field when the legacy horizon field is absent. Business
+tables support optional `showRecordTime` (default true) for measured/created
+columns; scheduled maintenance start/end remain visible. Risk demo panels omit
+record-time columns for compactness; panel information retains source evidence.
+Maintenance agenda presentation also accepts showMaintenanceFlags (default true)
+for suppression/exclusion columns; deviceIds resolve through authorized panel
+resources and date fields render in the viewer's locale.
+
+### Prediction model navigation
+
+Prediction evidence exposes modelVersionId from the stored response model identity
+(responseModelVersionId or equivalent direct/snake-case field), never from a
+requested deployment-policy modelId. Trained rows with valid model UUIDs link to
+/settings/ml?tab=models&modelId=<uuid>&family=<recorded-family>. The registry
+shows only that authorized model card; missing/filtered records show an explicit
+unavailable selection. Show all models clears the selection. Heuristic states
+and missing/invalid identities remain noninteractive. Navigation is read-only.
+
+
+## Optimized dashboard delivery (2026-10-11)
+
+`POST /dashboards/{id}/query-progressive` accepts the same query reference and
+returns `application/x-ndjson`. Every newline is a compact batch containing newly
+completed panels, at one contextHash/revision/asOf. Each scope dictionary entry is
+sent once. The final line is `{complete:true,contextHash}`. A terminal failure is
+`{errorCode,explanation}`; interrupted streams have no completion marker. Consumers
+reject changed watermarks/actors, obsolete requests and truncated streams.
+Authentication/query-reference errors before delivery retain ordinary HTTP errors;
+errors after delivery begins use NDJSON. Each panel completes its own scope and
+owner checks before delivery. Streams use a bounded executor and a five-second
+evidence deadline. Downstream work retains HTTP/SQL deadlines after browser abort.
+
+`GET /dashboards/{id}/query-snapshots/{contextHash}/panels/{widgetId}` returns full
+source evidence for that original panel. Current actor, dashboard revision access,
+resource capabilities and scope fingerprint are renewed. Retention is at most30s,
+32 snapshots and32MB of serialized data, with8MB maximum per snapshot. Expired or
+evicted evidence returns410 `SNAPSHOT_EXPIRED`; refresh to obtain a new snapshot.
+Revocation returns403 and removes retained evidence. This API never recalculates
+historical sources at a different watermark.
+
+Query/details use `Cache-Control: no-store`. Progressive responses flush ready
+panel groups immediately with `X-Accel-Buffering: no`; production ingress must
+preserve these flushes.
+
+The viewer keeps same-context panels during refresh, exposes refresh state in settings without
+a status row above the canvas and aborts manual/automatic reads on supersession/unmount. Actor/revision/screen/runtime
+changes clear prior evidence. Before renewed definition access, empty skeletons
+show layout only; an in-memory8-entry cache retains placements/grid settings and
+clears on session changes. Age clocks run only inside displayed information.
+
+Internal `POST /internal/dashboard/energy-batch` accepts `{scope,intervals}`. The
+owner-read scope supplies actor/account/workspace/devices and one `time.asOf`.
+Each interval has unique key, deviceIds, from/to and independentMetersConfirmed.
+There are1-64 intervals and1-50 distinct authorized devices per interval. Every
+half-open interval is at most31 days and ends no later than asOf. The response is
+`{asOf,intervals:{key:{period,evaluatedCount,deniedBindingCount,authorizedDeviceIds}}}`.
+One renewed registry scope and one raw SQL read serve the batch, with a total
+500000-selected-sample budget. SQL filters account/device/canonical source/required
+metric and physical/time bounds; overlapping ranges are merged before one indexed
+measurement SELECT. At most10000 merged ranges bound SQL parameters. Each interval
+retains its original one-day bracketing window, clipped to physical identity and
+asOf. Streams normalize once per request; binary time bounds and prefix quality
+totals avoid rescanning the complete sample union per cycle. Reset/gap/replacement/raw-maintenance-consumption policies are
+unchanged. Invalid intervals fail the batch; denied evidence never enters an
+aggregate. Cost uses one batch across current/comparison tariff segments; operations
+use one batch per current/comparison period, independent of completed-cycle count.
+
+Maintenance pages use count + page + one account-filtered authorized device lookup
+for nonempty pages. Empty pages need no device lookup. Pagination, ordering and
+suppression/analytics/ML flags remain unchanged.
+
+## Vehicle map widget v1
+
+`vehicle-map` typeVersion1, resultType POSITIONS: one fixed VEHICLE binding and
+`query.sourceId` (external source identifier). No unit/reducer/fleet/comparison
+or scalar visualization is supported. Evidence is `data.positions={latest,history}`.
+Time inherits the dashboard, capped24h with isolated LIMIT_EXCEEDED. Runtime
+filters intersect this binding. Empty scope has no position. Authorization,
+contextHash, progressive results and current resource checks are unchanged.
+Map queries bypass snapshot cache to expose the next sample at refresh. Draft,
+copy, undo and publication retain sourceId and presentation.follow. Renderer
+performs no fetch or timer; inactive screens perform no GPS reads. Map dashboards
+initially refresh at5s; browser-local refresh preference survives reload.
+
+
+## Vehicle map fleet query
+
+The existing vehicle-map widget also accepts query.vehicleSources: a device UUID to external source ID object. Its FIXED binding must contain exactly the same 1-20 device IDs. This alternative excludes query.sourceId. It returns positions.fleet latest evidence for the permitted runtime scope, with per-device observation timestamps and freshness. The existing single-device sourceId/trail contract is unchanged. Fleet queries bypass cache and preserve current ownership and source binding authorization. Shared definitions hide unauthorized source identifiers. The widget renders all positions on one retained map; individual history pages provide recorded trails/playback.
+
+
+### Fleet recorded GPS tracks
+
+The internal dashboard fleet position evidence additionally returns tracks: one PositionHistory per authorized vehicle. The interval is the intersection of the dashboard frame and the final 15 minutes ending at min(asOf,to). Existing 1000-point/history truncation bounds apply per vehicle. All device/source validation precedes these reads. The common map renders colored observed segments and pale straight connectors between discontinuous samples; connectors are visual uncertainty indications and are not stored as GPS observations. Show tracks is enabled by default.
+
+
+## Active bus dashboard and configured state queries
+
+Active dashboard quota defaults to ten per owner. Bounded owner overrides (1..1000) are stored in dashboard_owner_quotas and checked under the existing owner transaction lock for create/restore/clone. Operators may raise a specific owner without changing other owners. Dashboard metric keys accept safe dotted configured fields; telemetry discovers requested units only from measurements of allowed devices/account. Dashboard boolean series include bounded MEASURED_STATES points up to 1000 observations, otherwise observed min/max envelopes. Boolean points keep original timestamps and raw types; rendering uses step states and preserves gaps. LAST_1_HOUR is a rolling relative query period exposed in widget and runtime settings.

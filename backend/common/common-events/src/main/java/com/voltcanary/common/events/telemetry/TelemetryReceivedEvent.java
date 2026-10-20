@@ -15,7 +15,15 @@ public record TelemetryReceivedEvent(
         String correlationId,
         String producer,
         UUID accountId,
-        Instant occurredAt) {
+        Instant occurredAt,
+        ProcessingContext processingContext) {
+
+    public TelemetryReceivedEvent(UUID eventId, UUID deviceId, String sourceId, Instant timestamp,
+            Map<String, Object> metrics, Instant receivedAt, String eventVersion, String correlationId,
+            String producer, UUID accountId, Instant occurredAt) {
+        this(eventId, deviceId, sourceId, timestamp, metrics, receivedAt, eventVersion, correlationId,
+                producer, accountId, occurredAt, null);
+    }
 
     public TelemetryReceivedEvent(
             UUID eventId,

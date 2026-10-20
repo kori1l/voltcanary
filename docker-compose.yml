@@ -50,6 +50,9 @@ x-java-app: &java-app
     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
     IDENTITY_SERVICE_URI: http://identity-service:8081
     DEVICE_SERVICE_URI: http://device-service:8082
+    VARIABLE_ACTIVATION_ENABLED: ${VARIABLE_ACTIVATION_ENABLED:-false}
+    VARIABLE_PROCESSING_ENABLED: ${VARIABLE_PROCESSING_ENABLED:-false}
+    VARIABLE_ALERTS_ENABLED: ${VARIABLE_ALERTS_ENABLED:-false}
     INGESTION_SERVICE_URI: http://ingestion-service:8083
     TELEMETRY_SERVICE_URI: http://telemetry-service:8084
     ANALYTICS_SERVICE_URI: http://analytics-service:8085
@@ -401,6 +404,7 @@ services:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/device-service -am -Dmaven.test.skip=true install' && mvn -f services/device-service/pom.xml spring-boot:run"
     environment:
+      IDENTITY_SERVICE_URI: http://identity-service:8081
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       POSTGRES_HOST: postgres
@@ -411,6 +415,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change_me}
       DEVICE_KAFKA_PUBLISH_ENABLED: "true"
       DEVICE_KAFKA_CONSUME_ENABLED: "true"
+      VARIABLE_ACTIVATION_ENABLED: ${VARIABLE_ACTIVATION_ENABLED:-false}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
       TIMESCALE_HOST: timescaledb
       TIMESCALE_PORT: 5432
       TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
@@ -447,6 +453,7 @@ services:
       ANALYTICS_POSTGRES_DB: ${ANALYTICS_POSTGRES_DB:-voltcanary_analytics}
       APP_KAFKA_CONSUME_ENABLED: ${ANALYTICS_KAFKA_CONSUME_ENABLED:-true}
       ANALYTICS_KAFKA_PUBLISH_ENABLED: ${ANALYTICS_KAFKA_PUBLISH_ENABLED:-true}
+      VARIABLE_ALERTS_ENABLED: ${VARIABLE_ALERTS_ENABLED:-false}
       ANALYTICS_JOBS_WORKER_ENABLED: "true"
       APP_ML_TRAINING_WORKER_ENABLED: ${APP_ML_TRAINING_WORKER_ENABLED:-true}
       APP_ML_TRAINING_WORKER_DELAY: ${APP_ML_TRAINING_WORKER_DELAY:-5000}
@@ -471,6 +478,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       ALERT_POSTGRES_DB: ${ALERT_POSTGRES_DB:-voltcanary_alerts}
+      TELEMETRY_SERVICE_URI: http://telemetry-service:8084
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
@@ -489,6 +497,8 @@ services:
       SIMULATOR_POSTGRES_DB: ${SIMULATOR_POSTGRES_DB:-voltcanary_simulator}
       POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      DEVICE_SERVICE_URL: http://device-service:8082
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
       SIMULATOR_INGESTION_URL: http://ingestion-service:8083/ingestion/readings
       SIMULATOR_MQTT_ENABLED: ${SIMULATOR_MQTT_ENABLED:-false}
       SIMULATOR_MQTT_BROKER_URL: tcp://mosquitto:1883
@@ -573,6 +583,7 @@ services:
     command: sh -c "test -d node_modules/.vite || npm ci; npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+      VITE_MAP_STYLE_URL: ${VITE_MAP_STYLE_URL:-https://tiles.openfreemap.org/styles/bright}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:

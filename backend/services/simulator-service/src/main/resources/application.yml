@@ -17,6 +17,9 @@ management:
 
 app:
   simulator:
+    target:
+      device-service-base-url: ${DEVICE_SERVICE_URL:http://localhost:8082}
+      internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
     http:
       ingestion-url: ${SIMULATOR_INGESTION_URL:http://localhost:8083/ingestion/readings}
     mqtt:

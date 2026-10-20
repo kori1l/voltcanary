@@ -59,12 +59,20 @@ public class DashboardMaintenanceRepository {
                     .put("suppressAlerts", row.getBoolean("suppress_alerts"))
                     .put("excludeFromAnalytics", row.getBoolean("exclude_from_analytics"))
                     .put("excludeFromMl", row.getBoolean("exclude_from_ml"));
-            ArrayNode devices = operation.putArray("deviceIds");
-            List<Object> deviceArgs = new ArrayList<>(List.of(UUID.fromString(row.getString("id"))));
-            deviceArgs.addAll(allowed);
-            jdbc.query("SELECT device_id FROM maintenance_windows WHERE operation_id=? AND device_id IN ("
-                    + placeholders(allowed.size()) + ") ORDER BY device_id", device -> { devices.add(device.getString("device_id")); }, deviceArgs.toArray());
+            operation.putArray("deviceIds");
         }, pageArgs.toArray());
+        if (!rows.isEmpty()) {
+            var operations = new java.util.LinkedHashMap<UUID, ArrayNode>();
+            rows.forEach(row -> operations.put(UUID.fromString(row.path("id").asText()), (ArrayNode) row.path("deviceIds")));
+            List<Object> deviceArgs = new ArrayList<>(List.of(request.accountId()));
+            deviceArgs.addAll(operations.keySet());
+            deviceArgs.addAll(allowed);
+            jdbc.query("SELECT DISTINCT operation_id,device_id FROM maintenance_windows WHERE account_id=? AND operation_id IN ("
+                    + placeholders(operations.size()) + ") AND device_id IN (" + placeholders(allowed.size())
+                    + ") ORDER BY operation_id,device_id", device -> {
+                        operations.get(UUID.fromString(device.getString("operation_id"))).add(device.getString("device_id"));
+                    }, deviceArgs.toArray());
+        }
         return result.put("total", count).put("hasNext", request.offset() + rows.size() < count);
     }
 

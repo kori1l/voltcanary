@@ -19,8 +19,8 @@ export interface TelemetryChart {
   points: ChartPoint[];
   unit?: string;
   rawPointCount?: number;
-  aggregationMode?: "MIN_MAX_ENVELOPE";
-  buckets?: TelemetryEnvelopeBucket[];
+  aggregationMode?: "MIN_MAX_ENVELOPE" | "MEASURED_STATES";
+  buckets?: TelemetryEnvelopeBucket[] | null;
   summary?: TelemetryRangeSummary;
   qualityCounts?: Record<string, number>;
 }

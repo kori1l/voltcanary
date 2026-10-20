@@ -20,6 +20,9 @@ public interface AlertRepository extends JpaRepository<Alert, UUID>, JpaSpecific
 
     Optional<Alert> findFirstBySourceEventId(UUID sourceEventId);
 
+    Optional<Alert> findFirstByDeduplicationKeyStartingWithAndStatusNotAndCreatedAtBetweenOrderByCreatedAtDesc(
+            String prefix, AlertStatus status, Instant from, Instant to);
+
     List<Alert> findByStatusAndSeverityAndCreatedAtBeforeOrderByCreatedAtAsc(
             AlertStatus status,
             AlertSeverity severity,

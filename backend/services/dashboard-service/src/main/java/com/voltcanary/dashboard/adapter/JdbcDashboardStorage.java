@@ -41,6 +41,13 @@ public class JdbcDashboardStorage implements DashboardStorage {
     }
 
     @Override
+    public int activeLimit(DashboardActor actor) {
+        List<Integer> limits = jdbc.query("SELECT active_limit FROM dashboard_owner_quotas WHERE owner_user_id=?",
+                (row, index) -> row.getInt("active_limit"), actor.userId());
+        return limits.isEmpty() ? 10 : limits.getFirst();
+    }
+
+    @Override
     public long activeCount(DashboardActor actor) {
         Long count = jdbc.queryForObject("SELECT count(*) FROM dashboards WHERE owner_user_id=? AND status='ACTIVE'",
                 Long.class, actor.userId());
@@ -48,9 +55,31 @@ public class JdbcDashboardStorage implements DashboardStorage {
     }
 
     @Override
+    public void lockDashboard(UUID id) {
+        jdbc.query("SELECT id FROM dashboards WHERE id=? FOR UPDATE", (row,index)->row.getObject(1,UUID.class), id);
+    }
+
+    @Override
     public Optional<Dashboard> findOwned(DashboardActor actor, UUID id) {
         return jdbc.query("SELECT * FROM dashboards WHERE id=? AND owner_user_id=? AND account_id=?",
                 this::dashboardRow, id, actor.userId(), actor.accountId()).stream().findFirst();
+    }
+    @Override
+    public Optional<Dashboard> findAny(UUID id) {
+        return jdbc.query("SELECT * FROM dashboards WHERE id=?",this::dashboardRow,id).stream().findFirst();
+    }
+    @Override
+    public Draft draft(UUID id,UUID author) {
+        Boolean shared=jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM dashboard_workspaces WHERE dashboard_id=?)",Boolean.class,id);
+        if (!Boolean.TRUE.equals(shared)) return draft(id);
+        var found=jdbc.query("SELECT * FROM dashboard_author_drafts WHERE dashboard_id=? AND author_user_id=?",(row,index)->new Draft(id,author,row.getInt("base_revision"),row.getObject("etag",UUID.class),decode(row.getString("definition"),DashboardDefinition.class),instant(row,"updated_at")),id,author);
+        if (!found.isEmpty()) return found.getFirst();
+        Dashboard dashboard=findAny(id).orElseThrow();
+        if(dashboard.publishedRevision()==0 && !author.equals(dashboard.ownerUserId())) throw new com.voltcanary.dashboard.domain.DashboardFailure("CONFLICT","Initial publication is required before another author's draft");
+        DashboardDefinition definition=dashboard.publishedRevision()>0?revision(id,dashboard.publishedRevision()).orElseThrow().definition():draft(id).definition();
+        Draft created=new Draft(id,author,dashboard.publishedRevision(),UUID.randomUUID(),definition,Instant.now());
+        saveDraft(created);
+        return created;
     }
 
     @Override
@@ -101,6 +130,10 @@ public class JdbcDashboardStorage implements DashboardStorage {
 
     @Override
     public void saveDraft(Draft draft) {
+        if (Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM dashboard_workspaces WHERE dashboard_id=?)",Boolean.class,draft.dashboardId()))) {
+            jdbc.update("INSERT INTO dashboard_author_drafts(dashboard_id,author_user_id,base_revision,etag,definition,updated_at) VALUES (?,?,?,?,?::jsonb,?) ON CONFLICT(dashboard_id,author_user_id) DO UPDATE SET base_revision=excluded.base_revision,etag=excluded.etag,definition=excluded.definition,updated_at=excluded.updated_at",draft.dashboardId(),draft.authorUserId(),draft.baseRevision(),draft.etag(),encode(draft.definition()),Timestamp.from(draft.updatedAt()));
+            return;
+        }
         jdbc.update("""
                 INSERT INTO dashboard_drafts(dashboard_id,author_user_id,base_revision,etag,definition,updated_at)
                 VALUES(?,?,?,?,?::jsonb,?) ON CONFLICT(dashboard_id) DO UPDATE SET

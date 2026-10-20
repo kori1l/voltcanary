@@ -45,6 +45,45 @@ class IngestionReadingsTest {
     @Autowired
     private SourceRegistryCache sourceRegistryCache;
 
+    @MockitoBean
+    private com.voltcanary.ingestion.source.SourceRegistryLookup registryLookup;
+
+    @Test
+    void configuredSourceFiltersBeforePublishingAndAcceptsTypedCustomValues() {
+        UUID device = UUID.randomUUID();
+        String source = "configured-" + UUID.randomUUID();
+        var fields = java.util.List.of(
+                Map.of("path", "temperatureC", "key", "temperatureC", "label", "Temperature", "type", "number", "unit", "C", "store", false, "display", false),
+                Map.of("path", "sensor.count", "key", "count", "label", "Count", "type", "number", "unit", "", "store", true, "display", true),
+                Map.of("path", "sensor.open", "key", "open", "label", "Open", "type", "boolean", "unit", "", "store", true, "display", true));
+        sourceRegistryCache.put(new InternalDataSourceResponse(UUID.randomUUID(), device, UUID.randomUUID(), source, "API", "REST", "ACTIVE", null, null,
+                Map.of("telemetryPolicy", Map.of("fields", fields))), 1);
+        var body = Map.of("deviceId", device, "sourceId", source, "timestamp", Instant.now().minusSeconds(2).toString(),
+                "metrics", Map.of("temperatureC", 25, "sensor", Map.of("count", 0, "open", false, "ignored", "unselected")));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", body, String.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        var captured = ArgumentCaptor.forClass(TelemetryReceivedEvent.class);
+        verify(telemetryEventPublisher).publish(captured.capture());
+        assertThat(captured.getValue().metrics()).containsOnlyKeys("configuredFields");
+        assertThat(com.voltcanary.common.events.telemetry.ConfiguredFields.values(captured.getValue().metrics())).containsOnlyKeys("count", "open");
+        var invalid = Map.of("deviceId", device, "sourceId", source, "timestamp", Instant.now().minusSeconds(1).toString(),
+                "metrics", Map.of("sensor", Map.of("count", "not a number")));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", invalid, String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(telemetryEventPublisher, times(1)).publish(any());
+    }
+
+    @Test
+    void emptyConfiguredSelectionAcknowledgesWithoutPublishing() {
+        UUID device = UUID.randomUUID();
+        String source = "filtered-" + UUID.randomUUID();
+        sourceRegistryCache.put(new InternalDataSourceResponse(UUID.randomUUID(), device, UUID.randomUUID(), source, "API", "REST", "ACTIVE", null, null,
+                Map.of("telemetryPolicy", Map.of("fields", java.util.List.of()))), 1);
+        var response = restTemplate.postForEntity("/ingestion/readings", Map.of("deviceId", device, "sourceId", source,
+                "timestamp", Instant.now().minusSeconds(2).toString(), "metrics", Map.of("temperatureC", 25)), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(response.getBody()).contains("filtered");
+        verify(telemetryEventPublisher, never()).publish(any());
+    }
+
     @Test
     void acceptsValidReadingAndPublishesKafkaEvent() {
         UUID deviceId = UUID.randomUUID();
@@ -179,6 +218,23 @@ class IngestionReadingsTest {
                         "energyWh", 12450.7,
                         "rssi", -61,
                         "relayState", "ON"));
+    }
+
+    @Test void acceptsTransportContextAndRejectsInvalidFieldsBeforePublishing() {
+        UUID deviceId=UUID.randomUUID();
+        String sourceId="hsl-context";
+        seedSource(deviceId,sourceId,"ACTIVE");
+        var context=Map.<String,Object>of("routeShortName","3","doorsOpen",false,"scheduleDeviationSeconds",0);
+        var body=Map.of("deviceId",deviceId,"sourceId",sourceId,"timestamp",recentTimestamp(10).toString(),
+                "metrics",Map.of("latitude",60.18,"longitude",24.92,"transport",context));
+        assertThat(restTemplate.postForEntity("/ingestion/readings",body,String.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        var captor=ArgumentCaptor.forClass(TelemetryReceivedEvent.class);
+        verify(telemetryEventPublisher).publish(captor.capture());
+        assertThat(captor.getValue().metrics()).containsEntry("transport",context);
+        var invalid=Map.of("deviceId",deviceId,"sourceId",sourceId,"timestamp",recentTimestamp(5).toString(),
+                "metrics",Map.of("latitude",60.18,"longitude",24.92,"transport",Map.of("doorsOpen",0)));
+        assertThat(restTemplate.postForEntity("/ingestion/readings",invalid,String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        verify(telemetryEventPublisher,times(1)).publish(any());
     }
 
     private Instant recentTimestamp(long secondsAgo) {

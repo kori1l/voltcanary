@@ -16,10 +16,13 @@ public class RuleEvaluationController {
 
     private final RuleEvaluationService evaluationService;
     private final AnalyticsAccessService accessService;
+    private final com.voltcanary.analytics.variable.VariableRuleDryRun variables;
 
-    public RuleEvaluationController(RuleEvaluationService evaluationService, AnalyticsAccessService accessService) {
+    public RuleEvaluationController(RuleEvaluationService evaluationService, AnalyticsAccessService accessService,
+            com.voltcanary.analytics.variable.VariableRuleDryRun variables) {
         this.evaluationService = evaluationService;
         this.accessService = accessService;
+        this.variables = variables;
     }
 
     @PostMapping("/test")
@@ -30,6 +33,9 @@ public class RuleEvaluationController {
             @RequestBody(required = false) RuleEvaluationRequest request) {
         if (request != null && request.deviceId() != null) {
             accessService.requireReadAccess(request.deviceId(), userId, role, correlationId);
+        }
+        if (request != null && request.config() != null && request.config().containsKey("variable")) {
+            return variables.evaluate(request);
         }
         return evaluationService.evaluate(request);
     }

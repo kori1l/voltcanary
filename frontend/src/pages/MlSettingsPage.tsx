@@ -267,6 +267,8 @@ function MlSettingsScreen() {
       )}
       {activeTab === "models" && (
         <MlModelsTab
+          selectedModelId={pipelineContext.modelId}
+          onClearSelection={() => selectPipeline({modelId:""})}
           onConfirmed={() => setMessage("Model registry updated")}
           isDeletePending={(id) => lifecycle.isPending(`model:${id}:delete`)}
           modelsAvailable={workspace.dataAvailable.models}

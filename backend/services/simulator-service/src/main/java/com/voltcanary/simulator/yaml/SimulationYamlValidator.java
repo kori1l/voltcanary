@@ -50,10 +50,17 @@ public class SimulationYamlValidator {
         if (!metrics.isObject() || metrics.isEmpty()) {
             errors.add(new ValidationError("metrics", "at least one metric is required"));
         } else {
-            validateMetrics(errors, metrics);
+            if (!"VEHICLE_GPS".equals(root.path("simulator").path("profile").asText())) {
+                validateMetrics(errors, metrics);
+            }
         }
         validateDurationIfPresent(errors, "schedule.duration", root.path("schedule").path("duration"), false);
         validateAnomalies(errors, root.path("anomalies"));
+        if ("VEHICLE_GPS".equals(root.path("simulator").path("profile").asText())) {
+            VehicleGpsYamlValidation.validate(root, parser, errors);
+        } else if (root.has("gps")) {
+            errors.add(new ValidationError("gps", "GPS configuration requires VEHICLE_GPS"));
+        }
         return errors;
     }
 

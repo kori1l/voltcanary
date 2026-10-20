@@ -4,6 +4,7 @@ export type SimulationSettings = {
   interval: string;
   duration: string;
   speed: string;
+  gpsSpeedKmh:string;
   voltageV: string;
   rssi: string;
   idlePowerW: string;
@@ -33,6 +34,7 @@ export function readSimulationSettings(yaml: string): SimulationSettings {
     interval: readYamlString(yaml, /interval:[ \t]*([^\n]*)/),
     duration: readYamlString(yaml, /duration:[ \t]*([^\n]*)/),
     speed: readYamlString(yaml, /speed:[ \t]*([^\n]*)/),
+    gpsSpeedKmh:readYamlString(yaml,/speedKmh:[ \t]*([^\n]+)/),
     voltageV: readYamlString(yaml, /voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
     rssi: readYamlString(yaml, /rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
     idlePowerW: readYamlString(yaml, /offValue:[ \t]*\n[ \t]+mean:[ \t]*([^\n]*)/),
@@ -73,6 +75,8 @@ export function updateSimulationYaml(yaml: string, field: keyof SimulationSettin
       return replaceYaml(yaml, /(duration:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "speed":
       return replaceYaml(yaml, /(speed:[ \t]*)[^\n]*/, `$1${textValue}`);
+    case "gpsSpeedKmh":
+      return replaceYaml(yaml, /(speedKmh:[ \t]*)[^\n]+/, `$1${textValue}`);
     case "voltageV":
       return replaceYaml(yaml, /(voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "rssi":

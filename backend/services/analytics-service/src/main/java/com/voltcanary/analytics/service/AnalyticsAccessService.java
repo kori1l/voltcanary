@@ -37,9 +37,6 @@ public class AnalyticsAccessService {
         if (userId == null || userId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
         }
-        if ("ADMIN".equals(role) || "SUPPORT".equals(role)) {
-            return;
-        }
         try {
             DeviceAccessResponse response = restClient.get()
                     .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)

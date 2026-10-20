@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,29 +47,66 @@ public final class EnergyPeriodCalculator {
     private record Point(Instant at, double value, boolean valid) {
     }
 
+    /** Immutable normalization shared by intervals; quality totals cover the full selected read window. */
+    public static final class PreparedReadings {
+        private final List<Point> points;
+        private final int[][] totals;
+        private final int first;
+        private final int last;
+        private final int extraExcluded;
+        private final Method method;
+        private final String sourceId;
+
+        private PreparedReadings(List<Point> points, int[][] totals, int first, int last,
+                int extraExcluded, Method method, String sourceId) {
+            this.points = points;
+            this.totals = totals;
+            this.first = first;
+            this.last = last;
+            this.extraExcluded = extraExcluded;
+            this.method = method;
+            this.sourceId = sourceId;
+        }
+
+        public PreparedReadings between(Instant from, Instant to, boolean inclusiveEnd) {
+            int start = Math.max(first, bound(points, from, false));
+            int end = Math.min(last, bound(points, to, inclusiveEnd));
+            return new PreparedReadings(points, totals, start, Math.max(start, end), extraExcluded, method, sourceId);
+        }
+
+        private int total(int kind) {
+            return totals[kind][last] - totals[kind][first];
+        }
+    }
+
     public Result calculate(List<Reading> readings, Instant from, Instant to, Policy policy) {
         if (readings == null || from == null || to == null || !from.isBefore(to)
                 || Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0) {
             throw new IllegalArgumentException("A half-open interval of at most31 days is required");
         }
+        return calculate(prepare(readings, policy.method(), policy.sourceId()), from, to, policy);
+    }
+
+    public PreparedReadings prepare(List<Reading> readings, Method method, String sourceId) {
         Map<Instant, Point> normalized = new TreeMap<>();
-        int excluded = 0;
-        int duplicates = 0;
+        Map<Instant, int[]> counts = new HashMap<>();
+        int extraExcluded = 0;
         Set<Instant> conflicts = new HashSet<>();
         for (Reading reading : readings) {
-            if (reading == null || reading.measuredAt() == null || !policy.sourceId().equals(reading.sourceId())) {
-                excluded++;
+            if (reading == null || reading.measuredAt() == null || !sourceId.equals(reading.sourceId())) {
+                extraExcluded++;
                 continue;
             }
-            Double value = canonical(reading, policy.method());
+            int[] count = counts.computeIfAbsent(reading.measuredAt(), ignored -> new int[2]);
+            Double value = canonical(reading, method);
             boolean qualified = value != null && "OK".equals(reading.quality());
-            if (!qualified) excluded++;
+            if (!qualified) count[0]++;
             Point previous = normalized.get(reading.measuredAt());
             Point current = new Point(reading.measuredAt(), qualified ? value : 0, qualified);
             if (previous == null) {
                 normalized.put(current.at(), current);
             } else {
-                duplicates++;
+                count[1]++;
                 if (previous.valid() && current.valid() && previous.value() != current.value()) {
                     normalized.put(current.at(), new Point(current.at(), 0, false));
                     conflicts.add(current.at());
@@ -79,6 +117,26 @@ public final class EnergyPeriodCalculator {
             }
         }
         List<Point> points = new ArrayList<>(normalized.values());
+        int[][] totals = new int[3][points.size() + 1];
+        for (int index = 0; index < points.size(); index++) {
+            Instant time = points.get(index).at();
+            int[] count = counts.get(time);
+            totals[0][index + 1] = totals[0][index] + count[0];
+            totals[1][index + 1] = totals[1][index] + count[1];
+            totals[2][index + 1] = totals[2][index] + (conflicts.contains(time) ? 1 : 0);
+        }
+        return new PreparedReadings(List.copyOf(points), totals, 0, points.size(), extraExcluded, method, sourceId);
+    }
+
+    public Result calculate(PreparedReadings readings, Instant from, Instant to, Policy policy) {
+        if (readings == null || from == null || to == null || !from.isBefore(to)
+                || Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0
+                || readings.method != policy.method() || !readings.sourceId.equals(policy.sourceId())) {
+            throw new IllegalArgumentException("Prepared stream and interval must match the canonical policy");
+        }
+        int first = Math.max(readings.first, bound(readings.points, from, false) - 1);
+        int last = Math.min(readings.last, bound(readings.points, to, true) + 1);
+        List<Point> points = readings.points.subList(first, Math.max(first, last));
         double energyWh = 0;
         double covered = 0;
         boolean interpolatedBoundary = false;
@@ -147,10 +205,23 @@ public final class EnergyPeriodCalculator {
         double interval = seconds(from, to);
         String coverage = covered == 0 ? "UNKNOWN" : covered >= interval - 0.000001 ? "COMPLETE" : "PARTIAL";
         return new Result(covered == 0 ? null : energyWh / 1000, coverage, covered, interval,
-                Math.min(1, covered / interval), accepted, excluded, duplicates, conflicts.size(), gaps, resets, rollovers,
+                Math.min(1, covered / interval), accepted, readings.total(0) + readings.extraExcluded,
+                readings.total(1), readings.total(2), gaps, resets, rollovers,
                 minimum, maximum, maximumAt, measuredAt, policy.method() == Method.POWER_INTEGRAL || interpolatedBoundary,
                 "LINEAR_BRACKETING_WITHIN_MAX_GAP_HALF_OPEN_UTC", "OK_ONLY_CONFLICTS_ARE_BARRIERS",
                 "RAW_CONSUMPTION_INCLUDES_MAINTENANCE");
+    }
+
+    private static int bound(List<Point> points, Instant time, boolean afterEqual) {
+        int low = 0;
+        int high = points.size();
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            int comparison = points.get(middle).at().compareTo(time);
+            if (comparison < 0 || (afterEqual && comparison == 0)) low = middle + 1;
+            else high = middle;
+        }
+        return low;
     }
 
     private Double canonical(Reading reading, Method method) {

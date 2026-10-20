@@ -12,7 +12,10 @@ manual or agent-driven runs.
 ## Focused Flows
 
 | Topic | Document |
+| Automobile GPS emulation and map acceptance | [vehicle-gps-verification.md](vehicle-gps-verification.md) |
+| Fleet, trips, playback, zones and vehicle simulation | [vehicle-monitoring-verification.md](vehicle-monitoring-verification.md) |
 | --- | --- |
+| Dashboard optimization research and implementation priorities | [dashboard-optimization-research.md](dashboard-optimization-research.md) |
 | First telemetry slice | [01-first-telemetry-flow.md](01-first-telemetry-flow.md) |
 | Console forms and UI verification | [console-interface.md](console-interface.md) |
 | Maintenance window E2E checks | [maintenance-windows-e2e-checklist.md](maintenance-windows-e2e-checklist.md) |
@@ -26,6 +29,10 @@ manual or agent-driven runs.
 
 ## Related Docs
 
+- Workspace and business dashboard acceptance: [workspace-dashboard-business-verification.md](workspace-dashboard-business-verification.md)
+
 - Operations: [../operations/README.md](../operations/README.md)
 - API contracts: [../api/README.md](../api/README.md)
 - Event contracts: [../events/README.md](../events/README.md)
+
+[Device variable verification](device-variable-verification.md): evidence and remaining release gates.
