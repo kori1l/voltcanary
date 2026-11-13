@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AlertAnalyticsEventInboxService {
+    private final DeviceHistoryDeletion deletions;
 
     private final AlertAnalyticsEventInboxRepository repository;
     private final AlertReconciliationProperties properties;
@@ -28,7 +29,8 @@ public class AlertAnalyticsEventInboxService {
             AlertAnalyticsEventInboxRepository repository,
             AlertReconciliationProperties properties,
             ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        this.deletions = deletions;
         this.repository = repository;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -37,6 +39,8 @@ public class AlertAnalyticsEventInboxService {
 
     @Transactional
     public AlertAnalyticsEventInboxEntry recordReceived(String sourceName, UUID eventId, String eventType, Object event) {
+        var payload = objectMapper.valueToTree(event);
+        if (payload.hasNonNull("deviceId") && !deletions.writable(UUID.fromString(payload.get("deviceId").asText()))) return null;
         if (eventId == null) {
             AlertAnalyticsEventInboxEntry entry = newEntry(sourceName, UUID.randomUUID(), eventType, event);
             return repository.saveAndFlush(entry);
@@ -47,7 +51,8 @@ public class AlertAnalyticsEventInboxService {
 
     @Transactional
     public AlertAnalyticsEventInboxEntry markProcessing(UUID id) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElseThrow();
+        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
+        if (entry == null || !writable(entry)) return null;
         Instant now = Instant.now();
         entry.setStatus(AlertAnalyticsEventInboxStatus.PROCESSING);
         entry.setAttempts(entry.getAttempts() + 1);
@@ -59,7 +64,8 @@ public class AlertAnalyticsEventInboxService {
 
     @Transactional
     public void markProcessed(UUID id, Alert alert) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElseThrow();
+        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
+        if (entry == null || !writable(entry)) return;
         Instant now = Instant.now();
         entry.setStatus(alert == null ? AlertAnalyticsEventInboxStatus.NO_ALERT : AlertAnalyticsEventInboxStatus.PROCESSED);
         entry.setAlertId(alert == null ? null : alert.getId());
@@ -76,7 +82,8 @@ public class AlertAnalyticsEventInboxService {
 
     @Transactional
     public void markFailed(UUID id, RuntimeException exception) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElseThrow();
+        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
+        if (entry == null || !writable(entry)) return;
         Instant now = Instant.now();
         entry.setStatus(AlertAnalyticsEventInboxStatus.FAILED);
         entry.setProcessingStartedAt(null);
@@ -85,6 +92,15 @@ public class AlertAnalyticsEventInboxService {
         entry.setLastError(truncate(exception.getClass().getSimpleName() + ": " + exception.getMessage()));
         repository.save(entry);
         meterRegistry.counter("alert.analytics.inbox.failed", "eventType", entry.getEventType()).increment();
+    }
+
+    private boolean writable(AlertAnalyticsEventInboxEntry entry) {
+        try {
+            var payload = objectMapper.readTree(entry.getPayloadJson());
+            return !payload.hasNonNull("deviceId") || deletions.writable(UUID.fromString(payload.get("deviceId").asText()));
+        } catch (JsonProcessingException invalid) {
+            throw new IllegalStateException("Invalid persisted event", invalid);
+        }
     }
 
     @Transactional(readOnly = true)

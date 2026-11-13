@@ -3,6 +3,25 @@ import { createContext, useContext, useEffect, useId, useRef, useState, type Rea
 import { useWorkflowDraft } from "./workflowDraftContext";
 
 const CloseContext = createContext<() => void>(() => {});
+const scrollLocks = new WeakMap<HTMLElement, {count: number; previousOverflow: string}>();
+
+function lockPageScroll() {
+  const body = document.body;
+  let lock = scrollLocks.get(body);
+  if (!lock) {
+    lock = {count: 0, previousOverflow: body.style.overflow};
+    scrollLocks.set(body, lock);
+  }
+  lock.count++;
+  body.style.overflow = "hidden";
+  return () => {
+    lock.count--;
+    if (lock.count === 0) {
+      body.style.overflow = lock.previousOverflow;
+      scrollLocks.delete(body);
+    }
+  };
+}
 
 export function DialogClose({ children = "Cancel" }: { children?: ReactNode }) {
   const close = useContext(CloseContext);
@@ -29,11 +48,10 @@ export function Dialog({ id, title, children, footer, onClose, dirty = false, bu
     const previous = document.activeElement as HTMLElement | null;
     const panel = ref.current;
     panel?.showModal();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlockPageScroll = lockPageScroll();
     return () => {
       panel?.close();
-      document.body.style.overflow = previousOverflow;
+      unlockPageScroll();
       if (previous?.isConnected) previous.focus();
     };
   }, []);

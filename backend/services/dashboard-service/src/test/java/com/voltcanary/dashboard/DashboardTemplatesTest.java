@@ -27,8 +27,11 @@ class DashboardTemplatesTest {
     }
     @Test void routeRenewsOwnershipAndSixHourWindowMovesWithAsOf() {
         var ownership = mock(DashboardOwnership.class);
-        new DashboardTemplateController(ownership, new DashboardTaskTemplates(new WidgetManifests())).list("Bearer current");
-        verify(ownership).resolve("Bearer current");
+        var mapper = new ObjectMapper();
+        new DashboardTemplateController(ownership, new DashboardTaskTemplates(new WidgetManifests()),
+                mock(com.voltcanary.dashboard.templates.DashboardTemplatePreparation.class), mapper,
+                new com.voltcanary.dashboard.application.DefinitionValidation(mapper)).list("Bearer current");
+        verify(ownership).resolveReadOnly("Bearer current");
         Instant first = Instant.parse("2026-10-09T00:00:00Z");
         var time = new QueryTypes.Time(QueryTypes.TimeMode.RELATIVE, QueryTypes.Preset.LAST_6_HOURS, "UTC", null, null);
         var resolver = new QueryTimeResolver();

@@ -171,7 +171,7 @@ public class DashboardSharing {
                 widget.set("payload",mapper.createObjectNode());
             }
             var query=widget.path("query").isObject()?(ObjectNode)widget.path("query"):widget.putObject("query");
-            if ("vehicle-map".equals(widget.path("type").asText()) && ids.isEmpty()) query.remove("sourceId");
+            if (com.voltcanary.dashboard.query.PositionWidgets.contains(widget.path("type").asText()) && ids.isEmpty()) query.remove("sourceId");
             if (query.path("vehicleSources").isObject()) {
                 ObjectNode original=(ObjectNode)query.path("vehicleSources").deepCopy();
                 ObjectNode visible=query.putObject("vehicleSources");

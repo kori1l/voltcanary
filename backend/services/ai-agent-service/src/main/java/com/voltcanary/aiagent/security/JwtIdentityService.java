@@ -24,7 +24,7 @@ public class JwtIdentityService {
         }
         try {
             JwtAccessTokenClaims claims = accessTokenService.validate(authorizationHeader.substring("Bearer ".length()));
-            return new AuthenticatedUser(UUID.fromString(claims.subject()), claims.email(), claims.role());
+            return new AuthenticatedUser(UUID.fromString(claims.subject()), claims.email(), claims.role(), claims.expiresAt());
         } catch (AuthenticationFailedException exception) {
             throw exception;
         } catch (Exception exception) {

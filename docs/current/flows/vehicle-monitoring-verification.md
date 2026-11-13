@@ -6,6 +6,12 @@ configurable vehicle simulation. The dashboard vehicle-map stays compatible.
 
 ## Contracts
 
+- Fleet discovery pages the authorized VEHICLE inventory and excludes
+  DECOMMISSIONED devices before applying the 100-vehicle display limit. Offline
+  and disabled devices remain eligible. A partial inventory read failure is
+  reported as an error; it is not presented as a complete fleet. Reload fleet
+  refreshes device/source discovery after a new source is connected.
+
 - POST /telemetry/vehicles/positions: `{targets:[{deviceId,sourceId}],asOf}`,
   1–100 targets. One authenticated internal device-service batch validates every
   current owner/type/source before any positions are returned. Invalid/foreign
@@ -16,7 +22,9 @@ configurable vehicle simulation. The dashboard vehicle-map stays compatible.
   Browser loads at most20000 samples and displays truncation.
 - GET/PUT /telemetry/devices/{id}/vehicle-monitoring: authenticated current owner,
   `{speedLimitKmh,idleMinutes,zones}`. Limit1–300km/h, idle1–60min, <=50 unique UUID
-  circles, name1–100chars, radius10–50000m and finite geographic bounds. Settings
+  circles, name1–100chars, radius10–50000m and finite geographic bounds. idleMinutes
+  must be an integer; fractional values and unknown JSON fields return400 without
+  changing saved settings. Settings
   are keyed by owner/device and replaced atomically. Dashboard grants do not
   authorize writes. Portable V011 adds nullable ignition/fuel_percent/odometer_km
   to accepted positions and a settings table; position retention stays180days.
@@ -69,7 +77,50 @@ separate integrations and are not implied by this console.
 7. Run backend tests, frontend typecheck/test/build, openspec:validate and
    structure:check. Record actual results and limitations below.
 
-## Evidence — 2026-10-11
+## Evidence — 2026-10-21
 
-Implementation and stack acceptance in progress; final results are recorded after
-verification. Basic GPS acceptance is tracked in vehicle-gps-verification.md.
+Authenticated Docker acceptance passed using
+`scripts/vehicle-monitoring-docker-smoke.ps1` against the running app profile.
+The ignored `artifacts/vehicle-monitoring-docker-summary.json` records45 assertions
+(including23 exclusive page boundaries),119 accepted samples across24 pages,
+foreign/mixed-owner denial, fleet/range/page bounds, valid owner settings and
+rejected writes preserving the previous settings. A separate fixed-cutoff read
+retained the same119 samples while later live observations arrived. Disposable
+foreign/no-data devices were decommissioned; the demo vehicle remains available.
+
+The browser explicitly saved a three-point route with scheduled10s stops and
+vehicle metrics, preserving the running snapshot until Stop/Start. The new run
+emitted measured zero/off ignition during dwell,36km/h during movement,
+decreasing synthetic fuel and increasing run-relative odometer. Saving alone
+did not restart the run. The original dashboard map remains compatible; its
+basic GPS and map-failure acceptance is recorded in
+[vehicle GPS verification](vehicle-gps-verification.md).
+
+Browser fleet acceptance covered search, status filters, source selection and
+NO_DATA without substituting another vehicle's coordinates. History paused
+live refresh and loaded639 actual samples at a fixed cutoff; playback at20x,
+seek to sample639, pause and trip selection used recorded timestamps. The
+downloaded CSV contained639 rows and8 columns, preserving zero values and empty
+unknown optional fields. Observed trip distance, incomplete coverage and
+ENTER/EXIT/OVERSPEED evidence were displayed with their historical-evidence
+disclaimer. Local reports and CSV remain ignored artifacts.
+
+The zone name and longitude were edited in the browser, explicitly saved and
+verified after page reload and through the owner API. At390px viewport width,
+the zone editor and maps were usable with375px document/client width and no
+horizontal overflow. Returning to Live resumed refresh with newer timestamps.
+After the user's Docker stop, the app profile was restored with preserved volumes
+and the simulator explicitly restarted; fresh accepted points were verified.
+
+Docker Java21 tests passed across all backend modules:594 unique tests in the
+final service runs, including85 telemetry tests after the strict JSON fix.
+The regression uses the real signed identity filter and H2 persistence to check
+fractional/unknown fields, invalid writes, owner persistence and foreign/header-only
+access. Frontend Docker validation passed typecheck,113 files/327 tests and build;
+the subsequent AI navigation fix passed7 focused tests plus typecheck/build.
+Do not interpret the earlier failed intermediate runs as successful gates.
+
+The live dependency-shutdown probe was rejected by automatic approval review
+(`blocked by policy`) and was not executed. Dependency failure isolation is
+covered by Docker query tests and the live map-style failure check; a live
+telemetry-service outage is not claimed as verified.

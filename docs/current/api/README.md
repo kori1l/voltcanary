@@ -16,10 +16,11 @@ boundaries; service docs define request/response behavior and compatibility.
 | --- | --- |
 | `identity-service` public auth surface | [auth-api.md](auth-api.md) and [identity-auth-contract.md](identity-auth-contract.md) |
 | `device-service` accounts, locations, devices, sources, maintenance | [device-api.md](device-api.md) |
+| `device-service` reviewed native schemas/rows, CAS, LIVE queries and owner metadata | [configurable-native-data.md](configurable-native-data.md) |
 | `ingestion-service` HTTP ingestion, imports, MQTT, connector source config | [ingestion-api.md](ingestion-api.md) |
 | `telemetry-service` readings, latest, quality, metrics, exports | [telemetry-api.md](telemetry-api.md) |
 | `analytics-service` baselines, features, anomalies, risk, recommendations | [analytics-api.md](analytics-api.md) |
-| `alert-service` alerts, rules, notification channels and attempts | [alerts-api.md](alerts-api.md) |
+| `alert-service` alerts, rules, configurable reservations/reviewed grants/evidence policies, notification channels and attempts | [alerts-api.md](alerts-api.md) |
 | `ai-agent-service` plan creation/execution and model provider configuration | [ai-agent-api.md](ai-agent-api.md) |
 | `dashboard-service` private definitions, author drafts, publication/history and preferences | [dashboard-api.md](dashboard-api.md) |
 | `analytics-service` ML lifecycle facade and private `ml-service` runtime contracts | [ml-api.md](ml-api.md) |

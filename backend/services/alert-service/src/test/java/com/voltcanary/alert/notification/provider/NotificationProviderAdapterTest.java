@@ -92,7 +92,7 @@ class NotificationProviderAdapterTest {
         server = telegramServer(200, "{\"ok\":true,\"result\":{\"message_id\":42}}", requestBody);
         TelegramNotificationProviderAdapter adapter = new TelegramNotificationProviderAdapter(
                 telegramProperties(server),
-                RestClient.builder(),
+                com.voltcanary.common.web.JacksonRestClients.builder(),
                 new ObjectMapper());
         NotificationDeliveryCommand command = command(
                 "TELEGRAM",
@@ -117,7 +117,7 @@ class NotificationProviderAdapterTest {
         server = telegramServer(429, "{\"ok\":false,\"description\":\"retry later\"}", ignored);
         TelegramNotificationProviderAdapter retryAdapter = new TelegramNotificationProviderAdapter(
                 telegramProperties(server),
-                RestClient.builder(),
+                com.voltcanary.common.web.JacksonRestClients.builder(),
                 new ObjectMapper());
 
         NotificationDeliveryResult retryable = retryAdapter.deliver(
@@ -126,7 +126,7 @@ class NotificationProviderAdapterTest {
         server = telegramServer(400, "{\"ok\":false,\"description\":\"chat not found\"}", ignored);
         TelegramNotificationProviderAdapter permanentAdapter = new TelegramNotificationProviderAdapter(
                 telegramProperties(server),
-                RestClient.builder(),
+                com.voltcanary.common.web.JacksonRestClients.builder(),
                 new ObjectMapper());
         NotificationDeliveryResult permanent = permanentAdapter.deliver(
                 command("TELEGRAM", Map.of("chatId", "-1001234567890")));

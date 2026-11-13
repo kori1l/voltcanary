@@ -18,5 +18,6 @@ public record NotificationPreferenceResponse(
         String timezone,
         boolean criticalBypassQuietHours,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        boolean configurableRuleAlertsEnabled) {
 }

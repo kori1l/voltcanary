@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: simulator-service
@@ -16,6 +18,11 @@ management:
         enabled: true
 
 app:
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
   simulator:
     target:
       device-service-base-url: ${DEVICE_SERVICE_URL:http://localhost:8082}

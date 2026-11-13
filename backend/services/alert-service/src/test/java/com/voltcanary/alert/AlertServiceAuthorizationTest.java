@@ -22,7 +22,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
@@ -33,6 +34,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -43,7 +45,7 @@ import org.springframework.web.server.ResponseStatusException;
                 "app.alert.notifications.worker-enabled=false",
                 "app.alert.reconciliation.enabled=false"
         })
-class AlertServiceAuthorizationTest {
+class AlertServiceAuthorizationTest extends SignedUserTest {
 
     private static final String USER_ID = "7f59fc77-2d41-4df6-9ad2-5063dc58adf4";
     private static final String ROLE = "USER";
@@ -224,7 +226,7 @@ class AlertServiceAuthorizationTest {
 
     private HttpEntity<Object> userEntity(Object body) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", USER_ID);
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(UUID.fromString(USER_ID), "actor@example.invalid", ROLE));
         headers.set("X-User-Role", ROLE);
         headers.set("X-Correlation-Id", CORRELATION_ID);
         return new HttpEntity<>(body, headers);

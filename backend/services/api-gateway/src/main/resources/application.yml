@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: api-gateway
@@ -58,6 +60,10 @@ spring:
               uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
               predicates:
                 - Path=/locations/**
+            - id: configurable-data
+              uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/data/**
             - id: device-service-accounts
               uri: ${DEVICE_SERVICE_URI:http://localhost:8082}
               predicates:
@@ -102,8 +108,10 @@ spring:
             - id: dashboard-service
               uri: ${DASHBOARD_SERVICE_URI:http://localhost:8089}
               predicates:
-                - Path=/dashboards/**,/dashboard-preferences/**,/dashboard-widget-types,/dashboard-templates
+                - Path=/dashboards/**,/dashboard-preferences/**,/dashboard-widget-types,/dashboard-templates,/dashboard-templates/**
             - id: ai-agent-service
+              metadata:
+                response-timeout: ${GATEWAY_AI_RESPONSE_TIMEOUT_MS:-1}
               uri: ${AI_AGENT_SERVICE_URI:http://localhost:8088}
               predicates:
                 - Path=/ai-agent/**

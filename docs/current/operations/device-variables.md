@@ -34,7 +34,9 @@ identity, gateway, device, ingestion, telemetry, analytics, alert and dashboard,
 plus the built console served by nginx. This mode checks real registration/login
 and an authenticated gateway descriptor read. Additional ports are 18080
 (gateway), 18081 (identity), 18089 (dashboard) and 13000 (console). The standard
-mode runs five Java processes on the host against Docker infrastructure.
+mode also starts identity-service on the host and uses the same dedicated-account
+login flow against Docker infrastructure. All user calls use bearer JWTs;
+collector tokens are used only for ingestion. Diagnostic ports bind to loopback.
 
 The fixture owns the `voltcanary-variable-smoke` Compose project: PostgreSQL on
 15432, TimescaleDB on 15433, Redpanda on 18092 and five Java services on
@@ -61,8 +63,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/device-variable-smok
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/device-variable-recovery-smoke.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/device-variable-replica-smoke.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/device-variable-access-smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/user-identity-docker-smoke.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/device-variable-smoke.ps1 -Stop
 ```
+
+The identity smoke registers two dedicated accounts, refreshes through the normal
+API, verifies gateway/direct-port device CRUD and private dashboard access,
+rejects header-only and invalid-token calls, checks spoofed role/account headers,
+and deletes/archives only its tracked fixture resources. It writes counts and
+outcomes to `artifacts/user-identity-smoke-summary.json`, never credentials.
 
 Recovery verifies restart, replay, revision pinning, backfill, maintenance and
 typed dashboard reads. Replica acceptance uses Redis, a second ingestion

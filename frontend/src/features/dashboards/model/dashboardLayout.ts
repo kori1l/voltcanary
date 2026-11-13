@@ -14,7 +14,8 @@ export function widgetSize(type: string, breakpoint: Breakpoint, version=1,maxCo
 }
 export function widgetDefaultSize(type:string,breakpoint:Breakpoint,version=1,maxColumns=columns[breakpoint]) {
   const minimum=widgetSize(type,breakpoint,version,maxColumns);
-  const table = ["incident-list","maintenance-agenda","risk-list","location-matrix","time-series","prediction-evidence","peak-and-ranking"].includes(type);
+  if(type==="vehicle-map")return {w:Math.max(minimum.w,Math.min(maxColumns,6)),h:Math.max(minimum.h,6)};
+  const table = ["incident-list","maintenance-agenda","risk-list","location-matrix","vehicle-timeline","time-series","prediction-evidence","peak-and-ranking"].includes(type);
   return {w:Math.max(minimum.w,Math.min(maxColumns,table ? 6 : 3)),h:Math.max(minimum.h,table ? 5 : 3)};
 }
 const overlaps = (a:Placement,b:Placement) => a.x < b.x+b.w && b.x < a.x+a.w && a.y < b.y+b.h && b.y < a.y+a.h;

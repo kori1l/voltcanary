@@ -22,6 +22,7 @@ public class VariableRuleEvaluation {
     private final AlertRuleClient rules;
     private final VariableRuleTelemetry telemetry;
     private final MaintenanceWindowProjectionService maintenance;
+    private final com.voltcanary.common.web.JdbcDeviceFence fence;
     private final JdbcTemplate jdbc;
     private final AnomalyRepository anomalies;
     private final AnalyticsOutboxService outbox;
@@ -34,6 +35,7 @@ public class VariableRuleEvaluation {
         this.telemetry = telemetry;
         this.maintenance = maintenance;
         this.jdbc = jdbc;
+        this.fence = new com.voltcanary.common.web.JdbcDeviceFence(jdbc);
         this.anomalies = anomalies;
         this.outbox = outbox;
         this.mapper = mapper;
@@ -41,6 +43,7 @@ public class VariableRuleEvaluation {
 
     @Transactional
     public void evaluate(MeasurementsAcceptedEvent event) {
+        if (!fence.writable(event.deviceId())) return;
         if (!"LIVE".equals(event.eligibility())) return;
         if (event.measurements() == null || event.measurements().size() > 32 || event.recordedAt() == null
                 || event.accountId() == null || event.deviceId() == null || event.dataSourceId() == null

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 public class AiModelProviderCapabilityRegistry {
     public List<ModelProviderCapabilityResponse> capabilities() {
         return List.of(
-                capability("OPENAI", "OpenAI", "https://api.openai.com/v1", "OPENAI_RESPONSES", true, true, true,
+                capability("OPENAI", "OpenAI", "https://api.openai.com/v1", "OPENAI_CHAT_COMPLETIONS", true, true, true,
                         List.of(
                                 new SuggestedModelResponse("gpt-5.4-mini", "GPT-5.4 Mini"),
                                 new SuggestedModelResponse("gpt-5.4", "GPT-5.4"),

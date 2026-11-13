@@ -3,8 +3,6 @@ package com.voltcanary.aiagent.controller;
 import com.voltcanary.aiagent.config.AiAgentProperties;
 import com.voltcanary.aiagent.dto.CreateModelConfigRequest;
 import com.voltcanary.aiagent.dto.CreateModelProviderRequest;
-import com.voltcanary.aiagent.dto.ExecutePlanRequest;
-import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.dto.ModelConfigResponse;
 import com.voltcanary.aiagent.dto.ModelProviderCapabilityResponse;
 import com.voltcanary.aiagent.dto.ModelProviderResponse;
@@ -20,7 +18,7 @@ import com.voltcanary.aiagent.repository.AiModelConfigRepository;
 import com.voltcanary.aiagent.repository.AiModelProviderRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.security.JwtIdentityService;
-import com.voltcanary.aiagent.service.AiAgentOrchestrator;
+import com.voltcanary.aiagent.service.DashboardTaskConversation;
 import com.voltcanary.aiagent.service.AiModelSelectionService;
 import com.voltcanary.aiagent.service.AiModelProviderCapabilityRegistry;
 import com.voltcanary.aiagent.service.AiModelProviderService;
@@ -36,6 +34,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -44,31 +43,33 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiAgentController {
 
     private final JwtIdentityService jwtIdentityService;
-    private final AiAgentOrchestrator orchestrator;
+    private final DashboardTaskConversation dashboardTasks;
     private final AiAgentProperties aiAgentProperties;
     private final AiModelProviderCapabilityRegistry capabilityRegistry;
     private final AiModelProviderService providerService;
     private final AiModelSelectionService modelSelectionService;
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelConfigRepository;
+    private final com.voltcanary.aiagent.service.PrimaryAssistant primary;
 
     public AiAgentController(
             JwtIdentityService jwtIdentityService,
-            AiAgentOrchestrator orchestrator,
+            DashboardTaskConversation dashboardTasks,
             AiAgentProperties aiAgentProperties,
             AiModelProviderCapabilityRegistry capabilityRegistry,
             AiModelProviderService providerService,
             AiModelSelectionService modelSelectionService,
             AiModelProviderRepository providerRepository,
-            AiModelConfigRepository modelConfigRepository) {
+            AiModelConfigRepository modelConfigRepository, com.voltcanary.aiagent.service.PrimaryAssistant primary) {
         this.jwtIdentityService = jwtIdentityService;
-        this.orchestrator = orchestrator;
+        this.dashboardTasks = dashboardTasks;
         this.aiAgentProperties = aiAgentProperties;
         this.capabilityRegistry = capabilityRegistry;
         this.providerService = providerService;
         this.modelSelectionService = modelSelectionService;
         this.providerRepository = providerRepository;
         this.modelConfigRepository = modelConfigRepository;
+        this.primary = primary;
     }
 
     @PostMapping("/plans")
@@ -76,16 +77,34 @@ public class AiAgentController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @Valid @RequestBody PlanRequest request) {
         AuthenticatedUser user = jwtIdentityService.parseBearerToken(authorization);
-        return orchestrator.createPlan(user, request.message(), request.context(), request.providerId(), request.modelConfigId());
+        return primary.create(user, request, authorization);
     }
 
-    @PostMapping("/plans/{planId}/execute")
-    public ExecutePlanResponse execute(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
+    @GetMapping("/orchestration/profile")
+    public java.util.Map<String, Object> profile(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return primary.profile(jwtIdentityService.parseBearerToken(authorization), authorization);
+    }
+
+    @PostMapping("/plans/{planId}/clarifications")
+    public PlanResponse clarifyPlan(@RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("planId") UUID planId,
-            @Valid @RequestBody ExecutePlanRequest request) {
-        AuthenticatedUser user = jwtIdentityService.parseBearerToken(authorization);
-        return orchestrator.execute(user, planId, request.confirmed(), authorization);
+            @Valid @RequestBody com.voltcanary.aiagent.dto.ClarifyPlanRequest request) {
+        return primary.clarify(jwtIdentityService.parseBearerToken(authorization), planId, request.message(), request.metadata(), authorization);
+    }
+
+    @GetMapping("/plans/{planId}")
+    public PlanResponse planStatus(@RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("planId") UUID planId) {
+        var current = primary.readPlan(jwtIdentityService.parseBearerToken(authorization), planId, authorization);
+        if (current.isPresent()) return current.get();
+        return dashboardTasks.getPlan(jwtIdentityService.parseBearerToken(authorization), planId, authorization);
+    }
+
+    @GetMapping("/dashboard-tasks/{taskId}")
+    public com.voltcanary.aiagent.dto.DashboardTaskRecovery dashboardTask(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("taskId") UUID taskId, @RequestParam(value = "branchId", required = false) UUID branchId) {
+        return dashboardTasks.recover(jwtIdentityService.parseBearerToken(authorization), taskId, branchId, authorization);
     }
 
     @GetMapping("/tools")
@@ -95,19 +114,13 @@ public class AiAgentController {
 
     @GetMapping("/provider")
     public ProviderStatusResponse provider(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        try {
-            AuthenticatedUser user = jwtIdentityService.parseBearerToken(authorization);
-            var provider = providerRepository.findByAccountIdAndDefaultProviderTrue(user.accountId());
-            if (provider.isPresent()) {
-                var model = modelConfigRepository.findByProviderIdAndDefaultModelTrue(provider.get().getId());
-                return new ProviderStatusResponse(provider.get().getProviderType().name(), model.map(item -> item.getModelId()).orElse("No default model"), true, "rules");
-            }
-        } catch (Exception ignored) {
-            // Fall back to env provider below for backwards compatibility.
-        }
-        String provider = aiAgentProperties.getProvider();
-        boolean openAiEnabled = "openai".equalsIgnoreCase(provider) && !aiAgentProperties.getOpenai().getApiKey().isBlank();
-        return new ProviderStatusResponse(openAiEnabled ? "openai" : "rules", openAiEnabled ? aiAgentProperties.getOpenai().getModel() : "rule-based planner", openAiEnabled, "rules");
+        var user = jwtIdentityService.parseBearerToken(authorization);
+        var provider = providerRepository.findByAccountIdAndDefaultProviderTrue(user.accountId());
+        if (provider.isEmpty()) return new ProviderStatusResponse("spring-ai", "Configured model required", false, "none");
+        var model = modelConfigRepository.findByProviderIdAndDefaultModelTrue(provider.get().getId());
+        return new ProviderStatusResponse(provider.get().getProviderType().name(), model.map(item -> item.getModelId()).orElse("Configured model required"),
+                primary.enabled() && provider.get().getStatus() == com.voltcanary.aiagent.domain.AiModelProviderStatus.ACTIVE
+                        && model.isPresent() && model.get().isEnabled(), "none");
     }
 
     @GetMapping("/model-provider-capabilities")

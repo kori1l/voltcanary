@@ -4,19 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.aiagent.config.AiAgentProperties;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
 @Service
 public class OpenAiPlanProvider implements LlmPlanProvider {
@@ -65,6 +59,8 @@ public class OpenAiPlanProvider implements LlmPlanProvider {
         try {
             String text = callResponsesApi(message, context == null ? Map.of() : context);
             JsonNode root = objectMapper.readTree(extractJson(text));
+            com.voltcanary.aiagent.trace.AssistantTrace.event("CANDIDATE", "OBSERVED", null,
+                    Map.of("actions", objectMapper.convertValue(root.path("actions"), Object.class)));
             List<LlmActionDraft> actions = new ArrayList<>();
             for (JsonNode actionNode : root.path("actions")) {
                 actions.add(new LlmActionDraft(
@@ -80,64 +76,34 @@ public class OpenAiPlanProvider implements LlmPlanProvider {
                     root.path("explanation").asText(null),
                     actions));
         } catch (Exception ex) {
-            log.warn("OpenAI plan provider failed, falling back to rules: {}", ex.getMessage());
+            com.voltcanary.aiagent.trace.AssistantTrace.event("PARSING", "FAILED", "LEGACY_PROVIDER_FAILURE", Map.of("failureType", ex.getClass().getSimpleName()));
+            log.warn("OpenAI plan provider failed, falling back to rules: {}", ex.getClass().getSimpleName());
             return Optional.empty();
         }
     }
 
     private String callResponsesApi(String message, Map<String, Object> context) throws Exception {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        Duration timeout = Duration.ofMillis(Math.max(1000, properties.getOpenai().getTimeoutMs()));
-        requestFactory.setConnectTimeout(timeout);
-        requestFactory.setReadTimeout(timeout);
-        RestClient restClient = RestClient.builder()
-                .baseUrl(properties.getOpenai().getBaseUrl())
-                .requestFactory(requestFactory)
-                .build();
-
-        Map<String, Object> userInput = new LinkedHashMap<>();
-        userInput.put("message", message);
-        userInput.put("context", context);
-
-        Map<String, Object> request = new LinkedHashMap<>();
-        request.put("model", properties.getOpenai().getModel());
-        request.put("instructions", SYSTEM_PROMPT);
-        request.put("input", objectMapper.writeValueAsString(userInput));
-        request.put("max_output_tokens", 1800);
-
-        JsonNode response = restClient.post()
-                .uri("/responses")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer " + properties.getOpenai().getApiKey())
-                .body(request)
-                .retrieve()
-                .body(JsonNode.class);
-        String outputText = outputText(response);
-        if (outputText.isBlank()) {
-            throw new RestClientException("empty OpenAI response text");
-        }
-        return outputText;
-    }
-
-    private String outputText(JsonNode response) {
-        if (response == null) {
-            return "";
-        }
-        if (response.path("output_text").isTextual()) {
-            return response.path("output_text").asText();
-        }
-        StringBuilder text = new StringBuilder();
-        for (JsonNode output : response.path("output")) {
-            for (JsonNode content : output.path("content")) {
-                if (content.path("text").isTextual()) {
-                    text.append(content.path("text").asText());
-                }
+        var settings = properties.getOpenai();
+        var provider = new com.voltcanary.aiagent.domain.AiModelProvider();
+        provider.setProviderType(com.voltcanary.aiagent.domain.AiModelProviderType.OPENAI);
+        provider.setBaseUrl(settings.getBaseUrl());
+        var config = new com.voltcanary.aiagent.domain.AiModelConfig();
+        config.setModelId(settings.getModel());
+        config.setMaxOutputTokens(1800);
+        config.setTimeoutMs(settings.getTimeoutMs());
+        var selected = new com.voltcanary.aiagent.llm.adapter.AiResolvedModel(provider, config, settings.getApiKey());
+        try (var trace = com.voltcanary.aiagent.trace.AssistantTrace.start("MODEL_CALL", Map.of("provider", "openai", "model", settings.getModel()))) {
+            try {
+                var result = new com.voltcanary.aiagent.adapter.springai.SpringAiExchange(objectMapper).call(selected,
+                        SYSTEM_PROMPT, objectMapper.writeValueAsString(Map.of("message", message, "context", context)), null, false, settings.getTimeoutMs());
+                if (result.failure() != null) throw new IllegalArgumentException(result.failure());
+                trace.success(Map.of());
+                return result.text();
+            } catch (Exception failure) {
+                trace.failure("PROVIDER_FAILED", Map.of("failureType", failure.getClass().getSimpleName()));
+                throw failure;
             }
         }
-        if (!text.isEmpty()) {
-            return text.toString();
-        }
-        return response.path("choices").path(0).path("message").path("content").asText("");
     }
 
     private String extractJson(String text) {

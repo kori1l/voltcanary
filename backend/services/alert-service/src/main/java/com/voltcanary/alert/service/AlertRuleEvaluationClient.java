@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Component
 public class AlertRuleEvaluationClient {
@@ -46,8 +48,11 @@ public class AlertRuleEvaluationClient {
             AnalyticsRuleTestResponse response = restClient.post()
                     .uri("/analytics/rules/test")
                     .headers(headers -> {
-                        if (userId != null && !userId.isBlank()) {
-                            headers.set("X-User-Id", userId);
+                        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes context) {
+                            String authorization = context.getRequest().getHeader("Authorization");
+                            if (authorization != null) {
+                                headers.set("Authorization", authorization);
+                            }
                         }
                         headers.set("X-Source-Service", internalServiceName);
                         headers.set("X-Correlation-Id", correlationId == null ? "" : correlationId);

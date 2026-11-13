@@ -28,10 +28,10 @@ public class DashboardScopeReadService {
                 || request.deviceTypes().size() > 50 || request.locationTags().size() > 50
                 || request.deviceTypes().stream().anyMatch(value -> value.length() > 100)
                 || request.locationTags().stream().anyMatch(value -> value.length() > 100)) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid or oversized typed dashboard scope");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Invalid or oversized typed dashboard scope");
         }
         if ("FIXED".equals(request.mode()) && request.deviceIds().isEmpty() && request.locationIds().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Fixed scope requires explicit resource IDs");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Fixed scope requires explicit resource IDs");
         }
         var account = accounts.findByUserId(actor.id()).filter(candidate -> candidate.getStatus() == AccountStatus.ACTIVE)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Active account is required"));

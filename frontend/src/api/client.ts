@@ -70,6 +70,22 @@ export function isAuthenticated() {
   return Boolean(getAccessToken());
 }
 
+/** Renew before the bounded AI turn, rather than after a token expires inside a downstream read. */
+export async function prepareAiSession() {
+  const token = getAccessToken();
+  if (!token) return;
+  let expiry: number;
+  try {
+    const payload = token.split(".")[1];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    expiry = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))).exp;
+  } catch { return; }
+  if (typeof expiry !== "number" || expiry * 1000 > Date.now() + 300_000) return;
+  const identity = identityEpoch;
+  if (!getRefreshToken() || !await refreshAccessToken()) throw new ApiError("Renew your session before preparing this request.", 401);
+  if (identity !== identityEpoch) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+}
+
 export async function apiRequest<TResponse>(
   path: string,
   options: RequestInit = {},

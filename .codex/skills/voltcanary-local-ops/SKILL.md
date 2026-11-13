@@ -72,6 +72,28 @@ Use Grafana Explore with the Loki datasource for Compose logs. Query all local
 Compose logs with `{compose_project="voltcanary"}` or a single service with
 `{compose_service="<service-name>"}`.
 
+## Configurable Owner Docker Smoke
+
+With gateway, identity, device, telemetry, analytics and alert services running,
+run `python scripts/configurable-owner-docker-smoke.py` from the repository root.
+It creates separate synthetic resources, verifies two exact typed native rows,
+reviewed grant/policy APIs, static owner compilation and actual grant revocation.
+Credentials stay in memory/stdin; the ignored summary contains fixture IDs.
+No model call, executable bundle or RULE activation is dispatched.
+
+## AI Graph Docker Smoke
+
+With the application profile healthy and the existing local assistant generation
+gate enabled, run `python scripts/ai-langgraph-workflow-docker-smoke.py
+--restart-service --output artifacts/<new-run-directory>/summary.json` from the
+repository root. It uses a separate synthetic account and local deterministic
+provider on host port8128, two AI-service restarts and real owner APIs. It checks
+clarification, exact create/update readback, same-ID editing, partial failure,
+receipt replay and cleanup. Docker must reach host.docker.internal:8128.
+Do not point real accounts at the fixture or treat its pass as model quality.
+Preserve failed outputs; choose a fresh output directory for each run. See the
+[runbook](../../../docs/current/flows/ai-creation-verification.md#langgraph-ordinary-api-docker-lifecycle--2026-11-12).
+
 ## ML Docker Smoke
 
 Use `scripts/ml-failure-prediction-docker-smoke.ps1` as the primary local

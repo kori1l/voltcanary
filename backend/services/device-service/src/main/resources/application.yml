@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: device-service
@@ -33,6 +35,17 @@ info:
     version: 0.1.0
 
 app:
+  source-capture:
+    telemetry-service-base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+    internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
+    timeout: ${SOURCE_CAPTURE_OWNER_TIMEOUT:2s}
+  native-data:
+    cursor-key: ${NATIVE_DATA_CURSOR_KEY:}
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
   variables:
     activation-enabled: ${VARIABLE_ACTIVATION_ENABLED:false}
   workspace-identity:

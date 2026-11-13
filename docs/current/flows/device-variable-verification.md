@@ -2,9 +2,19 @@
 
 Verification date: 2026-10-17. The six changes implement the first numeric
 variable scope. Checked tasks refer to implementation and the evidence below;
-changes remain available for review without being archived.
+the six changes were reverified and archived on 2026-10-20.
 
 ## Automated evidence
+
+The 2026-10-20 identity-hardening regression repeated the full Java 21 Docker
+fixture using real registration/login and bearer JWTs. Base telemetry/formula,
+threshold alerts and duplicate acceptance passed, followed by restart/replay,
+pinned revisions, backfill, maintenance, typed dashboard queries, two ingestion
+replicas with shared deduplication/failover, disabled-processing recovery and
+foreign/source/workspace/cached-access denial. The separate identity fixture
+passed 68 gateway/direct-port checks with two accounts and scoped cleanup.
+Evidence is in ignored `artifacts/identity-*-docker.log` and the corresponding
+smoke summaries. The opt-in flags remain disabled by default.
 
 - Device variable contract suite runs against H2 and PostgreSQL 16. It checks
   owner isolation, immutable publication, expected versions, retained inputs,

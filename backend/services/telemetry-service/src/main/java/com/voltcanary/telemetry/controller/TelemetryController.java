@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 @RestController
-@RequestMapping("/telemetry/devices/{deviceId}")
+@RequestMapping({"/telemetry/devices/{deviceId}", "/internal/telemetry/devices/{deviceId}"})
 public class TelemetryController {
 
     private final TelemetryQueryService telemetryQueryService;

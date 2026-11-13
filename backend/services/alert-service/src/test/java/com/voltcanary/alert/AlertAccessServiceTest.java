@@ -87,6 +87,6 @@ class AlertAccessServiceTest {
         authorizationProperties.setDeviceServiceBaseUrl(baseUrl);
         AlertInternalProperties internalProperties = new AlertInternalProperties();
         internalProperties.setServiceToken("internal-token");
-        return new AlertAccessService(authorizationProperties, RestClient.builder(), internalProperties);
+        return new AlertAccessService(authorizationProperties, com.voltcanary.common.web.JacksonRestClients.builder(), internalProperties);
     }
 }

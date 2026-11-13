@@ -1,0 +1,994 @@
+{
+  "status": "TARGET_DOCUMENTATION_NOT_RUNTIME",
+  "notes": [
+    "Synthetic fixtures, no authority or model/provider calls. Payload and loader argument schemas resolve through the server skill registry.",
+    "Cycle/depth/access/cancellation/revision/slot provenance are runtime semantic checks, not proven by JSON Schema.",
+    "Revision-2 documentation vectors check selected assignment/dependency/binding semantics, not real authorization, network recovery, scheduler performance or model quality. All worker outcome branches have positive grammar examples."
+  ],
+  "documents": [
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.request",
+      "body": {
+        "parentTaskId": "00000000-0000-4000-8000-000000000001",
+        "requestKey": "metric-employee-hours-v1",
+        "skillId": "metrics.inspect",
+        "skillVersion": "1",
+        "goalIds": [
+          "00000000-0000-4000-8000-000000000002"
+        ],
+        "requirementsRevision": 7,
+        "inputRefs": [
+          "00000000-0000-4000-8000-000000000003"
+        ],
+        "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+        "resultSchemaId": "metrics.evidence/1"
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "ANSWER",
+        "payload": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "NULL",
+            "value": null
+          },
+          "valueSemantics": "UNAVAILABLE",
+          "status": "NO_DATA",
+          "coverage": "UNKNOWN",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        },
+        "evidenceRefs": [
+          "00000000-0000-4000-8000-000000000006"
+        ],
+        "unresolvedSlotIds": [
+          "00000000-0000-4000-8000-000000000007"
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "DELEGATE",
+        "requests": [
+          {
+            "parentTaskId": "00000000-0000-4000-8000-000000000004",
+            "requestKey": "schema-work-definition",
+            "skillId": "schema.inspect",
+            "skillVersion": "1",
+            "goalIds": [
+              "00000000-0000-4000-8000-000000000002"
+            ],
+            "requirementsRevision": 7,
+            "inputRefs": [
+              "00000000-0000-4000-8000-000000000003"
+            ],
+            "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+            "resultSchemaId": "schema.evidence/1"
+          }
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "NEED_DATA",
+        "requests": [
+          {
+            "loaderId": "metrics.describe",
+            "argumentsSchemaId": "metrics.describe/1",
+            "arguments": {
+              "metricId": "00000000-0000-4000-8000-000000000008"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "NEED_USER",
+        "questions": [
+          {
+            "slotIds": [
+              "00000000-0000-4000-8000-000000000007"
+            ],
+            "reason": "В данных есть только движение, а политика работы не задана.",
+            "text": "Какой источник подтверждает рабочее время сотрудника?",
+            "choices": [],
+            "evidenceRefs": [
+              "00000000-0000-4000-8000-000000000006"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "metrics.evidence",
+      "body": {
+        "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+        "metricVersion": 1,
+        "subjectRefs": [
+          "00000000-0000-4000-8000-000000000081"
+        ],
+        "interval": {
+          "start": "2026-11-02T08:00:00Z",
+          "end": "2026-11-02T17:00:00Z"
+        },
+        "timezone": "Europe/Helsinki",
+        "unit": "us",
+        "value": {
+          "type": "NULL",
+          "value": null
+        },
+        "valueSemantics": "UNAVAILABLE",
+        "status": "NO_DATA",
+        "coverage": "UNKNOWN",
+        "readManifestId": "00000000-0000-4000-8000-000000000082",
+        "evidenceRefs": [
+          "00000000-0000-4000-8000-000000000006"
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "metrics.evidence",
+      "body": {
+        "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+        "metricVersion": 1,
+        "subjectRefs": [
+          "00000000-0000-4000-8000-000000000081"
+        ],
+        "interval": {
+          "start": "2026-11-02T08:00:00Z",
+          "end": "2026-11-02T17:00:00Z"
+        },
+        "timezone": "Europe/Helsinki",
+        "unit": "us",
+        "value": {
+          "type": "DURATION",
+          "value": "32400000000"
+        },
+        "valueSemantics": "EXACT",
+        "status": "OK",
+        "coverage": "COMPLETE",
+        "readManifestId": "00000000-0000-4000-8000-000000000082",
+        "evidenceRefs": [
+          "00000000-0000-4000-8000-000000000006"
+        ]
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "requirements.answer",
+      "body": {
+        "planId": "00000000-0000-4000-8000-000000000090",
+        "questionId": "00000000-0000-4000-8000-000000000091",
+        "expectedQuestionRevision": 2,
+        "expectedRequirementsRevision": 7,
+        "requestId": "00000000-0000-4000-8000-000000000092",
+        "answer": {
+          "kind": "CHOICE",
+          "choiceId": "confirmed-work-source"
+        }
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "UNSUPPORTED",
+        "code": "MISSING_HISTORY",
+        "missingCapability": "AS_OF_HISTORY"
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "consultation.response",
+      "body": {
+        "taskId": "00000000-0000-4000-8000-000000000004",
+        "attemptId": "00000000-0000-4000-8000-000000000005",
+        "requirementsRevision": 7,
+        "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "outcome": "FAILURE",
+        "code": "SOURCE_TEMPORARILY_UNAVAILABLE",
+        "retryClass": "TRANSIENT"
+      }
+    },
+    {
+      "version": "ASSISTANT-COLLAB/1",
+      "kind": "metrics.evidence",
+      "body": {
+        "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+        "metricVersion": 1,
+        "subjectRefs": [
+          "00000000-0000-4000-8000-000000000081"
+        ],
+        "interval": {
+          "start": "2026-11-02T08:00:00Z",
+          "end": "2026-11-02T17:00:00Z"
+        },
+        "timezone": "Europe/Helsinki",
+        "unit": "us",
+        "value": {
+          "type": "DURATION",
+          "value": "3600000000"
+        },
+        "valueSemantics": "LOWER_BOUND",
+        "status": "PARTIAL",
+        "coverage": "PARTIAL",
+        "readManifestId": "00000000-0000-4000-8000-000000000082",
+        "evidenceRefs": [
+          "00000000-0000-4000-8000-000000000006"
+        ]
+      }
+    }
+  ],
+  "negativeCases": [
+    {
+      "id": "C01-secret-is-not-input",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.request",
+        "body": {
+          "parentTaskId": "00000000-0000-4000-8000-000000000001",
+          "requestKey": "metric-employee-hours-v1",
+          "skillId": "metrics.inspect",
+          "skillVersion": "1",
+          "goalIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "requirementsRevision": 7,
+          "inputRefs": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+          "resultSchemaId": "metrics.evidence/1",
+          "apiKey": "forbidden-fixture"
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C02-revision-required",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.request",
+        "body": {
+          "parentTaskId": "00000000-0000-4000-8000-000000000001",
+          "requestKey": "metric-employee-hours-v1",
+          "skillId": "metrics.inspect",
+          "skillVersion": "1",
+          "goalIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "inputRefs": [
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+          "resultSchemaId": "metrics.evidence/1"
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C03-no-freeform-outcome",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.response",
+        "body": {
+          "taskId": "00000000-0000-4000-8000-000000000004",
+          "attemptId": "00000000-0000-4000-8000-000000000005",
+          "requirementsRevision": 7,
+          "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "EXECUTE_SQL",
+          "payload": {
+            "status": "NO_DATA",
+            "value": null,
+            "unit": "us"
+          },
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "unresolvedSlotIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C04-fanout-bound",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.response",
+        "body": {
+          "taskId": "00000000-0000-4000-8000-000000000004",
+          "attemptId": "00000000-0000-4000-8000-000000000005",
+          "requirementsRevision": 7,
+          "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "DELEGATE",
+          "requests": [
+            {
+              "parentTaskId": "00000000-0000-4000-8000-000000000004",
+              "requestKey": "schema-work-definition",
+              "skillId": "schema.inspect",
+              "skillVersion": "1",
+              "goalIds": [
+                "00000000-0000-4000-8000-000000000002"
+              ],
+              "requirementsRevision": 7,
+              "inputRefs": [
+                "00000000-0000-4000-8000-000000000003"
+              ],
+              "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+              "resultSchemaId": "schema.evidence/1"
+            },
+            {
+              "parentTaskId": "00000000-0000-4000-8000-000000000004",
+              "requestKey": "schema-work-definition",
+              "skillId": "schema.inspect",
+              "skillVersion": "1",
+              "goalIds": [
+                "00000000-0000-4000-8000-000000000002"
+              ],
+              "requirementsRevision": 7,
+              "inputRefs": [
+                "00000000-0000-4000-8000-000000000003"
+              ],
+              "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+              "resultSchemaId": "schema.evidence/1"
+            },
+            {
+              "parentTaskId": "00000000-0000-4000-8000-000000000004",
+              "requestKey": "schema-work-definition",
+              "skillId": "schema.inspect",
+              "skillVersion": "1",
+              "goalIds": [
+                "00000000-0000-4000-8000-000000000002"
+              ],
+              "requirementsRevision": 7,
+              "inputRefs": [
+                "00000000-0000-4000-8000-000000000003"
+              ],
+              "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+              "resultSchemaId": "schema.evidence/1"
+            },
+            {
+              "parentTaskId": "00000000-0000-4000-8000-000000000004",
+              "requestKey": "schema-work-definition",
+              "skillId": "schema.inspect",
+              "skillVersion": "1",
+              "goalIds": [
+                "00000000-0000-4000-8000-000000000002"
+              ],
+              "requirementsRevision": 7,
+              "inputRefs": [
+                "00000000-0000-4000-8000-000000000003"
+              ],
+              "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+              "resultSchemaId": "schema.evidence/1"
+            }
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C05-no-model-verification",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.response",
+        "body": {
+          "taskId": "00000000-0000-4000-8000-000000000004",
+          "attemptId": "00000000-0000-4000-8000-000000000005",
+          "requirementsRevision": 7,
+          "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "ANSWER",
+          "payload": {
+            "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+            "metricVersion": 1,
+            "subjectRefs": [
+              "00000000-0000-4000-8000-000000000081"
+            ],
+            "interval": {
+              "start": "2026-11-02T08:00:00Z",
+              "end": "2026-11-02T17:00:00Z"
+            },
+            "timezone": "Europe/Helsinki",
+            "unit": "us",
+            "value": {
+              "type": "NULL",
+              "value": null
+            },
+            "valueSemantics": "UNAVAILABLE",
+            "status": "NO_DATA",
+            "coverage": "UNKNOWN",
+            "readManifestId": "00000000-0000-4000-8000-000000000082",
+            "evidenceRefs": [
+              "00000000-0000-4000-8000-000000000006"
+            ]
+          },
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ],
+          "unresolvedSlotIds": [
+            "00000000-0000-4000-8000-000000000007"
+          ],
+          "verified": true
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C06-question-revision-required",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "requirements.answer",
+        "body": {
+          "planId": "00000000-0000-4000-8000-000000000090",
+          "questionId": "00000000-0000-4000-8000-000000000091",
+          "expectedRequirementsRevision": 7,
+          "requestId": "00000000-0000-4000-8000-000000000092",
+          "answer": {
+            "kind": "CHOICE",
+            "choiceId": "confirmed-work-source"
+          }
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C07-no-data-is-not-zero",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "metrics.evidence",
+        "body": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "DURATION",
+            "value": "0"
+          },
+          "valueSemantics": "UNAVAILABLE",
+          "status": "NO_DATA",
+          "coverage": "UNKNOWN",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C08-ok-cannot-be-null",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "metrics.evidence",
+        "body": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "NULL",
+            "value": null
+          },
+          "valueSemantics": "EXACT",
+          "status": "OK",
+          "coverage": "COMPLETE",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C09-closed-answer-branch",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "requirements.answer",
+        "body": {
+          "planId": "00000000-0000-4000-8000-000000000090",
+          "questionId": "00000000-0000-4000-8000-000000000091",
+          "expectedQuestionRevision": 2,
+          "expectedRequirementsRevision": 7,
+          "requestId": "00000000-0000-4000-8000-000000000092",
+          "answer": {
+            "kind": "CHOICE",
+            "choiceId": "confirmed-work-source",
+            "text": "unbound-extra-text"
+          }
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C10-duplicate-input-reference",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.request",
+        "body": {
+          "parentTaskId": "00000000-0000-4000-8000-000000000001",
+          "requestKey": "metric-employee-hours-v1",
+          "skillId": "metrics.inspect",
+          "skillVersion": "1",
+          "goalIds": [
+            "00000000-0000-4000-8000-000000000002"
+          ],
+          "requirementsRevision": 7,
+          "inputRefs": [
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000003"
+          ],
+          "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+          "resultSchemaId": "metrics.evidence/1"
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C11-slot-id-binding-required",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "consultation.response",
+        "body": {
+          "taskId": "00000000-0000-4000-8000-000000000004",
+          "attemptId": "00000000-0000-4000-8000-000000000005",
+          "requirementsRevision": 7,
+          "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "NEED_USER",
+          "questions": [
+            {
+              "slotIds": [
+                "00000000-0000-4000-8000-000000000007"
+              ],
+              "reason": "В данных есть только движение, а политика работы не задана.",
+              "text": "Какой источник подтверждает рабочее время сотрудника?",
+              "choices": [
+                {
+                  "choiceId": "bad-binding",
+                  "label": "Недопустимая привязка",
+                  "bindings": {
+                    "name": {
+                      "type": "TEXT",
+                      "value": "forbidden-key"
+                    }
+                  }
+                }
+              ],
+              "evidenceRefs": [
+                "00000000-0000-4000-8000-000000000006"
+              ]
+            }
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C12-partial-is-not-exact",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "metrics.evidence",
+        "body": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "DURATION",
+            "value": "32400000000"
+          },
+          "valueSemantics": "EXACT",
+          "status": "PARTIAL",
+          "coverage": "PARTIAL",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C13-partial-coverage-cannot-be-complete",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "metrics.evidence",
+        "body": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "DURATION",
+            "value": "3600000000"
+          },
+          "valueSemantics": "LOWER_BOUND",
+          "status": "PARTIAL",
+          "coverage": "COMPLETE",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    },
+    {
+      "id": "C14-lower-bound-must-be-numeric",
+      "document": {
+        "version": "ASSISTANT-COLLAB/1",
+        "kind": "metrics.evidence",
+        "body": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "TEXT",
+            "value": "not-a-numeric-bound"
+          },
+          "valueSemantics": "LOWER_BOUND",
+          "status": "PARTIAL",
+          "coverage": "PARTIAL",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "GRAMMAR_REJECT"
+    }
+  ],
+  "specificationRevision": 2,
+  "fixtureAssignment": {
+    "taskId": "00000000-0000-4000-8000-000000000004",
+    "attemptId": "00000000-0000-4000-8000-000000000005",
+    "requirementsRevision": 7,
+    "readSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "continuationEpoch": 2,
+    "cancellationEpoch": 0,
+    "dependencyVersions": {
+      "00000000-0000-4000-8000-000000000007": 3
+    },
+    "allowedEvidenceRefs": [
+      "00000000-0000-4000-8000-000000000006"
+    ],
+    "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+    "metricVersion": 1,
+    "metricValueType": "DURATION",
+    "metricUnit": "us"
+  },
+  "fixtureCurrent": {
+    "requirementsRevision": 7,
+    "continuationEpoch": 2,
+    "cancellationEpoch": 0,
+    "dependencyVersions": {
+      "00000000-0000-4000-8000-000000000007": 3
+    },
+    "authorized": true
+  },
+  "semanticCases": [
+    {
+      "id": "S01-baseline",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {},
+      "expected": "ACCEPTED"
+    },
+    {
+      "id": "S02-unrelated-edit",
+      "documentIndex": 1,
+      "currentEdits": {
+        "requirementsRevision": 8
+      },
+      "bodyEdits": {},
+      "expected": "REBASE_ACCEPTED"
+    },
+    {
+      "id": "S03-changed-dependency",
+      "documentIndex": 1,
+      "currentEdits": {
+        "requirementsRevision": 8,
+        "dependencyVersions": {
+          "00000000-0000-4000-8000-000000000007": 4
+        }
+      },
+      "bodyEdits": {},
+      "expected": "STALE"
+    },
+    {
+      "id": "S04-cancelled",
+      "documentIndex": 1,
+      "currentEdits": {
+        "cancellationEpoch": 1
+      },
+      "bodyEdits": {},
+      "expected": "CANCELLED"
+    },
+    {
+      "id": "S05-obsolete-continuation",
+      "documentIndex": 1,
+      "currentEdits": {
+        "continuationEpoch": 3
+      },
+      "bodyEdits": {},
+      "expected": "STALE_ATTEMPT"
+    },
+    {
+      "id": "S06-forged-attempt",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "attemptId": "00000000-0000-4000-8000-000000000999"
+      },
+      "expected": "ASSIGNMENT_MISMATCH"
+    },
+    {
+      "id": "S07-forged-read-set",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "readSetDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "expected": "ASSIGNMENT_MISMATCH"
+    },
+    {
+      "id": "S08-revoked-access",
+      "documentIndex": 1,
+      "currentEdits": {
+        "authorized": false
+      },
+      "bodyEdits": {},
+      "expected": "DENIED"
+    },
+    {
+      "id": "S09-unapproved-evidence",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "evidenceRefs": [
+          "00000000-0000-4000-8000-000000000999"
+        ]
+      },
+      "expected": "REF_DENIED"
+    },
+    {
+      "id": "S10-metric-unit",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "payload": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000080",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "h",
+          "value": {
+            "type": "NULL",
+            "value": null
+          },
+          "valueSemantics": "UNAVAILABLE",
+          "status": "NO_DATA",
+          "coverage": "UNKNOWN",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "UNIT_MISMATCH"
+    },
+    {
+      "id": "S11-false-parent",
+      "documentIndex": 2,
+      "currentEdits": {},
+      "bodyEdits": {
+        "requests": [
+          {
+            "parentTaskId": "00000000-0000-4000-8000-000000000999",
+            "requestKey": "schema-work-definition",
+            "skillId": "schema.inspect",
+            "skillVersion": "1",
+            "goalIds": [
+              "00000000-0000-4000-8000-000000000002"
+            ],
+            "requirementsRevision": 7,
+            "inputRefs": [
+              "00000000-0000-4000-8000-000000000003"
+            ],
+            "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+            "resultSchemaId": "schema.evidence/1"
+          }
+        ]
+      },
+      "expected": "PARENT_MISMATCH"
+    },
+    {
+      "id": "S12-forged-revision",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "requirementsRevision": 8
+      },
+      "expected": "ASSIGNMENT_MISMATCH"
+    },
+    {
+      "id": "S13-choice-slot-scope",
+      "documentIndex": 4,
+      "currentEdits": {},
+      "bodyEdits": {
+        "questions": [
+          {
+            "slotIds": [
+              "00000000-0000-4000-8000-000000000007"
+            ],
+            "reason": "В данных есть только движение, а политика работы не задана.",
+            "text": "Какой источник подтверждает рабочее время сотрудника?",
+            "choices": [
+              {
+                "choiceId": "unknown-slot",
+                "label": "Неверное поле",
+                "bindings": {
+                  "00000000-0000-4000-8000-000000000999": {
+                    "type": "TEXT",
+                    "value": "wrong-slot"
+                  }
+                }
+              }
+            ],
+            "evidenceRefs": [
+              "00000000-0000-4000-8000-000000000006"
+            ]
+          }
+        ]
+      },
+      "expected": "QUESTION_BINDING_MISMATCH"
+    },
+    {
+      "id": "S14-metric-identity",
+      "documentIndex": 1,
+      "currentEdits": {},
+      "bodyEdits": {
+        "payload": {
+          "metricDefinitionId": "00000000-0000-4000-8000-000000000999",
+          "metricVersion": 1,
+          "subjectRefs": [
+            "00000000-0000-4000-8000-000000000081"
+          ],
+          "interval": {
+            "start": "2026-11-02T08:00:00Z",
+            "end": "2026-11-02T17:00:00Z"
+          },
+          "timezone": "Europe/Helsinki",
+          "unit": "us",
+          "value": {
+            "type": "NULL",
+            "value": null
+          },
+          "valueSemantics": "UNAVAILABLE",
+          "status": "NO_DATA",
+          "coverage": "UNKNOWN",
+          "readManifestId": "00000000-0000-4000-8000-000000000082",
+          "evidenceRefs": [
+            "00000000-0000-4000-8000-000000000006"
+          ]
+        }
+      },
+      "expected": "METRIC_BINDING_MISMATCH"
+    },
+    {
+      "id": "S15-child-revision",
+      "documentIndex": 2,
+      "currentEdits": {},
+      "bodyEdits": {
+        "requests": [
+          {
+            "parentTaskId": "00000000-0000-4000-8000-000000000004",
+            "requestKey": "schema-work-definition",
+            "skillId": "schema.inspect",
+            "skillVersion": "1",
+            "goalIds": [
+              "00000000-0000-4000-8000-000000000002"
+            ],
+            "requirementsRevision": 8,
+            "inputRefs": [
+              "00000000-0000-4000-8000-000000000003"
+            ],
+            "question": "Проверь, есть ли подтверждённые интервалы работы и назначение сотрудника; GPS не считается определением работы.",
+            "resultSchemaId": "schema.evidence/1"
+          }
+        ]
+      },
+      "expected": "ASSIGNMENT_MISMATCH"
+    }
+  ]
+}

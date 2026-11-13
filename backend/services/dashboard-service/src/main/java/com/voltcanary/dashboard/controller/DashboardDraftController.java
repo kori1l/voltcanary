@@ -56,6 +56,7 @@ public class DashboardDraftController {
     @PutMapping("/draft")
     public ResponseEntity<Draft> save(@RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @RequestBody JsonNode body) {
         var actor = ownership.resolve(authorization);
         validation.validatePayload(body);
@@ -64,9 +65,17 @@ public class DashboardDraftController {
         if (source != null && body.hasNonNull("definition")) {
             throw new DashboardFailure("VALIDATION_ERROR", "Choose definition or sourceRevision, not both", "sourceRevision");
         }
-        Draft saved = drafts.save(actor, authorization, id, ifMatch, base,
-                source == null ? decoder.definition(body) : null, source);
+        Draft saved = key == null ? drafts.save(actor, authorization, id, ifMatch, base,
+                source == null ? decoder.definition(body) : null, source)
+                : drafts.saveReviewed(actor, authorization, id, ifMatch, base,
+                        source == null ? decoder.definition(body) : null, source, key, body);
         return ResponseEntity.ok().eTag(saved.etag().toString()).body(saved);
+    }
+
+    @GetMapping("/draft/receipt")
+    public Draft receipt(@RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return drafts.receipt(ownership.resolve(authorization), authorization, id, key);
     }
 
     @PostMapping("/publish")

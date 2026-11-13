@@ -80,6 +80,19 @@ public class DashboardWidgetQueries {
         var resolved = definitions.read(actor, id, request);
         DashboardDefinition definition = resolved.definition();
         int revision = resolved.revision();
+        return queryDefinition(authorization, actor, id, request, validateOnly, progress, definition, revision, false);
+    }
+
+    /** Unsaved definitions use the same scope, time, owner reads and evidence projection as saved dashboards. */
+    public Batch preview(String authorization, DashboardActor actor, DashboardDefinition definition) {
+        UUID id = UUID.nameUUIDFromBytes(QueryHash.of(mapper, List.of("unsaved-preview", actor, definition))
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return queryDefinition(authorization, actor, id, new Request(null, null, null, true), false, null, definition, 0, true);
+    }
+
+    private Batch queryDefinition(String authorization, DashboardActor actor, UUID id, Request request,
+            boolean validateOnly, java.util.function.Consumer<Batch> progress, DashboardDefinition definition,
+            int revision, boolean unsaved) {
         var runtime = decoder.runtime(request.runtimeContext());
         var defaults = decoder.runtime(definition.defaultContext());
         Instant asOf = Instant.now();
@@ -95,14 +108,14 @@ public class DashboardWidgetQueries {
             }
             try {
                 Config config = decoder.config(widget, manifest.get());
-                ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo, "vehicle-map".equals(widget.type()));
+                ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo, PositionWidgets.contains(widget.type()));
                 scope=scopes.capabilities(authorization,actor,scope,widget.type());
                 if (scope.deniedBindingCount() > 0) throw new DashboardFailure("NO_ACCESS", "Resource binding is no longer accessible");
                 if (decoder.scope(widget.binding()).mode() == ScopeMode.UNBOUND)
                     throw new DashboardFailure("UNBOUND_RESOURCE", "No equipment is bound; unavailable measurements are not inferred");
                 if (manifest.get().maxDetailDevices() > 0 && scope.evaluatedCount() > manifest.get().maxDetailDevices())
                     throw new DashboardFailure("LIMIT_EXCEEDED", "Detail scope exceeds the widget device limit");
-                if ("vehicle-map".equals(widget.type()) && scope.devices().stream().anyMatch(device -> !"VEHICLE".equals(device.type())))
+                if (PositionWidgets.contains(widget.type()) && scope.devices().stream().anyMatch(device -> !"VEHICLE".equals(device.type())))
                     throw new DashboardFailure("VALIDATION_ERROR", "Vehicle map requires a VEHICLE device");
                 if ("latest-value".equals(widget.type()) && (scope.evaluatedCount() != 1 || config.metric() == null))
                     throw new DashboardFailure("VALIDATION_ERROR", "Latest value requires one device and a metric");
@@ -116,7 +129,7 @@ public class DashboardWidgetQueries {
                         ? defaults.time() : runtime.time(), config.time(), config.compare(), asOf);
                 if (!"maintenance-agenda".equals(widget.type()) && frame.to().isAfter(asOf))
                     throw new DashboardFailure("VALIDATION_ERROR", "Future intervals are available only for maintenance");
-                if ("vehicle-map".equals(widget.type()) && java.time.Duration.between(frame.from(), frame.to()).compareTo(java.time.Duration.ofHours(24)) > 0)
+                if (PositionWidgets.contains(widget.type()) && java.time.Duration.between(frame.from(), frame.to()).compareTo(java.time.Duration.ofHours(24)) > 0)
                     throw new DashboardFailure("LIMIT_EXCEEDED", "Vehicle history supports at most 24 hours; narrow the period");
                 var allowed = scope.devices().stream().map(DashboardEvidenceReads.Device::id).collect(java.util.stream.Collectors.toSet());
                 if(scope.workspaceId()!=null) {
@@ -152,14 +165,14 @@ public class DashboardWidgetQueries {
                     if (!validated.path("validationOnly").asBoolean() || validated.path("evaluatedCount").asLong(-1)!=scope.devices().size())
                         throw new DashboardFailure("INVALID_READ_RESPONSE","Invalid meter validation response");
                 }
-                if (validateOnly && "vehicle-map".equals(widget.type()) && !scope.devices().isEmpty()) {
+                if (validateOnly && PositionWidgets.contains(widget.type()) && !scope.devices().isEmpty()) {
                     var read = new ReadRequest(scope.devices().stream().map(DashboardEvidenceReads.Device::id).toList(), scope.accountId(), frame,
                             Set.of(), List.of(), 1, 0, "ACTIVE", List.of(), false, scope.workspaceId(), Set.of(), config.sourceId(),config.vehicleSources());
                     scheduler.read("positions", read, authorization, actor, new HashMap<>()).get(5, TimeUnit.SECONDS);
                 }
                 prepared.add(new Prepared(widget, config, scope, frame, null));
             } catch (DashboardFailure failure) {
-                if ("LIMIT_EXCEEDED".equals(failure.code()) && !"vehicle-map".equals(widget.type())) throw failure;
+                if ("LIMIT_EXCEEDED".equals(failure.code()) && !PositionWidgets.contains(widget.type())) throw failure;
                 prepared.add(new Prepared(widget, null, null, null, failure));
             }
             catch (Exception failure) { prepared.add(new Prepared(widget, null, null, null,
@@ -191,7 +204,7 @@ public class DashboardWidgetQueries {
         }
         String key = QueryHash.of(mapper, List.of(actor, id, revision, request.draftEtag() == null ? "published" : request.draftEtag(),
                 definition, runtime, fingerprint, request.widgetIds()==null ? List.of() : request.widgetIds()));
-        boolean safe = businessValid && prepared.stream().noneMatch(panel -> "vehicle-map".equals(panel.widget().type())) && prepared.stream().noneMatch(panel -> panel.failure() != null || panel.scope().workspaceId()!=null);
+        boolean safe = businessValid && prepared.stream().noneMatch(panel -> PositionWidgets.contains(panel.widget().type())) && prepared.stream().noneMatch(panel -> panel.failure() != null || panel.scope().workspaceId()!=null);
         synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().until().isBefore(asOf));
             if (safe && !request.forceRefresh()) {
@@ -283,11 +296,11 @@ public class DashboardWidgetQueries {
         if (panels.stream().anyMatch(panel -> "no_access".equals(panel.status()))) synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().actor().equals(actor));
         }
-        Batch wire = compact.compact(actor,request,batch);
+        Batch wire = unsaved ? batch : compact.compact(actor,request,batch);
         int bytes;
         try { bytes=mapper.writeValueAsBytes(wire).length; }
         catch (Exception failure) { throw new IllegalStateException(failure); }
-        if (safe && panels.stream().allMatch(panel -> "ready".equals(panel.status()) || "no_data".equals(panel.status()))
+        if (!unsaved && safe && panels.stream().allMatch(panel -> "ready".equals(panel.status()) || "no_data".equals(panel.status()))
                 && bytes <= 8_000_000) synchronized (cache) {
             cache.remove(key);
             while (!cache.isEmpty() && (cache.size() >= 64 || cache.values().stream().mapToLong(Cached::bytes).sum()+bytes>16_000_000))
@@ -327,7 +340,7 @@ public class DashboardWidgetQueries {
                 mapper.createObjectNode().put("readOnly", true), failure.code(), failure.getMessage());
     }
     private Instant measuredAt(Prepared panel, JsonNode data, Map<String, JsonNode> evidence) {
-        if ("vehicle-map".equals(panel.widget().type())) {
+        if (PositionWidgets.contains(panel.widget().type())) {
             if (data.path("positions").has("fleet")) {
                 return java.util.stream.StreamSupport.stream(data.path("positions").path("fleet").spliterator(),false)
                         .map(item -> parseTime(item.path("position").path("recordedAt")))
@@ -360,7 +373,8 @@ public class DashboardWidgetQueries {
         if ("context-note".equals(panel.widget().type())) return false;
         if (panel.scope().devices().isEmpty()) return true;
         return switch (panel.widget().type()) {
-            case "vehicle-map" -> data.path("positions").has("fleet") ? java.util.stream.StreamSupport.stream(data.path("positions").path("fleet").spliterator(),false).noneMatch(item -> item.hasNonNull("position")) : !data.path("positions").path("latest").hasNonNull("position");
+            case "vehicle-timeline" -> data.path("positions").path("history").path("points").isEmpty();
+            case "vehicle-map", "vehicle-value" -> data.path("positions").has("fleet") ? java.util.stream.StreamSupport.stream(data.path("positions").path("fleet").spliterator(),false).noneMatch(item -> item.hasNonNull("position")) : !data.path("positions").path("latest").hasNonNull("position");
             case "latest-value" -> data.path("value").isNull();
             case "metric-summary" -> data.path("summary").isNull();
             case "energy-period" -> !data.path("energy").hasNonNull("energyKWh");

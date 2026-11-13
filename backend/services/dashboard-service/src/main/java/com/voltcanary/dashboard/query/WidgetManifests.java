@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 public class WidgetManifests {
     private static final List<String> UNITS = List.of("W", "kW", "V", "A", "Wh", "kWh", "C", "°C", "F", "°F", "K", "", "%", "Hz", "dBm", "mm/s", "h", "ratio", "km/h", "deg", "s", "m/s²", "boolean");
     private final List<Manifest> catalog = List.of(
+            manifest("vehicle-value", "Vehicle field value", "POSITIONS", List.of(), 0, 1, "SNAPSHOT"),
+            manifest("vehicle-timeline", "Recorded vehicle state history", "POSITIONS", List.of(), 0, 20, "SNAPSHOT_AND_INTERVAL"),
             manifest("vehicle-map", "Vehicle movement map", "POSITIONS", List.of(), 0, 20, "SNAPSHOT_AND_INTERVAL"),
             manifest("fleet-count", "Fleet registration and freshness", "COUNT", List.of(), 0, 0, "SNAPSHOT"),
             manifest("latest-value", "Latest measured value", "VALUE", List.of(Reducer.RAW), 1, 1, "SNAPSHOT"),

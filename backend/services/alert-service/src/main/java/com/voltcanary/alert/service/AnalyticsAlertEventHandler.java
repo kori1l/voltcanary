@@ -35,7 +35,7 @@ public class AnalyticsAlertEventHandler {
                 event.eventId(),
                 ANOMALY_EVENT_TYPE,
                 event);
-        return replayAnomaly(entry.getId(), event);
+        return entry != null && replayAnomaly(entry.getId(), event);
     }
 
     public boolean handleRiskScoreChanged(RiskScoreChangedEvent event) {
@@ -44,11 +44,11 @@ public class AnalyticsAlertEventHandler {
                 event.eventId(),
                 RISK_EVENT_TYPE,
                 event);
-        return replayRiskScoreChanged(entry.getId(), event);
+        return entry != null && replayRiskScoreChanged(entry.getId(), event);
     }
 
     public boolean replayAnomaly(java.util.UUID inboxEntryId, AnomalyDetectedEvent event) {
-        inboxService.markProcessing(inboxEntryId);
+        if (inboxService.markProcessing(inboxEntryId) == null) return false;
         try {
             Alert alert = variableAdmission.accepts(event) ? alertService.handleAnomaly(event) : null;
             boolean firstProcessing = processedEventService.markIfNew(ANOMALY_TOPIC, event.eventId());
@@ -61,7 +61,7 @@ public class AnalyticsAlertEventHandler {
     }
 
     public boolean replayRiskScoreChanged(java.util.UUID inboxEntryId, RiskScoreChangedEvent event) {
-        inboxService.markProcessing(inboxEntryId);
+        if (inboxService.markProcessing(inboxEntryId) == null) return false;
         try {
             Alert alert = alertService.handleRiskScoreChanged(event);
             boolean firstProcessing = processedEventService.markIfNew(RISK_TOPIC, event.eventId());

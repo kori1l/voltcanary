@@ -24,6 +24,9 @@ public interface DashboardStorage {
     List<Dashboard> list(DashboardActor actor, String status, Cursor cursor, int limit);
     void insert(Dashboard dashboard);
     void update(Dashboard dashboard);
+    default void markDeleted(UUID id, Instant at) {
+        throw new UnsupportedOperationException("Dashboard deletion is not supported by this storage");
+    }
     Draft draft(UUID id);
     default Draft draft(UUID id,UUID author) {
         return draft(id);
@@ -35,6 +38,7 @@ public interface DashboardStorage {
     Optional<Preferences> preferences(DashboardActor actor);
     void savePreferences(DashboardActor actor, Preferences preferences);
     Optional<Idempotency> idempotency(DashboardActor actor, String route, String keyHash, Instant now);
+    Optional<Idempotency> readIdempotency(DashboardActor actor, String route, String keyHash, Instant now);
     void saveIdempotency(DashboardActor actor, String route, String keyHash, Idempotency outcome);
     void audit(DashboardActor actor, UUID id, int revision, String action, Instant at);
 }

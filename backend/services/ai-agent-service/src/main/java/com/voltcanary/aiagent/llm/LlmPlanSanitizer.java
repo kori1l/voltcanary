@@ -20,7 +20,8 @@ public class LlmPlanSanitizer {
     private static final Map<AgentTool, Set<String>> ALLOWED_PARAMETERS = new EnumMap<>(AgentTool.class);
 
     static {
-        ALLOWED_PARAMETERS.put(AgentTool.CREATE_DEVICE, Set.of("name", "type", "locationId", "manufacturer", "model"));
+        ALLOWED_PARAMETERS.put(AgentTool.CREATE_DEVICE, Set.of("name", "type", "locationId", "deviceTypeRef", "locationRef", "manufacturer", "model"));
+        ALLOWED_PARAMETERS.put(AgentTool.CREATE_DASHBOARD, Set.of("protocol", "operations", "name", "templateRef", "templateVersion", "deviceRefs", "sourceRefs", "metricRefs", "period", "panelLayout", "widgets", "widgetEdits", "addWidgets", "widgetOrder", "moveWidgets", "restoreSteps"));
         ALLOWED_PARAMETERS.put(AgentTool.CREATE_DATA_SOURCE, Set.of("deviceId", "sourceType", "protocol", "externalId"));
         ALLOWED_PARAMETERS.put(AgentTool.CREATE_SIMULATOR_CONFIG, Set.of(
                 "deviceId", "dataSourceId", "name", "profile", "protocol", "sourceId", "yamlConfig"));
@@ -52,7 +53,17 @@ public class LlmPlanSanitizer {
         for (LlmActionDraft actionDraft : safeActions(draft)) {
             AgentTool tool = parseTool(actionDraft.tool());
             if (tool == null) {
+                com.voltcanary.aiagent.trace.AssistantTrace.event("SANITIZATION", "FAILED", "UNSUPPORTED_TOOL", Map.of("tool", String.valueOf(actionDraft.tool())));
                 continue;
+            }
+            if ((tool == AgentTool.CREATE_DEVICE || tool == AgentTool.CREATE_DASHBOARD) && actionDraft.parameters() != null
+                    && !ALLOWED_PARAMETERS.get(tool).containsAll(actionDraft.parameters().keySet())) {
+                com.voltcanary.aiagent.trace.AssistantTrace.event("SANITIZATION", "FAILED", "UNSUPPORTED_FIELDS",
+                        Map.of("tool", tool.name(), "fieldPaths", actionDraft.parameters().keySet().stream()
+                                .filter(field -> !ALLOWED_PARAMETERS.get(tool).contains(field)).sorted().toList(), "candidate", actionDraft.parameters()));
+                return new AgentPlan(UUID.randomUUID(), user.userId(), message, "Не удалось подготовить изменения",
+                        "Модель предложила несовместимые параметры. Устройство и другие изменения не создавались. Можно повторить запрос; уже указанные имя и тип менять не нужно.",
+                        List.of("MODEL_CONTRACT_REJECTED"), List.of(), Instant.now());
             }
             Map<String, Object> parameters = mergedParameters(tool, actionDraft.parameters(), fallback);
             actions.add(new AgentAction(
@@ -64,10 +75,7 @@ public class LlmPlanSanitizer {
                     parameters));
         }
 
-        if (actions.isEmpty()) {
-            actions = fallback.actions();
-        }
-
+        com.voltcanary.aiagent.trace.AssistantTrace.event("SANITIZATION", "SUCCEEDED", null, Map.of("actionCount", actions.size()));
         List<String> safetyNotes = new ArrayList<>(fallback.safetyNotes());
         safetyNotes.add("LLM output is validated against the allowed tool list before it becomes executable.");
         safetyNotes.add("Provider: " + textOrFallback(draft.provider(), "openai") + ", model: " + textOrFallback(draft.model(), "configured model") + ".");
@@ -80,7 +88,8 @@ public class LlmPlanSanitizer {
                 textOrFallback(draft.explanation(), fallback.explanation()),
                 safetyNotes,
                 actions,
-                Instant.now());
+                Instant.now(),"rules","Rules","rule-based planner",null,null,true,
+                actions.isEmpty() && draft.clarification()!=null && draft.clarification().bounded()?draft.clarification():null);
     }
 
     private List<LlmActionDraft> safeActions(LlmPlanDraft draft) {
@@ -92,7 +101,8 @@ public class LlmPlanSanitizer {
             return null;
         }
         try {
-            return AgentTool.valueOf(tool.trim().toUpperCase(Locale.ROOT));
+            AgentTool selected = AgentTool.valueOf(tool.trim().toUpperCase(Locale.ROOT));
+            return selected == AgentTool.UPDATE_DASHBOARD_DRAFT || selected == AgentTool.CREATE_NATIVE_TABLE ? null : selected;
         } catch (IllegalArgumentException ignored) {
             return null;
         }
@@ -113,6 +123,7 @@ public class LlmPlanSanitizer {
     }
 
     private Map<String, Object> fallbackParameters(AgentTool tool, AgentPlan fallback) {
+        if (tool == AgentTool.CREATE_DEVICE || tool == AgentTool.CREATE_DASHBOARD) return new LinkedHashMap<>();
         return fallback.actions().stream()
                 .filter(action -> action.tool() == tool)
                 .findFirst()
@@ -123,7 +134,10 @@ public class LlmPlanSanitizer {
 
     private String fallbackTitle(AgentTool tool) {
         return switch (tool) {
+            case CREATE_NATIVE_TABLE -> "Create reviewed native table";
             case CREATE_DEVICE -> "Create device";
+            case CREATE_DASHBOARD -> "Create private dashboard draft";
+            case UPDATE_DASHBOARD_DRAFT -> "Update reviewed dashboard draft";
             case CREATE_DATA_SOURCE -> "Create simulator data source";
             case CREATE_SIMULATOR_CONFIG -> "Create simulator config";
             case VALIDATE_SIMULATOR_YAML -> "Validate simulator YAML";
@@ -140,7 +154,10 @@ public class LlmPlanSanitizer {
 
     private String fallbackDescription(AgentTool tool) {
         return switch (tool) {
+            case CREATE_NATIVE_TABLE -> "Create the exact owner-reviewed native collection.";
             case CREATE_DEVICE -> "Create a device through device-service using the current user's authorization.";
+            case CREATE_DASHBOARD -> "Prepare an existing template and create a private draft through dashboard-service.";
+            case UPDATE_DASHBOARD_DRAFT -> "Update the same dashboard draft with its reviewed version through dashboard-service.";
             case CREATE_DATA_SOURCE -> "Attach a SIMULATOR data source to the target device through device-service.";
             case CREATE_SIMULATOR_CONFIG -> "Create simulator YAML through simulator-service.";
             case VALIDATE_SIMULATOR_YAML -> "Validate simulator YAML without changing resources.";

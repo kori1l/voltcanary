@@ -160,6 +160,7 @@ export interface NotificationPreferenceResponse {
   quietHoursEnd?: string | null;
   timezone: string;
   criticalBypassQuietHours: boolean;
+  configurableRuleAlertsEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -173,6 +174,7 @@ export interface NotificationPreferenceRequest {
   quietHoursEnd?: string | null;
   timezone?: string;
   criticalBypassQuietHours?: boolean;
+  configurableRuleAlertsEnabled?: boolean;
 }
 
 export interface AlertRule {

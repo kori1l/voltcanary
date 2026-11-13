@@ -6,7 +6,8 @@ if (-not $fixture.dockerServices) { throw "Requires the running isolated -Docker
 $device = ([guid]$fixture.deviceIds[0]).ToString()
 $sourceId = ([guid]$fixture.sourceIds[0]).ToString()
 $variable = ([guid]$fixture.variableId).ToString()
-$ownerHeaders = @{"X-User-Id"=$fixture.ownerId;"X-User-Role"="USER";"X-User-Email"=$fixture.email}
+$session = Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:18081/auth/login" -ContentType "application/json" -Body (ConvertTo-Json @{email=$fixture.email;password="Variable-smoke-2026!"})
+$ownerHeaders = @{Authorization=("Bearer " + $session.accessToken)}
 function Invoke-Fixture([int]$Port, [string]$Path, $Body = $null, [hashtable]$Headers = @{}) {
     $arguments = @{Uri="http://localhost:$Port$Path";Headers=$Headers;TimeoutSec=10;Method="GET"}
     if ($null -ne $Body) {$arguments.Method="POST";$arguments.ContentType="application/json";$arguments.Body=ConvertTo-Json -InputObject $Body -Depth 20 -Compress}

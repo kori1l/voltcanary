@@ -1,12 +1,34 @@
 # UI/UX And Dashboard Execution Sequence
 
-Execution policy fixed on 2026-10-08 for the 16-change program described in
-[openspec/changes/README.md](../../../../openspec/changes/README.md).
-This reference owns the default queue; proposals own hard dependencies and
-scope, and the program index owns R/DB/W coverage. The numbers in the program
-index identify changes and are not execution positions.
+Routing updated on2026-10-23. The table below preserves the historical16-change
+UI/dashboard program from2026-10-08; that program is completed according to the
+[program index](../../../../openspec/changes/README.md). It is not the active
+queue for the current AI dashboard conversation work.
 
-## Default Queue
+## Current Routing
+
+- For the redesigned assistant (intents, plans, server skills and economical model
+  routing), follow the [orchestration program](../../../../openspec/changes/README.md#ai-assistant-orchestration-program)
+  before the historical AI/dashboard sequences below. It reuses their unfinished
+  acceptance without restarting paid campaigns or requiring a dependency cycle.
+
+- For AI dashboard conversation reliability, use the six-stage order in the
+  [reliability program](../../../../openspec/changes/README.md#ai-dashboard-reliability-program)
+  and [skill selection rules](../SKILL.md#ai-dashboard-reliability-sequence).
+  Continue an eligible in-progress stage, otherwise select the earliest unfinished
+  eligible stage from that index. The evaluation baseline is completed/archived;
+  do not restart it or mistake its recorded failures for unfinished harness work.
+- Old preview tasks11/12 are delegated to that program. Their parent change being
+  active/in progress does not take priority or require duplicate implementation.
+- Ordinary UI/dashboard requests use current active proposals and their own
+  prerequisites. Do not revive the completed table below. Explicit deletion work
+  remains separate; AI device creation/security uses its dedicated skill section.
+
+The reliability index owns its order and dependency coverage; this reference
+does not maintain a second copy. Updating routing alone marks no tasks complete
+and does not authorize implementing the queue.
+
+## Historical Queue (Completed)
 
 | Position | Change | Delivery purpose |
 | --- | --- | --- |
@@ -34,6 +56,12 @@ do not fabricate energy to make the earlier template appear complete.
 
 ## Selection And Continuation
 
+AI dashboard reliability follows the dedicated routing above. Other AI-assisted
+device/dashboard creation follows the AI program routing in
+[SKILL.md](../SKILL.md#ai-creation-and-identity-hardening-sequence), not this
+historical UI/dashboard queue. Explicit security-only requests remain scoped
+to the identity-hardening change; they do not authorize the AI feature program.
+
 1. Run `npm.cmd run openspec:list`; only currently active queue members are
    candidates. Do not use recency sorting in its output as execution priority.
 2. If the user names a change, retain that target and check its proposal's hard
@@ -47,8 +75,8 @@ do not fabricate energy to make the earlier template appear complete.
    If multiple queue members are in progress without a named target, choose
    the earliest position with satisfied prerequisites and report the choice.
 4. Otherwise choose the earliest eligible unfinished active queue member.
-   With all 16 proposed and 0 completed tasks, that is
-   `fix-console-evidence-state-transitions`.
+   The historical table is completed; its first row is not a default target for
+   new work. If no matching member is active, inspect current applicable proposals.
 5. For "next UI/UX", consider positions 1–7. For "next dashboards", consider
    8–16 together with their transitive hard prerequisites, including required
    UI changes. Do not demand all preceding optional UI items merely because
@@ -83,6 +111,7 @@ do not fabricate energy to make the earlier template appear complete.
   remains, say so and inspect current active proposals instead of resurrecting
   this fixed queue or implementing unrelated work.
 
-When a proposal dependency or program scope changes, update this policy and
-the program index together. Keep one authoritative ordered list here; retain
-feature-specific acceptance and requirement mapping in their owning files.
+When a proposal dependency or program scope changes, update routing and the
+owning program index together. Retain this table only for historical UI order;
+the reliability program index owns the new six-stage queue. Keep feature-specific
+acceptance and requirement mapping in their owning changes.

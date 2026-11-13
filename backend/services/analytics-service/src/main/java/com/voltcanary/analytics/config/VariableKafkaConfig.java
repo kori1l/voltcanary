@@ -3,7 +3,7 @@ package com.voltcanary.analytics.config;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -15,7 +15,7 @@ public class VariableKafkaConfig {
     ConcurrentKafkaListenerContainerFactory<String, String> variableKafkaListenerContainerFactory(KafkaProperties kafka,
             @org.springframework.beans.factory.annotation.Qualifier("analyticsStringKafkaTemplate")
             org.springframework.kafka.core.KafkaTemplate<String, String> template) {
-        Map<String, Object> properties = kafka.buildConsumerProperties(null);
+        Map<String, Object> properties = kafka.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");

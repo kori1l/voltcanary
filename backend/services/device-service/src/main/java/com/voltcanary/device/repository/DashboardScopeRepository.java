@@ -81,7 +81,7 @@ public class DashboardScopeRepository {
         String joined = " FROM devices d JOIN device_types t ON t.id=d.device_type_id LEFT JOIN locations l ON l.id=d.location_id AND l.account_id=d.account_id";
         long count = jdbc.queryForObject("SELECT count(*)" + joined + where, Long.class, parameters.toArray());
         if (count > 500) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Scope exceeds500 devices; choose a narrower binding");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Scope exceeds500 devices; choose a narrower binding");
         }
         List<DeviceEntry> devices = jdbc.query("SELECT d.id,d.name,t.code,d.location_id,d.status,d.updated_at" + joined + where
                 + " ORDER BY d.created_at,d.id", (row, index) -> new DeviceEntry(row.getObject("id", UUID.class),

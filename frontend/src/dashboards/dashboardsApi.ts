@@ -54,6 +54,9 @@ export function publishDashboard(draft: DashboardDraft, key: string) {
 export function transitionDashboard(id: string, etag: string, archive: boolean) {
   return apiRequest<DashboardMetadata>(`${path(id)}/${archive ? "archive" : "restore"}`, {method:"POST", headers:match(etag)}).then(dashboardCatalogChanged);
 }
+export function deleteDashboard(id: string, etag: string) {
+  return apiRequest<void>(path(id), {method:"DELETE", headers:match(etag)}).then(dashboardCatalogChanged);
+}
 export const dashboardRevisions = (id: string) => apiRequest<{items:{revision:number; publishedAt:string}[]}>(`${path(id)}/revisions`);
 export function rollbackDashboardDraft(draft: DashboardDraft, sourceRevision: number) {
   return apiRequest<DashboardDraft>(`${path(draft.dashboardId)}/draft`, {method:"PUT", headers:match(draft.etag), body:JSON.stringify({baseRevision:draft.baseRevision,sourceRevision})});

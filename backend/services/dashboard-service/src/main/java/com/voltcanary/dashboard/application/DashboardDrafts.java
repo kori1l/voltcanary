@@ -18,13 +18,15 @@ public class DashboardDrafts {
     private final DashboardAccess access;
     private final DefinitionValidation validation;
     private final DefinitionBindings bindings;
+    private final DashboardIdempotency idempotency;
 
     public DashboardDrafts(DashboardStorage storage, DashboardAccess access,
-            DefinitionValidation validation, DefinitionBindings bindings) {
+            DefinitionValidation validation, DefinitionBindings bindings, DashboardIdempotency idempotency) {
         this.storage = storage;
         this.access = access;
         this.validation = validation;
         this.bindings = bindings;
+        this.idempotency = idempotency;
     }
 
     @Transactional
@@ -53,10 +55,28 @@ public class DashboardDrafts {
         DashboardDefinition chosen = access.context(id,sourceRevision == null ? definition : revision(actor, id, sourceRevision).definition());
         validation.validate(chosen);
         bindings.requireAuthorized(authorization, actor, chosen);
-        Draft saved = new Draft(id, actor.userId(), baseRevision, UUID.randomUUID(), chosen, Instant.now());
+        Draft saved = new Draft(id, actor.userId(), baseRevision, UUID.randomUUID(), chosen, Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
         storage.saveDraft(saved);
         storage.audit(actor, id, baseRevision, sourceRevision == null ? "DRAFT_SAVED" : "ROLLBACK_DRAFT", saved.updatedAt());
         return saved;
+    }
+
+    /** Optional receipt for assistant/other clients; ordinary editor saves retain their existing contract. */
+    @Transactional
+    public Draft saveReviewed(DashboardActor actor, String authorization, UUID id, String ifMatch, int baseRevision,
+            DashboardDefinition definition, Integer sourceRevision, String key, com.fasterxml.jackson.databind.JsonNode request) {
+        access.capability(actor, id, "EDIT");
+        return idempotency.execute(actor, "/dashboards/" + id + "/draft", key, request, Draft.class,
+                saved -> { access.capability(actor, saved.dashboardId(), "EDIT"); bindings.requireAuthorized(authorization, actor, saved.definition()); },
+                () -> save(actor, authorization, id, ifMatch, baseRevision, definition, sourceRevision));
+    }
+
+    @Transactional(readOnly = true)
+    public Draft receipt(DashboardActor actor, String authorization, UUID id, String key) {
+        access.capability(actor, id, "EDIT");
+        return idempotency.lookup(actor, "/dashboards/" + id + "/draft", key, Draft.class,
+                saved -> { access.capability(actor, saved.dashboardId(), "EDIT"); bindings.requireAuthorized(authorization, actor, saved.definition()); })
+                .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Draft update receipt not found"));
     }
 
     @Transactional(readOnly = true)

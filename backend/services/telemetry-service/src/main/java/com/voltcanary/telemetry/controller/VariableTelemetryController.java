@@ -38,7 +38,7 @@ public class VariableTelemetryController {
         return evaluator.evaluate(request.contract(), request.inputs());
     }
 
-    @GetMapping("/telemetry/devices/{deviceId}/variables")
+    @GetMapping({"/telemetry/devices/{deviceId}/variables", "/internal/telemetry/devices/{deviceId}/variables"})
     public List<VariableSeriesQueries.Descriptor> descriptors(@RequestHeader HttpHeaders headers,
             @PathVariable("deviceId") UUID device) {
         authorizeDevice(headers, device);
@@ -50,7 +50,8 @@ public class VariableTelemetryController {
                 item.metricToken())).toList();
     }
 
-    @GetMapping(value = {"/telemetry/devices/{deviceId}/readings", "/telemetry/devices/{deviceId}/readings/export"},
+    @GetMapping(value = {"/telemetry/devices/{deviceId}/readings", "/telemetry/devices/{deviceId}/readings/export",
+            "/internal/telemetry/devices/{deviceId}/readings", "/internal/telemetry/devices/{deviceId}/readings/export"},
             params = "variableId")
     public VariableSeriesQueries.Series readings(@RequestHeader HttpHeaders headers,
             @PathVariable("deviceId") UUID device, @RequestParam("variableId") UUID variable,

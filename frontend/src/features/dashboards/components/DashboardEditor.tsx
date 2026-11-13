@@ -57,7 +57,7 @@ export function DashboardEditor({metadata,initial,definitionReadyAt,permissions}
     const chosen=manifests.find((m)=>m.type===type && m.supported);if(!chosen)return;
     const id=commandKey();
     const collaboration=editor.definition.defaultContext.scope?.workspaceId?{workspaceId:editor.definition.defaultContext.scope.workspaceId,accountId:editor.definition.defaultContext.scope.accountId}:{};
-    const added={id,type,typeVersion:chosen.typeVersion,title:visualization?`${visualizationLabels[visualization]} · ${chosen.title}`:chosen.title,binding:{...collaboration,mode:["latest-value","time-series","metric-summary","vehicle-map"].includes(type)?"UNBOUND" as const:"DYNAMIC" as const},query:{rows:20},presentation:visualization?{visualization}:{},navigation:{},payload:{}};
+    const added={id,type,typeVersion:chosen.typeVersion,title:visualization?`${visualizationLabels[visualization]} · ${chosen.title}`:chosen.title,binding:{...collaboration,mode:["latest-value","time-series","metric-summary","vehicle-map","vehicle-value","vehicle-timeline"].includes(type)?"UNBOUND" as const:"DYNAMIC" as const},query:{rows:20},presentation:visualization?{visualization}:{},navigation:{},payload:{}};
     editCanvas(insertWidget(canvas,added,breakpoint,drop));setDragType(null);setPaletteOpen(false);setConfigured(id);setAnnouncement(`Added ${chosen.title} on ${active.title}.`);
   }
   function resizeGrid(settings:DashboardGrid){if(!locked)editCanvas(resizeScreenGrid(canvas,breakpoint,settings));}

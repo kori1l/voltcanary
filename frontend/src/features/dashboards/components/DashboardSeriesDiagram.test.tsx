@@ -1,5 +1,5 @@
-import {render,screen} from "@testing-library/react";
-import {describe,it,expect} from "vitest";
+import {act,render,screen} from "@testing-library/react";
+import {describe,it,expect,vi} from "vitest";
 import type {DashboardWidget} from "../../../dashboards/dashboardsApi";
 import type {WidgetQueryPanel} from "../../../dashboards/dashboardQueriesApi";
 import {DashboardSeriesDiagram} from "./DashboardSeriesDiagram";
@@ -10,4 +10,16 @@ describe("combined recorded charts",()=>{
   it("compares equipment with different stable colors and accessible values",()=>{const {container}=render(<DashboardSeriesDiagram widget={widget} panel={panel}/>);expect(screen.getByText("Compressor A")).toBeInTheDocument();expect(screen.getByText("Compressor B")).toBeInTheDocument();expect(new Set([...container.querySelectorAll("line[stroke]")].map(e=>e.getAttribute("stroke"))).size).toBe(2);expect(screen.getAllByRole("img")).toHaveLength(4);});
   it("rejects mixed units rather than showing a misleading shared scale",()=>{render(<DashboardSeriesDiagram widget={widget} panel={{...panel,data:{...panel.data,series:[(panel.data!.series as unknown[])[0],{deviceId:"b",metric:"temperatureC",buckets:[bucket("2026-10-10T10:00:00Z",5,"C")]}]}}}/>);expect(screen.getByText(/compatible recorded units/)).toBeInTheDocument();});
   it("retains a recorded gap between samples",()=>{const {container}=render(<DashboardSeriesDiagram widget={widget} panel={{...panel,data:{...panel.data,series:[{deviceId:"a",metric:"activePowerW",buckets:[bucket("2026-10-10T10:00:00Z",100),bucket("2026-10-10T10:50:00Z",200)]}]}}}/>);expect(container.querySelectorAll("line[stroke]")).toHaveLength(0);expect(container.querySelectorAll("path")).toHaveLength(0);});
+
+  it("resizes coordinates to CSS pixels without stretching labels or markers",()=>{
+    let resize:((entries:unknown[])=>void)|undefined;
+    vi.stubGlobal("ResizeObserver",class {constructor(callback:(entries:unknown[])=>void){resize=callback;}observe(){}disconnect(){}});
+    try {
+      const {container}=render(<DashboardSeriesDiagram widget={widget} panel={panel}/>);
+      act(()=>resize?.([{contentRect:{width:1000,height:160}}]));
+      expect(container.querySelector("svg")).toHaveAttribute("viewBox","0 0 1000 160");
+      expect(container.querySelector("circle")).toHaveAttribute("r","3");
+      expect(container.querySelector("line")).toHaveAttribute("x2","984");
+    } finally {vi.unstubAllGlobals();}
+  });
 });

@@ -1,0 +1,852 @@
+{
+  "version": "a5-dashboard-failures-v1",
+  "source": "live-12 frozen checkpoint, 2026-10-28 Europe/Belgrade",
+  "historicalScore": {
+    "passedTurns": 1,
+    "turns": 5,
+    "passedDialogues": 0,
+    "dialogues": 2,
+    "rescored": false
+  },
+  "cases": [
+    {
+      "id": "tram-original-name",
+      "turns": [
+        {
+          "id": "request",
+          "message": "Привет!Хочу сделать дашборд для этого трамвая. Хочу видеть карту и информацию о текущей скорости, состоянии открытия закрытия дверей и график скорости и графика открытия закрытия дверей. Еще хочу увидеть следующую остановку",
+          "expected": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ]
+          }
+        },
+        {
+          "id": "name",
+          "message": "Назови Мой любимый трамвай",
+          "expected": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "move",
+          "message": "Перемести виджеты текущей скорости и следующей остановки вверх. Информацию открыты или закрыты двери тоже хочу чтобы ты показал простым виджетом и тоже вверху. Еще по открытию закрытию дверей я хочу видеть график как со скоростью",
+          "expected": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "top": [
+              "current:speed",
+              "current:doors",
+              "current:stop"
+            ],
+            "views": {
+              "history:doors": "line"
+            },
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ],
+      "diagnosis": {
+        "context": {
+          "code": "CONTEXT_CAUSE_UNPROVEN",
+          "evidence": "No exact full model context in the public snapshot; mandatory current text/history/question/facts/base must be tested independently."
+        },
+        "understanding": {
+          "code": "INTERPRETATION_UNPROVEN",
+          "evidence": "A rejected preparation alone cannot establish misunderstood user intent."
+        },
+        "selection": {
+          "code": "SELECTION_UNPROVEN",
+          "evidence": "No accepted first-family definition exists."
+        },
+        "format": {
+          "code": "FORMAT_NOT_ESTABLISHED",
+          "evidence": "Provider was not failed; this does not prove canonical/domain correctness."
+        },
+        "preparation": {
+          "code": "DOMAIN_PREPARATION_REJECTED",
+          "evidence": "Initial creation rejected; continuations were NEEDS_INPUT and FAILED, not recovered."
+        },
+        "result": {
+          "code": "DIALOGUE_FAILED",
+          "evidence": "All three original turns failed frozen assertions."
+        }
+      }
+    },
+    {
+      "id": "move-only-three",
+      "turns": [
+        {
+          "id": "create",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expected": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "move",
+          "message": "Нижние 3 виджета перемести наверх в одну строку сделай их меньше по высоте и уже по ширине. Речь о текущей скорости, дверях и следующей остановке.",
+          "expected": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "top": [
+              "current:speed",
+              "current:doors",
+              "current:stop"
+            ],
+            "heightMax": {
+              "current:speed": 2,
+              "current:doors": 2,
+              "current:stop": 2
+            },
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ],
+      "acceptedBase": {
+        "schemaVersion": 1,
+        "name": "QA move-only-three",
+        "description": "",
+        "defaultContext": {
+          "scope": {
+            "mode": "FIXED",
+            "deviceIds": [
+              "00000000-0000-0000-0000-000000000001"
+            ]
+          },
+          "time": {
+            "mode": "RELATIVE",
+            "preset": "LAST_24_HOURS",
+            "timezone": "UTC"
+          }
+        },
+        "sections": [],
+        "widgets": [
+          {
+            "id": "map",
+            "type": "vehicle-map",
+            "typeVersion": 1,
+            "title": "Recorded position",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": false,
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "current_speed",
+            "type": "latest-value",
+            "typeVersion": 1,
+            "title": "speedKmh",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "metric": "speedKmh",
+              "unit": "km/h",
+              "reducer": "RAW"
+            },
+            "presentation": {
+              "showTitle": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "current_doors",
+            "type": "vehicle-value",
+            "typeVersion": 1,
+            "title": "transport.doorsOpen",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "vehicleField": "transport.doorsOpen",
+              "showMapDetails": false,
+              "follow": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "current_stop",
+            "type": "vehicle-value",
+            "typeVersion": 1,
+            "title": "transport.nextStopId",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "vehicleField": "transport.nextStopId",
+              "showMapDetails": false,
+              "follow": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "history_speed",
+            "type": "vehicle-timeline",
+            "typeVersion": 1,
+            "title": "speedKmh",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_1_HOUR",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "visualization": "line",
+              "vehicleField": "speedKmh",
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "history_doors",
+            "type": "vehicle-timeline",
+            "typeVersion": 1,
+            "title": "transport.doorsOpen",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_1_HOUR",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "visualization": "line",
+              "vehicleField": "transport.doorsOpen",
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          }
+        ],
+        "layouts": {
+          "desktop": [
+            {
+              "widgetId": "map",
+              "w": 12,
+              "x": 0,
+              "y": 0,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 4,
+              "x": 0,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 4,
+              "x": 4,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "current_stop",
+              "w": 4,
+              "x": 8,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 12,
+              "x": 0,
+              "y": 9,
+              "h": 5
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 12,
+              "x": 0,
+              "y": 14,
+              "h": 5
+            }
+          ],
+          "tablet": [
+            {
+              "widgetId": "map",
+              "w": 6,
+              "x": 0,
+              "y": 0,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 2,
+              "x": 0,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 2,
+              "x": 2,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "current_stop",
+              "w": 2,
+              "x": 4,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 6,
+              "x": 0,
+              "y": 9,
+              "h": 5
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 6,
+              "x": 0,
+              "y": 14,
+              "h": 5
+            }
+          ],
+          "mobile": [
+            {
+              "widgetId": "map",
+              "w": 1,
+              "x": 0,
+              "y": 0,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 1,
+              "x": 0,
+              "y": 8,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 1,
+              "x": 0,
+              "y": 9,
+              "h": 1
+            },
+            {
+              "widgetId": "current_stop",
+              "w": 1,
+              "x": 0,
+              "y": 10,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 1,
+              "x": 0,
+              "y": 11,
+              "h": 5
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 1,
+              "x": 0,
+              "y": 16,
+              "h": 5
+            }
+          ]
+        },
+        "screens": []
+      },
+      "rejectedCandidate": {
+        "schemaVersion": 1,
+        "name": "QA move-only-three",
+        "description": "",
+        "defaultContext": {
+          "scope": {
+            "mode": "FIXED",
+            "deviceIds": [
+              "00000000-0000-0000-0000-000000000001"
+            ]
+          },
+          "time": {
+            "mode": "RELATIVE",
+            "preset": "LAST_24_HOURS",
+            "timezone": "UTC"
+          }
+        },
+        "sections": [],
+        "widgets": [
+          {
+            "id": "current_stop",
+            "type": "vehicle-value",
+            "typeVersion": 1,
+            "title": "transport.nextStopId",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "vehicleField": "transport.nextStopId",
+              "showMapDetails": false,
+              "follow": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "history_speed",
+            "type": "vehicle-timeline",
+            "typeVersion": 1,
+            "title": "speedKmh",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_1_HOUR",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "visualization": "line",
+              "vehicleField": "speedKmh",
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "history_doors",
+            "type": "vehicle-timeline",
+            "typeVersion": 1,
+            "title": "transport.doorsOpen",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_1_HOUR",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "visualization": "line",
+              "vehicleField": "transport.doorsOpen",
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "map",
+            "type": "vehicle-map",
+            "typeVersion": 1,
+            "title": "Recorded position",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": false,
+              "showMapDetails": false,
+              "follow": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "current_speed",
+            "type": "latest-value",
+            "typeVersion": 1,
+            "title": "speedKmh",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "metric": "speedKmh",
+              "unit": "km/h",
+              "reducer": "RAW"
+            },
+            "presentation": {
+              "showTitle": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          },
+          {
+            "id": "current_doors",
+            "type": "vehicle-value",
+            "typeVersion": 1,
+            "title": "transport.doorsOpen",
+            "binding": {
+              "mode": "FIXED",
+              "deviceIds": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
+            },
+            "query": {
+              "time": {
+                "mode": "RELATIVE",
+                "preset": "LAST_24_HOURS",
+                "timezone": "UTC"
+              },
+              "sourceId": "fixture-source"
+            },
+            "presentation": {
+              "showTitle": true,
+              "vehicleField": "transport.doorsOpen",
+              "showMapDetails": false,
+              "follow": true,
+              "compact": true
+            },
+            "navigation": {},
+            "payload": {}
+          }
+        ],
+        "layouts": {
+          "desktop": [
+            {
+              "widgetId": "current_stop",
+              "w": 4,
+              "x": 0,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 4,
+              "x": 4,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 4,
+              "x": 8,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "map",
+              "w": 12,
+              "x": 0,
+              "y": 1,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 4,
+              "x": 0,
+              "y": 9,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 4,
+              "x": 4,
+              "y": 9,
+              "h": 1
+            }
+          ],
+          "tablet": [
+            {
+              "widgetId": "current_stop",
+              "w": 2,
+              "x": 0,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 2,
+              "x": 2,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 2,
+              "x": 4,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "map",
+              "w": 6,
+              "x": 0,
+              "y": 1,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 2,
+              "x": 0,
+              "y": 9,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 2,
+              "x": 2,
+              "y": 9,
+              "h": 1
+            }
+          ],
+          "mobile": [
+            {
+              "widgetId": "current_stop",
+              "w": 1,
+              "x": 0,
+              "y": 0,
+              "h": 1
+            },
+            {
+              "widgetId": "history_speed",
+              "w": 1,
+              "x": 0,
+              "y": 1,
+              "h": 1
+            },
+            {
+              "widgetId": "history_doors",
+              "w": 1,
+              "x": 0,
+              "y": 2,
+              "h": 1
+            },
+            {
+              "widgetId": "map",
+              "w": 1,
+              "x": 0,
+              "y": 3,
+              "h": 8
+            },
+            {
+              "widgetId": "current_speed",
+              "w": 1,
+              "x": 0,
+              "y": 11,
+              "h": 1
+            },
+            {
+              "widgetId": "current_doors",
+              "w": 1,
+              "x": 0,
+              "y": 12,
+              "h": 1
+            }
+          ]
+        },
+        "screens": []
+      },
+      "independentCurrentTargets": [
+        "current_speed",
+        "current_doors",
+        "current_stop"
+      ],
+      "untouched": [
+        "map",
+        "history_speed",
+        "history_doors"
+      ],
+      "diagnosis": {
+        "context": {
+          "code": "GROUNDING_REQUIRED",
+          "evidence": "Current and history roles coexist for identical fields; inventory must expose exact keys/bindings/order."
+        },
+        "understanding": {
+          "code": "TARGET_SELECTION_FAILURE",
+          "evidence": "Request names current cards; READY is insufficient."
+        },
+        "selection": {
+          "code": "CURRENT_HISTORY_TARGET_CONFUSION",
+          "evidence": "Current speed/doors not on top; untouched order changed. Root cause inside model is not observable."
+        },
+        "format": {
+          "code": "STRUCTURALLY_ACCEPTED",
+          "evidence": "Edit reached READY; format acceptance did not imply effect success."
+        },
+        "preparation": {
+          "code": "PREPARED_WRONG_EFFECT",
+          "evidence": "Compiler/preparation accepted the generated target set."
+        },
+        "result": {
+          "code": "TOP_AND_UNTOUCHED_ORDER_FAILED",
+          "evidence": "Frozen failures: top:current:speed, top:current:doors and untouched_order on desktop/tablet/mobile."
+        }
+      }
+    }
+  ],
+  "supplementalDiagnostic": {
+    "source": "a5-first-pass-20261028-01",
+    "passedTurns": 0,
+    "turns": 9,
+    "actualCalls": 2,
+    "automaticCorrectionCalls": 0,
+    "historicalScoresReplaced": false,
+    "observed": {
+      "plannerName": "Live tram dashboard",
+      "workflowContextName": null,
+      "stepRenamesDashboard": false,
+      "plannerPeriod": "LIVE",
+      "preparationCode": "DOMAIN_PREPARATION_REJECTED"
+    },
+    "unreachedTurns": 8,
+    "harnessFailure": "Unrelated truncated CONTEXT event incorrectly erased complete MODEL_CALL accounting; original outcome retained."
+  }
+}

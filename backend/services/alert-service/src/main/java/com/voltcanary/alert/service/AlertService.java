@@ -37,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AlertService {
+    private final DeviceHistoryDeletion deletions;
 
     private static final Logger log = LoggerFactory.getLogger(AlertService.class);
 
@@ -57,7 +58,7 @@ public class AlertService {
             AlertNotificationPort alertNotificationPort,
             AlertMaintenanceSuppressionService maintenanceSuppressionService,
             MeterRegistry meterRegistry,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, DeviceHistoryDeletion deletions) {
         this.alertRepository = alertRepository;
         this.alertEventRepository = alertEventRepository;
         this.alertAccessService = alertAccessService;
@@ -66,10 +67,12 @@ public class AlertService {
         this.maintenanceSuppressionService = maintenanceSuppressionService;
         this.meterRegistry = meterRegistry;
         this.objectMapper = objectMapper;
+        this.deletions = deletions;
     }
 
     @Transactional
     public Alert handleAnomaly(AnomalyDetectedEvent event) {
+        if (!deletions.writable(event.deviceId())) return null;
         AlertSeverity severity = anomalySeverity(event.severity());
         String type = valueOrDefault(event.type(), "ANOMALY");
         String deduplicationKey = event.variableEvidence() == null
@@ -125,6 +128,7 @@ public class AlertService {
 
     @Transactional
     public Alert handleRiskScoreChanged(RiskScoreChangedEvent event) {
+        if (!deletions.writable(event.deviceId())) return null;
         AlertSeverity severity = riskSeverity(event.riskLevel());
         if (severity == AlertSeverity.INFO) {
             return null;
@@ -542,15 +546,15 @@ public class AlertService {
     }
 
     private <T> Specification<Alert> equalsIfPresent(String field, T value) {
-        return value == null ? null : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
+        return value == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
     }
 
     private Specification<Alert> createdAtFrom(Instant from) {
-        return from == null ? null : (root, query, criteriaBuilder) -> criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), from);
+        return from == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), from);
     }
 
     private Specification<Alert> createdAtTo(Instant to) {
-        return to == null ? null : (root, query, criteriaBuilder) -> criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), to);
+        return to == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), to);
     }
 
     private AlertSeverity anomalySeverity(String severity) {

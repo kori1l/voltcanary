@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AnalyticsJobRunner {
+    private final DeviceHistoryDeletion deletions;
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsJobRunner.class);
 
@@ -23,14 +24,17 @@ public class AnalyticsJobRunner {
     public AnalyticsJobRunner(
             AnalyticsJobRepository jobRepository,
             AnalyticsRecalculationService recalculationService,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        this.deletions = deletions;
         this.jobRepository = jobRepository;
         this.recalculationService = recalculationService;
         this.meterRegistry = meterRegistry;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void run(UUID jobId) {
-        AnalyticsJob job = jobRepository.findById(jobId).orElseThrow();
+        AnalyticsJob job = jobRepository.findById(jobId).orElse(null);
+        if (job == null || !deletions.writable(job.getDeviceId())) return;
         Timer.Sample timer = Timer.start(meterRegistry);
         MDC.put("jobId", job.getId().toString());
         MDC.put("deviceId", job.getDeviceId().toString());

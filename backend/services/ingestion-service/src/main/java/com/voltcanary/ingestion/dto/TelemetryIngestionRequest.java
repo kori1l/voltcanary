@@ -10,5 +10,9 @@ public record TelemetryIngestionRequest(
         UUID deviceId,
         @NotBlank String sourceId,
         Instant timestamp,
-        @NotEmpty Map<String, Object> metrics) {
+        @NotEmpty Map<String, Object> metrics,
+        com.voltcanary.common.events.telemetry.SourcePosition sourcePosition) {
+    public TelemetryIngestionRequest(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
+        this(deviceId, sourceId, timestamp, metrics, null);
+    }
 }

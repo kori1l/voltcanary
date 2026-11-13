@@ -5,7 +5,7 @@
 VoltCanary is a predictive IoT analytics platform for connected appliances and
 small physical assets. The repository is a monorepo with:
 
-- `backend/` - Java 21, Spring Boot 3, Spring Cloud Gateway, Maven modules.
+- `backend/` - Java 21, Spring Boot 4, Spring AI 2, Spring Cloud Gateway, Maven modules.
 - `ml-service/` - Python 3.12, FastAPI ML lifecycle and inference service.
 - `frontend/` - React 19, TypeScript, Vite web console.
 - `deploy/` - Docker Compose, Kubernetes, Helm, observability manifests.

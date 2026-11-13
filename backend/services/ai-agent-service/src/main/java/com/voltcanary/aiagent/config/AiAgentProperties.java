@@ -6,6 +6,12 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "app.ai")
 public class AiAgentProperties {
+    private boolean deviceSetupEnabled;
+    public boolean isDeviceSetupEnabled() { return deviceSetupEnabled; }
+    public void setDeviceSetupEnabled(boolean enabled) { deviceSetupEnabled = enabled; }
+    private boolean dashboardOperationsEnabled;
+    public boolean isDashboardOperationsEnabled() { return dashboardOperationsEnabled; }
+    public void setDashboardOperationsEnabled(boolean enabled) { dashboardOperationsEnabled = enabled; }
     private String provider = "rules";
     private OpenAi openai = new OpenAi();
     private Services services = new Services();
@@ -83,9 +89,14 @@ public class AiAgentProperties {
     }
 
     public static class Services {
+        private String hslConnectorBaseUrl = "http://hsl-connector:8091";
+        public String getHslConnectorBaseUrl() { return hslConnectorBaseUrl; }
+        public void setHslConnectorBaseUrl(String value) { hslConnectorBaseUrl = value; }
         private String deviceBaseUrl = "http://localhost:8082";
         private String alertBaseUrl = "http://localhost:8084";
         private String simulatorBaseUrl = "http://localhost:8087";
+        private String dashboardBaseUrl = "http://localhost:8089";
+        private String telemetryBaseUrl = "http://localhost:8084";
 
         public String getDeviceBaseUrl() { return deviceBaseUrl; }
         public void setDeviceBaseUrl(String deviceBaseUrl) { this.deviceBaseUrl = deviceBaseUrl; }
@@ -93,6 +104,10 @@ public class AiAgentProperties {
         public void setAlertBaseUrl(String alertBaseUrl) { this.alertBaseUrl = alertBaseUrl; }
         public String getSimulatorBaseUrl() { return simulatorBaseUrl; }
         public void setSimulatorBaseUrl(String simulatorBaseUrl) { this.simulatorBaseUrl = simulatorBaseUrl; }
+        public String getDashboardBaseUrl() { return dashboardBaseUrl; }
+        public void setDashboardBaseUrl(String dashboardBaseUrl) { this.dashboardBaseUrl = dashboardBaseUrl; }
+        public String getTelemetryBaseUrl() { return telemetryBaseUrl; }
+        public void setTelemetryBaseUrl(String telemetryBaseUrl) { this.telemetryBaseUrl = telemetryBaseUrl; }
     }
 
     public static class Secrets {

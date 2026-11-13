@@ -1,5 +1,11 @@
 # Telemetry API
 
+The accepted observation journal also exposes the mandatory-token private
+`POST /internal/observations/read` bounded generation/checkpoint read. The signed
+source-facing contract and exact quality/budget/error semantics are in
+[accepted observation prefix reads](configurable-native-data.md#accepted-observation-prefix-reads).
+This read does not qualify sealed snapshots, upstream coverage or RULE execution.
+
 Telemetry query and aggregation endpoints.
 
 All `/telemetry/devices/{deviceId}/...` endpoints require read access to the
@@ -229,7 +235,7 @@ latest is capped at min(asOf,to); the route requires bearer and internal token.
 
 ## Vehicle monitoring extension
 
-Fleet batches, cursor recordings, owner settings and nullable vehicle fields are specified in [vehicle monitoring](../flows/vehicle-monitoring-verification.md#contracts). V011 is portable; original positions/latest/history bounds are unchanged.
+Fleet batches, cursor recordings, owner settings and nullable vehicle fields are specified in [vehicle monitoring](../flows/vehicle-monitoring-verification.md#contracts). Settings PUT rejects fractional idleMinutes and unknown JSON fields with400, preserving the last valid settings. V011 is portable; original positions/latest/history bounds are unchanged.
 
 
 ## Internal dashboard fleet positions

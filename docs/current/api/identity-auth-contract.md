@@ -8,7 +8,12 @@ This contract describes the current identity-service and API Gateway auth surfac
 - `SUPPORT`: support/operator user. Route-level use is reserved for later service-specific checks.
 - `ADMIN`: identity administrator. Required for `/auth/admin/**`.
 
-Resource ownership checks remain the responsibility of downstream services. The gateway authenticates access tokens and forwards identity headers.
+Resource ownership checks remain the responsibility of downstream services.
+The gateway and user-facing services each authenticate the bearer access token.
+Direct service requests require the same JWT. `X-User-*`, `X-Account-*`,
+workspace and capability headers cannot authenticate or override verified
+claims. Collector and internal-service credentials cannot authorize user APIs.
+See the [consumer inventory](../architecture/08-security.md#identity-consumer-and-migration-inventory-2026-10-20).
 
 ## Public Endpoints
 

@@ -10,7 +10,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -35,7 +35,7 @@ public class KafkaAlertConfig {
 
     @Bean
     ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory(KafkaProperties kafkaProperties) {
-        Map<String, Object> properties = kafkaProperties.buildConsumerProperties(null);
+        Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
@@ -58,7 +58,7 @@ public class KafkaAlertConfig {
 
     @Bean
     ConsumerFactory<String, RiskScoreChangedEvent> riskScoreChangedConsumerFactory(KafkaProperties kafkaProperties) {
-        Map<String, Object> properties = kafkaProperties.buildConsumerProperties(null);
+        Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
@@ -81,7 +81,7 @@ public class KafkaAlertConfig {
 
     @Bean
     ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory(KafkaProperties kafkaProperties) {
-        Map<String, Object> properties = kafkaProperties.buildConsumerProperties(null);
+        Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
@@ -104,7 +104,7 @@ public class KafkaAlertConfig {
 
     @Bean
     ProducerFactory<String, Object> alertDeadLetterProducerFactory(KafkaProperties kafkaProperties) {
-        Map<String, Object> properties = kafkaProperties.buildProducerProperties(null);
+        Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         return new DefaultKafkaProducerFactory<>(properties);

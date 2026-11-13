@@ -61,12 +61,12 @@ public class JdbcDashboardStorage implements DashboardStorage {
 
     @Override
     public Optional<Dashboard> findOwned(DashboardActor actor, UUID id) {
-        return jdbc.query("SELECT * FROM dashboards WHERE id=? AND owner_user_id=? AND account_id=?",
+        return jdbc.query("SELECT * FROM dashboards WHERE id=? AND owner_user_id=? AND account_id=? AND deleted_at IS NULL",
                 this::dashboardRow, id, actor.userId(), actor.accountId()).stream().findFirst();
     }
     @Override
     public Optional<Dashboard> findAny(UUID id) {
-        return jdbc.query("SELECT * FROM dashboards WHERE id=?",this::dashboardRow,id).stream().findFirst();
+        return jdbc.query("SELECT * FROM dashboards WHERE id=? AND deleted_at IS NULL",this::dashboardRow,id).stream().findFirst();
     }
     @Override
     public Draft draft(UUID id,UUID author) {
@@ -84,7 +84,7 @@ public class JdbcDashboardStorage implements DashboardStorage {
 
     @Override
     public List<Dashboard> list(DashboardActor actor, String status, Cursor cursor, int limit) {
-        String sql = "SELECT * FROM dashboards WHERE owner_user_id=? AND account_id=?";
+        String sql = "SELECT * FROM dashboards WHERE owner_user_id=? AND account_id=? AND deleted_at IS NULL";
         List<Object> args = new ArrayList<>(List.of(actor.userId(), actor.accountId()));
         if (!"ALL".equals(status)) {
             sql += " AND status=?";
@@ -114,10 +114,16 @@ public class JdbcDashboardStorage implements DashboardStorage {
     public void update(Dashboard dashboard) {
         jdbc.update("""
                 UPDATE dashboards SET name=?,description=?,status=?,published_revision=?,schema_version=?,updated_at=?
-                WHERE id=? AND owner_user_id=? AND account_id=?
+                WHERE id=? AND owner_user_id=? AND account_id=? AND deleted_at IS NULL
                 """, dashboard.name(), dashboard.description(), dashboard.status(), dashboard.publishedRevision(),
                 dashboard.schemaVersion(), Timestamp.from(dashboard.updatedAt()), dashboard.id(),
                 dashboard.ownerUserId(), dashboard.accountId());
+    }
+
+    @Override
+    public void markDeleted(UUID id, Instant at) {
+        jdbc.update("UPDATE dashboards SET deleted_at=?,updated_at=?,status='ARCHIVED' WHERE id=? AND deleted_at IS NULL",
+                Timestamp.from(at), Timestamp.from(at), id);
     }
 
     @Override
@@ -190,10 +196,15 @@ public class JdbcDashboardStorage implements DashboardStorage {
     public Optional<Idempotency> idempotency(DashboardActor actor, String route, String keyHash, Instant now) {
         jdbc.update("DELETE FROM dashboard_idempotency WHERE user_id=? AND account_id=? AND expires_at<=?",
                 actor.userId(), actor.accountId(), Timestamp.from(now));
-        return jdbc.query("SELECT * FROM dashboard_idempotency WHERE user_id=? AND account_id=? AND route=? AND key_hash=?",
+        return readIdempotency(actor, route, keyHash, now);
+    }
+
+    @Override
+    public Optional<Idempotency> readIdempotency(DashboardActor actor, String route, String keyHash, Instant now) {
+        return jdbc.query("SELECT * FROM dashboard_idempotency WHERE user_id=? AND account_id=? AND route=? AND key_hash=? AND expires_at>?",
                 (row, index) -> new Idempotency(row.getString("body_hash"),
                         decode(row.getString("outcome"), JsonNode.class), instant(row, "expires_at")),
-                actor.userId(), actor.accountId(), route, keyHash).stream().findFirst();
+                actor.userId(), actor.accountId(), route, keyHash, Timestamp.from(now)).stream().findFirst();
     }
 
     @Override

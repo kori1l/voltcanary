@@ -1,4 +1,4 @@
-import { apiRequest } from "../api/client";
+import { apiRequest, prepareAiSession } from "../api/client";
 
 export interface AgentAction {
   id: string;
@@ -10,7 +10,10 @@ export interface AgentAction {
 }
 
 export interface AgentPlan {
+  task?: DashboardTaskSummary | null;
+  restoredFromReviewId?: string | null;
   planId: string;
+  previousReviewIds?: string[];
   summary: string;
   explanation: string;
   confirmationRequired: boolean;
@@ -22,6 +25,45 @@ export interface AgentPlan {
   providerId?: string | null;
   modelConfigId?: string | null;
   fallbackUsed?: boolean;
+  version?: number;
+  payloadDigest?: string;
+  expiresAt?: string;
+  planningStatus?: "READY" | "NEEDS_INPUT" | "FAILED";
+  questions?: string[];
+  clarification?: {missingFields:string[];suggestedReply:string;suggestionLabel:string;suggestedValues:Record<string,string|number|boolean>;requiresExplicitChoice?:boolean}|null;
+  executionStatus?: string;
+  execution?: ExecutePlanResponse | null;
+}
+
+export interface DashboardTaskSummary {
+  taskId: string;
+  branchId: string;
+  revision: number;
+  kind: "DASHBOARD";
+  originalRequest: string;
+  name: string | null;
+  lastAcceptedReviewId: string | null;
+  status: "NEW" | "PENDING" | "READY" | "NEEDS_INPUT" | "FAILED";
+  failureCategory: string | null;
+  expiresAt: string;
+  selectionStatus?: "UNVERIFIED" | "AVAILABLE" | "UNAVAILABLE";
+  pending: {changeId:string;turnId:string;request:string;disposition:"PENDING"|"APPLIED"|"FAILED"|"SUPERSEDED"}[];
+}
+export interface DashboardTurnMetadata {
+  requestId: string;
+  taskId?: string;
+  branchId?: string;
+  expectedTaskRevision?: number;
+  baseReviewId?: string;
+  acceptedSuggestion?: boolean;
+}
+export async function getDashboardTask(taskId:string, branchId?:string) {
+  const result=await apiRequest<{task:DashboardTaskSummary;lastReview:AgentPlan|null}>(
+    `/ai-agent/dashboard-tasks/${encodeURIComponent(taskId)}${branchId?`?branchId=${encodeURIComponent(branchId)}`:""}`);
+  if(!result?.task||typeof result.task.taskId!=="string"||typeof result.task.branchId!=="string"||!Number.isInteger(result.task.revision)){
+    throw new Error("Не удалось восстановить состояние задачи. Повторите восстановление.");
+  }
+  return result;
 }
 
 export interface ActionExecution {
@@ -156,18 +198,30 @@ export interface TestModelProviderResponse {
   testedAt: string;
 }
 
-export function createAgentPlan(message: string, context: Record<string, unknown> = {}, providerId?: string, modelConfigId?: string) {
-  return apiRequest<AgentPlan>("/ai-agent/plans", {
-    method: "POST",
-    body: JSON.stringify({ message, context, providerId, modelConfigId }),
+export async function clarifyAgentPlan(planId: string, message: string, metadata?: DashboardTurnMetadata) {
+  await prepareAiSession();
+  return apiRequest<AgentPlan>(`/ai-agent/plans/${encodeURIComponent(planId)}/clarifications`, {
+    method: "POST", body: JSON.stringify({message,...metadata}),
   });
 }
 
-export function executeAgentPlan(planId: string, confirmed: boolean) {
+export async function createAgentPlan(message: string, context: Record<string, unknown> = {}, providerId?: string, modelConfigId?: string, metadata?:DashboardTurnMetadata) {
+  await prepareAiSession();
+  return apiRequest<AgentPlan>("/ai-agent/plans", {
+    method: "POST",
+    body: JSON.stringify({ message, context, providerId, modelConfigId,...metadata }),
+  });
+}
+
+export function executeAgentPlan(planId: string, confirmed: boolean, expectedVersion?: number, payloadDigest?: string) {
   return apiRequest<ExecutePlanResponse>(`/ai-agent/plans/${planId}/execute`, {
     method: "POST",
-    body: JSON.stringify({ confirmed }),
+    body: JSON.stringify({ confirmed, expectedVersion, payloadDigest }),
   });
+}
+
+export function getAgentPlan(planId: string) {
+  return apiRequest<AgentPlan>(`/ai-agent/plans/${encodeURIComponent(planId)}`);
 }
 
 export function listAgentTools() {

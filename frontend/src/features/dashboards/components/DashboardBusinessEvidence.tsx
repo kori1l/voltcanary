@@ -1,3 +1,4 @@
+import {VehicleFieldWidget} from "../../../vehicles/VehicleFieldWidget";
 import {DashboardFleetMap} from "../../../vehicles/DashboardFleetMap";
 import type {LatestPosition,PositionHistory} from "../../../vehicles/positionApi";
 import {VehicleMap} from "../../../vehicles/VehicleMap";
@@ -43,6 +44,8 @@ function SeriesEvidence({data,panel,widget}:{data:Row;panel:WidgetQueryPanel;wid
 export function DashboardBusinessEvidence({widget,panel}:{widget:DashboardWidget;panel:WidgetQueryPanel}){
   const data=record(panel.data),devices=rows(data.devices),sources=record(data.sources);
   const visualization=widget.presentation?.visualization as Visualization|undefined;
+  if(["vehicle-value","vehicle-timeline"].includes(widget.type))return <VehicleFieldWidget widget={widget} evidence={data.positions as PositionEvidence ?? null}/>;
+  if(widget.type==="time-series" && rows(data.series).some(series=>series.mode==="MEASURED_STATES" || series.unit==="boolean"))return <SeriesEvidence data={data} panel={panel} widget={widget}/>;
   if(visualization && visualization!=="number" && compatibleVisualizations(widget.type).includes(visualization)) {
     if(widget.type==="time-series" && rows(data.series).length>1){if(visualization==="line" || visualization==="area")return <DashboardSeriesDiagram widget={widget} panel={panel}/>;return <><span className="dashboard-state-badge">Multiple series retain recorded ranges and gaps</span><SeriesEvidence data={data} panel={panel} widget={widget}/></>;}
     return <DashboardDiagram widget={widget} panel={panel} kind={visualization}/>;
@@ -60,8 +63,8 @@ export function DashboardBusinessEvidence({widget,panel}:{widget:DashboardWidget
   if(widget.type==="metric-summary"){
     const summary=record(data.summary),field=String(data.reducer ?? "mean");return <><p className="dashboard-primary-value">{text(summary[field])} <span>{text(summary.unit)}</span></p>{widget.presentation?.showCalculation===true?<p>{field} across {text(summary.sampleCount)} accepted samples · {text(summary.deviceCount)} equipment with evidence</p>:null}{widget.presentation?.showComparison===true && data.comparison?<p>Previous-period change: {text(record(data.comparison).difference)} {text(summary.unit)}; percent {record(data.comparison).percent===null?"unavailable":`${text(record(data.comparison).percent)}%`}</p>:null}</>;
   }
-  if(widget.type==="vehicle-map" && Array.isArray(record(data.positions).fleet))return <DashboardFleetMap positions={record(data.positions).fleet as LatestPosition[]} tracks={Array.isArray(record(data.positions).tracks)?record(data.positions).tracks as PositionHistory[]:undefined} devices={devices as {id:string;name:string}[]} visibleFields={Array.isArray(widget.presentation.mapFields)?widget.presentation.mapFields as string[]:undefined} attribution={typeof widget.presentation.attribution==="string"?widget.presentation.attribution:undefined}/>;
-  if(widget.type==="vehicle-map")return <VehicleMap key={`${data.positions && (data.positions as PositionEvidence).latest.deviceId}:${widget.query.sourceId}`} evidence={data.positions as PositionEvidence ?? null} initialFollow={widget.presentation.follow!==false} visibleFields={Array.isArray(widget.presentation.mapFields)?widget.presentation.mapFields as string[]:undefined}/>;
+  if(widget.type==="vehicle-map" && Array.isArray(record(data.positions).fleet))return <DashboardFleetMap showDetails={widget.presentation.showMapDetails!==false} positions={record(data.positions).fleet as LatestPosition[]} tracks={Array.isArray(record(data.positions).tracks)?record(data.positions).tracks as PositionHistory[]:undefined} devices={devices as {id:string;name:string}[]} visibleFields={Array.isArray(widget.presentation.mapFields)?widget.presentation.mapFields as string[]:undefined} attribution={typeof widget.presentation.attribution==="string"?widget.presentation.attribution:undefined}/>;
+  if(widget.type==="vehicle-map")return <VehicleMap compact showNotices={widget.presentation.showMapNotices!==false} showDetails={widget.presentation.showMapDetails!==false} key={`${data.positions && (data.positions as PositionEvidence).latest.deviceId}:${widget.query.sourceId}`} evidence={data.positions as PositionEvidence ?? null} initialFollow={widget.presentation.follow!==false} visibleFields={Array.isArray(widget.presentation.mapFields)?widget.presentation.mapFields as string[]:undefined}/>;
   if(widget.type==="time-series")return <SeriesEvidence data={data} panel={panel} widget={widget}/>;
   if(widget.type==="incident-list")return <BusinessRows source={record(sources.incidents)} devices={devices} widget={widget}/>;
   if(widget.type==="maintenance-agenda")return <BusinessRows source={record(sources.maintenance)} devices={devices} widget={widget}/>;

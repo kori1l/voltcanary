@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TelemetryEventProcessor {
+    private final DeviceHistoryDeletion deletions;
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryEventProcessor.class);
 
@@ -56,7 +57,7 @@ public class TelemetryEventProcessor {
             TelemetryIngestionRateLimiter rateLimiter,
             ProcessedEventService processedEventService,
             ObjectMapper objectMapper,
-            MeterRegistry meterRegistry, PositionProjection positions) {
+            MeterRegistry meterRegistry, PositionProjection positions, DeviceHistoryDeletion deletions) {
         this.measurementRepository = measurementRepository;
         this.readingRepository = readingRepository;
         this.qualityFlagRepository = qualityFlagRepository;
@@ -69,6 +70,7 @@ public class TelemetryEventProcessor {
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
         this.positions = positions;
+        this.deletions = deletions;
     }
 
     public record InputOutcome(int inserted, boolean eligibleForDerived) { }
@@ -80,6 +82,7 @@ public class TelemetryEventProcessor {
 
     @Transactional
     public InputOutcome processInput(TelemetryReceivedEvent event) {
+        if (event != null && event.deviceId() != null && !deletions.writable(event.deviceId())) return new InputOutcome(0, false);
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "accepted";
         List<String> qualityFlags = new ArrayList<>();

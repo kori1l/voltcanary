@@ -12,5 +12,12 @@ public record NotificationPreferenceRequest(
         LocalTime quietHoursStart,
         LocalTime quietHoursEnd,
         String timezone,
-        Boolean criticalBypassQuietHours) {
+        Boolean criticalBypassQuietHours,
+        Boolean configurableRuleAlertsEnabled) {
+    public NotificationPreferenceRequest(Boolean enabled, Set<String> severities, Set<String> channelTypes,
+            Set<UUID> deviceIds, LocalTime quietHoursStart, LocalTime quietHoursEnd, String timezone,
+            Boolean criticalBypassQuietHours) {
+        this(enabled, severities, channelTypes, deviceIds, quietHoursStart, quietHoursEnd, timezone,
+                criticalBypassQuietHours, null);
+    }
 }

@@ -19,6 +19,8 @@ Workspace resources and team publication: [ADR-012](ADR-012-workspace-resource-a
 | [ADR-009](ADR-009-unified-telemetry-ingestion-service.md) | Use a unified telemetry ingestion service |
 | [ADR-010](ADR-010-maintenance-window-platform.md) | Use device-owned maintenance windows with projections |
 | [ADR-011](ADR-011-private-dashboard-domain.md) | Persist private dashboard definitions in a dedicated service |
+| [ADR-014](ADR-014-ai-spring-extension-boundaries.md) | Proposed AI Spring extension boundaries: explicit durable orchestration, guarded Advisors and narrow observation aspect |
+| [ADR-015](ADR-015-library-backed-agent-graph.md) | LangGraph4j core owns assistant traversal; atomic plan checkpoints preserve Spring AI, budgets and owner authority |
 
 ## Related Docs
 

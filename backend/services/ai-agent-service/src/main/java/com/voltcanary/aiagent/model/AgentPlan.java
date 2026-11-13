@@ -18,7 +18,14 @@ public record AgentPlan(
         String modelId,
         UUID providerId,
         UUID modelConfigId,
-        boolean fallbackUsed) {
+        boolean fallbackUsed,
+        PlanningQuestion clarification) {
+    public AgentPlan(UUID id, UUID userId, String userMessage, String summary, String explanation,
+            List<String> safetyNotes, List<AgentAction> actions, Instant createdAt, String providerType,
+            String providerName, String modelId, UUID providerId, UUID modelConfigId, boolean fallbackUsed) {
+        this(id,userId,userMessage,summary,explanation,safetyNotes,actions,createdAt,providerType,providerName,
+                modelId,providerId,modelConfigId,fallbackUsed,null);
+    }
     public AgentPlan(
             UUID id,
             UUID userId,

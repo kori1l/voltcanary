@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: identity-service
@@ -31,6 +33,14 @@ info:
     version: 0.1.0
 
 app:
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    private-key: ${JWT_PRIVATE_KEY:}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
+    access-token-ttl-seconds: ${JWT_ACCESS_TOKEN_TTL_SECONDS:900}
+    refresh-token-ttl-seconds: ${JWT_REFRESH_TOKEN_TTL_SECONDS:2592000}
   kafka:
     publish-enabled: ${IDENTITY_KAFKA_PUBLISH_ENABLED:false}
   identity:

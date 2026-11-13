@@ -35,7 +35,7 @@ It reports behavior changes, anomalies, confidence, and recommended checks.
 ## Tech Stack
 
 - Java 21
-- Spring Boot 3
+- Spring Boot 4 and Spring AI 2
 - Spring Cloud Gateway
 - Spring Data JPA
 - Spring Kafka

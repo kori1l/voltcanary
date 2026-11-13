@@ -191,6 +191,12 @@ export function decommissionDevice(deviceId: string) {
   return apiRequest<Device>(`/devices/${deviceId}/decommission`, { method: "POST" });
 }
 
+export function requestDeviceDeletion(deviceId:string,deleteHistory:boolean){
+  return apiRequest<{deviceId:string;status:string}>(`/devices/${encodeURIComponent(deviceId)}/deletion`,{
+    method:"POST",body:JSON.stringify({deleteHistory}),
+  });
+}
+
 export function listLocations(params: LocationListParams = {}, signal?: AbortSignal) {
   return apiRequest<Location[]>(`/locations${query(params)}`, { signal });
 }
@@ -339,4 +345,12 @@ export function finishMaintenanceWindowNow(deviceId: string, windowId: string) {
   return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows/${windowId}/finish-now`, {
     method: "POST",
   });
+}
+
+export interface DeviceDeletionReceipt {
+  deviceId: string; name: string; deviceType: string; deleteHistory: boolean;
+  status: string; completedSteps: string; lastError: string | null; createdAt: string;
+}
+export function listDeviceDeletions(signal?: AbortSignal) {
+  return apiRequest<DeviceDeletionReceipt[]>("/devices/deletions", { signal });
 }

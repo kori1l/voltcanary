@@ -25,19 +25,20 @@ export function NotificationPreferenceSettings() {
   const [quietHoursEnd, setQuietHoursEnd] = useState("");
   const [timezone, setTimezone] = useState("UTC");
   const [criticalBypassQuietHours, setCriticalBypassQuietHours] = useState(true);
+  const [configurableRuleAlertsEnabled, setConfigurableRuleAlertsEnabled] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [channels, setChannels] = useState<NotificationChannelResponse[] | null>(null);
   const [recovered, setRecovered] = useState(false);
-  const fields = { enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours };
+  const fields = { enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours, configurableRuleAlertsEnabled };
   const scope = preference ? draftScope(preference.accountId, preference.id ?? "notification-preferences", preference.updatedAt ?? "legacy") : null;
   useWorkflowDraft(recovered, () => { clearScopedDraft(scope); setRecovered(false); if (preference) applyPreference(preference); });
   useEffect(() => {
     if (!preference) return;
-    const baseline = { enabled: preference.enabled, severities: preference.severities ?? [], channelTypes: preference.channelTypes ?? [], quietHoursStart: preference.quietHoursStart ?? "", quietHoursEnd: preference.quietHoursEnd ?? "", timezone: preference.timezone || "UTC", criticalBypassQuietHours: preference.criticalBypassQuietHours };
+    const baseline = { enabled: preference.enabled, severities: preference.severities ?? [], channelTypes: preference.channelTypes ?? [], quietHoursStart: preference.quietHoursStart ?? "", quietHoursEnd: preference.quietHoursEnd ?? "", timezone: preference.timezone || "UTC", criticalBypassQuietHours: preference.criticalBypassQuietHours, configurableRuleAlertsEnabled: preference.configurableRuleAlertsEnabled ?? false };
     if (JSON.stringify(fields) === JSON.stringify(baseline)) clearScopedDraft(scope); else saveScopedDraft(scope, fields, Object.keys(fields));
-  }, [preference, enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours]);
+  }, [preference, enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours, configurableRuleAlertsEnabled]);
   const timezoneOptions = [...new Set([timezone, "UTC", Intl.DateTimeFormat().resolvedOptions().timeZone, "Europe/Belgrade", "Europe/London", "America/New_York", "Asia/Tokyo"])];
 
   useEffect(() => {
@@ -52,10 +53,10 @@ export function NotificationPreferenceSettings() {
       const saved = readScopedDraft(draftScope(response.accountId, response.id ?? "notification-preferences", response.updatedAt ?? "legacy"), (value) => {
         if (typeof value.enabled !== "boolean" || typeof value.criticalBypassQuietHours !== "boolean" || !Array.isArray(value.severities) || !value.severities.every((item) => typeof item === "string" && severityOptions.includes(item)) || !Array.isArray(value.channelTypes) || !value.channelTypes.every((item) => typeof item === "string" && channelTypeOptions.includes(item)) || typeof value.timezone !== "string") return null;
         try { new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }); } catch { return null; }
-        return { enabled: value.enabled, criticalBypassQuietHours: value.criticalBypassQuietHours, severities: value.severities as string[], channelTypes: value.channelTypes as string[], timezone: value.timezone, quietHoursStart: typeof value.quietHoursStart === "string" ? value.quietHoursStart : "", quietHoursEnd: typeof value.quietHoursEnd === "string" ? value.quietHoursEnd : "" };
+        return { enabled: value.enabled, criticalBypassQuietHours: value.criticalBypassQuietHours, severities: value.severities as string[], channelTypes: value.channelTypes as string[], timezone: value.timezone, quietHoursStart: typeof value.quietHoursStart === "string" ? value.quietHoursStart : "", quietHoursEnd: typeof value.quietHoursEnd === "string" ? value.quietHoursEnd : "", configurableRuleAlertsEnabled: typeof value.configurableRuleAlertsEnabled === "boolean" ? value.configurableRuleAlertsEnabled : response.configurableRuleAlertsEnabled ?? false };
       });
       applyPreference(response);
-      if (saved) { setEnabled(saved.enabled); setSeverities(saved.severities); setChannelTypes(saved.channelTypes); setTimezone(saved.timezone); setCriticalBypassQuietHours(saved.criticalBypassQuietHours); setQuietHoursStart(saved.quietHoursStart); setQuietHoursEnd(saved.quietHoursEnd); }
+      if (saved) { setEnabled(saved.enabled); setSeverities(saved.severities); setChannelTypes(saved.channelTypes); setTimezone(saved.timezone); setCriticalBypassQuietHours(saved.criticalBypassQuietHours); setQuietHoursStart(saved.quietHoursStart); setQuietHoursEnd(saved.quietHoursEnd); setConfigurableRuleAlertsEnabled(saved.configurableRuleAlertsEnabled); }
       setRecovered(Boolean(saved));
     }
   }
@@ -69,6 +70,7 @@ export function NotificationPreferenceSettings() {
     setQuietHoursEnd(response.quietHoursEnd ?? "");
     setTimezone(response.timezone || "UTC");
     setCriticalBypassQuietHours(response.criticalBypassQuietHours);
+    setConfigurableRuleAlertsEnabled(response.configurableRuleAlertsEnabled ?? false);
   }
 
   async function savePreference(event: FormEvent<HTMLFormElement>) {
@@ -88,6 +90,9 @@ export function NotificationPreferenceSettings() {
         quietHoursEnd: quietHoursEnd || null,
         timezone: timezone.trim() || "UTC",
         criticalBypassQuietHours,
+        ...(configurableRuleAlertsEnabled !== (preference.configurableRuleAlertsEnabled ?? false)
+          ? { configurableRuleAlertsEnabled }
+          : {}),
       });
       applyPreference(response);
       clearScopedDraft(scope); setRecovered(false); markWorkflowDraftSaved("notification-preferences");
@@ -122,6 +127,16 @@ export function NotificationPreferenceSettings() {
         <label className="notification-attempt-row">
           <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
           <span>Delivery enabled</span>
+        </label>
+        <label className="notification-attempt-row">
+          <input
+            type="checkbox"
+            checked={configurableRuleAlertsEnabled}
+            onChange={(event) => setConfigurableRuleAlertsEnabled(event.target.checked)}
+            disabled={isBusy || !preference}
+          />
+          <span>Notify for configurable rules</span>
+          <small>Uses the channels, filters, and quiet hours below.</small>
         </label>
         <fieldset className="notification-channel-list">
           <legend>Severities</legend>

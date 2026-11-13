@@ -1,0 +1,512 @@
+{
+  "scope": "DOCUMENTATION_CONFORMANCE_NOT_RUNTIME_ACCEPTANCE",
+  "specificationRevision": 2,
+  "cases": [
+    {
+      "id": "G01",
+      "documentIndex": 6,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/0/method",
+          "value": "execute_sql"
+        }
+      ]
+    },
+    {
+      "id": "G02",
+      "documentIndex": 7,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/password",
+          "value": "forbidden-fixture-value"
+        }
+      ]
+    },
+    {
+      "id": "G03",
+      "documentIndex": 9,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/expectedRowVersion",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "G04",
+      "documentIndex": 8,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/operation",
+          "value": "DELETE"
+        }
+      ]
+    },
+    {
+      "id": "G05",
+      "documentIndex": 6,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/1/config/predicate/args",
+          "value": [
+            {
+              "op": "FIELD",
+              "fieldId": "00000000-0000-4000-8000-000000000061"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G06",
+      "documentIndex": 3,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/columns/0/conversion",
+          "value": {
+            "method": "identity"
+          }
+        }
+      ]
+    },
+    {
+      "id": "G07",
+      "documentIndex": 0,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/fields/2/type",
+          "value": "NULL"
+        }
+      ]
+    },
+    {
+      "id": "G08",
+      "documentIndex": 9,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/operation",
+          "value": "INSERT"
+        }
+      ]
+    },
+    {
+      "id": "G09",
+      "documentIndex": 9,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/values",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "G10",
+      "documentIndex": 3,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/expectedTargetVersion",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "S01",
+      "documentIndex": 9,
+      "stage": "SEMANTIC",
+      "expected": "NULL_NOT_ALLOWED",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/values/0/fieldId",
+          "value": "00000000-0000-4000-8000-000000000074"
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "UNIT_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/1/config/predicate/args/1/literal/unit",
+          "value": "m"
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "documentIndex": 5,
+      "stage": "SEMANTIC",
+      "expected": "TYPE_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/3/config/predicate/args/1/literal",
+          "value": {
+            "type": "DECIMAL",
+            "value": "8",
+            "unit": "h"
+          }
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "GRAPH_REFERENCE_UNKNOWN",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/2/inputs/decisions",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "id": "S05",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "GRAPH_CYCLE",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/1/inputs/events",
+          "value": "hot"
+        }
+      ]
+    },
+    {
+      "id": "S06",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "PORT_TYPE_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/2/inputs/decisions",
+          "value": "source"
+        }
+      ]
+    },
+    {
+      "id": "S07",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "FIELD_NOT_IN_SCOPE",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/1/config/predicate/args/0/fieldId",
+          "value": "00000000-0000-4000-8000-000000009999"
+        }
+      ]
+    },
+    {
+      "id": "S08",
+      "documentIndex": 8,
+      "stage": "SEMANTIC",
+      "expected": "UNIQUE_TARGET_KEY_REQUIRED",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/key",
+          "value": [
+            {
+              "fieldId": "00000000-0000-4000-8000-000000000020",
+              "literal": {
+                "type": "REF",
+                "value": "00000000-0000-4000-8000-000000000099"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S09",
+      "documentIndex": 10,
+      "stage": "SEMANTIC",
+      "expected": "IMPORT_UNIT_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/columns/1/conversions/1/sourceUnit",
+          "value": "m"
+        }
+      ]
+    },
+    {
+      "id": "S10",
+      "documentIndex": 10,
+      "stage": "SEMANTIC",
+      "expected": "SOURCE_TYPE_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/columns/1/sourceType",
+          "value": "DECIMAL"
+        }
+      ]
+    },
+    {
+      "id": "S11",
+      "documentIndex": 4,
+      "stage": "SEMANTIC",
+      "expected": "LATENESS_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/5/config/allowedLatenessUs",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "id": "S12",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "GAP_POLICY_WEAKENED",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/1/config/maxGapUs",
+          "value": "3000000"
+        }
+      ]
+    },
+    {
+      "id": "S13",
+      "documentIndex": 4,
+      "stage": "SEMANTIC",
+      "expected": "ACCURACY_POLICY_INVALID",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/3/config/uncertaintyFloorMetres",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "S14",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "GRAPH_UNREACHABLE",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/3",
+          "value": {
+            "id": "unused",
+            "method": "filter",
+            "inputs": {
+              "events": "source"
+            },
+            "config": {
+              "predicate": {
+                "op": "CONST",
+                "literal": {
+                  "type": "BOOLEAN",
+                  "value": true
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "S15",
+      "documentIndex": 6,
+      "stage": "SEMANTIC",
+      "expected": "DUPLICATE_NODE_ID",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/2/id",
+          "value": "hot"
+        }
+      ]
+    },
+    {
+      "id": "S16",
+      "documentIndex": 8,
+      "stage": "SEMANTIC",
+      "expected": "TARGET_MODE_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/targetPrecondition",
+          "value": {
+            "mode": "NATIVE",
+            "generation": "00000000-0000-4000-8000-000000000999",
+            "dataVersion": 0
+          }
+        },
+        {
+          "op": "set",
+          "path": "/spec/expectedRowVersion",
+          "value": "7"
+        }
+      ]
+    },
+    {
+      "id": "S17",
+      "documentIndex": 3,
+      "stage": "SEMANTIC",
+      "expected": "ARTIFACT_HASH_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/artifactSha256",
+          "value": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      ]
+    },
+    {
+      "id": "S18",
+      "documentIndex": 10,
+      "stage": "SEMANTIC",
+      "expected": "ATOMIC_ROW_LIMIT",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/limits/maxRows",
+          "value": 501
+        }
+      ]
+    },
+    {
+      "id": "S19",
+      "documentIndex": 9,
+      "stage": "SEMANTIC",
+      "expected": "MUTATION_IMMUTABLE_KEY",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/values/0",
+          "value": {
+            "fieldId": "00000000-0000-4000-8000-000000000070",
+            "literal": {
+              "type": "TEXT",
+              "value": "item-2"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "S20",
+      "documentIndex": 9,
+      "stage": "SEMANTIC",
+      "expected": "DUPLICATE_FIELD",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/values/1",
+          "value": {
+            "fieldId": "00000000-0000-4000-8000-000000000071",
+            "literal": {
+              "type": "TEXT",
+              "value": "duplicate"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "S21",
+      "documentIndex": 4,
+      "stage": "SEMANTIC",
+      "expected": "SESSION_MISMATCH",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/nodes/7",
+          "value": {
+            "id": "other_visit",
+            "method": "zone_session",
+            "inputs": {
+              "events": "eligible"
+            },
+            "config": {
+              "subjectFieldId": "00000000-0000-4000-8000-000000000030",
+              "occurrenceFieldId": "00000000-0000-4000-8000-000000000031",
+              "zoneFieldId": "00000000-0000-4000-8000-000000000042",
+              "positionFieldId": "00000000-0000-4000-8000-000000000032",
+              "accuracyFieldId": "00000000-0000-4000-8000-000000000033",
+              "uncertaintyFloorMetres": 5,
+              "exitDebounceUs": "3000000",
+              "maxDurationUs": "3600000000",
+              "minimumExitObservations": 2,
+              "accuracyFallback": "APPROVED_FLOOR"
+            }
+          }
+        },
+        {
+          "op": "set",
+          "path": "/spec/nodes/4/inputs/sessions",
+          "value": "other_visit"
+        }
+      ]
+    },
+    {
+      "id": "G11",
+      "documentIndex": 0,
+      "stage": "GRAMMAR",
+      "expected": "GRAMMAR",
+      "edits": [
+        {
+          "op": "remove",
+          "path": "/spec/keyFieldIds"
+        }
+      ]
+    },
+    {
+      "id": "S22",
+      "documentIndex": 0,
+      "stage": "SEMANTIC",
+      "expected": "INVALID_KEY_FIELD",
+      "edits": [
+        {
+          "op": "set",
+          "path": "/spec/fields/0/nullable",
+          "value": true
+        }
+      ]
+    }
+  ]
+}

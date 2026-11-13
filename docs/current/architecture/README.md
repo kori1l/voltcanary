@@ -22,6 +22,8 @@ direction lives under `docs/target`.
 
 | Topic | Document |
 | --- | --- |
+| Spring AI models, context, tools and durable execution | [spring-ai-assistant.md](spring-ai-assistant.md) |
+| VCL parser, scalar kernels, bundles and initial native owner metadata | [vcl-compiler-front-end.md](vcl-compiler-front-end.md); [native collection owner API](../api/configurable-native-data.md). Full runtime/UI/AI integration remains pending |
 | System map, services, main events | [01-system-overview.md](01-system-overview.md) |
 | Service ownership and allowed interactions | [02-service-boundaries.md](02-service-boundaries.md) |
 | Telemetry, source config, analytics, alert, and maintenance flows | [03-data-flow.md](03-data-flow.md) |

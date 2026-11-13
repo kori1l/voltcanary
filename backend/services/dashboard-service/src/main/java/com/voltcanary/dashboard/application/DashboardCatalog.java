@@ -52,6 +52,12 @@ public class DashboardCatalog {
     public Dashboard get(DashboardActor actor, UUID id) {
         return access.owned(actor, id);
     }
+
+    @Transactional(readOnly = true)
+    public Dashboard creationReceipt(DashboardActor actor, String key) {
+        return idempotency.lookup(actor, "/dashboards", key, Dashboard.class, saved -> access.owned(actor, saved.id()))
+                .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Creation receipt is unavailable"));
+    }
     public java.util.List<String> permissions(DashboardActor actor,UUID id) {
         return access.permissions(actor,id).stream().map(String::toLowerCase).toList();
     }

@@ -62,8 +62,12 @@ public class WidgetQueryDecoder {
         Config parsed = widget.query() == null || widget.query().isNull()
                 ? new Config(null, null, null, null, null, 20, 0, null, null, null, List.of(), List.of())
                 : decode(widget.query(), Config.class, "query");
-        if ("vehicle-map".equals(widget.type())) {
+        if (PositionWidgets.contains(widget.type())) {
             Scope binding = scope(widget.binding());
+            if (!"vehicle-map".equals(widget.type()) && (binding.deviceIds().size() != 1 || parsed.vehicleSources() != null
+                    || widget.presentation() == null || !widget.presentation().path("vehicleField").asText().matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))) {
+                throw failure("VALIDATION_ERROR", "Vehicle field widgets require one vehicle, one source and a field key", "query");
+            }
             boolean fleet = parsed.vehicleSources() != null;
             boolean validSources = fleet
                     ? parsed.sourceId() == null && parsed.vehicleSources().keySet().equals(binding.deviceIds())

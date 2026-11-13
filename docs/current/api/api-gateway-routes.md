@@ -39,6 +39,7 @@ Route ownership:
 - `/devices/**` -> `device-service`
 - `/maintenance-operations/**` -> `device-service`
 - `/device-types/**` -> `device-service`
+- `/data/**` -> `device-service` (native collection reviews and schema descriptions)
 - `/ingestion/**` -> `ingestion-service`
 - `/telemetry/**` -> `telemetry-service`
 - `/analytics/**` -> `analytics-service`
@@ -51,6 +52,8 @@ Route ownership:
 
 - Connect timeout: `GATEWAY_CONNECT_TIMEOUT_MS`, default `2000`.
 - Response timeout: `GATEWAY_RESPONSE_TIMEOUT`, default `5s`.
+- AI route response timeout: `GATEWAY_AI_RESPONSE_TIMEOUT_MS`, default `90000`
+  milliseconds; accommodates bounded provider planning without extending other routes.
 - CORS allowed origins: `GATEWAY_CORS_ALLOWED_ORIGINS`, default `http://localhost:3000`.
 - Request size limits:
   - default: `GATEWAY_REQUEST_MAX_BYTES`, default `1048576`.

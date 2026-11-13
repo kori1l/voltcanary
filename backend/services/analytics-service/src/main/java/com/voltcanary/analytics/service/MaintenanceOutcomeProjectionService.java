@@ -12,19 +12,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MaintenanceOutcomeProjectionService {
+    private final DeviceHistoryDeletion deletions;
 
     private final MaintenanceOutcomeReadModelRepository repository;
     private final MeterRegistry meterRegistry;
 
     public MaintenanceOutcomeProjectionService(
             MaintenanceOutcomeReadModelRepository repository,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        this.deletions = deletions;
         this.repository = repository;
         this.meterRegistry = meterRegistry;
     }
 
     @Transactional
     public boolean upsertSnapshot(MaintenanceOutcomeSnapshot snapshot) {
+        if (!deletions.writable(snapshot.deviceId())) return false;
         MaintenanceOutcomeReadModel entity = repository.findById(snapshot.id())
                 .orElseGet(MaintenanceOutcomeReadModel::new);
         if (entity.getMaintenanceOutcomeId() != null && entity.getVersion() >= snapshot.version()) {

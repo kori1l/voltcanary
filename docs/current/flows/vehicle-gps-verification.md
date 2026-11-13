@@ -67,3 +67,45 @@ observed. Tests exercise the remaining geometry, storage/caps/filter/cache and
 appliance regression cases. Full backend reactor passed; frontend96files/291tests,
 typecheck/build and repository validation passed before the subsequent expansion.
 Physical tracking devices and external notification providers were not tested.
+
+## Revalidation — 2026-10-21
+
+The resumed Docker app stack passed the current full backend module sets
+(591 tests), frontend baseline (113 files / 327 tests), typecheck and build.
+The later assistant-only navigation fix passed seven focused tests and the
+same typecheck/build gates. Real PostgreSQL/Timescale tests cover migrations,
+atomic positions, duplicate/source/time boundaries and bounded history.
+
+`scripts/vehicle-gps-acceptance.ps1` passed twelve authenticated checks: optional
+location, saved GPS profile, moving accepted positions at36km/h, historical asOf,
+24h limit, unknown/foreign source access, ordinary published widget evidence,
+Stop/STALE with the last point retained, explicit restart at the route origin,
+and accepted appliance telemetry. The existing FRIDGE preset is electrical:
+its regression asserts registered activePowerW/W rather than inventing a
+temperature metric. The initial wrong temperature assertion is retained as a
+failed test-assumption log. The final run passed and decommissioned its disposable
+appliance. The named GPS demo remains running for monitoring acceptance.
+
+Browser verification showed real streets, heading marker, observed trail and
+attribution; manual panning disabled Follow. A390px viewport had no horizontal
+document overflow and the viewport override was reset. The published map retained
+its device/source/layout on a fresh navigation. An adjacent ordinary speed panel
+showed36km/h. Temporarily setting the Docker frontend style URL to a missing local
+JSON produced an explicit map error/Retry while coordinates, timestamps and the
+independent speed panel remained available. The original OpenFreeMap style was
+restored immediately. Screenshots and reports remain under ignored artifacts.
+
+The pinned dependency is MapLibre6.14.0. The existing public style and visible
+attribution were checked against [OpenFreeMap documentation](https://openfreemap.org/)
+and its [current service terms](https://openfreemap.org/tos/). There is no offline
+tile downloader or availability guarantee in this feature. The later accepted
+`hsl-live-vehicles` main spec already owns explicit static fleet bindings;
+the baseline single-source validation remains compatible with that extension.
+
+`scripts/vehicle-gps-dashboard-acceptance.ps1` also passed: a25h map request
+returns an isolated LIMIT_EXCEEDED while the speed panel remains ready; fixed
+historical queries exclude later positions; ordinary Copy retains source/device,
+version, screen and map height without publishing the copy. The copy was archived.
+An attempted live shutdown of telemetry-service was rejected by automatic approval
+review with only `blocked by policy`; no shutdown ran. Dependency-failure isolation
+is covered by the Java21 Docker query tests; that live outage case is not claimed.

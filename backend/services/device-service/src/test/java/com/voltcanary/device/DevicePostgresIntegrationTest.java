@@ -7,7 +7,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -23,13 +24,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
                 "spring.jpa.hibernate.ddl-auto=validate",
-                "spring.jpa.open-in-view=false"
+                "spring.jpa.open-in-view=false",
+                "app.kafka.publish-enabled=true"
         })
-class DevicePostgresIntegrationTest {
+class DevicePostgresIntegrationTest extends SignedUserTest {
 
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -47,6 +50,93 @@ class DevicePostgresIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired private com.voltcanary.device.repository.DashboardMaintenanceRepository dashboardMaintenance;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.voltcanary.device.event.DeviceOutboxPublisher outboxDispatcher;
+
+    @Test
+    void receiptFailureAfterDeviceFlushRollsBackDeviceAndExistingOutboxTogether() {
+        HttpHeaders owner = headersFor(UUID.randomUUID(), "receipt-after-flush@example.invalid");
+        AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(owner), AccountResponse.class).getBody();
+        String key = "forced-receipt-failure";
+        owner.set("Idempotency-Key", key);
+        var body = java.util.Map.of("name", "Rollback after flush", "type", "FRIDGE");
+        jdbc.execute("alter table device_creation_receipts add constraint test_receipt_failure check (idempotency_key <> 'forced-receipt-failure')");
+        try {
+            var rejected = restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, owner), String.class);
+            assertThat(rejected.getStatusCode().is2xxSuccessful()).isFalse();
+            assertThat(jdbc.queryForObject("select count(*) from devices where account_id=?", Integer.class, account.id())).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from device_creation_receipts where account_id=?", Integer.class, account.id())).isZero();
+            assertThat(jdbc.queryForObject("select count(*) from device_event_outbox where message_key=?", Integer.class, account.id().toString())).isZero();
+        } finally { jdbc.execute("alter table device_creation_receipts drop constraint test_receipt_failure"); }
+        var retry = restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, owner), DeviceResponse.class);
+        assertThat(retry.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from device_event_outbox where message_key=?", Integer.class, account.id().toString())).isEqualTo(1);
+    }
+
+    @Test
+    void deviceCreationReceiptsAreAtomicScopedAndSurviveResourceDeletion() throws Exception {
+        UUID user = UUID.randomUUID();
+        HttpHeaders owner = headersFor(user, "receipt@example.invalid");
+        AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(owner), AccountResponse.class).getBody();
+        String key = "receipt-" + UUID.randomUUID();
+        owner.set("Idempotency-Key", key);
+        var body = java.util.Map.of("name", "Receipt device", "type", "FRIDGE");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var calls = new java.util.ArrayList<java.util.concurrent.Future<ResponseEntity<DeviceResponse>>>();
+            for (int i = 0; i < 8; i++) calls.add(pool.submit(() -> {
+                start.await();
+                return restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, owner), DeviceResponse.class);
+            }));
+            start.countDown();
+            var ids = new java.util.HashSet<UUID>();
+            for (var call : calls) {
+                var response = call.get(30, java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+                ids.add(response.getBody().id());
+            }
+            assertThat(ids).hasSize(1);
+            assertThat(jdbc.queryForObject("select count(*) from devices where account_id=?", Integer.class, account.id())).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from device_creation_receipts where account_id=?", Integer.class, account.id())).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select count(*) from device_event_outbox where message_key=?", Integer.class, account.id().toString())).isEqualTo(1);
+            assertThat(restTemplate.exchange("/devices", HttpMethod.POST,
+                    new HttpEntity<>(java.util.Map.of("name", "Changed", "type", "FRIDGE"), owner), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            HttpHeaders foreign = headersFor(UUID.randomUUID(), "receipt-other@example.invalid");
+            foreign.set("Idempotency-Key", key);
+            var other = restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, foreign), DeviceResponse.class);
+            assertThat(other.getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(ids).doesNotContain(other.getBody().id());
+            UUID created = ids.iterator().next();
+            assertThat(restTemplate.exchange("/devices/" + created, HttpMethod.DELETE, new HttpEntity<>(owner), String.class)
+                    .getStatusCode().is2xxSuccessful()).isTrue();
+            assertThat(restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, owner), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(jdbc.queryForObject("select count(*) from device_creation_receipts where account_id=?", Integer.class, account.id())).isEqualTo(1);
+            jdbc.update("update accounts set status='DISABLED' where id=?", account.id());
+            assertThat(restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(body, owner), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        } finally { pool.shutdownNow(); }
+    }
+
+    @Test
+    void rejectedDeviceCreationDoesNotReserveTheKeyOrCreateAResource() {
+        HttpHeaders owner = headersFor(UUID.randomUUID(), "receipt-rollback@example.invalid");
+        AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(owner), AccountResponse.class).getBody();
+        owner.set("Idempotency-Key", "rollback-" + UUID.randomUUID());
+        var invalid = java.util.Map.of("name", "No resource", "type", "FRIDGE", "locationId", UUID.randomUUID().toString());
+        assertThat(restTemplate.exchange("/devices", HttpMethod.POST, new HttpEntity<>(invalid, owner), String.class)
+                .getStatusCode().is4xxClientError()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from device_creation_receipts where account_id=?", Integer.class, account.id())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from devices where account_id=?", Integer.class, account.id())).isZero();
+        assertThat(restTemplate.exchange("/devices", HttpMethod.POST,
+                new HttpEntity<>(java.util.Map.of("name", "Valid resource", "type", "FRIDGE"), owner), DeviceResponse.class)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+    }
 
     @Test
     void energyMeterRevisionsAreOwnerScopedOrderedAndRejectTopologyCycles() {
@@ -74,11 +164,11 @@ class DevicePostgresIntegrationTest {
         assertThat(restTemplate.exchange(path,HttpMethod.GET,new HttpEntity<>(foreign),String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(initial,foreign),String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         var foreignSource=new com.voltcanary.device.dto.EnergyMeterRequest(0,child,parent,parentSource,"POWER_INTEGRAL",900,start,java.util.List.of());
-        assertThat(restTemplate.exchange("/devices/"+childDevice+"/energy-meter",HttpMethod.PUT,new HttpEntity<>(foreignSource,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(restTemplate.exchange("/devices/"+childDevice+"/energy-meter",HttpMethod.PUT,new HttpEntity<>(foreignSource,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         var childRequest=new com.voltcanary.device.dto.EnergyMeterRequest(0,child,parent,childSource,"POWER_INTEGRAL",900,start,java.util.List.of());
         assertThat(restTemplate.exchange("/devices/"+childDevice+"/energy-meter",HttpMethod.PUT,new HttpEntity<>(childRequest,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
         var cycle=new com.voltcanary.device.dto.EnergyMeterRequest(1,parent,child,parentSource,"COUNTER_DELTA",900,start.plusSeconds(3600),java.util.List.of());
-        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(cycle,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(cycle,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
         var replacement=new com.voltcanary.device.dto.EnergyMeterRequest(1,UUID.randomUUID(),null,parentSource,"COUNTER_DELTA",900,start.plusSeconds(3600),java.util.List.of());
         assertThat(restTemplate.exchange(path,HttpMethod.PUT,new HttpEntity<>(replacement,owner),String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
         var history=restTemplate.exchange(path,HttpMethod.GET,new HttpEntity<>(owner),com.voltcanary.common.web.EnergyMeterDefinition[].class).getBody();
@@ -158,7 +248,7 @@ class DevicePostgresIntegrationTest {
 
     private HttpHeaders headersFor(UUID userId, String email) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", userId.toString());
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(userId, email, "USER"));
         headers.set("X-User-Email", email);
         headers.set("X-User-Role", "USER");
         return headers;
@@ -198,8 +288,7 @@ class DevicePostgresIntegrationTest {
                 '{"pollIntervalMs":10000,"accessToken":"must-not-leak"}','2026-01-01','2026-01-01')
                 """, UUID.randomUUID(), first);
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(new com.voltcanary.common.security.JwtAccessTokenService("test", "voltcanary-identity", "voltcanary-api")
-                .create(user.toString(), "scope@example.invalid", "USER", 900));
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(user, "scope@example.invalid", "USER"));
         headers.set("X-Internal-Service-Token", "dev-internal-token");
         headers.set("X-User-Id", other.toString());
         headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);

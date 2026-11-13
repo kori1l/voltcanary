@@ -31,7 +31,7 @@ public class WorkspaceAdministration {
     public Workspace create(UUID actor, String name) {
         require(repository.activeUser(actor),HttpStatus.FORBIDDEN);
         validName(name);
-        require(repository.list(actor).size()<20,HttpStatus.UNPROCESSABLE_ENTITY);
+        require(repository.list(actor).size()<20,HttpStatus.UNPROCESSABLE_CONTENT);
         UUID id=UUID.randomUUID();
         repository.create(id,name,actor);
         repository.changed(id,actor,"CREATED",actor);
@@ -50,9 +50,9 @@ public class WorkspaceAdministration {
     @Transactional
     public void saveMember(UUID actor, UUID workspace, MemberRequest request) {
         Snapshot admin=manager(actor,workspace,true);
-        require(request!=null && request.reviewed() && request.userId()!=null && List.of("MEMBER","MANAGER").contains(request.role()),HttpStatus.UNPROCESSABLE_ENTITY);
-        require(repository.activeUser(request.userId()),HttpStatus.UNPROCESSABLE_ENTITY);
-        require(repository.members(workspace).size()<200 || repository.member(workspace,request.userId()).isPresent(),HttpStatus.UNPROCESSABLE_ENTITY);
+        require(request!=null && request.reviewed() && request.userId()!=null && List.of("MEMBER","MANAGER").contains(request.role()),HttpStatus.UNPROCESSABLE_CONTENT);
+        require(repository.activeUser(request.userId()),HttpStatus.UNPROCESSABLE_CONTENT);
+        require(repository.members(workspace).size()<200 || repository.member(workspace,request.userId()).isPresent(),HttpStatus.UNPROCESSABLE_CONTENT);
         require(!request.userId().equals(repository.get(workspace,false).ownerUserId()),HttpStatus.CONFLICT);
         require("OWNER".equals(admin.role()) || "MEMBER".equals(request.role()),HttpStatus.FORBIDDEN);
         repository.saveMember(workspace,request.userId(),request.role(),"ACTIVE");
@@ -74,9 +74,9 @@ public class WorkspaceAdministration {
     @Transactional
     public UUID addTeam(UUID actor, UUID workspace, TeamRequest request) {
         manager(actor,workspace,true);
-        require(request!=null && request.reviewed() && request.userIds()!=null && request.userIds().size()<=200 && request.userIds().stream().distinct().count()==request.userIds().size(),HttpStatus.UNPROCESSABLE_ENTITY);
+        require(request!=null && request.reviewed() && request.userIds()!=null && request.userIds().size()<=200 && request.userIds().stream().distinct().count()==request.userIds().size(),HttpStatus.UNPROCESSABLE_CONTENT);
         validName(request.name());
-        require(repository.teams(workspace).size()<100,HttpStatus.UNPROCESSABLE_ENTITY);
+        require(repository.teams(workspace).size()<100,HttpStatus.UNPROCESSABLE_CONTENT);
         request.userIds().forEach(user -> snapshot(user,workspace));
         UUID id=repository.addTeam(workspace,request.name(),request.userIds());
         repository.changed(workspace,actor,"TEAM_CREATED",id);
@@ -105,7 +105,7 @@ public class WorkspaceAdministration {
         return snapshot;
     }
     private void validName(String name) {
-        require(name!=null && !name.isBlank() && name.length()<=80,HttpStatus.UNPROCESSABLE_ENTITY);
+        require(name!=null && !name.isBlank() && name.length()<=80,HttpStatus.UNPROCESSABLE_CONTENT);
     }
     private void require(boolean valid, HttpStatus status) {
         if (!valid) throw denied(status);

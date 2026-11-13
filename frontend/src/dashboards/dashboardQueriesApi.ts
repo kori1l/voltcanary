@@ -1,4 +1,12 @@
 import { apiRequest,apiResponseRequest,ApiError,sessionIdentityRevision } from "../api/client";
+import type {DashboardDefinition} from "./dashboardsApi";
+
+/** Unsaved preview uses the ordinary owner-read pipeline without creating a dashboard. */
+export function previewDashboardDefinition(definition:DashboardDefinition, signal?:AbortSignal) {
+  return apiRequest<DashboardQueryBatch>("/dashboards/preview/query", {
+    method:"POST", body:JSON.stringify({definition}), signal,
+  });
+}
 
 export type WidgetType = "fleet-count" | "latest-value" | "time-series" | "metric-summary" | "incident-list"
   | "maintenance-agenda" | "risk-list" | "quality-and-freshness" | "location-matrix" | "prediction-evidence" | "context-note" | "energy-period" | "peak-and-ranking" | "estimated-cost" | "uptime-or-cycle";
@@ -61,7 +69,27 @@ export interface DashboardQueryBatch {
   panels: WidgetQueryPanel[];
   scopes?: Record<string, {devices: unknown[]; locations: unknown[]}>;
 }
+export interface WidgetPresentationSetting {
+  key:string;
+  type:"BOOLEAN"|"AUTO_BOOLEAN"|"TEXT"|"SELECT"|"FIELD_SET";
+  section:"GENERAL"|"APPEARANCE";
+  group:string;
+  label:string;
+  defaultValue:boolean|string|null;
+  choices:{value:string;label:string}[];
+  maxLength:number|null;
+}
+export interface WidgetCapabilities {
+  version:number;
+  dataKind:string;
+  valueTypes:string[];
+  binding:{modes:string[];maxDevices:number;sourceRequired:boolean;metricRequired:boolean};
+  visualizations:string[];
+  visualizationValueTypes?:Record<string,string[]>;
+  settings:WidgetPresentationSetting[];
+}
 export interface WidgetManifest {
+  capabilities?:WidgetCapabilities;
   visualizations?:string[];
   type: WidgetType | string;
   typeVersion: number;

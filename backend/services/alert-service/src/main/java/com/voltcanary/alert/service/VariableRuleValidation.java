@@ -63,7 +63,7 @@ public class VariableRuleValidation {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Owned variable resource required");
         }
         try {
-            JsonNode descriptors = telemetry.get().uri("/telemetry/devices/{id}/variables", rule.getScopeId())
+            JsonNode descriptors = telemetry.get().uri("/internal/telemetry/devices/{id}/variables", rule.getScopeId())
                     .header("X-Internal-Service-Token", token).retrieve().body(JsonNode.class);
             if (descriptors != null && descriptors.isArray()) {
                 for (JsonNode descriptor : descriptors) {

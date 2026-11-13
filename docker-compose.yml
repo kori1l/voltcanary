@@ -33,6 +33,8 @@ x-java-app: &java-app
     JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
     JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
     JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+    JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+    JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
     TIMESCALE_HOST: timescaledb
     TIMESCALE_PORT: 5432
     TIMESCALE_DB: ${TIMESCALE_DB:-voltcanary_telemetry}
@@ -45,6 +47,7 @@ x-java-app: &java-app
     TELEMETRY_RATE_LIMIT_REDIS_ENABLED: "true"
     GATEWAY_RATE_LIMIT_REDIS_ENABLED: "true"
     GATEWAY_CORS_ALLOWED_ORIGINS: ${GATEWAY_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    GATEWAY_AI_RESPONSE_TIMEOUT_MS: ${GATEWAY_AI_RESPONSE_TIMEOUT_MS:--1}
     MINIO_ENDPOINT: http://minio:9000
     MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
     MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
@@ -52,6 +55,8 @@ x-java-app: &java-app
     DEVICE_SERVICE_URI: http://device-service:8082
     VARIABLE_ACTIVATION_ENABLED: ${VARIABLE_ACTIVATION_ENABLED:-false}
     VARIABLE_PROCESSING_ENABLED: ${VARIABLE_PROCESSING_ENABLED:-false}
+    OBSERVATION_CAPTURE_ENABLED: ${OBSERVATION_CAPTURE_ENABLED:-false}
+    OBSERVATION_CAPTURE_BINDING_IDS: ${OBSERVATION_CAPTURE_BINDING_IDS:-}
     VARIABLE_ALERTS_ENABLED: ${VARIABLE_ALERTS_ENABLED:-false}
     INGESTION_SERVICE_URI: http://ingestion-service:8083
     TELEMETRY_SERVICE_URI: http://telemetry-service:8084
@@ -85,7 +90,7 @@ services:
       - app
     environment: *postgres-env
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/docker-compose/init/postgres:/docker-entrypoint-initdb.d:ro
@@ -120,7 +125,7 @@ services:
       - app
     environment: *timescale-env
     ports:
-      - "${TIMESCALE_PORT:-5433}:5432"
+      - "127.0.0.1:${TIMESCALE_PORT:-5433}:5432"
     volumes:
       - timescale-data:/var/lib/postgresql/data
       - ./deploy/docker-compose/init/timescaledb:/docker-entrypoint-initdb.d:ro
@@ -137,7 +142,7 @@ services:
       - infra
       - app
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -174,8 +179,8 @@ services:
       - --advertise-pandaproxy-addr
       - redpanda:8082
     ports:
-      - "${REDPANDA_PORT:-9092}:19092"
-      - "${REDPANDA_ADMIN_PORT:-9644}:9644"
+      - "127.0.0.1:${REDPANDA_PORT:-9092}:19092"
+      - "127.0.0.1:${REDPANDA_ADMIN_PORT:-9644}:9644"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -208,8 +213,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-voltcanary}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
     ports:
-      - "${MINIO_API_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -260,7 +265,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
     ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./deploy/docker-compose/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -302,7 +307,7 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     ports:
-      - "${CADVISOR_PORT:-8089}:8080"
+      - "127.0.0.1:${CADVISOR_PORT:-8089}:8080"
 
   loki:
     image: grafana/loki:3.3.2
@@ -310,7 +315,7 @@ services:
       - observability
     command: -config.file=/etc/loki/loki.yml
     ports:
-      - "${LOKI_PORT:-3100}:3100"
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
     volumes:
       - ./deploy/docker-compose/observability/loki.yml:/etc/loki/loki.yml:ro
       - loki-data:/loki
@@ -343,7 +348,7 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     ports:
-      - "${GRAFANA_PORT:-3001}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./deploy/docker-compose/observability/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -380,6 +385,8 @@ services:
       JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
       JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
       JWT_REFRESH_TOKEN_TTL_SECONDS: ${JWT_REFRESH_TOKEN_TTL_SECONDS:-2592000}
       TIMESCALE_HOST: timescaledb
@@ -398,13 +405,24 @@ services:
       IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED: "false"
       IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED: "true"
     ports:
-      - "${IDENTITY_SERVICE_PORT:-8081}:8081"
+      - "127.0.0.1:${IDENTITY_SERVICE_PORT:-8081}:8081"
 
   device-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/device-service -am -Dmaven.test.skip=true install' && mvn -f services/device-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       IDENTITY_SERVICE_URI: http://identity-service:8081
+      TELEMETRY_SERVICE_URI: http://telemetry-service:8084
+      ANALYTICS_SERVICE_URI: http://analytics-service:8085
+      ALERT_SERVICE_URI: http://alert-service:8086
+      SIMULATOR_SERVICE_URI: http://simulator-service:8087
+      HSL_CONNECTOR_SERVICE_URI: http://hsl-connector:8091
+      APP_VCL_WORKER_HMAC_KEY: ${APP_VCL_WORKER_HMAC_KEY:-}
+      APP_VCL_WORKER_KEY_ID: ${APP_VCL_WORKER_KEY_ID:-worker-1}
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       POSTGRES_HOST: postgres
@@ -428,7 +446,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-voltcanary}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change_me_change_me}
     ports:
-      - "${DEVICE_SERVICE_PORT:-8082}:8082"
+      - "127.0.0.1:${DEVICE_SERVICE_PORT:-8082}:8082"
 
   ingestion-service:
     <<: *java-app
@@ -439,13 +457,20 @@ services:
   telemetry-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/telemetry-service -am -Dmaven.test.skip=true install' && mvn -f services/telemetry-service/pom.xml spring-boot:run"
+    environment:
+      <<: *java-app-env
+      APP_INTERNAL_COVERAGE_ATTESTOR_TOKEN: ${APP_INTERNAL_COVERAGE_ATTESTOR_TOKEN:-}
     ports:
-      - "${TELEMETRY_SERVICE_PORT:-8084}:8084"
+      - "127.0.0.1:${TELEMETRY_SERVICE_PORT:-8084}:8084"
 
   analytics-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/analytics-service -am -Dmaven.test.skip=true install' && mvn -f services/analytics-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       POSTGRES_HOST: postgres
@@ -466,13 +491,21 @@ services:
       ML_SERVICE_URI: http://ml-service:8090
       ALERT_SERVICE_URI: http://alert-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
+      APP_VCL_WORKER_HMAC_KEY: ${APP_VCL_WORKER_HMAC_KEY:-}
+      APP_VCL_WORKER_KEY_ID: ${APP_VCL_WORKER_KEY_ID:-worker-1}
+      APP_VCL_WORKER_ENABLED: ${APP_VCL_WORKER_ENABLED:-false}
+      APP_VCL_WORKER_DELAY: ${APP_VCL_WORKER_DELAY:-5s}
     ports:
-      - "${ANALYTICS_SERVICE_PORT:-8085}:8085"
+      - "127.0.0.1:${ANALYTICS_SERVICE_PORT:-8085}:8085"
 
   alert-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/alert-service -am -Dmaven.test.skip=true install' && mvn -f services/alert-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       SPRING_PROFILES_ACTIVE: local
       SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       POSTGRES_HOST: postgres
@@ -483,14 +516,21 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       JWT_SECRET: ${JWT_SECRET:-change_me}
       DEVICE_SERVICE_URI: http://device-service:8082
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
       ANALYTICS_SERVICE_URI: http://analytics-service:8085
+      APP_VCL_WORKER_HMAC_KEY: ${APP_VCL_WORKER_HMAC_KEY:-}
+      APP_VCL_WORKER_KEY_ID: ${APP_VCL_WORKER_KEY_ID:-worker-1}
     ports:
-      - "${ALERT_SERVICE_PORT:-8086}:8086"
+      - "127.0.0.1:${ALERT_SERVICE_PORT:-8086}:8086"
 
   simulator-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/simulator-service -am -Dmaven.test.skip=true install' && mvn -f services/simulator-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       SPRING_PROFILES_ACTIVE: local
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -503,12 +543,20 @@ services:
       SIMULATOR_MQTT_ENABLED: ${SIMULATOR_MQTT_ENABLED:-false}
       SIMULATOR_MQTT_BROKER_URL: tcp://mosquitto:1883
     ports:
-      - "${SIMULATOR_SERVICE_PORT:-8087}:8087"
+      - "127.0.0.1:${SIMULATOR_SERVICE_PORT:-8087}:8087"
 
   ai-agent-service:
     <<: *java-app
+    volumes:
+      - ./backend:/workspace/backend
+      - ./docs/target:/workspace/docs/target:ro
+      - maven-cache:/root/.m2
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/ai-agent-service -am -Dmaven.test.skip=true install' && mvn -f services/ai-agent-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       SPRING_PROFILES_ACTIVE: local
       JWT_SECRET: ${JWT_SECRET:-change_me}
       POSTGRES_HOST: postgres
@@ -518,7 +566,18 @@ services:
       DEVICE_SERVICE_URI: http://device-service:8082
       ALERT_SERVICE_URI: http://alert-service:8086
       SIMULATOR_SERVICE_URI: http://simulator-service:8087
+      DASHBOARD_SERVICE_URI: http://dashboard-service:8089
+      TELEMETRY_SERVICE_URI: http://telemetry-service:8084
       AI_PROVIDER: ${AI_PROVIDER:-rules}
+      AI_ASSISTANT_V2_ENABLED: ${AI_ASSISTANT_V2_ENABLED:-false}
+      AI_WIDGET_EMBEDDINGS_ENABLED: ${AI_WIDGET_EMBEDDINGS_ENABLED:-false}
+      AI_WIDGET_EMBEDDINGS_BASE_URL: ${AI_WIDGET_EMBEDDINGS_BASE_URL:-http://host.docker.internal:11434/v1}
+      AI_WIDGET_EMBEDDINGS_MODEL: ${AI_WIDGET_EMBEDDINGS_MODEL:-}
+      AI_WIDGET_EMBEDDINGS_API_KEY: ${AI_WIDGET_EMBEDDINGS_API_KEY:-}
+      AI_WIDGET_EMBEDDINGS_TIMEOUT_MS: ${AI_WIDGET_EMBEDDINGS_TIMEOUT_MS:-3000}
+      AI_DASHBOARD_OPERATIONS_ENABLED: ${AI_DASHBOARD_OPERATIONS_ENABLED:-false}
+      AI_DEVICE_SETUP_ENABLED: ${AI_DEVICE_SETUP_ENABLED:-false}
+      HSL_CONNECTOR_SERVICE_URI: http://hsl-connector:8091
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -527,12 +586,16 @@ services:
       AI_AGENT_SECRET_ENCRYPTION_KEY: ${AI_AGENT_SECRET_ENCRYPTION_KEY:-change_me_32_bytes_minimum_local_dev_key}
       AI_AGENT_SECRET_KEY_VERSION: ${AI_AGENT_SECRET_KEY_VERSION:-v1}
     ports:
-      - "${AI_AGENT_SERVICE_PORT:-8088}:8088"
+      - "127.0.0.1:${AI_AGENT_SERVICE_PORT:-8088}:8088"
 
   dashboard-service:
     <<: *java-app
     command: sh -c "flock /root/.m2/.voltcanary-maven-install.lock -c 'mvn -pl services/dashboard-service -am -Dmaven.test.skip=true install' && mvn -f services/dashboard-service/pom.xml spring-boot:run"
     environment:
+      JWT_KEY_ID: ${JWT_KEY_ID:-dev-rsa}
+      JWT_PUBLIC_KEYS: ${JWT_PUBLIC_KEYS:-}
+      JWT_ISSUER: ${JWT_ISSUER:-voltcanary-identity}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       <<: *java-app-env
       DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}
     depends_on:
@@ -543,7 +606,7 @@ services:
       device-service:
         condition: service_started
     ports:
-      - "${DASHBOARD_SERVICE_PORT:-8089}:8089"
+      - "127.0.0.1:${DASHBOARD_SERVICE_PORT:-8089}:8089"
 
   ml-service:
     image: python:3.12-slim
@@ -552,7 +615,7 @@ services:
     working_dir: /workspace/ml-service
     command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8090"
     ports:
-      - "${ML_SERVICE_PORT:-8090}:8090"
+      - "127.0.0.1:${ML_SERVICE_PORT:-8090}:8090"
     environment:
       ML_ARTIFACT_STORE: ${ML_ARTIFACT_STORE:-s3}
       MINIO_ENDPOINT: http://minio:9000

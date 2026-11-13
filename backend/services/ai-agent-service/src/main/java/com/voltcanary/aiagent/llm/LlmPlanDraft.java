@@ -7,5 +7,9 @@ public record LlmPlanDraft(
         String model,
         String summary,
         String explanation,
-        List<LlmActionDraft> actions) {
+        List<LlmActionDraft> actions,
+        com.voltcanary.aiagent.model.PlanningQuestion clarification) {
+    public LlmPlanDraft(String provider,String model,String summary,String explanation,List<LlmActionDraft> actions) {
+        this(provider,model,summary,explanation,actions,null);
+    }
 }

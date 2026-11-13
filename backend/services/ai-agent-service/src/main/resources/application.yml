@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: ai-agent-service
@@ -17,6 +19,17 @@ management:
 
 app:
   ai:
+    widget-embeddings:
+      enabled: ${AI_WIDGET_EMBEDDINGS_ENABLED:false}
+      base-url: ${AI_WIDGET_EMBEDDINGS_BASE_URL:http://localhost:11434/v1}
+      model: ${AI_WIDGET_EMBEDDINGS_MODEL:}
+      api-key: ${AI_WIDGET_EMBEDDINGS_API_KEY:}
+      timeout-ms: ${AI_WIDGET_EMBEDDINGS_TIMEOUT_MS:3000}
+    orchestration:
+      enabled: ${AI_ASSISTANT_V2_ENABLED:false}
+      native-data-enabled: false
+    device-setup-enabled: ${AI_DEVICE_SETUP_ENABLED:false}
+    dashboard-operations-enabled: ${AI_DASHBOARD_OPERATIONS_ENABLED:false}
     provider: ${AI_PROVIDER:rules}
     openai:
       api-key: ${OPENAI_API_KEY:}
@@ -27,15 +40,17 @@ app:
       encryption-key: ${AI_AGENT_SECRET_ENCRYPTION_KEY:}
       key-version: ${AI_AGENT_SECRET_KEY_VERSION:v1}
     services:
+      hsl-connector-base-url: ${HSL_CONNECTOR_SERVICE_URI:http://hsl-connector:8091}
       device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
       alert-base-url: ${ALERT_SERVICE_URI:http://localhost:8084}
       simulator-base-url: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
+      dashboard-base-url: ${DASHBOARD_SERVICE_URI:http://localhost:8089}
+      telemetry-base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
   jwt:
-    secret: ${JWT_SECRET:change_me}
-  services:
-    device-base-url: ${DEVICE_SERVICE_URI:http://localhost:8082}
-    alert-base-url: ${ALERT_SERVICE_URI:http://localhost:8084}
-    simulator-base-url: ${SIMULATOR_SERVICE_URI:http://localhost:8087}
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
 
 info:
   app:

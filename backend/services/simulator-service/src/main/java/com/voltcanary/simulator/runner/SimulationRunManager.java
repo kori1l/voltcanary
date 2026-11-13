@@ -35,6 +35,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SimulationRunManager {
+    private final com.voltcanary.simulator.service.DeviceHistoryDeletion deletions;
+    private final org.springframework.transaction.support.TransactionTemplate tickTransactions;
 
     private static final String ACTIVE_KEY = "ACTIVE";
     private static final Duration MIN_LEASE = Duration.ofMinutes(5);
@@ -63,7 +65,9 @@ public class SimulationRunManager {
             TelemetrySenderRegistry senderRegistry,
             RunningSimulationRegistry registry,
             SimulationRunner simulationRunner,
-            MeterRegistry meterRegistry, com.voltcanary.simulator.service.VehicleSimulationTarget target) {
+            MeterRegistry meterRegistry, com.voltcanary.simulator.service.VehicleSimulationTarget target, com.voltcanary.simulator.service.DeviceHistoryDeletion deletions, org.springframework.transaction.PlatformTransactionManager transactions) {
+        this.tickTransactions = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        this.deletions = deletions;
         this.target = target;
         this.configRepository = configRepository;
         this.runRepository = runRepository;
@@ -81,6 +85,7 @@ public class SimulationRunManager {
 
     @Transactional
     public SimulationRunResponse start(UUID userId, UUID deviceId) {
+        if (!deletions.writable(deviceId)) throw new ResponseStatusException(HttpStatus.GONE, "Device deleted");
         SimulationConfig config = configRepository.findByDeviceId(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
         if (config.getStatus() == SimulationConfigStatus.INVALID || !validator.validate(config.getYamlConfig()).isEmpty()) {
@@ -181,6 +186,7 @@ public class SimulationRunManager {
                         SimulationRunStatus.RUNNING,
                         SimulationRunStatus.STOPPING))
                 .forEach(run -> {
+                    if (!deletions.writable(run.getDeviceId())) return;
                     if (registry.isRunning(run.getDeviceId())) {
                         return;
                     }
@@ -217,9 +223,17 @@ public class SimulationRunManager {
     }
 
     private void tick(UUID runId, String sourceToken, SimulationConfigModel model, long intervalSeconds) {
+        tickTransactions.executeWithoutResult(status -> tickWithinTransaction(runId, sourceToken, model, intervalSeconds));
+    }
+
+    private void tickWithinTransaction(UUID runId, String sourceToken, SimulationConfigModel model, long intervalSeconds) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             SimulationRun run = runRepository.findById(runId).orElseThrow();
+            if (!deletions.writable(run.getDeviceId())) {
+                registry.remove(run.getDeviceId()).ifPresent(future -> future.cancel(false));
+                return;
+            }
             if (!leaseOwner.equals(run.getLeaseOwner())) {
                 registry.remove(run.getDeviceId()).ifPresent(future -> future.cancel(false));
                 return;

@@ -4,6 +4,7 @@ import { useTaskEvidence } from "../aiAgent/taskEvidence";
 import { DeviceAlertsPanel } from "../devices/details/DeviceAlertsPanel";
 import { normalizeDeviceTab, buildIncidentSummary, buildIncidentConclusion, buildWhyBullets, buildAnalyticsSummary, buildPredictionInsight, normalizeRiskTone, getRiskInsight, formatInsightText } from "../devices/details/deviceInsightPresentation";
 import { DeviceConfigurationPanel } from "../devices/details/DeviceConfigurationPanel";
+import {DeviceDeletionAction} from "../devices/details/DeviceDeletionAction";
 import {VehicleMovementPanel} from "../vehicles/VehicleMovementPanel";
 import { DeviceSimulationPanel } from "../devices/details/DeviceSimulationPanel";
 import { DeviceMetricCard as Metric } from "../devices/details/DeviceMetricCard";
@@ -152,6 +153,7 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
           </p>
         </div>
         <div className="header-actions">
+          {device?<DeviceDeletionAction deviceId={device.id} name={device.name} disabled={isRegistryBusy||details.statusBusy}/>:null}
           {suppressingMaintenanceWindow ? (
             <span className="status-pill status-pill-maintenance">Maintenance active</span>
           ) : upcomingMaintenanceWindows.length > 0 ? (

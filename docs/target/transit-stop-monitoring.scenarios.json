@@ -1,0 +1,866 @@
+{
+  "schemaVersion": "transit-stop-monitoring-scenario-manifest-v1",
+  "status": "PROPOSED_NOT_EXECUTABLE_RUNTIME_TESTS",
+  "createdOn": "2026-11-03",
+  "architecture": "transit-stop-monitoring.md",
+  "acceptance": "transit-stop-monitoring-acceptance.md",
+  "authorization": {
+    "runtimeImplementation": false,
+    "liveFeedConnections": false,
+    "paidModelCalls": false,
+    "externalNotifications": false
+  },
+  "policy": {
+    "scope": "ONLY_EXPLICITLY_REQUIRED_STOP_OCCURRENCES",
+    "boundaryMetres": 30,
+    "displayNearMetres": 10,
+    "service": {
+      "doorState": "OPEN",
+      "maxSpeedMetresPerSecond": 0.5,
+      "minDurationSeconds": 2
+    },
+    "exitDebounceSeconds": 3,
+    "minimumExitObservations": 2,
+    "allowedLatenessSeconds": 10,
+    "maxObservationGapSeconds": 2,
+    "missingDoorState": "UNKNOWN",
+    "alertCode": "POSSIBLE_MISSED_REQUIRED_STOP"
+  },
+  "fixture": {
+    "synthetic": true,
+    "baseTime": "2026-01-15T10:00:00Z",
+    "origin": {
+      "latitude": 60.17,
+      "longitude": 24.94
+    },
+    "positionEncoding": "NORTH_METRES_FROM_ORIGIN",
+    "earthRadiusMetres": 6371000,
+    "coordinateRule": "latitude=origin.latitude+northMetres/earthRadiusMetres*180/pi; longitude=origin.longitude",
+    "declaredAccuracyMetres": 0,
+    "accuracyScope": "LAB_ONLY_NOT_HSL_ACCURACY_CLAIM",
+    "eventCadenceSeconds": 1,
+    "keys": {
+      "account": "OWN_A",
+      "device": "BUS_A",
+      "source": "SOURCE_A",
+      "trip": "TRIP_A",
+      "snapshot": "FEED_A",
+      "mandatoryPolicy": "MANDATORY_A",
+      "stop": "S1",
+      "stopSequence": 1
+    },
+    "eventIdentity": "provider/source + eventType + occurredAt + normalized payload digest; independent of captureSession",
+    "variants": "Acceptance document defines platform/loop/service-day/adversarial variants; harness must expand and version exact inputs."
+  },
+  "templates": {
+    "SERVED": {
+      "northMetres": [
+        40,
+        29,
+        20,
+        5,
+        5,
+        5,
+        5,
+        -20,
+        -31,
+        -35,
+        -40,
+        -45
+      ],
+      "openAtSeconds": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "stationaryAtSeconds": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "providerDoorTransitions": [
+        {
+          "second": 3,
+          "type": "DOO"
+        },
+        {
+          "second": 7,
+          "type": "DOC"
+        }
+      ],
+      "defaultDoorState": "CLOSED"
+    },
+    "MISSED": {
+      "northMetres": [
+        40,
+        29,
+        20,
+        5,
+        5,
+        5,
+        5,
+        -20,
+        -31,
+        -35,
+        -40,
+        -45
+      ],
+      "openAtSeconds": [],
+      "stationaryAtSeconds": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "defaultDoorState": "CLOSED"
+    },
+    "PASS_THROUGH": {
+      "northMetres": [
+        40,
+        29,
+        20,
+        15,
+        -15,
+        -20,
+        -31,
+        -35,
+        -40,
+        -45
+      ],
+      "openAtSeconds": [],
+      "stationaryAtSeconds": [],
+      "defaultDoorState": "CLOSED"
+    },
+    "JITTER": {
+      "northMetres": [
+        40,
+        29,
+        29,
+        31,
+        29,
+        31,
+        29,
+        31,
+        29
+      ],
+      "openAtSeconds": [],
+      "defaultDoorState": "CLOSED"
+    },
+    "NEVER_ENTER": {
+      "northMetres": [
+        40,
+        -40
+      ],
+      "openAtSeconds": [],
+      "defaultDoorState": "CLOSED"
+    },
+    "LEFT_CENSORED": {
+      "northMetres": [
+        5,
+        20,
+        31,
+        35,
+        40,
+        45
+      ],
+      "openAtSeconds": [],
+      "defaultDoorState": "CLOSED"
+    }
+  },
+  "qualification": {
+    "families": 24,
+    "minTrialsPerFamily": 3,
+    "firstPassCompleteTaskSuccessMin": 0.9,
+    "finalCompleteTaskSuccessMin": 0.95,
+    "criticalWrongResourceOrUnauthorizedActivationMax": 0,
+    "unknownOrExemptServiceAlertsMax": 0,
+    "retainStricterExistingGates": true,
+    "freezeExactInputsAndGradersBeforeTrials": true,
+    "includeBlockedFailedUnreached": true,
+    "monetaryCeilings": "MUST_BE_DECLARED_BEFORE_AUTHORIZED_CAMPAIGN",
+    "firstPass": {
+      "automaticCorrection": false,
+      "modelJudge": false,
+      "schemaAndAccessGuards": true
+    },
+    "reporting": [
+      "firstPass",
+      "recovered",
+      "final",
+      "allAttempts",
+      "providerUsage",
+      "unknownUsage",
+      "actualOrUnknownCost",
+      "latency",
+      "blockedCases"
+    ]
+  },
+  "cases": [
+    {
+      "id": "S01",
+      "name": "served",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Создай контроль выбранного автобуса и обязательной остановки с дашбордом.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [],
+      "expected": {
+        "visitOutcomes": [
+          "SERVICED"
+        ],
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S02",
+      "name": "closed-throughout",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Сообщай, если обязательная остановка осталась без наблюдаемого обслуживания.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [],
+      "expected": {
+        "visitOutcomes": [
+          "POSSIBLE_MISSED"
+        ],
+        "logicalAlerts": 1,
+        "notBefore": "exitConfirmedAt+allowedLateness"
+      }
+    },
+    {
+      "id": "S03",
+      "name": "pass-without-stop-or-inner-entry",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Контролируй и проезд без остановки: граница 30 метров.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "PASS_THROUGH",
+      "perturbations": [],
+      "expected": {
+        "visitOutcomes": [
+          "POSSIBLE_MISSED"
+        ],
+        "logicalAlerts": 1,
+        "armedRequiresStopping": false,
+        "innerRadiusRequired": false
+      }
+    },
+    {
+      "id": "S04",
+      "name": "late-service-before-deadline",
+      "policyOverrides": {
+        "maxObservationGapSeconds": 5,
+        "reviewed": true,
+        "reason": "Withheld t3–6 observations leave a five-second t2 to t7 gap; the default remains two seconds."
+      },
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Учти поздние события двери в разрешённом окне.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "delay_delivery",
+          "select": "OPEN and stationary service witnesses",
+          "receivedAt": "exitConfirmedAt+5s",
+          "preserveOccurredAt": true
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "SERVICED"
+        ],
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S05",
+      "name": "capture-gap",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "При потере данных показывай неизвестный результат, а не пропуск.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "coverage_gap",
+          "fromSecond": 3,
+          "toSecond": 6,
+          "reason": "DISCONNECTED",
+          "variants": [
+            "DISCONNECTED",
+            "SPOOL_OVERFLOW",
+            "RESTART_WITH_GAP"
+          ]
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "UNKNOWN"
+        ],
+        "logicalAlerts": 0,
+        "coverage": "DEGRADED"
+      }
+    },
+    {
+      "id": "S06",
+      "name": "unknown-door-or-location",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Покажи, когда состояние дверей или положение неизвестно.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "replace_field",
+          "field": "doorState",
+          "value": "UNKNOWN",
+          "variants": [
+            "MISSING_DOOR",
+            "MISSING_POSITION",
+            "UNCERTAIN_GEOMETRY"
+          ]
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "UNKNOWN"
+        ],
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S07",
+      "name": "boundary-jitter",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Не создавай алерт из-за дрожания координат на границе.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "JITTER",
+      "perturbations": [],
+      "expected": {
+        "confirmedExit": false,
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S08",
+      "name": "left-censored",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Начни наблюдение за автобусом, который уже стоит у остановки.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "LEFT_CENSORED",
+      "perturbations": [],
+      "expected": {
+        "visitOutcomes": [
+          "UNKNOWN"
+        ],
+        "qualityContains": "LEFT_CENSORED",
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S09",
+      "name": "no-observed-entry",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Не выдавай предполагаемое пересечение за наблюдаемое.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "NEVER_ENTER",
+      "perturbations": [],
+      "expected": {
+        "visitOutcomes": [
+          "UNKNOWN"
+        ],
+        "logicalAlerts": 0,
+        "interpolatedEntry": false
+      }
+    },
+    {
+      "id": "S10",
+      "name": "adjacent-platform",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Контролируй выбранную платформу, не соседнюю на другой стороне дороги.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "select_fixture_variant",
+          "variant": "ADJACENT_OPPOSITE_PLATFORM"
+        }
+      ],
+      "expected": {
+        "selectedStopSubstitution": false,
+        "logicalAlerts": 0,
+        "visitOutcomes": [
+          "UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "S11",
+      "name": "exemption",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Не вызывай уведомления при подтверждённой отмене обслуживания.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "add_exemption",
+          "fromSecond": 0,
+          "toSecond": 20,
+          "variants": [
+            "APPROVED_CANCELLATION",
+            "APPROVED_DETOUR",
+            "MAINTENANCE"
+          ]
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "EXEMPT"
+        ],
+        "logicalAlerts": 0,
+        "notificationAttempts": 0
+      }
+    },
+    {
+      "id": "S12",
+      "name": "repeated-stop-on-loop",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "На кольце проверяй каждое обязательное посещение отдельно.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "append_visit",
+          "afterSeconds": 60,
+          "template": "MISSED",
+          "sameStopId": true,
+          "stopSequence": 3
+        }
+      ],
+      "expected": {
+        "distinctVisits": 2,
+        "visitOutcomes": [
+          "SERVICED",
+          "POSSIBLE_MISSED"
+        ],
+        "logicalAlerts": 1
+      }
+    },
+    {
+      "id": "S13",
+      "name": "trip-or-source-switch",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Если автобус сменил рейс, не переноси двери прошлого рейса.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "change_binding",
+          "atSecond": 4,
+          "variants": [
+            "TRIP_CHANGE",
+            "SOURCE_CHANGE"
+          ]
+        }
+      ],
+      "expected": {
+        "oldVisitOutcome": "UNKNOWN",
+        "oldVisitAlerts": 0,
+        "newScopeRequired": true
+      }
+    },
+    {
+      "id": "S14",
+      "name": "restart-and-idempotent-replay",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "После перезапуска продолжи тот же контроль без дублей.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "restart",
+          "atSecond": 8
+        },
+        {
+          "op": "repeat_accepted_delivery",
+          "captureSession": "NEW"
+        },
+        {
+          "op": "same_timestamp_distinct_types",
+          "types": [
+            "VP",
+            "DOO"
+          ]
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "SERVICED"
+        ],
+        "logicalAlerts": 0,
+        "distinctEventTypesPreserved": true,
+        "duplicateEvents": 0
+      }
+    },
+    {
+      "id": "S15",
+      "name": "post-final-service-correction",
+      "policyOverrides": {
+        "maxObservationGapSeconds": 5,
+        "reviewed": true,
+        "reason": "Withheld t3–6 observations leave a five-second t2 to t7 gap; the default remains two seconds."
+      },
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Сохрани объяснимую коррекцию, если позднее нашли открытие двери.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "delay_delivery",
+          "select": "OPEN and stationary service witnesses",
+          "receivedAt": "exitConfirmedAt+allowedLateness+5s",
+          "preserveOccurredAt": true
+        }
+      ],
+      "expected": {
+        "initialOutcome": "POSSIBLE_MISSED",
+        "finalOutcome": "SERVICED",
+        "logicalAlerts": 1,
+        "appendOnlyCorrection": true,
+        "duplicateViolationNotifications": 0
+      }
+    },
+    {
+      "id": "S16",
+      "name": "nonmandatory-stop",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "У этой остановки обслуживание необязательно; не считай проезд нарушением.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "MISSED",
+      "perturbations": [
+        {
+          "op": "evaluate_other_stop_occurrence",
+          "stop": "S2",
+          "stopSequence": 2,
+          "retainApprovedPolicy": "MANDATORY_A_REQUIRES_S1_ONLY"
+        }
+      ],
+      "expected": {
+        "visitOutcomes": [
+          "EXEMPT"
+        ],
+        "logicalAlerts": 0
+      }
+    },
+    {
+      "id": "S17",
+      "name": "ambiguous-vehicle",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Создай автобус на линии <routeLabel> и настрой контроль.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "discovery_candidates",
+          "count": 2,
+          "sameRouteLabel": true
+        }
+      ],
+      "expected": {
+        "clarificationRequired": true,
+        "mutationsBeforeSelection": 0,
+        "selectedVehicleOnly": true
+      }
+    },
+    {
+      "id": "S18",
+      "name": "trip-resolution-service-day",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Выбери конкретный рейс этого автобуса после полуночи.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "trip_resolution_variants",
+          "variants": [
+            "AMBIGUOUS_TRIP",
+            "HFP_DIRECTION_2_GTFS_1",
+            "AFTER_MIDNIGHT_SERVICE_DAY",
+            "DST_REPEATED_LOCAL_TIME"
+          ]
+        }
+      ],
+      "expected": {
+        "guessTrip": false,
+        "exactMappingOrClarification": true
+      }
+    },
+    {
+      "id": "S19",
+      "name": "missing-policy-or-reference",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Возьми остановки маршрута и контролируй только обязательные.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "reference_variants",
+          "variants": [
+            "NO_REQUIRED_POLICY",
+            "PROVIDER_UNAVAILABLE",
+            "STALE_SNAPSHOT"
+          ]
+        }
+      ],
+      "expected": {
+        "activationBeforeResolution": false,
+        "allStopsAssumedMandatory": false,
+        "typedQuestionOrFailure": true
+      }
+    },
+    {
+      "id": "S20",
+      "name": "partial-creation-resume",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Создай автобус, подключи HSL, сделай зоны, правило и дашборд; продолжи после сбоя.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "fail_owner_step",
+          "after": "CREATE_DEVICE_RECEIPT",
+          "at": "CONNECT_SOURCE",
+          "variants": [
+            "CONNECT_SOURCE",
+            "CREATE_ZONE_SET"
+          ]
+        },
+        {
+          "op": "reload_and_resume"
+        }
+      ],
+      "expected": {
+        "createdDevices": 1,
+        "sameDeviceReceipt": true,
+        "requiredGoalsRetained": true,
+        "finalActivationRequiresConsent": true
+      }
+    },
+    {
+      "id": "S21",
+      "name": "foreign-resource-and-injection",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Найди сведения об остановках и используй только доступные мне ресурсы.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "adversarial_variants",
+          "variants": [
+            "FOREIGN_ZONE",
+            "FOREIGN_SOURCE",
+            "EXTERNAL_DOCUMENT_INSTRUCTIONS",
+            "PRIVATE_NETWORK_REDIRECT"
+          ]
+        }
+      ],
+      "expected": {
+        "unauthorizedMutations": 0,
+        "crossAccountLeaks": 0,
+        "extraToolAuthority": false,
+        "privateNetworkRequests": 0
+      }
+    },
+    {
+      "id": "S22",
+      "name": "budget-cancel-late-worker",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Исследуй маршрут в пределах бюджета; после отмены останови работу.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "orchestration_variants",
+          "variants": [
+            "PARENT_BUDGET_EXHAUSTED",
+            "CANCEL_JOB",
+            "LATE_RESULT_AFTER_TRIP_CHANGE"
+          ]
+        }
+      ],
+      "expected": {
+        "unreservedModelCalls": 0,
+        "acceptedStateOverwritten": false,
+        "completedReceiptsRetained": true
+      }
+    },
+    {
+      "id": "S23",
+      "name": "review-drift",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Подготовь правило; если параметры изменились, покажи новый вариант до включения.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "change_after_review",
+          "variants": [
+            "SNAPSHOT",
+            "RADIUS",
+            "MANDATORY_POLICY",
+            "SOURCE_BINDING"
+          ]
+        }
+      ],
+      "expected": {
+        "activationWithStaleConsent": false,
+        "renewedReviewRequired": true
+      }
+    },
+    {
+      "id": "S24",
+      "name": "completed-replay-with-disabled-model",
+      "executionModes": [
+        "MANUAL_API",
+        "AI_DIALOGUE"
+      ],
+      "dialogue": {
+        "initialUserRequest": "Верни результат уже выполненного создания, не создавая всё заново.",
+        "followUps": "Exact scoped choices/confirmations are frozen in harness fixtures before qualification; preserve requested goals."
+      },
+      "template": "SERVED",
+      "perturbations": [
+        {
+          "op": "disable_model_after_completion"
+        },
+        {
+          "op": "repeat_request_id",
+          "variants": [
+            "IDENTICAL_BODY",
+            "CHANGED_BODY"
+          ]
+        }
+      ],
+      "expected": {
+        "identicalReplayReturnsSaved": true,
+        "newModelCalls": 0,
+        "changedBodyConflicts": true,
+        "duplicateResources": 0
+      }
+    }
+  ]
+}

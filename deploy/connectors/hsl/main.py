@@ -15,15 +15,16 @@ from uuid import UUID
 import paho.mqtt.client as mqtt
 from buffer import LatestPositions
 from mapping import map_position
+from provisioning import Provisioning, start_control
 
 LOG = logging.getLogger("hsl")
 STATUS_PATH = Path("/tmp/hsl-status.json")
 
 
-def load_bindings(path):
+def load_bindings(path, allow_empty=False):
     config = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     vehicles = config.get("vehicles", [])
-    if not 1 <= len(vehicles) <= 20:
+    if not (0 if allow_empty else 1) <= len(vehicles) <= 20:
         raise ValueError("Configure 1-20 explicit vehicles")
     bindings = {}
     for item in vehicles:
@@ -57,7 +58,15 @@ def forward(url, binding, point):
 
 
 def run():
-    bindings = load_bindings(os.environ.get("HSL_CONFIG_PATH", "/run/hsl/config.json"))
+    config_path = os.environ.get("HSL_CONFIG_PATH", "/run/hsl/config.json")
+    setup_enabled = os.environ.get("HSL_SETUP_ENABLED", "false").lower() == "true"
+    if setup_enabled and not Path(config_path).exists():
+        Path(config_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(config_path).write_text(json.dumps({"vehicles": []}), encoding="utf-8")
+    bindings = load_bindings(config_path, allow_empty=True)
+    control = None
+    control = start_control(Provisioning(config_path, os.environ.get("HSL_DEVICE_URL", "http://device-service:8082"),
+                                            os.environ.get("HSL_TELEMETRY_URL", "http://telemetry-service:8084")), allow_setup=setup_enabled)
     mailbox = LatestPositions(bindings)
     stop = Event()
     connected = Event()
@@ -96,6 +105,14 @@ def run():
     try:
         while not stop.is_set():
             started = time.monotonic()
+            current = load_bindings(config_path, allow_empty=True)
+            if current != bindings:
+                bindings = current
+                mailbox = LatestPositions(bindings)
+                if connected.is_set():
+                    for binding in bindings.values():
+                        operator, vehicle = binding["key"].split("-")
+                        client.subscribe(f"/hfp/v2/journey/ongoing/vp/{binding['mode']}/{operator}/{vehicle}/#", qos=0)
             for point in mailbox.ready(datetime.now(timezone.utc)):
                 if stop.is_set():
                     break
@@ -111,6 +128,8 @@ def run():
             temporary.replace(STATUS_PATH)
             stop.wait(max(0, 5 - (time.monotonic() - started)))
     finally:
+        if control:
+            control.shutdown()
         client.disconnect()
         client.loop_stop()
 

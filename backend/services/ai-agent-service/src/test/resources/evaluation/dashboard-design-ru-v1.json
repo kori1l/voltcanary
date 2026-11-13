@@ -1,0 +1,66 @@
+{
+  "version": "dashboard-design-ru-v1",
+  "description": "Independent outcomes for delegated design and explicit content with discretionary styling; no prescribed template or widget count for delegated design.",
+  "cases": [
+    {
+      "critical": false,
+      "split": "held-out",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "id": "design-delegated-data",
+      "turns": [
+        {
+          "id": "design",
+          "action": "message",
+          "message": "Создай полезный дашборд для этого устройства. Проанализируй доступные данные и самостоятельно выбери, что и в каком виде показать. Назови его «Обзор устройства». Компоновку и оформление тоже выбери сам.",
+          "expect": {
+            "status": "READY",
+            "name": "Обзор устройства"
+          }
+        }
+      ]
+    },
+    {
+      "critical": false,
+      "split": "held-out",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "id": "design-explicit-with-discretion",
+      "turns": [
+        {
+          "id": "design",
+          "action": "message",
+          "message": "Создай дашборд «Измерение»: только текущее значение скорости и историю скорости линией за последние 6 часов. Размеры, подписи и расположение выбери сам.",
+          "expect": {
+            "status": "READY",
+            "name": "Измерение",
+            "roles": [
+              "current:speed",
+              "history:speed"
+            ],
+            "onlyRoles": [
+              "current:speed",
+              "history:speed"
+            ],
+            "views": {
+              "history:speed": "line"
+            },
+            "period": "LAST_6_HOURS"
+          }
+        }
+      ]
+    }
+  ]
+}

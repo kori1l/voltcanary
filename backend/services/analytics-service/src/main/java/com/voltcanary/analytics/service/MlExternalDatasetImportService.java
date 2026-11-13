@@ -621,7 +621,7 @@ public class MlExternalDatasetImportService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CSV import file is required");
         }
         if (file.getSize() > MAX_CSV_BYTES) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "CSV import file exceeds 10 MiB");
+            throw new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "CSV import file exceeds 10 MiB");
         }
     }
 

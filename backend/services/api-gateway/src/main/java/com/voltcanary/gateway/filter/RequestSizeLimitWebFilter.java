@@ -27,7 +27,7 @@ public class RequestSizeLimitWebFilter implements WebFilter {
         if (contentLength >= 0 && contentLength > maxBytes(exchange)) {
             return GatewayErrorResponseWriter.write(
                     exchange,
-                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    HttpStatus.CONTENT_TOO_LARGE,
                     "payload_too_large",
                     "Request body is too large");
         }

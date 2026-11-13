@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: telemetry-service
@@ -46,6 +48,15 @@ info:
     version: 0.1.0
 
 app:
+  observations:
+    enabled: ${OBSERVATION_CAPTURE_ENABLED:false}
+    consume-enabled: ${OBSERVATION_CAPTURE_ENABLED:false}
+    binding-ids: ${OBSERVATION_CAPTURE_BINDING_IDS:}
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
   variables:
     enabled: ${VARIABLE_PROCESSING_ENABLED:false}
     consume-enabled: ${VARIABLE_PROCESSING_ENABLED:false}

@@ -29,6 +29,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/internal")
 public class InternalController {
 
+    private final com.voltcanary.device.service.DeviceDeletionService deletions;
     private final DeviceRepository deviceRepository;
     private final DeviceTypeRepository deviceTypeRepository;
     private final AccountService accountService;
@@ -38,11 +39,18 @@ public class InternalController {
             DeviceRepository deviceRepository,
             DeviceTypeRepository deviceTypeRepository,
             AccountService accountService,
-            InternalServiceAuth internalServiceAuth) {
+            InternalServiceAuth internalServiceAuth, com.voltcanary.device.service.DeviceDeletionService deletions) {
+        this.deletions = deletions;
         this.deviceRepository = deviceRepository;
         this.deviceTypeRepository = deviceTypeRepository;
         this.accountService = accountService;
         this.internalServiceAuth = internalServiceAuth;
+    }
+
+    @GetMapping("/device-deletions/{deviceId}")
+    public Map<String, Object> deletion(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token, @PathVariable("deviceId") UUID deviceId) {
+        internalServiceAuth.require(token);
+        return deletions.internalReceipt(deviceId);
     }
 
     @GetMapping("/ping")
@@ -56,7 +64,7 @@ public class InternalController {
             @PathVariable("deviceId") UUID deviceId,
             @RequestParam("userId") UUID userId) {
         internalServiceAuth.require(internalToken);
-        return Map.of("allowed", deviceRepository.existsByIdAndAccountUserId(deviceId, userId));
+        return Map.of("allowed", deviceRepository.existsByIdAndAccountUserId(deviceId, userId) || deletions.retainedAccess(deviceId, userId));
     }
 
     @GetMapping("/devices/{deviceId}/owner")

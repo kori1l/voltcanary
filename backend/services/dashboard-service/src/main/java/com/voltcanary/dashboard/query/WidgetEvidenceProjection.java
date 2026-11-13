@@ -23,7 +23,7 @@ public class WidgetEvidenceProjection {
     public WidgetEvidenceProjection(ObjectMapper mapper) { this.mapper = mapper; }
     public List<String> owners(String type) {
         return switch (type) {
-            case "vehicle-map" -> List.of("positions");
+            case "vehicle-map", "vehicle-value", "vehicle-timeline" -> List.of("positions");
             case "fleet-count", "latest-value", "time-series", "metric-summary" -> List.of("telemetry");
             case "energy-period","peak-and-ranking" -> List.of("energy");
             case "estimated-cost" -> List.of("cost");
@@ -48,7 +48,7 @@ public class WidgetEvidenceProjection {
                 throw new DashboardFailure("INVALID_READ_RESPONSE", "Owner response resource IDs differ from the authorized scope");
         }
         String resultType = switch (widget.type()) {
-            case "vehicle-map" -> "POSITIONS";
+            case "vehicle-map", "vehicle-value", "vehicle-timeline" -> "POSITIONS";
             case "fleet-count" -> "COUNT";
             case "latest-value" -> "VALUE";
             case "time-series" -> "SERIES";
@@ -80,7 +80,7 @@ public class WidgetEvidenceProjection {
         });
         if (List.of("latest-value", "metric-summary", "time-series").contains(widget.type())) registered(config, evidence.get("telemetry"));
         switch (widget.type()) {
-            case "vehicle-map" -> {
+            case "vehicle-map", "vehicle-value", "vehicle-timeline" -> {
                 result.set("positions", evidence.get("positions").path("positions"));
                 sources.remove("positions");
             }

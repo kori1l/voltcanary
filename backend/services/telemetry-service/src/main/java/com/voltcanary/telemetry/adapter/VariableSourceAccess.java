@@ -54,7 +54,7 @@ public class VariableSourceAccess {
 
     public java.util.Set<String> activeBatch(UUID device, java.util.List<com.voltcanary.telemetry.variable.VariableSeriesQueries.Descriptor> descriptors) {
         if (descriptors.isEmpty()) return java.util.Set.of();
-        if (descriptors.size() > 500) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Variable catalogue exceeds batch budget");
+        if (descriptors.size() > 500) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Variable catalogue exceeds batch budget");
         var targets = descriptors.stream().map(item -> java.util.Map.of("dataSourceId", item.dataSourceId(), "variableId", item.variableId())).toList();
         try {
             JsonNode response = client.post().uri("/internal/device-variable-runtime-access")

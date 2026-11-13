@@ -2,6 +2,9 @@ package com.voltcanary.aiagent.model;
 
 public enum AgentTool {
     CREATE_DEVICE,
+    CREATE_NATIVE_TABLE,
+    CREATE_DASHBOARD,
+    UPDATE_DASHBOARD_DRAFT,
     CREATE_DATA_SOURCE,
     CREATE_SIMULATOR_CONFIG,
     VALIDATE_SIMULATOR_YAML,

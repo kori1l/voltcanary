@@ -1,0 +1,1209 @@
+{
+  "status": "TARGET_CONTRACT_EXAMPLES_NOT_RUNTIME_EXECUTION",
+  "version": 2,
+  "notes": [
+    "All UUIDs are synthetic. fixtureRegistry supplies exact dataset/binding field types for documentation consistency checks, not live authorization.",
+    "JSON Schema validation does not implement compiler/type/access/temporal checks.",
+    "The eight-hour threshold is a synthetic company setting, not a legal norm.",
+    "POINT identity import uses typed JSONL objects; CSV point parsing requires an explicit format adapter.",
+    "CONNECTION/MUTATION reference synthetic approved endpoints, secret references and verified adapter contract; they do not create credentials or authorize a real database action.",
+    "External assignment mutation fixture declares unique composite key (vehicleRef, validFrom); vehicleRef alone is not assumed unique across assignment history.",
+    "Specification revision 2 uses conversion chains and typed targetPrecondition; draft revision 1 shapes are intentionally rejected. No implemented runtime records used VCL/1."
+  ],
+  "documents": [
+    {
+      "language": "VCL/1",
+      "kind": "COLLECTION",
+      "spec": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "label": "Места обслуживания",
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000010",
+            "label": "Название",
+            "type": "TEXT",
+            "nullable": false,
+            "maxLength": 120
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "label": "Расположение",
+            "type": "POINT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000012",
+            "label": "Обязательное действие",
+            "type": "BOOLEAN",
+            "nullable": false
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [
+            "00000000-0000-4000-8000-000000000010"
+          ],
+          "history": "NONE"
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000010"
+        ]
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "COLLECTION",
+      "spec": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "label": "Назначения компании",
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000020",
+            "label": "Транспорт",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000021",
+            "label": "Сотрудник",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "DATASET",
+              "datasetId": "00000000-0000-4000-8000-000000000003"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000022",
+            "label": "Начало",
+            "type": "INSTANT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000023",
+            "label": "Окончание",
+            "type": "INSTANT",
+            "nullable": true
+          }
+        ],
+        "storage": {
+          "mode": "EXTERNAL",
+          "connectionId": "00000000-0000-4000-8000-000000000100",
+          "objectId": "00000000-0000-4000-8000-000000000101",
+          "schemaFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-000000000022"
+        ]
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "QUERY",
+      "spec": {
+        "target": {
+          "datasetId": "00000000-0000-4000-8000-000000000001",
+          "schemaRevision": 1
+        },
+        "select": [
+          "00000000-0000-4000-8000-000000000010",
+          "00000000-0000-4000-8000-000000000011"
+        ],
+        "where": {
+          "op": "CONST",
+          "literal": {
+            "type": "BOOLEAN",
+            "value": true
+          }
+        },
+        "order": [
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000010",
+            "direction": "ASC"
+          }
+        ],
+        "limit": 50,
+        "read": {
+          "mode": "LIVE"
+        },
+        "cursor": null
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "IMPORT",
+      "spec": {
+        "contractVersion": "IMPORT/1",
+        "artifactId": "00000000-0000-4000-8000-000000000200",
+        "artifactSha256": "3fda00bfb58640fa8063127b46ca2182d474d92c6cb6a694ea77d55638879cbc",
+        "target": {
+          "datasetId": "00000000-0000-4000-8000-000000000001",
+          "schemaRevision": 1
+        },
+        "mappingRevision": 1,
+        "format": {
+          "kind": "JSONL",
+          "encoding": "UTF-8"
+        },
+        "mode": "ATOMIC_INSERT",
+        "keyFields": [
+          "00000000-0000-4000-8000-000000000010"
+        ],
+        "columns": [
+          {
+            "sourceColumn": "name",
+            "targetFieldId": "00000000-0000-4000-8000-000000000010",
+            "emptyValue": "REJECT",
+            "conversions": [
+              {
+                "method": "identity"
+              }
+            ],
+            "sourceType": "TEXT",
+            "sourceUnit": null
+          },
+          {
+            "sourceColumn": "location",
+            "targetFieldId": "00000000-0000-4000-8000-000000000011",
+            "emptyValue": "REJECT",
+            "conversions": [
+              {
+                "method": "identity"
+              }
+            ],
+            "sourceType": "POINT",
+            "sourceUnit": null
+          },
+          {
+            "sourceColumn": "required",
+            "targetFieldId": "00000000-0000-4000-8000-000000000012",
+            "emptyValue": "REJECT",
+            "conversions": [
+              {
+                "method": "identity"
+              }
+            ],
+            "sourceType": "BOOLEAN",
+            "sourceUnit": null
+          }
+        ],
+        "nullPolicy": "SCHEMA_EXPLICIT",
+        "conflictPolicy": "REJECT_STALE",
+        "limits": {
+          "maxBytes": 1048576,
+          "maxRows": 100,
+          "maxRowBytes": 16384
+        },
+        "provenance": {
+          "sourceId": "00000000-0000-4000-8000-000000000201",
+          "description": "Synthetic owner-approved fixture, not HSL data"
+        },
+        "targetPrecondition": {
+          "mode": "NATIVE",
+          "generation": "00000000-0000-4000-8000-000000000202",
+          "dataVersion": 0
+        }
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "RULE",
+      "spec": {
+        "ruleId": "00000000-0000-4000-8000-000000000400",
+        "revision": 1,
+        "name": "Действие внутри посещения",
+        "executionGrantId": "00000000-0000-4000-8000-000000000300",
+        "coverage": {
+          "maxGapUs": "2000000",
+          "onUnknown": "UNKNOWN"
+        },
+        "decimalPolicy": {
+          "precision": 38,
+          "scale": 6,
+          "rounding": "REJECT"
+        },
+        "nodes": [
+          {
+            "id": "source",
+            "method": "read_stream",
+            "inputs": {},
+            "config": {
+              "bindingId": "00000000-0000-4000-8000-000000000301",
+              "schemaRevision": 1
+            }
+          },
+          {
+            "id": "required",
+            "method": "lookup_asof",
+            "inputs": {
+              "events": "source"
+            },
+            "config": {
+              "target": {
+                "datasetId": "00000000-0000-4000-8000-000000000004",
+                "schemaRevision": 1
+              },
+              "keyPairs": [
+                {
+                  "eventFieldId": "00000000-0000-4000-8000-000000000030",
+                  "recordFieldId": "00000000-0000-4000-8000-000000000040"
+                },
+                {
+                  "eventFieldId": "00000000-0000-4000-8000-000000000031",
+                  "recordFieldId": "00000000-0000-4000-8000-000000000041"
+                }
+              ],
+              "select": [
+                "00000000-0000-4000-8000-000000000042",
+                "00000000-0000-4000-8000-000000000043"
+              ],
+              "cardinality": "EXACT_ONE",
+              "temporal": {
+                "mode": "EVENT_TIME"
+              },
+              "recordedAt": "ACCEPTANCE_CHECKPOINT"
+            }
+          },
+          {
+            "id": "eligible",
+            "method": "filter",
+            "inputs": {
+              "events": "required"
+            },
+            "config": {
+              "predicate": {
+                "op": "CALL",
+                "method": "eq",
+                "args": [
+                  {
+                    "op": "FIELD",
+                    "fieldId": "00000000-0000-4000-8000-000000000043"
+                  },
+                  {
+                    "op": "CONST",
+                    "literal": {
+                      "type": "BOOLEAN",
+                      "value": true
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "visit",
+            "method": "zone_session",
+            "inputs": {
+              "events": "eligible"
+            },
+            "config": {
+              "subjectFieldId": "00000000-0000-4000-8000-000000000030",
+              "occurrenceFieldId": "00000000-0000-4000-8000-000000000031",
+              "zoneFieldId": "00000000-0000-4000-8000-000000000042",
+              "positionFieldId": "00000000-0000-4000-8000-000000000032",
+              "accuracyFieldId": "00000000-0000-4000-8000-000000000033",
+              "uncertaintyFloorMetres": 5,
+              "exitDebounceUs": "3000000",
+              "maxDurationUs": "3600000000",
+              "minimumExitObservations": 2,
+              "accuracyFallback": "APPROVED_FLOOR"
+            }
+          },
+          {
+            "id": "action",
+            "method": "observed_within",
+            "inputs": {
+              "sessions": "visit"
+            },
+            "config": {
+              "predicate": {
+                "op": "CALL",
+                "method": "and",
+                "args": [
+                  {
+                    "op": "CALL",
+                    "method": "eq",
+                    "args": [
+                      {
+                        "op": "FIELD",
+                        "fieldId": "00000000-0000-4000-8000-000000000034"
+                      },
+                      {
+                        "op": "CONST",
+                        "literal": {
+                          "type": "BOOLEAN",
+                          "value": true
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "op": "CALL",
+                    "method": "le",
+                    "args": [
+                      {
+                        "op": "FIELD",
+                        "fieldId": "00000000-0000-4000-8000-000000000035"
+                      },
+                      {
+                        "op": "CONST",
+                        "literal": {
+                          "type": "DECIMAL",
+                          "value": "0.5",
+                          "unit": "m/s"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "minimumDurationUs": "2000000"
+            }
+          },
+          {
+            "id": "absent",
+            "method": "absent_within",
+            "inputs": {
+              "sessions": "visit",
+              "witnesses": "action"
+            },
+            "config": {
+              "allowedLatenessUs": "10000000",
+              "onUnknown": "UNKNOWN"
+            }
+          },
+          {
+            "id": "alert",
+            "method": "emit_alert",
+            "inputs": {
+              "decisions": "absent"
+            },
+            "config": {
+              "severity": "WARNING",
+              "dedup": "RULE_SUBJECT_OCCURRENCE",
+              "evidencePolicyId": "00000000-0000-4000-8000-000000000302"
+            }
+          }
+        ],
+        "terminal": "alert",
+        "timing": {
+          "allowedLatenessUs": "10000000",
+          "maxFutureSkewUs": "15000000",
+          "idleTimeoutUs": "15000000"
+        }
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "RULE",
+      "spec": {
+        "ruleId": "00000000-0000-4000-8000-000000000401",
+        "revision": 1,
+        "name": "Превышение настроенного рабочего времени",
+        "executionGrantId": "00000000-0000-4000-8000-000000000300",
+        "coverage": {
+          "maxGapUs": "2000000",
+          "onUnknown": "UNKNOWN"
+        },
+        "decimalPolicy": {
+          "precision": 38,
+          "scale": 6,
+          "rounding": "REJECT"
+        },
+        "nodes": [
+          {
+            "id": "source",
+            "method": "read_stream",
+            "inputs": {},
+            "config": {
+              "bindingId": "00000000-0000-4000-8000-000000000303",
+              "schemaRevision": 1
+            }
+          },
+          {
+            "id": "employee",
+            "method": "lookup_asof",
+            "inputs": {
+              "events": "source"
+            },
+            "config": {
+              "target": {
+                "datasetId": "00000000-0000-4000-8000-000000000002",
+                "schemaRevision": 1
+              },
+              "keyPairs": [
+                {
+                  "eventFieldId": "00000000-0000-4000-8000-000000000050",
+                  "recordFieldId": "00000000-0000-4000-8000-000000000020"
+                }
+              ],
+              "select": [
+                "00000000-0000-4000-8000-000000000021"
+              ],
+              "cardinality": "EXACT_ONE",
+              "temporal": {
+                "mode": "INTERVAL_SPLIT",
+                "startFieldId": "00000000-0000-4000-8000-000000000051",
+                "endFieldId": "00000000-0000-4000-8000-000000000052"
+              },
+              "recordedAt": "ACCEPTANCE_CHECKPOINT"
+            }
+          },
+          {
+            "id": "duration",
+            "method": "interval_union_window",
+            "inputs": {
+              "events": "employee"
+            },
+            "config": {
+              "subjectFieldId": "00000000-0000-4000-8000-000000000021",
+              "startFieldId": "00000000-0000-4000-8000-000000000051",
+              "endFieldId": "00000000-0000-4000-8000-000000000052",
+              "includeWhere": {
+                "op": "CALL",
+                "method": "eq",
+                "args": [
+                  {
+                    "op": "FIELD",
+                    "fieldId": "00000000-0000-4000-8000-000000000053"
+                  },
+                  {
+                    "op": "CONST",
+                    "literal": {
+                      "type": "ENUM",
+                      "value": "WORK"
+                    }
+                  }
+                ]
+              },
+              "excludeWhere": {
+                "op": "CALL",
+                "method": "eq",
+                "args": [
+                  {
+                    "op": "FIELD",
+                    "fieldId": "00000000-0000-4000-8000-000000000053"
+                  },
+                  {
+                    "op": "CONST",
+                    "literal": {
+                      "type": "ENUM",
+                      "value": "UNPAID_BREAK"
+                    }
+                  }
+                ]
+              },
+              "timezone": "Europe/Helsinki",
+              "window": "LOCAL_DAY",
+              "measureFieldId": "00000000-0000-4000-8000-000000000054",
+              "emit": "ON_CLOSE"
+            }
+          },
+          {
+            "id": "exceeded",
+            "method": "compare",
+            "inputs": {
+              "measures": "duration"
+            },
+            "config": {
+              "predicate": {
+                "op": "CALL",
+                "method": "gt",
+                "args": [
+                  {
+                    "op": "FIELD",
+                    "fieldId": "00000000-0000-4000-8000-000000000054"
+                  },
+                  {
+                    "op": "CONST",
+                    "literal": {
+                      "type": "DURATION",
+                      "value": "28800000000"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "alert",
+            "method": "emit_alert",
+            "inputs": {
+              "decisions": "exceeded"
+            },
+            "config": {
+              "severity": "WARNING",
+              "dedup": "RULE_SUBJECT_OCCURRENCE",
+              "evidencePolicyId": "00000000-0000-4000-8000-000000000302"
+            }
+          }
+        ],
+        "terminal": "alert",
+        "timing": {
+          "allowedLatenessUs": "10000000",
+          "maxFutureSkewUs": "15000000",
+          "idleTimeoutUs": "15000000"
+        }
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "RULE",
+      "spec": {
+        "ruleId": "00000000-0000-4000-8000-000000000402",
+        "revision": 1,
+        "name": "Длительное превышение температуры",
+        "executionGrantId": "00000000-0000-4000-8000-000000000300",
+        "coverage": {
+          "maxGapUs": "2000000",
+          "onUnknown": "UNKNOWN"
+        },
+        "decimalPolicy": {
+          "precision": 38,
+          "scale": 6,
+          "rounding": "REJECT"
+        },
+        "nodes": [
+          {
+            "id": "source",
+            "method": "read_stream",
+            "inputs": {},
+            "config": {
+              "bindingId": "00000000-0000-4000-8000-000000000304",
+              "schemaRevision": 1
+            }
+          },
+          {
+            "id": "hot",
+            "method": "sustained",
+            "inputs": {
+              "events": "source"
+            },
+            "config": {
+              "subjectFieldId": "00000000-0000-4000-8000-000000000060",
+              "predicate": {
+                "op": "CALL",
+                "method": "gt",
+                "args": [
+                  {
+                    "op": "FIELD",
+                    "fieldId": "00000000-0000-4000-8000-000000000061"
+                  },
+                  {
+                    "op": "CONST",
+                    "literal": {
+                      "type": "DECIMAL",
+                      "value": "8",
+                      "unit": "Cel"
+                    }
+                  }
+                ]
+              },
+              "minimumDurationUs": "600000000",
+              "maxGapUs": "2000000"
+            }
+          },
+          {
+            "id": "alert",
+            "method": "emit_alert",
+            "inputs": {
+              "decisions": "hot"
+            },
+            "config": {
+              "severity": "WARNING",
+              "dedup": "RULE_SUBJECT_OCCURRENCE",
+              "evidencePolicyId": "00000000-0000-4000-8000-000000000302"
+            }
+          }
+        ],
+        "terminal": "alert",
+        "timing": {
+          "allowedLatenessUs": "10000000",
+          "maxFutureSkewUs": "15000000",
+          "idleTimeoutUs": "15000000"
+        }
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "CONNECTION",
+      "spec": {
+        "connectionId": "00000000-0000-4000-8000-000000000100",
+        "adapterId": "postgresql",
+        "adapterVersion": "1",
+        "endpointRef": "00000000-0000-4000-8000-000000000105",
+        "secretRef": "00000000-0000-4000-8000-000000000106",
+        "objectSelection": [
+          "00000000-0000-4000-8000-000000000101"
+        ],
+        "access": "VERIFIED_READ_WRITE",
+        "tls": "VERIFY_FULL",
+        "expectedConfigRevision": 0
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "MUTATION",
+      "spec": {
+        "mutationId": "00000000-0000-4000-8000-000000000500",
+        "target": {
+          "datasetId": "00000000-0000-4000-8000-000000000002",
+          "schemaRevision": 1
+        },
+        "operation": "UPDATE",
+        "key": [
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000020",
+            "literal": {
+              "type": "REF",
+              "value": "00000000-0000-4000-8000-000000000099"
+            }
+          },
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000022",
+            "literal": {
+              "type": "INSTANT",
+              "value": "2026-01-15T08:00:00Z"
+            }
+          }
+        ],
+        "values": [
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000023",
+            "literal": {
+              "type": "INSTANT",
+              "value": "2026-01-15T17:00:00Z"
+            }
+          }
+        ],
+        "expectedRowVersion": "source-row-version-7",
+        "reviewId": "00000000-0000-4000-8000-000000000502",
+        "idempotencyKey": "synthetic-mutation-1",
+        "targetPrecondition": {
+          "mode": "EXTERNAL",
+          "bindingRevision": 1,
+          "adapterContractId": "00000000-0000-4000-8000-000000000501",
+          "schemaFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "MUTATION",
+      "spec": {
+        "mutationId": "00000000-0000-4000-8000-000000000510",
+        "target": {
+          "datasetId": "00000000-0000-4000-8000-000000000005",
+          "schemaRevision": 1
+        },
+        "operation": "UPDATE",
+        "key": [
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000070",
+            "literal": {
+              "type": "TEXT",
+              "value": "item-1"
+            }
+          }
+        ],
+        "values": [
+          {
+            "fieldId": "00000000-0000-4000-8000-000000000071",
+            "literal": {
+              "type": "NULL",
+              "value": null
+            }
+          }
+        ],
+        "expectedRowVersion": "3",
+        "targetPrecondition": {
+          "mode": "NATIVE",
+          "generation": "00000000-0000-4000-8000-000000000511",
+          "dataVersion": 7
+        },
+        "reviewId": "00000000-0000-4000-8000-000000000512",
+        "idempotencyKey": "native-nullable-clear-1"
+      }
+    },
+    {
+      "language": "VCL/1",
+      "kind": "IMPORT",
+      "spec": {
+        "contractVersion": "IMPORT/1",
+        "artifactId": "00000000-0000-4000-8000-000000000203",
+        "artifactSha256": "24851409716b7469ee97130631b79250ae0c821422b1e13d10c938ef75f53967",
+        "target": {
+          "datasetId": "00000000-0000-4000-8000-000000000006",
+          "schemaRevision": 1
+        },
+        "mappingRevision": 1,
+        "format": {
+          "kind": "CSV",
+          "encoding": "UTF-8",
+          "delimiter": ",",
+          "header": [
+            "id",
+            "voltage"
+          ]
+        },
+        "mode": "ATOMIC_INSERT",
+        "keyFields": [
+          "00000000-0000-4000-8000-000000000073"
+        ],
+        "columns": [
+          {
+            "sourceColumn": "id",
+            "targetFieldId": "00000000-0000-4000-8000-000000000073",
+            "sourceType": "TEXT",
+            "sourceUnit": null,
+            "conversions": [
+              {
+                "method": "identity"
+              }
+            ],
+            "emptyValue": "REJECT"
+          },
+          {
+            "sourceColumn": "voltage",
+            "targetFieldId": "00000000-0000-4000-8000-000000000072",
+            "sourceType": "TEXT",
+            "sourceUnit": "V",
+            "conversions": [
+              {
+                "method": "parse_decimal",
+                "decimalSeparator": ".",
+                "scale": 3,
+                "rounding": "REJECT"
+              },
+              {
+                "method": "convert_unit",
+                "sourceUnit": "V",
+                "targetUnit": "kV"
+              }
+            ],
+            "emptyValue": "REJECT"
+          }
+        ],
+        "nullPolicy": "SCHEMA_EXPLICIT",
+        "conflictPolicy": "REJECT_STALE",
+        "limits": {
+          "maxBytes": 1048576,
+          "maxRows": 100,
+          "maxRowBytes": 16384
+        },
+        "provenance": {
+          "sourceId": "00000000-0000-4000-8000-000000000201",
+          "description": "Synthetic owner-approved fixture, not HSL data"
+        },
+        "targetPrecondition": {
+          "mode": "NATIVE",
+          "generation": "00000000-0000-4000-8000-000000000602",
+          "dataVersion": 0
+        }
+      }
+    }
+  ],
+  "fixtureArtifacts": [
+    {
+      "artifactId": "00000000-0000-4000-8000-000000000200",
+      "format": "JSONL",
+      "synthetic": true,
+      "records": [
+        {
+          "name": "Место A",
+          "location": {
+            "longitude": 24.94,
+            "latitude": 60.17
+          },
+          "required": true
+        }
+      ],
+      "contentUtf8": "{\"name\":\"Место A\",\"location\":{\"longitude\":24.94,\"latitude\":60.17},\"required\":true}\n",
+      "sha256": "3fda00bfb58640fa8063127b46ca2182d474d92c6cb6a694ea77d55638879cbc"
+    },
+    {
+      "artifactId": "00000000-0000-4000-8000-000000000203",
+      "format": "CSV",
+      "synthetic": true,
+      "expectedTargetValues": {
+        "00000000-0000-4000-8000-000000000073": "sample-1",
+        "00000000-0000-4000-8000-000000000072": "0.22"
+      },
+      "contentUtf8": "id,voltage\nsample-1,220\n",
+      "sha256": "24851409716b7469ee97130631b79250ae0c821422b1e13d10c938ef75f53967"
+    }
+  ],
+  "fixtureRegistry": {
+    "synthetic": true,
+    "datasets": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000010",
+            "label": "Название",
+            "type": "TEXT",
+            "nullable": false,
+            "maxLength": 120
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000011",
+            "label": "Расположение",
+            "type": "POINT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000012",
+            "label": "Обязательное действие",
+            "type": "BOOLEAN",
+            "nullable": false
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [
+            "00000000-0000-4000-8000-000000000010"
+          ],
+          "history": "NONE"
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000010"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000020",
+            "label": "Транспорт",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000021",
+            "label": "Сотрудник",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "DATASET",
+              "datasetId": "00000000-0000-4000-8000-000000000003"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000022",
+            "label": "Начало",
+            "type": "INSTANT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000023",
+            "label": "Окончание",
+            "type": "INSTANT",
+            "nullable": true
+          }
+        ],
+        "storage": {
+          "mode": "EXTERNAL",
+          "connectionId": "00000000-0000-4000-8000-000000000100",
+          "objectId": "00000000-0000-4000-8000-000000000101",
+          "schemaFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "runtimeProjection": {
+          "generation": 1,
+          "supportsAsOf": true,
+          "validFromFieldId": "00000000-0000-4000-8000-000000000022",
+          "validToFieldId": "00000000-0000-4000-8000-000000000023"
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-000000000022"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000080",
+            "type": "TEXT",
+            "nullable": false
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [],
+          "history": "NONE"
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000080"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000040",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000041",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "DATASET",
+              "datasetId": "00000000-0000-4000-8000-000000000004"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000042",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "SPATIAL_FEATURE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000043",
+            "type": "BOOLEAN",
+            "nullable": false
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [
+            "00000000-0000-4000-8000-000000000040",
+            "00000000-0000-4000-8000-000000000041"
+          ],
+          "history": "REVISIONS"
+        },
+        "runtimeProjection": {
+          "generation": 1,
+          "supportsAsOf": true
+        },
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000040",
+          "00000000-0000-4000-8000-000000000041"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000070",
+            "type": "TEXT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000071",
+            "type": "TEXT",
+            "nullable": true
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000074",
+            "type": "BOOLEAN",
+            "nullable": false
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [
+            "00000000-0000-4000-8000-000000000070"
+          ],
+          "history": "NONE"
+        },
+        "generation": "00000000-0000-4000-8000-000000000511",
+        "dataVersion": 7,
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000070"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "revision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000073",
+            "type": "TEXT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000072",
+            "type": "DECIMAL",
+            "nullable": false,
+            "unit": "kV",
+            "precision": 18,
+            "scale": 3
+          }
+        ],
+        "storage": {
+          "mode": "NATIVE",
+          "indexedFieldIds": [
+            "00000000-0000-4000-8000-000000000073"
+          ],
+          "history": "NONE"
+        },
+        "generation": "00000000-0000-4000-8000-000000000602",
+        "dataVersion": 0,
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000073"
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "id": "00000000-0000-4000-8000-000000000301",
+        "schemaRevision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000030",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000031",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "DATASET",
+              "datasetId": "00000000-0000-4000-8000-000000000004"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000032",
+            "type": "POINT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000033",
+            "type": "DECIMAL",
+            "nullable": true,
+            "unit": "m"
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000034",
+            "type": "BOOLEAN",
+            "nullable": true
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000035",
+            "type": "DECIMAL",
+            "nullable": true,
+            "unit": "m/s"
+          }
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000303",
+        "schemaRevision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000050",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000051",
+            "type": "INSTANT",
+            "nullable": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000052",
+            "type": "INSTANT",
+            "nullable": true
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000053",
+            "type": "ENUM",
+            "nullable": false,
+            "values": [
+              "WORK",
+              "UNPAID_BREAK"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000304",
+        "schemaRevision": 1,
+        "fields": [
+          {
+            "id": "00000000-0000-4000-8000-000000000060",
+            "type": "REF",
+            "nullable": false,
+            "target": {
+              "kind": "RESOURCE",
+              "resourceKind": "DEVICE"
+            }
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000061",
+            "type": "DECIMAL",
+            "nullable": true,
+            "unit": "Cel"
+          }
+        ]
+      }
+    ],
+    "grants": [
+      {
+        "id": "00000000-0000-4000-8000-000000000300",
+        "status": "ACTIVE",
+        "epoch": 1
+      }
+    ],
+    "adapterContracts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000501",
+        "datasetId": "00000000-0000-4000-8000-000000000002",
+        "bindingRevision": 1,
+        "schemaFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "keyFieldIds": [
+          "00000000-0000-4000-8000-000000000020",
+          "00000000-0000-4000-8000-000000000022"
+        ],
+        "allowedWriteFields": [
+          "00000000-0000-4000-8000-000000000023"
+        ],
+        "atomicReceipt": true,
+        "compareAndSwap": true
+      }
+    ],
+    "units": {
+      "1": "dimensionless",
+      "m": "length",
+      "m/s": "speed",
+      "Cel": "temperature_absolute",
+      "V": "voltage",
+      "kV": "voltage"
+    }
+  }
+}

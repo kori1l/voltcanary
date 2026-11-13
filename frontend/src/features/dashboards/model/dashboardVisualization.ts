@@ -1,11 +1,12 @@
 import type {DashboardWidget} from "../../../dashboards/dashboardsApi";
 import type {WidgetQueryPanel} from "../../../dashboards/dashboardQueriesApi";
 
-export const visualizations = ["number", "line", "area", "bar", "horizontal-bar", "stacked-bar", "pie", "donut"] as const;
+export const visualizations = ["list", "number", "line", "area", "bar", "horizontal-bar", "stacked-bar", "pie", "donut"] as const;
 export type Visualization = typeof visualizations[number];
-export const visualizationLabels:Record<Visualization,string> = {number:"Number",line:"Line",area:"Area",bar:"Vertical bars","horizontal-bar":"Horizontal bars","stacked-bar":"Stacked bars",pie:"Pie",donut:"Donut"};
+export const visualizationLabels:Record<Visualization,string> = {list:"Recorded observations",number:"Number",line:"Line",area:"Area",bar:"Vertical bars","horizontal-bar":"Horizontal bars","stacked-bar":"Stacked bars",pie:"Pie",donut:"Donut"};
 export function compatibleVisualizations(type:string):Visualization[] {
   if (["fleet-count","quality-and-freshness"].includes(type)) return ["number","bar","horizontal-bar","stacked-bar","pie","donut"];
+  if (type === "vehicle-timeline") return ["list","line"];
   if (type === "time-series") return ["line","area","bar","horizontal-bar"];
   if (type==="energy-period") return ["number","bar","horizontal-bar","pie","donut"];
   if (["latest-value","metric-summary","estimated-cost","uptime-or-cycle"].includes(type)) return ["number"];

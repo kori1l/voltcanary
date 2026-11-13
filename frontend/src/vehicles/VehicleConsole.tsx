@@ -1,7 +1,10 @@
+import {VehicleCurrentSpeed} from "./VehicleCurrentSpeed";
 import {TransportDetails} from "./TransportDetails";
 import {useEffect,useMemo,useState} from "react";
 import {Link} from "react-router-dom";
-import {listDevices,listDataSources,type Device,type DataSource} from "../devices/devicesApi";
+import {SidebarToggle} from "../components/NavigationVisibility";
+import {listDataSources,type Device,type DataSource} from "../devices/devicesApi";
+import {discoverFleet} from "./fleetDiscovery";
 import {fleetPositions,readMonitoring,type VehicleTarget} from "./monitoringApi";
 import {defaultMonitoring,movementState,type MonitoringSettings,type MovementState} from "./monitoringModel";
 import type {LatestPosition,PositionEvidence} from "./positionApi";
@@ -14,9 +17,9 @@ export function VehicleConsole(){
   const [devices,setDevices]=useState<FleetDevice[]>([]),[positions,setPositions]=useState<LatestPosition[]>([]),[selected,setSelected]=useState(""),[search,setSearch]=useState(""),[filter,setFilter]=useState<MovementState|"ALL">("ALL"),[section,setSection]=useState("LIVE");
   const [error,setError]=useState<string|null>(null),[discoveryError,setDiscoveryError]=useState<string|null>(null),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[capped,setCapped]=useState(false);
   useEffect(()=>{let active=true;const controller=new AbortController();setLoading(true);setDiscoveryError(null);setDevices([]);setPositions([]);
-    void listDevices({type:"VEHICLE",limit:101},controller.signal).then(async items=>{
-      const found=await Promise.all(items.slice(0,100).map(async device=>{const sources=(await listDataSources(device.id)).filter(source=>source.protocol==="REST");return {device,sources,sourceId:sources.length===1?sources[0].externalId:""};}));
-      if(active){setCapped(items.length>100);setDevices(found);setSelected(id=>found.some(item=>item.device.id===id)?id:found[0]?.device.id??"");}
+    void discoverFleet(controller.signal).then(async ({items,capped})=>{
+      const found=await Promise.all(items.map(async device=>{const sources=(await listDataSources(device.id)).filter(source=>source.protocol==="REST");return {device,sources,sourceId:sources.length===1?sources[0].externalId:""};}));
+      if(active){setCapped(capped);setDevices(found);setSelected(id=>found.some(item=>item.device.id===id)?id:found[0]?.device.id??"");}
     }).catch(err=>{if(active)setDiscoveryError(err instanceof Error?err.message:"Vehicle discovery failed");}).finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;controller.abort();};
   },[reload]);
@@ -34,12 +37,30 @@ export function VehicleConsole(){
   const markers=visible.flatMap(item=>{const latest=positions.find(point=>point.deviceId===item.device.id&&point.sourceId===item.sourceId);return latest?[{deviceId:item.device.id,name:item.device.name,latest}]:[];});
   const target:VehicleTarget|undefined=current?.sourceId?{deviceId:current.device.id,sourceId:current.sourceId}:undefined;
   const evidence:PositionEvidence|null=latest?{latest,history:{...latest,from:latest.asOf,to:latest.asOf,points:latest.position?[latest.position]:[],returnedCount:latest.position?1:0,truncated:false}}:null;
-  return <main className="vehicle-console"><header className="section-header"><div><h1>Vehicles</h1><p>Fleet position, recorded journeys and geozones.</p></div><div className="action-row"><Link className="primary-button" to="/devices">Add vehicle</Link><button type="button" className="ghost-button" onClick={()=>setReload(value=>value+1)}>Reload fleet</button></div></header>
+  return <main className="vehicle-console"><header className="vehicle-console-header"><div className="vehicle-console-heading"><SidebarToggle/><h1>Vehicles</h1></div><div className="action-row"><Link className="primary-button" to="/devices">Add vehicle</Link><button type="button" className="ghost-button" onClick={()=>setReload(value=>value+1)}>Reload fleet</button></div></header>
     {loading?<p role="status">Loading vehicles and sources…</p>:null}{discoveryError?<p role="alert">{discoveryError}</p>:null}{error?<p role="alert">{error}. Last fleet snapshot retained; live refresh unavailable.</p>:null}{capped?<p>First 100 vehicles shown.</p>:null}
-    <div className="vehicle-movement-controls"><label>Search vehicles<input value={search} onChange={event=>setSearch(event.target.value)}/></label><label>Movement status<select value={filter} onChange={event=>setFilter(event.target.value as MovementState|"ALL")}>{["ALL","MOVING","PARKED","STALE","NO_DATA","UNKNOWN"].map(state=><option key={state}>{state}</option>)}</select></label><span>{devices.length} vehicles · 5s visible live refresh</span></div>
     {section!=="LIVE"?<p role="status">Live fleet refresh paused while viewing history or editing settings. The map retains the last live snapshot.</p>:null}
-    <div className="vehicle-fleet-layout"><div className="vehicle-fleet-list">{visible.map(item=>{const point=positions.find(point=>point.deviceId===item.device.id&&point.sourceId===item.sourceId);return <article key={item.device.id} className={selected===item.device.id?"selected":""}><button type="button" className="ghost-button" onClick={()=>setSelected(item.device.id)}>{item.device.name}</button><span>{movementState(point)}</span>{point?.position?<small>{point.position.speedKmh??"—"} km/h · {new Date(point.position.recordedAt).toLocaleTimeString()}</small>:null}{item.sources.length!==1?<label>GPS source<select value={item.sourceId} onChange={event=>setDevices(values=>values.map(value=>value.device.id===item.device.id?{...value,sourceId:event.target.value}:value))}><option value="">Select source</option>{item.sources.map(source=><option key={source.id} value={source.externalId}>{source.externalId}</option>)}</select></label>:null}</article>;})}{!loading&&!discoveryError&&!devices.length?<p>No vehicles. Create an Automobile in Devices and configure its GPS source.</p>:null}</div><FleetMap items={markers} selected={selected} onSelect={setSelected}/></div>
-    {current?<section className="panel"><header className="section-header"><h2>{current.device.name}</h2>{current.device.metadata?.feedProvider === "HSL" ? <Link to={`/devices/${selected}?tab=movement`}>Device & source</Link> : <Link to={`/devices/${selected}?tab=simulation`}>Configure emulator</Link>}</header><div className="action-row">{["LIVE","HISTORY","ZONES"].map(value=><button type="button" key={value} className={section===value?"primary-button":"ghost-button"} onClick={()=>setSection(value)}>{value==="HISTORY"?"Trips & playback":value==="ZONES"?"Zones & settings":"Live measurements"}</button>)}</div>
+    <div className="vehicle-fleet-layout">
+      <aside className="vehicle-fleet-sidebar" aria-label="Vehicle filters and list">
+        <div className="vehicle-fleet-filters">
+          <label>Search vehicles<input type="search" placeholder="Name or vehicle ID" value={search} onChange={event=>setSearch(event.target.value)}/></label>
+          <label>Movement status<select value={filter} onChange={event=>setFilter(event.target.value as MovementState|"ALL")}>{["ALL","MOVING","PARKED","STALE","NO_DATA","UNKNOWN"].map(state=><option key={state}>{state}</option>)}</select></label>
+          <span className="vehicle-fleet-count">{devices.length} vehicles · 5s visible live refresh</span>
+        </div>
+        <div className="vehicle-fleet-list">{visible.map(item=>{
+          const point=positions.find(point=>point.deviceId===item.device.id&&point.sourceId===item.sourceId);
+          return <article key={item.device.id} className={selected===item.device.id?"selected":""}>
+            <button type="button" className="vehicle-fleet-select" aria-label={item.device.name} aria-pressed={selected===item.device.id} onClick={()=>setSelected(item.device.id)}>
+              <span className="vehicle-fleet-item-heading"><strong>{item.device.name}</strong><span className="vehicle-fleet-status">{movementState(point)}</span></span>
+              {point?.position?<small><VehicleCurrentSpeed latest={point} unavailable={Boolean(error)||section!=="LIVE"}/><time dateTime={point.position.recordedAt}>{new Date(point.position.recordedAt).toLocaleString()}</time></small>:null}
+            </button>
+            {item.sources.length!==1?<label>GPS source<select value={item.sourceId} onChange={event=>setDevices(values=>values.map(value=>value.device.id===item.device.id?{...value,sourceId:event.target.value}:value))}><option value="">Select source</option>{item.sources.map(source=><option key={source.id} value={source.externalId}>{source.externalId}</option>)}</select></label>:null}
+          </article>;
+        })}{!loading&&!discoveryError&&!devices.length?<p>No vehicles. Create an Automobile in Devices and configure its GPS source.</p>:null}</div>
+      </aside>
+      <FleetMap items={markers} selected={selected} onSelect={setSelected}/>
+    </div>
+    {current?<section className="panel vehicle-console-detail"><header className="section-header"><h2>{current.device.name}</h2>{current.device.metadata?.feedProvider === "HSL" ? <Link to={`/devices/${selected}?tab=movement`}>Device & source</Link> : <Link to={`/devices/${selected}?tab=simulation`}>Configure emulator</Link>}</header><div className="action-row vehicle-console-tabs">{["LIVE","HISTORY","ZONES"].map(value=><button type="button" key={value} className={section===value?"primary-button":"ghost-button"} onClick={()=>setSection(value)}>{value==="HISTORY"?"Trips & playback":value==="ZONES"?"Zones & settings":"Live measurements"}</button>)}</div>
       {settingsError?<p role="alert">{settingsError}. Monitoring defaults shown; saved settings not loaded.</p>:null}
       {section==="LIVE"?<div className="vehicle-live-summary"><p>{latest?.position?`${latest.position.latitude.toFixed(5)}, ${latest.position.longitude.toFixed(5)}`:"Waiting for GPS observations"}</p><span>Ignition: {latest?.position?.ignition==null?"No data":latest.position.ignition===1?"On":"Off"}</span><span>Fuel: {latest?.position?.fuelPercent==null?"No data":`${latest.position.fuelPercent.toFixed(1)}%`}</span><span>Odometer: {latest?.position?.odometerKm==null?"No data":`${latest.position.odometerKm.toFixed(2)} km`}</span>{current.device.metadata?.feedProvider === "HSL" ? <p>Real GPS observations · Helsinki · Source: HSL HFP open data. Fuel, ignition and odometer are not supplied by this feed.</p> : <p>Vehicle values are simulated when enabled in Demo Tools. Odometer starts from the configured value on each run.</p>}</div>:null}
       {section==="LIVE"?<TransportDetails context={latest?.position?.transport}/>:null}

@@ -14,8 +14,8 @@ message keys, idempotency expectations, and compatibility rules.
 
 | Domain | Document |
 | --- | --- |
-| Telemetry raw, validated, and DLQ events | [telemetry-events.md](telemetry-events.md) |
-| Device registry and source runtime config events | [device-events.md](device-events.md) |
+| Telemetry raw, accepted observations, validated, and DLQ events | [telemetry-events.md](telemetry-events.md) |
+| Device registry, source runtime config and immutable binding schemas | [device-events.md](device-events.md) |
 | Identity account lifecycle events | [identity-events.md](identity-events.md) |
 | Maintenance window events | [maintenance-events.md](maintenance-events.md) |
 | Analytics events | [analytics-events.md](analytics-events.md) |

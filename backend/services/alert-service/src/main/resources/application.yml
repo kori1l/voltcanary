@@ -1,3 +1,5 @@
+spring.http.converters.preferred-json-mapper: jackson2
+spring.jackson.deserialization.fail-on-null-for-primitives: false
 spring:
   application:
     name: alert-service
@@ -16,6 +18,11 @@ spring:
         retry.backoff.ms: 100
 
 app:
+  jwt:
+    key-id: ${JWT_KEY_ID:dev-rsa}
+    public-keys: ${JWT_PUBLIC_KEYS:}
+    issuer: ${JWT_ISSUER:voltcanary-identity}
+    audience: ${JWT_AUDIENCE:voltcanary-api}
   variables:
     telemetry-service-base-url: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
   kafka:

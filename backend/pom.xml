@@ -14,18 +14,17 @@
         <java.version>21</java.version>
         <maven.compiler.release>${java.version}</maven.compiler.release>
 
-        <spring.boot.version>3.5.14</spring.boot.version>
-        <spring.cloud.version>2025.0.2</spring.cloud.version>
+        <spring.boot.version>4.0.9</spring.boot.version>
+        <spring.ai.version>2.0.2</spring.ai.version>
+        <spring.cloud.version>2025.1.4</spring.cloud.version>
         <postgresql.version>42.7.11</postgresql.version>
+        <h2.version>2.5.252</h2.version>
         <flyway.version>12.6.1</flyway.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.46</lombok.version>
         <junit.jupiter.version>5.14.4</junit.jupiter.version>
         <testcontainers.version>1.21.4</testcontainers.version>
-        <springdoc.openapi.version>2.8.17</springdoc.openapi.version>
-        <micrometer.version>1.15.11</micrometer.version>
-        <spring.kafka.version>3.3.15</spring.kafka.version>
-        <kafka.clients.version>3.9.2</kafka.clients.version>
+        <springdoc.openapi.version>3.0.3</springdoc.openapi.version>
         <nimbus.jose.jwt.version>10.9</nimbus.jose.jwt.version>
         <paho.mqtt.version>1.2.5</paho.mqtt.version>
         <digitalpetri.modbus.version>2.1.6</digitalpetri.modbus.version>
@@ -40,6 +39,7 @@
         <module>common/common-events</module>
         <module>common/common-web</module>
         <module>common/common-security</module>
+        <module>common/common-vcl</module>
         <module>common/common-test</module>
         <module>services/api-gateway</module>
         <module>services/identity-service</module>
@@ -55,6 +55,19 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Boot 4.0's H2 2.4.240 has a cross-connection CHECK constraint regression. -->
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring.ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -140,21 +153,6 @@
                 <version>${springdoc.openapi.version}</version>
             </dependency>
             <dependency>
-                <groupId>io.micrometer</groupId>
-                <artifactId>micrometer-registry-prometheus</artifactId>
-                <version>${micrometer.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.kafka</groupId>
-                <artifactId>spring-kafka</artifactId>
-                <version>${spring.kafka.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.kafka</groupId>
-                <artifactId>kafka-clients</artifactId>
-                <version>${kafka.clients.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-data-redis</artifactId>
                 <version>${spring.boot.version}</version>
@@ -191,6 +189,7 @@
                     <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <release>${java.version}</release>
+                        <parameters>true</parameters>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>

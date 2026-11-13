@@ -85,6 +85,14 @@ public final class QueryTypes {
     public record Manifest(String type, int typeVersion, String title, String resultType,
             boolean supported, String dependency, List<Reducer> reducers, List<String> units,
             int maxSeries, int maxDetailDevices, int maxRows, String timeBasis, SizeConstraints sizeConstraints) {
+        @com.fasterxml.jackson.annotation.JsonProperty("description")
+        public String description() {
+            return com.voltcanary.dashboard.domain.WidgetCapabilities.description(type);
+        }
+        @com.fasterxml.jackson.annotation.JsonProperty("capabilities")
+        public com.voltcanary.dashboard.domain.WidgetCapabilities.Descriptor capabilities() {
+            return com.voltcanary.dashboard.domain.WidgetCapabilities.forType(type);
+        }
         @com.fasterxml.jackson.annotation.JsonProperty("visualizations")
         public List<String> visualizations() {
             return com.voltcanary.dashboard.domain.VisualizationCompatibility.choices(type);

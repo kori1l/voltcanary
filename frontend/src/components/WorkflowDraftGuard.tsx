@@ -50,11 +50,12 @@ export function WorkflowDraftProvider({ children }: { children: ReactNode }) {
   function formOf(target: EventTarget) { return target instanceof HTMLElement ? target.closest("form") : null; }
   function captureFocus(target: EventTarget) {
     const form = formOf(target);
-    if (form && !form.closest("dialog") && !forms.current.has(form)) forms.current.set(form, { id: form.dataset.draftId ?? `form-${forms.current.size}`, baseline: snapshot(form) });
+    // The application-level assistant retains its composer across route changes.
+    if (form && form.dataset.navigationPersistent!=="true" && !form.closest("dialog") && !forms.current.has(form)) forms.current.set(form, { id: form.dataset.draftId ?? `form-${forms.current.size}`, baseline: snapshot(form) });
   }
   function captureChange(target: EventTarget) {
     const form = formOf(target);
-    if (!form || !form.isConnected || form.closest("dialog")) return;
+    if (!form || !form.isConnected || form.dataset.navigationPersistent==="true" || form.closest("dialog")) return;
     let entry = forms.current.get(form);
     if (!entry) { entry = { id: form.dataset.draftId ?? `form-${forms.current.size}`, baseline: null }; forms.current.set(form, entry); }
     if (entry.baseline !== snapshot(form)) entries.current.set(entry.id, () => form.reset()); else entries.current.delete(entry.id);

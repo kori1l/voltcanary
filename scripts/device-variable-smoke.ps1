@@ -99,11 +99,11 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "Could not initialize $database" }
         }
     }
-    foreach ($topic in @("source.runtime-config.v1","source.processing-config.v1","telemetry.raw.v1","telemetry.validated.v1",
+    foreach ($topic in @("source.runtime-config.v1","source.binding-schema.v1","source.processing-config.v1","telemetry.raw.v1","telemetry.validated.v1",
             "telemetry.measurements.accepted.v1","anomaly.detected.v1","risk-score.changed.v1","device-registry.changed.v1",
             "source.processing-config.dlq.v1","analytics.variable-measurements.dlq.v1")) {
         $topicArguments = @("compose","-f",$composeFile,"exec","-T","redpanda","rpk","topic","create",$topic,"-X","brokers=localhost:9093","-p","3","-r","1")
-        if ($topic -in @("source.runtime-config.v1","source.processing-config.v1")) { $topicArguments += @("-c","cleanup.policy=compact") }
+        if ($topic -in @("source.runtime-config.v1","source.binding-schema.v1","source.processing-config.v1")) { $topicArguments += @("-c","cleanup.policy=compact") }
         & docker @topicArguments *> (Join-Path $artifactRoot "variable-smoke-topics.log")
     }
     if ($Build) {
@@ -120,8 +120,8 @@ try {
         if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { throw "Fixture port $port is already in use; stop the previous owned fixture first." }
     }
     $databaseOptions = @("--spring.datasource.username=variable","--spring.datasource.password=variable-local-test","--spring.flyway.enabled=true")
+    Start-ServiceProcess "identity-service" "com.voltcanary.identity.IdentityServiceApplication" 18081 ($databaseOptions + @("--spring.datasource.url=jdbc:postgresql://localhost:15432/identity"))
     if ($DockerServices) {
-        Start-ServiceProcess "identity-service" "com.voltcanary.identity.IdentityServiceApplication" 18081 ($databaseOptions + @("--spring.datasource.url=jdbc:postgresql://localhost:15432/identity"))
         Start-ServiceProcess "api-gateway" "com.voltcanary.gateway.ApiGatewayApplication" 18080 @("--app.gateway.rate-limit.enabled=false", "--app.gateway.cors.allowed-origin-patterns[0]=http://localhost:13000")
         Start-ServiceProcess "dashboard-service" "com.voltcanary.dashboard.DashboardServiceApplication" 18089 ($databaseOptions + @("--spring.datasource.url=jdbc:postgresql://localhost:15432/dashboard"))
     }
@@ -156,15 +156,11 @@ try {
     foreach ($entry in $ownedProcesses) {
         $health = Await-Result { Api "GET" $entry.Port "/actuator/health" } {param($value) $value.status -eq "UP"} $entry.Service 120
     }
-    $owner = [guid]::NewGuid().ToString()
-    $email = "variable-smoke@example.test"
-    if ($DockerServices) {
-        $email = "variable-" + $owner + "@example.test"
-        $registration = Api "POST" 18081 "/auth/register" @{email=$email;password="Variable-smoke-2026!"}
-        $owner = $registration.userId
-        $session = Api "POST" 18081 "/auth/login" @{email=$email;password="Variable-smoke-2026!"}
-    }
-    $headers = @{"X-User-Id"=$owner;"X-User-Email"="variable-smoke@example.test";"X-User-Role"="USER"}
+    $email = "variable-" + [guid]::NewGuid().ToString() + "@example.test"
+    $registration = Api "POST" 18081 "/auth/register" @{email=$email;password="Variable-smoke-2026!"}
+    $owner = $registration.userId
+    $session = Api "POST" 18081 "/auth/login" @{email=$email;password="Variable-smoke-2026!"}
+    $headers = @{Authorization=("Bearer " + $session.accessToken)}
     $account = Api "GET" 18082 "/accounts/current" $null $headers
     $devices = @(); $sources = @(); $credentials = @()
     for ($index=0; $index -lt 2; $index++) {
@@ -199,7 +195,7 @@ try {
     $latest = Await-Result {Api "GET" 18084 $latestPath $null $headers} {param($value) $value.points.Count -eq 1 -and [Math]::Abs($value.points[0].value - 22.7) -lt 0.000001} "stored derived value"
     $secondPath = "/telemetry/devices/" + $devices[1].id + "/latest?variableId=$variableId&sourceId=" + $sources[1].id
     $secondLatest = Await-Result {Api "GET" 18084 $secondPath $null $headers} {param($value) $value.points.Count -eq 1 -and [Math]::Abs($value.points[0].value - 17.7) -lt 0.000001} "independent second source value"
-    $ruleHeaders = @{"X-User-Id"=$owner;"X-User-Role"="USER";"X-Account-Id"=$account.id}
+    $ruleHeaders = $headers
     $rule = Api "POST" 18086 "/alert-rules" @{name="Variable fixture threshold";ruleType="THRESHOLD";enabled=$true;scopeType="DEVICE";scopeId=$devices[0].id;metric=$latest.metric;conditionType="ABOVE_THRESHOLD";threshold=24;thresholdUnit="C";severity="WARNING";config=@{variable=@{variableId=$variableId;dataSourceId=$sources[0].id;unit="C";maxLiveAgeSeconds=600}}} $ruleHeaders
     $spike = @{deviceId=$devices[0].id;sourceId=$sources[0].externalId;timestamp=[DateTime]::UtcNow.ToString("o");metrics=@{sensorTemperatureRaw=255}}
     $sourceHeaders = @{Authorization=("Bearer " + $credentials[0])}

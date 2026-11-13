@@ -10,8 +10,13 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
+@org.hibernate.annotations.SQLRestriction("deleted_at is null")
 @Table(name = "devices")
 public class Device {
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant value) { deletedAt = value; }
 
     @Id
     private UUID id;

@@ -43,7 +43,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -59,6 +60,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -70,7 +72,17 @@ import static org.mockito.Mockito.when;
                 "spring.jpa.hibernate.ddl-auto=none",
                 "spring.flyway.enabled=true"
         })
-class AnalyticsRecalculationTest {
+class AnalyticsRecalculationTest extends SignedUserTest {
+    @org.junit.jupiter.api.BeforeEach
+    void authenticateUserReads() {
+        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
+            if (request.getURI().getPath().startsWith("/analytics/") && !request.getHeaders().containsHeader("Authorization")) {
+                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
+            }
+            return execution.execute(request, body);
+        }));
+    }
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -911,7 +923,8 @@ class AnalyticsRecalculationTest {
     @Test
     void mlSettingsUpdateRejectsUsersWithoutWriteRole() {
         HttpHeaders headers = mlSettingsHeaders(UUID.randomUUID());
-        headers.set("X-User-Role", "VIEWER");
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                UUID.fromString(headers.getFirst("X-User-Id")), "actor@example.invalid", "VIEWER"));
         ResponseEntity<String> response = restTemplate.exchange(
                 "/analytics/ml-settings",
                 HttpMethod.PUT,
@@ -928,6 +941,8 @@ class AnalyticsRecalculationTest {
     }
 
     private void saveDeviceMlSettings(UUID accountId, UUID deviceId, MlSettingsRequest request) {
+        org.mockito.Mockito.doReturn(accountId).when(accountAccess).accountIdForDevice(
+                org.mockito.ArgumentMatchers.eq(deviceId), org.mockito.ArgumentMatchers.nullable(String.class));
         ResponseEntity<String> response = restTemplate.exchange(
                 "/analytics/ml-settings/devices/{deviceId}",
                 HttpMethod.PUT,
@@ -937,11 +952,17 @@ class AnalyticsRecalculationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    private com.voltcanary.analytics.service.AnalyticsAccessService accountAccess;
+
     private HttpHeaders mlSettingsHeaders(UUID accountId) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-Account-Id", accountId.toString());
         headers.set("X-User-Id", UUID.randomUUID().toString());
-        headers.set("X-User-Role", "ADMIN");
+        org.mockito.Mockito.doReturn(accountId).when(accountAccess).accountIdForUser(
+                org.mockito.ArgumentMatchers.eq(headers.getFirst("X-User-Id")), org.mockito.ArgumentMatchers.nullable(String.class));
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                UUID.fromString(headers.getFirst("X-User-Id")), "actor@example.invalid", "ADMIN"));
         return headers;
     }
 

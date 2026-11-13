@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Dashboard evaluation reference</title></head>
+<body><main id="root"></main>
+<script type="module">
+import React from "react";
+import {createRoot} from "react-dom/client";
+import {apiRequest} from "/src/api/client.ts";
+import {DashboardDefinitionPreview} from "/src/features/dashboards/components/DashboardDefinitionPreview.tsx";
+import "/src/app/styles.css";
+import "/src/features/dashboards/dashboard.css";
+import "/src/aiAgent/assistant.css";
+import "maplibre-gl/dist/maplibre-gl.css";
+// Temporary local test page; uses the real shared renderer and authorized reads.
+// The source contains no token. Copy into the Vite root for testing, then remove.
+const draft = await apiRequest("/dashboards/__DASHBOARD_ID__/draft");
+function Reference() {
+  const [width, setWidth] = React.useState("1100");
+  return React.createElement("div", {style: {width: width + "px", maxWidth: "100%", margin: "20px auto", padding: "16px"}},
+    React.createElement("h1", null, "Baseline общего рендера"),
+    React.createElement("p", null, "Синтетический эталон. Проверка интерфейса, не результат модели."),
+    React.createElement("label", null, "Ширина стенда ", React.createElement("select", {
+      "aria-label": "Ширина стенда", value: width, onChange: event => setWidth(event.target.value)
+    }, React.createElement("option", {value: "1100"}, "1100 px"), React.createElement("option", {value: "420"}, "420 px"))),
+    React.createElement(DashboardDefinitionPreview, {definition: draft.definition}));
+}
+createRoot(document.getElementById("root")).render(React.createElement(Reference));
+</script></body></html>

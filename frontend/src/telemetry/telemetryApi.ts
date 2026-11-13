@@ -44,10 +44,11 @@ export function getLatestTelemetry(deviceId: string, signal?: AbortSignal) {
   return apiRequest<LatestTelemetry>(`/telemetry/devices/${deviceId}/latest`, { signal });
 }
 
-export function getTelemetryReadings(deviceId: string, metric: string, from?: string, to?: string) {
+export function getTelemetryReadings(deviceId: string, metric: string, from?: string, to?: string, signal?: AbortSignal) {
   const rangeTo = to ?? new Date().toISOString();
   const rangeFrom = from ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   return apiRequest<TelemetryChart>(
     `/telemetry/devices/${deviceId}/readings?metric=${encodeURIComponent(metric)}&from=${encodeURIComponent(rangeFrom)}&to=${encodeURIComponent(rangeTo)}`,
+    { signal },
   );
 }

@@ -1,0 +1,346 @@
+{
+  "status": "AI_FIRST_CORE_INTEGRATION_IN_PROGRESS",
+  "date": "2026-11-12",
+  "baselineDate": "2026-11-03",
+  "priorityAmendment": {
+    "date": "2026-11-11",
+    "priority": "AI_FIRST_JAVA_LANGGRAPH4J_ASSESSMENT",
+    "authority": "openspec/changes/README.md#ai-first-execution-priority",
+    "note": "Original counts/status below are historical alignment snapshots, not current priority or live task totals. Library adoption owns traversal/checkpoints; A3/A5/V/R/G7/A6 retain domain and quality criteria. Broad configurable expansion is deferred, not completed."
+  },
+  "scope": "Every active change directory, excluding archived history; implemented core spec snapshots remain unchanged.",
+  "normativeContracts": [
+    "configurable-operations-language.md",
+    "configurable-operations-storage.md",
+    "configurable-operations-imports.md",
+    "configurable-operations-acceptance.md",
+    "configurable-operations-control.md",
+    "ai-assistant-collaboration-and-retrieval.md",
+    "ai-assistant-collaboration.schema.json",
+    "ai-assistant-spring-implementation.md",
+    "configurable-operations-bus-readiness.md"
+  ],
+  "changes": [
+    {
+      "changeId": "adopt-langgraph4j-agent-orchestration",
+      "action": "LIBRARY_CORE_INTEGRATED_REMAINING_ACCEPTANCE_OPEN",
+      "note": "Core1.9.9 owns new turn/context/confirmation traversal with atomic schema2 plan checkpoints. Internal typed requirements, consultation policy/journal and native-subgraph worker are verified on Java21/PostgreSQL;13 Docker lifecycle checks pass. Paused by user on2026-11-12 at this checkpoint. Next2.4 is production requirements/consultation integration; public API/UI, durable executor, in-place migration and model quality remain unqualified.",
+      "checkedTasks": 8,
+      "openTasks": 4,
+      "specFiles": [
+        "openspec/changes/adopt-langgraph4j-agent-orchestration/specs/assistant-graph-runtime/spec.md"
+      ]
+    },
+    {
+      "changeId": "add-dashboard-deletion",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 0,
+      "openTasks": 6,
+      "specFiles": [
+        "openspec/changes/add-dashboard-deletion/specs/dashboard-deletion/spec.md"
+      ]
+    },
+    {
+      "changeId": "add-reusable-spatial-zones",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/add-reusable-spatial-zones/specs/reusable-spatial-zones/spec.md"
+      ]
+    },
+    {
+      "changeId": "add-transit-monitoring-workspace",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/add-transit-monitoring-workspace/specs/transit-monitoring-workspace/spec.md"
+      ]
+    },
+    {
+      "changeId": "add-transit-reference-catalog",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/add-transit-reference-catalog/specs/transit-reference-catalog/spec.md"
+      ]
+    },
+    {
+      "changeId": "build-configurable-operations-workbench",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/build-configurable-operations-workbench/specs/configurable-operations-workbench/spec.md"
+      ]
+    },
+    {
+      "changeId": "compile-declarative-temporal-rules",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply. BUS01-BUS10 source/binding/predicate gates apply; runtime remains unqualified.",
+      "checkedTasks": 0,
+      "openTasks": 9,
+      "specFiles": [
+        "openspec/changes/compile-declarative-temporal-rules/specs/declarative-temporal-rules/spec.md"
+      ]
+    },
+    {
+      "changeId": "compose-configurable-workflows-with-ai",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply. AI01-AI24 requirements/consultation/retrieval amendment applies to pending work. Second audit: dependency/policy/evidence/ablation boundaries explicit. Spring bindings S0-S6/SPR01-SPR15 apply to pending work. BUS01-BUS10 source/binding/predicate gates apply; runtime remains unqualified.",
+      "checkedTasks": 0,
+      "openTasks": 18,
+      "specFiles": [
+        "openspec/changes/compose-configurable-workflows-with-ai/specs/assistant-configurable-workflows/spec.md"
+      ]
+    },
+    {
+      "changeId": "configure-quality-aware-event-streams",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply. BUS01-BUS10 source/binding/predicate gates apply; runtime remains unqualified.",
+      "checkedTasks": 0,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/configure-quality-aware-event-streams/specs/quality-aware-event-streams/spec.md"
+      ]
+    },
+    {
+      "changeId": "connect-external-business-databases",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply.",
+      "checkedTasks": 0,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/connect-external-business-databases/specs/external-business-data/spec.md"
+      ]
+    },
+    {
+      "changeId": "define-configurable-domain-data",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/define-configurable-domain-data/specs/configurable-domain-data/spec.md"
+      ]
+    },
+    {
+      "changeId": "define-vcl-language-contracts",
+      "action": "IMPLEMENTATION_IN_PROGRESS",
+      "note": "G0/M0 common-vcl parser/registry/static compiler verified by63 Java tests; scalar runtime and owner/UI/AI integration remain open.",
+      "checkedTasks": 3,
+      "openTasks": 3,
+      "specFiles": [
+        "openspec/changes/define-vcl-language-contracts/specs/vcl-language/spec.md"
+      ]
+    },
+    {
+      "changeId": "detect-required-stop-service",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/detect-required-stop-service/specs/required-stop-service/spec.md"
+      ]
+    },
+    {
+      "changeId": "ground-ai-device-dashboard-continuations",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 0,
+      "openTasks": 9,
+      "specFiles": [
+        "openspec/changes/ground-ai-device-dashboard-continuations/specs/ai-real-device-handoff/spec.md"
+      ]
+    },
+    {
+      "changeId": "manage-spatial-features-and-map-selection",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply.",
+      "checkedTasks": 0,
+      "openTasks": 7,
+      "specFiles": [
+        "openspec/changes/manage-spatial-features-and-map-selection/specs/spatial-feature-authoring/spec.md"
+      ]
+    },
+    {
+      "changeId": "migrate-ai-assistant-workflows-to-domain-skills",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved. AI01-AI24 requirements/consultation/retrieval amendment applies to pending work. Second audit: dependency/policy/evidence/ablation boundaries explicit. Spring bindings S0-S6/SPR01-SPR15 apply to pending work.",
+      "checkedTasks": 32,
+      "openTasks": 20,
+      "specFiles": [
+        "openspec/changes/migrate-ai-assistant-workflows-to-domain-skills/specs/assistant-domain-skills/spec.md"
+      ]
+    },
+    {
+      "changeId": "orchestrate-reviewed-transit-monitoring",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 9,
+      "specFiles": [
+        "openspec/changes/orchestrate-reviewed-transit-monitoring/specs/assistant-transit-monitoring/spec.md"
+      ]
+    },
+    {
+      "changeId": "package-source-mappings-and-solution-templates",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply. BUS01-BUS10 source/binding/predicate gates apply; runtime remains unqualified.",
+      "checkedTasks": 0,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/package-source-mappings-and-solution-templates/specs/configurable-solution-packages/spec.md"
+      ]
+    },
+    {
+      "changeId": "plan-ai-assistant-intents-with-durable-steps",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 8,
+      "openTasks": 2,
+      "specFiles": [
+        "openspec/changes/plan-ai-assistant-intents-with-durable-steps/specs/assistant-intent-plans/spec.md"
+      ]
+    },
+    {
+      "changeId": "preserve-vehicle-operational-events",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/preserve-vehicle-operational-events/specs/vehicle-operational-events/spec.md"
+      ]
+    },
+    {
+      "changeId": "qualify-cross-domain-configurable-workflows",
+      "action": "NORMATIVE_GENERIC_CONTRACTS",
+      "note": "VCL, dense native/external storage, strict imports and A01-A66 apply. AI01-AI24 requirements/consultation/retrieval amendment applies to pending work. Second audit: dependency/policy/evidence/ablation boundaries explicit. Spring bindings S0-S6/SPR01-SPR15 apply to pending work. BUS01-BUS10 source/binding/predicate gates apply; runtime remains unqualified.",
+      "checkedTasks": 0,
+      "openTasks": 12,
+      "specFiles": [
+        "openspec/changes/qualify-cross-domain-configurable-workflows/specs/configurable-workflow-qualification/spec.md"
+      ]
+    },
+    {
+      "changeId": "qualify-economical-ai-assistant-models",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved. AI01-AI24 requirements/consultation/retrieval amendment applies to pending work. Second audit: dependency/policy/evidence/ablation boundaries explicit. Spring bindings S0-S6/SPR01-SPR15 apply to pending work.",
+      "checkedTasks": 0,
+      "openTasks": 16,
+      "specFiles": [
+        "openspec/changes/qualify-economical-ai-assistant-models/specs/assistant-model-qualification/spec.md"
+      ]
+    },
+    {
+      "changeId": "qualify-transit-stop-monitoring",
+      "action": "SUPERSEDED_SCENARIO_REQUIREMENTS",
+      "note": "Retained fixtures; generic capability ownership replaces specialized implementation.",
+      "checkedTasks": 0,
+      "openTasks": 9,
+      "specFiles": [
+        "openspec/changes/qualify-transit-stop-monitoring/specs/transit-stop-monitoring-qualification/spec.md"
+      ]
+    },
+    {
+      "changeId": "rebuild-assistant-with-spring-ai",
+      "action": "REVIEWED_UNCHANGED_COMPLETE",
+      "note": "Completed runtime migration is not rewritten as a new implementation target.",
+      "checkedTasks": 10,
+      "openTasks": 0,
+      "specFiles": [
+        "openspec/changes/rebuild-assistant-with-spring-ai/specs/spring-ai-assistant/spec.md"
+      ]
+    },
+    {
+      "changeId": "redesign-ai-assistant-dashboard-preview",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 35,
+      "openTasks": 8,
+      "specFiles": [
+        "openspec/changes/redesign-ai-assistant-dashboard-preview/specs/ai-assistant-console-experience/spec.md",
+        "openspec/changes/redesign-ai-assistant-dashboard-preview/specs/ai-plan-clarification/spec.md",
+        "openspec/changes/redesign-ai-assistant-dashboard-preview/specs/assistant-dashboard-preview/spec.md"
+      ]
+    },
+    {
+      "changeId": "repair-ai-dashboard-planning-failures",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 0,
+      "openTasks": 16,
+      "specFiles": [
+        "openspec/changes/repair-ai-dashboard-planning-failures/specs/assistant-dashboard-preview/spec.md"
+      ]
+    },
+    {
+      "changeId": "verify-ai-dashboard-edit-outcomes",
+      "action": "PENDING_SCOPE_ALIGNED",
+      "note": "Added configurable resource compatibility; original implemented tasks/evidence preserved.",
+      "checkedTasks": 0,
+      "openTasks": 15,
+      "specFiles": [
+        "openspec/changes/verify-ai-dashboard-edit-outcomes/specs/assistant-dashboard-preview/spec.md"
+      ]
+    }
+  ],
+  "specificationRevision": 2,
+  "documentationChecks": {
+    "command": "npm run vcl:check",
+    "positiveDocuments": 11,
+    "grammarRejections": 11,
+    "semanticRejections": 22,
+    "runtimeAcceptance": false
+  },
+  "collaborationDocumentationChecks": {
+    "command": "npm run ai-contracts:check",
+    "positiveDocuments": 11,
+    "grammarRejections": 14,
+    "runtimeAcceptance": false,
+    "semanticVectors": 15,
+    "specificationRevision": 2
+  },
+  "springImplementation": {
+    "status": "TARGET_ONLY_RUNTIME_STOPPED",
+    "document": "ai-assistant-spring-implementation.md",
+    "decision": "../adr/ADR-014-ai-spring-extension-boundaries.md",
+    "frameworkChecks": "SPR01-SPR15",
+    "runtimeEvidence": false,
+    "owners": [
+      "migrate-ai-assistant-workflows-to-domain-skills",
+      "compose-configurable-workflows-with-ai",
+      "qualify-economical-ai-assistant-models",
+      "qualify-cross-domain-configurable-workflows"
+    ]
+  },
+  "executionAuthorization": {
+    "resumed": "2026-11-03",
+    "prioritySelected": "2026-11-11",
+    "currentStage": "AI_FIRST_P2_INTERNAL_SPECIALISTS_CHECKPOINT_PAUSED_BY_USER",
+    "nextTask": "adopt-langgraph4j-agent-orchestration/2.4",
+    "previousStage": "G0/M0 (historical 2026-11-03 snapshot)",
+    "defaultEnablementUnchanged": true,
+    "liveModelCampaignsResumed": false
+  },
+  "g0Implementation": {
+    "module": "backend/common/common-vcl",
+    "stage": "STATIC_TYPED_IR",
+    "javaTests": 63,
+    "serviceIntegration": false,
+    "nextTasks": [
+      "1.3",
+      "1.4",
+      "1.5"
+    ]
+  }
+}

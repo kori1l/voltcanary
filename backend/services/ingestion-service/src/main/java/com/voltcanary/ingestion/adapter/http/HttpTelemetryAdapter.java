@@ -49,7 +49,7 @@ public class HttpTelemetryAdapter implements InboundTelemetryAdapter<HttpAdapter
                         request.sourceToken(),
                         request.clientIp(),
                         Map.of()),
-                request.historicalImport());
+                request.historicalImport(), request.reading().sourcePosition());
     }
 
     public List<IncomingTelemetryMessage> mapBatch(Collection<HttpAdapterRequest> requests) {

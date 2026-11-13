@@ -4,10 +4,12 @@ services:
     profiles: [hsl]
     restart: unless-stopped
     environment:
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
+      HSL_SETUP_ENABLED: ${AI_DEVICE_SETUP_ENABLED:-false}
       HSL_CONFIG_PATH: /run/hsl/config.json
       HSL_INGESTION_URL: http://ingestion-service:8083/ingestion/readings
     volumes:
-      - ./docker-data/hsl:/run/hsl:ro
+      - ./docker-data/hsl:/run/hsl
     read_only: true
     tmpfs:
       - /tmp:mode=1777,size=8m

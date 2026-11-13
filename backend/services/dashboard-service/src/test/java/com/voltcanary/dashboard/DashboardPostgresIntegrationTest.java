@@ -19,7 +19,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,6 +45,25 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 @AutoConfigureMockMvc
 class DashboardPostgresIntegrationTest {
+    @Test
+    void reviewedDraftUpdateHasAtomicScopedReceiptAndRejectsStaleVersions() throws Exception {
+        String owner = actor(), foreign = actor();
+        String id = create(owner, "Before update").path("id").asText();
+        var draft = request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200);
+        var payload = body("Updated same dashboard").put("baseRevision", draft.path("baseRevision").asInt());
+        String key = "reviewed-draft-" + UUID.randomUUID();
+        var saved = request(put("/dashboards/" + id + "/draft"), owner, payload, key, etag(draft), 200);
+        assertThat(saved.path("dashboardId").asText()).isEqualTo(id);
+        assertThat(saved.path("etag")).isNotEqualTo(draft.path("etag"));
+        var replay = request(put("/dashboards/" + id + "/draft"), owner, payload, key, etag(draft), 200);
+        assertThat(replay).isEqualTo(saved);
+        assertThat(request(get("/dashboards/" + id + "/draft/receipt"), owner, null, key, null, 200)).isEqualTo(saved);
+        request(get("/dashboards/" + id + "/draft/receipt"), foreign, null, key, null, 404);
+        request(put("/dashboards/" + id + "/draft"), owner, body("Conflict").put("baseRevision", 0), "different-key", etag(draft), 409);
+        request(put("/dashboards/" + id + "/draft"), owner, body("Changed body").put("baseRevision", 0), key, etag(saved), 409);
+        assertThat(request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200)).isEqualTo(saved);
+        assertThat(jdbc.queryForObject("select count(*) from dashboard_lifecycle_audit where dashboard_id=? and action='DRAFT_SAVED'", Long.class, UUID.fromString(id))).isEqualTo(1L);
+    }
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
@@ -63,6 +82,7 @@ class DashboardPostgresIntegrationTest {
     @Autowired DashboardPublication publication;
     @MockitoBean DashboardOwnership ownership;
     @MockitoBean com.voltcanary.dashboard.port.DashboardEvidenceReads evidenceReads;
+    @MockitoBean com.voltcanary.dashboard.port.TemplateDeviceCatalogue templateCatalogue;
     @MockitoBean com.voltcanary.dashboard.sharing.DashboardWorkspaceAuthority workspaceAuthority;
     @Autowired com.voltcanary.dashboard.sharing.DashboardSharing sharing;
     private final ConcurrentHashMap<String, DashboardActor> actors = new ConcurrentHashMap<>();
@@ -105,8 +125,8 @@ class DashboardPostgresIntegrationTest {
         widgets.addObject().put("id", "future").put("type", "fleet-count").put("typeVersion", 99).put("title", "Future");
         String id = request(post("/dashboards"), owner, body, "query-create", null, 201).path("id").asText();
         var catalog = request(get("/dashboard-widget-types"), owner, null, null, null, 200);
-        assertThat(catalog.size()).isEqualTo(16);
-        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(16);
+        assertThat(catalog.size()).isEqualTo(18);
+        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(18);
         var draft = request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200);
         var preview = request(post("/dashboards/" + id + "/query-validation"), owner,
                 mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 200);
@@ -121,6 +141,66 @@ class DashboardPostgresIntegrationTest {
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("revision", 99), null, null, 404);
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 409);
         assertThat(jdbc.queryForObject("select count(*) from dashboard_revisions where dashboard_id=?", Long.class, UUID.fromString(id))).isEqualTo(1);
+    }
+
+    @Test
+    void templatePrepareIsReadOnlyStrictScopedAndCreatesOnlyAnIdempotentPrivateDraft() throws Exception {
+        String owner = actor(), foreign = actor();
+        UUID device = UUID.randomUUID(), source = UUID.randomUUID();
+        when(templateCatalogue.read(owner, device)).thenReturn(new com.voltcanary.dashboard.port.TemplateDeviceCatalogue.Device(
+                device, "Authorized fridge", "FRIDGE", List.of(new com.voltcanary.dashboard.port.TemplateDeviceCatalogue.Metric("activePowerW", "W")),
+                List.of(new com.voltcanary.dashboard.port.TemplateDeviceCatalogue.Source(source, "ordinary-source"))));
+        ObjectNode intent = mapper.createObjectNode().put("name", "Prepared private draft").put("version", 1).put("period", "LAST_24_HOURS");
+        intent.putArray("deviceIds").add(device.toString());
+        intent.putArray("sourceIds").add(source.toString());
+        long before = jdbc.queryForObject("select count(*) from dashboards", Long.class);
+        var prepared = request(post("/dashboard-templates/my-devices/prepare"), owner, intent, null, null, 200);
+        assertThat(prepared.path("status").asText()).isEqualTo("READY");
+        assertThat(prepared.path("definition").path("widgets").size()).isEqualTo(4);
+        assertThat(jdbc.queryForObject("select count(*) from dashboards", Long.class)).isEqualTo(before);
+        ObjectNode unsafe = intent.deepCopy(); unsafe.put("workspaceId", UUID.randomUUID().toString());
+        request(post("/dashboard-templates/my-devices/prepare"), owner, unsafe, null, null, 422);
+        var body = mapper.createObjectNode().set("definition", prepared.path("definition"));
+        String key = "prepared-" + UUID.randomUUID();
+        var created = request(post("/dashboards"), owner, body, key, null, 201);
+        assertThat(created.path("publishedRevision").asInt()).isZero();
+        var repeat = request(post("/dashboards"), owner, body, key, null, 201);
+        assertThat(repeat.path("id").asText()).isEqualTo(created.path("id").asText());
+        var receipt = request(get("/dashboards/creation-receipt"), owner, null, key, null, 200);
+        assertThat(receipt.path("id").asText()).isEqualTo(created.path("id").asText());
+        request(get("/dashboards/creation-receipt"), foreign, null, key, null, 404);
+        request(get("/dashboards/creation-receipt"), owner, null, "missing-receipt", null, 404);
+        request(get("/dashboards/" + created.path("id").asText()), foreign, null, null, null, 404);
+        assertThat(jdbc.queryForObject("select count(*) from dashboard_revisions where dashboard_id=?", Long.class, UUID.fromString(created.path("id").asText()))).isZero();
+        when(evidenceReads.scope(eq(owner), any(), any())).thenAnswer(invocation -> {
+            DashboardActor actor = invocation.getArgument(1);
+            var equipment = new com.voltcanary.dashboard.port.DashboardEvidenceReads.Device(device,
+                    "Authorized fridge", "FRIDGE", null, "ACTIVE", 5L, "fixture", "SINGLE", java.time.Instant.EPOCH);
+            return new com.voltcanary.dashboard.port.DashboardEvidenceReads.ScopeSnapshot(actor.userId(), actor.accountId(),
+                    1, 1, deniedDevices.contains(device) ? 1 : 0, List.of(equipment), List.of(), false, java.time.Instant.now());
+        });
+        var zeroEvidence = mapper.createObjectNode().put("evaluatedCount", 1).put("deniedBindingCount", 0);
+        zeroEvidence.putArray("authorizedDeviceIds").add(device.toString());
+        zeroEvidence.putArray("registeredMetrics").addObject().put("key", "activePowerW").put("unit", "W");
+        zeroEvidence.putArray("latest").addObject().put("metric", "activePowerW").put("unit", "W")
+                .put("value", 0).put("timestamp", java.time.Instant.now().toString());
+        when(evidenceReads.telemetry(eq(owner), any(), any())).thenReturn(zeroEvidence);
+        String dashboardId = created.path("id").asText();
+        var draft = request(get("/dashboards/" + dashboardId + "/draft"), owner, null, null, null, 200);
+        ObjectNode query = mapper.createObjectNode().put("draftEtag", draft.path("etag").asText());
+        query.putArray("widgetIds").add("template-0");
+        var fresh = request(post("/dashboards/" + dashboardId + "/query"), owner, query, null, null, 200);
+        assertThat(fresh.path("panels").get(0).path("data").path("value").path("value").asDouble(-1)).isZero();
+        var cached = request(post("/dashboards/" + dashboardId + "/query"), owner, query, null, null, 200);
+        assertThat(cached.path("cached").asBoolean()).isTrue();
+        request(post("/dashboards/" + dashboardId + "/query"), foreign, query, null, null, 404);
+        deniedDevices.add(device);
+        var revoked = request(post("/dashboards/" + dashboardId + "/query"), owner, query, null, null, 200);
+        assertThat(revoked.path("cached").asBoolean()).isFalse();
+        assertThat(revoked.path("panels").get(0).path("status").asText()).isEqualTo("no_access");
+        assertThat(revoked.path("panels").get(0).path("data").isNull()).isTrue();
+        request(post("/dashboard-templates/my-devices/prepare"), owner, intent, null, null, 403);
+        request(post("/dashboards"), owner, body, key, null, 422);
     }
     @Test void progressiveTransportAndSnapshotDetailsUseOneAuthorizedRevision() throws Exception {
         String owner=actor();

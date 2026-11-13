@@ -12,9 +12,10 @@ manual or agent-driven runs.
 ## Focused Flows
 
 | Topic | Document |
+| --- | --- |
+| AI reviewed creation, LangGraph Docker lifecycle, isolation and small-model acceptance | [ai-creation-verification.md](ai-creation-verification.md) |
 | Automobile GPS emulation and map acceptance | [vehicle-gps-verification.md](vehicle-gps-verification.md) |
 | Fleet, trips, playback, zones and vehicle simulation | [vehicle-monitoring-verification.md](vehicle-monitoring-verification.md) |
-| --- | --- |
 | Dashboard optimization research and implementation priorities | [dashboard-optimization-research.md](dashboard-optimization-research.md) |
 | First telemetry slice | [01-first-telemetry-flow.md](01-first-telemetry-flow.md) |
 | Console forms and UI verification | [console-interface.md](console-interface.md) |

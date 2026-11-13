@@ -1,17 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { AgentProviderStatus, getAgentProviderStatus, listAgentTools, listModelProviders, ModelProvider } from "../aiAgent/aiAgentApi";
-import { buildAssistantContext } from "../aiAgent/assistantContext";
-import { AssistantContextSummary } from "../aiAgent/AssistantContextSummary";
-import { PlanReview } from "../aiAgent/PlanReview";
-import { useAssistantPlan } from "../aiAgent/useAssistantPlan";
+import {Link} from "react-router-dom";
+import {openAssistant} from "../aiAgent/assistantWindowState";
+
+/** The route opens the persistent application-level assistant; it does not own a second conversation. */
 export function AiAgentPage() {
-  const location = useLocation(); const context = buildAssistantContext(location.pathname,location.search);
-  const [contextText,setContextText] = useState(JSON.stringify(context,null,2)); const [message,setMessage] = useState("");
-  const [providers,setProviders] = useState<ModelProvider[]>([]); const [providerId,setProviderId] = useState(""); const [modelId,setModelId] = useState(""); const [tools,setTools] = useState<string[]>([]); const [status,setStatus] = useState<AgentProviderStatus | null>(null); const [loadError,setLoadError] = useState<string | null>(null);
-  const { plan,error,isPlanning,submit } = useAssistantPlan(message,contextText,providerId,modelId);
-  useEffect(() => { setContextText(JSON.stringify(buildAssistantContext(location.pathname,location.search),null,2)); },[location.pathname,location.search]);
-  useEffect(() => { let live = true; Promise.allSettled([listModelProviders(),listAgentTools(),getAgentProviderStatus()]).then(([providers,tools,status]) => { if (!live) return; if (providers.status === "fulfilled") setProviders(providers.value); else setLoadError("Provider inventory unavailable. Default selection is resolved by the server; review provider and fallback evidence in the resulting plan."); if (tools.status === "fulfilled") setTools(tools.value); if (status.status === "fulfilled") setStatus(status.value); }); return () => { live = false; }; },[]);
-  const selected = providers.find((provider) => provider.id === providerId);
-  return <><header className="page-header"><h1>AI Agent</h1><p>Prepare a plan, review affected objects, then execute.</p></header>{loadError ? <p className="status-note">{loadError}</p> : null}{error ? <p className="error-message" role="alert">{error}</p> : null}<div className="agent-layout"><form className="panel form-stack" onSubmit={submit}><h2>Request</h2><AssistantContextSummary context={context} /><label>Request<textarea value={message} onChange={(event) => setMessage(event.target.value)} required rows={5} /></label><div className="form-grid-two"><label>Provider<select value={providerId} onChange={(event) => { setProviderId(event.target.value); setModelId(""); }}><option value="">Account default provider</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} · {provider.status}</option>)}</select></label><label>Model<select value={modelId} disabled={!selected} onChange={(event) => setModelId(event.target.value)}><option value="">Default model</option>{selected?.models.map((model) => <option value={model.id} key={model.id} disabled={!model.enabled}>{model.displayName} · {model.enabled ? "Enabled" : "Disabled"}</option>)}</select></label></div><Link to="/ai-agent/settings">Provider and model settings</Link><details><summary>Advanced request context</summary><label>Context JSON<textarea value={contextText} onChange={(event) => setContextText(event.target.value)} /></label><p>Technical context must not contain credentials. Changing the request or context invalidates the previous plan.</p></details><button className="primary-button" disabled={isPlanning || !message.trim()}>{isPlanning ? "Planning..." : "Create plan"}</button><details><summary>Available tools and provider diagnostics</summary><p>{status ? `${status.provider} · ${status.model} · ${status.enabled ? "Enabled" : "Fallback"}` : "Provider state unavailable"}</p>{tools.map((tool) => <p key={tool}>{tool}</p>)}</details></form><div>{plan ? <PlanReview key={plan.planId} plan={plan} /> : <section className="panel empty-state">No reviewed plan yet.</section>}</div></div></>;
+  return <><header className="page-header"><h1>AI-помощник</h1><p>Задавайте вопросы и создавайте дашборды в отдельном окне. Вид и расположение можно изменить в его шапке.</p></header>
+    <div className="action-row"><button className="primary-button" onClick={openAssistant}>Открыть помощника</button><Link to="/ai-agent/settings">Настройки моделей и провайдеров</Link></div></>;
 }

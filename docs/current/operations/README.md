@@ -8,6 +8,7 @@ not product plans.
 
 | Topic | Document |
 | --- | --- |
+| Assistant task recovery, uncertain outcomes and evaluation | [ai-reviewed-tasks.md](ai-reviewed-tasks.md) |
 | Local Kubernetes setup | [k8s-local.md](k8s-local.md) |
 | Ingestion active connectors and horizontal ingestion smoke | [ingestion-connectors.md](ingestion-connectors.md) |
 | Real Helsinki trams, HSL MQTT connector and common fleet map | [hsl-live-vehicles.md](hsl-live-vehicles.md) |

@@ -110,7 +110,7 @@ public class BusinessFactsController {
         for (UUID device:request.deviceIds()) {
             var facts=operations.read(actor,request.accountId(),request.workspaceId(),device,request.time().from(),request.time().to());
             count+=facts.size();
-            if (count>500) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,"Choose a narrower operational scope");
+            if (count>500) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Choose a narrower operational scope");
             var item=devices.addObject().put("deviceId",device.toString());
             item.set("facts",mapper.valueToTree(facts));
             item.set("schedules",mapper.valueToTree(operations.schedules(actor,request.accountId(),request.workspaceId(),device)));
@@ -131,7 +131,7 @@ public class BusinessFactsController {
                 || request.time()==null || request.time().from()==null || request.time().to()==null
                 || !request.time().from().isBefore(request.time().to())
                 || java.time.Duration.between(request.time().from(),request.time().to()).compareTo(java.time.Duration.ofDays(31))>0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,"Invalid business evidence read");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Invalid business evidence read");
         }
         return actor;
     }

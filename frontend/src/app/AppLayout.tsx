@@ -1,4 +1,4 @@
-import {LayoutDashboard,Refrigerator,CalendarDays,Bell,Settings,BrainCircuit,Bot,Users,Car} from "lucide-react";
+import {LayoutDashboard,Refrigerator,CalendarDays,Bell,Settings,BrainCircuit,Bot,Users,Car,Table2} from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearTokens, getRefreshToken, sessionIdentityRevision, subscribeSession } from "../api/client";
@@ -13,10 +13,12 @@ import {NavigationVisibility,SidebarToggle} from "../components/NavigationVisibi
 
 const navigationIcons:Record<string,typeof Settings>={"/dashboards":LayoutDashboard,"/devices":Refrigerator,"/maintenance":CalendarDays,"/alerts":Bell,"/settings":Settings,"/settings/ml":BrainCircuit,"/ai-agent":Bot,"/ai-agent/settings":Settings,"/account":Users};
 navigationIcons["/vehicles"]=Car;
+navigationIcons["/data"]=Table2;
 
 const userNavigation = [
   { to: "/dashboards", label: "Dashboards" },
   { to: "/devices", label: "Devices" },
+  { to: "/data", label: "Data tables" },
   { to: "/vehicles", label: "Vehicles" },
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
@@ -27,6 +29,7 @@ const userNavigation = [
 const adminNavigation = [
   { to: "/dashboards", label: "Dashboards" },
   { to: "/devices", label: "Devices" },
+  { to: "/data", label: "Data tables" },
   { to: "/vehicles", label: "Vehicles" },
   { to: "/maintenance", label: "Maintenance" },
   { to: "/alerts", label: "Alerts" },
@@ -130,7 +133,7 @@ function AppLayoutScreen() {
         </button>
       </aside>
       <main id="console-main" className="main-content" tabIndex={-1}>
-        {!location.pathname.startsWith("/dashboards/")?<div className="navigation-restore"><SidebarToggle/></div>:null}
+        {!location.pathname.startsWith("/dashboards/") && !["/vehicles","/vehicles/"].includes(location.pathname)?<div className="navigation-restore"><SidebarToggle/></div>:null}
         <Outlet />
       </main>
       {mobile && navigationOpen?<Dialog id="console-navigation-drawer" title="Navigation" side="left" onClose={()=>setNavigationOpen(false)}><BrandLogo/>{navigationLinks}<button type="button" className="ghost-button sidebar-logout" onClick={()=>void logout()}>Logout</button></Dialog>:null}

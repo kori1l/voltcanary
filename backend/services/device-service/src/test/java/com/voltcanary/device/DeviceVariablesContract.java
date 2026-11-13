@@ -22,7 +22,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -31,9 +32,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.server.ResponseStatusException;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"spring.jpa.hibernate.ddl-auto=validate", "app.kafka.publish-enabled=false", "app.variables.activation-enabled=true"})
-abstract class DeviceVariablesContract {
+abstract class DeviceVariablesContract extends SignedUserTest {
     @Autowired VariableDefinitions definitions;
     @Autowired VariableBindings bindings;
     @Autowired VariableDefaults defaults;
@@ -181,7 +183,7 @@ abstract class DeviceVariablesContract {
     void routesAuthenticateAndRejectStaleMutations() {
         var owner = user();
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", owner.id().toString());
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(owner.id(), owner.email(), owner.role()));
         headers.set("X-User-Email", owner.email());
         headers.set("X-User-Role", "USER");
         var created = http.exchange("/device-types/FRIDGE/variables", HttpMethod.POST,

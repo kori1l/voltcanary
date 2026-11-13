@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnalyticsJobService {
+    private final DeviceHistoryDeletion deletions;
 
     private static final List<String> ACTIVE_STATUSES = List.of("PENDING", "RUNNING");
 
@@ -30,12 +31,13 @@ public class AnalyticsJobService {
             AnalyticsJobRunner jobRunner,
             AnalyticsJobProperties jobProperties,
             AnalyticsMetricProperties metricProperties,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
         this.jobRepository = jobRepository;
         this.jobRunner = jobRunner;
         this.metricProperties = metricProperties;
         this.asyncJobs = jobProperties.isAsync();
         this.meterRegistry = meterRegistry;
+        this.deletions = deletions;
     }
 
     @Transactional
@@ -45,6 +47,7 @@ public class AnalyticsJobService {
 
     @Transactional
     public AnalyticsJobResponse enqueueRecalculation(UUID deviceId, Instant eventTime) {
+        if (!deletions.writable(deviceId)) return new AnalyticsJobResponse(null, deviceId, "RECALCULATION", "CANCELLED", Instant.now(), null, Instant.now(), "DEVICE_DELETED");
         Optional<AnalyticsJob> existing = jobRepository.findFirstByDeviceIdAndStatusInOrderByCreatedAtDesc(
                 deviceId,
                 ACTIVE_STATUSES);

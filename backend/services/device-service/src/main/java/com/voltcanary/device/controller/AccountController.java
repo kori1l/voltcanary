@@ -27,4 +27,17 @@ public class AccountController {
     public AccountResponse currentAccount(@RequestHeader HttpHeaders headers) {
         return accountService.toResponse(accountService.currentAccount(userResolver.resolve(headers)));
     }
+
+    /** Read-only scope inspection for planning; unlike /current, never provisions an account. */
+    @GetMapping("/current/scope")
+    public AccountResponse currentScope(@RequestHeader HttpHeaders headers) {
+        var actor = userResolver.resolve(headers);
+        var account = accountService.findByUserId(actor.id()).orElseThrow(() ->
+                new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.CONFLICT, "ACCOUNT_SETUP_REQUIRED"));
+        if (account.getStatus() != com.voltcanary.device.domain.AccountStatus.ACTIVE) {
+            throw new com.voltcanary.device.exception.AccountInactiveException("Active account required");
+        }
+        return accountService.toResponse(account);
+    }
 }

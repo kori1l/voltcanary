@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=false",
+        "app.ai.tasks.cleanup-delay=3600000",
         "app.ai.secrets.encryption-key=change_me_32_bytes_minimum_local_dev_key"
 })
 class AiAgentServiceSmokeTest {

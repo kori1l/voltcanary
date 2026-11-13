@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 public class SourceRuntimeConfigEventPublisher {
 
     public static final String TOPIC = "source.runtime-config.v1";
+    public static final String BINDING_SCHEMA_TOPIC = "source.binding-schema.v1";
     private static final Logger log = LoggerFactory.getLogger(SourceRuntimeConfigEventPublisher.class);
     private static final String VERSION = "v1";
     private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
@@ -28,23 +29,28 @@ public class SourceRuntimeConfigEventPublisher {
     private final boolean publishEnabled;
     private final ObjectMapper objectMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final com.voltcanary.device.configurable.port.SourceBindingCatalog bindings;
 
     public SourceRuntimeConfigEventPublisher(
             DeviceOutboxService outboxService,
             DeviceKafkaProperties kafkaProperties,
             ObjectMapper objectMapper,
-            org.springframework.jdbc.core.JdbcTemplate jdbc) {
+            org.springframework.jdbc.core.JdbcTemplate jdbc,
+            com.voltcanary.device.configurable.port.SourceBindingCatalog bindings) {
         this.outboxService = outboxService;
         this.publishEnabled = kafkaProperties.isPublishEnabled();
         this.objectMapper = objectMapper;
         this.jdbc = jdbc;
+        this.bindings = bindings;
     }
 
     public void publish(UUID accountId, DataSource source) {
+        bindings.record(accountId, source);
         if (!publishEnabled) {
             return;
         }
         Instant occurredAt = Instant.now();
+        var publication = bindings.publication(accountId, source.getId());
         SourceRuntimeConfigEvent event = new SourceRuntimeConfigEvent(
                 UUID.randomUUID(),
                 VERSION,
@@ -58,7 +64,7 @@ public class SourceRuntimeConfigEventPublisher {
                 source.getStatus().name(),
                 "v1",
                 "v1",
-                processingMapping(source),
+                processingMapping(source, publication),
                 objectMap(source.getAdapterConfigJson()),
                 credentialReferences(source),
                 source.getTokenPrefix(),
@@ -76,6 +82,8 @@ public class SourceRuntimeConfigEventPublisher {
                 source.getStatus(),
                 event.configVersion());
         outboxService.enqueue(event.eventId().toString(), TOPIC, source.getId().toString(), event);
+        publication.ifPresent(schema -> outboxService.enqueue(schema.eventId().toString(), BINDING_SCHEMA_TOPIC,
+                source.getId() + ":" + schema.pin().schemaRevision(), schema.envelope()));
     }
 
     private Map<String, String> credentialReferences(DataSource source) {
@@ -89,9 +97,19 @@ public class SourceRuntimeConfigEventPublisher {
     }
 
     public Map<String, Object> processingMapping(DataSource source) {
+        var account = jdbc.queryForList("SELECT account_id FROM devices WHERE id=?", UUID.class, source.getDeviceId());
+        var publication = account.isEmpty() ? java.util.Optional.<com.voltcanary.common.events.device.SourceBindingSchemaEvent>empty()
+                : bindings.publication(account.getFirst(), source.getId());
+        return processingMapping(source, publication);
+    }
+
+    private Map<String, Object> processingMapping(DataSource source,
+            java.util.Optional<com.voltcanary.common.events.device.SourceBindingSchemaEvent> publication) {
         var mapping = new java.util.LinkedHashMap<String, Object>(objectMap(source.getMappingJson()));
         mapping.remove("processingGeneration");
         mapping.remove("processingDigest");
+        mapping.remove("bindingSchemaPin");
+        publication.ifPresent(schema -> mapping.put("bindingSchemaPin", objectMapper.convertValue(schema.pin(), OBJECT_MAP)));
         jdbc.query("select generation,digest from source_processing_bundles where data_source_id=? order by generation desc limit 1",
                 (row, index) -> {
                     mapping.put("processingGeneration", row.getLong("generation"));

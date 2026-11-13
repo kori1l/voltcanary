@@ -28,7 +28,8 @@ export function DashboardCanvas({definition,panels,stale,onRetry,tools,previewBr
   useEffect(()=>{const cancel=(event:KeyboardEvent)=>{if(event.key==="Escape" && gesture.current){gesture.current=false;gestureLayout.current=null;setGridRevision((value)=>value+1);setMessage("Layout change cancelled.");}};document.addEventListener("keydown",cancel);return()=>document.removeEventListener("keydown",cancel);},[]);
   const widgetIds=definition.widgets.map((widget)=>widget.id).join(",");
   useEffect(()=>{if(!onVisible || !ref.current)return;if(typeof IntersectionObserver==="undefined"){onVisible(definition.widgets.map((widget)=>widget.id));return;}const visible=new Set<string>();const observer=new IntersectionObserver((entries)=>{for(const entry of entries){const id=(entry.target as HTMLElement).dataset.dashboardWidget!;if(entry.isIntersecting)visible.add(id);else visible.delete(id);}onVisible([...visible].sort());});ref.current.querySelectorAll("[data-dashboard-widget]").forEach((element)=>observer.observe(element));return()=>observer.disconnect();},[widgetIds,onVisible]);
-  const breakpoint=previewBreakpoint ?? (viewportWidth>=1200?"desktop":viewportWidth>=768?"tablet":"mobile");
+  const availableWidth=Math.min(width || viewportWidth,viewportWidth);
+  const breakpoint=previewBreakpoint ?? (availableWidth>=1200?"desktop":availableWidth>=768?"tablet":"mobile");
   const settings=workingGrid(definition,breakpoint),totalColumns=settings.columns;
   const editable=!!onLayoutCommit;
   useEffect(()=>{gesture.current=false;gestureLayout.current=null;},[breakpoint,movementDisabled]);
@@ -37,12 +38,14 @@ export function DashboardCanvas({definition,panels,stale,onRetry,tools,previewBr
     const layout=resolveLayout(widgets,definition.layouts[breakpoint] ?? [],breakpoint,totalColumns);
     const cards=[...widgets].sort((a,b)=>{const first=layout.find((item)=>item.widgetId===a.id)!;const second=layout.find((item)=>item.widgetId===b.id)!;return first.y-second.y || first.x-second.x;}).map((widget)=>{
       const position=layout.find((item)=>item.widgetId===widget.id)!;
-      return <article key={widget.id} tabIndex={-1} data-dashboard-widget={widget.id} className={`dashboard-widget panel ${editable?"dashboard-widget-editable":""}`} aria-label={widget.title} style={editable?undefined:{gridColumn:`${position.x+1} / span ${position.w}`,gridRow:`${position.y+1} / span ${position.h}`}}>
+      const compact=["vehicle-value","latest-value","metric-summary"].includes(widget.type) && (!widget.presentation?.visualization || widget.presentation.visualization==="number") && (widget.presentation?.compact===true || widget.presentation?.compact!==false && position.h<=2);
+      const displayed=compact?{...widget,presentation:{...widget.presentation,compact:true}}:widget;
+      return <article key={widget.id} tabIndex={-1} data-dashboard-widget={widget.id} className={`dashboard-widget panel ${compact?"dashboard-value-compact":""} ${editable?"dashboard-widget-editable":""}`} aria-label={widget.title} style={editable?undefined:{gridColumn:`${position.x+1} / span ${position.w}`,gridRow:`${position.y+1} / span ${position.h}`}}>
         <div className={editable?"dashboard-edit-card-heading":"dashboard-card-heading"}>{editable?<div className="dashboard-grid-drag-header" title="Drag to move this panel" aria-label={`Drag ${widget.title}`}><GripVertical size={16} aria-hidden="true"/><h3>{widget.title || widget.type}</h3></div>:<h3 className={widget.presentation?.showTitle===true?undefined:"sr-only"}>{widget.title || widget.type}</h3>}{tools?.(widget.id,breakpoint)}</div>
-        <DashboardWidgetPanel widget={widget} panel={panels.find((panel)=>panel.widgetId===widget.id)} stale={stale} onRetry={()=>onRetry(widget.id)}/>
+        <DashboardWidgetPanel widget={displayed} panel={panels.find((panel)=>panel.widgetId===widget.id)} stale={stale} onRetry={()=>onRetry(widget.id)}/>
       </article>;
     });
-    if(!editable)return <div className="dashboard-grid" style={{gridTemplateColumns:`repeat(${totalColumns}, minmax(0, 1fr))`,gridAutoRows:`${settings.rowHeight}px`,gap:settings.gap}}>{cards}</div>;
+    if(!editable)return <div className="dashboard-grid" style={{gridTemplateColumns:`repeat(${totalColumns}, minmax(0, 1fr))`,gridAutoRows:`minmax(${settings.rowHeight}px, auto)`,gap:settings.gap}}>{cards}</div>;
     const libraryLayout=layout.map(({widgetId,...position})=>{const minimum=widgetSize(widgets.find((w)=>w.id===widgetId)!.type,breakpoint,widgets.find((w)=>w.id===widgetId)!.typeVersion,totalColumns);return {...position,i:widgetId,minW:minimum.w,minH:minimum.h,maxW:totalColumns,maxH:100};});
     const compactor:Compactor={...noCompactor,compact(next){const baseline=gestureLayout.current;return baseline && baseline.breakpoint===breakpoint && next.some((p)=>p.i===baseline.id)?restoreGestureLayout(next,baseline.initial,baseline.id):next;}};
     function begin(id:string|undefined){gesture.current=true;gestureLayout.current=id?{id,breakpoint,initial:libraryLayout.map((p)=>({...p}))}:null;}

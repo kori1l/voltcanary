@@ -10,7 +10,8 @@ it("keeps textual GPS evidence and explicit stale/truncated states when WebGL fa
   render(<VehicleMap evidence={evidence}/>);
   await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Map unavailable"));
   expect(screen.getByText("44.80000, 20.40000")).toBeInTheDocument();
-  expect(screen.getByText("Speed: 0.0 km/h")).toBeInTheDocument();
+  expect(screen.getByText("Текущая скорость недоступна")).toBeInTheDocument();
+  expect(screen.queryByText(/0[.,]0 km\/h/)).not.toBeInTheDocument();
   expect(screen.getByText("Stale position")).toBeInTheDocument();
   expect(screen.getByText(/Latest 1000/)).toBeInTheDocument();
 });
@@ -18,4 +19,30 @@ it("does not invent a position while waiting for its first sample",()=>{
   render(<VehicleMap evidence={null}/>);
   expect(screen.getByRole("status")).toHaveTextContent("Waiting for GPS");
   expect(screen.queryByLabelText("Follow vehicle")).not.toBeInTheDocument();
+});
+it("keeps dashboard journey details collapsed so the map retains room",()=>{
+  const recorded:PositionEvidence={...evidence,latest:{...evidence.latest,position:{...evidence.latest.position!,fields:{speedKmh:{value:0,type:"NUMBER",label:"Recorded speed",unit:"km/h",display:true}}}}};
+  render(<VehicleMap compact evidence={recorded}/>);
+  expect(screen.getByText("Данные GPS и рейса")).toBeVisible();
+  expect(screen.queryByText("Recorded speed")).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox",{name:"Follow vehicle"})).toBeVisible();
+  expect(screen.getByText("Stale position")).toBeVisible();
+});
+
+it("hides map metadata independently while retaining stale and failure warnings",async()=>{
+ render(<VehicleMap compact showDetails={false} evidence={evidence}/>);
+ expect(screen.queryByRole("checkbox",{name:"Follow vehicle"})).not.toBeInTheDocument();
+ expect(screen.queryByText("Данные GPS и рейса")).not.toBeInTheDocument();
+ expect(screen.queryByText("Stale position")).not.toBeInTheDocument();
+ expect(screen.getByText(/Последние измерения устарели/)).toBeVisible();
+ await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Map unavailable"));
+});
+
+it("hides optional stale and truncation footers but keeps map failures visible",async()=>{
+ render(<VehicleMap compact showDetails={false} showNotices={false} evidence={evidence}/>);
+ expect(screen.queryByText(/Последние измерения устарели/)).not.toBeInTheDocument();
+ expect(screen.queryByText(/Latest 1000/)).not.toBeInTheDocument();
+ expect(screen.getByLabelText("Vehicle movement map")).toBeInTheDocument();
+ await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Map unavailable"));
+ expect(screen.getByRole("button",{name:"Retry map"})).toBeVisible();
 });

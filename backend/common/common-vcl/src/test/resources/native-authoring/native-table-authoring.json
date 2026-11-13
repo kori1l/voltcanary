@@ -1,0 +1,43 @@
+{
+  "status": "SYNTHETIC_CANONICAL_PARITY_NOT_MODEL_OR_RUNTIME_QUALIFICATION",
+  "draft": {
+    "label": "Service visits",
+    "history": true,
+    "fields": [
+      {"key":"code","label":"Visit code","type":"TEXT","nullable":false,"unit":"1","indexed":false,"businessKey":true},
+      {"key":"open","label":"Door open","type":"BOOLEAN","nullable":true,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"count","label":"Count","type":"INT64","nullable":false,"unit":"1","indexed":true,"businessKey":false},
+      {"key":"voltage","label":"Voltage","type":"DECIMAL","nullable":false,"unit":"V","indexed":true,"businessKey":false},
+      {"key":"day","label":"Service day","type":"DATE","nullable":false,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"observed","label":"Observed at","type":"INSTANT","nullable":false,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"elapsed","label":"Elapsed","type":"DURATION","nullable":true,"unit":"1","indexed":false,"businessKey":false}
+    ]
+  },
+  "reservation": {
+    "reviewId":"80000000-0000-4000-8000-000000000010","resourceId":"80000000-0000-4000-8000-000000000001",
+    "receiptId":"80000000-0000-4000-8000-000000000011","revision":0,"status":"RESERVED","expiresAt":"2030-01-01T00:00:00Z",
+    "reviewDigest":null,"semanticDigest":null,"typedDiff":null,"outcomeCode":null,
+    "fieldIdsByKey": {
+      "code":"80000000-0000-4000-8000-000000000101","open":"80000000-0000-4000-8000-000000000102",
+      "count":"80000000-0000-4000-8000-000000000103","voltage":"80000000-0000-4000-8000-000000000104",
+      "day":"80000000-0000-4000-8000-000000000105","observed":"80000000-0000-4000-8000-000000000106",
+      "elapsed":"80000000-0000-4000-8000-000000000107"
+    }
+  },
+  "document": {
+    "language":"VCL/1","kind":"COLLECTION","spec": {
+      "id":"80000000-0000-4000-8000-000000000001","revision":1,"label":"Service visits",
+      "fields": [
+        {"id":"80000000-0000-4000-8000-000000000101","label":"Visit code","type":"TEXT","nullable":false,"maxLength":120},
+        {"id":"80000000-0000-4000-8000-000000000102","label":"Door open","type":"BOOLEAN","nullable":true},
+        {"id":"80000000-0000-4000-8000-000000000103","label":"Count","type":"INT64","nullable":false,"unit":"1"},
+        {"id":"80000000-0000-4000-8000-000000000104","label":"Voltage","type":"DECIMAL","nullable":false,"unit":"V","precision":18,"scale":3},
+        {"id":"80000000-0000-4000-8000-000000000105","label":"Service day","type":"DATE","nullable":false},
+        {"id":"80000000-0000-4000-8000-000000000106","label":"Observed at","type":"INSTANT","nullable":false},
+        {"id":"80000000-0000-4000-8000-000000000107","label":"Elapsed","type":"DURATION","nullable":true}
+      ],
+      "keyFieldIds":["80000000-0000-4000-8000-000000000101"],
+      "storage":{"mode":"NATIVE","history":"REVISIONS","indexedFieldIds":["80000000-0000-4000-8000-000000000103","80000000-0000-4000-8000-000000000104"]}
+    }
+  }
+}

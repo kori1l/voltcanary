@@ -6,7 +6,7 @@ export function buildAssistantContext(pathname: string, search: string, evidence
   for (const key of ["from", "to"] as const) if (evidence.interval?.[key] && Number.isFinite(Date.parse(evidence.interval[key]!))) searchParams[key] = evidence.interval[key]!;
   const deviceMatch = pathname.match(/^\/devices\/([^/]+)/);
   const deviceId = deviceMatch && /^[a-zA-Z0-9_-]{1,128}$/.test(deviceMatch[1]) ? deviceMatch[1] : params.get("deviceId") ?? undefined;
-  const page = deviceMatch ? "Device details" : pathname === "/settings/ml" ? "ML workspace" : pathname === "/maintenance" ? "Maintenance" : pathname.startsWith("/alerts") ? "Alerts" : pathname.startsWith("/devices") ? "Devices" : pathname.startsWith("/settings") ? "Settings" : "Console";
+  const page = deviceMatch ? "Device details" : pathname === "/vehicles" ? "Vehicles" : pathname === "/settings/ml" ? "ML workspace" : pathname === "/maintenance" ? "Maintenance" : pathname.startsWith("/alerts") ? "Alerts" : pathname.startsWith("/devices") ? "Devices" : pathname.startsWith("/settings") ? "Settings" : "Console";
   const names = Object.fromEntries(["device", "dataset", "operation", "incident", "location"].flatMap((key) => { const name = evidence.names?.[key as keyof NonNullable<TaskEvidence["names"]>]; return typeof name === "string" && name.length <= 200 ? [[key, name]] : []; }));
   return { page, pageLabel: page, route: safeReturnTo(pathname), searchParams, deviceId, names };
 }

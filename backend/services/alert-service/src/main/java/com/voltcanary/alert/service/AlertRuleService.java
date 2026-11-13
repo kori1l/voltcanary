@@ -342,16 +342,7 @@ public class AlertRuleService {
     }
 
     private UUID accountScope(String userId, String accountId) {
-        String scope = accountId == null || accountId.isBlank() ? userId : accountId;
-        if (scope == null || scope.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User context is required");
-        }
-        try {
-            UUID parsed = UUID.fromString(scope);
-            return accountId == null || accountId.isBlank() ? accessService.ownAccount(userId) : parsed;
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Account scope must be a UUID");
-        }
+        return accessService.ownAccount(userId);
     }
 
     private String nonBlank(String value, String field, int maxLength) {
@@ -486,7 +477,7 @@ public class AlertRuleService {
     }
 
     private <T> Specification<AlertRule> equalsIfPresent(String field, T value) {
-        return value == null ? null : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
+        return value == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
     }
 
     private String title(String ruleType) {

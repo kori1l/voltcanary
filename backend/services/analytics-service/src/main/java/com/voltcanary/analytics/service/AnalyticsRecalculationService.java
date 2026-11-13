@@ -62,6 +62,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnalyticsRecalculationService {
+    private final DeviceHistoryDeletion deletions;
 
     private static final Logger log = LoggerFactory.getLogger(AnalyticsRecalculationService.class);
     private static final String BASELINE_ALGORITHM_VERSION = "baseline-basic-v1";
@@ -121,7 +122,7 @@ public class AnalyticsRecalculationService {
             AnalyticsMlRuntimeDecisionService mlRuntimeDecisionService,
             AnalyticsBaselineFeatureService baselineFeatureService,
             AnalyticsMaintenanceTelemetryFilterService maintenanceTelemetryFilterService,
-            AnalyticsMlRecommendationService mlRecommendationService) {
+            AnalyticsMlRecommendationService mlRecommendationService, DeviceHistoryDeletion deletions) {
         this.telemetryClient = telemetryClient;
         this.baselineRepository = baselineRepository;
         this.featureSetRepository = featureSetRepository;
@@ -149,6 +150,7 @@ public class AnalyticsRecalculationService {
         this.baselineFeatureService = baselineFeatureService;
         this.maintenanceTelemetryFilterService = maintenanceTelemetryFilterService;
         this.mlRecommendationService = mlRecommendationService;
+        this.deletions = deletions;
     }
 
     @Transactional
@@ -158,6 +160,7 @@ public class AnalyticsRecalculationService {
 
     @Transactional
     public RecalculationResult recalculate(UUID deviceId, Instant windowEnd) {
+        if (!deletions.writable(deviceId)) return RecalculationResult.skipped(windowEnd.minus(metricProperties.getDefaultWindow()), windowEnd, "", "DEVICE_DELETED");
         Timer.Sample timer = Timer.start(meterRegistry);
         Instant now = Instant.now();
         Instant windowStart = windowEnd.minus(metricProperties.getDefaultWindow());

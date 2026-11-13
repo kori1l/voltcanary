@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -49,6 +51,42 @@ class IngestionReadingsTest {
     private com.voltcanary.ingestion.source.SourceRegistryLookup registryLookup;
 
     @Test
+    void authenticatedPositionsPreserveDistinctReadingsAtTheSameTime() {
+        UUID device = UUID.randomUUID();
+        UUID account = UUID.randomUUID();
+        UUID binding = UUID.randomUUID();
+        UUID snapshot = UUID.randomUUID();
+        UUID epoch = UUID.randomUUID();
+        String source = "positioned-" + UUID.randomUUID();
+        String token = UUID.randomUUID().toString();
+        String hash = com.voltcanary.vcl.VclCanonical.sha256(token);
+        var pin = Map.of("bindingId", binding, "accountId", account, "deviceId", device,
+                "externalSourceId", source, "schemaRevision", 1, "snapshotId", snapshot, "definitionDigest", "a".repeat(64));
+        sourceRegistryCache.put(new InternalDataSourceResponse(account, device, binding, source, "API", "REST", "ACTIVE",
+                token.substring(0, 16), hash, Map.of("bindingSchemaPin", pin)), System.nanoTime());
+        var body = new java.util.LinkedHashMap<String, Object>();
+        body.put("deviceId", device);
+        body.put("sourceId", source);
+        body.put("timestamp", Instant.now().minusSeconds(2).truncatedTo(java.time.temporal.ChronoUnit.MICROS).toString());
+        body.put("metrics", Map.of("temperatureC", 22));
+        body.put("sourcePosition", Map.of("epoch", epoch, "sequence", "1"));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", body, String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        var headers = new org.springframework.http.HttpHeaders();
+        headers.setBearerAuth(token);
+        assertThat(restTemplate.postForEntity("/ingestion/readings", new org.springframework.http.HttpEntity<>(body, headers), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        body.put("sourcePosition", Map.of("epoch", epoch, "sequence", "3"));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", new org.springframework.http.HttpEntity<>(body, headers), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(restTemplate.postForEntity("/ingestion/readings", new org.springframework.http.HttpEntity<>(body, headers), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        var captured = ArgumentCaptor.forClass(TelemetryReceivedEvent.class);
+        verify(telemetryEventPublisher, times(2)).publish(captured.capture());
+        assertThat(captured.getAllValues()).allMatch(event -> event.bindingSchemaPin().snapshotId().equals(snapshot));
+        assertThat(captured.getAllValues()).extracting(event -> event.sourcePosition().sequence()).containsExactly("1", "3");
+    }
+
+    @Test
     void configuredSourceFiltersBeforePublishingAndAcceptsTypedCustomValues() {
         UUID device = UUID.randomUUID();
         String source = "configured-" + UUID.randomUUID();
@@ -59,11 +97,13 @@ class IngestionReadingsTest {
         sourceRegistryCache.put(new InternalDataSourceResponse(UUID.randomUUID(), device, UUID.randomUUID(), source, "API", "REST", "ACTIVE", null, null,
                 Map.of("telemetryPolicy", Map.of("fields", fields))), 1);
         var body = Map.of("deviceId", device, "sourceId", source, "timestamp", Instant.now().minusSeconds(2).toString(),
-                "metrics", Map.of("temperatureC", 25, "sensor", Map.of("count", 0, "open", false, "ignored", "unselected")));
+                "metrics", Map.of("temperatureC", 25, "sensor", Map.of("count", 0, "open", false, "ignored", "unselected"),
+                        "bindingSchemaPin", Map.of("bindingId", UUID.randomUUID().toString())));
         assertThat(restTemplate.postForEntity("/ingestion/readings", body, String.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         var captured = ArgumentCaptor.forClass(TelemetryReceivedEvent.class);
         verify(telemetryEventPublisher).publish(captured.capture());
         assertThat(captured.getValue().metrics()).containsOnlyKeys("configuredFields");
+        assertThat(captured.getValue().bindingSchemaPin()).isNull();
         assertThat(com.voltcanary.common.events.telemetry.ConfiguredFields.values(captured.getValue().metrics())).containsOnlyKeys("count", "open");
         var invalid = Map.of("deviceId", device, "sourceId", source, "timestamp", Instant.now().minusSeconds(1).toString(),
                 "metrics", Map.of("sensor", Map.of("count", "not a number")));
@@ -239,6 +279,36 @@ class IngestionReadingsTest {
 
     private Instant recentTimestamp(long secondsAgo) {
         return Instant.now().minusSeconds(secondsAgo);
+    }
+
+    @Test void publishedSchemaPinComesFromResolvedSourceInsteadOfIncomingMetrics() {
+        UUID device = UUID.randomUUID(), account = UUID.randomUUID(), source = UUID.randomUUID(), snapshot = UUID.randomUUID();
+        String external = "schema-pin-" + source;
+        var pin = Map.<String, Object>of("bindingId", source.toString(), "accountId", account.toString(), "deviceId", device.toString(),
+                "externalSourceId", external, "schemaRevision", 1, "snapshotId", snapshot.toString(), "definitionDigest", "a".repeat(64));
+        sourceRegistryCache.put(new InternalDataSourceResponse(account, device, source, external, "SENSOR", "REST", "ACTIVE", null, null,
+                Map.of("bindingSchemaPin", pin, "telemetryPolicy", Map.of("fields", java.util.List.of(Map.of("key", "temperatureC", "path", "temperatureC",
+                        "type", "number", "unit", "C", "label", "Temperature", "store", true, "display", true))))), 1);
+        var body = Map.of("deviceId", device, "sourceId", external, "timestamp", recentTimestamp(2).toString(),
+                "metrics", Map.of("temperatureC", 23, "bindingSchemaPin", Map.of("bindingId", UUID.randomUUID().toString())));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", body, String.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        var captured = ArgumentCaptor.forClass(TelemetryReceivedEvent.class);
+        verify(telemetryEventPublisher).publish(captured.capture());
+        assertThat(captured.getValue().bindingSchemaPin().snapshotId()).isEqualTo(snapshot);
+        assertThat(captured.getValue().bindingSchemaPin().bindingId()).isEqualTo(source);
+        assertThat(captured.getValue().accountId()).isEqualTo(account);
+    }
+
+    @Test void foreignOwnerSchemaPinFailsBeforePublishingAcceptedTelemetry() {
+        UUID device = UUID.randomUUID(), account = UUID.randomUUID(), source = UUID.randomUUID();
+        String external = "foreign-schema-" + source;
+        var pin = Map.<String, Object>of("bindingId", source.toString(), "accountId", UUID.randomUUID().toString(), "deviceId", device.toString(),
+                "externalSourceId", external, "schemaRevision", 1, "snapshotId", UUID.randomUUID().toString(), "definitionDigest", "a".repeat(64));
+        sourceRegistryCache.put(new InternalDataSourceResponse(account, device, source, external, "SENSOR", "REST", "ACTIVE", null, null,
+                Map.of("bindingSchemaPin", pin)), 1);
+        var body = Map.of("deviceId", device, "sourceId", external, "timestamp", recentTimestamp(2).toString(), "metrics", Map.of("temperatureC", 23));
+        assertThat(restTemplate.postForEntity("/ingestion/readings", body, String.class).getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        verify(telemetryEventPublisher, never()).publish(any());
     }
 
     private void seedSource(UUID deviceId, String sourceId, String status) {

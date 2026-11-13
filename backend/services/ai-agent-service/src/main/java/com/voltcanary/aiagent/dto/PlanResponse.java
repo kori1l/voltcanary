@@ -2,6 +2,7 @@ package com.voltcanary.aiagent.dto;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 public record PlanResponse(
         UUID planId,
@@ -15,5 +16,20 @@ public record PlanResponse(
         String modelId,
         UUID providerId,
         UUID modelConfigId,
-        boolean fallbackUsed) {
+        boolean fallbackUsed,
+        int version,
+        String payloadDigest,
+        Instant expiresAt,
+        String planningStatus,
+        List<String> questions,
+        String executionStatus,
+        ExecutePlanResponse execution,
+        com.voltcanary.aiagent.model.PlanningQuestion clarification, List<UUID> previousReviewIds,
+        DashboardTaskSummary task, UUID restoredFromReviewId) {
+    public PlanResponse withTask(DashboardTaskSummary summary) {
+        return new PlanResponse(planId, this.summary, explanation, confirmationRequired, safetyNotes, actions,
+                providerType, providerName, modelId, providerId, modelConfigId, fallbackUsed, version,
+                payloadDigest, expiresAt, planningStatus, questions, executionStatus, execution, clarification,
+                previousReviewIds, summary, restoredFromReviewId);
+    }
 }

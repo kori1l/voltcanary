@@ -350,3 +350,19 @@ Events are used for asynchronous processing:
 5. User-facing analytics must be explainable and must include confidence where applicable.
 6. Device maintenance policy is owned by device-service and propagated by
    events plus reconciliation; consumers use local read models in hot paths.
+
+AI semantic dashboard planning is an opt-in application compiler, not another
+domain owner. DashboardOperationProtocol decodes the versioned sealed vocabulary;
+DashboardOperationCompiler resolves scoped metadata and lowers pure intent plus
+change masks/postconditions. Dashboard-owned descriptors are retained as bounded
+server reference snapshots; models receive their compact projection. Composition
+preparation still owns bindings, query validation, breakpoint packing and digest.
+Confirmed execution consumes the immutable reviewed definition for both legacy
+and operation-generated reviews. Outcome verification and final repair rollout
+remain separate gates; see [the operation contract](../api/ai-agent-api.md#opt-in-semantic-dashboard-planning-2026-10-24).
+
+Stage4 contract corrections add an exclusive keep_review branch through existing
+owner-scoped immutable history, not model reconstruction. Same-turn titles use
+validated earlier-operation references. Replacement device scope is resolved by
+the compiler and inherited legacy widget bindings remain fixed when scope grows.
+History reuse includes visualization; explicit targets request view conversion.

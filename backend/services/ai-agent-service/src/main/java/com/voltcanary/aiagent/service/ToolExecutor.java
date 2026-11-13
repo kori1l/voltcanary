@@ -3,8 +3,6 @@ package com.voltcanary.aiagent.service;
 import com.voltcanary.aiagent.config.AiAgentProperties;
 import com.voltcanary.aiagent.dto.ActionExecutionResponse;
 import com.voltcanary.aiagent.model.AgentAction;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -15,42 +13,58 @@ import org.springframework.web.client.RestClient;
 public class ToolExecutor {
 
     private final RestClient deviceClient;
-    private final RestClient alertClient;
+    private final LegacyAlertOperations legacyAlerts;
+    private final com.voltcanary.aiagent.nativeops.NativeTableExecutor nativeTables;
     private final RestClient simulatorClient;
+    private final DashboardCreationExecutor dashboardCreation;
+    private final ActionExecutionBoundary boundary;
+    private final DeviceSetupExecutor deviceSetup;
 
-    public ToolExecutor(RestClient.Builder restClientBuilder, AiAgentProperties properties) {
-        this.deviceClient = restClientBuilder.baseUrl(properties.getServices().getDeviceBaseUrl()).build();
-        this.alertClient = restClientBuilder.baseUrl(properties.getServices().getAlertBaseUrl()).build();
-        this.simulatorClient = restClientBuilder.baseUrl(properties.getServices().getSimulatorBaseUrl()).build();
+    public ToolExecutor(RestClient.Builder restClientBuilder, AiAgentProperties properties, DashboardCreationExecutor dashboardCreation, ActionExecutionBoundary boundary, DeviceSetupExecutor deviceSetup) {
+        this(restClientBuilder, properties, dashboardCreation, boundary, deviceSetup,
+                new com.voltcanary.aiagent.nativeops.NativeTableExecutor(new com.voltcanary.aiagent.nativeops.NativeOwnerClient(restClientBuilder, properties), new com.fasterxml.jackson.databind.ObjectMapper()));
     }
 
-    public ActionExecutionResponse execute(AgentAction action, String authorization, UUID userId, Map<String, Object> outputs) {
-        try {
-            Map<String, Object> result = switch (action.tool()) {
-                case CREATE_DEVICE -> createDevice(action, authorization);
-                case CREATE_DATA_SOURCE -> createDataSource(action, authorization, outputs);
+    @org.springframework.beans.factory.annotation.Autowired
+    public ToolExecutor(RestClient.Builder restClientBuilder, AiAgentProperties properties, DashboardCreationExecutor dashboardCreation,
+            ActionExecutionBoundary boundary, DeviceSetupExecutor deviceSetup, com.voltcanary.aiagent.nativeops.NativeTableExecutor nativeTables) {
+        this.deviceClient = restClientBuilder.clone().baseUrl(properties.getServices().getDeviceBaseUrl()).build();
+        this.legacyAlerts = new LegacyAlertOperations(restClientBuilder.clone().baseUrl(properties.getServices().getAlertBaseUrl()).build());
+        this.simulatorClient = restClientBuilder.clone().baseUrl(properties.getServices().getSimulatorBaseUrl()).build();
+        this.dashboardCreation = dashboardCreation;
+        this.boundary = boundary;
+        this.deviceSetup = deviceSetup;
+        this.nativeTables = nativeTables;
+    }
+
+    public ActionExecutionResponse execute(AgentAction action, String authorization, UUID userId, Map<String, Object> outputs,
+            String idempotencyKey) {
+        return boundary.run(action, outputs, () -> switch (action.tool()) {
+                case CREATE_DEVICE -> deviceSetup.execute(action, authorization, idempotencyKey);
+                case CREATE_NATIVE_TABLE -> nativeTables.execute(action, authorization);
+                case CREATE_DASHBOARD, UPDATE_DASHBOARD_DRAFT -> dashboardCreation.execute(action, authorization, idempotencyKey);
+                case CREATE_DATA_SOURCE -> action.parameters().containsKey("provider")
+                        ? deviceSetup.connectExisting(action, authorization, idempotencyKey) : createDataSource(action, authorization, outputs);
                 case CREATE_SIMULATOR_CONFIG -> createSimulatorConfig(action, authorization, userId, outputs);
-                case VALIDATE_SIMULATOR_YAML -> validateSimulatorYaml(action, outputs);
-                case CREATE_ALERT_RULE -> createAlertRule(action, authorization);
-                case UPDATE_ALERT_RULE -> updateAlertRule(action, authorization);
-                case TEST_ALERT_RULE -> testAlertRule(action, authorization);
-                case EXPLAIN_ALERT -> explainAlert(action, authorization);
-                case OPEN_TELEMETRY_WINDOW -> openTelemetryWindow(action);
+                case VALIDATE_SIMULATOR_YAML -> validateSimulatorYaml(action, authorization, outputs);
+                case CREATE_ALERT_RULE -> legacyAlerts.createAlertRule(action, authorization);
+                case UPDATE_ALERT_RULE -> legacyAlerts.updateAlertRule(action, authorization);
+                case TEST_ALERT_RULE -> legacyAlerts.testAlertRule(action, authorization);
+                case EXPLAIN_ALERT -> legacyAlerts.explainAlert(action, authorization);
+                case OPEN_TELEMETRY_WINDOW -> legacyAlerts.openTelemetryWindow(action);
                 case CREATE_DEMO_DEVICE -> createDemoDevice(action, authorization, userId);
                 case START_SIMULATION -> startSimulation(action, authorization, userId, outputs);
                 case STOP_SIMULATION -> stopSimulation(action, authorization, outputs);
-            };
-            outputs.putAll(result);
-            return new ActionExecutionResponse(action.id(), action.tool().name(), "SUCCESS", result, null);
-        } catch (Exception exception) {
-            return new ActionExecutionResponse(action.id(), action.tool().name(), "FAILED", Map.of(), exception.getMessage());
-        }
+        });
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> createDevice(AgentAction action, String authorization) {
-        Map<String, Object> response = postDevice(deviceBody(action.parameters()), authorization);
-        return resultWith("deviceId", response.get("id"), "device", response);
+    public ActionExecutionResponse reconcile(AgentAction action, String authorization, Map<String, Object> outputs, String key) {
+        return boundary.run(action, outputs, () -> action.tool() == com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE
+                ? nativeTables.reconcile(action, authorization) : dashboardCreation.reconcile(action, authorization, key));
+    }
+
+    public ActionExecutionResponse inspectNativeOutcome(AgentAction action, String authorization, Map<String, Object> outputs) {
+        return boundary.run(action, outputs, () -> nativeTables.inspectOutcome(action, authorization));
     }
 
     @SuppressWarnings("unchecked")
@@ -75,95 +89,15 @@ public class ToolExecutor {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> validateSimulatorYaml(AgentAction action, Map<String, Object> outputs) {
+    private Map<String, Object> validateSimulatorYaml(AgentAction action, String authorization, Map<String, Object> outputs) {
         Object deviceId = firstNonNull(action.parameters().get("deviceId"), outputs.get("deviceId"), new UUID(0, 0));
         Map<String, Object> response = simulatorClient.post()
                 .uri("/simulation/devices/{deviceId}/config/validate", deviceId)
+                .header("Authorization", authorization)
                 .body(Map.of("yamlConfig", action.parameters().getOrDefault("yamlConfig", "")))
                 .retrieve()
                 .body(Map.class);
         return Map.of("validation", response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> createAlertRule(AgentAction action, String authorization) {
-        Map<String, Object> response = alertClient.post()
-                .uri("/alert-rules")
-                .header("Authorization", authorization)
-                .body(alertRuleBody(action.parameters()))
-                .retrieve()
-                .body(Map.class);
-        return resultWith("ruleId", response.get("id"), "rule", response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> updateAlertRule(AgentAction action, String authorization) {
-        Object ruleId = required(action.parameters().get("ruleId"), "ruleId is required to update an alert rule");
-        Map<String, Object> response = alertClient.put()
-                .uri("/alert-rules/{ruleId}", ruleId)
-                .header("Authorization", authorization)
-                .body(alertRuleBody(action.parameters()))
-                .retrieve()
-                .body(Map.class);
-        return resultWith("ruleId", response.get("id"), "rule", response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> testAlertRule(AgentAction action, String authorization) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        putIfPresent(body, "deviceId", action.parameters().get("deviceId"));
-        putIfPresent(body, "from", action.parameters().get("from"));
-        putIfPresent(body, "to", action.parameters().get("to"));
-        body.put("rule", alertRuleBody(action.parameters()));
-        Map<String, Object> response = alertClient.post()
-                .uri("/alert-rules/test")
-                .header("Authorization", authorization)
-                .body(body)
-                .retrieve()
-                .body(Map.class);
-        return Map.of("ruleTest", response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> explainAlert(AgentAction action, String authorization) {
-        Object alertId = required(action.parameters().get("alertId"), "alertId is required to explain an alert");
-        Map<String, Object> alert = alertClient.get()
-                .uri("/alerts/{alertId}", alertId)
-                .header("Authorization", authorization)
-                .retrieve()
-                .body(Map.class);
-
-        Map<String, Object> rule = Map.of();
-        Object ruleId = alert.get("ruleId");
-        if (ruleId != null && isUuid(ruleId.toString())) {
-            rule = alertClient.get()
-                    .uri("/alert-rules/{ruleId}", ruleId)
-                    .header("Authorization", authorization)
-                    .retrieve()
-                    .body(Map.class);
-        }
-
-        String metric = rule.isEmpty() ? "activePowerW" : stringValue(rule.get("metric"), "activePowerW");
-        Map<String, Object> routeParams = new LinkedHashMap<>();
-        routeParams.put("deviceId", alert.get("deviceId"));
-        routeParams.put("metric", metric);
-        routeParams.put("from", alert.get("calculationWindowStart"));
-        routeParams.put("to", alert.get("calculationWindowEnd"));
-        routeParams.put("alertId", alertId);
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("summary", explanationSummary(alert, rule));
-        result.put("alert", alert);
-        result.put("rule", rule);
-        result.put("route", telemetryRoute(routeParams));
-        return result;
-    }
-
-    private Map<String, Object> openTelemetryWindow(AgentAction action) {
-        Object deviceId = required(action.parameters().get("deviceId"), "deviceId is required to open telemetry");
-        Map<String, Object> parameters = new LinkedHashMap<>(action.parameters());
-        parameters.put("deviceId", deviceId);
-        return Map.of("route", telemetryRoute(parameters));
     }
 
     @SuppressWarnings("unchecked")
@@ -193,7 +127,7 @@ public class ToolExecutor {
         Map<String, Object> simulatorParameters = new LinkedHashMap<>(action.parameters());
         simulatorParameters.put("sourceId", sourceId);
         simulatorParameters.put("protocol", simulatorProtocol);
-        simulatorParameters.put("yamlConfig", template(stringValue(action.parameters().get("profile"), "FRIDGE"), sourceId));
+        simulatorParameters.put("yamlConfig", template(stringValue(action.parameters().get("profile"), "FRIDGE"), sourceId, authorization));
         Map<String, Object> simulatorConfig = putSimulatorConfig(
                 deviceId,
                 simulatorConfigBody(simulatorParameters, dataSourceId, sourceToken),
@@ -279,12 +213,13 @@ public class ToolExecutor {
     }
 
     @SuppressWarnings("unchecked")
-    private String template(String profile, String sourceId) {
+    private String template(String profile, String sourceId, String authorization) {
         Map<String, Object> response = simulatorClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/simulation/templates/{profile}")
                         .queryParam("sourceId", sourceId)
                         .build(profile))
+                .header("Authorization", authorization)
                 .retrieve()
                 .body(Map.class);
         return stringValue(response == null ? null : response.get("yamlConfig"), fallbackYaml(sourceId, profile));
@@ -323,38 +258,6 @@ public class ToolExecutor {
         return body;
     }
 
-    private Map<String, Object> alertRuleBody(Map<String, Object> parameters) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        for (String key : new String[] {
-                "name", "description", "ruleType", "enabled", "scopeType", "scopeId", "deviceType", "metric",
-                "conditionType", "threshold", "thresholdUnit", "baselineMultiplier", "minPoints", "severity",
-                "cooldownSeconds", "deduplicationWindowSeconds", "notificationChannelIds", "config"
-        }) {
-            putIfPresent(body, key, parameters.get(key));
-        }
-        return body;
-    }
-
-    private String telemetryRoute(Map<String, Object> parameters) {
-        Object deviceId = required(parameters.get("deviceId"), "deviceId is required to build telemetry route");
-        StringBuilder route = new StringBuilder("/devices/")
-                .append(encode(deviceId))
-                .append("?tab=telemetry");
-        appendQuery(route, "metric", parameters.get("metric"));
-        appendQuery(route, "from", parameters.get("from"));
-        appendQuery(route, "to", parameters.get("to"));
-        appendQuery(route, "alertId", parameters.get("alertId"));
-        return route.toString();
-    }
-
-    private String explanationSummary(Map<String, Object> alert, Map<String, Object> rule) {
-        String title = stringValue(alert.get("title"), "Alert");
-        String severity = stringValue(alert.get("severity"), "UNKNOWN");
-        String status = stringValue(alert.get("status"), "UNKNOWN");
-        String ruleName = rule.isEmpty() ? stringValue(alert.get("ruleId"), "built-in rule") : stringValue(rule.get("name"), "configured rule");
-        return title + " is a " + severity + " alert in " + status + " status. It was produced by " + ruleName + ".";
-    }
-
     private Map<String, Object> resultWith(String idKey, Object idValue, String objectKey, Object objectValue) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put(idKey, idValue);
@@ -368,26 +271,11 @@ public class ToolExecutor {
         }
     }
 
-    private void appendQuery(StringBuilder route, String key, Object value) {
-        if (value != null && !value.toString().isBlank()) {
-            route.append('&').append(key).append('=').append(encode(value));
-        }
-    }
-
     private Object required(Object value, String message) {
         if (value == null || value.toString().isBlank()) {
             throw new IllegalArgumentException(message);
         }
         return value;
-    }
-
-    private boolean isUuid(String value) {
-        try {
-            UUID.fromString(value);
-            return true;
-        } catch (IllegalArgumentException ignored) {
-            return false;
-        }
     }
 
     private boolean booleanValue(Object value) {
@@ -399,7 +287,7 @@ public class ToolExecutor {
     }
 
     private String encode(Object value) {
-        return URLEncoder.encode(value.toString(), StandardCharsets.UTF_8);
+        return java.net.URLEncoder.encode(value.toString(), java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private Object firstNonNull(Object... values) {

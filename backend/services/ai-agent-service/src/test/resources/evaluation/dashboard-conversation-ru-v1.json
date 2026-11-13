@@ -1,0 +1,1408 @@
+{
+  "version": "dashboard-conversation-ru-v1",
+  "promptVersion": "creation-v15",
+  "modelSchemaVersion": "dashboard-intent-v3",
+  "description": "Frozen user-dialogue outcome corpus; fixture UUIDs are substituted at runtime. Baseline is not release acceptance.",
+  "cases": [
+    {
+      "id": "tram-original-name",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "request",
+          "action": "message",
+          "message": "Привет!Хочу сделать дашборд для этого трамвая. Хочу видеть карту и информацию о текущей скорости, состоянии открытия закрытия дверей и график скорости и графика открытия закрытия дверей. Еще хочу увидеть следующую остановку",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ]
+          }
+        },
+        {
+          "id": "name",
+          "action": "message",
+          "message": "Назови Мой любимый трамвай",
+          "expect": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "move",
+          "action": "message",
+          "message": "Перемести виджеты текущей скорости и следующей остановки вверх. Информацию открыты или закрыты двери тоже хочу чтобы ты показал простым виджетом и тоже вверху. Еще по открытию закрытию дверей я хочу видеть график как со скоростью",
+          "expect": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "top": [
+              "current:speed",
+              "current:doors",
+              "current:stop"
+            ],
+            "views": {
+              "history:doors": "line"
+            },
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "move-only-three",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "move",
+          "action": "message",
+          "message": "Нижние 3 виджета перемести наверх в одну строку сделай их меньше по высоте и уже по ширине. Речь о текущей скорости, дверях и следующей остановке.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "top": [
+              "current:speed",
+              "current:doors",
+              "current:stop"
+            ],
+            "heightMax": {
+              "current:speed": 2,
+              "current:doors": 2,
+              "current:stop": 2
+            },
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "rename-remove-shrink",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час. Добавь также заметку с текстом «Проверка рейса».",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors",
+              "note"
+            ]
+          }
+        },
+        {
+          "id": "refine",
+          "action": "message",
+          "message": "Заметку убери. Название виджета двери открыты мне не нравится: назови его «Статус дверей». И по высоте карточки текущей скорости, дверей и следующей остановки надо сделать меньше на 70 процентов.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "absent": [
+              "note"
+            ],
+            "titles": {
+              "current:doors": "Статус дверей"
+            },
+            "heightMax": {
+              "current:speed": 1,
+              "current:doors": 1,
+              "current:stop": 1
+            },
+            "preserve": {
+              "current:doors": [
+                "/title"
+              ]
+            },
+            "allowReflow": true
+          }
+        },
+        {
+          "id": "recover",
+          "action": "message",
+          "message": "Сохрани это название дашборда и текущее расположение, больше ничего не меняй.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "unchanged": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "minimal-map-all-headers",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "hide",
+          "action": "message",
+          "message": "Скрой заголовки у всех виджетов. У карты также скрой подписи снизу и служебные подробности. Остальные настройки, данные, размеры и расположение сохрани.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "presentation": {
+              "all": {
+                "showTitle": false
+              },
+              "map": {
+                "showMapDetails": false,
+                "showMapNotices": false
+              }
+            },
+            "preserve": {
+              "all": [
+                "/presentation/showTitle",
+                "/presentation/showDetails"
+              ],
+              "map": [
+                "/presentation/showMapDetails",
+                "/presentation/showMapNotices"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "doors-history-and-value",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "graph",
+          "action": "message",
+          "message": "Хочу видеть текущее состояние дверей отдельной маленькой карточкой, а историю дверей графиком со значениями открыты и закрыты. Остальные панели не меняй.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "views": {
+              "history:doors": "line"
+            },
+            "preserve": {
+              "history:doors": [
+                "/presentation/visualization",
+                "/presentation/trueLabel",
+                "/presentation/falseLabel"
+              ]
+            },
+            "allowReflow": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "repair-preparation-failure",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "fault",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          },
+          "fault": "PREPARATION_TYPE_MISMATCH"
+        },
+        {
+          "id": "retry",
+          "action": "message",
+          "message": "Продолжи исходный запрос с тем же названием. Если параметры не подходят, сам выбери совместимые виджеты.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "recover",
+          "action": "message",
+          "message": "Сохрани то же название и скрой только заголовок карты.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "presentation": {
+              "map": {
+                "showTitle": false
+              }
+            },
+            "preserve": {
+              "map": [
+                "/presentation/showTitle"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "undo-branch-reload",
+      "critical": true,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "hide",
+          "action": "message",
+          "message": "Скрой заголовок карты, остальное не меняй.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "presentation": {
+              "map": {
+                "showTitle": false
+              }
+            },
+            "preserve": {
+              "map": [
+                "/presentation/showTitle"
+              ]
+            }
+          }
+        },
+        {
+          "id": "undo",
+          "action": "select",
+          "target": "create",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "reload",
+          "action": "recover",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "branch",
+          "action": "message",
+          "message": "Назови карточку текущей скорости «Скорость сейчас», остальное сохрани.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "titles": {
+              "current:speed": "Скорость сейчас"
+            },
+            "preserve": {
+              "current:speed": [
+                "/title"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "actual-source-ambiguity",
+      "critical": true,
+      "split": "development",
+      "profile": "ambiguous",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» с картой выбранного транспорта. Если у транспорта несколько источников GPS, обязательно уточни какой использовать.",
+          "expect": {
+            "status": "NEEDS_INPUT"
+          }
+        },
+        {
+          "id": "retain-name",
+          "action": "message",
+          "message": "Название оставь тем же. Какие источники доступны? Не выбирай случайный.",
+          "expect": {
+            "status": "NEEDS_INPUT"
+          }
+        }
+      ]
+    },
+    {
+      "id": "unquoted-name",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Сделай дашборд выбранного транспорта с картой и текущей скоростью.",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ]
+          }
+        },
+        {
+          "id": "name",
+          "action": "message",
+          "message": "Назови Мой любимый трамвай",
+          "expect": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "quoted-name",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Сделай дашборд выбранного транспорта с картой и текущей скоростью.",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ]
+          }
+        },
+        {
+          "id": "name",
+          "action": "message",
+          "message": "Назови \"Мой любимый трамвай\"",
+          "expect": {
+            "status": "READY",
+            "name": "Мой любимый трамвай",
+            "roles": [
+              "map",
+              "current:speed"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "observed-false-zero",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "stale-is-not-current",
+      "critical": false,
+      "split": "development",
+      "profile": "stale",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последние 24 часа.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "period": "LAST_24_HOURS"
+          }
+        }
+      ]
+    },
+    {
+      "id": "empty-window-not-missing-metric",
+      "critical": false,
+      "split": "development",
+      "profile": "empty",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "text-history-list",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» с историей поля transport.destination выбранного транспорта в виде списка записанных значений. Не заменяй поле числовой метрикой.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "history:destination"
+            ],
+            "views": {
+              "history:destination": "list"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "unsupported-text-line",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» с числовым линейным графиком текстового поля transport.destination. Если это невозможно, объясни и предложи поддерживаемый вариант, но не меняй смысл молча.",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ],
+            "roles": [
+              "history:destination"
+            ],
+            "views": {
+              "history:destination": "list"
+            },
+            "disclosureAny": [
+              "transport.destination",
+              "текст",
+              "назначен",
+              "text",
+              "destination"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "unsupported-appearance",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "unsupported",
+          "action": "message",
+          "message": "Добавь карте неподдерживаемое свойство imaginaryMapPulse со значением true. Если такой настройки нет, сообщи об этом и сохрани рабочий вариант.",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ],
+            "name": "{{name}}",
+            "disclosureAny": [
+              "imaginaryMapPulse"
+            ],
+            "unchanged": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "replace-selected-vehicle",
+      "critical": false,
+      "split": "development",
+      "profile": "pair",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час. Используй именно транспорт {{vehicle}}, а не {{vehicleB}}.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "replace",
+          "action": "message",
+          "message": "Теперь используй транспорт {{vehicleB}} вместо {{vehicle}} во всех панелях. Название, типы виджетов, размеры и расположение сохрани.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "preserve": {
+              "all": [
+                "/binding/deviceIds",
+                "/query/sourceId"
+              ]
+            },
+            "allowRoot": [
+              "/defaultContext/scope/deviceIds"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "repeated-request-no-duplicates",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "again",
+          "action": "message",
+          "message": "Покажи текущие скорость, двери и следующую остановку отдельными карточками. Если такие карточки уже есть, используй существующие.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "concurrent-independent-branches",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "parallel",
+          "action": "concurrent",
+          "requests": [
+            {
+              "message": "Скрой заголовок карты, остальное сохрани.",
+              "expect": {
+                "status": "READY",
+                "name": "{{name}}",
+                "roles": [
+                  "map",
+                  "current:speed",
+                  "current:doors",
+                  "current:stop",
+                  "history:speed",
+                  "history:doors"
+                ],
+                "presentation": {
+                  "map": {
+                    "showTitle": false
+                  }
+                },
+                "preserve": {
+                  "map": [
+                    "/presentation/showTitle"
+                  ]
+                }
+              }
+            },
+            {
+              "message": "Назови текущую скорость «Скорость сейчас», остальное сохрани.",
+              "expect": {
+                "status": "READY",
+                "name": "{{name}}",
+                "roles": [
+                  "map",
+                  "current:speed",
+                  "current:doors",
+                  "current:stop",
+                  "history:speed",
+                  "history:doors"
+                ],
+                "titles": {
+                  "current:speed": "Скорость сейчас"
+                },
+                "preserve": {
+                  "current:speed": [
+                    "/title"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "revoked-device",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "revoke",
+          "action": "revoke"
+        },
+        {
+          "id": "denied",
+          "action": "message",
+          "message": "Скрой заголовок карты, остальное сохрани.",
+          "expect": {
+            "status": [
+              "READY",
+              "NEEDS_INPUT"
+            ],
+            "name": "{{name}}"
+          },
+          "allowedHttp": [
+            400,
+            403,
+            404,
+            409,
+            422
+          ]
+        }
+      ],
+      "description": "Legacy ID: owned device decommission is a lifecycle change, not ACL revocation. Owner may retain historical read access."
+    },
+    {
+      "id": "period-without-data-replacement",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "period",
+          "action": "message",
+          "message": "Измени только общий период на последние 24 часа. Данные, виджеты и их расположение сохрани.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "period": "LAST_24_HOURS",
+            "preserve": {},
+            "allowRoot": [
+              "/defaultContext/time/preset"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "unchanged-is-not-a-new-layout",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "unchanged",
+          "action": "message",
+          "message": "Оставь этот вариант как есть. Ничего не меняй.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "unchanged": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "heldout-compact-wording",
+      "critical": false,
+      "split": "held-out",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "compact",
+          "action": "message",
+          "message": "Карточки со скоростью сейчас, состоянием дверей и остановкой сделай в одну строку сверху, максимально низкими. Карту и обе истории оставь.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "top": [
+              "current:speed",
+              "current:doors",
+              "current:stop"
+            ],
+            "heightMax": {
+              "current:speed": 1,
+              "current:doors": 1,
+              "current:stop": 1
+            },
+            "preserve": {},
+            "allowReflow": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "heldout-map-footer-wording",
+      "critical": false,
+      "split": "held-out",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "boolean",
+        "string"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта. Нужны большая карта, текущая скорость, текущее состояние дверей и следующая остановка отдельными карточками, история скорости и история дверей графиками. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ]
+          }
+        },
+        {
+          "id": "footer",
+          "action": "message",
+          "message": "На карте убери весь текст над и под самой картой: название, время записи, GPS, рейс и предупреждение про последние точки. Остальные панели оставь как были.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "map",
+              "current:speed",
+              "current:doors",
+              "current:stop",
+              "history:speed",
+              "history:doors"
+            ],
+            "presentation": {
+              "map": {
+                "showTitle": false,
+                "showMapDetails": false,
+                "showMapNotices": false
+              }
+            },
+            "preserve": {
+              "map": [
+                "/presentation/showTitle",
+                "/presentation/showMapDetails",
+                "/presentation/showMapNotices"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "foreign-task-isolation",
+      "critical": false,
+      "split": "development",
+      "profile": "normal",
+      "capabilityRequirements": [
+        "recorded-gps",
+        "number",
+        "second-authenticated-actor"
+      ],
+      "mutationPolicy": "PLAN_ONLY",
+      "cleanup": "DECOMMISSION_OWN_FIXTURE",
+      "turns": [
+        {
+          "id": "create",
+          "action": "message",
+          "message": "Создай дашборд «{{name}}» для выбранного транспорта с одной карточкой текущей скорости. Период последний час.",
+          "expect": {
+            "status": "READY",
+            "name": "{{name}}",
+            "roles": [
+              "current:speed"
+            ]
+          }
+        },
+        {
+          "id": "foreign",
+          "action": "foreign",
+          "message": "Скрой заголовок карты.",
+          "expectedHttp": [
+            404
+          ]
+        }
+      ]
+    }
+  ],
+  "revision": 2
+}

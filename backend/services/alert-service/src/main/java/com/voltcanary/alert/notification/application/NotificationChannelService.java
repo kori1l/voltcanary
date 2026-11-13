@@ -8,6 +8,7 @@ import com.voltcanary.alert.notification.dto.NotificationChannelRequest;
 import com.voltcanary.alert.notification.dto.NotificationChannelResponse;
 import com.voltcanary.alert.notification.provider.NotificationProviderRegistry;
 import com.voltcanary.alert.notification.repository.NotificationChannelRepository;
+import com.voltcanary.alert.service.AlertAccessService;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
@@ -29,14 +30,16 @@ public class NotificationChannelService {
     private final NotificationChannelRepository repository;
     private final ObjectMapper objectMapper;
     private final NotificationProviderRegistry providerRegistry;
+    private final AlertAccessService access;
 
     public NotificationChannelService(
             NotificationChannelRepository repository,
             ObjectMapper objectMapper,
-            NotificationProviderRegistry providerRegistry) {
+            NotificationProviderRegistry providerRegistry, AlertAccessService access) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.providerRegistry = providerRegistry;
+        this.access = access;
     }
 
     @Transactional(readOnly = true)
@@ -121,15 +124,7 @@ public class NotificationChannelService {
     }
 
     UUID accountScope(String userId, String accountId) {
-        String scope = accountId == null || accountId.isBlank() ? userId : accountId;
-        if (scope == null || scope.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User context is required");
-        }
-        try {
-            return UUID.fromString(scope);
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Account scope must be a UUID");
-        }
+        return access.ownAccount(userId);
     }
 
     private String nonBlank(String value, String field, int maxLength) {

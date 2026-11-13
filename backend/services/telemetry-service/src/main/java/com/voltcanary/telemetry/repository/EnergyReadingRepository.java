@@ -36,7 +36,7 @@ public class EnergyReadingRepository {
         int[] count = {0};
         jdbc.query(query.sql(), row -> {
             if (++count[0] > 500000) {
-                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                         "Energy selected read exceeds500000 samples; narrow the intervals");
             }
             double value = row.getDouble("metric_value");
@@ -52,7 +52,7 @@ public class EnergyReadingRepository {
     public static ReadQuery selectedQuery(UUID accountId, List<Range> ranges) {
         List<Range> merged = merge(ranges);
         if (merged.size() > 10000) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
                     "Energy selection exceeds10000 canonical ranges; narrow the scope");
         }
         List<Object> parameters = new ArrayList<>();

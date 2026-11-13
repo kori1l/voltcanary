@@ -23,7 +23,7 @@ public class WorkspaceResourceAccess implements WorkspaceAuthorization {
     }
     @Override
     public Decision resolve(UUID workspace,UUID account,UUID user,String action) {
-        require(ACTIONS.contains(action),HttpStatus.UNPROCESSABLE_ENTITY);
+        require(ACTIONS.contains(action),HttpStatus.UNPROCESSABLE_CONTENT);
         Membership member=memberships.require(workspace,user);
         Long version=grants.version(workspace,account,false);
         require(version!=null && grants.activeActor(user),HttpStatus.FORBIDDEN);
@@ -31,7 +31,7 @@ public class WorkspaceResourceAccess implements WorkspaceAuthorization {
                 && ("USER".equals(grant.subjectKind()) && grant.subjectId().equals(user)
                 || "TEAM".equals(grant.subjectKind()) && member.teamIds().contains(grant.subjectId()))).toList();
         Set<UUID> devices=grants.devices(account,matching);
-        require(devices.size()<=500,HttpStatus.UNPROCESSABLE_ENTITY);
+        require(devices.size()<=500,HttpStatus.UNPROCESSABLE_CONTENT);
         // Includes the action and exact current authorized subset; never caches an old decision.
         String fingerprint=workspace+":"+member.version()+":"+version+":"+action+":"+devices.stream().sorted().toList();
         return new Decision(workspace,account,user,action,devices,fingerprint);
@@ -56,12 +56,12 @@ public class WorkspaceResourceAccess implements WorkspaceAuthorization {
     public void save(UUID actor,UUID workspace,Grant grant,boolean reviewed) {
         require(grant!=null && reviewed && grant.accountId()!=null && grant.subjectId()!=null && grant.resourceId()!=null
                 && ACTIONS.contains(grant.action()) && List.of("USER","TEAM").contains(grant.subjectKind())
-                && List.of("DEVICE","LOCATION").contains(grant.scopeKind()),HttpStatus.UNPROCESSABLE_ENTITY);
+                && List.of("DEVICE","LOCATION").contains(grant.scopeKind()),HttpStatus.UNPROCESSABLE_CONTENT);
         manage(actor,workspace,grant.accountId(),true);
-        require(grants.grants(workspace,grant.accountId()).size()<1000,HttpStatus.UNPROCESSABLE_ENTITY);
-        require(grants.resourceOwned(grant.accountId(),grant.scopeKind(),grant.resourceId()),HttpStatus.UNPROCESSABLE_ENTITY);
+        require(grants.grants(workspace,grant.accountId()).size()<1000,HttpStatus.UNPROCESSABLE_CONTENT);
+        require(grants.resourceOwned(grant.accountId(),grant.scopeKind(),grant.resourceId()),HttpStatus.UNPROCESSABLE_CONTENT);
         if ("USER".equals(grant.subjectKind())) memberships.require(workspace,grant.subjectId());
-        else require(grantsTeam(workspace,grant.subjectId()),HttpStatus.UNPROCESSABLE_ENTITY);
+        else require(grantsTeam(workspace,grant.subjectId()),HttpStatus.UNPROCESSABLE_CONTENT);
         grants.insert(workspace,new Grant(UUID.randomUUID(),grant.accountId(),grant.subjectId(),grant.subjectKind(),grant.action(),grant.scopeKind(),grant.resourceId()));
         grants.changed(workspace,grant.accountId(),actor,"GRANT_REVIEWED",grant.subjectId());
     }

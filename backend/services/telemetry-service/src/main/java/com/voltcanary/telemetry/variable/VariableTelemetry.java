@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class VariableTelemetry {
+    private final com.voltcanary.common.web.JdbcDeviceFence fence;
     private final JdbcTemplate jdbc;
     private final ProcessingBundles bundles;
     private final TelemetryMeasurementRepository measurements;
@@ -30,6 +31,7 @@ public class VariableTelemetry {
     public VariableTelemetry(JdbcTemplate jdbc, ProcessingBundles bundles,
             TelemetryMeasurementRepository measurements, TelemetryOutboxService outbox) {
         this.jdbc = jdbc;
+        this.fence = new com.voltcanary.common.web.JdbcDeviceFence(jdbc);
         this.bundles = bundles;
         this.measurements = measurements;
         this.outbox = outbox;
@@ -45,6 +47,7 @@ public class VariableTelemetry {
 
     /** Runs inside the handler transaction after the legacy input validation/persistence succeeds. */
     public int materialize(TelemetryReceivedEvent event, SourceProcessingConfigEvent bundle, boolean inputAccepted) {
+        if (!fence.writable(event.deviceId())) return 0;
         List<MeasurementsAcceptedEvent.Measurement> accepted = new ArrayList<>();
         List<TelemetryMeasurement> rows = new ArrayList<>();
         if (inputAccepted && bundle.enabled()) {

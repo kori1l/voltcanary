@@ -22,12 +22,18 @@ public record TelemetryFieldPolicy(List<Field> fields) {
                     || !keys.add(field.key()) || !paths.add(field.path()) || field.path() == null
                     || !field.path().matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,3}")
                     || !ConfiguredFields.text(field.label(), 80) || field.label().isBlank()
-                    || !ConfiguredFields.text(field.unit(), 24) || field.type() == null || !Set.of("number", "string", "boolean").contains(field.type())
+                    || !ConfiguredFields.text(field.unit(), 24) || field.type() == null
+                    || !Set.of("number", "decimal", "string", "boolean", "point", "spatial_ref", "instant").contains(field.type())
                     || field.key().equals(ConfiguredFields.KEY) || field.key().equals("transport")
                     || field.key().startsWith("var_") || field.key().equals("processingContext")) {
                 throw new IllegalArgumentException("Invalid field path, key, label or type");
             }
-            if (field.type().equals("number") && field.unit().equals("boolean")) throw new IllegalArgumentException("Boolean is a reserved state-series unit");
+            if ((field.type().equals("number") || field.type().equals("decimal")) && field.unit().equals("boolean")) {
+                throw new IllegalArgumentException("Boolean is a reserved state-series unit");
+            }
+            if (Set.of("point", "spatial_ref", "instant").contains(field.type()) && !"1".equals(field.unit())) {
+                throw new IllegalArgumentException("Spatial and instant fields require the dimensionless unit marker");
+            }
             if (CANONICAL.contains(field.key()) && (!field.path().equals(field.key()) || !field.type().equals("number"))) {
                 throw new IllegalArgumentException("Canonical metric keys require their canonical path and numeric type");
             }
@@ -38,6 +44,10 @@ public record TelemetryFieldPolicy(List<Field> fields) {
     }
 
     public Map<String, Object> select(Map<String, Object> input) {
+        return select(input, (field, value) -> value);
+    }
+
+    public Map<String, Object> select(Map<String, Object> input, java.util.function.BiFunction<Field, Object, Object> convert) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> configured = new LinkedHashMap<>();
         Map<String, Object> transport = new LinkedHashMap<>();
@@ -46,13 +56,22 @@ public record TelemetryFieldPolicy(List<Field> fields) {
             Object value = input;
             for (String segment : field.path().split("\\.")) value = value instanceof Map<?, ?> map ? map.get(segment) : null;
             if (value == null) continue;
+            value = convert.apply(field, value);
+            value = switch (field.type()) {
+                case "decimal" -> ConfiguredFields.canonicalDecimal(value);
+                case "point" -> ConfiguredFields.canonicalPoint(value);
+                case "spatial_ref" -> ConfiguredFields.canonicalSpatialRef(value);
+                case "instant" -> ConfiguredFields.canonicalInstant(value);
+                default -> value;
+            };
             Map<String, Object> descriptor = Map.of("value", value, "type", field.type(), "label", field.label(), "unit", field.unit(), "display", field.display());
             if (!ConfiguredFields.valid(Map.of(ConfiguredFields.KEY, Map.of(field.key(), descriptor)))) {
                 throw new IllegalArgumentException("Invalid value for " + field.key());
             }
             configured.put(field.key(), descriptor);
             if (CANONICAL.contains(field.key())) result.put(field.key(), value);
-            if (field.path().startsWith("transport.") && field.path().split("\\.").length == 2) {
+            if (field.path().startsWith("transport.") && field.path().split("\\.").length == 2
+                    && !Set.of("point", "spatial_ref", "instant").contains(field.type())) {
                 transport.put(field.path().substring(10), value);
             }
         }

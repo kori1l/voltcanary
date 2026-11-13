@@ -1,6 +1,7 @@
 package com.voltcanary.alert.notification.application;
 
 import com.voltcanary.alert.domain.AlertSeverity;
+import com.voltcanary.alert.service.AlertAccessService;
 import com.voltcanary.alert.notification.domain.NotificationPreference;
 import com.voltcanary.alert.notification.dto.NotificationPreferenceRequest;
 import com.voltcanary.alert.notification.dto.NotificationPreferenceResponse;
@@ -26,9 +27,11 @@ public class NotificationPreferenceService {
 
     private static final String ALL = "*";
     private final NotificationPreferenceRepository repository;
+    private final AlertAccessService access;
 
-    public NotificationPreferenceService(NotificationPreferenceRepository repository) {
+    public NotificationPreferenceService(NotificationPreferenceRepository repository, AlertAccessService access) {
         this.repository = repository;
+        this.access = access;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +57,12 @@ public class NotificationPreferenceService {
 
     @Transactional(readOnly = true)
     public boolean shouldDeliver(AlertNotificationRequest request, String channelType) {
+        if ("CONFIGURABLE_RULE".equals(request.alertType())) {
+            return repository.findByAccountIdAndUserIdIsNull(request.accountId())
+                    .filter(NotificationPreferenceService::allowsConfigurableRuleAlerts)
+                    .map(preference -> matches(preference, request, channelType))
+                    .orElse(false);
+        }
         if (request.accountId() == null) {
             return true;
         }
@@ -61,6 +70,16 @@ public class NotificationPreferenceService {
                 .findFirst()
                 .map(preference -> matches(preference, request, channelType))
                 .orElse(true);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean configurableRuleDeliveryEnabled(UUID account) {
+        return repository.findByAccountIdAndUserIdIsNull(account)
+                .map(NotificationPreferenceService::allowsConfigurableRuleAlerts).orElse(false);
+    }
+
+    private static boolean allowsConfigurableRuleAlerts(NotificationPreference preference) {
+        return preference.isEnabled() && preference.isConfigurableRuleAlertsEnabled();
     }
 
     private boolean matches(NotificationPreference preference, AlertNotificationRequest request, String channelType) {
@@ -105,6 +124,9 @@ public class NotificationPreferenceService {
         }
         if (request.enabled() != null) {
             preference.setEnabled(request.enabled());
+        }
+        if (request.configurableRuleAlertsEnabled() != null) {
+            preference.setConfigurableRuleAlertsEnabled(request.configurableRuleAlertsEnabled());
         }
         if (request.severities() != null) {
             preference.setSeverityFilter(joinNormalized(request.severities(), true));
@@ -151,15 +173,7 @@ public class NotificationPreferenceService {
     }
 
     private UUID accountScope(String userId, String accountId) {
-        String scope = accountId == null || accountId.isBlank() ? userId : accountId;
-        if (scope == null || scope.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User context is required");
-        }
-        try {
-            return UUID.fromString(scope);
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Account scope must be a UUID");
-        }
+        return access.ownAccount(userId);
     }
 
     private String joinNormalized(Set<String> values, boolean validateSeverity) {
@@ -209,7 +223,8 @@ public class NotificationPreferenceService {
                 preference.getTimezone(),
                 preference.isCriticalBypassQuietHours(),
                 preference.getCreatedAt(),
-                preference.getUpdatedAt());
+                preference.getUpdatedAt(),
+                preference.isConfigurableRuleAlertsEnabled());
     }
 
     private Set<String> splitStrings(String csv) {

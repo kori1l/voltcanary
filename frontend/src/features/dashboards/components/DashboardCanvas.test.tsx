@@ -68,11 +68,11 @@ it("shrinking back after a resize restores displaced neighbours without saving",
  fireEvent.mouseMove(document,{buttons:1,clientX:290,clientY:170});expect(neighbour.style.transform).toBe(original);fireEvent.mouseUp(document,{clientX:290,clientY:170});expect(commit).not.toHaveBeenCalled();
 });
 
-it("renders saved grid dimensions in View using viewport profiles even with a narrow canvas",()=>{
+it("uses container profiles in View and respects explicitly selected preview dimensions",()=>{
  const prior=window.innerWidth;Object.defineProperty(window,"innerWidth",{configurable:true,value:1280});
  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockReturnValue({left:0,top:0,width:900,height:600,right:900,bottom:600,x:0,y:0,toJSON(){}});
  const saved={...definition,screens:[{id:"main",title:"Main",widgetIds:["first","second"],grid:{desktop:{columns:24,rowHeight:32,gap:6}}}]};
  render(<DashboardCanvas definition={saved} panels={[]} stale={false} onRetry={()=>{}}/>);
- const grid=document.querySelector<HTMLElement>(".dashboard-grid")!;expect(grid.style.gridTemplateColumns).toContain("repeat(24");expect(grid.style.gridAutoRows).toContain("32px");expect(grid.style.gap).toBe("6px");
+ const grid=document.querySelector<HTMLElement>(".dashboard-grid")!;expect(grid.style.gridTemplateColumns).toContain("repeat(6");expect(grid.style.gridAutoRows).toContain("48px");expect(grid.style.gap).toBe("12px");
  Object.defineProperty(window,"innerWidth",{configurable:true,value:390});fireEvent(window,new Event("resize"));expect(grid.style.gridTemplateColumns).toContain("repeat(1");cleanup();Object.defineProperty(window,"innerWidth",{configurable:true,value:prior});
 });

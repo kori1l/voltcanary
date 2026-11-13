@@ -8,6 +8,18 @@ import { EntitySelector } from "./EntitySelector";
 afterEach(cleanup);
 
 describe("console dialog workflows", () => {
+  it("keeps scrolling locked until the last dialog closes even when the first dialog closes first", () => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "auto";
+    const view = render(<><Dialog key="first" title="First" onClose={() => {}}>First</Dialog><Dialog key="second" title="Second" onClose={() => {}}>Second</Dialog></>);
+    view.rerender(<Dialog key="second" title="Second" onClose={() => {}}>Second</Dialog>);
+    const whileSecondOpen = document.body.style.overflow;
+    view.unmount();
+    const afterClosingAll = document.body.style.overflow;
+    document.body.style.overflow = original;
+    expect(whileSecondOpen).toBe("hidden");
+    expect(afterClosingAll).toBe("auto");
+  });
   it("preserves a dirty draft on Escape until discard is explicitly selected", async () => {
     const close = vi.fn();
     render(<Dialog title="Edit device" dirty onClose={close}><input aria-label="Name" defaultValue="Kitchen fridge" /><DialogClose /></Dialog>);

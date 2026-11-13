@@ -73,7 +73,18 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
         try {
             backpressureService.check();
             ingestionValidator.validateEnvelope(message);
+            var position = message.sourcePosition();
+            if (position != null && (message.historicalImport()
+                    || message.sourceToken() == null || message.sourceToken().isBlank())) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Source position requires authenticated live ingestion");
+            }
             ResolvedSource source = sourceResolver.resolve(message);
+            var bindingSchemaPin = com.voltcanary.ingestion.source.SourceBindingPins.pin(source);
+            if (position != null && bindingSchemaPin == null) {
+                throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Source position requires a live bound source");
+            }
             var processingContext = processing.pin(source);
             if (processingContext != null && message.historicalImport()) {
                 processingContext = new com.voltcanary.common.events.telemetry.ProcessingContext(
@@ -84,7 +95,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                 normalizedMessage = new IncomingTelemetryMessage(normalizedMessage.sourceId(), normalizedMessage.deviceId(),
                         normalizedMessage.accountId(), normalizedMessage.occurredAt(), normalizedMessage.receivedAt(),
                         java.util.Map.of("configuredFields", java.util.Map.of()), normalizedMessage.origin(),
-                        normalizedMessage.context(), normalizedMessage.historicalImport());
+                        normalizedMessage.context(), normalizedMessage.historicalImport(), position);
             }
             processing.validateInputs(source, normalizedMessage.metrics(), processingContext);
             rateLimiter.check(normalizedMessage, source);
@@ -97,11 +108,14 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             }
             ingestionValidator.validate(normalizedMessage, processingContext != null);
             sourceUsageRecorder.record(source);
+            var deduplicationInput = position == null ? normalizedMessage.metrics() : java.util.Map.<String, Object>of(
+                    "sourcePosition", position.epoch() + ":" + position.sequence(),
+                    "schemaSnapshot", bindingSchemaPin.snapshotId().toString(), "metrics", normalizedMessage.metrics());
             if (!idempotencyService.markIfNew(
                     source.deviceId(),
                     normalizedMessage.sourceId(),
                     normalizedMessage.occurredAt(),
-                    normalizedMessage.metrics())) {
+                    deduplicationInput)) {
                 outcome = "duplicate";
                 meterRegistry.counter("voltcanary.ingestion.readings", "outcome", outcome).increment();
                 auditService.record(
@@ -133,7 +147,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                     normalizedMessage.correlationId(),
                     "ingestion-service",
                     source.accountId(),
-                    normalizedMessage.occurredAt(), processingContext);
+                    normalizedMessage.occurredAt(), processingContext, bindingSchemaPin, position);
             if (kafkaPublishEnabled) {
                 try {
                     telemetryEventPublisher.publish(event);
@@ -143,7 +157,7 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                             source.deviceId(),
                             normalizedMessage.sourceId(),
                             normalizedMessage.occurredAt(),
-                            normalizedMessage.metrics());
+                            deduplicationInput);
                     backpressureService.markPublishFailure();
                     auditService.record(
                             "failed_publish",

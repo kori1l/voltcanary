@@ -125,6 +125,6 @@ public class EnergyMeterRegistry {
     }
 
     private ResponseStatusException invalid(String explanation) {
-        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,explanation);
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,explanation);
     }
 }

@@ -10,11 +10,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class ProcessingBundles {
+    private final com.voltcanary.common.web.JdbcDeviceFence fence;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
 
     public ProcessingBundles(JdbcTemplate jdbc, ObjectMapper mapper) {
         this.jdbc = jdbc;
+        this.fence = new com.voltcanary.common.web.JdbcDeviceFence(jdbc);
         this.mapper = mapper;
     }
 
@@ -23,6 +25,7 @@ public class ProcessingBundles {
         if (event == null || event.dataSourceId() == null || event.accountId() == null || event.deviceId() == null
                 || event.generation() < 1 || event.digest() == null || !event.digest().matches("[a-f0-9]{64}")
                 || event.bindings().size() > 32) throw new IllegalArgumentException("Invalid processing bundle");
+        if (!fence.writable(event.deviceId())) return;
         var existing = jdbc.query("select digest from variable_processing_bundles where source_id=? and generation=?",
                 (row, index) -> row.getString(1), event.dataSourceId(), event.generation());
         if (!existing.isEmpty()) {

@@ -17,7 +17,7 @@ export function DashboardViewer({view,reload}:{view:DashboardView;reload:()=>Pro
   const query=useConsoleQuery();const kiosk=query.params.get("kiosk")==="true";const definition=view.definition;
   const [screenToolbar,setScreenToolbar]=useState<HTMLDivElement|null>(null);
   const [filtersOpen,setFiltersOpen]=useState(false);
-  const [refreshInterval,setRefreshInterval]=useDashboardRefreshPreference(view.dashboard.id,definition?.widgets.some(widget=>widget.type==="vehicle-map") ?? false);
+  const [refreshInterval,setRefreshInterval]=useDashboardRefreshPreference(view.dashboard.id,definition?.widgets.some(widget=>["vehicle-map","vehicle-value","vehicle-timeline"].includes(widget.type)) ?? false);
   const [error,setError]=useState<string|null>(null);const [message,setMessage]=useState("");const [confirm,setConfirm]=useState(false);const [busy,setBusy]=useState(false);const lock=useRef(false);
   const [personalContext,setPersonalContext]=useState<import("../../../dashboards/dashboardsApi").RuntimeContext|null>(null);
   useEffect(()=>{let active=true;void getDashboardPreferences().then((preferences)=>{if(active && Object.keys(preferences.defaultContext ?? {}).length)setPersonalContext(preferences.defaultContext);}).catch(()=>{});return()=>{active=false;};},[view.dashboard.id]);

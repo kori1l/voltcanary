@@ -167,7 +167,7 @@ public class DataSourceService {
     @Transactional
     public SourceTokenResponse rotateToken(AuthenticatedUser user, UUID deviceId, UUID dataSourceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        DataSource dataSource = findOwnedDataSource(device, dataSourceId);
+        DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
 
         String token = generateToken();
         String prefix = token.substring(0, Math.min(16, token.length()));
@@ -187,7 +187,7 @@ public class DataSourceService {
     @Transactional
     public void revokeToken(AuthenticatedUser user, UUID deviceId, UUID dataSourceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        DataSource dataSource = findOwnedDataSource(device, dataSourceId);
+        DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
         dataSource.setTokenRevokedAt(Instant.now());
         dataSource.setStatus(SourceStatus.REVOKED);
         dataSource.setUpdatedAt(Instant.now());
@@ -224,7 +224,7 @@ public class DataSourceService {
     @Transactional
     public DataSourceResponse update(AuthenticatedUser user, UUID deviceId, UUID dataSourceId, DataSourceRequest request) {
         Device device = deviceService.findOwned(user, deviceId);
-        DataSource dataSource = findOwnedDataSource(device, dataSourceId);
+        DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
         dataSource.setType(request.sourceType());
         dataSource.setSourceType(request.sourceType());
         dataSource.setProtocol(request.protocol());
@@ -243,7 +243,7 @@ public class DataSourceService {
     @Transactional
     public void disable(AuthenticatedUser user, UUID deviceId, UUID dataSourceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        DataSource dataSource = findOwnedDataSource(device, dataSourceId);
+        DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
         Instant now = Instant.now();
         dataSource.setEnabled(false);
         dataSource.setStatus(SourceStatus.DISABLED);
@@ -273,6 +273,11 @@ public class DataSourceService {
     public InternalDataSourceResponse findInternal(UUID dataSourceId) {
         return toInternalResponse(dataSourceRepository.findById(dataSourceId)
                 .orElseThrow(() -> new NotFoundException("Data source not found")));
+    }
+
+    private DataSource lockOwnedDataSource(Device device, UUID dataSourceId) {
+        return dataSourceRepository.findByIdAndDeviceId(dataSourceId, device.getId())
+                .orElseThrow(() -> new NotFoundException("Data source not found"));
     }
 
     private DataSource findOwnedDataSource(Device device, UUID dataSourceId) {

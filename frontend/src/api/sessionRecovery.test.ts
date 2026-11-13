@@ -1,8 +1,24 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { apiRequest, clearTokens, getAccessToken, SESSION_EXPIRED, setTokens } from "./client";
+import { apiRequest, clearTokens, getAccessToken, prepareAiSession, SESSION_EXPIRED, setTokens } from "./client";
 
 afterEach(() => { clearTokens(); vi.restoreAllMocks(); });
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+const jwt = (seconds: number) => `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))}.signature`;
+it("renews near-expiry credentials once before concurrent AI preparations", async () => {
+  setTokens(jwt(100), "refresh");
+  const renewed = jwt(900);
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(json({ accessToken: renewed, refreshToken: "rotated" }));
+  await Promise.all([prepareAiSession(), prepareAiSession()]);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(String(fetch.mock.calls[0][0])).toMatch(/\/auth\/refresh$/);
+  expect(getAccessToken()).toBe(renewed);
+});
+it("does not replay a model request when proactive renewal is unavailable", async () => {
+  setTokens(jwt(100), "refresh");
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+  await expect(prepareAiSession()).rejects.toMatchObject({ status: 503 });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 it("rejects a successful old-account read after switching login", async () => {
   setTokens("account-A", "refresh-A");
   let release!: (response: Response) => void;

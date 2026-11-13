@@ -7,6 +7,10 @@ bypass; caller owner/account fields are ignored. Foreign IDs use the same404 as
 missing IDs. Unavailable ownership dependencies return503; inactive actors403;
 missing/invalid bearer401. No authorization cache is served during failures.
 
+## Deletion
+
+Deletion is separate from reversible archive. Only the exact owner/account receives the `delete` UI permission; delegated capabilities do not confer deletion. Missing/foreign/deleted IDs return404, missing If-Match428 and stale draft tokens409. The owner default/favorites are cleared; other users unavailable preferences are filtered during ordinary reads. Confirmation is available from catalogue actions and viewer/editor settings. Failed requests retain confirmation and require refreshing the saved token. Docker and browser verification are deferred at the user request.
+
 ## Routes
 
 | Method/path | Contract |
@@ -14,6 +18,7 @@ missing/invalid bearer401. No authorization cache is served during failures.
 | GET `/dashboards` | Owner/account cursor metadata list; status ACTIVE(default)/ARCHIVED/ALL; limit20 default, maximum100; items/hasNext/nextCursor; stable createdAt,id order |
 | POST `/dashboards` | `{definition}`; required Idempotency-Key; returns201 canonical metadata and a new private author draft |
 | GET `/dashboards/{id}` | Metadata, published definition (null before first publish), revision, owner permissions, draftEtag, unsupportedWidgetIds; optional `revision=n` reads authorized immutable history; ETag |
+| DELETE `/dashboards/{id}` | Exact owner/account only; quoted saved draft ETag in If-Match; returns204. Marks the dashboard inaccessible, including shared reads, archived lists and restore; retains immutable history/audit internally. Devices and telemetry are unaffected. |
 | GET `/dashboards/{id}/draft` | Author draft with baseRevision, etag, definition, updatedAt; ETag is the quoted draft UUID |
 | PUT `/dashboards/{id}/draft` | If-Match required; `{baseRevision,definition}` or `{baseRevision,sourceRevision}` for rollback-as-draft; returns saved draft/new ETag |
 | POST `/dashboards/{id}/publish` | If-Match equal to the quoted submitted draftEtag, Idempotency-Key and `{draftEtag}` required; returns committed immutable revision; advances draft base and ETag |
@@ -443,3 +448,238 @@ The internal dashboard fleet position evidence additionally returns tracks: one 
 ## Active bus dashboard and configured state queries
 
 Active dashboard quota defaults to ten per owner. Bounded owner overrides (1..1000) are stored in dashboard_owner_quotas and checked under the existing owner transaction lock for create/restore/clone. Operators may raise a specific owner without changing other owners. Dashboard metric keys accept safe dotted configured fields; telemetry discovers requested units only from measurements of allowed devices/account. Dashboard boolean series include bounded MEASURED_STATES points up to 1000 observations, otherwise observed min/max envelopes. Boolean points keep original timestamps and raw types; rendering uses step states and preserves gaps. LAST_1_HOUR is a rolling relative query period exposed in widget and runtime settings.
+
+## Read-only AI template preparation and creation receipts
+
+GET /dashboard-templates resolves the existing account without provisioning it.
+POST /dashboard-templates/{id}/prepare accepts version, name, deviceIds, period,
+optional metricKeys and sourceIds. It returns READY with a canonical definition
+and digest or NEEDS_INPUT with readable diagnostics; it writes no dashboard,
+revision, preference or account. Limits: 1-20 distinct owned devices, 12 widgets,
+100 metric selections, 20 source selections, name length80. Unknown fields422.
+Every device is authorized before labels are read; mixed or foreign bindings403.
+Missing metric/unit or ambiguous registered sources require clarification. Data
+absence in a selected window remains no-data, distinct from unsupported binding.
+Energy/tariff/cycle configuration uses the ordinary editor in this first version.
+
+GET /dashboards/creation-receipt requires Idempotency-Key and the current JWT.
+It performs a read-only, current owner/account scoped lookup of an unexpired
+POST /dashboards receipt and returns the original dashboard metadata. Missing or
+foreign receipts404; lookup does not extend the existing 24-hour retention or
+create resources. Current resource access is checked on replay. AI uses this
+lookup after an uncertain response or restart, preserving the original private
+unpublished draft. Normal widget reads still renew binding authorization.
+
+## Conversational panel layout and unsaved preview
+
+`POST /dashboard-templates/{id}/prepare` additionally accepts optional `panelLayout`:
+an ordered list of `{key,width,height}` entries. Keys must be distinct existing
+template panel keys; width is FULL/HALF/THIRD, height an integer 2–12 (defaults
+FULL/4). The complete list selects panels; omitted keys are removed. Omission of
+the list retains template defaults. The owning assembler packs 12/6/1-column
+responsive layouts left-to-right, wrapping below the tallest panel in the row.
+It includes every placement in the canonical digest. Contradicting metricKeys,
+unknown keys/fields, invalid dimensions or unsupported widths fail preparation.
+Current template/source/resource checks apply again before creation.
+
+`POST /dashboards/preview/query` accepts `{definition}` with the ordinary
+DashboardDefinition schema and current JWT. It validates definition, typed widget
+configuration and binding authorization, then invokes the same scope/time/owner-read
+and evidence projection pipeline as saved queries. It creates no dashboard, draft,
+revision, receipt or preference. Unknown fields, unsafe definitions and inaccessible
+bindings use the existing 422/403 contract. Responses are no-store. The returned
+dashboardId is an ephemeral definition-scoped identifier, not a saved resource.
+Preview evidence contains ordinary panel data without a saved-snapshot detail
+link. Each preview renews access; absent observations remain no-data.
+
+The UI renders this exact definition using DashboardCanvas and DashboardWidgetPanel.
+Desktop/tablet/mobile controls select an existing prepared layout without mutating
+it. Normal viewing uses the smaller of viewport and canvas width to choose the
+responsive profile. Readings and freshness can change after creation; the reviewed
+panel structure, queries, bindings and placements stay identical. See
+[AI dashboard intent v2](ai-agent-api.md#conversational-layout-intent-v2).
+
+## AI widget composition (2026-10-22)
+
+Authenticated read-only `GET /dashboards/composition/widget-types` returns supported
+widget types, versions, reducers and compatible visualizations from the real catalogue.
+`POST /dashboards/composition/prepare` takes `{name,period,deviceIds,widgets}` and writes
+no dashboard, receipt, preference or publication. The complete ordered widgets list
+contains1-12 items: `{key,type,title,deviceIds?,metric?,unit?,sourceId?,visualization?,
+reducer?,text?,width?,height?,period?}`. Names are bounded to80 characters, titles120,
+keys60 ASCII characters; device selections contain1-20 distinct authorized IDs.
+Width is FULL/HALF/THIRD and height is an integer2-12. Unknown fields/types, duplicate
+keys, fractional dimensions and raw queries are rejected. Device authorization is
+checked for the entire selection before reading capabilities. Metrics/units must
+exist on every bound measured device; latest values bind one device.
+
+The service compiles normal queries, fixed bindings and desktop/tablet/mobile layouts
+with12/6/1 columns. The response is READY with canonical digest and exact definition,
+or NEEDS_INPUT with diagnostics and no alternative definition. `vehicle-map` uses
+registered source identities and VEHICLE equipment; ambiguous sources require selection.
+Maps and charts can coexist without any task template. Map history is bounded to24h;
+per-widget relative periods can differ explicitly. Source-bound variables, energy,
+tariffs and confirmed cycles retain ordinary editor/query configuration requirements.
+Prepared definitions use the existing `/dashboards/preview/query`, ordinary renderer
+and ordinary private draft creation. The same owning preparation is repeated before
+AI confirmation executes; digest drift fails closed. Legacy template preparation
+and already-reviewed template tasks keep their existing contracts.
+### Vehicle field widgets and presentation
+`vehicle-value` and `vehicle-timeline` use the authorized position evidence pipeline.
+Both require FIXED binding to one VEHICLE, explicit `query.sourceId`, and a recorded
+`presentation.vehicleField` key such as `speedKmh`, `transport.doorsOpen` or
+`transport.nextStopId`. The interval is at most24h. Value widgets show observed
+number/text/boolean values, date stale observations and keep absent fields unavailable.
+Timeline widgets list timestamped observations without inferring state between samples.
+Editor settings `presentation.trueLabel/falseLabel` customize boolean labels.
+
+Boolean `presentation.showTitle` controls all viewer/preview titles. Editing retains
+an accessible drag header. Map boolean `presentation.showMapDetails` (omitted retains
+legacy visibility) hides normal follow, recorded summary and GPS/journey disclosure
+or fleet table; errors and stale/truncated warnings remain visible.
+Composition accepts optional `showTitle`, `showMapDetails`, `vehicleField` per widget,
+freezes them in the reviewed definition/digest and preserves them across refinement.
+New AI maps default to hidden title/metadata. Charts use measured pixel dimensions
+for readable axes and markers across panel sizes.
+
+
+## Compact value presentation
+Composition panel heights accept integers1–12, consistent with the editor's
+manifest minimum. Optional boolean `compact` is stored as `presentation.compact`,
+validated in both composition and definition writes and included in preparation
+digests. It does not change queries, bindings or source freshness semantics.
+The shared canvas automatically compacts vehicle-value/latest-value/metric-summary
+cards of at most two rows unless `compact:false` is explicit. The appearance
+selector supports Automatic/Compact/Full. One-row cards use reduced title/value
+fonts and spacing; stale vehicle values retain a visible short warning and a
+measurement-time tooltip. Full provenance remains in panel information.
+
+
+## Map footer visibility
+Optional boolean showMapNotices in composition is stored in presentation and
+included in the definition digest. Definition and composition endpoints reject
+non-boolean values. Missing/true shows stale-position and truncated-history notes;
+false hides those two footer paragraphs independently of showMapDetails. Editor
+Appearance exposes this setting. Errors, missing GPS state and map attribution
+remain visible. Full evidence and measurement time remain in panel information.
+
+
+## Recorded vehicle field graph
+vehicle-timeline accepts presentation.visualization=list (default) or line. Both
+modes use the ordinary authorized POSITIONS evidence for vehicleField; line mode
+plots numeric/boolean observations only, retains exact timestamps, and breaks
+connections for missing samples or intervals longer than30 seconds. It does not
+extrapolate before/after recorded points. Text fields remain available in list
+mode. Chart axes use actual pixels; boolean states retain open/closed labels.
+Composition accepts visualization=line with vehicleField and without numeric
+metric/unit/reducer parameters; preparation digests include this presentation.
+
+
+## Shared widget capabilities and settings (2026-10-23)
+`GET /dashboard-widget-types` (ordinary manifest catalogue) and
+`GET /dashboards/composition/widget-types` expose the same `capabilities` descriptor.
+Version 1 contains `dataKind`, accepted `valueTypes`, binding modes/device limit and
+source/metric requirements, compatible `visualizations`, `visualizationValueTypes`,
+and typed `settings`. Vehicle history `line` accepts number/boolean; `list` also
+accepts string observations. Renderer availability and data availability remain
+separate: missing observations do not become fabricated values.
+
+Each setting has key, type, section, group, label, defaultValue, choices and maxLength.
+Types are BOOLEAN, AUTO_BOOLEAN (true/false, omitted for automatic), TEXT, SELECT and
+FIELD_SET (bounded recorded field keys for map tooltip selection). Sections are
+GENERAL and APPEARANCE. General always contains showTitle and showDetails; the editor
+also places the widget name there. Appearance is grouped by supported features,
+not a shared list of switches with no effect. Data, calculation/time, navigation
+and layout stay separate. Context notes do not offer unused binding/time controls.
+
+Stored settings retain their existing presentation keys. Omitted showTitle remains
+hidden in viewing for backwards compatibility; creating a composition may explicitly
+choose visible titles. Editor drag headers remain visible when viewing titles are
+hidden. The accessible widget name remains available. showDetails defaults false;
+map follow/showMapDetails/showMapNotices default true when omitted. Compact defaults
+to automatic and retains measured/stale status semantics.
+
+Composition panels additionally accept `settings:{key:value}`. The service validates
+supported keys, scalar types, enum choices, label lengths and field sets from the
+same catalogue, then writes canonical presentation. A setting cannot also be supplied
+as a flattened legacy showTitle/showMapDetails/showMapNotices/compact property.
+Those legacy fields and existing saved presentation remain compatible. Null resets
+a supported setting to its catalogue default, or clears an obsolete setting after
+a type change. Unknown non-null settings are rejected. Existing legacy presentation
+is retained rather than migrated or stripped during editing.
+
+## Resolved dashboard data choices
+
+Authenticated POST `/dashboards/composition/capabilities` is a read-only, no-store
+metadata operation. Request: `{deviceIds:[UUID],period:"LAST_1_HOUR",purpose:"HISTORY"}`.
+Select 1–20 distinct devices. `period` accepts the ordinary relative periods;
+`purpose` is optional CURRENT/HISTORY/MAP/DOMAIN. No raw observations or connector
+configuration are returned. Resource access is checked before metadata reads.
+
+The response contains descriptorVersion, snapshotId, choices and diagnostics.
+A choice identifies the actual device, registered source/external source identity,
+field or registered metric, declared type/unit, and descriptor-derived views.
+Each view includes widgetType/typeVersion, purpose, visualizations, reducers,
+readiness and additional requirements. Domain evidence requires ordinary semantic
+configuration; a numeric measurement does not establish energy/counter/tariff facts.
+Operator notes have no measured-data choice. Text recorded history offers list,
+while number/boolean history can offer list and line. Source views retain their
+existing maximum 24-hour period. Unsupported units/views are not fabricated.
+
+Current metadata observation presence, source freshness and history availability
+are separate. Zero/false count as observations; a stale source remains STALE.
+History status is UNKNOWN unless actual interval evidence establishes more; latest
+metadata alone never proves history samples or a physical door transition. An empty
+query interval does not delete a known field capability. This endpoint does not
+return a human stop name when only an identifier is recorded.
+
+Exact same-field/same-label choices on multiple sources retain separate identities
+and an AMBIGUOUS_SOURCE diagnostic. Preparation without a unique source fails;
+choosing the first source is not resolution. The resolver is request-scoped with no
+cross-user cache. The response is bounded to 200 choices; excess metadata returns a
+narrowing error rather than truncation. Bad payloads400, unauthenticated401,
+unavailable selected resources404, semantic/limit errors422, dependency/invalid
+upstream metadata503. Existing widget catalogue APIs remain available.
+
+Composition preparation repeats current authorization and compatibility checks,
+including field type and visualization, before ordinary definition validation.
+Metadata drift can invalidate an older choice. Saved reviewed definitions and
+execution digests retain their existing contracts.
+Composition panels may include optional dataChoiceId from a resolved choice.
+Preparation verifies the exact stable identity, including declared type and unit,
+in addition to the supported view. The AI compiler supplies this identity from its
+scoped mapping; model-authored dataChoiceId is not accepted. Legacy callers may
+omit it; existing saved review digests remain unchanged.
+
+## Reviewed draft update receipt — 2026-10-28
+
+`PUT /dashboards/{id}/draft` accepts an optional safe `Idempotency-Key`.
+Without it the ordinary editor contract is unchanged. With it, the owning draft
+use case stores its response atomically through `DashboardIdempotency`, scoped
+to actor/account and this draft route. Initial execution still requires the
+current quoted `If-Match` draft etag, current `baseRevision`, authorized bindings
+and a valid definition. A repeated key/body returns the original draft receipt;
+a changed body under that key or a new key with stale version fails with409.
+Current EDIT access and binding authorization are checked again on replay.
+
+`GET /dashboards/{id}/draft/receipt` requires the same `Idempotency-Key` and
+current actor authorization. It returns the immutable accepted save response,
+not an assertion that no subsequent edit occurred. A missing receipt is404.
+This shares the existing domain idempotency store/retention; no second store or
+migration is added. Saved timestamps use PostgreSQL microsecond precision so
+the first response, receipt and fresh draft read agree. Draft updates do not
+create a copy, publish, change preferences or delete anything.
+
+## Widget catalogue parameter contracts
+
+The authenticated GET /dashboards/composition/widget-types catalogue is additive:
+each supported widget includes type, typeVersion, title, description, reducers,
+units, timeBasis, maxSeries, maxRows, maxDetailDevices, sizeConstraints,
+visualizations and capabilities. Capability settings retain
+key/type/section/group/label/defaultValue/choices/maxLength. The additive
+capabilities.settingsSchema describes their actual nullable JSON values and
+constraints, generated from the owning validator's setting definitions. For
+AUTO_BOOLEAN, automatic is null and explicit choices are booleans, never strings
+"auto", "true" or "false". Historical unknown null setting keys remain ignorable;
+unsupported non-null keys are rejected. No retrieval score can expand these
+contracts or data access. Existing catalogue clients can ignore new fields.

@@ -6,6 +6,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 
+@org.springframework.context.annotation.Import(com.voltcanary.common.web.UserIdentityConfiguration.class)
 @SpringBootApplication
 @EnableScheduling
 public class DeviceServiceApplication {

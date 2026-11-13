@@ -47,6 +47,11 @@ public class DefinitionValidation {
                     && widget.typeVersion() > 0, "widgets.type", "Widget type and positive version are required");
             require(widget.title() != null && widget.title().length() <= 120,
                     "widgets.title", "Widget title exceeds 120 characters");
+            for (String flag : java.util.List.of("showTitle", "showMapDetails", "showMapNotices", "compact")) {
+                require(widget.presentation() == null || !widget.presentation().hasNonNull(flag) || widget.presentation().path(flag).isBoolean(),
+                        "widgets.presentation." + flag, "Visibility must be a boolean");
+            }
+            com.voltcanary.dashboard.domain.WidgetCapabilities.validate(widget.type(), widget.presentation(), false);
             if (widget.presentation() != null && widget.presentation().hasNonNull("visualization")) {
                 require(com.voltcanary.dashboard.domain.VisualizationCompatibility.choices(widget.type())
                         .contains(widget.presentation().path("visualization").asText()),

@@ -50,6 +50,18 @@ public class DashboardIdempotency {
         return result;
     }
 
+    public <T> java.util.Optional<T> lookup(DashboardActor actor, String route, String key,
+            Class<T> type, Consumer<T> authorizeReplay) {
+        if (key == null || !key.matches("[A-Za-z0-9_-]{1,128}")) {
+            throw new DashboardFailure("PRECONDITION_REQUIRED", "A safe Idempotency-Key is required");
+        }
+        return storage.readIdempotency(actor, route, hash(key), Instant.now()).map(receipt -> {
+            T outcome = mapper.convertValue(receipt.outcome(), type);
+            authorizeReplay.accept(outcome);
+            return outcome;
+        });
+    }
+
     private String hash(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")

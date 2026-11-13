@@ -17,6 +17,8 @@
     "openspec:apply": "powershell -ExecutionPolicy Bypass -File scripts/openspec-apply.ps1",
     "openspec:validate": "npm run openspec -- validate --all --strict",
     "structure:check": "powershell -ExecutionPolicy Bypass -File scripts/check-project-structure.ps1",
+    "vcl:check": "pwsh -NoProfile -File scripts/verify-vcl-contracts.ps1",
+    "ai-contracts:check": "pwsh -NoProfile -File scripts/verify-ai-collaboration-contracts.ps1",
     "test": "npm run structure:check && npm run openspec:validate"
   },
   "repository": {

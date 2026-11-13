@@ -16,6 +16,10 @@
 .dashboard-table-scroll table { border-collapse:collapse; min-width:100%; }
 .dashboard-table-scroll th,.dashboard-table-scroll td { padding:8px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
 .dashboard-config { display:grid; gap:16px; }
+.dashboard-setting-group{display:grid;gap:10px;padding-top:12px;border-top:1px solid var(--border)}
+.dashboard-setting-group h3{margin:0;font-size:13px;font-weight:600;color:var(--text)}
+.dashboard-setting-group label{min-width:0}
+.dashboard-config-sections{flex-wrap:wrap}
 .dashboard-config fieldset { min-width:0; display:grid; gap:12px; }
 .dashboard-config input,.dashboard-config textarea,.dashboard-config select { max-width:100%; }
 .dashboard-widget fieldset { min-width:0; border:1px solid var(--border); }
@@ -287,3 +291,25 @@
 .dashboard-layout-skeleton { min-height: 100px; background: var(--surface-muted, #f1f5f9); }
 .dashboard-layout-skeleton div { margin: 12px; height: 12px; border-radius: 4px; background: var(--border-color, #dde3ea); }
 .dashboard-layout-skeleton div:last-child { height: 50px; }
+
+.dashboard-diagram-axis text,.dashboard-series-axis text{font-size:11px}.dashboard-diagram-axis line,.dashboard-series-axis line{stroke-width:1;vector-effect:non-scaling-stroke}.dashboard-diagram>output{min-height:16px;font-size:11px;flex:0 0 auto}.dashboard-diagram{position:relative}.dashboard-diagram>output{position:absolute;bottom:0;left:52px;right:16px;background:var(--panel-bg,#fff);pointer-events:none}
+
+.dashboard-diagram:not(.dashboard-diagram-circular){min-height:140px}.dashboard-widget-content:has(>.dashboard-diagram){overflow:auto}.dashboard-widget-content:has(>.vehicle-map-view){overflow:auto}.dashboard-definition-preview .dashboard-diagram-axis text,.dashboard-definition-preview .dashboard-series-axis text{font-size:11px}
+
+.dashboard-series{min-height:160px}.dashboard-series .chart-wrap{min-height:140px}
+.dashboard-grid>.dashboard-widget:has(.dashboard-series),.dashboard-grid>.dashboard-widget:has(.dashboard-diagram:not(.dashboard-diagram-circular)){min-height:220px}
+
+/* Value cards retain their meaning at the minimum one-row grid size. */
+.dashboard-widget.dashboard-value-compact{padding:0}
+.dashboard-widget.dashboard-value-compact .dashboard-card-heading:has(h3:not(.sr-only)){padding:4px 24px 0 8px;margin:0;flex:0 0 auto}
+.dashboard-value-compact .dashboard-card-heading h3{font-size:11px;line-height:13px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-value-compact .dashboard-widget-content,.dashboard-edit-grid .dashboard-value-compact .dashboard-widget-content{padding:2px 8px 4px;display:flex;flex-direction:row;align-items:center;gap:6px;overflow:hidden}
+.dashboard-value-compact .dashboard-primary-value,.dashboard-viewer .dashboard-value-compact .dashboard-primary-value{font-size:18px;line-height:20px;margin:0;font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dashboard-value-compact .dashboard-primary-value>span{font-size:11px;line-height:14px}
+.vehicle-field-compact{display:flex;align-items:baseline;gap:7px;min-width:0;width:100%}
+.vehicle-field-compact .dashboard-primary-value{flex:0 1 auto}
+.vehicle-field-age{color:var(--muted,#64748b);font-size:10px;line-height:12px;white-space:nowrap;flex:0 0 auto}
+.dashboard-value-compact .dashboard-panel-info-button{top:3px;right:3px;padding:0;min-height:16px;width:16px;opacity:.65}
+.dashboard-value-compact .dashboard-state-badge{font-size:10px;line-height:12px;margin:0}
+.dashboard-value-compact .dashboard-widget-content>p:not(.dashboard-primary-value),.dashboard-value-compact .dashboard-widget-content>small{display:none}
+.vehicle-field-chart{display:flex;flex-direction:column;min-height:170px;height:100%;width:100%;min-width:0}.vehicle-field-chart svg{display:block;flex:1;width:100%;height:0;min-height:150px}.vehicle-field-chart small{font-size:10px;color:var(--muted,#64748b)}.dashboard-grid>.dashboard-widget:has(.vehicle-field-chart){min-height:220px}

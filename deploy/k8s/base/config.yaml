@@ -6,6 +6,8 @@ metadata:
 data:
   VARIABLE_ACTIVATION_ENABLED: "false"
   VARIABLE_PROCESSING_ENABLED: "false"
+  OBSERVATION_CAPTURE_ENABLED: "false"
+  OBSERVATION_CAPTURE_BINDING_IDS: ""
   VARIABLE_ALERTS_ENABLED: "false"
   SPRING_PROFILES_ACTIVE: local
   SPRING_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
@@ -82,3 +84,21 @@ stringData:
   MINIO_ROOT_PASSWORD: change_me_change_me
   MINIO_SECRET_KEY: change_me_change_me
   ML_INTERNAL_SERVICE_TOKEN: change_me_internal_token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voltcanary-coverage-attestor
+  namespace: voltcanary
+type: Opaque
+stringData:
+  APP_INTERNAL_COVERAGE_ATTESTOR_TOKEN: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voltcanary-vcl-worker
+  namespace: voltcanary
+type: Opaque
+stringData:
+  APP_VCL_WORKER_HMAC_KEY: ""

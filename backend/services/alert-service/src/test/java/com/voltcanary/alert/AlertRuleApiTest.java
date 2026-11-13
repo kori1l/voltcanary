@@ -10,7 +10,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -18,6 +19,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -29,7 +31,15 @@ import org.springframework.http.ResponseEntity;
                 "app.alert.reconciliation.enabled=false",
                 "app.alert.authorization.enabled=false"
         })
-class AlertRuleApiTest {
+class AlertRuleApiTest extends SignedUserTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    private com.voltcanary.alert.service.AlertAccessService accountAccess;
+
+    @org.junit.jupiter.api.BeforeEach
+    void accountOwnership() {
+        org.mockito.Mockito.doReturn(ACCOUNT_ID).when(accountAccess).ownAccount(USER_ID.toString());
+        org.mockito.Mockito.doReturn(OTHER_ACCOUNT_ID).when(accountAccess).ownAccount(OTHER_ACCOUNT_ID.toString());
+    }
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID ACCOUNT_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
@@ -174,7 +184,8 @@ class AlertRuleApiTest {
 
     private HttpEntity<Object> entity(UUID accountId, Object body) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", USER_ID.toString());
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                OTHER_ACCOUNT_ID.equals(accountId) ? OTHER_ACCOUNT_ID : USER_ID, "actor@example.invalid", "USER"));
         if (accountId != null) {
             headers.set("X-Account-Id", accountId.toString());
         }

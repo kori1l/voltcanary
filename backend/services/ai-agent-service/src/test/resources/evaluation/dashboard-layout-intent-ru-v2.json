@@ -1,0 +1,15 @@
+{
+  "version": "dashboard-layout-ru-v2",
+  "promptVersion": "creation-v5",
+  "schemaVersion": "dashboard-intent-v2",
+  "acceptance": {"clearRequired": 4, "blockedRequired": 3, "mutationsAllowed": 0},
+  "cases": [
+    {"id":"full-width","message":"Создай «Обзор»: график температуры на всю ширину.","ready":true,"panelLayout":[{"key":"temperature-series","width":"FULL","height":6}]},
+    {"id":"side-by-side","message":"Создай «Обзор»: график слева, текущее значение справа.","ready":true,"panelLayout":[{"key":"temperature-series","width":"HALF","height":5},{"key":"temperature","width":"HALF","height":3}]},
+    {"id":"remove-events","message":"Создай «Обзор», удали события, оставь график температуры.","ready":true,"panelLayout":[{"key":"temperature-series","width":"FULL","height":5}]},
+    {"id":"reorder","message":"Создай «Обзор»: сначала текущее значение, затем график температуры.","ready":true,"panelLayout":[{"key":"temperature","width":"THIRD","height":3},{"key":"temperature-series","width":"FULL","height":5}]},
+    {"id":"unknown-key","message":"Создай «Обзор» с неизвестной панелью.","ready":false,"panelLayout":[{"key":"imaginary","width":"FULL","height":4}]},
+    {"id":"duplicate-key","message":"Создай «Обзор» с температурой.","ready":false,"panelLayout":[{"key":"temperature","width":"HALF","height":3},{"key":"temperature","width":"HALF","height":3}]},
+    {"id":"raw-coordinates","message":"Создай «Обзор» с графиком температуры.","ready":false,"panelLayout":[{"key":"temperature-series","width":"FULL","height":4,"x":9}]}
+  ]
+}

@@ -16,7 +16,24 @@ public record TelemetryReceivedEvent(
         String producer,
         UUID accountId,
         Instant occurredAt,
-        ProcessingContext processingContext) {
+        ProcessingContext processingContext,
+        SourceBindingSchemaPin bindingSchemaPin,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) SourcePosition sourcePosition) {
+
+    public TelemetryReceivedEvent(UUID eventId, UUID deviceId, String sourceId, Instant timestamp,
+            Map<String, Object> metrics, Instant receivedAt, String eventVersion, String correlationId,
+            String producer, UUID accountId, Instant occurredAt, ProcessingContext processingContext,
+            SourceBindingSchemaPin bindingSchemaPin) {
+        this(eventId, deviceId, sourceId, timestamp, metrics, receivedAt, eventVersion, correlationId,
+                producer, accountId, occurredAt, processingContext, bindingSchemaPin, null);
+    }
+
+    public TelemetryReceivedEvent(UUID eventId, UUID deviceId, String sourceId, Instant timestamp,
+            Map<String, Object> metrics, Instant receivedAt, String eventVersion, String correlationId,
+            String producer, UUID accountId, Instant occurredAt, ProcessingContext processingContext) {
+        this(eventId, deviceId, sourceId, timestamp, metrics, receivedAt, eventVersion, correlationId,
+                producer, accountId, occurredAt, processingContext, null);
+    }
 
     public TelemetryReceivedEvent(UUID eventId, UUID deviceId, String sourceId, Instant timestamp,
             Map<String, Object> metrics, Instant receivedAt, String eventVersion, String correlationId,

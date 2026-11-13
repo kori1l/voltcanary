@@ -4,7 +4,7 @@ import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
@@ -17,7 +17,7 @@ public class KafkaProducerConfig {
 
     @Bean
     ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory(KafkaProperties kafkaProperties) {
-        var properties = kafkaProperties.buildProducerProperties(null);
+        var properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         return new DefaultKafkaProducerFactory<>(properties);
@@ -31,7 +31,7 @@ public class KafkaProducerConfig {
 
     @Bean
     ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory(KafkaProperties kafkaProperties) {
-        var properties = kafkaProperties.buildProducerProperties(null);
+        var properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
         return new DefaultKafkaProducerFactory<>(properties);

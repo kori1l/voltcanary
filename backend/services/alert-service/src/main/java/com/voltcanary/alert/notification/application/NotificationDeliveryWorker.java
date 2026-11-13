@@ -210,6 +210,15 @@ public class NotificationDeliveryWorker {
             attemptService.markFailed(attempt.getId(), "ALERT_NOT_FOUND", "Alert is missing or has no account");
             return null;
         }
+        if (!alert.getAccountId().equals(attempt.getAccountId()) || !alert.getAccountId().equals(channel.getAccountId())) {
+            attemptService.markFailed(attempt.getId(), "ALERT_ACCOUNT_CHANGED", "Alert and notification accounts differ");
+            return null;
+        }
+        if ("CONFIGURABLE_RULE".equals(alert.getAlertType())
+                && alert.getStatus() == com.voltcanary.alert.domain.AlertStatus.RESOLVED) {
+            attemptService.markDisabled(attempt.getId(), "Configurable rule alert is resolved");
+            return null;
+        }
         return AlertNotificationRequest.fromDeliveryAttempt(
                 alert,
                 attempt.getDeliveryEventType(),

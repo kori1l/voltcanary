@@ -30,7 +30,7 @@ function Scalar([string]$Database, [string]$Sql) {
     return ("$result").Trim()
 }
 $session = Request 18081 "POST" "/auth/login" @{email=$fixture.email;password="Variable-smoke-2026!"} @{}
-$headers = @{Authorization=("Bearer " + $session.accessToken);"X-User-Id"=$fixture.ownerId;"X-User-Role"="USER";"X-User-Email"=$fixture.email}
+$headers = @{Authorization=("Bearer " + $session.accessToken)}
 $source = Request 18082 "GET" "/devices/$firstDevice/data-sources/$firstSource"
 $credential = Request 18082 "POST" "/devices/$firstDevice/data-sources/$firstSource/token" @{}
 $sourceHeaders = @{Authorization=("Bearer " + $credential.token)}
@@ -87,7 +87,7 @@ $second = Request 18082 "GET" "/devices/$secondDevice/data-sources/$secondSource
 $secondCredential = Request 18082 "POST" "/devices/$secondDevice/data-sources/$secondSource/token" @{}
 $secondHeaders = @{Authorization=("Bearer " + $secondCredential.token)}
 $metric = "var_" + $variable.Replace("-", "")
-$ruleHeaders = $headers + @{"X-Account-Id"=$fixture.accountId}
+$ruleHeaders = $headers
 $rule = Request 18086 "POST" "/alert-rules" @{name=("Import exclusion fixture " + [guid]::NewGuid().ToString());ruleType="THRESHOLD";enabled=$true;scopeType="DEVICE";scopeId=$secondDevice;metric=$metric;conditionType="ABOVE_THRESHOLD";threshold=24;thresholdUnit="C";severity="WARNING";config=@{variable=@{variableId=$variable;dataSourceId=$secondSource;unit="C";maxLiveAgeSeconds=600}}} $ruleHeaders
 $import = @{deviceId=$secondDevice;sourceId=$second.externalId;timestamp=[DateTime]::UtcNow.ToString("o");metrics=@{sensorTemperatureRaw=255}}
 $null = Await {Request 18083 "POST" "/ingestion/imports/readings" $import $secondHeaders} {param($value) $value.acceptedCount -eq 1} "fresh historical import"

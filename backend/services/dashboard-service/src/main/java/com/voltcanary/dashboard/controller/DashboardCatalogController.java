@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -82,6 +83,9 @@ public class DashboardCatalogController {
         Dashboard dashboard = catalog.get(actor, id);
         int requested = revision == null ? dashboard.publishedRevision() : revision;
         List<String> permissions=catalog.permissions(actor,id);
+        if (dashboard.ownerUserId().equals(actor.userId()) && dashboard.accountId().equals(actor.accountId())) {
+            permissions = java.util.stream.Stream.concat(permissions.stream(), java.util.stream.Stream.of("delete")).distinct().toList();
+        }
         DashboardDefinition definition = requested == 0 ? null : catalog.definition(actor,id,requested);
         if (sharing!=null && definition!=null) definition=sharing.viewerDefinition(actor,id,definition);
         UUID draftEtag = permissions.contains("edit")?drafts.get(actor,id).etag():permissions.contains("archive")?drafts.lifecycleEtag(actor,id):null;
@@ -93,6 +97,12 @@ public class DashboardCatalogController {
                                 .map(DashboardDefinition.Widget::id).toList()));
     }
 
+    @GetMapping("/creation-receipt")
+    public Dashboard receipt(@RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+        return catalog.creationReceipt(ownership.resolveReadOnly(authorization), key);
+    }
+
     @PostMapping("/{id}/copy")
     public ResponseEntity<Dashboard> copy(@RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable("id") UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key,
@@ -100,6 +110,13 @@ public class DashboardCatalogController {
         var actor = ownership.resolve(authorization);
         decoder.validateRequest(body);
         return ResponseEntity.status(201).body(catalog.copy(actor, authorization, id, key, body, body.path("name").asText()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        lifecycle.delete(ownership.resolve(authorization), id, ifMatch);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/archive")

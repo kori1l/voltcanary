@@ -29,7 +29,7 @@ public class VariableRuleTelemetry {
 
     /** Fresh metadata, without permission-stale cache entries. */
     public boolean active(UUID device, VariableRuleSelector selector) {
-        JsonNode descriptors = telemetry.get().uri("/telemetry/devices/{id}/variables", device)
+        JsonNode descriptors = telemetry.get().uri("/internal/telemetry/devices/{id}/variables", device)
                 .header("X-Internal-Service-Token", token).retrieve().body(JsonNode.class);
         if (descriptors == null || !descriptors.isArray()) throw new IllegalStateException("Variable metadata unavailable");
         for (JsonNode descriptor : descriptors) {
@@ -47,7 +47,7 @@ public class VariableRuleTelemetry {
         for (int page = 0; page < 10; page++) {
             Instant next = cursor;
             JsonNode response = telemetry.get().uri(uri -> {
-                uri.path("/telemetry/devices/{id}/readings").queryParam("variableId", selector.variableId())
+                uri.path("/internal/telemetry/devices/{id}/readings").queryParam("variableId", selector.variableId())
                         .queryParam("sourceId", selector.dataSourceId()).queryParam("from", from)
                         .queryParam("to", to).queryParam("limit", 2000);
                 if (next != null) uri.queryParam("cursor", next);

@@ -98,6 +98,6 @@ public class OperationalFacts {
         return saved;
     }
     private ResponseStatusException invalid() {
-        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,"Review valid confirmed operational facts, source identity and schedule boundaries");
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Review valid confirmed operational facts, source identity and schedule boundaries");
     }
 }

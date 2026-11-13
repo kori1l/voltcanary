@@ -19,7 +19,9 @@ const loadDashboards = () => import("../pages/PersonalDashboardsPage").then((m) 
 const loadPersonalDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardPage }));
 const loadDevice = () => import("../pages/DeviceDetailsPage").then((m) => ({ default: m.DeviceDetailsPage }));
 const loadDeviceVariables = () => import("../pages/DeviceVariablesPage").then((m) => ({ default: m.DeviceVariablesPage }));
+const loadDeviceDeletions = () => import("../pages/DeviceDeletionsPage").then(m => ({default: m.DeviceDeletionsPage}));
 const loadDevices = () => import("../pages/DevicesPage").then((m) => ({ default: m.DevicesPage }));
+const loadDataTables = () => import("../pages/DataTablesPage").then((m) => ({ default: m.DataTablesPage }));
 const loadVehicles = () => import("../vehicles/VehicleConsole").then((m) => ({ default: m.VehicleConsole }));
 const loadSettings = () => import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage }));
 const loadMaintenance = () => import("../maintenance/MaintenanceCalendarPage").then((m) => ({ default: m.MaintenanceCalendarPage }));
@@ -58,8 +60,10 @@ export function appRouteElements() {
         <Route path="/dashboards/:dashboardId" element={<RouteDelivery load={loadPersonalDashboard} label="personal dashboard" />} />
         <Route path="/dashboards/:dashboardId/edit" element={<RouteDelivery load={loadPersonalDashboard} label="dashboard editor" />} />
         <Route path="/devices" element={<RouteDelivery load={loadDevices} label="devices" />} />
+        <Route path="/data" element={<RouteDelivery load={loadDataTables} label="data tables" />} />
         <Route path="/vehicles" element={<RouteDelivery load={loadVehicles} label="vehicles" />} />
         <Route path="/maintenance" element={<RouteDelivery load={loadMaintenance} label="maintenance" />} />
+        <Route path="/devices/deletions" element={<RouteDelivery load={loadDeviceDeletions} label="deleted devices" />} />
         <Route path="/devices/:deviceId" element={<RouteDelivery load={loadDevice} label="device details" />} />
         <Route path="/devices/:deviceId/variables" element={<RouteDelivery load={loadDeviceVariables} label="device variables" />} />
         <Route path="/alerts" element={<RouteDelivery load={loadAlerts} label="alerts" />} />

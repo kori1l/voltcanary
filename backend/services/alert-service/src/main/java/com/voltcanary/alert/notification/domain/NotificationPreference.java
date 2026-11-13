@@ -24,6 +24,9 @@ public class NotificationPreference {
     @Column(name = "enabled", nullable = false)
     private boolean enabled;
 
+    @Column(name = "configurable_rule_alerts_enabled", nullable = false)
+    private boolean configurableRuleAlertsEnabled;
+
     @Column(name = "severity_filter", nullable = false)
     private String severityFilter;
 
@@ -82,6 +85,10 @@ public class NotificationPreference {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
+
+    public boolean isConfigurableRuleAlertsEnabled() { return configurableRuleAlertsEnabled; }
+
+    public void setConfigurableRuleAlertsEnabled(boolean enabled) { this.configurableRuleAlertsEnabled = enabled; }
 
     public String getSeverityFilter() {
         return severityFilter;

@@ -1,3 +1,4 @@
+import {VehicleCurrentSpeed} from "./VehicleCurrentSpeed";
 import {PositionFieldDetails} from "./PositionFieldDetails";
 import {useEffect,useRef,useState} from "react";
 import type {Map as LibreMap,Marker,GeoJSONSource} from "maplibre-gl";
@@ -9,10 +10,10 @@ import type {VehicleZone} from "./monitoringModel";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./vehicle.css";
 
-export function VehicleMap({evidence,initialFollow=true,zones=[],onPickPosition,visibleFields}:{evidence:PositionEvidence|null;initialFollow?:boolean;zones?:VehicleZone[];onPickPosition?:(latitude:number,longitude:number)=>void;visibleFields?:string[]}) {
+export function VehicleMap({evidence,initialFollow=true,zones=[],onPickPosition,visibleFields,compact=false,showDetails=true,showNotices=true}:{evidence:PositionEvidence|null;initialFollow?:boolean;zones?:VehicleZone[];onPickPosition?:(latitude:number,longitude:number)=>void;visibleFields?:string[];compact?:boolean;showDetails?:boolean;showNotices?:boolean}) {
   const container=useRef<HTMLDivElement>(null),map=useRef<LibreMap|null>(null),marker=useRef<Marker|null>(null);
   const [follow,setFollow]=useState(initialFollow),[error,setError]=useState<string|null>(null),[retry,setRetry]=useState(0),[ready,setReady]=useState(false);
-  const position=evidence?.latest.position,hasPosition=Boolean(position);
+  const position=evidence?.latest.position,hasPosition=Boolean(position),stale=evidence?.latest.freshness!=="FRESH";
   const current=useRef(evidence);current.current=evidence;
   const pick=useRef(onPickPosition);pick.current=onPickPosition;
   useEffect(()=>{
@@ -60,11 +61,12 @@ export function VehicleMap({evidence,initialFollow=true,zones=[],onPickPosition,
     if(follow)instance.easeTo({center:[position.longitude,position.latitude],duration:500});
   },[evidence,follow,ready,position]);
   useEffect(()=>{if(!ready||!map.current)return;const source=map.current.getSource("vehicle-zones") as GeoJSONSource|undefined;void source?.setData({type:"FeatureCollection",features:zonePolygons(zones)});},[ready,zones]);
-  return <section className="vehicle-map-view" aria-label="Vehicle movement map">
-    {hasPosition?<><div className="vehicle-map-canvas" ref={container}/><label className="vehicle-follow"><input type="checkbox" checked={follow} onChange={event=>setFollow(event.target.checked)}/>Follow vehicle</label></>:<p role="status">Waiting for GPS measurements. Start the vehicle simulator in Demo Tools.</p>}
+  return <section className={`vehicle-map-view${compact?" vehicle-map-view-compact":""}`} aria-label="Vehicle movement map">
+    {hasPosition?<><div className="vehicle-map-canvas" ref={container}/>{showDetails?<label className="vehicle-follow"><input type="checkbox" checked={follow} onChange={event=>setFollow(event.target.checked)}/>Follow vehicle</label>:null}</>:<p role="status">Waiting for GPS measurements. Start the vehicle simulator in Demo Tools.</p>}
     {error?<p role="alert">{error} <button type="button" className="ghost-button" onClick={()=>setRetry(value=>value+1)}>Retry map</button></p>:null}
-    {position?<div className="vehicle-position-summary" aria-live="polite"><span>{evidence?.latest.freshness==="STALE"?"Stale position":"Recorded position"}</span>{visibleFields===undefined&&!Object.keys(position.fields??{}).length?<><span>{position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}</span><span>Speed: {position.speedKmh===null?"No data":`${position.speedKmh.toFixed(1)} km/h`}</span></>:null}<time dateTime={position.recordedAt}>{new Date(position.recordedAt).toLocaleString()}</time></div>:null}
-    {position?<PositionFieldDetails point={position} visibleFields={visibleFields}/>:null}
-    {evidence?.history.truncated?<p role="status">Latest 1000 points shown. Narrow the period to see the complete trail.</p>:null}
+    {position&&showDetails?<div className="vehicle-position-summary" aria-live="polite"><span>{evidence?.latest.freshness==="STALE"?"Stale position":"Recorded position"}</span>{visibleFields===undefined&&!Object.keys(position.fields??{}).length?<><span>{position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}</span><VehicleCurrentSpeed latest={evidence?.latest}/></>:null}<time dateTime={position.recordedAt}>{new Date(position.recordedAt).toLocaleString()}</time></div>:null}
+    {showNotices&&position&&stale?<p role="status">Текущая скорость недоступна. Последние измерения устарели — {new Date(position.recordedAt).toLocaleString()}.</p>:null}
+    {position&&showDetails?compact?<details className="vehicle-map-details"><summary>Данные GPS и рейса</summary><PositionFieldDetails point={position} visibleFields={visibleFields} stale={stale}/></details>:<PositionFieldDetails point={position} visibleFields={visibleFields} stale={stale}/>:null}
+    {showNotices&&evidence?.history.truncated?<p role="status">Latest 1000 points shown. Narrow the period to see the complete trail.</p>:null}
   </section>;
 }

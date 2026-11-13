@@ -345,6 +345,7 @@ export function DevicesPage() {
           <p>Devices connected to your account.</p>
         </div>
         <div className="header-actions">
+          <Link className="ghost-button" to="/devices/deletions">Удалённые устройства</Link>
           <button className="ghost-button" type="button" onClick={() => void refreshInventory()} disabled={isLoading}>
             Refresh devices
           </button>

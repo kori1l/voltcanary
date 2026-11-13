@@ -256,7 +256,7 @@ export function AiAgentSettingsPage() {
                       <strong>{model.displayName}</strong>
                       <small>{model.modelId}</small>
                     </div>
-                    <span>{model.maxOutputTokens ?? 1800} tokens - {model.timeoutMs ?? 30000} ms</span>
+                    <span>{model.maxOutputTokens ?? 1800} tokens · Connection {model.timeoutMs ?? 30000} ms · Response without time limit</span>
                     <div className="action-row">
                       <button className="ghost-button" type="button" onClick={() => void providerAction(() => setDefaultModelConfig(selectedProvider.id, model.id), "Default model updated")} disabled={model.isDefault || isBusy}>
                         Default

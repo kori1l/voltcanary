@@ -15,8 +15,10 @@ anomaly.detected.v1
 risk-score.changed.v1
 alert.created.v1
 source.runtime-config.v1
+source.binding-schema.v1
 source.processing-config.v1
 telemetry.measurements.accepted.v1
+telemetry.observations.accepted.v1
 source.processing-config.dlq.v1
 analytics.variable-measurements.dlq.v1
 telemetry.raw.v1.dlq
@@ -30,7 +32,7 @@ alert.created.v1.dlq
 "
 
 for topic in $topics; do
-  if [ "$topic" = "source.runtime-config.v1" ] || [ "$topic" = "source.processing-config.v1" ]; then
+  if [ "$topic" = "source.runtime-config.v1" ] || [ "$topic" = "source.processing-config.v1" ] || [ "$topic" = "source.binding-schema.v1" ]; then
     rpk topic create "$topic" \
       -X "brokers=$BROKERS" \
       --partitions "$PARTITIONS" \

@@ -63,6 +63,6 @@ public class EnergyTariffPolicy {
         audit.record(actor,account,"TARIFF_ARCHIVED","tariff",id);
     }
     private ResponseStatusException invalid() {
-        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,"Review a valid non-overlapping flat tariff interval, decimal rate, currency and timezone");
+        return new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Review a valid non-overlapping flat tariff interval, decimal rate, currency and timezone");
     }
 }

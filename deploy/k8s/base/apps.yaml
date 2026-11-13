@@ -243,6 +243,12 @@ spec:
           workingDir: /workspace/backend
           command: ["/bin/sh", "-c"]
           args: ["mvn -pl services/device-service -am -Dmaven.test.skip=true install && mvn -f services/device-service/pom.xml spring-boot:run"]
+          env:
+            - name: APP_VCL_WORKER_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-vcl-worker
+                  key: APP_VCL_WORKER_HMAC_KEY
           envFrom:
             - configMapRef:
                 name: voltcanary-config
@@ -379,6 +385,12 @@ spec:
           workingDir: /workspace/backend
           command: ["/bin/sh", "-c"]
           args: ["mvn -pl services/telemetry-service -am -Dmaven.test.skip=true install && mvn -f services/telemetry-service/pom.xml spring-boot:run"]
+          env:
+            - name: APP_INTERNAL_COVERAGE_ATTESTOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-coverage-attestor
+                  key: APP_INTERNAL_COVERAGE_ATTESTOR_TOKEN
           envFrom:
             - configMapRef:
                 name: voltcanary-config
@@ -447,6 +459,12 @@ spec:
           workingDir: /workspace/backend
           command: ["/bin/sh", "-c"]
           args: ["mvn -pl services/analytics-service -am -Dmaven.test.skip=true install && mvn -f services/analytics-service/pom.xml spring-boot:run"]
+          env:
+            - name: APP_VCL_WORKER_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-vcl-worker
+                  key: APP_VCL_WORKER_HMAC_KEY
           envFrom:
             - configMapRef:
                 name: voltcanary-config
@@ -515,6 +533,12 @@ spec:
           workingDir: /workspace/backend
           command: ["/bin/sh", "-c"]
           args: ["mvn -pl services/alert-service -am -Dmaven.test.skip=true install && mvn -f services/alert-service/pom.xml spring-boot:run"]
+          env:
+            - name: APP_VCL_WORKER_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voltcanary-vcl-worker
+                  key: APP_VCL_WORKER_HMAC_KEY
           envFrom:
             - configMapRef:
                 name: voltcanary-config

@@ -1,10 +1,11 @@
 const enumValues: Record<string, readonly string[]> = {
+  workflow: ["dashboard"],
   scopeMode:["ALL","DYNAMIC"],
   scope: ["account", "device"], family: ["ANOMALY_DETECTION", "FAILURE_PREDICTION"],
   sort: ["severity", "time"], severity: ["all", "INFO", "WARNING", "HIGH", "CRITICAL"],
   status: ["all", "active", "ACTIVE", "INACTIVE", "ONLINE", "OFFLINE", "DECOMMISSIONED", "OPEN", "ACKNOWLEDGED", "RESOLVED", "SCHEDULED", "FINISHED", "CANCELLED"],
 };
-const identifiers = new Set(["deviceId", "locationId", "ruleId", "alertId", "operationId", "datasetVersionId", "snapshotId", "runId", "modelId", "policyId", "dataSourceId", "deviceType"]);
+const identifiers = new Set(["deviceId", "locationId", "ruleId", "alertId", "operationId", "datasetId", "reviewId", "datasetVersionId", "snapshotId", "runId", "modelId", "policyId", "dataSourceId", "deviceType"]);
 const validId = (value: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(value);
 const mlTabs = ["settings", "datasets", "import", "labels", "training", "models", "policies", "monitoring"];
 const deviceTabs = ["overview", "telemetry", "analytics", "alerts", "maintenance", "configuration", "simulation"];
@@ -15,6 +16,8 @@ export function consoleQuery(pathname: string, search: string, allowTransientRan
   const output = new URLSearchParams();
   const keys = new Set(pathname === "/settings/ml" ? ["tab", "scope", "deviceId", "family", "horizonDays", "datasetVersionId", "snapshotId", "runId", "modelId", "policyId", "from", "to", "timezone"] : pathname === "/devices" ? ["q", "locationId", "status", "view", "offset"] : pathname === "/alerts" ? ["view", "deviceId", "severity", "status", "ruleId", "alertId", "metric", "from", "to", "sort", "offset"] : pathname === "/maintenance" ? ["view", "q", "locationId", "deviceType", "status", "from", "to", "includeCancelled", "operationId", "timezone", "offset"] : pathname.startsWith("/devices/") ? ["tab", "metric", "from", "to", "alertId", "ruleId", "setup", "dataSourceId"] : []);
   const statuses = pathname === "/devices" ? ["all", "ACTIVE", "DISABLED", "OFFLINE", "DECOMMISSIONED"] : pathname === "/alerts" ? ["all", "active", "OPEN", "ACKNOWLEDGED", "RESOLVED"] : ["all", "SCHEDULED", "ACTIVE", "FINISHED", "CANCELLED"];
+  if (pathname === "/ai-agent") ["deviceId", "workflow"].forEach((key) => keys.add(key));
+  if (pathname === "/data") ["datasetId", "reviewId"].forEach(key => keys.add(key));
   if(pathname.startsWith("/dashboards/") || pathname==="/dashboard") ["screenId","scopeMode","deviceId","locationId","period","from","to","timezone","kiosk","overview"].forEach((key)=>keys.add(key));
   for (const [key, value] of input) {
     if (!keys.has(key)) continue;
@@ -45,7 +48,7 @@ export function safeReturnTo(value: string | null | undefined): string {
     const decoded = decodeURIComponent(value);
     if (decoded.startsWith("//") || decoded.includes("\\") || /[\u0000-\u001f]/.test(decoded)) return "/devices";
     const url = new URL(value, "https://console.invalid");
-    if (url.origin !== "https://console.invalid" || !/^\/(?:devices(?:\/[a-zA-Z0-9_-]{1,128})?|dashboard|dashboards(?:\/[a-zA-Z0-9_-]{1,128}(?:\/edit)?)?|maintenance|alerts|settings(?:\/ml)?|ai-agent(?:\/settings)?|account)?$/.test(url.pathname)) return "/devices";
+    if (url.origin !== "https://console.invalid" || !/^\/(?:devices(?:\/[a-zA-Z0-9_-]{1,128})?|vehicles|data|dashboard|dashboards(?:\/[a-zA-Z0-9_-]{1,128}(?:\/edit)?)?|maintenance|alerts|settings(?:\/ml)?|ai-agent(?:\/settings)?|account)?$/.test(url.pathname)) return "/devices";
     const search = consoleQuery(url.pathname, url.search).toString();
     return `${url.pathname}${search ? `?${search}` : ""}`;
   } catch { return "/devices"; }

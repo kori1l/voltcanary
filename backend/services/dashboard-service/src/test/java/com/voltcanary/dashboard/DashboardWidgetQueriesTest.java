@@ -86,6 +86,21 @@ class DashboardWidgetQueriesTest {
     }
     private DashboardWidgetQueries.Request request(boolean force) { return new DashboardWidgetQueries.Request(null, null, null, force); }
 
+    @Test void unsavedPreviewUsesNormalEvidenceAndRenewsAccessWithoutReadingOrWritingADashboard() {
+        var definition = new DashboardDefinition(1, "Unsaved", null, mapper.createObjectNode(), List.of(),
+                List.of(widget("fleet", "fleet-count", mapper.createObjectNode().put("mode", "ALL"))), mapper.createObjectNode());
+        var preview = queries.preview("Bearer current", actor, definition);
+        assertThat(preview.panels()).hasSize(1);
+        assertThat(preview.panels().getFirst().status()).isEqualTo("ready");
+        assertThat(preview.panels().getFirst().data().path("counts").path("registered").asInt()).isEqualTo(250);
+        assertThat(preview.panels().getFirst().provenance().has("detailsPath")).isFalse();
+        org.mockito.Mockito.verifyNoInteractions(storage);
+        denied = true;
+        var revoked = queries.preview("Bearer current", actor, definition);
+        assertThat(revoked.panels().getFirst().status()).isEqualTo("no_access");
+        assertThat(revoked.panels().getFirst().data()).isNull();
+    }
+
     @Test void fleetMapReadsAllVehiclesInOnePanelAndHonorsRuntimeScope() {
         devices.clear();
         var first=UUID.randomUUID(); var second=UUID.randomUUID();
@@ -339,5 +354,31 @@ class DashboardWidgetQueriesTest {
         assertThat(validated.panels().getFirst().status()).isEqualTo("valid");
         verify(reads).telemetry(anyString(), any(), argThat(read -> read.deviceIds().equals(List.of(bus))
                 && read.metrics().equals(Set.of(metric)) && read.projections().isEmpty()));
+    }
+
+    @Test void vehicleFieldWidgetsShareAuthorizedSourceReadAndRetainRecordedHistoryWithoutLatest() {
+        var car = new DashboardEvidenceReads.Device(UUID.randomUUID(), "Bus", "VEHICLE", null, "ACTIVE", 5L, "SOURCE_CONFIG", "PERIODIC", Instant.EPOCH);
+        devices.clear(); devices.add(car);
+        var binding = mapper.createObjectNode().put("mode", "FIXED"); binding.putArray("deviceIds").add(car.id().toString());
+        var config = mapper.createObjectNode().put("sourceId", "bus-gps");
+        var presentation = mapper.createObjectNode().put("vehicleField", "transport.doorsOpen");
+        definition(List.of(new Widget("doors", "vehicle-value", 1, "Doors", binding, config, presentation, null, null),
+                new Widget("history", "vehicle-timeline", 1, "History", binding, config, presentation, null, null)));
+        when(reads.positions(anyString(), any(), any())).thenAnswer(call -> {
+            DashboardEvidenceReads.ReadRequest read = call.getArgument(2);
+            assertThat(read.sourceId()).isEqualTo("bus-gps");
+            assertThat(read.deviceIds()).containsExactly(car.id());
+            var result = evidence(read);
+            var positions = result.putObject("positions");
+            positions.putObject("latest").putNull("position");
+            positions.putObject("history").putArray("points").addObject().put("recordedAt", read.time().from().toString())
+                    .putObject("fields").putObject("transport.doorsOpen").put("value", false);
+            return result;
+        });
+        var batch = queries.query("Bearer fixture", actor, id, request(false));
+        assertThat(batch.panels()).extracting(panel -> panel.status()).containsExactly("no_data", "ready");
+        assertThat(batch.panels().get(1).data().path("positions").path("history").path("points").size()).isEqualTo(1);
+        assertThat(batch.cached()).isFalse();
+        verify(reads, times(1)).positions(anyString(), any(), any());
     }
 }

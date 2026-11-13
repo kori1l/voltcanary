@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 236 236">
+  <defs>
+    <linearGradient id="bird" x1="40" y1="35" x2="170" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fff36b" />
+      <stop offset="45%" stop-color="#ffd21f" />
+      <stop offset="100%" stop-color="#f5b000" />
+    </linearGradient>
+  </defs>
+  <path d="M215 66 178 42 167 42 156 47 148 55 131 86 88 132 65 168 76 165 81 167 28 235 120 151 105 152 152 103 153 106 131 139 147 140 87 194 138 167 139 171 129 183 147 205 167 208 150 203 135 186 136 180 165 160 180 144 190 124 194 84 201 74Z" fill="url(#bird)" />
+</svg>

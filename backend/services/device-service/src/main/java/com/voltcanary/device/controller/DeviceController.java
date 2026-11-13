@@ -30,18 +30,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final com.voltcanary.device.service.DeviceCreation creation;
     private final AuthenticatedUserResolver userResolver;
 
-    public DeviceController(DeviceService deviceService, AuthenticatedUserResolver userResolver) {
+    public DeviceController(DeviceService deviceService, AuthenticatedUserResolver userResolver,
+            com.voltcanary.device.service.DeviceCreation creation) {
         this.deviceService = deviceService;
         this.userResolver = userResolver;
+        this.creation = creation;
     }
 
     @PostMapping
     public DeviceResponse create(
             @RequestHeader HttpHeaders headers,
+            @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @Valid @RequestBody DeviceRequest request) {
-        return deviceService.create(user(headers), request);
+        return creation.create(user(headers), request, key);
     }
 
     @PostMapping(value = "/imports/csv", consumes = MediaType.TEXT_PLAIN_VALUE)

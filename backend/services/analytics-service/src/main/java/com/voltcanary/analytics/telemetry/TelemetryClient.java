@@ -37,7 +37,7 @@ public class TelemetryClient {
         try {
             TelemetryChartResponse chartResponse = restClient.get()
                     .uri(uriBuilder -> uriBuilder
-                            .path("/telemetry/devices/{deviceId}/readings")
+                            .path("/internal/telemetry/devices/{deviceId}/readings")
                             .queryParam("metric", metric)
                             .queryParam("from", from)
                             .queryParam("to", to)
@@ -78,7 +78,7 @@ public class TelemetryClient {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             List<TelemetryMetricResponse> metrics = restClient.get()
-                    .uri("/telemetry/devices/{deviceId}/metrics", deviceId)
+                    .uri("/internal/telemetry/devices/{deviceId}/metrics", deviceId)
                     .headers(headers -> {
                         headers.set("X-Source-Service", internalServiceName);
                         if (!internalServiceToken.isBlank()) {

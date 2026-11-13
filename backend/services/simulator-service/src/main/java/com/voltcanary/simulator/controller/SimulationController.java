@@ -45,10 +45,10 @@ public class SimulationController {
 
     @PutMapping("/devices/{deviceId}/config")
     public SimulationConfigResponse saveConfig(
-            @RequestHeader(value = "X-User-Id", required = false) UUID userId,
+            @RequestHeader("X-User-Id") UUID userId,
             @PathVariable("deviceId") UUID deviceId,
             @Valid @RequestBody SaveSimulationConfigRequest request) {
-        return profileService.save(userIdOrFallback(userId), deviceId, request);
+        return profileService.save(userId, deviceId, request);
     }
 
     @PostMapping("/devices/{deviceId}/config/validate")
@@ -92,9 +92,9 @@ public class SimulationController {
 
     @PostMapping("/devices/{deviceId}/start")
     public SimulationRunResponse start(
-            @RequestHeader(value = "X-User-Id", required = false) UUID userId,
+            @RequestHeader("X-User-Id") UUID userId,
             @PathVariable("deviceId") UUID deviceId) {
-        return runManager.start(userIdOrFallback(userId), deviceId);
+        return runManager.start(userId, deviceId);
     }
 
     @PostMapping("/devices/{deviceId}/stop")
@@ -117,7 +117,4 @@ public class SimulationController {
         return runManager.run(runId);
     }
 
-    private UUID userIdOrFallback(UUID userId) {
-        return userId == null ? new UUID(0, 0) : userId;
-    }
 }

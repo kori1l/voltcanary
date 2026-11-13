@@ -1,0 +1,19 @@
+.native-workbench { display: grid; gap: 16px; min-width: 0; }
+.native-workbench .panel { min-width: 0; }
+.native-workbench .action-row { justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
+.native-workbench .action-row h2 { margin-right: auto; }
+.native-workbench fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 16px; min-width: 0; }
+.native-workbench label { display: grid; gap: 6px; }
+.native-workbench label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 8px; }
+.native-workbench input[type="checkbox"] { width: auto; }
+.native-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
+.native-field { display: grid; align-content: start; gap: 8px; padding: 12px; border: 1px solid var(--border-color, #d5dde5); border-radius: 8px; }
+.native-editor { display: grid; gap: 16px; }
+.native-table-scroll { overflow: auto; max-width: 100%; }
+.native-table table { min-width: 480px; width: 100%; }
+.native-table td { max-width: 320px; overflow-wrap: anywhere; }
+.native-review dd { margin-left: 0; overflow-wrap: anywhere; }
+.native-review dl > div { padding: 8px 0; }
+.native-review dt { font-weight: 600; }
+.native-review details { margin-top: 16px; }
+@media (max-width: 600px) { .native-workbench .action-row { align-items: stretch; flex-wrap: wrap; } .native-workbench .action-row > label { width: 100%; } }

@@ -8,6 +8,31 @@ this does not imply anonymous access to the other Digitransit HTTP APIs.
 
 ## Setup
 
+### Reviewed AI provisioning
+
+`AI_DEVICE_SETUP_ENABLED=true` enables the optional HSL provisioning adapter in
+both AI agent and HSL Compose services. Start/recreate them using the HSL overlay.
+The release default remains false. The private connector HTTP control listener
+is on Docker port 8091 with no host port; fixed upstreams are device-service:8082
+and telemetry-service:8084. Each request carries the caller's normal bearer token
+and renews owner access through ordinary APIs. No JWT or owner password is saved.
+
+After review, an explicit HSL bus/tram request creates the keyed device, reuses or
+creates its API/REST source and compatible HSL transport field template, issues
+an ingestion token privately and atomically appends the binding. Existing bindings
+and credentials remain intact. The connector reloads bindings and subscriptions
+within its five-second loop. The root filesystem stays read-only; the ignored
+private config directory is writable for provisioning and must be protected as
+device credentials. No provisioning commands or arbitrary URLs come from the model.
+
+An identity reservation is saved before creation so competing tasks cannot bind
+the same bus or exceed the 20-vehicle limit. Failed setup retains the reservation
+for explicit reconciliation with the same reviewed creation key. Waiting for an
+inactive/nighttime vehicle reports WAITING_FOR_DATA, without simulation or
+fabricated GPS. Use the assistant's status check to verify subsequent fresh data.
+Legacy manual bindings are preserved; requesting a second setup for an already
+bound bus is rejected before another device is created.
+
 Start the normal local app stack first. From the repository root:
 
 ```powershell
@@ -31,7 +56,7 @@ not remove another dashboard or silently increase quota.
 
 Private connector configuration lives in ignored `docker-data/hsl/config.json`.
 It contains per-source ingestion tokens, never the owner's password or JWT.
-The container reads it through a read-only mount, runs as an unprivileged user,
+The container accesses it through a private writable configuration mount, runs as an unprivileged user,
 has a read-only filesystem, and exposes no ports. Protect this directory like
 any device credential. Use ordinary source-token rotation and update its local
 `sourceToken` value when revoking/replacing a token; restart the connector.
@@ -275,3 +300,21 @@ Configured boolean fields are discoverable chart metrics (type boolean, unit boo
 ## Single active bus dashboard (2026-10-12)
 
 The demo owner has an explicit active dashboard quota of 50 (default for other owners remains 10). A new real bus 0020-00004, route 584, was discovered anonymously while the earlier night buses stopped publishing. It uses the shared HSL telemetry template and an explicit connector source binding, bringing the allowlist to 16 vehicles. Dashboard 1dbde519-9644-45de-9633-69e51eb4308e shows one bus map above speed and door-state charts for the rolling last hour. Desktop/tablet charts share a row; mobile stacks them below the map. Map dashboards default to five-second automatic refresh while the tab is visible. Existing fleet dashboard bindings are preserved. Live creation verification observed FRESH positions and all three panels ready.
+
+## AI device handoff verification (2026-10-22)
+
+The optional HSL container must be started explicitly after stopping the local
+stack; `--profile app` does not include it. Its restored subscription also
+restores fresh observations for existing active buses without duplicating devices.
+
+AI reviewed creation added one VEHICLE for0012-02422 (717N), followed by ordinary
+API/REST source setup, the existing HSL transport v3 template and one explicit
+connector binding. The allowlist now contains17 entries; existing dashboards
+and16 bindings were preserved. The new bus emitted accepted GPS and then stopped
+publishing; STALE honestly retains its last observation. Bus0012-02418 (600) was
+independently verified FRESH as a currently transmitting alternative. Always
+check observation timestamps again before claiming a bus is active.
+
+Device Movement now lists real REST GPS sources alongside simulator sources;
+multiple sources require explicit selection. AI source setup and acceptance
+details are in [AI creation verification](../flows/ai-creation-verification.md#real-hsl-device-handoff--2026-10-22).

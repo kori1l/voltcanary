@@ -18,17 +18,21 @@ public class AccountDeletionCleanupService {
     private final DeviceRepository deviceRepository;
     private final DataSourceRepository dataSourceRepository;
     private final DeviceRegistryEventPublisher eventPublisher;
+    private final com.voltcanary.device.configurable.application.NativeAccountResourceArchive nativeData;
 
     public AccountDeletionCleanupService(
             DeviceRepository deviceRepository,
             DataSourceRepository dataSourceRepository,
-            DeviceRegistryEventPublisher eventPublisher) {
+            DeviceRegistryEventPublisher eventPublisher,
+            com.voltcanary.device.configurable.application.NativeAccountResourceArchive nativeData) {
         this.deviceRepository = deviceRepository;
         this.dataSourceRepository = dataSourceRepository;
         this.eventPublisher = eventPublisher;
+        this.nativeData = nativeData;
     }
 
     public void cleanupDeletedAccount(UUID accountId, Instant cleanupTime) {
+        nativeData.archive(accountId);
         List<Device> devices = deviceRepository.findByAccountIdOrderByCreatedAtAsc(accountId);
         if (devices.isEmpty()) {
             return;

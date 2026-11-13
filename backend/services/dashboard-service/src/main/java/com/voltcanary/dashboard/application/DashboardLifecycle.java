@@ -1,6 +1,7 @@
 package com.voltcanary.dashboard.application;
 
 import com.voltcanary.dashboard.domain.DashboardActor;
+import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.domain.DashboardRecords.Dashboard;
 import com.voltcanary.dashboard.domain.DashboardRecords.Draft;
 import com.voltcanary.dashboard.port.DashboardStorage;
@@ -19,6 +20,20 @@ public class DashboardLifecycle {
         this.storage = storage;
         this.access = access;
         this.preferences = preferences;
+    }
+
+    @Transactional
+    public void delete(DashboardActor actor, UUID id, String ifMatch) {
+        storage.lockActor(actor);
+        storage.lockDashboard(id);
+        Dashboard current = storage.findOwned(actor, id)
+                .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Dashboard not found"));
+        Draft draft = storage.draft(id, actor.userId());
+        access.match(ifMatch, draft.etag());
+        Instant now = Instant.now();
+        preferences.archived(actor, id, now);
+        storage.markDeleted(id, now);
+        storage.audit(actor, id, current.publishedRevision(), "DELETED", now);
     }
 
     @Transactional

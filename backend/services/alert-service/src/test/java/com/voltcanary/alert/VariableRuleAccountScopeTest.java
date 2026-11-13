@@ -13,17 +13,19 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "app.kafka.consume-enabled=false", "app.alert.notifications.worker-enabled=false",
         "app.alert.reconciliation.enabled=false", "app.alert.authorization.enabled=false"})
-class VariableRuleAccountScopeTest {
+class VariableRuleAccountScopeTest extends SignedUserTest {
     @Autowired TestRestTemplate http;
     @MockitoBean AlertAccessService access;
     @MockitoBean VariableRuleValidation variableValidation;
@@ -35,7 +37,7 @@ class VariableRuleAccountScopeTest {
         when(variableValidation.applies(anyString(), any())).thenAnswer(call -> call.getArgument(0, String.class).startsWith("var_"));
         when(variableValidation.config(any())).thenReturn(Map.of());
         var headers = new HttpHeaders();
-        headers.set("X-User-Id", user.toString());
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(user, "actor@example.invalid", "USER"));
         var body = Map.of("name", "Scoped variable threshold", "ruleType", "THRESHOLD", "enabled", true,
                 "scopeType", "DEVICE", "scopeId", UUID.randomUUID(), "metric", "var_" + variable.toString().replace("-", ""),
                 "conditionType", "ABOVE_THRESHOLD", "threshold", 24, "thresholdUnit", "C", "severity", "WARNING");

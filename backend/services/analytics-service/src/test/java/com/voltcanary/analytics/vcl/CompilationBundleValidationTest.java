@@ -1,0 +1,215 @@
+package com.voltcanary.analytics.vcl;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltcanary.vcl.VclCanonical;
+import com.voltcanary.vcl.VclException;
+import com.voltcanary.vcl.VclMetadata;
+import com.voltcanary.vcl.VclDocument;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
+import org.junit.jupiter.api.DynamicTest;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class CompilationBundleValidationTest {
+    @Test
+    void sealedBundleIsStableAndRoundTripsItsPinnedManifest() {
+        var compilation = BundleFixtures.compilation("private-label");
+        var validation = BundleFixtures.validation(compilation);
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        var a = CompilationBundle.seal(account, id, compilation, validation);
+        var b = CompilationBundle.seal(account, id, compilation, validation);
+        assertEquals(a.payload(), b.payload());
+        assertEquals(validation, a.ownerValidation());
+        assertEquals(a.payload(), CompilationBundle.restore(account, id, a.payload(), a.digest()).payload());
+        assertFalse(a.toString().contains("private-label"));
+        assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class,
+                () -> CompilationBundle.restore(UUID.randomUUID(), id, a.payload(), a.digest())).code());
+    }
+
+    @Test
+    void canonicalHashAloneCannotAuthorizeUnknownEnvelopeFields() throws Exception {
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        var bundle = BundleFixtures.bundle(account, id, "private-label");
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var changed = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(bundle.payload());
+        changed.remove("ownerValidation");
+        changed.put("sql", "private-label");
+        String payload = com.voltcanary.vcl.VclCanonical.encode(changed);
+        var error = assertThrows(VclException.class, () -> CompilationBundle.restore(account, id, payload,
+                com.voltcanary.vcl.VclCanonical.sha256(payload)));
+        assertEquals("BUNDLE_INTEGRITY", error.code());
+        assertFalse(error.getMessage().contains("private-label"));
+        String noncanonical = bundle.payload() + " ";
+        assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class, () -> CompilationBundle.restore(account, id,
+                noncanonical, com.voltcanary.vcl.VclCanonical.sha256(noncanonical))).code());
+    }
+
+    @Test
+    void restoreRevalidatesPinnedManifestEvenWithRecomputedHash() throws Exception {
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        var bundle = BundleFixtures.bundle(account, id, "test");
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (String field : List.of("authorized", "ready")) {
+            var changed = mapper.readTree(bundle.payload());
+            ((com.fasterxml.jackson.databind.node.ObjectNode) changed.at("/ownerValidation/dependencies/0")).put(field, false);
+            String payload = com.voltcanary.vcl.VclCanonical.encode(changed);
+            assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class, () ->
+                    CompilationBundle.restore(account, id, payload, com.voltcanary.vcl.VclCanonical.sha256(payload))).code());
+        }
+    }
+
+    @Test
+    void restoreRejectsGraphDriftEvenWithRecomputedHash() throws Exception {
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        var bundle = BundleFixtures.bundle(account, id, "test");
+        var mapper = new ObjectMapper();
+        for (String change : List.of("config", "edge", "order", "missing", "duplicate")) {
+            var changed = mapper.readTree(bundle.payload());
+            var graph = (ArrayNode) changed.at("/compilation/graph");
+            var terminal = (ObjectNode) graph.get(graph.size() - 1);
+            switch (change) {
+                case "config" -> ((ObjectNode) terminal.path("config")).put("severity", "CRITICAL");
+                case "edge" -> ((ObjectNode) terminal.path("inputs")).put("decisions", graph.get(0).path("id").textValue());
+                case "order" -> graph.insert(0, graph.remove(graph.size() - 1));
+                case "missing" -> graph.remove(0);
+                case "duplicate" -> graph.insert(0, graph.get(0).deepCopy());
+                default -> throw new AssertionError(change);
+            }
+            String payload = VclCanonical.encode(changed);
+            assertFalse(bundle.payload().equals(payload), change);
+            assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class, () ->
+                    CompilationBundle.restore(account, id, payload, VclCanonical.sha256(payload)), change).code());
+        }
+    }
+
+    @Test
+    void restoreRejectsMatchingDependencyAndOwnerPinsThatDisagreeWithRule() throws Exception {
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        var bundle = BundleFixtures.bundle(account, id, "test");
+        var mapper = new ObjectMapper();
+        for (String field : List.of("id", "revision", "snapshotDigest")) {
+            var changed = mapper.readTree(bundle.payload());
+            for (String path : List.of("/compilation/dependencies/0", "/ownerValidation/dependencies/0/dependency")) {
+                var pin = (ObjectNode) changed.at(path);
+                switch (field) {
+                    case "id" -> pin.put(field, "00000000-0000-4000-8000-000000000001");
+                    case "revision" -> pin.put(field, pin.path(field).longValue() + 1);
+                    case "snapshotDigest" -> pin.put(field, "invalid");
+                    default -> throw new AssertionError(field);
+                }
+            }
+            String payload = VclCanonical.encode(changed);
+            assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class, () ->
+                    CompilationBundle.restore(account, id, payload, VclCanonical.sha256(payload)), field).code());
+        }
+    }
+
+    @TestFactory
+    List<DynamicTest> ownerReadinessCannotBeAssertedByGrammarAlone() {
+        var compilation = BundleFixtures.compilation("test");
+        var good = BundleFixtures.validation(compilation);
+        var tests = new ArrayList<DynamicTest>();
+        tests.add(reject("OWNER_DOCUMENT_CHANGED", compilation, new CompilationOwnerValidation("f".repeat(64), good.accessScopeDigest(), good.dependencies(), good.execution(), good.cost())));
+        tests.add(reject("OWNER_SCOPE_CHANGED", compilation, new CompilationOwnerValidation(good.documentDigest(), "f".repeat(64), good.dependencies(), good.execution(), good.cost())));
+        tests.add(reject("OWNER_DEPENDENCIES_CHANGED", compilation, withChecks(good, List.of())));
+        var duplicates = new ArrayList<>(good.dependencies());
+        duplicates.add(duplicates.getFirst());
+        tests.add(reject("OWNER_DEPENDENCY_DUPLICATE", compilation, withChecks(good, duplicates)));
+        for (String code : List.of("OWNER_ACCESS_REVOKED", "OWNER_NOT_READY", "INDEX_REQUIRED")) {
+            var checks = good.dependencies().stream().map(check -> new CompilationOwnerValidation.DependencyCheck(check.dependency(),
+                    !code.equals("OWNER_ACCESS_REVOKED"), !code.equals("OWNER_NOT_READY"),
+                    code.equals("INDEX_REQUIRED") ? CompilationOwnerValidation.IndexReadiness.NOT_REQUIRED : check.indexReadiness(), check.capabilityDigest())).toList();
+            tests.add(reject(code, compilation, withChecks(good, checks)));
+        }
+        tests.add(reject("EXECUTION_BUDGET_EXCEEDED", compilation, new CompilationOwnerValidation(good.documentDigest(), good.accessScopeDigest(), good.dependencies(), good.execution(), new CompilationOwnerValidation.Cost(4097, 4096, 10, 100))));
+        tests.add(reject("EXECUTION_BUDGET_EXCEEDED", compilation, new CompilationOwnerValidation(good.documentDigest(), good.accessScopeDigest(), good.dependencies(), good.execution(), new CompilationOwnerValidation.Cost(1024, 4096, 101, 100))));
+        var pins = good.execution();
+        tests.add(reject("EXECUTION_GRANT_CHANGED", compilation, withPins(good, new CompilationOwnerValidation.ExecutionPins(UUID.randomUUID(), pins.bindingGenerations(), pins.startBoundary(), pins.keyDefinitionDigest(), pins.snapshotSetDigest(), pins.resourceRevisions(), pins.spatialKernelVersion(), pins.operatorVersions()))));
+        tests.add(reject("SPATIAL_KERNEL_UNAVAILABLE", compilation, withPins(good, new CompilationOwnerValidation.ExecutionPins(pins.grantId(), pins.bindingGenerations(), pins.startBoundary(), pins.keyDefinitionDigest(), pins.snapshotSetDigest(), pins.resourceRevisions(), "missing-kernel", pins.operatorVersions()))));
+        tests.add(reject("OPERATOR_VERSIONS_CHANGED", compilation, withPins(good, new CompilationOwnerValidation.ExecutionPins(pins.grantId(), pins.bindingGenerations(), pins.startBoundary(), pins.keyDefinitionDigest(), pins.snapshotSetDigest(), pins.resourceRevisions(), pins.spatialKernelVersion(), Map.of("read_stream", "fixture-v1")))));
+        tests.add(reject("INPUT_GENERATIONS_CHANGED", compilation, withPins(good, new CompilationOwnerValidation.ExecutionPins(pins.grantId(), Map.of(UUID.randomUUID(), UUID.randomUUID()), pins.startBoundary(), pins.keyDefinitionDigest(), pins.snapshotSetDigest(), pins.resourceRevisions(), pins.spatialKernelVersion(), pins.operatorVersions()))));
+        tests.add(reject("GRANT_REVISION_REQUIRED", compilation, withResources(good, pins.resourceRevisions().stream().filter(pin -> pin.kind() != CompilationOwnerValidation.ResourceKind.EXECUTION_GRANT).toList())));
+        tests.add(reject("POLICY_REVISION_REQUIRED", compilation, withResources(good, pins.resourceRevisions().stream().filter(pin -> pin.kind() != CompilationOwnerValidation.ResourceKind.EVIDENCE_POLICY).toList())));
+        var repeatedPins = new ArrayList<>(pins.resourceRevisions());
+        repeatedPins.add(repeatedPins.getFirst());
+        tests.add(reject("RESOURCE_PIN_DUPLICATE", compilation, withResources(good, repeatedPins)));
+        return tests;
+    }
+
+    @Test
+    void prepareAndInspectionReauthorizeBeforeReturningPrivateBundle() {
+        var writes = new AtomicInteger();
+        var snapshots = new AtomicInteger();
+        var deny = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var saved = new java.util.concurrent.atomic.AtomicReference<CompilationBundle>();
+        var store = new CompilationBundleStore() {
+            public CompilationBundle put(CompilationBundle bundle) {
+                writes.incrementAndGet();
+                saved.set(bundle);
+                deny.set(true);
+                return bundle;
+            }
+            public Optional<CompilationBundle> find(UUID accountId, UUID bundleId) { return Optional.ofNullable(saved.get()).filter(bundle -> bundle.accountId().equals(accountId)); }
+        };
+        var owners = new CompilationBundlePreparation.Owners() {
+            public VclMetadata snapshot(UUID accountId, VclDocument document) { snapshots.incrementAndGet(); return BundleFixtures.METADATA; }
+            public CompilationOwnerValidation validate(UUID accountId, com.voltcanary.vcl.VclCompilation compilation) { return BundleFixtures.validation(compilation); }
+            public void reauthorize(UUID accountId, CompilationOwnerValidation validation) {
+                if (deny.get()) throw new VclException("OWNER_ACCESS_REVOKED", "");
+            }
+        };
+        var service = new CompilationBundlePreparation(BundleFixtures.COMPILER, owners, store);
+        var account = UUID.randomUUID();
+        var id = UUID.randomUUID();
+        assertEquals("OWNER_ACCESS_REVOKED", assertThrows(VclException.class, () -> service.prepare(account, id, BundleFixtures.document("test"))).code());
+        assertEquals(0, writes.get());
+        deny.set(false);
+        assertEquals("OWNER_ACCESS_REVOKED", assertThrows(VclException.class,
+                () -> service.prepare(account, id, BundleFixtures.document("test"))).code());
+        assertEquals(1, writes.get());
+        assertEquals("OWNER_ACCESS_REVOKED", assertThrows(VclException.class, () -> service.inspect(account, id)).code());
+        deny.set(false);
+        var bundle = service.prepare(account, id, BundleFixtures.document("test"));
+        assertEquals(saved.get().digest(), bundle.digest());
+        assertEquals(bundle.digest(), service.inspect(account, id).digest());
+        assertEquals(bundle.digest(), service.prepare(account, id, BundleFixtures.document("test")).digest());
+        assertEquals(2, snapshots.get());
+        assertEquals(1, writes.get());
+        assertEquals("BUNDLE_ID_REUSED", assertThrows(VclException.class, () -> service.prepare(account, id, BundleFixtures.document("changed"))).code());
+        deny.set(true);
+        assertEquals("OWNER_ACCESS_REVOKED", assertThrows(VclException.class, () -> service.prepare(account, id, BundleFixtures.document("test"))).code());
+        assertEquals("OWNER_ACCESS_REVOKED", assertThrows(VclException.class, () -> service.inspect(account, id)).code());
+        assertEquals("BUNDLE_UNAVAILABLE", assertThrows(VclException.class, () -> service.inspect(UUID.randomUUID(), id)).code());
+    }
+
+    private static CompilationOwnerValidation withChecks(CompilationOwnerValidation validation, List<CompilationOwnerValidation.DependencyCheck> checks) {
+        return new CompilationOwnerValidation(validation.documentDigest(), validation.accessScopeDigest(), checks, validation.execution(), validation.cost());
+    }
+    private static CompilationOwnerValidation withPins(CompilationOwnerValidation validation, CompilationOwnerValidation.ExecutionPins pins) {
+        return new CompilationOwnerValidation(validation.documentDigest(), validation.accessScopeDigest(), validation.dependencies(), pins, validation.cost());
+    }
+    private static CompilationOwnerValidation withResources(CompilationOwnerValidation validation, List<CompilationOwnerValidation.ResourcePin> resources) {
+        var pins = validation.execution();
+        return withPins(validation, new CompilationOwnerValidation.ExecutionPins(pins.grantId(), pins.bindingGenerations(), pins.startBoundary(),
+                pins.keyDefinitionDigest(), pins.snapshotSetDigest(), resources, pins.spatialKernelVersion(), pins.operatorVersions()));
+    }
+    private static DynamicTest reject(String code, com.voltcanary.vcl.VclCompilation compilation, CompilationOwnerValidation validation) {
+        return DynamicTest.dynamicTest(code, () -> assertEquals(code, assertThrows(VclException.class,
+                () -> CompilationBundle.seal(UUID.randomUUID(), UUID.randomUUID(), compilation, validation)).code()));
+    }
+}

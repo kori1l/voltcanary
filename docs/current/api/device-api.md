@@ -5,14 +5,25 @@ Device registration, inventory, and lifecycle endpoints.
 Public endpoints are expected to be reached through the API Gateway with a user
 access token. The gateway validates the token, strips spoofed user headers, and
 forwards `X-User-Id`, `X-User-Email`, and `X-User-Role` to `device-service`.
-For direct local service access, `device-service` can still validate a bearer
-token through the shared `common-security` JWT contract. Internal endpoints
+For direct local service access, `device-service` requires and validates the bearer
+token through the shared `common-security` JWT contract; supplied identity headers
+cannot authorize a request. Internal endpoints
 require `X-Internal-Service-Token`.
 
 ## Accounts
 
 - `GET /accounts/current`: returns or lazily creates the current user's device
   account.
+- `GET /accounts/current/scope`: returns the existing active owned account
+  without provisioning; 409 `ACCOUNT_SETUP_REQUIRED` when no account exists.
+
+`POST /devices` accepts an optional `Idempotency-Key` (1–160 characters).
+The verified user, actual account and key identify a durable creation receipt.
+Identical parallel/repeated requests return one device; changed payload returns
+409. Receipt, device and configured outbox event commit together. Replay
+renews ownership/account access and returns 409 for a decommissioned device or
+404 for a removed resource, without recreating it. Receipts are retained 31 days.
+Callers without the header preserve ordinary creation behavior.
 
 The API Gateway routes `/accounts/**` to `device-service`.
 
@@ -428,3 +439,51 @@ wildcards or executable expressions. Canonical metric keys retain canonical
 types/bounds; latitude and longitude must be stored together. Missing values
 are omitted, false and zero preserved. Existing history is not deleted. Source
 responses include mapping and runtime settings for owner configuration.
+
+## Irreversible device deletion
+
+`POST /devices/{id}/deletion` requires the verified device owner and an explicit
+JSON body `{ "deleteHistory": false }` (retain) or `{ "deleteHistory": true }`
+(purge). It returns 202 with a deletion receipt: `deviceId`, `name`, `deviceType`,
+`deleteHistory`, `status`, `completedSteps`, `lastError`, `createdAt`.
+The registry immediately excludes the device from ordinary reads, inventories,
+fleet discovery and mutation targets, revokes ingestion credentials, enqueues the standard source runtime-config revocation
+for ingestion replicas, and records
+a durable cleanup operation. There is no restore or enable operation for a
+deleted device. Existing decommission routes keep their retirement semantics.
+
+`GET /devices/deletions` lists the current owner's receipts;
+`GET /devices/{id}/deletion` reads one. Foreign resources return 404. Identical
+repeated requests return the existing receipt; changing the confirmed history
+policy returns 409. A receipt with `PENDING` means accepted cleanup, not completed
+erasure. The coordinator records participant progress and retries outages.
+`COMPLETED` is returned only after all required cleanup participants finish.
+
+The console exposes **Удалить устройство** in the upper-right device actions.
+Its confirmation defaults to retaining history and navigates to
+`/devices/deletions`, also linked from the inventory. Retained measurement history
+is owner-readable there, with a UTC time range and metric selector; normal device
+controls and new dashboard bindings remain unavailable. Retained access also
+requires an active owner account.
+
+Telemetry, analytics, alerts and simulator each close a permanent transactional
+write fence. Purge removes their device-owned history, pending payloads and
+simulation configuration; the registry row and dependent source records are then
+physically removed. Retain preserves historical rows behind an irreversible
+registry deletion marker. The HSL connector removes only the selected binding
+and its private token, preserving other vehicles. Late/replayed event processing
+cannot reopen a closed fence. Pending analytics jobs are cancelled and retained
+alert inbox entries are made terminal so deletion cannot starve live work queues. Minimal receipts and technical event deduplication
+IDs remain for authorization and replay protection. Broker logs, backups and
+technical audit follow their existing retention policies.
+
+Shared ML datasets, imported rows or feature snapshots referencing the device
+block the analytics purge. The receipt reports the dependency and remains
+incomplete until those ML resources are handled through their existing lifecycle;
+device deletion never silently changes shared training data.
+
+Internal participants accept `POST /internal/device-deletions/{id}` only with
+`X-Internal-Service-Token`. They renew authorization and the immutable history
+policy from `GET /internal/device-deletions/{id}` on device-service rather than
+trusting a policy or source identifiers supplied by the caller. Cleanup endpoints
+are idempotent and have no public gateway route.

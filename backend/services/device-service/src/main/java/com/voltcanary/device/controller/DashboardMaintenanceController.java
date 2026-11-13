@@ -54,7 +54,7 @@ public class DashboardMaintenanceController {
                 || request.time().asOf() == null || request.time().from() == null || request.time().to() == null
                 || !request.time().from().isBefore(request.time().to())
                 || Duration.between(request.time().from(), request.time().to()).compareTo(Duration.ofDays(31)) > 0) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid typed maintenance read");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Invalid typed maintenance read");
         }
         var scope = scopes.read(user, new DashboardScopeRequest(request.deviceIds().isEmpty() ? "UNBOUND" : "FIXED",
                 Set.copyOf(request.deviceIds()), Set.of(), false, Set.of(), Set.of(),request.workspaceId(),request.accountId(),"maintenance.read"));

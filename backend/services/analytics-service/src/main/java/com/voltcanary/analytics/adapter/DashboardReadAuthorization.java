@@ -97,7 +97,7 @@ public class DashboardReadAuthorization {
                 || request.time() == null || request.time().asOf() == null
                 || !range(request.time().from(), request.time().to())
                 || (request.time().compareFrom() != null && !range(request.time().compareFrom(), request.time().compareTo()))) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Invalid typed owner read or exceeded budget");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Invalid typed owner read or exceeded budget");
         }
     }
 

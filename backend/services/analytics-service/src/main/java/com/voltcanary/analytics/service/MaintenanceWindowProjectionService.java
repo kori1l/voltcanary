@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MaintenanceWindowProjectionService {
+    private final DeviceHistoryDeletion deletions;
 
     private static final String SOURCE_TOPIC = "maintenance-window.changed.v1";
 
@@ -23,7 +24,8 @@ public class MaintenanceWindowProjectionService {
     public MaintenanceWindowProjectionService(
             ProcessedEventService processedEventService,
             MaintenanceWindowReadModelRepository repository,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        this.deletions = deletions;
         this.processedEventService = processedEventService;
         this.repository = repository;
         this.meterRegistry = meterRegistry;
@@ -31,6 +33,7 @@ public class MaintenanceWindowProjectionService {
 
     @Transactional
     public boolean project(MaintenanceWindowChangedEvent event) {
+        if (!deletions.writable(event.deviceId())) return false;
         if (!processedEventService.markIfNew(SOURCE_TOPIC, event.eventId())) {
             return false;
         }
@@ -59,6 +62,7 @@ public class MaintenanceWindowProjectionService {
 
     @Transactional
     public boolean upsertSnapshot(MaintenanceWindowSnapshot snapshot) {
+        if (!deletions.writable(snapshot.deviceId())) return false;
         MaintenanceWindowReadModel entity = repository.findById(snapshot.id())
                 .orElseGet(MaintenanceWindowReadModel::new);
         if (entity.getMaintenanceWindowId() != null && entity.getVersion() >= snapshot.version()) {

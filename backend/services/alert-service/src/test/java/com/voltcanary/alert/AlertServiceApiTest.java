@@ -30,7 +30,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -42,6 +43,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -54,7 +56,15 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "app.alert.reconciliation.enabled=false",
                 "app.maintenance.reconciliation.enabled=false"
         })
-class AlertServiceApiTest {
+class AlertServiceApiTest extends SignedUserTest {
+    @org.junit.jupiter.api.BeforeEach
+    void authenticateApi() {
+        restTemplate.getRestTemplate().setInterceptors(List.of((request, body, execution) -> {
+            request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                    UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
+            return execution.execute(request, body);
+        }));
+    }
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -681,6 +691,25 @@ class AlertServiceApiTest {
         assertThat(secondPage.getBody().totalPages()).isEqualTo(2);
         assertThat(secondPage.getBody().hasNext()).isFalse();
         assertThat(secondPage.getBody().content().getFirst().description()).isEqualTo("Page test alert 0");
+    }
+
+    @Autowired
+    private com.voltcanary.alert.service.DeviceHistoryDeletion deviceHistoryDeletion;
+    @Autowired
+    private AnalyticsAlertEventHandler analyticsEventHandler;
+
+    @Test
+    void purgedInboxCannotBeRecreatedByLateDeliveryOrReconciliation() {
+        UUID device = UUID.randomUUID();
+        var event = new AnomalyDetectedEvent(UUID.randomUUID(), device, UUID.randomUUID(), "DELETE_TEST", "MEDIUM", 10, "Synthetic", Instant.now());
+        var entry = alertAnalyticsEventInboxService.recordReceived(AnalyticsAlertEventHandler.ANOMALY_TOPIC, event.eventId(), AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE, event);
+        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("Transient test failure"));
+        assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow().getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.FAILED);
+        deviceHistoryDeletion.close(device, true);
+        assertThat(analyticsEventHandler.handleAnomaly(event)).isFalse();
+        assertThat(analyticsEventHandler.replayAnomaly(entry.getId(), event)).isFalse();
+        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("Late failure"));
+        assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId())).isEmpty();
     }
 
     private MaintenanceWindowChangedEvent maintenanceEvent(

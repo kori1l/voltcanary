@@ -19,7 +19,8 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.support.serializer.JsonSerializer;
@@ -34,6 +35,7 @@ import org.testcontainers.utility.DockerImageName;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -45,7 +47,17 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.kafka.consumer.group-id=telemetry-integration-test",
                 "spring.jpa.hibernate.ddl-auto=none"
         })
-class TelemetryKafkaTimescaleIntegrationTest {
+class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
+    @org.junit.jupiter.api.BeforeEach
+    void authenticateUserReads() {
+        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
+            if (request.getURI().getPath().startsWith("/telemetry/")) {
+                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
+            }
+            return execution.execute(request, body);
+        }));
+    }
 
     @Container
     static final RedpandaContainer kafka = new RedpandaContainer(DockerImageName.parse("redpandadata/redpanda:v24.2.18"));

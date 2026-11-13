@@ -34,6 +34,6 @@ class TelemetryAccessServiceTest {
         properties.setEnabled(true);
         properties.setDeviceServiceBaseUrl("http://device-service");
         properties.setInternalServiceToken(internalServiceToken);
-        return new TelemetryAccessService(properties, RestClient.builder());
+        return new TelemetryAccessService(properties, com.voltcanary.common.web.JacksonRestClients.builder());
     }
 }

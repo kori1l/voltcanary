@@ -130,7 +130,7 @@ class AnalyticsPipelineTest {
 
     @Test
     void analyticsAuthorizationRejectsForeignDevice() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = com.voltcanary.common.web.JacksonRestClients.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AnalyticsAuthorizationProperties properties = new AnalyticsAuthorizationProperties();
         properties.setDeviceServiceBaseUrl("http://device-service");
@@ -155,7 +155,7 @@ class AnalyticsPipelineTest {
 
     @Test
     void telemetryClientMapsServerFailureToServiceUnavailable() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = com.voltcanary.common.web.JacksonRestClients.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
         downstreamProperties.setTelemetryService(new AnalyticsDownstreamProperties.DownstreamService(
@@ -167,7 +167,7 @@ class AnalyticsPipelineTest {
                 new AnalyticsInternalProperties(),
                 new SimpleMeterRegistry());
         UUID deviceId = UUID.randomUUID();
-        server.expect(once(), requestTo(startsWith("http://telemetry-service/telemetry/devices/" + deviceId + "/readings")))
+        server.expect(once(), requestTo(startsWith("http://telemetry-service/internal/telemetry/devices/" + deviceId + "/readings")))
                 .andRespond(withServerError());
 
         assertThatThrownBy(() -> client.readings(
@@ -182,7 +182,7 @@ class AnalyticsPipelineTest {
 
     @Test
     void mlClientReturnsNullWhenInferenceIsUnavailable() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = com.voltcanary.common.web.JacksonRestClients.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AnalyticsDownstreamProperties downstreamProperties = new AnalyticsDownstreamProperties();
         downstreamProperties.setMlService(new AnalyticsDownstreamProperties.DownstreamService(
@@ -204,7 +204,7 @@ class AnalyticsPipelineTest {
 
     @Test
     void mlClientSendsInternalBoundaryHeadersForInference() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = com.voltcanary.common.web.JacksonRestClients.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");
@@ -249,7 +249,7 @@ class AnalyticsPipelineTest {
 
     @Test
     void mlClientSendsInternalBoundaryHeadersForTraining() {
-        RestClient.Builder builder = RestClient.builder();
+        RestClient.Builder builder = com.voltcanary.common.web.JacksonRestClients.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         AnalyticsInternalProperties internalProperties = new AnalyticsInternalProperties();
         internalProperties.setServiceName("analytics-service");

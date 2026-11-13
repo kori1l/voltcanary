@@ -28,7 +28,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -37,6 +38,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -44,7 +46,39 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
                 "spring.jpa.open-in-view=false",
                 "app.kafka.publish-enabled=false"
         })
-class DeviceManagementTest {
+class DeviceManagementTest extends SignedUserTest {
+
+    @Test
+    void directHttpNeverAcceptsIdentityHeadersOrLetsThemOverrideTheSignedActor() {
+        UUID owner = UUID.randomUUID();
+        UUID foreign = UUID.randomUUID();
+        HttpHeaders spoofed = new HttpHeaders();
+        spoofed.set("X-User-Id", owner.toString());
+        spoofed.set("X-User-Email", "owner@example.invalid");
+        spoofed.set("X-User-Role", "ADMIN");
+        spoofed.set("X-Internal-Service-Token", "dev-internal-token");
+        for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
+            var rejected = restTemplate.exchange("/devices", method,
+                    new HttpEntity<>(Map.of("name", "Spoofed", "type", "FRIDGE"), spoofed), String.class);
+            assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        HttpHeaders verified = headersFor(owner, "owner@example.invalid");
+        AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(verified), AccountResponse.class).getBody();
+        verified.set("X-User-Id", foreign.toString());
+        verified.set("X-User-Role", "ADMIN");
+        verified.set("X-Account-Id", UUID.randomUUID().toString());
+        verified.set("X-Workspace-Role", "OWNER");
+        var actual = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(verified), AccountResponse.class);
+        assertThat(actual.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(actual.getBody().id()).isEqualTo(account.id());
+        assertThat(actual.getBody().userId()).isEqualTo(owner);
+        verified.setBearerAuth("invalid");
+        var invalid = restTemplate.exchange("/accounts/current", HttpMethod.GET,
+                new HttpEntity<>(verified), String.class);
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -63,6 +97,9 @@ class DeviceManagementTest {
 
     @MockitoBean
     private DeviceAuditService auditService;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    private com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtimeEvents;
 
     @Test
     void sharedTelemetryTemplatesAreOwnerScopedAndPropagateEditsToAssignedType() {
@@ -96,6 +133,58 @@ class DeviceManagementTest {
         var stale = restTemplate.exchange("/devices/telemetry-templates/" + template.id(), HttpMethod.PUT,
                 new HttpEntity<>(update, headersFor(owner, "template@example.com")), String.class);
         assertThat(stale.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Autowired
+    private com.voltcanary.device.service.DeviceDeletionService deletions;
+
+    @Autowired
+    private com.voltcanary.device.service.DeviceDeletionFinalization finalization;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate deletionJdbc;
+
+    @Test
+    void irreversibleDeletionIsOwnerScopedIdempotentAndRevokesSources() {
+        UUID owner = UUID.randomUUID();
+        var device = createDevice(owner, createLocation(owner, "Delete location").id(), "Delete fixture");
+        var source = createDataSource(owner, device.id(), "deletion-" + owner);
+        clearInvocations(runtimeEvents);
+        var foreign = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
+                new HttpEntity<>(Map.of("deleteHistory", false), headersFor(UUID.randomUUID(), "foreign@example.invalid")), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        var request = new HttpEntity<>(Map.of("deleteHistory", false), headersFor(owner, "owner@example.invalid"));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            var result = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST, request, String.class);
+            assertThat(result.getStatusCode()).as(result.getBody()).isEqualTo(HttpStatus.ACCEPTED);
+        }
+        assertThat(deviceRepository.findById(device.id())).isEmpty();
+        assertThat(dataSourceRepository.findById(source.id()).orElseThrow().isEnabled()).isFalse();
+        assertThat(dataSourceRepository.findById(source.id()).orElseThrow().getIngestionTokenHash()).isNull();
+        verify(runtimeEvents).publish(any(UUID.class), org.mockito.ArgumentMatchers.argThat(value -> value.getId().equals(source.id())
+                && value.getStatus() == com.voltcanary.device.domain.SourceStatus.REVOKED && value.getIngestionTokenHash() == null));
+        assertThat(deletions.retainedAccess(device.id(), owner)).isTrue();
+        assertThat(deletions.retainedAccess(device.id(), UUID.randomUUID())).isFalse();
+        var changed = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
+                new HttpEntity<>(Map.of("deleteHistory", true), headersFor(owner, "owner@example.invalid")), String.class);
+        assertThat(changed.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        var enable = restTemplate.exchange("/devices/" + device.id() + "/enable", HttpMethod.POST,
+                new HttpEntity<>(headersFor(owner, "owner@example.invalid")), String.class);
+        assertThat(enable.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void purgeFinalizationPhysicallyRemovesRegistryAndSources() {
+        UUID owner = UUID.randomUUID();
+        var device = createDevice(owner, createLocation(owner, "Purge location").id(), "Purge fixture");
+        var source = createDataSource(owner, device.id(), "purge-" + owner);
+        var result = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
+                new HttpEntity<>(Map.of("deleteHistory", true), headersFor(owner, "owner@example.invalid")), String.class);
+        assertThat(result.getStatusCode()).as(result.getBody()).isEqualTo(HttpStatus.ACCEPTED);
+        finalization.complete(device.id());
+        assertThat(deletionJdbc.queryForObject("select count(*) from devices where id=?", Integer.class, device.id())).isZero();
+        assertThat(dataSourceRepository.findById(source.id())).isEmpty();
+        assertThat(deletions.retainedAccess(device.id(), owner)).isFalse();
     }
 
     @Test
@@ -1169,7 +1258,7 @@ class DeviceManagementTest {
 
     private HttpHeaders headersFor(UUID userId, String email) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-User-Id", userId.toString());
+        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(userId, email, "USER"));
         headers.set("X-User-Email", email);
         headers.set("X-User-Role", "USER");
         return headers;

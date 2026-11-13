@@ -3,7 +3,7 @@ package com.voltcanary.ingestion.kafka;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
+import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -14,7 +14,7 @@ public class ProcessingKafkaConfig {
     @Bean
     ConcurrentKafkaListenerContainerFactory<String, String> processingKafkaListenerContainerFactory(KafkaProperties kafka,
             org.springframework.kafka.core.KafkaTemplate<String, String> processingDeadLetterTemplate) {
-        Map<String, Object> properties = kafka.buildConsumerProperties(null);
+        Map<String, Object> properties = kafka.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
@@ -37,7 +37,7 @@ public class ProcessingKafkaConfig {
 
     @Bean
     org.springframework.kafka.core.DefaultKafkaProducerFactory<String, String> processingDeadLetterProducerFactory(KafkaProperties kafka) {
-        var properties = kafka.buildProducerProperties(null);
+        var properties = kafka.buildProducerProperties();
         properties.put(org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
                 org.apache.kafka.common.serialization.StringSerializer.class);
         properties.put(org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,

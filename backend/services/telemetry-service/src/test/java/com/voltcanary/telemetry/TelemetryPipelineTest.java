@@ -11,7 +11,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -35,7 +37,17 @@ import static org.mockito.Mockito.never;
                 "management.health.redis.enabled=false",
                 "spring.kafka.bootstrap-servers=localhost:19092"
         })
-class TelemetryPipelineTest {
+class TelemetryPipelineTest extends SignedUserTest {
+    @org.junit.jupiter.api.BeforeEach
+    void authenticateUserReads() {
+        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
+            if (request.getURI().getPath().startsWith("/telemetry/")) {
+                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
+                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
+            }
+            return execution.execute(request, body);
+        }));
+    }
 
     @Autowired
     private TelemetryEventProcessor telemetryEventProcessor;
@@ -51,6 +63,31 @@ class TelemetryPipelineTest {
 
     @MockitoBean
     private TelemetryDeadLetterPublisher telemetryDeadLetterPublisher;
+
+    @Autowired
+    private com.voltcanary.telemetry.service.DeviceHistoryDeletion historyDeletion;
+
+    @Test
+    void deletingHistoryPurgesRowsAndFencesLateAndReplayedEvents() {
+        UUID device = UUID.randomUUID();
+        var first = event(device, "delete-source", recentTimestamp(300));
+        assertThat(telemetryEventProcessor.process(first)).isPositive();
+        historyDeletion.close(device, true);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry.measurements where device_id=?", Long.class, device)).isZero();
+        assertThat(telemetryEventProcessor.process(first)).isZero();
+        assertThat(telemetryEventProcessor.process(event(device, "delete-source", recentTimestamp(30)))).isZero();
+        historyDeletion.close(device, true);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry_readings where device_id=?", Long.class, device)).isZero();
+    }
+
+    @Test
+    void keepingHistoryStillFencesNewMeasurements() {
+        UUID device = UUID.randomUUID();
+        telemetryEventProcessor.process(event(device, "keep-source", recentTimestamp(300)));
+        historyDeletion.close(device, false);
+        assertThat(telemetryEventProcessor.process(event(device, "keep-source", recentTimestamp(30)))).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry.measurements where device_id=?", Long.class, device)).isPositive();
+    }
 
     @Test
     void consumesEventSavesReadingsAndExposesLatestAndChartPoints() {
