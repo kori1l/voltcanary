@@ -8,6 +8,7 @@ import com.voltcanary.device.service.DataSourceService;
 import io.micrometer.core.instrument.Timer;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,22 +16,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
+@RequiredArgsConstructor
 public class InternalDataSourceController {
 
     private final DataSourceService dataSourceService;
     private final InternalServiceAuth internalServiceAuth;
     private final DeviceOperationalMetrics metrics;
-
-    public InternalDataSourceController(
-            DataSourceService dataSourceService,
-            InternalServiceAuth internalServiceAuth,
-            DeviceOperationalMetrics metrics) {
-        this.dataSourceService = dataSourceService;
-        this.internalServiceAuth = internalServiceAuth;
-        this.metrics = metrics;
-    }
 
     @GetMapping("/internal/devices/{deviceId}/data-sources/{sourceId}/exists")
     public Map<String, Boolean> exists(

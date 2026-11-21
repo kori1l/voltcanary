@@ -23,11 +23,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class MlDatasetSupportService {
 
     public static final int DEFAULT_MIN_SAMPLES_PER_METRIC = 24;
@@ -37,10 +39,6 @@ public class MlDatasetSupportService {
     public static final String DEFAULT_SPLIT_CONFIG = "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}";
 
     private final ObjectMapper objectMapper;
-
-    public MlDatasetSupportService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public MlMetricSelectionMode normalizedMetricSelectionMode(MlMetricSelectionMode value) {
         return value == null ? MlMetricSelectionMode.COMMON : value;

@@ -1,11 +1,15 @@
 package com.voltcanary.alert.config;
 
 import java.time.Duration;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app.alert.reconciliation")
+@Getter
+@Setter
 public class AlertReconciliationProperties {
 
     private boolean enabled = true;
@@ -15,51 +19,4 @@ public class AlertReconciliationProperties {
     private Duration retryDelay = Duration.ofSeconds(30);
     private int batchSize = 25;
 
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public Duration getInterval() {
-        return interval;
-    }
-
-    public void setInterval(Duration interval) {
-        this.interval = interval;
-    }
-
-    public Duration getLockLease() {
-        return lockLease;
-    }
-
-    public void setLockLease(Duration lockLease) {
-        this.lockLease = lockLease;
-    }
-
-    public Duration getProcessingTimeout() {
-        return processingTimeout;
-    }
-
-    public void setProcessingTimeout(Duration processingTimeout) {
-        this.processingTimeout = processingTimeout;
-    }
-
-    public Duration getRetryDelay() {
-        return retryDelay;
-    }
-
-    public void setRetryDelay(Duration retryDelay) {
-        this.retryDelay = retryDelay;
-    }
-
-    public int getBatchSize() {
-        return batchSize;
-    }
-
-    public void setBatchSize(int batchSize) {
-        this.batchSize = batchSize;
-    }
 }

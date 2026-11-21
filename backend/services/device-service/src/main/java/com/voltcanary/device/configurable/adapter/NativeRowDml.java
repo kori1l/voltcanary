@@ -19,22 +19,28 @@ final class NativeRowDml {
     private NativeRowDml() { }
 
     static Result mutate(Connection connection, NativeDataset dataset, JsonNode spec, UUID reservedId) throws SQLException {
+        return mutate(connection, dataset, spec, reservedId, true);
+    }
+
+    static Result mutate(Connection connection, NativeDataset dataset, JsonNode spec, UUID reservedId, boolean advanceHead) throws SQLException {
+        NativeHistoryCapture.ensure(connection, dataset);
         var values = new LinkedHashMap<UUID, JsonNode>();
         for (var pair : spec.path("key")) values.put(UUID.fromString(pair.path("fieldId").asText()), pair.path("literal"));
         for (var pair : spec.path("values")) values.put(UUID.fromString(pair.path("fieldId").asText()), pair.path("literal"));
-        var layout = new NativeSqlLayout(dataset.schema());
+        var layout = new NativeSqlLayout(dataset);
         String table = NativeSqlLayout.identifier(layout.table());
         String operation = spec.path("operation").asText();
         String tuple = dataset.schema().keys().isEmpty() ? null : NativeRowCodec.keyTuple(dataset.schema(), values);
         String hash = tuple == null ? null : VclCanonical.sha256(tuple);
-        NativeRow previous = find(connection, dataset, spec.path("key"), hash);
+        boolean insert = operation.equals("INSERT");
+        // Let the existing unique index handle the successful PostgreSQL insert in one round trip.
+        // The conflict path still reads and compares the full typed tuple.
+        boolean indexArbitrates = insert && hash != null && connection.getMetaData().getDatabaseProductName().equals("PostgreSQL");
+        NativeRow previous = indexArbitrates ? null : find(connection, dataset, spec.path("key"), hash);
         UUID recordId;
         long version;
-        if (operation.equals("INSERT")) {
-            if (previous != null) {
-                if (!NativeRowCodec.keyTuple(dataset.schema(), previous.values()).equals(tuple)) throw new VclException("KEY_IDENTITY_COLLISION", "");
-                throw new VclException("ROW_IDENTITY_CONFLICT", "");
-            }
+        if (insert) {
+            if (previous != null) rejectInsert(dataset, previous, tuple);
             recordId = reservedId;
             version = 1;
             var columns = new ArrayList<String>(List.of("record_id", "record_version", "external_key"));
@@ -48,8 +54,15 @@ final class NativeRowDml {
                 var value = values.getOrDefault(id, JsonNodeFactory.instance.objectNode().put("type", "NULL").putNull("value"));
                 parameters.addAll(NativeRowCodec.encode(dataset.schema(), id, value));
             }
-            execute(connection, "INSERT INTO " + table + " (" + columns.stream().map(NativeSqlLayout::identifier).collect(java.util.stream.Collectors.joining(","))
-                    + ") VALUES(" + String.join(",", java.util.Collections.nCopies(columns.size(), "?")) + ")", parameters);
+            String sql = "INSERT INTO " + table + " (" + columns.stream().map(NativeSqlLayout::identifier).collect(java.util.stream.Collectors.joining(","))
+                    + ") VALUES(" + String.join(",", java.util.Collections.nCopies(columns.size(), "?")) + ")";
+            if (indexArbitrates) {
+                if (update(connection, sql + " ON CONFLICT (external_key) DO NOTHING", parameters) == 0) {
+                    rejectInsert(dataset, find(connection, dataset, spec.path("key"), hash), tuple);
+                }
+            } else {
+                execute(connection, sql, parameters);
+            }
         } else {
             if (previous == null) throw new VclException("ROW_UNAVAILABLE", "");
             if (tuple != null && !NativeRowCodec.keyTuple(dataset.schema(), previous.values()).equals(tuple)) throw new VclException("KEY_IDENTITY_COLLISION", "");
@@ -77,7 +90,23 @@ final class NativeRowDml {
                 execute(connection, "UPDATE " + table + " SET " + String.join(",", assignments) + " WHERE record_id=? AND record_version=?", parameters);
             }
         }
-        if (dataset.schema().history()) history(connection, dataset, recordId, version, operation.equals("DELETE"), previous);
+        if (dataset.schema().history()) {
+            history(connection, dataset, recordId, version, operation.equals("DELETE"), previous);
+            NativeHistoryCapture.mutation(connection, dataset, recordId, version, operation.equals("DELETE"));
+        }
+        if (advanceHead) advanceHead(connection, dataset);
+        return new Result(recordId, version, dataset.dataVersion() + 1, operation.equals("DELETE"));
+    }
+
+    private static void rejectInsert(NativeDataset dataset, NativeRow existing, String tuple) {
+        if (existing == null) throw new VclException("ROW_CONFLICT", "");
+        if (!NativeRowCodec.keyTuple(dataset.schema(), existing.values()).equals(tuple)) throw new VclException("KEY_IDENTITY_COLLISION", "");
+        throw new VclException("ROW_IDENTITY_CONFLICT", "");
+    }
+
+    static void advanceHead(Connection connection, NativeDataset dataset) throws SQLException {
+        NativeHistoryCapture.ensure(connection, dataset);
+        NativeHistoryCapture.seal(connection, dataset, dataset.dataVersion() + 1);
         if (dataset.dataVersion() >= 9_007_199_254_740_991L) throw new VclException("DATA_VERSION_LIMIT", "");
         try (var head = connection.prepareStatement("UPDATE cfg_dataset SET data_version=data_version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND account_id=? AND generation=? AND data_version=? AND status='READY'")) {
             head.setObject(1, dataset.schema().id());
@@ -86,7 +115,6 @@ final class NativeRowDml {
             head.setLong(4, dataset.dataVersion());
             if (head.executeUpdate() != 1) throw new VclException("TARGET_CONFLICT", "");
         }
-        return new Result(recordId, version, dataset.dataVersion() + 1, operation.equals("DELETE"));
     }
 
     private static NativeRow find(Connection connection, NativeDataset dataset, JsonNode keys, String hash) throws SQLException {
@@ -100,7 +128,7 @@ final class NativeRowDml {
             condition = "external_key=?";
             key = hash;
         }
-        try (var query = connection.prepareStatement("SELECT * FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset.schema()).table()) + " WHERE " + condition + " FOR UPDATE")) {
+        try (var query = connection.prepareStatement("SELECT * FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset).table()) + " WHERE " + condition + " FOR UPDATE")) {
             query.setObject(1, key);
             try (var rows = query.executeQuery()) {
                 return rows.next() ? NativeRowCodec.read(rows, dataset, dataset.schema().fields().stream().map(field -> UUID.fromString(field.path("id").asText())).toList()) : null;
@@ -109,7 +137,7 @@ final class NativeRowDml {
     }
 
     private static void history(Connection connection, NativeDataset dataset, UUID id, long version, boolean deleted, NativeRow previous) throws SQLException {
-        var layout = new NativeSqlLayout(dataset.schema());
+        var layout = new NativeSqlLayout(dataset);
         if (!deleted) {
             String columns = layout.columns().stream().map(column -> NativeSqlLayout.identifier(column.name())).collect(java.util.stream.Collectors.joining(","));
             execute(connection, "INSERT INTO " + NativeSqlLayout.identifier(layout.historyTable()) + " (record_id,record_version,deleted," + columns
@@ -129,9 +157,13 @@ final class NativeRowDml {
     }
 
     private static void execute(Connection connection, String sql, List<Object> parameters) throws SQLException {
+        if (update(connection, sql, parameters) != 1) throw new VclException("ROW_CONFLICT", "");
+    }
+
+    private static int update(Connection connection, String sql, List<Object> parameters) throws SQLException {
         try (var statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < parameters.size(); i++) statement.setObject(i + 1, parameters.get(i));
-            if (statement.executeUpdate() != 1) throw new VclException("ROW_CONFLICT", "");
+            return statement.executeUpdate();
         }
     }
 }

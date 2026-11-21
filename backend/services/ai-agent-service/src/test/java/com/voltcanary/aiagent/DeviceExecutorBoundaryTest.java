@@ -21,26 +21,33 @@ class DeviceExecutorBoundaryTest {
         var server = MockRestServiceServer.bindTo(builder).build();
         var properties = new AiAgentProperties();
         properties.setDeviceSetupEnabled(true);
-        var connector = org.mockito.Mockito.mock(com.voltcanary.aiagent.port.DeviceIntegration.class);
-        org.mockito.Mockito.when(connector.provider()).thenReturn("HSL_HFP");
+        properties.getServices().setHslConnectorBaseUrl("http://connector");
         String deviceId = UUID.randomUUID().toString();
-        var intent = Map.<String, Object>of("provider", "HSL_HFP", "mode", "tram", "vehicleKey", "0040-00442");
-        org.mockito.Mockito.when(connector.connect(deviceId, intent, "Bearer current", "stable-source-key"))
-                .thenReturn(Map.of("deviceId", deviceId, "dataSourceId", UUID.randomUUID().toString(), "sourceId", "hsl-tram-0040-00442"));
+        String sourceId = UUID.randomUUID().toString();
+        var connector = new com.voltcanary.aiagent.adapter.HslDeviceIntegration(builder.clone(), properties);
         var executor = new ToolExecutor(builder, properties, org.mockito.Mockito.mock(com.voltcanary.aiagent.service.DashboardCreationExecutor.class),
                 new com.voltcanary.aiagent.service.ActionExecutionBoundary(),
                 new com.voltcanary.aiagent.service.DeviceSetupExecutor(builder, properties, java.util.List.of(connector)));
-        var values = new LinkedHashMap<>(intent);
-        values.put("deviceId", deviceId);
-        var action = new AgentAction(UUID.randomUUID(), AgentTool.CREATE_DATA_SOURCE, "Connect", "Separate review", true, values);
+        var action = new AgentAction(UUID.randomUUID(), AgentTool.CREATE_DATA_SOURCE, "Connect", "Separate review", true,
+                Map.of("provider", "HSL_HFP", "mode", "tram", "vehicleKey", "0040-00442", "deviceId", deviceId));
         var reconciliation = new com.voltcanary.aiagent.service.CreationReconciliation(executor);
+        String request = "{\"mode\":\"tram\",\"vehicleKey\":\"0040-00442\",\"creationKey\":\"stable-source-key\"}";
+        String binding = request.substring(0, request.length() - 1) + ",\"deviceId\":\"" + deviceId + "\"}";
+        var user = UUID.randomUUID();
+        for (boolean lostResponse : new boolean[]{true, false}) {
+            server.expect(requestTo("http://connector/availability")).andExpect(header("Authorization", "Bearer current"))
+                    .andExpect(content().json(request, true)).andRespond(withSuccess());
+            server.expect(requestTo("http://connector/bindings")).andExpect(header("Authorization", "Bearer current"))
+                    .andExpect(content().json(binding, true))
+                    .andRespond(lostResponse ? withSuccess("unreadable-after-commit", MediaType.APPLICATION_JSON)
+                            : withSuccess("{\"deviceId\":\"" + deviceId + "\",\"dataSourceId\":\"" + sourceId + "\"}", MediaType.APPLICATION_JSON));
+        }
         assertThat(reconciliation.supports(action)).isTrue();
-        var first = executor.execute(action, "Bearer current", UUID.randomUUID(), new LinkedHashMap<>(), "stable-source-key");
-        var replay = reconciliation.reconcile(action, "Bearer current", UUID.randomUUID(), new LinkedHashMap<>(), "stable-source-key");
-        assertThat(first.status()).isEqualTo("SUCCESS");
-        assertThat(replay.result()).isEqualTo(first.result());
-        org.mockito.Mockito.verify(connector, org.mockito.Mockito.times(2)).connect(deviceId, intent, "Bearer current", "stable-source-key");
-        org.mockito.Mockito.verify(connector, org.mockito.Mockito.times(2)).prepare(intent, "Bearer current", "stable-source-key");
+        var first = executor.execute(action, "Bearer current", user, new LinkedHashMap<>(), "stable-source-key");
+        assertThat(first.status()).isEqualTo("UNKNOWN");
+        var replay = reconciliation.reconcile(action, "Bearer current", user, new LinkedHashMap<>(), "stable-source-key");
+        assertThat(replay.status()).isEqualTo("SUCCESS");
+        assertThat(replay.result()).containsEntry("deviceId", deviceId).containsEntry("dataSourceId", sourceId);
         server.verify();
         assertThat(reconciliation.supports(new AgentAction(UUID.randomUUID(), AgentTool.CREATE_DATA_SOURCE, "Legacy", "Legacy", true,
                 Map.of("deviceId", deviceId, "protocol", "MQTT")))).isFalse();

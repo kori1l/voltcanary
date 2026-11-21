@@ -1,14 +1,15 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.configurable.application.SourceBindingDescriptions;
 import com.voltcanary.device.configurable.application.NativeReviewRequests;
-import com.voltcanary.device.configurable.application.SourceMappingPreviews;
+import com.voltcanary.device.configurable.application.SourceBindingDescriptions;
 import com.voltcanary.device.configurable.application.SourceMappingConfirmations;
+import com.voltcanary.device.configurable.application.SourceMappingPreviews;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
 import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclSourceBindingDescription;
-import java.util.UUID;
 import java.util.Set;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class SourceBindingsController {
     private final SourceBindingDescriptions descriptions;
     private final AuthenticatedUserResolver users;
@@ -24,18 +26,6 @@ public class SourceBindingsController {
     private final com.voltcanary.device.configurable.application.SourceObservationReads observations;
     private final SourceMappingPreviews mappings;
     private final SourceMappingConfirmations confirmations;
-
-    public SourceBindingsController(SourceBindingDescriptions descriptions, AuthenticatedUserResolver users,
-            com.voltcanary.device.configurable.application.SourceCaptureDescriptions captures,
-            com.voltcanary.device.configurable.application.SourceObservationReads observations, SourceMappingPreviews mappings,
-            SourceMappingConfirmations confirmations) {
-        this.descriptions = descriptions;
-        this.users = users;
-        this.captures = captures;
-        this.observations = observations;
-        this.mappings = mappings;
-        this.confirmations = confirmations;
-    }
 
     @GetMapping("/data/source-bindings/{id}")
     public VclSourceBindingDescription describe(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
@@ -78,6 +68,15 @@ public class SourceBindingsController {
         var digest = request.path("mappingDigest").textValue();
         if (digest == null || !digest.matches("[0-9a-f]{64}")) throw new VclException("REVIEW_DIGEST_INVALID", "");
         return confirmations.confirm(actor, id, mappingRevision(request), mappingField(request), request.path("conversion"), digest);
+    }
+
+    @GetMapping("/data/source-bindings/{id}/mapping-receipts/{digest}")
+    public SourceMappingConfirmations.Receipt mappingReceipt(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
+            @PathVariable String digest, @RequestParam long schemaRevision) {
+        if (!digest.matches("[0-9a-f]{64}") || schemaRevision < 1 || schemaRevision > 9_007_199_254_740_991L) {
+            throw new VclException("REVIEW_DIGEST_INVALID", "");
+        }
+        return confirmations.receipt(users.resolve(headers), id, schemaRevision, digest);
     }
 
     @org.springframework.web.bind.annotation.PostMapping("/data/source-bindings/{id}/mapping-replay")

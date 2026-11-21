@@ -42,7 +42,8 @@ final class SessionAbsenceSchedule {
             }
             var scheduled = existing.get();
             var pending = recipe(new KeyedStateStore.DueTimer(key, lease.pinsDigest(), scheduled), transition.next());
-            if (!observedAt.isAfter(pending.through() == null ? window.endExclusive() : pending.through())) {
+            if (!observedAt.isAfter(pending.through() == null ? window.endExclusive() : pending.through())
+                    && VclObservationReadiness.checkpoint(checkpoint) > VclObservationReadiness.checkpoint(pending.trigger())) {
                 pending = new Recipe(pending.node(), pending.checkpoint(), pending.openedAt(), checkpoint,
                         pending.previous(), pending.through());
                 return withTimer(transition, timer(lease, transition, scheduled.timer().dueAt(), pending));

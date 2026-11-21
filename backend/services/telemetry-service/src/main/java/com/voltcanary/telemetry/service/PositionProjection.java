@@ -5,14 +5,13 @@ import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.telemetry.repository.PositionRepository;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class PositionProjection {
     private final PositionRepository repository;
-    public PositionProjection(PositionRepository repository) {
-        this.repository = repository;
-    }
 
     public boolean valid(TelemetryReceivedEvent event) {
         return GpsMetrics.valid(event.metrics());

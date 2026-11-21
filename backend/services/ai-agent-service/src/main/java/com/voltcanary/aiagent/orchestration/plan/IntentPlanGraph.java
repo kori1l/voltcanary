@@ -16,20 +16,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import static com.voltcanary.aiagent.orchestration.plan.IntentPlans.conflict;
 import static com.voltcanary.aiagent.orchestration.plan.IntentPlans.reject;
 
 /** Typed graph validation only. No user-language interpretation or external I/O. */
+@RequiredArgsConstructor
 public final class IntentPlanGraph {
     private final SkillRegistry registry;
     private final ProtocolValidator validator;
     private final ObjectMapper mapper;
-
-    public IntentPlanGraph(SkillRegistry registry, ProtocolValidator validator, ObjectMapper mapper) {
-        this.registry = registry;
-        this.validator = validator;
-        this.mapper = mapper;
-    }
 
     public IntentPlans.State apply(IntentPlans.State state, PlannerResponse proposal, Set<String> sourceMessages,
             String currentMessageId, boolean newUserTurn, Set<String> authorized, Set<String> capabilities) {
@@ -44,7 +40,8 @@ public final class IntentPlanGraph {
         var goalIds = new HashSet<String>();
         for (var goal : goals) goalIds.add(goal.goalId());
         for (var goal : proposal.proposedGoals()) {
-            if (!sourceMessages.contains(goal.sourceMessageId()) || !goalIds.add(goal.goalId())) throw reject("GOAL_PROVENANCE_OR_ID");
+            if (!currentMessageId.equals(goal.sourceMessageId()) || !sourceMessages.contains(goal.sourceMessageId())
+                    || !goalIds.add(goal.goalId())) throw reject("GOAL_PROVENANCE_OR_ID");
             goals.add(new Goal(goal.goalId(), goal.sourceMessageId(), goal.text(), "PENDING", null));
         }
         var supersededGoals = new HashSet<>(proposal.supersedesGoalIds());
@@ -61,14 +58,15 @@ public final class IntentPlanGraph {
             if (Set.of("SUCCEEDED", "EXECUTING", "UNKNOWN").contains(existing.status())) throw reject("PERFORMED_STEP_IMMUTABLE");
         }
         // Every affected downstream pending review is invalidated, but actual receipts are never erased.
-        boolean changed;
-        do {
-            changed = false;
-            for (var step : steps) if (step.dependsOn().stream().anyMatch(superseded::contains) && !superseded.contains(step.stepId())) {
+        var dependencies = new LinkedHashMap<String, List<String>>();
+        steps.forEach(step -> dependencies.put(step.stepId(), step.dependsOn()));
+        var affected = supersessionClosure(superseded, dependencies);
+        for (var step : steps) {
+            if (affected.contains(step.stepId()) && !superseded.contains(step.stepId())) {
                 if (Set.of("SUCCEEDED", "EXECUTING", "UNKNOWN").contains(step.status())) throw reject("PERFORMED_DEPENDENT_IMMUTABLE");
-                changed |= superseded.add(step.stepId());
             }
-        } while (changed);
+        }
+        superseded.addAll(affected);
         steps.replaceAll(step -> {
             if (!superseded.contains(step.stepId())) return step;
             reviews.remove(step.stepId());
@@ -92,6 +90,18 @@ public final class IntentPlanGraph {
         result = result.revise(result.revision(), "ACTIVE", refresh(result.steps()), goals, result.facts(), null, result.focus(), skills, reviews, result.outputs());
         validateWire(result);
         return result;
+    }
+
+    public static Set<String> supersessionClosure(Set<String> roots, Map<String, List<String>> dependencies) {
+        var affected = new java.util.LinkedHashSet<>(roots);
+        boolean changed;
+        do {
+            changed = false;
+            for (var step : dependencies.entrySet()) {
+                if (step.getValue().stream().anyMatch(affected::contains)) changed |= affected.add(step.getKey());
+            }
+        } while (changed);
+        return affected;
     }
 
     public void validate(IntentPlans.State state, Set<String> authorized, Set<String> capabilities) {

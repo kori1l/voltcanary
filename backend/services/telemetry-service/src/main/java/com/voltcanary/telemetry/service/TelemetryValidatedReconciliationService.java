@@ -12,8 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,9 +21,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class TelemetryValidatedReconciliationService {
 
-    private static final Logger log = LoggerFactory.getLogger(TelemetryValidatedReconciliationService.class);
     private static final String VALIDATED_TOPIC = "telemetry.validated.v1";
 
     private final JdbcTemplate jdbcTemplate;
@@ -32,20 +33,6 @@ public class TelemetryValidatedReconciliationService {
     private final TelemetryValidationProperties validationProperties;
     private final MeterRegistry meterRegistry;
     private final MetricCatalog metricCatalog;
-
-    public TelemetryValidatedReconciliationService(
-            JdbcTemplate jdbcTemplate,
-            TelemetryValidatedPublisher validatedPublisher,
-            TelemetryReconciliationProperties properties,
-            TelemetryValidationProperties validationProperties,
-            MeterRegistry meterRegistry, MetricCatalog metricCatalog) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.validatedPublisher = validatedPublisher;
-        this.properties = properties;
-        this.validationProperties = validationProperties;
-        this.meterRegistry = meterRegistry;
-        this.metricCatalog = metricCatalog;
-    }
 
     @Scheduled(fixedDelayString = "#{@telemetryReconciliationProperties.interval.toMillis()}")
     public void reconcile() {

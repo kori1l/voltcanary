@@ -11,13 +11,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /** Opt-in autonomous drain of diagnostic WINDOW_CLOSE measures under fresh machine authority. */
+@Slf4j
 public final class WorkerDueWindows {
-    private static final Logger LOG = LoggerFactory.getLogger(WorkerDueWindows.class);
     private static final int MAX_TIMER_CURSORS = 128;
     private record DeploymentKey(UUID account, UUID rule, UUID epoch, KeyedStateStore.TimerKind kind) {}
 
@@ -48,7 +47,7 @@ public final class WorkerDueWindows {
     @Scheduled(fixedDelayString = "${app.vcl.worker.delay:5s}")
     public void poll() {
         try { drain(32, 32); }
-        catch (RuntimeException unavailable) { LOG.warn("VCL diagnostic worker scan failed: {}", reason(unavailable)); }
+        catch (RuntimeException unavailable) { log.warn("VCL diagnostic worker scan failed: {}", reason(unavailable)); }
     }
 
     /** Owner failures leave the corresponding due timer pending for a later scan. */
@@ -76,7 +75,7 @@ public final class WorkerDueWindows {
                         var restored = recovery.restoreWindow(candidate, store, due.key(), due.pinsDigest(), compiler);
                         results.add(restored.consumeDiscovered(due, holder));
                     } catch (RuntimeException unavailable) {
-                        LOG.warn("VCL diagnostic worker left a due timer pending: {}", reason(unavailable));
+                        log.warn("VCL diagnostic worker left a due timer pending: {}", reason(unavailable));
                     }
                 }
                 if (candidate.start() != null && store instanceof JdbcKeyedStateStore jdbc) {
@@ -92,26 +91,26 @@ public final class WorkerDueWindows {
                         try {
                             recovery.finishSustained(candidate, jdbc, pending, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            LOG.warn("VCL sustained measure remains pending: {}", reason(unavailable));
+                            log.warn("VCL sustained measure remains pending: {}", reason(unavailable));
                         }
                     }
                     for (var due : page(candidate, KeyedStateStore.TimerKind.SESSION_TIMEOUT, timerLimit)) {
                         try {
                             recovery.timeoutSession(candidate, jdbc, due, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            LOG.warn("VCL session timeout remains pending: {}", reason(unavailable));
+                            log.warn("VCL session timeout remains pending: {}", reason(unavailable));
                         }
                     }
                     for (var due : page(candidate, KeyedStateStore.TimerKind.WAIT_TIMEOUT, timerLimit)) {
                         try {
                             recovery.finishSessionAbsence(candidate, jdbc, due, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            LOG.warn("VCL session absence remains pending: {}", reason(unavailable));
+                            log.warn("VCL session absence remains pending: {}", reason(unavailable));
                         }
                     }
                 }
             } catch (RuntimeException unavailable) {
-                LOG.warn("VCL diagnostic worker left a deployment pending: {}", reason(unavailable));
+                log.warn("VCL diagnostic worker left a deployment pending: {}", reason(unavailable));
             }
         }
         return List.copyOf(results);

@@ -5,17 +5,14 @@ import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.domain.DashboardRecords.Dashboard;
 import com.voltcanary.dashboard.port.DashboardStorage;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DashboardAccess {
     private final DashboardStorage storage;
     private final com.voltcanary.dashboard.sharing.DashboardSharing sharing;
-
-    public DashboardAccess(DashboardStorage storage,com.voltcanary.dashboard.sharing.DashboardSharing sharing) {
-        this.storage = storage;
-        this.sharing=sharing;
-    }
 
     public Dashboard owned(DashboardActor actor, UUID id) {
         if (sharing!=null && sharing.shared(id)) return sharing.require(actor,id,"VIEW");

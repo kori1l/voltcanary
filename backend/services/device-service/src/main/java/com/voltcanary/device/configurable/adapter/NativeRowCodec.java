@@ -23,7 +23,7 @@ final class NativeRowCodec {
 
     static List<String> columns(NativeDataset dataset, UUID id) {
         if (dataset.recordIdFieldId().equals(id)) return List.of("record_id");
-        return new NativeSqlLayout(dataset.schema()).columns().stream().filter(column -> column.fieldId().equals(id))
+        return new NativeSqlLayout(dataset).columns().stream().filter(column -> column.fieldId().equals(id))
                 .map(NativeSqlLayout.Column::name).toList();
     }
 

@@ -9,16 +9,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsMlRuntimeDecisionService {
 
     private final ObjectMapper objectMapper;
-
-    public AnalyticsMlRuntimeDecisionService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public boolean canaryIncluded(UUID accountId, UUID deviceId, UUID modelVersionId, Integer canaryPercent) {
         if (modelVersionId == null) {

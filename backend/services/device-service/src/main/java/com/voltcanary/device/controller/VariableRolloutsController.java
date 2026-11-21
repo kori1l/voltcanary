@@ -6,9 +6,10 @@ import com.voltcanary.device.variable.application.VariableRollouts;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,17 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/device-types/{code}/variables/{id}")
+@RequiredArgsConstructor
 public class VariableRolloutsController {
     private final VariableDefaults defaults;
     private final VariableRollouts rollouts;
     private final AuthenticatedUserResolver users;
-
-    public VariableRolloutsController(VariableDefaults defaults, VariableRollouts rollouts,
-            AuthenticatedUserResolver users) {
-        this.defaults = defaults;
-        this.rollouts = rollouts;
-        this.users = users;
-    }
 
     @PutMapping("/default-binding")
     public Map<String, String> configure(@RequestHeader HttpHeaders headers, @PathVariable("code") String code,

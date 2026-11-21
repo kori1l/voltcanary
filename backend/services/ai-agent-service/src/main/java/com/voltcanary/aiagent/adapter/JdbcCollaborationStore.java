@@ -3,6 +3,7 @@ package com.voltcanary.aiagent.adapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.aiagent.orchestration.collaboration.CollaborationStore;
+import com.voltcanary.aiagent.orchestration.collaboration.ConsultationPolicy;
 import com.voltcanary.aiagent.orchestration.collaboration.Consultations;
 import com.voltcanary.aiagent.orchestration.collaboration.Requirements;
 import com.voltcanary.aiagent.orchestration.contract.SkillRegistry;
@@ -60,7 +61,9 @@ public final class JdbcCollaborationStore implements CollaborationStore {
 
     @Override
     public State update(IntentPlans.Token turn, long expectedRevision, String requestKey, String requestDigest, Mutation mutation) {
-        if (requestKey != null && requestKey.startsWith("requirements:")) throw invalid("RESERVED_COLLABORATION_REQUEST_KEY");
+        if (requestKey != null && (requestKey.startsWith("requirements:") || requestKey.startsWith("cancel:"))) {
+            throw invalid("RESERVED_COLLABORATION_REQUEST_KEY");
+        }
         return transactions.execute(status -> updateInTransaction(turn, expectedRevision, requestKey, requestDigest, mutation, (before, next) -> {}));
     }
 
@@ -103,22 +106,59 @@ public final class JdbcCollaborationStore implements CollaborationStore {
         if (before.revision() != expectedRevision) throw conflict("COLLABORATION_REVISION_CHANGED");
         var next = mutation.apply(before, now);
         validate(before, next);
+        persistRoot.accept(before, next);
+        return persist(turn.planId(), turn.requestId(), requestKey, requestDigest, states, before, next, now);
+    }
+
+    public Consultations.Task cancel(Scope owner, UUID planId, UUID taskId, long expectedRevision, String requestKey) {
+        if (requestKey == null || requestKey.isBlank() || requestKey.length() > 153) throw invalid("INVALID_COLLABORATION_REQUEST");
+        String key = "cancel:" + requestKey;
+        String digest = SkillRegistry.digest(taskId + ":" + expectedRevision);
+        return transactions.execute(status -> {
+            var conversations = jdbc.query("""
+                    select id from ai_conversations where user_id=? and account_id=? and id=(
+                      select conversation_id from ai_orchestrations where id=? and user_id=? and account_id=?
+                    ) for update
+                    """,
+                    (row, index) -> row.getObject(1, UUID.class), owner.userId(), owner.accountId(), planId, owner.userId(), owner.accountId());
+            if (conversations.isEmpty()) throw new Requirements.Rejected(404, "PLAN_UNAVAILABLE");
+            var before = readInTransaction(owner, planId);
+            var task = before.consultations().tasks().get(taskId);
+            if (task == null) throw new Requirements.Rejected(404, "CONSULTATION_UNAVAILABLE");
+            var replay = jdbc.query("""
+                    select request_digest,state_json from ai_orchestration_collaboration_events where plan_id=? and request_key=?
+                    """, (row, index) -> {
+                if (!digest.equals(row.getString(1))) throw conflict("COLLABORATION_REQUEST_KEY_CONFLICT");
+                return parse(row.getString(2), State.class).consultations().tasks().get(taskId);
+            }, planId, key);
+            if (!replay.isEmpty()) return replay.getFirst();
+            var tree = ConsultationPolicy.cancel(before.consultations(), taskId, expectedRevision);
+            var next = new State(before.revision() + 1, before.requirements(), tree);
+            validate(before, next);
+            var states = jdbc.query("select state_json from ai_orchestration_collaboration where plan_id=?",
+                    (row, index) -> row.getString(1), planId);
+            UUID operationId = UUID.nameUUIDFromBytes((planId + ":" + key).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return persist(planId, operationId, key, digest, states, before, next, now()).consultations().tasks().get(taskId);
+        });
+    }
+
+    private State persist(UUID planId, UUID operationId, String requestKey, String requestDigest,
+            java.util.List<String> states, State before, State next, Instant now) {
         String encoded = json(next);
         if (encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
                 > com.voltcanary.aiagent.orchestration.contract.ProtocolValidator.MAX_BYTES) throw invalid("COLLABORATION_STATE_SIZE_LIMIT");
-        persistRoot.accept(before, next);
         if (states.isEmpty()) {
             jdbc.update("insert into ai_orchestration_collaboration(plan_id,revision,state_json,updated_at) values(?,?,?,?)",
-                    turn.planId(), next.revision(), encoded, time(now));
+                    planId, next.revision(), encoded, time(now));
         } else {
             int updated = jdbc.update("update ai_orchestration_collaboration set revision=?,state_json=?,updated_at=? where plan_id=? and revision=?",
-                    next.revision(), encoded, time(now), turn.planId(), before.revision());
+                    next.revision(), encoded, time(now), planId, before.revision());
             if (updated != 1) throw conflict("COLLABORATION_REVISION_CHANGED");
         }
         jdbc.update("""
                 insert into ai_orchestration_collaboration_events(plan_id,revision,request_key,request_digest,turn_id,before_digest,after_digest,state_json,created_at)
                 values(?,?,?,?,?,?,?,?,?)
-                """, turn.planId(), next.revision(), requestKey, requestDigest, turn.requestId(),
+                """, planId, next.revision(), requestKey, requestDigest, operationId,
                 SkillRegistry.digest(states.isEmpty() ? json(before) : states.getFirst()), SkillRegistry.digest(encoded), encoded, time(now));
         // Return exactly the persisted JSON projection, including canonical JSON numeric/null nodes.
         return parse(encoded, State.class);

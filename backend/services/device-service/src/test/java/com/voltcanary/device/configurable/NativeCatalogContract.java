@@ -115,6 +115,23 @@ abstract class NativeCatalogContract {
     }
 
     @Test
+    void cachedCompilationDoesNotHideStoredSchemaTampering() {
+        var actor = UUID.randomUUID();
+        var account = account(actor);
+        var schema = NativeFixtures.schema(account, UUID.randomUUID(), false);
+        var catalog = new JdbcNativeDatasetCatalog(source());
+        catalog.register(account, actor, UUID.randomUUID(), UUID.randomUUID(), schema);
+        catalog.provision(account, schema.id());
+        assertEquals(schema.digest(), catalog.ready(account, schema.id(), 1).orElseThrow().schema().digest());
+
+        var changed = NativeFixtures.document(schema.id(), false);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) changed.path("spec")).put("label", "Different stored label");
+        new JdbcTemplate(source()).update("UPDATE cfg_schema_revision SET canonical_document=? WHERE dataset_id=? AND revision=1",
+                changed.toString(), schema.id());
+        assertEquals("SCHEMA_INTEGRITY", assertThrows(VclException.class, () -> catalog.ready(account, schema.id(), 1)).code());
+    }
+
+    @Test
     void realOwnerMetadataCompilesQueryWithoutSyntheticDatasetFixture() {
         var actor = UUID.randomUUID();
         var account = account(actor);

@@ -1,11 +1,15 @@
 package com.voltcanary.analytics.config;
 
 import java.time.Duration;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app")
+@Getter
+@Setter
 public class AnalyticsDownstreamProperties {
 
     private DownstreamService telemetryService = new DownstreamService("http://localhost:8084", Duration.ofSeconds(2));
@@ -13,40 +17,12 @@ public class AnalyticsDownstreamProperties {
     private DownstreamService alertService = new DownstreamService("http://localhost:8086", Duration.ofSeconds(2));
     private DownstreamService deviceService = new DownstreamService("http://localhost:8082", Duration.ofSeconds(2));
 
-    public DownstreamService getTelemetryService() {
-        return telemetryService;
-    }
-
-    public void setTelemetryService(DownstreamService telemetryService) {
-        this.telemetryService = telemetryService;
-    }
-
-    public DownstreamService getMlService() {
-        return mlService;
-    }
-
-    public void setMlService(DownstreamService mlService) {
-        this.mlService = mlService;
-    }
-
-    public DownstreamService getAlertService() {
-        return alertService;
-    }
-
-    public void setAlertService(DownstreamService alertService) {
-        this.alertService = alertService;
-    }
-
-    public DownstreamService getDeviceService() {
-        return deviceService;
-    }
-
-    public void setDeviceService(DownstreamService deviceService) {
-        this.deviceService = deviceService;
-    }
-
     public static class DownstreamService {
+        @Getter
+        @Setter
         private String baseUrl;
+        @Getter
+        @Setter
         private Duration timeout;
 
         public DownstreamService() {
@@ -57,20 +33,5 @@ public class AnalyticsDownstreamProperties {
             this.timeout = timeout;
         }
 
-        public String getBaseUrl() {
-            return baseUrl;
-        }
-
-        public void setBaseUrl(String baseUrl) {
-            this.baseUrl = baseUrl;
-        }
-
-        public Duration getTimeout() {
-            return timeout;
-        }
-
-        public void setTimeout(Duration timeout) {
-            this.timeout = timeout;
-        }
     }
 }

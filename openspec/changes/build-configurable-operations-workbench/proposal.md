@@ -11,7 +11,7 @@ The platform must compose many company-specific scenarios from typed data, relat
 
 ## What Changes
 
-Provide ordinary UI for collections/rows/relations, shared map objects, rule building, dry-run, version diffs and activation. Extend dashboards through existing owner manifests and renderer.
+Provide ordinary UI for collections/rows/relations, shared map objects, rule building, dry-run, version diffs and activation. Extend dashboards through existing owner manifests and renderer. For vehicle scenarios, extend the existing Vehicles console: retain its fleet map, vehicle/source selection, history and zone editor, and add AI-assisted reviewed monitoring changes through the same telemetry owner. No separate fleet dashboard or circle-zone widget is part of this change.
 
 ## Dependencies
 
@@ -23,9 +23,20 @@ Complete contracts now include VCL types/methods, efficient dense native storage
 customer DB adapters and strict imports; see the linked normative documents in
 design.md. G7/UI/acceptance participate in each vertical slice, not only at the end.
 
-[Configurable platform architecture](../../../docs/target/configurable-operations-platform.md) and [authoritative program](../README.md#configurable-operations-program). Reuse current services, variables, operational schedules/facts, dashboards and assistant orchestration. Existing APIs stay compatible; implementation requires owning migrations/contracts and focused tests.
+[Configurable platform architecture](../../../docs/target/configurable-operations-platform.md) and [authoritative program](../README.md#configurable-operations-program). Reuse current services, variables, operational schedules/facts, dashboards and assistant orchestration. Preserve supported reads and resource identities; reviewed monitoring writes supersede unconditional settings PUT. Implementation requires owning migrations/contracts and focused tests.
 
 ## Out of Scope
 
 No paid/live campaigns, arbitrary executable SQL/scripts, silent source/identity substitution, duplicate assistant/ledger, automatic publication or legal-policy assumptions. Existing failed A5/A6 gates remain open.
 
+
+
+## Vehicles scope correction — 2026-11-18
+
+Vehicles already provides the required transport workspace. The requested AI
+scenario configures the selected vehicle there (zones, speed limit, idle threshold),
+using a shared manual/AI review and exact persisted result. Reuse useful geometry
+and authorization code; remove the duplicate circle dashboard implementation and
+its AI creation route. See the detailed current-state assessment, owner changes,
+workflow and acceptance plan in [design.md](design.md#existing-vehicles-console-and-ai-extension).
+The Vehicles AI extension below is planned, not delivered by the retired demo.

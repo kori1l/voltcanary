@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DashboardTaskNameTest {
+    @Test void standaloneRenameUsesCurrentCommandEvenWithAnExistingReview() {
+        assertThat(DashboardTaskName.standaloneCommand("Назови «Мой любимый трамвай»")).isEqualTo("Мой любимый трамвай");
+        assertThat(DashboardTaskName.standaloneCommand("Перемести виджет «Мой любимый трамвай»")).isNull();
+    }
+
     @Test void initialQuotedDashboardNameIsAKnownFactBeforeTheOperationModelRuns() {
         assertThat(DashboardTaskName.explicit("Создай дашборд «QA двери» для транспорта. Период час.", Map.of())).isEqualTo("QA двери");
         assertThat(DashboardTaskName.explicit("Create dashboard \"My tram\" with a map", Map.of())).isEqualTo("My tram");

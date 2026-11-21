@@ -13,12 +13,22 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
+import org.springframework.util.ConcurrentLruCache;
 
 /** Durable provisioning journal plus trusted dense DDL. No model-supplied SQL or physical names. */
+@RequiredArgsConstructor
 public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
+    private record StoredSchema(UUID account, UUID dataset, String document, String digest) { }
+    // Cache immutable compiler output; every transaction still reads and verifies the stored head.
+    private static final ConcurrentLruCache<StoredSchema, NativeSchema> SCHEMAS = new ConcurrentLruCache<>(256, stored -> {
+        var schema = NativeSchema.compileRevision(stored.document(), emptyMetadata(stored.account()));
+        if (!schema.id().equals(stored.dataset()) || !schema.digest().equals(stored.digest())) {
+            throw new VclException("SCHEMA_INTEGRITY", "");
+        }
+        return schema;
+    });
     private final DataSource source;
-
-    public JdbcNativeDatasetCatalog(DataSource source) { this.source = source; }
 
     @Override
     public void register(UUID account, UUID actor, UUID generation, UUID recordIdFieldId, NativeSchema schema) {
@@ -55,8 +65,10 @@ public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
                         if (!target.equals(schema.id()) && !ownedReady(connection, account, target)) throw new VclException("REFERENCE_TARGET_UNAVAILABLE", "");
                     }
                 }
-                execute(connection, "INSERT INTO cfg_dataset(id,account_id,created_by,schema_revision,generation,data_version,record_id_field_id,status) VALUES(?,?,?,1,?,1,?,'PROVISIONING')",
-                        schema.id(), account, actor, generation, recordIdFieldId);
+                execute(connection, "INSERT INTO cfg_dataset(id,account_id,created_by,schema_revision,generation,data_version,record_id_field_id,physical_id,status) VALUES(?,?,?,1,?,1,?,?,'PROVISIONING')",
+                        schema.id(), account, actor, generation, recordIdFieldId, schema.id());
+                execute(connection, "INSERT INTO cfg_native_generation(dataset_id,generation,physical_id,account_id,schema_revision,status) VALUES(?,?,?,?,?,'PROVISIONING')",
+                        schema.id(), generation, schema.id(), account, schema.revision());
                 execute(connection, "INSERT INTO cfg_schema_revision(dataset_id,revision,document_digest,canonical_document) VALUES(?,?,?,?)",
                         schema.id(), schema.revision(), schema.digest(), schema.canonical());
                 for (var field : schema.fields()) execute(connection,
@@ -88,8 +100,8 @@ public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
                         status = rows.getString(1);
                     }
                 }
-                var dataset = definition(connection, account, datasetId, 1, false).orElseThrow(() -> new VclException("DATASET_UNAVAILABLE", ""));
-                var layout = new NativeSqlLayout(dataset.schema());
+                var dataset = definition(connection, account, datasetId, 0, false).orElseThrow(() -> new VclException("DATASET_UNAVAILABLE", ""));
+                var layout = new NativeSqlLayout(dataset);
                 if (status.equals("READY")) {
                     NativeCatalogReadiness.verify(connection, layout);
                     connection.commit();
@@ -99,8 +111,10 @@ public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
                 if (dataset.schema().history()) execute(connection, layout.createHistory());
                 for (var index : layout.indexes()) execute(connection, layout.createIndex(index));
                 NativeCatalogReadiness.verify(connection, layout);
+                NativeHistoryCapture.ensure(connection, dataset);
                 execute(connection, "UPDATE cfg_index_manifest SET status='READY' WHERE dataset_id=? AND schema_revision=?", datasetId, dataset.schema().revision());
                 execute(connection, "UPDATE cfg_dataset SET status='READY',updated_at=CURRENT_TIMESTAMP WHERE id=? AND account_id=? AND status IN ('PROVISIONING','FAILED','READY')", datasetId, account);
+                execute(connection, "UPDATE cfg_native_generation SET status='ACTIVE' WHERE dataset_id=? AND generation=? AND status='PROVISIONING'", datasetId, dataset.generation());
                 connection.commit();
                 return dataset;
             } catch (SQLException | RuntimeException failure) {
@@ -114,9 +128,41 @@ public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
     public Optional<NativeDataset> ready(UUID account, UUID id, long revision) {
         try (var connection = source.getConnection()) {
             var dataset = definition(connection, account, id, revision, true);
-            if (dataset.isPresent()) NativeCatalogReadiness.verify(connection, new NativeSqlLayout(dataset.get().schema()));
+            if (dataset.isPresent()) NativeCatalogReadiness.verify(connection, new NativeSqlLayout(dataset.get()));
             return dataset;
         } catch (SQLException failure) { throw storage(failure); }
+    }
+
+    @Override
+    public Optional<NativeDataset> current(UUID account, UUID id) {
+        return ready(account, id, 0);
+    }
+
+    @Override
+    public List<ArchivedTable> archived(UUID account, UUID actor) {
+        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+            var result = new ArrayList<ArchivedTable>();
+            try (var query = connection.prepareStatement("""
+                    SELECT d.id,d.schema_revision,s.document_digest,s.canonical_document
+                    FROM cfg_dataset d JOIN cfg_schema_revision s ON s.dataset_id=d.id AND s.revision=d.schema_revision
+                    WHERE d.account_id=? AND d.status='ARCHIVED'
+                    ORDER BY d.id LIMIT 100
+                    """)) {
+                query.setObject(1, account);
+                try (var rows = query.executeQuery()) {
+                    while (rows.next()) {
+                        var id = rows.getObject(1, UUID.class);
+                        long revision = rows.getLong(2);
+                        var schema = NativeSchema.compileRevision(rows.getString(4), emptyMetadata(account));
+                        if (!schema.id().equals(id) || schema.revision() != revision || !schema.digest().equals(rows.getString(3))) {
+                            throw new VclException("SCHEMA_INTEGRITY", "");
+                        }
+                        result.add(new ArchivedTable(id, revision, schema.definition().path("label").asText()));
+                    }
+                }
+            }
+            return List.copyOf(result);
+        });
     }
 
     @Override
@@ -137,21 +183,50 @@ public final class JdbcNativeDatasetCatalog implements NativeDatasetCatalog {
     }
 
     static Optional<NativeDataset> definition(Connection connection, UUID account, UUID id, long revision, boolean ready) throws SQLException {
-        try (var query = connection.prepareStatement("""
-                SELECT d.generation,d.data_version,d.record_id_field_id,s.document_digest,s.canonical_document
-                FROM cfg_dataset d JOIN cfg_schema_revision s ON s.dataset_id=d.id AND s.revision=d.schema_revision
+        return definition(connection, account, id, revision, ready, false);
+    }
+
+    static NativeDataset lockReadyDefinition(Connection connection, UUID account, UUID id, long revision) throws SQLException {
+        var result = definition(connection, account, id, 0, true, true)
+                .orElseThrow(() -> new VclException("DATASET_UNAVAILABLE", ""));
+        if (revision != 0 && result.schema().revision() != revision) throw new VclException("SCHEMA_UNAVAILABLE", "");
+        return result;
+    }
+
+    private static Optional<NativeDataset> definition(Connection connection, UUID account, UUID id, long revision,
+            boolean ready, boolean lockHead) throws SQLException {
+        String sql = """
+                SELECT d.generation,d.data_version,d.record_id_field_id,d.physical_id,d.status AS dataset_status,d.schema_revision,
+                    g.physical_id AS recorded_physical_id,g.status AS generation_status,s.document_digest,s.canonical_document
+                FROM cfg_dataset d LEFT JOIN cfg_schema_revision s ON s.dataset_id=d.id AND s.revision=d.schema_revision
                 JOIN accounts a ON a.id=d.account_id
-                WHERE d.id=? AND d.account_id=? AND s.revision=? AND a.status='ACTIVE'
-                """ + (ready ? " AND d.status='READY'" : " AND d.status<>'ARCHIVED'"))) {
+                LEFT JOIN cfg_native_generation g ON g.dataset_id=d.id AND g.account_id=d.account_id AND g.generation=d.generation
+                WHERE d.id=? AND d.account_id=? AND (d.schema_revision=? OR ?=0) AND a.status='ACTIVE'
+                """ + (ready ? " AND d.status='READY'" : " AND d.status<>'ARCHIVED'");
+        if (lockHead) sql = NativeCatalogReadiness.withLockedHead(sql + " FOR UPDATE OF d");
+        try (var query = connection.prepareStatement(sql)) {
             query.setObject(1, id);
             query.setObject(2, account);
             query.setLong(3, revision);
+            query.setLong(4, revision);
             try (var rows = query.executeQuery()) {
                 if (!rows.next()) return Optional.empty();
-                var schema = NativeSchema.compile(rows.getString("canonical_document"), emptyMetadata(account));
-                if (!schema.id().equals(id) || !schema.digest().equals(rows.getString("document_digest"))) throw new VclException("SCHEMA_INTEGRITY", "");
-                return Optional.of(new NativeDataset(account, rows.getObject("generation", UUID.class), rows.getLong("data_version"),
-                        rows.getObject("record_id_field_id", UUID.class), schema));
+                String document = rows.getString("canonical_document");
+                if (document == null) {
+                    if (lockHead) throw new VclException("SCHEMA_UNAVAILABLE", "");
+                    return Optional.empty();
+                }
+                if (!rows.getObject("physical_id", UUID.class).equals(rows.getObject("recorded_physical_id", UUID.class))
+                        || !java.util.Set.of("ACTIVE", "PROVISIONING").contains(rows.getString("generation_status") == null ? "" : rows.getString("generation_status"))
+                        || rows.getString("dataset_status").equals("READY") && !rows.getString("generation_status").equals("ACTIVE")) {
+                    throw new VclException("NATIVE_CATALOG_DRIFT", "");
+                }
+                var schema = SCHEMAS.get(new StoredSchema(account, id, document, rows.getString("document_digest")));
+                if (schema.revision() != rows.getLong("schema_revision")) throw new VclException("SCHEMA_INTEGRITY", "");
+                var dataset = new NativeDataset(account, rows.getObject("generation", UUID.class), rows.getLong("data_version"),
+                        rows.getObject("record_id_field_id", UUID.class), schema, rows.getObject("physical_id", UUID.class));
+                if (lockHead) NativeCatalogReadiness.verifyLockedHead(rows.getString("physical_catalog"), new NativeSqlLayout(dataset));
+                return Optional.of(dataset);
             }
         }
     }

@@ -132,6 +132,24 @@ class VclConformanceTest {
     }
 
     @Test
+    void timestampImportWithAnOffsetDoesNotNeedALocalTimezone() {
+        var document = examples.at("/documents/3").deepCopy();
+        var column = (ObjectNode) document.at("/spec/columns/1");
+        column.put("sourceType", "TEXT");
+        column.putArray("conversions").addObject().put("method", "parse_instant").put("format", "RFC3339_OFFSET");
+        VclMetadata timestampTarget = new Fixtures() {
+            @Override public Optional<Snapshot> dataset(UUID id, long revision) {
+                return super.dataset(id, revision).map(snapshot -> {
+                    var definition = snapshot.definition().deepCopy();
+                    ((ObjectNode) definition.at("/fields/1")).put("type", "INSTANT");
+                    return new Snapshot(id, revision, definition);
+                });
+            }
+        };
+        compiler.compile(parser.parse(document.toString()), timestampTarget);
+    }
+
+    @Test
     void nativeCollectionWithoutBusinessKeyUsesOwnerReservedSystemIdentity() {
         String datasetId = "00000000-0000-4000-8000-000000000005";
         String systemFieldId = "00000000-0000-4000-8000-000000000098";

@@ -5,14 +5,13 @@ import com.voltcanary.device.config.DeviceKafkaProperties;
 import com.voltcanary.device.domain.MaintenanceWindow;
 import java.time.Instant;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class MaintenanceWindowEventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(MaintenanceWindowEventPublisher.class);
     private static final String TOPIC = "maintenance-window.changed.v1";
 
     private final DeviceOutboxService outboxService;

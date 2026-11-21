@@ -7,20 +7,16 @@ import com.voltcanary.dashboard.domain.DashboardRecords.Draft;
 import com.voltcanary.dashboard.port.DashboardStorage;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardLifecycle {
     private final DashboardStorage storage;
     private final DashboardAccess access;
     private final PersonalDashboardPreferences preferences;
-
-    public DashboardLifecycle(DashboardStorage storage, DashboardAccess access, PersonalDashboardPreferences preferences) {
-        this.storage = storage;
-        this.access = access;
-        this.preferences = preferences;
-    }
 
     @Transactional
     public void delete(DashboardActor actor, UUID id, String ifMatch) {

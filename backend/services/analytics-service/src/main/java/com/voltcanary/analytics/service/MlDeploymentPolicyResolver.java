@@ -7,16 +7,14 @@ import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import com.voltcanary.analytics.repository.MlDeploymentPolicyRepository;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlDeploymentPolicyResolver {
 
     private final MlDeploymentPolicyRepository policyRepository;
-
-    public MlDeploymentPolicyResolver(MlDeploymentPolicyRepository policyRepository) {
-        this.policyRepository = policyRepository;
-    }
 
     public MlResolvedDeploymentPolicyResponse resolvePolicy(UUID accountId, UUID deviceId, String deviceType) {
         Optional<MlDeploymentPolicy> selected = Optional.empty();

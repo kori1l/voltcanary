@@ -14,13 +14,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Presentation projections retain owner counts and provenance; pages never stand in for totals. */
 @Component
+@RequiredArgsConstructor
 public class WidgetEvidenceProjection {
     private final ObjectMapper mapper;
-    public WidgetEvidenceProjection(ObjectMapper mapper) { this.mapper = mapper; }
+
     public List<String> owners(String type) {
         return switch (type) {
             case "vehicle-map", "vehicle-value", "vehicle-timeline" -> List.of("positions");

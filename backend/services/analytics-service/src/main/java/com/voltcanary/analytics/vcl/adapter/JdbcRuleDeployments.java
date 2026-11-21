@@ -299,7 +299,7 @@ public final class JdbcRuleDeployments {
                 }
                 require(previous == null || previous.rule().equals(next.rule()), "DEPLOYMENT_CUTOVER_SCOPE_CHANGED");
                 var bundle = verifyBundle(next);
-                var compiled = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                var compiled = bundle.json()
                         .path("compilation");
                 require(inputs.documentDigest().equals(compiled.path("documentDigest").textValue()),
                         "DEPLOYMENT_BUNDLE_CHANGED");
@@ -653,7 +653,7 @@ public final class JdbcRuleDeployments {
 
     private static Identity identity(CompilationBundle bundle) {
         try {
-            JsonNode document = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            JsonNode document = bundle.json()
                     .path("compilation").path("canonicalDocument");
             var parsed = new VclParser().parse(document.textValue());
             return new Identity(UUID.fromString(parsed.spec().path("ruleId").textValue()),

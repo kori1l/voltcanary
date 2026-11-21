@@ -12,16 +12,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Bounded reads from the existing transcript; no reconciliation, summarization or second history store. */
+@RequiredArgsConstructor
 public final class JdbcContextHistory implements ContextSources.History {
     private final JdbcTemplate jdbc;
     private final Clock clock;
-    public JdbcContextHistory(JdbcTemplate jdbc, Clock clock) {
-        this.jdbc = jdbc;
-        this.clock = clock;
-    }
+
     private void check(Session session, UUID conversation) {
         Long count = jdbc.queryForObject("select count(*) from ai_conversations where id=? and user_id=? and account_id=? and expires_at>?",
                 Long.class, conversation, session.owner().userId(), session.owner().accountId(), java.sql.Timestamp.from(clock.instant()));

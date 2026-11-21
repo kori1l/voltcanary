@@ -5,15 +5,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.voltcanary.common.web.DashboardEnergyReadRequest;
 import com.voltcanary.common.web.DashboardEnergyBatchReadRequest;
+import com.voltcanary.common.web.DashboardEnergyReadRequest;
 import com.voltcanary.common.web.DashboardOwnerReadRequest;
 import com.voltcanary.common.web.EnergyMeterDefinition;
-import com.voltcanary.telemetry.domain.EnergyPeriodCalculator;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.CounterEvent;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.EventKind;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.Method;
 import com.voltcanary.telemetry.domain.EnergyPeriodCalculator.Policy;
+import com.voltcanary.telemetry.domain.EnergyPeriodCalculator;
 import com.voltcanary.telemetry.repository.EnergyReadingRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -31,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Pure meter math composed with freshly authorized registry snapshots and raw telemetry. */
 @Service
+@RequiredArgsConstructor
 public class EnergyPeriodReadService {
     private record Meter(UUID deviceId,String name,UUID locationId,List<EnergyMeterDefinition> history,
             List<EnergyMeterWindows.Window> windows) {
@@ -39,11 +41,6 @@ public class EnergyPeriodReadService {
     private final EnergyReadingRepository readings;
     private final ObjectMapper mapper;
     private final EnergyPeriodCalculator calculator = new EnergyPeriodCalculator();
-
-    public EnergyPeriodReadService(EnergyReadingRepository readings,ObjectMapper mapper) {
-        this.readings = readings;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ObjectNode read(DashboardEnergyReadRequest request,JsonNode renewedScope) {

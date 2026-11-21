@@ -88,11 +88,13 @@ public final class VclWorkerDatasetRowsController {
         if (revision < 1 || !scope.account().equals(rows.account(actor(scope)))) {
             throw new VclException("OWNER_ACCESS_REVOKED", "");
         }
-        return datasets.describeForAccount(scope.actor(), scope.account(), id, revision);
+        // This machine route reads a sealed snapshot. Its exact old schema and generation
+        // are verified by the snapshot owner; current metadata supplies only fresh authority.
+        return datasets.describeForAccount(scope.actor(), scope.account(), id, 0);
     }
 
     private void renew(VclWorkerAssertion.Scope scope, UUID id, VclDatasetDescription original) {
-        var current = datasets.describeForAccount(scope.actor(), scope.account(), id, original.schemaRevision());
+        var current = datasets.describeForAccount(scope.actor(), scope.account(), id, 0);
         if (!scope.account().equals(rows.account(actor(scope)))
                 || !original.schemaDigest().equals(current.schemaDigest())
                 || !original.accessScopeDigest().equals(current.accessScopeDigest())

@@ -16,16 +16,16 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AlertMaintenanceSuppressionService {
-
-    private static final Logger log = LoggerFactory.getLogger(AlertMaintenanceSuppressionService.class);
 
     private final MaintenanceWindowReadModelRepository maintenanceRepository;
     private final AlertSuppressionRepository suppressionRepository;
@@ -33,21 +33,6 @@ public class AlertMaintenanceSuppressionService {
     private final AlertEventRepository alertEventRepository;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
-
-    public AlertMaintenanceSuppressionService(
-            MaintenanceWindowReadModelRepository maintenanceRepository,
-            AlertSuppressionRepository suppressionRepository,
-            AlertRepository alertRepository,
-            AlertEventRepository alertEventRepository,
-            MeterRegistry meterRegistry,
-            ObjectMapper objectMapper) {
-        this.maintenanceRepository = maintenanceRepository;
-        this.suppressionRepository = suppressionRepository;
-        this.alertRepository = alertRepository;
-        this.alertEventRepository = alertEventRepository;
-        this.meterRegistry = meterRegistry;
-        this.objectMapper = objectMapper;
-    }
 
     @Transactional
     public boolean suppressesEvent(

@@ -4,6 +4,7 @@ from copy import deepcopy
 import uuid
 
 from .api import ApiError
+from .conversations import ConversationRunner
 from .fixtures import VehicleFixture
 from .grading import definition, grade
 
@@ -11,6 +12,81 @@ from .grading import definition, grade
 def archive_dashboard(client, dashboard_id):
     draft = client.call("GET", f"/dashboards/{dashboard_id}/draft")
     client.call("POST", f"/dashboards/{dashboard_id}/archive", headers={"If-Match": '"' + draft["etag"] + '"'})
+
+
+def execute_dashboard_lifecycle(client, account, output):
+    marker = "EVAL_" + uuid.uuid4().hex + "_lifecycle"
+    name = "QA " + marker
+    updated_name = name + " updated"
+    fixture = VehicleFixture(client, marker)
+    runner = ConversationRunner(client, account, output)
+    report = {"job": "CONFIRMED_DASHBOARD_LIFECYCLE", "synthetic": True, "marker": marker,
+              "checks": [], "diagnostics": runner.diagnostics, "dashboardId": None}
+    dashboard = None
+
+    def check(code, passed):
+        report["checks"].append({"id": code, "passed": passed})
+        if not passed:
+            raise ApiError(0, code)
+
+    def confirm(plan):
+        return client.call("POST", f"/ai-agent/plans/{plan['planId']}/execute",
+                           {"confirmed": True, "expectedVersion": plan["version"], "payloadDigest": plan["payloadDigest"]})
+
+    def inventory():
+        page = client.call("GET", "/dashboards?limit=100&status=ALL")
+        if page.get("hasNext"):
+            raise ApiError(0, "BOUNDED_ACCOUNT_REQUIRED")
+        return {item["id"]: item for item in page["items"] if item["id"] != dashboard}
+
+    try:
+        baseline = inventory()
+        fixture.create()
+        report["fixture"] = fixture.metadata()
+        plan = runner.model(f"Создай дашборд «{name}» с одной карточкой текущей скорости. "
+                            "Глобальный период всего дашборда — последний час.", None, fixture.devices)
+        predicates = grade(plan, {"name": name, "roles": ["current:speed"], "period": "LAST_1_HOUR"},
+                           device_ids=fixture.devices)
+        report["createSemantics"] = predicates
+        reviewed = definition(plan)
+        check("CREATE_SEMANTICS", all(item["passed"] for item in predicates) and len(reviewed["widgets"]) == 1)
+        report["createReview"] = reviewed
+        check("CREATE_WAITS_FOR_CONFIRMATION", inventory() == baseline)
+        created = confirm(plan)
+        check("CREATE_CONFIRMED", created.get("status") == "SUCCESS")
+        dashboard = created["actions"][0]["result"]["dashboardId"]
+        report["dashboardId"] = dashboard
+        draft_path = f"/dashboards/{dashboard}/draft"
+        check("CREATE_READBACK_EXACT", client.call("GET", draft_path)["definition"] == reviewed)
+
+        update = runner.model(f"Переименуй сохранённый черновик дашборда в «{updated_name}». Остальное сохрани.",
+                              plan, fixture.devices,
+                              independent=True, executed_base=True)
+        expected = {**reviewed, "name": updated_name}
+        candidate = definition(update)
+        report["updateReview"] = candidate
+        check("UPDATE_SEMANTICS", update.get("planningStatus") == "READY" and candidate == expected)
+        check("UPDATE_WAITS_FOR_CONFIRMATION", client.call("GET", draft_path)["definition"] == reviewed)
+        saved = confirm(update)
+        check("UPDATE_CONFIRMED_SAME_ID", saved.get("status") == "SUCCESS"
+              and saved["actions"][0]["result"]["dashboardId"] == dashboard)
+        check("UPDATE_READBACK_EXACT", client.call("GET", draft_path)["definition"] == candidate)
+        check("UNRELATED_DASHBOARDS_UNCHANGED", inventory() == baseline)
+        report["status"] = "PASSED"
+    except ApiError as error:
+        report.update(status="FAILED", errorCode=error.code, httpStatus=error.status)
+    finally:
+        failures = []
+        if dashboard:
+            try:
+                archive_dashboard(client, dashboard)
+            except ApiError as error:
+                failures.append({"dashboardId": dashboard, "code": error.code, "httpStatus": error.status})
+        failures.extend(fixture.cleanup())
+        report["cleanup"] = {"completed": not failures, "failures": failures}
+        if failures and report.get("status") == "PASSED":
+            report.update(status="FAILED", errorCode="FIXTURE_CLEANUP_FAILED")
+    return report
 
 
 def execute_fixture(client, account, renderer_reference=False, keep=False):

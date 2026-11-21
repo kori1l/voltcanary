@@ -7,22 +7,16 @@ import com.voltcanary.dashboard.domain.DashboardDefinition;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.query.WidgetManifests;
 import com.voltcanary.dashboard.query.WidgetQueryDecoder;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class TemplateDefinitionChecks {
     private final DefinitionValidation validation;
     private final DefinitionBindings bindings;
     private final WidgetManifests manifests;
     private final WidgetQueryDecoder decoder;
-
-    public TemplateDefinitionChecks(DefinitionValidation validation, DefinitionBindings bindings,
-            WidgetManifests manifests, WidgetQueryDecoder decoder) {
-        this.validation = validation;
-        this.bindings = bindings;
-        this.manifests = manifests;
-        this.decoder = decoder;
-    }
 
     public void validate(DashboardActor actor, String authorization, DashboardDefinition definition) {
         validation.validate(definition);

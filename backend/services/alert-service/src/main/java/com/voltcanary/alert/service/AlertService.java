@@ -24,8 +24,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -36,11 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class AlertService {
-    private final DeviceHistoryDeletion deletions;
-
-    private static final Logger log = LoggerFactory.getLogger(AlertService.class);
-
     private final AlertRepository alertRepository;
     private final AlertEventRepository alertEventRepository;
     private final AlertAccessService alertAccessService;
@@ -49,26 +47,7 @@ public class AlertService {
     private final AlertMaintenanceSuppressionService maintenanceSuppressionService;
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
-
-    public AlertService(
-            AlertRepository alertRepository,
-            AlertEventRepository alertEventRepository,
-            AlertAccessService alertAccessService,
-            AlertDeduplicationService deduplicationService,
-            AlertNotificationPort alertNotificationPort,
-            AlertMaintenanceSuppressionService maintenanceSuppressionService,
-            MeterRegistry meterRegistry,
-            ObjectMapper objectMapper, DeviceHistoryDeletion deletions) {
-        this.alertRepository = alertRepository;
-        this.alertEventRepository = alertEventRepository;
-        this.alertAccessService = alertAccessService;
-        this.deduplicationService = deduplicationService;
-        this.alertNotificationPort = alertNotificationPort;
-        this.maintenanceSuppressionService = maintenanceSuppressionService;
-        this.meterRegistry = meterRegistry;
-        this.objectMapper = objectMapper;
-        this.deletions = deletions;
-    }
+    private final DeviceHistoryDeletion deletions;
 
     @Transactional
     public Alert handleAnomaly(AnomalyDetectedEvent event) {

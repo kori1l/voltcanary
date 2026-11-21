@@ -1,23 +1,22 @@
 package com.voltcanary.device.business;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.common.web.OperationalFact;
 import com.voltcanary.common.web.OperatingSchedule;
+import com.voltcanary.common.web.OperationalFact;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class OperationalRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-    public OperationalRepository(JdbcTemplate jdbc,ObjectMapper mapper) {
-        this.jdbc=jdbc;
-        this.mapper=mapper;
-    }
+
     public void lock(UUID account) {
         jdbc.query("SELECT id FROM accounts WHERE id=? FOR UPDATE",(r,i)->r.getObject("id",UUID.class),account);
     }

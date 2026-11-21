@@ -22,9 +22,9 @@ public final class DashboardOperationSchema {
         return Map.of("type", "object", "properties", properties, "required", new ArrayList<>(properties.keySet()), "additionalProperties", false);
     }
     public static Map<String, Object> envelope() {
-        return envelope(null, null);
+        return envelope(null, null, "");
     }
-    private static Map<String, Object> envelope(List<String> existingKeys, Map<String, List<String>> dataRefs) {
+    private static Map<String, Object> envelope(List<String> existingKeys, Map<String, List<String>> dataRefs, String widgetTypes) {
         var variants = new ArrayList<Map<String, Object>>();
         for (var subtype : DashboardOperation.class.getAnnotation(JsonSubTypes.class).value()) {
             List<String> offered = dataRefs == null ? null : dataRefs.get(subtype.name());
@@ -34,17 +34,29 @@ public final class DashboardOperationSchema {
                     && Set.of("show_map", "show_current", "show_history", "set_data").contains(subtype.name())) continue;
             var fields = new LinkedHashMap<String, Object>();
             fields.put("op", Map.of("type", "string", "enum", List.of(subtype.name())));
+            var reference = widgetReference(existingKeys, widgetTypes);
             for (var field : subtype.value().getRecordComponents()) {
                 Map<String, Object> schema;
                 if (field.getName().equals("settings")) {
                     var value = Map.<String, Object>of("anyOf", List.of(string(), Map.of("type", "boolean"),
                             Map.of("type", "number"), array(string(), 50), Map.of("type", "null")));
-                    schema = array(object(Map.of("key", string(), "value", value)), 32);
+                    var key = Map.<String, Object>of("type", "string", "description",
+                            "Use the exact catalogue key for the requested setting. Map footer notices use showMapNotices; "
+                                    + "map controls use showMapDetails; widget headings use showTitle.");
+                    var setting = describedObject(Map.of("key", key, "value", value),
+                            "One explicitly requested change. Omit settings to preserve them. "
+                                    + "An empty list or null as a setting value changes or resets that setting.");
+                    schema = array(setting, 32);
                 } else if (field.getType().equals(List.class)) {
-                    var bounded = new LinkedHashMap<>(array(string(), 12));
+                    var bounded = new LinkedHashMap<>(array(field.getName().equals("targets") ? reference : string(), 12));
                     if (!(subtype.value().equals(DashboardOperation.Period.class) && field.getName().equals("targets")))
                         bounded.put("minItems", 1);
                     schema = bounded;
+                    if (subtype.value().equals(DashboardOperation.Presentation.class) && field.getName().equals("targets")
+                            && existingKeys != null && !existingKeys.isEmpty()) {
+                        schema = Map.of("anyOf", List.of(bounded, Map.of("type", "array", "minItems", 1, "maxItems", 1,
+                                "items", enumeration("ALL"))));
+                    }
                 }
                 else if (field.getType().equals(Integer.class)) schema = Map.of("type", "integer");
                 else schema = string();
@@ -68,8 +80,7 @@ public final class DashboardOperationSchema {
                         || field.getName().equals("targets") && subtype.value().equals(DashboardOperation.Period.class)) schema = nullable(schema);
                 if (field.getName().equals("widgetKey") && existingKeys != null) {
                     if (subtype.value().equals(DashboardOperation.RenameWidget.class)) {
-                        var local = Map.<String, Object>of("type", "string", "pattern", "^@[A-Za-z][A-Za-z0-9_-]{0,39}$");
-                        schema = existingKeys.isEmpty() ? local : Map.of("anyOf", List.of(Map.of("type", "string", "enum", existingKeys), local));
+                        schema = reference;
                     } else schema = existingKeys.isEmpty() ? Map.of("type", "null")
                             : nullable(Map.of("type", "string", "enum", existingKeys));
                 }
@@ -79,30 +90,68 @@ public final class DashboardOperationSchema {
                 var edge = new LinkedHashMap<>(fields);
                 edge.put("position", enumeration("TOP", "BOTTOM"));
                 edge.put("anchor", Map.of("type", "null"));
-                variants.add(object(edge));
+                variants.add(describedObject(edge, "Move only the requested widgets to the start or end. "
+                        + "Use an existing inventory key or @id of an earlier widget creation for each target. "
+                        + "Leave widgets requested only for display or view changes out of targets. Use resize_widgets for size changes."));
                 var relative = new LinkedHashMap<>(fields);
                 relative.put("position", enumeration("BEFORE", "AFTER"));
-                relative.put("anchor", Map.of("type", "string", "minLength", 1));
-                variants.add(object(relative));
+                relative.put("anchor", existingKeys == null ? Map.of("type", "string", "minLength", 1) : reference);
+                variants.add(describedObject(relative, "Move the selected group before or after the anchor. Use a separate resize_widgets operation for size changes."));
+            } else if (subtype.name().equals("set_presentation")) {
+                variants.add(describedObject(fields, "Change only explicitly requested presentation settings. "
+                        + "A move or resize request alone does not change titles, details or visibility. "
+                        + "Use ALL only if the presentation change explicitly applies to every widget."));
+            } else if (subtype.name().equals("resize_widgets")) {
+                variants.add(describedObject(fields, "Change sizes only. Use the same targets in a separate place_widgets operation when movement is also requested."));
+            } else if (subtype.name().equals("show_current")) {
+                variants.add(describedObject(fields, "Show the latest value or state in a separate card. "
+                        + "When the user also requests a graph for this field, include a separate show_history operation."));
+            } else if (subtype.name().equals("show_history")) {
+                variants.add(describedObject(fields, "Show recorded history. Set view=line for a requested line graph when offered, "
+                        + "including Boolean history. On edits, use the matching existing widget to change its view in place. "
+                        + "A current value or status card requires a separate show_current operation."));
             } else variants.add(object(fields));
         }
         return object(Map.of("protocol", Map.of("type", "string", "enum", List.of(DashboardOperationProtocol.VERSION)),
                 "operations", Map.of("type", "array", "items", Map.of("anyOf", variants), "minItems", 1, "maxItems", 24)));
+    }
+
+    private static Map<String, Object> widgetReference(List<String> existingKeys, String widgetTypes) {
+        if (existingKeys == null) return string();
+        var local = Map.<String, Object>of("type", "string", "pattern", "^@[A-Za-z][A-Za-z0-9_-]{0,39}$",
+                "description", "Only for a widget produced by an earlier operation in this response: "
+                        + "prefix the exact producing operation id with @. Use the inventory key for an existing widget.");
+        return existingKeys.isEmpty() ? local
+                : Map.of("anyOf", List.of(Map.of("type", "string", "enum", existingKeys,
+                        "description", "Existing widget keys, types and fields: " + widgetTypes
+                                + ". For current values prefer the matching value card over a history chart."), local));
+    }
+
+    private static Map<String, Object> describedObject(Map<String, Object> properties, String description) {
+        var schema = new LinkedHashMap<>(object(properties));
+        schema.put("description", description);
+        return schema;
     }
     public static Map<String, Object> response() {
         return response(Map.of());
     }
     /** V2 command payload only; legacy model-plan wrappers are not domain commands. */
     public static Map<String, Object> envelope(Map<String, Object> context) {
-        List<String> keys = context.get("previousDashboardIntent") instanceof Map<?, ?> previous && previous.get("widgets") instanceof List<?> widgets
-                ? widgets.stream().filter(Map.class::isInstance).map(item -> String.valueOf(((Map<?, ?>) item).get("key"))).toList() : List.of();
-        var envelope = envelope(keys, dataRefs(context));
+        var types = new LinkedHashMap<String, String>();
+        if (context.get("previousDashboardIntent") instanceof Map<?, ?> previous && previous.get("widgets") instanceof List<?> widgets) {
+            for (var item : widgets) {
+                if (!(item instanceof Map<?, ?> widget) || !(widget.get("key") instanceof String key)) continue;
+                String type = widget.get("type") instanceof String value ? value : "unspecified";
+                Object field = widget.get("vehicleField");
+                if (!(field instanceof String)) field = widget.get("metric");
+                types.put(key, field instanceof String name ? type + " (" + name + ")" : type);
+            }
+        }
+        var envelope = envelope(List.copyOf(types.keySet()), dataRefs(context), types.toString());
         return context.get("dashboardDataChoices") instanceof List<?>
                 ? DashboardOperationConstraints.replacements(envelope, context) : envelope;
     }
     public static Map<String, Object> response(Map<String, Object> context) {
-        List<String> keys = context.get("previousDashboardIntent") instanceof Map<?, ?> previous && previous.get("widgets") instanceof List<?> widgets
-                ? widgets.stream().filter(Map.class::isInstance).map(item -> String.valueOf(((Map<?, ?>) item).get("key"))).toList() : List.of();
         var suggestions = new LinkedHashMap<String, Object>();
         for (String field : List.of("name", "deviceRefs", "sourceRef", "sourceId", "period")) suggestions.put(field, nullable(string()));
         var clarification = object(Map.of("missingFields", array(string(), 12), "suggestedReply", string(),

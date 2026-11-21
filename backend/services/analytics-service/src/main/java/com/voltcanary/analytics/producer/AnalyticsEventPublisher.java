@@ -5,15 +5,14 @@ import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class AnalyticsEventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(AnalyticsEventPublisher.class);
     private static final String ANOMALY_TOPIC = "anomaly.detected.v1";
     private static final String RISK_TOPIC = "risk-score.changed.v1";
 

@@ -5,6 +5,7 @@ import com.voltcanary.telemetry.adapter.DashboardReadAuthorization;
 import com.voltcanary.telemetry.adapter.PositionSourceAccess;
 import com.voltcanary.telemetry.dto.PositionEvidence;
 import com.voltcanary.telemetry.service.PositionReads;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,15 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardPositionController {
     private final DashboardReadAuthorization access;
     private final PositionSourceAccess sources;
     private final PositionReads reads;
-    public DashboardPositionController(DashboardReadAuthorization access, PositionSourceAccess sources, PositionReads reads) {
-        this.access = access;
-        this.sources = sources;
-        this.reads = reads;
-    }
 
     @PostMapping("/internal/dashboard/positions")
     public Object read(@RequestHeader(value = "X-Internal-Service-Token", required = false) String token,

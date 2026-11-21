@@ -15,10 +15,12 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Reviewed native schema lifecycle. Possible dispatch is durably recorded before provisioning. */
 @Service
+@RequiredArgsConstructor
 public class NativeCollectionReviews {
     public record View(UUID reviewId, long revision, String status, Instant expiresAt, UUID resourceId,
             Map<String, UUID> fieldIdsByKey, String semanticDigest, String reviewDigest, JsonNode typedDiff, UUID receiptId, String outcomeCode) { }
@@ -28,14 +30,6 @@ public class NativeCollectionReviews {
     private final NativeDatasetCatalog catalog;
     private final DataSource source;
     private final Clock clock;
-
-    public NativeCollectionReviews(AccountService accounts, NativeCollectionReviewStore reviews, NativeDatasetCatalog catalog, DataSource source, Clock clock) {
-        this.accounts = accounts;
-        this.reviews = reviews;
-        this.catalog = catalog;
-        this.source = source;
-        this.clock = clock;
-    }
 
     public View reserve(AuthenticatedUser actor, NativeReviewRequests.Reservation request) {
         return view(reviews.reserve(account(actor), actor.id(), request.fieldKeys(), request.idempotencyKey()));

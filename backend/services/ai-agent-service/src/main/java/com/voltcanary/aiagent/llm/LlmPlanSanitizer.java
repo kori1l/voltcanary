@@ -102,7 +102,8 @@ public class LlmPlanSanitizer {
         }
         try {
             AgentTool selected = AgentTool.valueOf(tool.trim().toUpperCase(Locale.ROOT));
-            return selected == AgentTool.UPDATE_DASHBOARD_DRAFT || selected == AgentTool.CREATE_NATIVE_TABLE ? null : selected;
+            return selected == AgentTool.UPDATE_DASHBOARD_DRAFT || selected == AgentTool.CREATE_NATIVE_TABLE
+                    || selected == AgentTool.APPLY_SOURCE_MAPPING || selected == AgentTool.UPDATE_VEHICLE_MONITORING ? null : selected;
         } catch (IllegalArgumentException ignored) {
             return null;
         }
@@ -134,7 +135,9 @@ public class LlmPlanSanitizer {
 
     private String fallbackTitle(AgentTool tool) {
         return switch (tool) {
+            case UPDATE_VEHICLE_MONITORING -> "Review vehicle monitoring";
             case CREATE_NATIVE_TABLE -> "Create reviewed native table";
+            case APPLY_SOURCE_MAPPING -> "Apply reviewed source mapping";
             case CREATE_DEVICE -> "Create device";
             case CREATE_DASHBOARD -> "Create private dashboard draft";
             case UPDATE_DASHBOARD_DRAFT -> "Update reviewed dashboard draft";
@@ -154,7 +157,9 @@ public class LlmPlanSanitizer {
 
     private String fallbackDescription(AgentTool tool) {
         return switch (tool) {
+            case UPDATE_VEHICLE_MONITORING -> "Change monitoring through the reviewed telemetry owner.";
             case CREATE_NATIVE_TABLE -> "Create the exact owner-reviewed native collection.";
+            case APPLY_SOURCE_MAPPING -> "Apply the exact owner-reviewed source mapping.";
             case CREATE_DEVICE -> "Create a device through device-service using the current user's authorization.";
             case CREATE_DASHBOARD -> "Prepare an existing template and create a private draft through dashboard-service.";
             case UPDATE_DASHBOARD_DRAFT -> "Update the same dashboard draft with its reviewed version through dashboard-service.";

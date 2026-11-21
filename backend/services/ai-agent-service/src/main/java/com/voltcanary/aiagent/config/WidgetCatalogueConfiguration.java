@@ -11,7 +11,8 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties(WidgetEmbeddingProperties.class)
 public class WidgetCatalogueConfiguration {
     @Bean
-    WidgetCatalogueSearch widgetCatalogueSearch(ObjectMapper mapper, WidgetEmbeddingProperties properties) {
-        return new WidgetCatalogueSearch(mapper, properties.enabled() ? new SpringAiCapabilityEmbeddings(properties) : null);
+    WidgetCatalogueSearch widgetCatalogueSearch(ObjectMapper mapper, WidgetEmbeddingProperties properties,
+            io.micrometer.observation.ObservationRegistry observations) {
+        return new WidgetCatalogueSearch(mapper, properties.enabled() ? new SpringAiCapabilityEmbeddings(properties, observations) : null);
     }
 }

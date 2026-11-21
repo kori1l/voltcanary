@@ -6,26 +6,19 @@ import com.voltcanary.analytics.dto.MlSettingsResponse;
 import com.voltcanary.analytics.repository.MlSettingsRepository;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlPolicyService {
 
     private final MlSettingsRepository repository;
     private final MlPolicyMapper mapper;
     private final MlPolicyValidator validator;
-
-    public MlPolicyService(
-            MlSettingsRepository repository,
-            MlPolicyMapper mapper,
-            MlPolicyValidator validator) {
-        this.repository = repository;
-        this.mapper = mapper;
-        this.validator = validator;
-    }
 
     public MlSettingsResponse account(UUID accountId) {
         return repository.findByAccountIdAndDeviceIdIsNull(accountId)

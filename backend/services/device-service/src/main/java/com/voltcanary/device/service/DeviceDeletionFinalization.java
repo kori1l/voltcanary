@@ -2,15 +2,15 @@ package com.voltcanary.device.service;
 
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class DeviceDeletionFinalization {
     private final JdbcTemplate jdbc;
-
-    public DeviceDeletionFinalization(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Transactional
     public void complete(UUID device) {

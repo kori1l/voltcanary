@@ -6,16 +6,14 @@ import com.voltcanary.analytics.dto.AlertRuleSnapshot;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 @Component
+@Slf4j
 public class AlertRuleClient {
-
-    private static final Logger log = LoggerFactory.getLogger(AlertRuleClient.class);
 
     private final RestClient restClient;
     private final String internalServiceToken;

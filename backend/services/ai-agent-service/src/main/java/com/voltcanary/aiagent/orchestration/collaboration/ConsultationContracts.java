@@ -75,10 +75,21 @@ public final class ConsultationContracts {
         assignment(task, response);
         var assignment = task.assignment();
         var role = role(task.request());
-        switch (response.path("outcome").asText()) {
+        var assignedEvidence = assignedEvidence(task, requirements, authorizedEvidence);
+        String outcome = response.path("outcome").asText();
+        if (Set.of(NameConsultation.ROLE, NameConsultation.CHILD_ROLE).contains(role.id())
+                && Set.of("NEED_DATA", "DELEGATE").contains(outcome)
+                && (!NameConsultation.ROLE.equals(role.id()) || task.exchanges() != 1
+                    || ConsultationPrompt.nameUnresolved(task, requirements))) {
+            throw invalid("CONSULTATION_CONTINUATION_UNAVAILABLE");
+        }
+        switch (outcome) {
             case "ANSWER" -> {
+                if (task.request().skillId().equals(NameConsultation.ROLE) && ConsultationPrompt.nameUnresolved(task, requirements)) {
+                    throw invalid("CONSULTATION_NAME_REQUIRES_USER_INPUT");
+                }
                 validator.validateRegistered(role.resultSchema(), response.path("payload"));
-                evidence(response.path("evidenceRefs"), authorizedEvidence);
+                evidence(response.path("evidenceRefs"), assignedEvidence);
                 for (var id : response.path("unresolvedSlotIds")) {
                     UUID slot = UUID.fromString(id.asText());
                     requireSlot(assignment, slot);
@@ -105,7 +116,7 @@ public final class ConsultationContracts {
                     role(child);
                 }
             }
-            case "NEED_USER" -> validateQuestions(response, assignment, requirements, authorizedEvidence);
+            case "NEED_USER" -> validateQuestions(response, assignment, requirements, assignedEvidence);
             case "UNSUPPORTED", "FAILURE" -> { }
             default -> throw invalid("UNKNOWN_CONSULTATION_OUTCOME");
         }
@@ -120,6 +131,17 @@ public final class ConsultationContracts {
                 || !assignment.reads().digest().equals(response.path("readSetDigest").asText())) {
             throw invalid("CONSULTATION_ASSIGNMENT_MISMATCH");
         }
+    }
+
+    static Set<UUID> assignedEvidence(Task task, Requirements.Snapshot requirements, Set<UUID> authorizedEvidence) {
+        var reads = task.assignment().reads();
+        var assigned = new java.util.HashSet<>(reads.artifacts().keySet());
+        for (var slotId : reads.slots().keySet()) {
+            var slot = requirements.slots().get(slotId);
+            if (slot != null) assigned.addAll(slot.evidence());
+        }
+        assigned.retainAll(authorizedEvidence);
+        return assigned;
     }
 
     private void validateQuestions(JsonNode response, Assignment assignment, Requirements.Snapshot requirements, Set<UUID> authorizedEvidence) {

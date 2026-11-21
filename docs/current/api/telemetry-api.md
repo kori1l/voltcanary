@@ -235,7 +235,7 @@ latest is capped at min(asOf,to); the route requires bearer and internal token.
 
 ## Vehicle monitoring extension
 
-Fleet batches, cursor recordings, owner settings and nullable vehicle fields are specified in [vehicle monitoring](../flows/vehicle-monitoring-verification.md#contracts). Settings PUT rejects fractional idleMinutes and unknown JSON fields with400, preserving the last valid settings. V011 is portable; original positions/latest/history bounds are unchanged.
+Fleet batches, cursor recordings, owner settings and nullable vehicle fields are specified in [vehicle monitoring](../flows/vehicle-monitoring-verification.md#contracts). Monitoring settings now use versioned snapshot/review/confirm/inspection endpoints; unconditional PUT returns400. Shared manual/AI reviews preserve exact receipts and reject stale bases, fractional idleMinutes and unknown fields. Portable V027 extends V011; original positions/latest/history bounds are unchanged.
 
 
 ## Internal dashboard fleet positions

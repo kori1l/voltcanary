@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 final class IntervalWindowSchedule {
-    private static final String PROFILE = "vcl-interval-window-close-1";
+    static final String PROFILE = "vcl-interval-window-close-1";
     private static final VclParser PARSER = new VclParser();
     private static final int PREFIX_STEPS = 16;
 
@@ -38,7 +38,7 @@ final class IntervalWindowSchedule {
                     .put("start", window.startInclusive().toString()).put("end", window.endExclusive().toString())
                     .put("dueAt", dueAt.toString());
             if (subjectLiteral != null) value.put("subject", subjectLiteral);
-            if (prefixIndex != 0) value.put("prefix", prefixIndex);
+            if (prefixIndex != 0) value.put("prefix", Integer.toString(prefixIndex));
             if (earlyMeasure != null) value.put("earlyMeasure", earlyMeasure.toString());
             if (minimumCheckpoint != 0) value.put("minimumCheckpoint", Long.toString(minimumCheckpoint));
             if (previousFinal != null) value.put("previousFinal", previousFinal.toString());
@@ -75,16 +75,18 @@ final class IntervalWindowSchedule {
 
     static Recipe recipe(KeyedStateStore.State state) {
         var value = PARSER.readJson(state.payload().getBytes(StandardCharsets.UTF_8));
+        String prefix = value.path("prefix").textValue();
         if (!PROFILE.equals(value.path("profile").textValue()) || value.size() != 7 + (value.has("subject") ? 1 : 0)
                 + (value.has("prefix") ? 1 : 0) + (value.has("earlyMeasure") ? 1 : 0)
                 + (value.has("minimumCheckpoint") ? 1 : 0) + (value.has("previousFinal") ? 1 : 0)
-                || (value.has("prefix") && !value.path("prefix").isIntegralNumber())) {
+                || (value.has("prefix") && (prefix == null || !prefix.matches("[1-9]|1[0-5]")))) {
             throw new VclException("INTERVAL_SCHEDULE_CHANGED", "");
         }
         return new Recipe(value.path("node").textValue(), value.path("plan").textValue(),
                 UUID.fromString(value.path("generation").textValue()),
                 new VclWindowPlan.Window(Instant.parse(value.path("start").textValue()), Instant.parse(value.path("end").textValue())),
-                Instant.parse(value.path("dueAt").textValue()), value.path("subject").textValue(), value.path("prefix").asInt(0),
+                Instant.parse(value.path("dueAt").textValue()), value.path("subject").textValue(),
+                prefix == null ? 0 : Integer.parseInt(prefix),
                 value.has("earlyMeasure") ? UUID.fromString(value.path("earlyMeasure").textValue()) : null,
                 value.has("minimumCheckpoint") ? VclObservationReadiness.checkpoint(value.path("minimumCheckpoint").textValue()) : 0,
                 value.has("previousFinal") ? UUID.fromString(value.path("previousFinal").textValue()) : null);

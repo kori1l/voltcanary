@@ -11,24 +11,16 @@ import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PostConstruct;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-
 @Component
+@RequiredArgsConstructor
 public class DeviceOperationalMetrics {
 
     private final MeterRegistry meterRegistry;
     private final DeviceRepository deviceRepository;
     private final DataSourceRepository dataSourceRepository;
-
-    public DeviceOperationalMetrics(
-            MeterRegistry meterRegistry,
-            DeviceRepository deviceRepository,
-            DataSourceRepository dataSourceRepository) {
-        this.meterRegistry = meterRegistry;
-        this.deviceRepository = deviceRepository;
-        this.dataSourceRepository = dataSourceRepository;
-    }
 
     @PostConstruct
     void bindGauges() {

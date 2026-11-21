@@ -13,25 +13,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlDatasetValidationService {
 
     private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
     private final TelemetryClient telemetryClient;
     private final MlDatasetSupportService support;
-
-    public MlDatasetValidationService(
-            MaintenanceWindowReadModelRepository maintenanceWindowRepository,
-            TelemetryClient telemetryClient,
-            MlDatasetSupportService support) {
-        this.maintenanceWindowRepository = maintenanceWindowRepository;
-        this.telemetryClient = telemetryClient;
-        this.support = support;
-    }
 
     public void validateCreateRequest(MlInternalDatasetRequest request) {
         if (!request.to().isAfter(request.from())) {

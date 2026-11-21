@@ -19,8 +19,13 @@ import com.voltcanary.aiagent.port.AssistantTraceRecorder;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PrimaryPlannerProjectionTest {
@@ -29,18 +34,40 @@ class PrimaryPlannerProjectionTest {
     private static final String DEVICE = "231e4e65-b376-4d1b-90c1-e14cd566742b";
     private static final String MESSAGE = "ebf0078a-49f3-41c6-9bd5-fb9c35f0d779";
 
-    @Test void springAiExchangeReservesBeforeNetworkAndReplaysCanonicalOutputFromDurableLedger() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"JSON_TEXT", "STRICT_JSON", "NATIVE_TOOLS"})
+    void springAiExchangeReservesBeforeNetworkAndReplaysCanonicalOutputFromDurableLedger(String mode) throws Exception {
         var f = new IntentScenarioSupport();
         var network = new AtomicInteger();
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat/completions", exchange -> {
-            network.incrementAndGet();
-            assertEquals(1L, f.jdbc.queryForObject("select sum(calls) from ai_model_budget_plans", Long.class));
-            exchange.getRequestBody().readAllBytes();
+            int invocation = network.incrementAndGet();
+            assertEquals((long) invocation, f.jdbc.queryForObject("select sum(calls) from ai_model_budget_plans", Long.class));
+            var requestBody = mapper.readTree(exchange.getRequestBody());
+            String tool = requestBody.at("/tools/0/function/name").asText();
+            entered.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) throw new java.io.IOException("Test response gate timed out");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException(interrupted);
+            }
             var reply = mapper.createObjectNode().put("id", "fixture").put("object", "chat.completion").put("created", 1).put("model", "pinned-fixture");
             try {
-                reply.putArray("choices").addObject().put("index", 0).put("finish_reason", "stop")
-                        .putObject("message").put("role", "assistant").put("content", response().toString());
+                var choice = reply.putArray("choices").addObject().put("index", 0)
+                        .put("finish_reason", mode.equals("NATIVE_TOOLS") ? "tool_calls" : "stop");
+                var message = choice.putObject("message").put("role", "assistant");
+                String proposal = mode.equals("JSON_TEXT") ? response().toString()
+                        : mapper.createObjectNode().set("proposal", response()).toString();
+                if (invocation == 2) proposal = "{broken json";
+                if (mode.equals("NATIVE_TOOLS")) {
+                    message.putArray("tool_calls").addObject().put("id", "fixture-tool").put("type", "function")
+                            .putObject("function").put("name", tool).put("arguments", proposal);
+                } else {
+                    message.put("content", proposal);
+                }
             } catch (Exception invalidFixture) { throw new java.io.IOException(invalidFixture); }
             byte[] bytes = mapper.writeValueAsBytes(reply);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -56,14 +83,15 @@ class PrimaryPlannerProjectionTest {
             var config = new AiModelConfig();
             config.setModelId("pinned-fixture");
             config.setMaxOutputTokens(1000);
+            config.setTimeoutMs(20_000);
             var runs = org.mockito.Mockito.mock(com.voltcanary.aiagent.llm.adapter.AiAgentModelRunRecorder.class);
             org.mockito.Mockito.doThrow(new IllegalStateException("fixture diagnostic outage")).when(runs).record(
                     org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
                     org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any(),
                     org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
             var transport = new PrimaryModelTransport(mapper, new AiResolvedModel(provider, config, "fixture"), f.session.user(), runs);
-            String body = transport.serialize(request(), validator.projection("plannerResponse"), "JSON_TEXT");
-            var candidate = new AssistantProtocol.Candidate("provider", "pinned", null, 1_000_000L, 900_000L, 1000L, "JSON_TEXT", null);
+            String body = transport.serialize(request(), validator.projection("plannerResponse"), mode);
+            var candidate = new AssistantProtocol.Candidate("provider", "pinned", null, 1_000_000L, 900_000L, 1000L, mode, null);
             var route = new ModelRouting.Route(candidate, ModelRouting.estimate(body, 1000, 4096), 500L, null, "PINNED_EXPLICIT");
             var limits = new AssistantProtocol.Limits(2L, 4_000_000L, 2000L, 60_000L, 1000L, "USD");
             var policy = new AssistantProtocol.RoutingPolicy("assistant-v2", "routing.policy", "policy", "1", "PINNED", "pinned",
@@ -74,12 +102,38 @@ class PrimaryPlannerProjectionTest {
             ledger.open(turn, policy);
             var attempt = new AttemptLedger.Attempt(UUID.randomUUID(), "PLANNER", null, SkillRegistry.digest(body), "policy", "1", "catalogue-v1", "assistant-v2", "dialogue-v1", route, "PRIMARY");
             var correlation = new AssistantTraceRecorder.Correlation(turn.owner(), turn.conversationId(), UUID.randomUUID(), turn.turnId(), turn.turnId());
-            var result = new BudgetedModelCalls(ledger, validator, f.traces).call(turn, attempt, body, "plannerResponse", correlation, transport, proposal -> { });
+            JsonNode result;
+            try (var worker = Executors.newSingleThreadExecutor()) {
+                var first = worker.submit(() -> new BudgetedModelCalls(ledger, validator, f.traces)
+                        .call(turn, attempt, body, "plannerResponse", correlation, transport, proposal -> { }));
+                try {
+                    assertTrue(entered.await(10, TimeUnit.SECONDS));
+                    var duplicate = assertThrows(ModelRouting.Stop.class, () -> new BudgetedModelCalls(f.ledger(), validator, f.traces)
+                            .call(turn, attempt, body, "plannerResponse", correlation, transport, proposal -> { }));
+                    assertEquals("CALL_ALREADY_RESERVED:STARTED", duplicate.getMessage());
+                    assertEquals(1, network.get());
+                } finally {
+                    release.countDown();
+                }
+                result = first.get(10, TimeUnit.SECONDS);
+            }
             assertEquals(DEVICE, result.at("/steps/0/inputs/0/binding/value").asText());
             assertTrue(f.traceEvents.contains("MODEL_CALL:STARTED"));
-            var replay = new BudgetedModelCalls(f.ledger(), validator, f.traces).call(turn, attempt, body, "plannerResponse", correlation, transport, proposal -> { });
+            var replay = new BudgetedModelCalls(f.ledger(), validator, f.traces).call(turn, attempt, body,
+                    "plannerResponse", correlation, (wire, replayRoute, timeout) -> {
+                        throw new AssertionError("Completed replay must not enter the transport");
+                    }, proposal -> { });
             assertEquals(result, replay);
             assertEquals(1, network.get());
+
+            var malformed = new AttemptLedger.Attempt(UUID.randomUUID(), "PLANNER", null, SkillRegistry.digest(body),
+                    "policy", "1", "catalogue-v1", "assistant-v2", "dialogue-v1", route, "PRIMARY");
+            assertThrows(RuntimeException.class, () -> new BudgetedModelCalls(ledger, validator, f.traces)
+                    .call(turn, malformed, body, "plannerResponse", correlation, transport, proposal -> { }));
+            assertEquals(2, network.get(), "Malformed output must not cause a hidden SDK exchange");
+            assertEquals("FAILED", f.jdbc.queryForObject(
+                    "select status from ai_model_budget_attempts where plan_id=? and call_id=?",
+                    String.class, turn.planId(), malformed.callId()));
         } finally { server.stop(0); }
     }
 
@@ -223,6 +277,61 @@ class PrimaryPlannerProjectionTest {
         validator.validate("plannerResponse", projection.normalize(question, validator));
     }
 
+    @Test void newGoalIdCannotShadowAnExistingGoal() throws Exception {
+        var request = request();
+        request.withObject("/planSummary").putArray("goals")
+                .addObject().put("goalId", "g1").put("disposition", "PENDING");
+        var projection = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
+        var wire = response();
+        assertThrows(ProtocolValidator.RegisteredViolation.class, () -> validator.validateRegistered(projection.schema(), wire));
+        assertTrue(assertThrows(ModelProposalRejected.class, () -> projection.normalize(wire, validator))
+                .diagnostic().contains("PLANNER_GOAL_ID_ALREADY_USED"));
+        wire.withObject("/proposedGoals/0").put("goalId", "fresh");
+        wire.withObject("/steps/0").withArray("goalIds").add("fresh");
+        var normalized = projection.normalize(wire, validator);
+        assertEquals(MESSAGE, normalized.at("/proposedGoals/0/sourceMessageId").asText());
+        assertEquals(mapper.createArrayNode().add("g1").add("fresh"), normalized.at("/steps/0/goalIds"));
+    }
+
+    @Test void plannerContextListsOnlyAvailableExistingPrerequisites() throws Exception {
+        var request = request();
+        var steps = request.withObject("/planSummary").putArray("steps");
+        steps.addObject().put("stepId", "device").put("status", "SUCCEEDED");
+        steps.addObject().put("stepId", "old-dashboard").put("status", "SUPERSEDED");
+        steps.addObject().put("stepId", "failed-source").put("status", "FAILED");
+        var goals = request.withObject("/planSummary").putArray("goals");
+        goals.addObject().put("goalId", "retained").put("disposition", "PENDING");
+        goals.addObject().put("goalId", "old").put("disposition", "SUPERSEDED");
+        var projection = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
+        assertEquals(mapper.createArrayNode().add("device"), projection.request().path("existingPrerequisiteStepIds"));
+        assertEquals(mapper.createArrayNode().add("retained").add("old"), projection.request().path("existingGoalIds"));
+        assertEquals(1, projection.request().path("pendingGoalCoverage").size());
+    }
+
+    @Test void askingToSelectTheOnlyAlreadySelectedDeviceIsRejected() throws Exception {
+        var request = request();
+        request.withObject("/resourceChoices/0/properties").put("selection", "UI_CONTEXT");
+        var projection = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
+        assertEquals("resource1", projection.request().path("selectedDeviceRef").asText());
+        assertTrue(projection.schema().at("/$defs/question/properties/missingFields/items/description")
+                .asText().contains("already resolved"));
+        var wire = response().put("decision", "ASK");
+        wire.putArray("steps");
+        wire.putArray("proposedGoals");
+        var question = wire.putObject("question").put("text", "What is the dashboard name?");
+        question.putArray("missingFields").add("target");
+        question.putArray("choices").addObject().put("label", "Provide name")
+                .putArray("bindings").addObject().put("field", "deviceId")
+                .putObject("binding").put("kind", "resource_refs").putArray("refs").add("resource1");
+        assertTrue(assertThrows(ModelProposalRejected.class, () -> projection.normalize(wire, validator))
+                .diagnostic().contains("SELECTED_DEVICE_REQUIRES_SKILL_DISPATCH"));
+        question.putArray("choices");
+        assertTrue(assertThrows(ModelProposalRejected.class, () -> projection.normalize(wire, validator))
+                .diagnostic().contains("SELECTED_DEVICE_REQUIRES_SKILL_DISPATCH"));
+        question.withArray("missingFields").set(0, mapper.valueToTree("intent"));
+        assertEquals("ASK", projection.normalize(wire, validator).path("decision").asText());
+    }
+
     @Test void resourceKindMismatchFailsAndMultipleDeviceReferencesRemainAnArray() throws Exception {
         var request = request();
         request.withArray("resourceChoices").addObject().put("ref", "review").put("kind", "dashboard-review")
@@ -244,12 +353,62 @@ class PrimaryPlannerProjectionTest {
                 "{\"kind\":\"step_output\",\"stepId\":\"created-device\",\"outputKey\":\"deviceId\"}")) {
             var linked = response();
             linked.withObject("/steps/0/inputs/0").set("binding", mapper.readTree(binding));
-            assertEquals(mapper.readTree(binding), multiple.normalize(linked, validator).at("/steps/0/inputs/0/binding"));
+            var input = mapper.readTree(binding);
+            var lowered = multiple.normalize(linked, validator);
+            assertEquals(input, lowered.at("/steps/0/inputs/0/binding"));
+            if (input.path("kind").asText().equals("step_output")) {
+                var expected = mapper.createArrayNode().add("created-device");
+                assertEquals(expected, lowered.at("/steps/0/dependsOn"));
+                linked.withObject("/steps/0").withArray("dependsOn").add("created-device");
+                assertEquals(expected, multiple.normalize(linked, validator).at("/steps/0/dependsOn"));
+            } else assertTrue(lowered.at("/steps/0/dependsOn").isEmpty());
+        }
+    }
+
+    @Test void aBindingOfferedForAnotherIntentIsRejectedBeforeLowering() throws Exception {
+        var request = request();
+        request.withArray("catalogue").addObject().put("intentId", "REFINE_DASHBOARD_REVIEW").putArray("inputKeys");
+        var projection = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
+        var wire = response();
+        wire.withObject("/steps/0").put("intentId", "REFINE_DASHBOARD_REVIEW");
+        assertThrows(ProtocolValidator.RegisteredViolation.class, () -> validator.validateRegistered(projection.schema(), wire));
+        assertTrue(assertThrows(ModelProposalRejected.class, () -> projection.normalize(wire, validator))
+                .diagnostic().contains("PLANNER_PARAMETER_NOT_ALLOWED"));
+        wire.withObject("/steps/0").putArray("inputs");
+        validator.validateRegistered(projection.schema(), wire);
+        validator.validate("plannerResponse", projection.normalize(wire, validator));
+    }
+
+    @Test void strictProviderSchemasKeepStepBindingsScopedToTheSelectedIntent() throws Exception {
+        var request = request();
+        request.withArray("catalogue").addObject().put("intentId", "REFINE_DASHBOARD_REVIEW").putArray("inputKeys");
+        var config = new AiModelConfig();
+        config.setModelId("pinned-fixture");
+        var transport = new PrimaryModelTransport(mapper, new AiResolvedModel(null, config, "fixture"), null, null);
+        for (var mode : List.of("STRICT_JSON", "NATIVE_TOOLS")) {
+            String serialized = transport.serialize(request, validator.projection("plannerResponse"), mode);
+            var body = mapper.readTree(serialized);
+            var schema = body.at(mode.equals("STRICT_JSON") ? "/text/format/schema" : "/tools/0/parameters");
+            var proposal = response();
+            var envelope = mapper.createObjectNode().set("proposal", proposal);
+            validator.validateRegistered(schema, envelope);
+            proposal.withObject("/steps/0").put("intentId", "REFINE_DASHBOARD_REVIEW");
+            assertThrows(ProtocolValidator.RegisteredViolation.class, () -> validator.validateRegistered(schema, envelope));
+            proposal.withObject("/steps/0").putArray("inputs");
+            validator.validateRegistered(schema, envelope);
+            var decoded = transport.complete(new com.voltcanary.aiagent.adapter.springai.SpringAiExchange.Result(
+                    envelope.toString(), null, null), mode, serialized);
+            assertNull(decoded.completionCode());
+            var canonical = transport.normalize(validator.parse(decoded.proposalJson()), serialized);
+            validator.validate("plannerResponse", canonical);
+            assertTrue(canonical.at("/steps/0/inputs").isEmpty());
         }
     }
 
     @Test void goalsCannotBeEmptyAndEveryCompleteGuideExampleSatisfiesTheWireContract() throws Exception {
-        var projection = new PrimaryPlannerProjection(mapper, request(), validator.projection("plannerResponse"));
+        var request = request();
+        request.withArray("catalogue").addObject().put("intentId", "REFINE_DASHBOARD_REVIEW").putArray("inputKeys");
+        var projection = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
         var empty = response();
         empty.withObject("/steps/0").putArray("goalIds");
         assertThrows(ModelProposalRejected.class, () -> projection.normalize(empty, validator));

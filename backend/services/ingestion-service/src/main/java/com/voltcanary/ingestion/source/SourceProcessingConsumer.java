@@ -3,18 +3,15 @@ package com.voltcanary.ingestion.source;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.common.events.device.SourceProcessingConfigEvent;
+import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SourceProcessingConsumer {
     private final SourceProcessingProjection projection;
     private final ObjectMapper mapper;
-
-    public SourceProcessingConsumer(SourceProcessingProjection projection, ObjectMapper mapper) {
-        this.projection = projection;
-        this.mapper = mapper;
-    }
 
     @KafkaListener(topics = "source.processing-config.v1",
             groupId = "#{@sourceRuntimeConfigConsumerGroupId + '-processing'}",

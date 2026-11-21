@@ -8,21 +8,18 @@ import com.voltcanary.identity.domain.UserStatus;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class IdentityLifecycleOutboxService {
 
     public static final String TOPIC = "identity.account-lifecycle.v1";
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-
-    public IdentityLifecycleOutboxService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
-    }
 
     public void enqueueAccountLifecycle(User user) {
         Instant now = Instant.now();

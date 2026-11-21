@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_imported_files")
+@Getter
+@Setter
 public class MlImportedFile {
     @Id
     private UUID id;
@@ -35,28 +39,4 @@ public class MlImportedFile {
     @Column(name = "imported_at", nullable = false)
     private Instant importedAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetId() { return datasetId; }
-    public void setDatasetId(UUID datasetId) { this.datasetId = datasetId; }
-    public String getOriginalFilename() { return originalFilename; }
-    public void setOriginalFilename(String originalFilename) { this.originalFilename = originalFilename; }
-    public String getContentHash() { return contentHash; }
-    public void setContentHash(String contentHash) { this.contentHash = contentHash; }
-    public String getContentType() { return contentType; }
-    public void setContentType(String contentType) { this.contentType = contentType; }
-    public long getSizeBytes() { return sizeBytes; }
-    public void setSizeBytes(long sizeBytes) { this.sizeBytes = sizeBytes; }
-    public String getMappingVersion() { return mappingVersion; }
-    public void setMappingVersion(String mappingVersion) { this.mappingVersion = mappingVersion; }
-    public String getMappingJson() { return mappingJson; }
-    public void setMappingJson(String mappingJson) { this.mappingJson = mappingJson; }
-    public String getArtifactUri() { return artifactUri; }
-    public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
-    public UUID getUploadedBy() { return uploadedBy; }
-    public void setUploadedBy(UUID uploadedBy) { this.uploadedBy = uploadedBy; }
-    public Instant getImportedAt() { return importedAt; }
-    public void setImportedAt(Instant importedAt) { this.importedAt = importedAt; }
 }

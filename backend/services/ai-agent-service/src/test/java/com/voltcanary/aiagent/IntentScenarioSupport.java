@@ -128,7 +128,8 @@ final class IntentScenarioSupport {
         receipts = new ExistingOrchestrationReceipts(reviews, execution, contexts, mapper);
         registry = new SkillRegistry(validator, List.of(pkg("CREATE_DEVICE", List.of(rule("name", "string", true)), "deviceId", "device-id"),
                 pkg("CONNECT_SOURCE", List.of(rule("deviceId", "device-id", true)), "sourceId", "source-id"),
-                pkg("CREATE_DASHBOARD", List.of(rule("deviceId", "device-id", true), rule("sourceId", "source-id", false), rule("name", "string", true)), "dashboardId", "dashboard-id")));
+                pkg("CREATE_DASHBOARD", List.of(rule("deviceId", "device-id", true), rule("deviceIds", "array", false),
+                        rule("sourceId", "source-id", false), rule("name", "string", true)), "dashboardId", "dashboard-id")));
         graph = new IntentPlanGraph(registry, validator, mapper);
     }
 
@@ -191,7 +192,12 @@ final class IntentScenarioSupport {
         var fields = schema.putObject("properties");
         var required = schema.putArray("required");
         for (var rule : rules) {
-            fields.putObject(rule.field()).put("type", "string").put("minLength", 1);
+            var field = fields.putObject(rule.field());
+            if (rule.type().equals("array")) {
+                field.put("type", "array").putObject("items").put("type", "string");
+            } else {
+                field.put("type", "string").put("minLength", 1);
+            }
             if (rule.required()) required.add(rule.field());
         }
         return new SkillRegistry.Package(mapper.valueToTree(skill), Map.of(skill.inputSchemaId(), schema, skill.outputSchemaId(), validator.projection("stepResponse"), skill.commandSchemaId(), schema), Set.of(), Map.of());

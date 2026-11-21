@@ -2,10 +2,12 @@ package com.voltcanary.identity.security;
 
 import com.voltcanary.identity.scheduling.SchedulerLockService;
 import java.time.Duration;
+import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class RefreshTokenCleanupJob {
 
     private static final String LOCK_NAME = "identity.refresh-token-cleanup";
@@ -13,13 +15,6 @@ public class RefreshTokenCleanupJob {
 
     private final RefreshTokenService refreshTokenService;
     private final SchedulerLockService schedulerLockService;
-
-    public RefreshTokenCleanupJob(
-            RefreshTokenService refreshTokenService,
-            SchedulerLockService schedulerLockService) {
-        this.refreshTokenService = refreshTokenService;
-        this.schedulerLockService = schedulerLockService;
-    }
 
     @Scheduled(
             initialDelayString = "${app.auth.refresh-token-cleanup.initial-delay-ms:60000}",

@@ -18,12 +18,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlDatasetLifecycleService {
 
     private final MlDatasetRepository datasetRepository;
@@ -33,23 +35,6 @@ public class MlDatasetLifecycleService {
     private final MlTrainingRunRepository trainingRunRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDatasetResponseMapper mapper;
-
-    public MlDatasetLifecycleService(
-            MlDatasetRepository datasetRepository,
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlLabelRepository labelRepository,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlTrainingRunRepository trainingRunRepository,
-            MlModelVersionRepository modelVersionRepository,
-            MlDatasetResponseMapper mapper) {
-        this.datasetRepository = datasetRepository;
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.labelRepository = labelRepository;
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.trainingRunRepository = trainingRunRepository;
-        this.modelVersionRepository = modelVersionRepository;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true)
     public MlLifecycleImpactResponse impact(UUID accountId, UUID datasetVersionId, String action) {

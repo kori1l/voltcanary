@@ -1,12 +1,14 @@
 package com.voltcanary.alert.service;
 
-import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
-import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import com.voltcanary.alert.domain.Alert;
 import com.voltcanary.alert.domain.AlertAnalyticsEventInboxEntry;
+import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
+import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsAlertEventHandler {
 
     public static final String ANOMALY_TOPIC = "anomaly.detected.v1";
@@ -18,16 +20,6 @@ public class AnalyticsAlertEventHandler {
     private final AlertAnalyticsEventInboxService inboxService;
     private final AlertService alertService;
     private final VariableAnomalyAdmission variableAdmission;
-
-    public AnalyticsAlertEventHandler(
-            ProcessedEventService processedEventService,
-            AlertAnalyticsEventInboxService inboxService,
-            AlertService alertService, VariableAnomalyAdmission variableAdmission) {
-        this.processedEventService = processedEventService;
-        this.inboxService = inboxService;
-        this.alertService = alertService;
-        this.variableAdmission = variableAdmission;
-    }
 
     public boolean handleAnomaly(AnomalyDetectedEvent event) {
         AlertAnalyticsEventInboxEntry entry = inboxService.recordReceived(

@@ -11,11 +11,12 @@ import com.voltcanary.device.security.AuthenticatedUser;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class DeviceAnalyticsPolicyService {
 
     private final DeviceService deviceService;
@@ -23,19 +24,6 @@ public class DeviceAnalyticsPolicyService {
     private final DeviceAnalyticsPolicyMapper mapper;
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
-
-    public DeviceAnalyticsPolicyService(
-            DeviceService deviceService,
-            DeviceAnalyticsConfigRepository repository,
-            DeviceAnalyticsPolicyMapper mapper,
-            DeviceRegistryEventPublisher eventPublisher,
-            DeviceAuditService auditService) {
-        this.deviceService = deviceService;
-        this.repository = repository;
-        this.mapper = mapper;
-        this.eventPublisher = eventPublisher;
-        this.auditService = auditService;
-    }
 
     @Transactional(readOnly = true)
     public DeviceAnalyticsConfigResponse get(AuthenticatedUser user, UUID deviceId) {

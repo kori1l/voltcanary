@@ -15,4 +15,4 @@ The user explicitly requests a complete Spring AI rebuild and authorizes the pre
 All backend Maven modules share the platform upgrade. Assistant runtime, provider adapters, tests and architecture guidance change. Existing frontend API contracts remain compatible unless an explicitly documented extension is required. Python ML lifecycle and inference remain owned by ml-service.
 
 ## Relationship to Existing Work
-This explicitly requested migration takes precedence over the A5/A6 implementation queue. It reuses their domain contracts and durable state and does not claim their unfinished quality acceptance. No paid model evaluation is inferred from this request.
+The Spring AI migration is complete. The [AI-first order](../README.md#ai-first-execution-priority) governs subsequent implementation. It reuses their domain contracts and durable state and does not claim their unfinished quality acceptance. No paid model evaluation is inferred from this request.

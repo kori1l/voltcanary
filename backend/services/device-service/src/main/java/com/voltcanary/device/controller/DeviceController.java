@@ -11,6 +11,7 @@ import com.voltcanary.device.service.DeviceService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,21 +25,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/devices")
+@RequiredArgsConstructor
 public class DeviceController {
 
     private final DeviceService deviceService;
-    private final com.voltcanary.device.service.DeviceCreation creation;
     private final AuthenticatedUserResolver userResolver;
-
-    public DeviceController(DeviceService deviceService, AuthenticatedUserResolver userResolver,
-            com.voltcanary.device.service.DeviceCreation creation) {
-        this.deviceService = deviceService;
-        this.userResolver = userResolver;
-        this.creation = creation;
-    }
+    private final com.voltcanary.device.service.DeviceCreation creation;
 
     @PostMapping
     public DeviceResponse create(

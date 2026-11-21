@@ -1,30 +1,27 @@
 package com.voltcanary.aiagent.nativeops;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.aiagent.model.AgentAction;
 import com.voltcanary.aiagent.model.AgentTool;
 import com.voltcanary.vcl.VclCanonical;
+import com.voltcanary.vcl.VclDatasetDescriptions;
 import com.voltcanary.vcl.VclDocument;
 import com.voltcanary.vcl.VclParser;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Confirmation is owned by the existing reviewed-plan boundary; only its exact stored native review is dispatched. */
 @Component
+@RequiredArgsConstructor
 public class NativeTableExecutor {
     private static final Set<String> PARAMETERS = Set.of("protocol", "ownerReviewId", "ownerReviewRevision", "ownerReviewDigest", "ownerReceiptId",
             "datasetId", "ownerIdempotencyKey", "semanticDigest", "document");
     private final NativeOwnerClient owner;
     private final ObjectMapper mapper;
     private final VclParser parser = new VclParser();
-
-    public NativeTableExecutor(NativeOwnerClient owner, ObjectMapper mapper) {
-        this.owner = owner;
-        this.mapper = mapper;
-    }
 
     public Map<String, Object> execute(AgentAction action, String authorization) {
         var expected = expected(action);
@@ -37,6 +34,25 @@ public class NativeTableExecutor {
                 : owner.reconcile(authorization, before.id());
         checkResult(expected, result);
         return committed(expected, result, authorization);
+    }
+
+    public Map<String, Object> executeMapping(AgentAction action, String authorization, boolean inspect) {
+        require(action.tool() == AgentTool.APPLY_SOURCE_MAPPING && action.requiresConfirmation()
+                && action.parameters().keySet().equals(Set.of("accountId", "userId", "bindingId", "schemaRevision",
+                        "fieldId", "conversion", "mappingDigest", "mappingExample")), "NATIVE_MAPPING_REVIEW_REQUIRED");
+        var value = mapper.valueToTree(action.parameters());
+        var revision = value.path("schemaRevision");
+        require(revision.isIntegralNumber() && revision.canConvertToLong(), "NATIVE_MAPPING_REVIEW_REQUIRED");
+        var scope = new com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope(
+                UUID.fromString(value.path("userId").asText()), UUID.fromString(value.path("accountId").asText()));
+        var mapping = new ReviewedSourceMapping(UUID.fromString(value.path("bindingId").asText()), revision.longValue(),
+                UUID.fromString(value.path("fieldId").asText()), value.path("conversion"), value.path("mappingDigest").asText());
+        var example = value.path("mappingExample");
+        require(example.isObject() && example.size() == 2
+                && com.voltcanary.vcl.VclSourceMappingReview.convert("TEXT", mapping.conversion(), example.path("sample"))
+                        .equals(example.path("literal")), "NATIVE_MAPPING_EXAMPLE_CHANGED");
+        var receipt = inspect ? mapping.inspect(owner, authorization, scope) : mapping.confirm(owner, authorization, scope);
+        return mapper.convertValue(receipt, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
     }
 
     public Map<String, Object> reconcile(AgentAction action, String authorization) {
@@ -88,6 +104,10 @@ public class NativeTableExecutor {
                 && expected.receiptId().equals(review.receiptId()) && expected.revision() == review.revision()
                 && expected.reviewDigest().equals(review.digest()) && VclCanonical.semanticDigest(expected.document()).equals(review.semanticDigest())
                 && expected.document().spec().equals(review.diff()), "NATIVE_OWNER_REVIEW_CHANGED");
+        var reviewedFields = new java.util.HashSet<UUID>();
+        expected.document().spec().path("fields").forEach(field -> reviewedFields.add(UUID.fromString(field.path("id").asText())));
+        require(review.fieldIds().size() == reviewedFields.size()
+                && reviewedFields.equals(Set.copyOf(review.fieldIds().values())), "NATIVE_OWNER_FIELDS_CHANGED");
     }
     private static void checkResult(Expected expected, NativeOwnerClient.Review review) {
         try { check(expected, review); }
@@ -96,24 +116,12 @@ public class NativeTableExecutor {
     private Map<String, Object> committed(Expected expected, NativeOwnerClient.Review review, String authorization) {
         if (!review.status().equals("SUCCEEDED")) throw new NativeOwnerClient.Uncertain("NATIVE_OUTCOME_UNRESOLVED");
         try {
-            var actual = owner.dataset(authorization, expected.datasetId());
-            var fields = new java.util.HashSet<String>();
-            actual.fieldNames().forEachRemaining(fields::add);
-            require(fields.equals(Set.of("id", "schemaRevision", "definition", "schemaDigest", "accessScopeDigest", "generation", "dataVersion",
-                    "readyIndexedFields", "storageProfile", "liveQueryReady", "historyReady", "queryCapabilities")), "NATIVE_CREATED_RESOURCE_INVALID");
-            require(actual.path("id").asText().equals(expected.datasetId().toString()) && actual.path("schemaRevision").isIntegralNumber()
-                    && actual.path("schemaRevision").longValue() == 1 && actual.path("storageProfile").asText().equals("native-dense-1")
-                    && actual.path("liveQueryReady").isBoolean() && actual.path("liveQueryReady").asBoolean(), "NATIVE_CREATED_RESOURCE_INVALID");
-            var definition = (ObjectNode) actual.path("definition").deepCopy();
-            require(actual.path("generation").asText().equals(definition.path("generation").asText())
-                    && actual.path("dataVersion").isIntegralNumber() && actual.path("dataVersion").longValue() >= 1
-                    && actual.path("dataVersion").equals(definition.path("dataVersion")), "NATIVE_CREATED_RESOURCE_INVALID");
-            UUID.fromString(actual.path("generation").asText());
-            definition.remove(java.util.List.of("generation", "dataVersion", "systemFields"));
-            var document = mapper.createObjectNode().put("language", "VCL/1").put("kind", "COLLECTION");
-            document.set("spec", definition);
-            String digest = VclCanonical.documentDigest(parser.parse(document.toString()));
-            require(digest.equals(actual.path("schemaDigest").asText()) && digest.equals(VclCanonical.documentDigest(expected.document())), "NATIVE_CREATED_SCHEMA_CHANGED");
+            var response = owner.dataset(authorization, expected.datasetId());
+            var actual = VclDatasetDescriptions.parse(response.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            require(actual.id().equals(expected.datasetId()) && actual.schemaRevision() == 1
+                    && actual.liveQueryReady(), "NATIVE_CREATED_RESOURCE_INVALID");
+            String digest = actual.schemaDigest();
+            require(digest.equals(VclCanonical.documentDigest(expected.document())), "NATIVE_CREATED_SCHEMA_CHANGED");
             return Map.of("datasetId", expected.datasetId().toString(), "ownerReviewId", expected.reviewId().toString(),
                     "receiptId", expected.receiptId().toString(), "schemaRevision", 1, "schemaDigest", digest,
                     "route", "/data?datasetId=" + expected.datasetId(), "setupStatus", "NATIVE_TABLE_READY");

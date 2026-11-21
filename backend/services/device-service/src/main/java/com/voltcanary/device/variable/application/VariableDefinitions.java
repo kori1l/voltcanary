@@ -17,6 +17,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class VariableDefinitions {
     public record Draft(String key, String label, String origin, String unit,
             Map<String, VariableContract.Input> inputs, VariableExpression expression,
@@ -36,16 +38,6 @@ public class VariableDefinitions {
     private final DeviceTypeRepository types;
     private final ObjectMapper mapper;
     private final org.springframework.context.ApplicationEventPublisher events;
-
-    public VariableDefinitions(VariableStore store, AccountService accounts,
-            DeviceTypeRepository types, ObjectMapper mapper,
-            org.springframework.context.ApplicationEventPublisher events) {
-        this.store = store;
-        this.accounts = accounts;
-        this.types = types;
-        this.mapper = mapper;
-        this.events = events;
-    }
 
     public List<VariableDefinition> list(AuthenticatedUser user, String type) {
         requireType(type);

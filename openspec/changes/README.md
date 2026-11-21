@@ -1,41 +1,71 @@
+## Proposed ingestion transport change — 2026-11-19
+
+[`adopt-netty-multiprotocol-ingestion`](adopt-netty-multiprotocol-ingestion/proposal.md)
+plans Netty transport/protocol/domain-adapter/core boundaries for HTTP, external
+MQTT and active HTTP/Modbus/OPC UA clients. Documentation only; all implementation
+and qualification tasks remain unchecked. This independent transport scope
+preserves configurable mapping/capture ownership and changes no AI release order.
+See [target contract and acceptance](../../docs/target/ingestion-event-transport.md).
+
 <a id="ai-first-execution-priority"></a>
 
-## Active priority: Java AI agent first — 2026-11-11
+## Active release order — 2026-11-14
 
-The user prioritizes a working AI agent before further broad configurable
-storage/temporal-platform expansion and selected **Java: assess LangGraph4j**.
-No Neo4j or other graph database is requested. This amendment supersedes older
-instructions to continue G0/G4 first and the unconditional A5 -> A6 next-change
-selection below. Historical progress and all unfinished acceptance remain intact.
+The release includes all current changes and their outstanding acceptance.
+G0 is complete and [archived](archive/2026-11-17-define-vcl-language-contracts/tasks.md).
+G1 owner delivery is complete and [archived](archive/2026-11-17-define-configurable-domain-data/tasks.md).
+G4 temporal rule execution is complete and [archived](archive/2026-11-18-compile-declarative-temporal-rules/tasks.md).
+Follow owner dependencies and the configurable-platform milestones, alongside the
+remaining product and assistant work. Complete release scenarios and G8
+platform acceptance before [A6](qualify-economical-ai-assistant-models/tasks.md),
+the final model and rollout qualification. Collect repeatable end-to-end
+scenarios and evidence in their owning changes as implementation lands.
+Superseded transit proposals contribute their applicable acceptance scenarios
+through the configurable platform owners.
 
 Implementation checkpoint2026-11-11: P0 and core runtime tasks2.1–2.3 are verified
 with core1.9.9, atomic schema2 plan checkpoints and Java21/PostgreSQL evidence.
 Task3.1 also passes13 ordinary-API Docker checks on2026-11-12, including exact
-create/update readback, two restarts, partial failure and receipt reuse. Next is
-P2/task2.4: bounded specialists; full UI acceptance and reviewed in-place migration
-remain open. Do not restart
-the completed compatibility spike or infer model-quality acceptance from it.
+create/update readback, two restarts, partial failure and receipt reuse.
 
-Implementation resumed on 2026-11-13 with the internal atomic requirements
-transition and typed answer binding. Eight of twelve tasks are complete.
-Continue production requirements and consultation wiring from the
-[current checkpoint](adopt-langgraph4j-agent-orchestration/design.md#atomic-requirements-and-answer-binding--2026-11-13).
+The 2026-11-13 checkpoint adds atomic requirements, typed answer binding,
+bounded name consultations, and restart recovery for current plans. The scoped
+GPT-5 nano continuation and Chromium acceptance passed. The change is archived.
+See the
+[current checkpoint](archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md#atomic-requirements-and-answer-binding--2026-11-13).
 
-| Order | Work | Gate / scope |
+### Next work after LangGraph4j
+
+A5 is archived with all 52 tasks complete. Remaining V/R/C3 and preview
+implementation and functional verification precede A6. A6 owns the final
+shared model-quality, cost, portability and rollout evidence.
+
+The A5 delivery was a reviewed device → supported source → dashboard → edit
+workflow. Check ordinary device creation without a connector, continuation after
+reload, switching between two authorized devices, and an edit saved to the same
+dashboard ID with unrelated widget settings and bindings preserved.
+
+A5 steps 1–3 below record the completed sequence. Active work starts at step 4.
+
+| Order | Work | Exit evidence |
 | --- | --- | --- |
-| P0 | [adopt-langgraph4j-agent-orchestration](adopt-langgraph4j-agent-orchestration/proposal.md), tasks1.* | Released artifact/dependency compatibility, actual library graph and checkpoint/plan consistency spike; deterministic fixtures, no paid calls |
-| P1 | Same change, tasks2.1–2.3 then3.1 | Replace handwritten graph traversal and prove the basic workflow; retain Spring AI exchanges, one ledger, existing reviews/receipts and authoritative PostgreSQL state |
-| P2 | Same change, task2.4 then3.2–3.4, with A3/A5/G7 and V/R | Integrate bounded specialists and applicable owner predicates; complete cutover/recovery checks without requiring completion of entire owner changes |
-| P3 | [A6](qualify-economical-ai-assistant-models/proposal.md) | Prepare evaluations alongside P1/P2; real-model runs need separate explicit authorization. Scoped evidence does not close broader original gates |
-| P4 | Remaining G0/G1/GX/G2–G8 and other product themes | Resume generic data/storage/map/temporal/RAG expansion using actual prerequisites and the now-shared agent engine |
+| 1 | [A5 core workflow parity](archive/2026-11-14-migrate-ai-assistant-workflows-to-domain-skills/tasks.md), tasks 1.1–1.5 and 1.7. Start with 1.1 and use current code and tests to identify the remaining device → source → dashboard gaps. | Parity matrix distinguishes covered cases from missing work, with focused offline evidence for each supported flow. |
+| 2 | A5 task 2.3. Prepare and run the bounded first-pass checkpoint under its existing live authorization and evidence conditions. A6 corpus and harness preparation can proceed in parallel. | Original candidates scored against independent expected outcomes with automatic corrections and model judges disabled. |
+| 3 | Finish A5 integration with [A3 recovery](plan-ai-assistant-intents-with-durable-steps/tasks.md), [V outcome verification](verify-ai-dashboard-edit-outcomes/tasks.md) and [R recovery](repair-ai-dashboard-planning-failures/tasks.md). Use [C3](ground-ai-device-dashboard-continuations/tasks.md) to track device/dashboard continuity evidence. G7 supplies only the requirements/consultation capabilities that the selected workflow needs. | One shared runtime and ledger. Applicable offline recovery, confirmation, preservation and exact saved-result checks pass. |
+| 4 | [Configurable platform](#configurable-operations-program) and remaining release changes. Integrate the completed G1 owner through G6/G7 and follow the remaining dependencies through G8. | End-to-end evidence for each release scenario, including applicable V/R/C3/preview functional checks. |
+| 5 | [A6 qualification](qualify-economical-ai-assistant-models/tasks.md). | Independent first-pass, recovered and final outcomes across the release scenarios, complete-task cost, second-provider portability and rollout evidence. |
 
-For an unqualified continuation in this scope, select the first unfinished
-eligible task in P0–P2 before broad configurable-platform work. An explicitly
-requested unrelated task still takes precedence. G7 requirements/consultation
-semantics and A5 workflow/verification owners remain active within P1/P2; their
-overlapping custom-scheduler plans must consume the library, not grow another
-engine. Optional RAG and sophisticated model routing are not prerequisites for
-the first functioning agent workflow.
+Separate from this implementation sequence, review archive readiness for the
+completed [Spring AI migration](rebuild-assistant-with-spring-ai/tasks.md).
+[Dashboard deletion](add-dashboard-deletion/proposal.md) is an independent
+product follow-up. [T1–T7](#transit-stop-monitoring-program) supply reference
+scenarios and requirements for the configurable milestones.
+
+The [detailed AI gates](#remaining-ai-execution-order) apply within this order.
+The archived graph adoption supplies existing runtime evidence. A3/A5/V/R/G7
+retain their own acceptance for any wider scope. G7 and A5 reuse the same
+requirements/consultation runtime. Optional RAG and sophisticated routing stay
+outside the first ordinary-device/dashboard workflow.
 
 Existing supported APIs are sufficient to begin. If a selected agent workflow
 actually needs a missing owner capability, document the exact dependency and
@@ -58,16 +88,17 @@ mapping, spatial objects, temporal derivations/rules and AI authoring over the
 same ordinary APIs. HSL stop monitoring, fleet work duration and cold-chain
 monitoring are solution configurations and acceptance examples.
 <a id="configurable-operations-execution-status"></a>
-**Implementation explicitly resumed by the user on 2026-11-03; broad expansion
-deferred by the [AI-first priority](#ai-first-execution-priority) on 2026-11-11.**
-The following records configurable-platform progress and its internal sequence,
-not the currently selected next task. Current platform work:
+**The [current release order](#ai-first-execution-priority) continues this program
+with the remaining owner changes after G0 and G1 completion.** Current platform work:
 G0/M0 parser/registry/static compiler, all21 scalar kernels (circle/WGS84 profile)
-and H2/PostgreSQL bundle infrastructure are verified. G0 task1.3 is complete;
-next is1.4: real owner validation/adapters and prepared bundle integration, then1.5
-shared UI/AI use. Where configurable metadata does not exist yet, implement its
-prerequisite G1/M1 owner slice through the declared owners while keeping1.4 open;
-test attestations do not qualify real owner readiness. The first G1/M1 native
+and real owner bundle preparation are verified. G0 is archived with all 25 tasks
+complete. Shared registry publication and native UI/AI parity are verified.
+G1 is archived with all 13 top-level tasks complete. Verified delivery includes
+reviewed CSV/JSONL imports, generation replacement and chunk recovery, schema
+migration, workspace field and row grants, captured history and retention.
+The declared native PostgreSQL workload meets its p95 gate. The broader M1
+integration and cross-domain acceptance remain in their owning changes.
+The first G1/M1 native
 schema slice now implements signed reservation/review/apply/reconcile, typed
 provisioning and scoped describe/real compiler metadata. Reviewed native single-row
 CAS, exact receipts/history capture and signed bounded LIVE seek queries also
@@ -232,12 +263,12 @@ archived historical evidence are preserved; pending deltas carry the new contrac
 
 | Stage | Generic change | Prerequisite / boundary |
 | --- | --- | --- |
-| G0 | [VCL grammar, types and compiler front end](define-vcl-language-contracts/proposal.md) | Explicit closed contracts and generated UI/AI capabilities |
-| G1 | [Configurable data collections and temporal relations](define-configurable-domain-data/proposal.md) | G0; dense typed native storage and optional features |
+| G0 | [VCL grammar, types and compiler front end](archive/2026-11-17-define-vcl-language-contracts/proposal.md) | Complete and archived; explicit closed contracts and generated UI/AI capabilities |
+| G1 | [Configurable data collections and temporal relations](archive/2026-11-17-define-configurable-domain-data/proposal.md) | Complete; dense typed native storage and optional features |
 | GX | [Customer database adapters](connect-external-business-databases/proposal.md) | G0/G1 identity; direct reads, optional projections, verified writes |
 | G2 | [Spatial features and map/table selection](manage-spatial-features-and-map-selection/proposal.md) | Generic geometry; G1 for record links |
 | G3 | [Source mapping, observations and capture quality](configure-quality-aware-event-streams/proposal.md) | Existing source/ingestion/telemetry owners; optional G1 entity bindings |
-| G4 | [Declarative derivations and temporal rules](compile-declarative-temporal-rules/proposal.md) | G1/G3; G2 for spatial operators; no domain-name rule branches |
+| G4 | [Declarative derivations and temporal rules](archive/2026-11-18-compile-declarative-temporal-rules/proposal.md) | Complete. Reviewed activation, durable VCL execution, historical corrections and fenced alert effects. |
 | G5 | [Source mappings and reusable solution packages](package-source-mappings-and-solution-templates/proposal.md) | G1–G4; HSL/GTFS becomes an adapter/template package |
 | G6 | [Manual table/map/rule/evidence workbench](build-configurable-operations-workbench/proposal.md) | G1–G4; optional G5 templates |
 | G7 | [AI composition over shared platform capabilities](compose-configurable-workflows-with-ai/proposal.md) | G1–G4/G6; existing A5/V/R and one A2 ledger |
@@ -255,7 +286,7 @@ evaluator branch. Detailed gates and failure cases are in A01–A66.
 The previous transit changes remain proposed historical design/fixture references,
 not eligible implementation targets. Do not archive them as implemented or mark
 their tasks complete. Reuse their evidence/unknownness/receipt requirements in
-G1–G8. General unrelated assistant work retains A5 → A6; G7/G8 reuse those owners
+G1–G8. A6 follows G8 in the release order. G7/G8 reuse the assistant owners
 and do not reset quality gates, historical failures or rollout authorization.
 
 <a id="transit-stop-monitoring-program"></a>
@@ -291,7 +322,7 @@ under G1–G8 after explicit resume; HSL is a G5 solution package and G8 fixture
 not the platform's domain model. Preserve exact trip/stop identity and do not
 silently truncate route data when that package is implemented.
 
-This explicit product scope does not replace the general A5 → A6 queue below.
+The current release order above governs the remaining assistant work.
 Use the existing assistant, ledger, semantic compiler and V/R owners; no duplicate
 engine or independent worker budgets. T6 implements transit-specific additions;
 T7 evidence can be reused by A6 but does not close old tasks without satisfying
@@ -315,9 +346,8 @@ campaigns are not authorized by this migration.
 
 ## Актуальность ченджей и архив — 2026-10-28
 
-**Обновление 2026-11-11: сначала [LangGraph4j / AI-first](#ai-first-execution-priority),
-затем незавершённые A5/A6 по указанной интеграции.** Ниже сохранена внутренняя
-очередь и история A5 → A6. A1/A2/A4 архивированы 2026-10-28
+**LangGraph4j и A5 завершены. A6 завершает [очередь релиза](#ai-first-execution-priority).**
+Ниже сохранена история этапов ассистента. A1/A2/A4 архивированы 2026-10-28
 с переносом требований в `openspec/specs/`; из активного списка они исключены. Список папок и число открытых чекбоксов
 не задают порядок и не означают, что всё нужно реализовывать заново.
 Старые requirements сохраняются до проверки, даже если их реализация передана
@@ -330,7 +360,7 @@ AI нельзя: часть приёмочных требований перес
 | [route-ai-assistant-models-and-budgets — A2](archive/2026-10-28-route-ai-assistant-models-and-budgets/tasks.md) | 9/9; внутренние routing/budget проверены офлайн, архивирован 2026-10-28 | Сохранять единый бюджет и PINNED; интеграционные исправления входят в A5, квалификация — A6 |
 | [plan-ai-assistant-intents-with-durable-steps — A3](plan-ai-assistant-intents-with-durable-steps/tasks.md) | 8/9; runtime есть, полная интеграционная приёмка1.9 открыта | Закрыть оставшуюся проверку в A5; не строить runtime заново |
 | [load-ai-assistant-skill-context-on-demand — A4](archive/2026-10-28-load-ai-assistant-skill-context-on-demand/tasks.md) | 8/8; внутренние context/loading проверены офлайн, архивирован 2026-10-28 | Переиспользовать; качество конкретных skills/context доводить внутри A5 |
-| [migrate-ai-assistant-workflows-to-domain-skills — A5](migrate-ai-assistant-workflows-to-domain-skills/tasks.md) | 2/13 приёмочных задач отмечены; диагностика/context/output проверены офлайн | **Текущая работа:** core skills/context/strict output/workflows → first-pass checkpoint → финальные V/R и интеграционная приёмка |
+| [migrate-ai-assistant-workflows-to-domain-skills — A5](archive/2026-11-14-migrate-ai-assistant-workflows-to-domain-skills/tasks.md) | 52/52 задач выполнены; чейндж архивирован | Следующая проверка качества и стоимости относится к A6 |
 | [verify-ai-dashboard-edit-outcomes — V](verify-ai-dashboard-edit-outcomes/tasks.md) | 0/14; частичные структурные проверки уже есть | Довести проверку смыслового результата в конце A5; итоговые live/browser доказательства — A6. Не отдельный этап перед A5 |
 | [repair-ai-dashboard-planning-failures — R](repair-ai-dashboard-planning-failures/tasks.md) | 0/15; часть wiring/recovery есть | Отказоустойчивость и исправления — в конце A5, после измерения первых ответов; итоговая приёмка — A6 |
 | [ground-ai-device-dashboard-continuations — C3](ground-ai-device-dashboard-continuations/tasks.md) | 0/8; требования актуальны, отдельный старый путь остановлен | Реализовать continuity/реальные capabilities через A3/A4/A5, проверить в A6; старый regex-путь не возобновлять |
@@ -363,7 +393,7 @@ checkpoint01 and linked non-independent reevaluation02 both remain0/9; the latte
 stopped at the shared time ceiling after preparation/format failures. Frozen
 live-12 remains1/5 and0/2. A5 first-pass acceptance is not complete, so final V/R,
 A3 integration closure and A6 are not accepted or archived. See
-[A5 factual evidence and next work](migrate-ai-assistant-workflows-to-domain-skills/tasks.md).
+[A5 factual evidence and next work](archive/2026-11-14-migrate-ai-assistant-workflows-to-domain-skills/tasks.md).
 
 
 
@@ -407,7 +437,7 @@ integration is now in progress under the explicit local cutover request; A4 was 
 | A3 (8/9, offline runtime) | [plan-ai-assistant-intents-with-durable-steps](plan-ai-assistant-intents-with-durable-steps/proposal.md) | Model-selected intentions, dependent durable steps, facts, receipts, pending questions, focus and cross-plan resource continuity | A1, A2 |
 | A4 (archived, offline scope) | [load-ai-assistant-skill-context-on-demand](archive/2026-10-28-load-ai-assistant-skill-context-on-demand/proposal.md) | Bounded skill instructions, actual prior dialogue/questions, scoped data, mandatory conversational context and constrained history paging | A1–A3 |
 | V / R (final A5 package) | Existing [verify-ai-dashboard-edit-outcomes](verify-ai-dashboard-edit-outcomes/proposal.md) and [repair-ai-dashboard-planning-failures](repair-ai-dashboard-planning-failures/proposal.md) | Keep verifier/recovery owners; integrate A2 ledger rather than implement it twice | A1–A4 seams; implement after core A5 first-pass checkpoint, before final A5 acceptance; live evidence in A6 |
-| A5 | [migrate-ai-assistant-workflows-to-domain-skills](migrate-ai-assistant-workflows-to-domain-skills/proposal.md) | Reviewed domain skills, actual create/connect/dashboard chain, targeted edits, legacy parity and semantic-regex removal | A1–A4 runtime baseline; V/R integrated at the end, before A5 completion |
+| A5 | [migrate-ai-assistant-workflows-to-domain-skills](archive/2026-11-14-migrate-ai-assistant-workflows-to-domain-skills/proposal.md) | Reviewed domain skills, actual create/connect/dashboard chain, targeted edits, legacy parity and semantic-regex removal | A1–A4 runtime baseline; V/R integrated at the end, before A5 completion |
 | A6 | [qualify-economical-ai-assistant-models](qualify-economical-ai-assistant-models/proposal.md) | Independent quality, full-task cost, different-provider qualification, browser/execution and rollout evidence | A5 integration; consumes and closes V/R/C3 live criteria with shared evidence |
 
 <a id="remaining-ai-execution-order"></a>
@@ -415,8 +445,8 @@ integration is now in progress under the explicit local cutover request; A4 was 
 ## Remaining execution order — amendment 2026-10-28
 
 Within the historical domain/qualification program there are **two remaining
-stages: A5, then A6**; the 2026-11-11 [AI-first priority](#ai-first-execution-priority)
-places library qualification/migration ahead of this remaining sequence.
+stages: A5, then A6**. The [AI-first priority](#ai-first-execution-priority)
+records completed library adoption and the current entry point.
 A1/A2/A4 checked
 milestones remain historical completed boundaries; A3 task1.9 remains open and
 is verified within A5 integration. V/R are requirement owners integrated at the
@@ -1104,7 +1134,7 @@ and consultation grammar extend pending G7/A5/A6/G8 tasks with typed requirement
 bounded nested consultations, exact metrics, optional ACL-aware PostgreSQL/pgvector
 retrieval and separately reserved embedding/reranker calls. This creates no new
 independent implementation queue and does not reopen completed framework migration.
-Implementation/live campaigns remain stopped. Documentation-only checks:
+The AI-first order controls implementation. Live evaluation follows its owning change’s authorization and evidence gates. Documentation-only checks:
 `npm run vcl:check` and `npm run ai-contracts:check` (PowerShell7).
 
 Second implementer audit: the same [collaboration contract](../../docs/target/ai-assistant-collaboration-and-retrieval.md) now defines exact RequirementsAnswer/MetricEvidence, dependency-specific freshness/rebase, absolute deadline preservation, ID-only private hydration, requirement-to-effect coverage and AI01-AI24. Role/model/RAG/delegation improvements require predeclared independent qualification/ablation; additional agents alone do not qualify quality.

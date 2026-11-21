@@ -5,13 +5,12 @@ import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclParser;
 import com.voltcanary.vcl.VclRegistry;
 import com.voltcanary.vcl.VclUnits;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /** Bounded preparation of pending evaluator ACKs under machine authority. */
+@Slf4j
 final class WorkerEvaluatorReadiness {
-    private static final Logger LOG = LoggerFactory.getLogger(WorkerEvaluatorReadiness.class);
     private static final int PAGE_SIZE = 8;
     private final WorkerStartCheckpoints checkpoints;
     private final VclCompiler compiler = new VclCompiler(new VclRegistry(new VclParser()), VclUnits.standard());
@@ -29,7 +28,7 @@ final class WorkerEvaluatorReadiness {
             try {
                 checkpoints.acknowledge(candidate, compiler);
             } catch (VclException unavailable) {
-                LOG.debug("VCL evaluator readiness remains pending: {}", unavailable.code());
+                log.debug("VCL evaluator readiness remains pending: {}", unavailable.code());
             }
         }
     }

@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class VehicleMonitoringApiTest extends SignedUserTest {
     @Autowired MockMvc mvc;
     @Autowired VehicleMonitoringRepository repository;
+    @Autowired com.voltcanary.telemetry.vehicle.ReviewedVehicleMonitoring monitoring;
     @MockitoBean TelemetryAccessService access;
     private final UUID owner = UUID.randomUUID(), device = UUID.randomUUID();
     private String bearer(UUID user) { return "Bearer " + SignedUserTokens.create(user, "fixture@example.test", "USER"); }
@@ -52,9 +53,9 @@ class VehicleMonitoringApiTest extends SignedUserTest {
     }
 
     @Test void persistsValidNumericSettingsAndRejectsOutOfRangeValues() throws Exception {
-        mvc.perform(put(path()).header("Authorization", bearer(owner)).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"speedLimitKmh\":35.5,\"idleMinutes\":1,\"zones\":[]}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.speedLimitKmh").value(35.5));
+        var review=monitoring.prepare(owner,device,new com.voltcanary.telemetry.vehicle.ReviewedVehicleMonitoring.Proposal(0,"numeric",new VehicleMonitoringSettings(35.5,1,java.util.List.of())));
+        monitoring.confirm(owner,device,review.id(),new com.voltcanary.telemetry.vehicle.ReviewedVehicleMonitoring.Confirmation(review.digest(),review.idempotencyKey()));
+        mvc.perform(get(path()).header("Authorization",bearer(owner))).andExpect(status().isOk()).andExpect(jsonPath("$.speedLimitKmh").value(35.5));
         mvc.perform(put(path()).header("Authorization", bearer(owner)).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"speedLimitKmh\":0,\"idleMinutes\":1,\"zones\":[]}")).andExpect(status().isBadRequest());
         assertThat(repository.get(owner, device).speedLimitKmh()).isEqualTo(35.5);

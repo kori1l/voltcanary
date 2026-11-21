@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.aiagent.orchestration.contract.ProtocolValidator;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /** Exact declared read set only. The caller resolves artifact values under the current user session before this pure projection. */
@@ -55,6 +56,47 @@ public final class ConsultationPrompt {
             }
         }
         return schema;
+    }
+
+    public static JsonNode responseSchema(ProtocolValidator validator, Consultations.Role role,
+            Consultations.Task task, Requirements.Snapshot requirements, Set<UUID> authorizedEvidence) {
+        var schema = responseSchema(validator, role);
+        var evidence = ConsultationContracts.assignedEvidence(task, requirements, authorizedEvidence);
+        for (var branch : schema.at("/$defs/collab.WorkerResponse/oneOf")) {
+            restrictEvidence(branch.at("/properties/evidenceRefs"), evidence);
+        }
+        restrictEvidence(schema.at("/$defs/collab.QuestionCandidate/properties/evidenceRefs"), evidence);
+        boolean parent = NameConsultation.ROLE.equals(role.id());
+        if (!parent && !NameConsultation.CHILD_ROLE.equals(role.id())) return schema;
+        boolean unresolved = nameUnresolved(task, requirements);
+        String expected = unresolved ? "NEED_USER" : "ANSWER";
+        var branches = (com.fasterxml.jackson.databind.node.ArrayNode) schema.at("/$defs/collab.WorkerResponse/oneOf");
+        for (int index = branches.size() - 1; index >= 0; index--) {
+            String outcome = branches.get(index).at("/properties/outcome/const").asText();
+            boolean mayExtend = parent && !unresolved && task.exchanges() == 1 && Set.of("NEED_DATA", "DELEGATE").contains(outcome);
+            if (!expected.equals(outcome) && !mayExtend) branches.remove(index);
+        }
+        if (!unresolved) return schema;
+        var properties = (com.fasterxml.jackson.databind.node.ObjectNode) schema.at("/$defs/collab.QuestionCandidate/properties");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) properties.path("choices")).put("maxItems", 0);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) properties.path("evidenceRefs")).put("maxItems", 0);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) properties.path("slotIds")).put("maxItems", 1);
+        return schema;
+    }
+
+    private static void restrictEvidence(JsonNode schema, Set<UUID> evidence) {
+        if (!(schema instanceof com.fasterxml.jackson.databind.node.ObjectNode array)) return;
+        if (evidence.isEmpty()) {
+            array.put("maxItems", 0);
+            return;
+        }
+        var allowed = array.withObject("/items").putArray("enum");
+        evidence.stream().map(UUID::toString).sorted().forEach(allowed::add);
+    }
+
+    static boolean nameUnresolved(Consultations.Task task, Requirements.Snapshot requirements) {
+        return task.assignment().reads().slots().keySet().stream().map(requirements.slots()::get)
+                .anyMatch(slot -> slot == null || slot.status() != Requirements.Status.CONFIRMED);
     }
 
     private static void namespaceResult(JsonNode value) {

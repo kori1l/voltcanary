@@ -1,25 +1,21 @@
 package com.voltcanary.telemetry.config;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "app.telemetry.timescale", name = "policy-enabled", havingValue = "true")
+@RequiredArgsConstructor
+@Slf4j
 public class TimescalePolicyInitializer implements ApplicationRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(TimescalePolicyInitializer.class);
-
     private final JdbcTemplate jdbcTemplate;
-
-    public TimescalePolicyInitializer(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
 
     @Override
     public void run(ApplicationArguments args) {

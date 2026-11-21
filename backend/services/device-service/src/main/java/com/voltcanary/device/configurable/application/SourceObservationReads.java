@@ -8,18 +8,15 @@ import com.voltcanary.vcl.VclObservationPage;
 import com.voltcanary.vcl.VclObservationRead;
 import com.voltcanary.vcl.VclObservationReadiness;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Signed owner reads renew actual account/source authority before and after private telemetry I/O. */
 @Service
+@RequiredArgsConstructor
 public class SourceObservationReads {
     private final SourceBindingCatalog sources;
     private final SourceCaptureJournal journals;
-
-    public SourceObservationReads(SourceBindingCatalog sources, SourceCaptureJournal journals) {
-        this.sources = sources;
-        this.journals = journals;
-    }
 
     public VclObservationPage read(AuthenticatedUser actor, UUID id, VclObservationRead request) {
         var source = verify(actor, id, request.pin());

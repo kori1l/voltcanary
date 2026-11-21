@@ -7,8 +7,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,9 +16,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class AnalyticsJobWorker {
 
-    private static final Logger log = LoggerFactory.getLogger(AnalyticsJobWorker.class);
     private static final int BATCH_SIZE = 10;
     private static final Duration LEASE_TTL = Duration.ofMinutes(15);
 
@@ -27,17 +28,6 @@ public class AnalyticsJobWorker {
     private final AnalyticsJobRunner jobRunner;
     private final AnalyticsJobProperties properties;
     private final String workerId = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
-
-    public AnalyticsJobWorker(
-            JdbcTemplate jdbcTemplate,
-            TransactionTemplate transactionTemplate,
-            AnalyticsJobRunner jobRunner,
-            AnalyticsJobProperties properties) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.transactionTemplate = transactionTemplate;
-        this.jobRunner = jobRunner;
-        this.properties = properties;
-    }
 
     @Scheduled(fixedDelayString = "${app.analytics.jobs.worker-delay:5s}")
     public void runClaimedJobs() {

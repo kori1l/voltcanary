@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_labels")
+@Getter
+@Setter
 public class MlLabel {
     @Id
     private UUID id;
@@ -57,46 +61,4 @@ public class MlLabel {
     @Column(name = "deletion_reason", columnDefinition = "text")
     private String deletionReason;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public String getExternalDeviceKey() { return externalDeviceKey; }
-    public void setExternalDeviceKey(String externalDeviceKey) { this.externalDeviceKey = externalDeviceKey; }
-    public String getMetricName() { return metricName; }
-    public void setMetricName(String metricName) { this.metricName = metricName; }
-    public Instant getLabelStartAt() { return labelStartAt; }
-    public void setLabelStartAt(Instant labelStartAt) { this.labelStartAt = labelStartAt; }
-    public Instant getLabelEndAt() { return labelEndAt; }
-    public void setLabelEndAt(Instant labelEndAt) { this.labelEndAt = labelEndAt; }
-    public MlLabelType getLabel() { return label; }
-    public void setLabel(MlLabelType label) { this.label = label; }
-    public MlLabelSource getSource() { return source; }
-    public void setSource(MlLabelSource source) { this.source = source; }
-    public String getReason() { return reason; }
-    public void setReason(String reason) { this.reason = reason; }
-    public Integer getHorizonDays() { return horizonDays; }
-    public void setHorizonDays(Integer horizonDays) { this.horizonDays = horizonDays; }
-    public String getGenerationVersion() { return generationVersion; }
-    public void setGenerationVersion(String generationVersion) { this.generationVersion = generationVersion; }
-    public String getSourceOutcomeIdsJson() { return sourceOutcomeIdsJson; }
-    public void setSourceOutcomeIdsJson(String sourceOutcomeIdsJson) { this.sourceOutcomeIdsJson = sourceOutcomeIdsJson; }
-    public String getLineageHash() { return lineageHash; }
-    public void setLineageHash(String lineageHash) { this.lineageHash = lineageHash; }
-    public UUID getCreatedBy() { return createdBy; }
-    public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public Instant getDeletedAt() { return deletedAt; }
-    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
-    public UUID getDeletedBy() { return deletedBy; }
-    public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
-    public String getDeletionReason() { return deletionReason; }
-    public void setDeletionReason(String deletionReason) { this.deletionReason = deletionReason; }
 }

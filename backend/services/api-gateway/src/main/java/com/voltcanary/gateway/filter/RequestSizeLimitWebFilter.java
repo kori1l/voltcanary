@@ -2,6 +2,7 @@ package com.voltcanary.gateway.filter;
 
 import com.voltcanary.gateway.config.GatewayRequestSizeProperties;
 import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -13,13 +14,10 @@ import reactor.core.publisher.Mono;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@RequiredArgsConstructor
 public class RequestSizeLimitWebFilter implements WebFilter {
 
     private final GatewayRequestSizeProperties properties;
-
-    public RequestSizeLimitWebFilter(GatewayRequestSizeProperties properties) {
-        this.properties = properties;
-    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {

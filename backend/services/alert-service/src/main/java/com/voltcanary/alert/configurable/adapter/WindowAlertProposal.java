@@ -41,13 +41,27 @@ record WindowAlertProposal(JsonNode payload, String digest, UUID binding, long s
             boolean session = SESSION.equals(profile) || RETRACTION.equals(profile) || CORRECTION.equals(profile)
                     || SUSTAINED.equals(profile) || SUSTAINED_RETRACTION.equals(profile) || SUSTAINED_CORRECTION.equals(profile);
             boolean proofPin = WINDOW_PROOF_PIN.equals(profile);
-            if (!payload.isObject() || payload.size() != (prefix || proofPin ? 25 : 24)
+            boolean hasReferences = payload.has("observationReferences");
+            if (!payload.isObject() || payload.size() != (prefix || proofPin || hasReferences ? 25 : 24)
                     || (!session && !prefix && !proofPin && !INTERVAL.equals(profile)
                     && !INTERVAL_RETRACTION.equals(profile) && !INTERVAL_CORRECTION.equals(profile)
                     && !COUNT.equals(profile) && !COUNT_RETRACTION.equals(profile) && !COUNT_CORRECTION.equals(profile)
                     && !AGGREGATE.equals(profile) && !AGGREGATE_RETRACTION.equals(profile) && !AGGREGATE_CORRECTION.equals(profile)
                     && !"VCL_WINDOW_ALERT_PROPOSAL/1".equals(profile))
                     || !canonical.equals(new String(bytes, StandardCharsets.UTF_8))) throw new IllegalArgumentException();
+            if (hasReferences) {
+                if (!SESSION.equals(profile) && !RETRACTION.equals(profile) && !CORRECTION.equals(profile)) {
+                    throw new IllegalArgumentException();
+                }
+                var references = payload.path("observationReferences");
+                if (!references.isArray() || references.isEmpty() || references.size() > 100) throw new IllegalArgumentException();
+                var ids = new java.util.HashSet<UUID>();
+                for (var reference : references) {
+                    String text = reference.textValue();
+                    UUID id = UUID.fromString(text);
+                    if (!id.toString().equals(text) || !ids.add(id)) throw new IllegalArgumentException();
+                }
+            }
             Instant start = Instant.parse(text(payload, "windowStart"));
             Instant end = Instant.parse(text(payload, "windowEnd"));
             if (!start.isBefore(end) || start.getNano() % 1000 != 0 || end.getNano() % 1000 != 0
@@ -86,6 +100,10 @@ record WindowAlertProposal(JsonNode payload, String digest, UUID binding, long s
     String text(String field) { return text(payload, field); }
     UUID uuid(String field) { return uuid(payload, field); }
     long grantEpoch() { return positive(payload, "grantEpoch"); }
+    JsonNode observationReferences() {
+        return payload.has("observationReferences") ? payload.path("observationReferences")
+                : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+    }
     String expectedProofDigest() {
         if (WINDOW_PROOF_PIN.equals(text("profile"))) return text("coverageProofDigest");
         if (SESSION.equals(text("profile")) || retraction() || correction() || SUSTAINED.equals(text("profile"))

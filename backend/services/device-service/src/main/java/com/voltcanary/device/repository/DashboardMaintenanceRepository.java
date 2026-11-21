@@ -9,20 +9,17 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
+@RequiredArgsConstructor
 public class DashboardMaintenanceRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public DashboardMaintenanceRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode read(DashboardOwnerReadRequest request, List<UUID> allowed) {

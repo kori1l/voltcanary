@@ -26,7 +26,15 @@ public final class DashboardSkillContract {
     }
 
     public static JsonNode schema(ObjectMapper mapper, String intent, Map<String, Object> context) {
-        return project(mapper, intent, mapper.valueToTree(DashboardOperationSchema.envelope(context)));
+        var schema = project(mapper, intent, mapper.valueToTree(DashboardOperationSchema.envelope(context)));
+        if (context.get("requestedDashboardName") instanceof String name) {
+            for (var variant : schema.at("/properties/operations/items/anyOf")) {
+                if ("rename_dashboard".equals(variant.at("/properties/op/enum/0").asText())) {
+                    ((ObjectNode) variant.at("/properties/name")).putArray("enum").add(name);
+                }
+            }
+        }
+        return schema;
     }
 
     private static JsonNode project(ObjectMapper mapper, String intent, JsonNode original) {
@@ -35,7 +43,7 @@ public final class DashboardSkillContract {
         if (UPDATE.equals(intent)) {
             var variants = mapper.createArrayNode();
             for (var variant : schema.at("/properties/operations/items/anyOf"))
-                if (!Set.of("keep_review", "restore_review").contains(variant.at("/properties/op/enum/0").asText())) variants.add(variant);
+                if (!"keep_review".equals(variant.at("/properties/op/enum/0").asText())) variants.add(variant);
             ((ObjectNode) schema.at("/properties/operations/items")).set("anyOf", variants);
             return schema;
         }
@@ -67,9 +75,17 @@ public final class DashboardSkillContract {
         }
         ((ObjectNode) schema.at("/properties/operations/items")).set("anyOf", variants);
         var operations = (ObjectNode) schema.at("/properties/operations");
+        operations.put("description", "For PREPARED creation, start with exactly one rename_dashboard operation. "
+                + "Its name is the exact supplied dashboard name or a short proposed name, up to 80 characters. "
+                + "Include at least one widget and keep the resulting dashboard within 12 widgets. "
+                + "If asking for a required name, return QUESTION without operations.");
         operations.putObject("contains").put("type", "object").putObject("properties").putObject("op").put("const", "rename_dashboard");
         operations.withObject("/contains").putArray("required").add("op");
         operations.put("minContains", 1).put("maxContains", 1);
+        var widget = operations.putArray("allOf").addObject().putObject("contains").put("type", "object");
+        widget.putArray("required").add("op");
+        widget.putObject("properties").putObject("op").putArray("enum")
+                .add("show_map").add("show_current").add("show_history").add("add_note");
         return schema;
     }
 
@@ -85,7 +101,8 @@ public final class DashboardSkillContract {
     /** Validates references before the owning composition HTTP call. Unknown keys never become creations. */
     public static void validate(ObjectMapper mapper, ProtocolValidator validator, String intent, JsonNode payload, Map<String, Object> context) {
         WidgetDataCompatibility.validateReplacements(payload, context);
-        validator.validateRegistered(schema(mapper, intent, context), payload);
+        var scopedSchema = schema(mapper, intent, context);
+        validator.validateOperationDocument(scopedSchema, payload, scopedSchema, payload.path("operations"));
         var existing = new java.util.HashSet<String>();
         if (context.get("previousDashboardIntent") instanceof Map<?, ?> base && base.get("widgets") instanceof List<?> widgets)
             for (var widget : widgets) if (widget instanceof Map<?, ?> value && value.get("key") instanceof String key) existing.add(key);

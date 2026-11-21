@@ -1,9 +1,9 @@
 # Change: Conversational assistant with faithful dashboard preview
 
-**2026-11-03 configurable-platform alignment:** New unimplemented configured-resource scope follows [VCL](../../../docs/target/configurable-operations-language.md), [storage/adapters](../../../docs/target/configurable-operations-storage.md), [strict imports](../../../docs/target/configurable-operations-imports.md) and [acceptance](../../../docs/target/configurable-operations-acceptance.md). Preserve existing implemented behavior, checked tasks, immutable reviews and historical quality evidence. Runtime remains stopped for the configurable program; no paid/live authorization is inferred.
+**2026-11-03 configurable-platform alignment:** New unimplemented configured-resource scope follows [VCL](../../../docs/target/configurable-operations-language.md), [storage/adapters](../../../docs/target/configurable-operations-storage.md), [strict imports](../../../docs/target/configurable-operations-imports.md) and [acceptance](../../../docs/target/configurable-operations-acceptance.md). Preserve existing implemented behavior, checked tasks, immutable reviews and historical quality evidence. Use the [current implementation order](../README.md#ai-first-execution-priority) for configurable scope. Live evaluation follows the owning change’s authorization and qualification gates.
 
 
-Current status (2026-10-28): Shared preview/assistant baseline is implemented (35/42 tasks checked). The seven open tasks are delegated acceptance in sections11/12, not seven new preview features or a prerequisite to A5. Close only from linked successor evidence.
+Current status (2026-10-28): Shared preview/assistant baseline is implemented (35/42 tasks checked). Sections 11/12 track delegated acceptance. Close their tasks from the linked successor evidence during A5 integration and A6 qualification. Task 99.1 separately tracks configurable-resource alignment.
 
 ## Why
 The assistant exposes planning controls instead of a continuous conversation. Dashboard reviews list panel names without showing the layout that will be saved, and follow-ups cannot express supported layout changes.

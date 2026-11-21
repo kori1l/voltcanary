@@ -23,6 +23,7 @@ direction lives under `docs/target`.
 | Topic | Document |
 | --- | --- |
 | Spring AI models, context, tools and durable execution | [spring-ai-assistant.md](spring-ai-assistant.md) |
+| Detailed Russian walkthrough: UI click, LLM planning, project architecture, context, embeddings, review and execution | [ai-agent-request-walkthrough.ru.md](ai-agent-request-walkthrough.ru.md) |
 | VCL parser, scalar kernels, bundles and initial native owner metadata | [vcl-compiler-front-end.md](vcl-compiler-front-end.md); [native collection owner API](../api/configurable-native-data.md). Full runtime/UI/AI integration remains pending |
 | System map, services, main events | [01-system-overview.md](01-system-overview.md) |
 | Service ownership and allowed interactions | [02-service-boundaries.md](02-service-boundaries.md) |
@@ -39,6 +40,10 @@ direction lives under `docs/target`.
 | Alert event trust boundary | [alert-service-trust-boundary.md](alert-service-trust-boundary.md) |
 
 ## Target Architecture
+
+Proposed ingestion transport: [Netty multiprotocol target](../../target/ingestion-event-transport.md)
+and [proposed ADR-016](../../adr/ADR-016-netty-multiprotocol-ingestion.md).
+These do not describe implemented runtime behavior.
 
 Start with [../../target/architecture.md](../../target/architecture.md). Use it
 as the roadmap-level map; use the numbered docs above for current implemented

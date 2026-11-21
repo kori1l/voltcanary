@@ -23,13 +23,14 @@ import com.voltcanary.aiagent.security.AuthenticatedUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-
 @Service
+@RequiredArgsConstructor
 public class AiModelProviderService {
     private final AiModelProviderRepository providerRepository;
     private final AiModelProviderSecretRepository secretRepository;
@@ -37,21 +38,6 @@ public class AiModelProviderService {
     private final AiModelSelectionService modelSelectionService;
     private final AiModelProviderCapabilityRegistry capabilityRegistry;
     private final AiSecretEncryptionService encryptionService;
-
-    public AiModelProviderService(
-            AiModelProviderRepository providerRepository,
-            AiModelProviderSecretRepository secretRepository,
-            AiModelConfigRepository modelRepository,
-            AiModelSelectionService modelSelectionService,
-            AiModelProviderCapabilityRegistry capabilityRegistry,
-            AiSecretEncryptionService encryptionService) {
-        this.providerRepository = providerRepository;
-        this.secretRepository = secretRepository;
-        this.modelRepository = modelRepository;
-        this.modelSelectionService = modelSelectionService;
-        this.capabilityRegistry = capabilityRegistry;
-        this.encryptionService = encryptionService;
-    }
 
     public List<ModelProviderResponse> list(AuthenticatedUser user) {
         return providerRepository.findByAccountIdOrderByCreatedAtDesc(user.accountId()).stream()

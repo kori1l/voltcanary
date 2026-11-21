@@ -1,9 +1,15 @@
 # Change: Qualify economical assistant models and rollout
 
-**2026-11-03 configurable-platform alignment:** New unimplemented configured-resource scope follows [VCL](../../../docs/target/configurable-operations-language.md), [storage/adapters](../../../docs/target/configurable-operations-storage.md), [strict imports](../../../docs/target/configurable-operations-imports.md) and [acceptance](../../../docs/target/configurable-operations-acceptance.md). Preserve existing implemented behavior, checked tasks, immutable reviews and historical quality evidence. Runtime remains stopped for the configurable program; no paid/live authorization is inferred.
+**2026-11-03 configurable-platform alignment:** New unimplemented configured-resource scope follows [VCL](../../../docs/target/configurable-operations-language.md), [storage/adapters](../../../docs/target/configurable-operations-storage.md), [strict imports](../../../docs/target/configurable-operations-imports.md) and [acceptance](../../../docs/target/configurable-operations-acceptance.md). Preserve existing implemented behavior, checked tasks, immutable reviews and historical quality evidence. Use the [current implementation order](../README.md#ai-first-execution-priority) for configurable scope. Live evaluation follows the owning change’s authorization and qualification gates.
 
 
-Current status (2026-10-28): A6 is the next final qualification/release stage after A5 (0/10 tasks checked). Existing diagnostic failures are not qualification. Keep first-pass/recovered/final results separate and require explicit bounded live authorization.
+Current status (2026-11-14): A6 is the last change in the release queue. Begin
+qualification after the other release changes deliver their functional scope and
+G8 platform acceptance is complete. Include their assistant scenarios in the
+release corpus and reuse independent outcome evidence from their owners. A6
+supplies shared final model and rollout evidence for the remaining delegated
+criteria. Keep first-pass, recovered and final results separate and require
+explicit bounded live authorization.
 
 ## Why
 A valid schema or cheap token price does not prove that an entire conversation succeeds economically. Provider portability and bounded small-model quality need independent outcomes and full-task cost evidence.
@@ -17,13 +23,20 @@ A valid schema or cheap token price does not prove that an entire conversation s
 ## Dependencies
 
 2026-11-11: qualification for the new engine consumes
-[LangGraph4j integration evidence](../adopt-langgraph4j-agent-orchestration/design.md)
+[LangGraph4j integration evidence](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md)
 under [AI-first priority](../README.md#ai-first-execution-priority). Prepare
 corpora/profiles early; final qualification retains A5/V/R requirements below.
 Graph fixtures and partial supported-scope evidence do not close full A6 or make
 library adoption depend on A6 completion. Record engine/graph/checkpoint versions
 with every measured profile; no old result qualifies a new runtime automatically.
-migrate-ai-assistant-workflows-to-domain-skills and implemented offline verify/repair integration. This change supplies their outstanding live acceptance, so full V/R archival is not a prerequisite. Reuses archived baseline evidence without rescoring it.
+The scoped GPT-5 nano role-v6 continuation is available as diagnostic evidence.
+It verified exact typed-name binding and same-task continuation in the STANDARD
+profile across five successful model exchanges. Keep the prior failed run in
+the evidence and use the A6 corpus for portability, quality and cost claims.
+
+A6 also consumes A5 domain skill migration and the implemented offline verify
+and repair integration. It supplies their outstanding live acceptance and
+reuses archived baseline evidence without rescoring it.
 
 Authoritative order and delegation: [orchestration program](../README.md#ai-assistant-orchestration-program).
 
@@ -45,7 +58,7 @@ The requirements in specs/assistant-model-qualification/spec.md and every task b
 
 ## Requirements and retrieval amendment (2026-11-03)
 
-The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. This extends existing G7/A5/A6/G8 ownership; runtime and live trials remain stopped. Existing frozen acceptance/checked-task evidence is retained.
+The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. Implementation follows the [AI-first order](../README.md#ai-first-execution-priority). Live evaluation follows the owning change’s authorization and evidence gates. Existing frozen acceptance/checked-task evidence is retained.
 
 ## Second implementer audit
 

@@ -144,6 +144,11 @@ abstract class SourceBindingsContract extends SignedUserTest {
         request.remove("sample");
         request.put("mappingDigest", preview.getBody().path("mappingDigest").textValue());
         var entity = new HttpEntity<>(request.toString(), headers);
+        var receiptPath = path + "/mapping-receipts/" + request.path("mappingDigest").asText();
+        var beforeConfirmation = http.exchange(receiptPath + "?schemaRevision=1", HttpMethod.GET,
+                new HttpEntity<>(headers), JsonNode.class);
+        assertEquals("MAPPING_RECEIPT_UNAVAILABLE", beforeConfirmation.getBody().path("code").asText());
+        assertEquals(1L, catalog.describe(f.actor().id(), f.source(), null).schemaRevision());
         var concurrent = CompletableFuture.supplyAsync(() -> http.exchange(path + "/mapping-confirmation",
                 HttpMethod.POST, entity, JsonNode.class));
         var applied = http.exchange(path + "/mapping-confirmation", HttpMethod.POST, entity, JsonNode.class);
@@ -152,6 +157,12 @@ abstract class SourceBindingsContract extends SignedUserTest {
         assertEquals(applied.getBody(), concurrent.orTimeout(10, TimeUnit.SECONDS).join().getBody());
         assertEquals(f.device().toString(), applied.getBody().path("deviceId").textValue());
         assertEquals(applied.getBody(), http.exchange(path + "/mapping-confirmation", HttpMethod.POST, entity, JsonNode.class).getBody());
+        var readback = http.exchange(receiptPath + "?schemaRevision=1", HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+        assertEquals(HttpStatus.OK, readback.getStatusCode());
+        assertEquals(applied.getBody(), readback.getBody());
+        var wrongBase = http.exchange(receiptPath + "?schemaRevision=2", HttpMethod.GET,
+                new HttpEntity<>(headers), JsonNode.class);
+        assertEquals("MAPPING_RECEIPT_UNAVAILABLE", wrongBase.getBody().path("code").asText());
         assertEquals(old.definition(), catalog.describe(f.actor().id(), f.source(), 1L).definition());
         assertEquals("BOOLEAN", catalog.describe(f.actor().id(), f.source(), 2L).definition().at("/fields/1/type").textValue());
         var runtime = mapper.valueToTree(sources.findInternal(f.source()).mapping());

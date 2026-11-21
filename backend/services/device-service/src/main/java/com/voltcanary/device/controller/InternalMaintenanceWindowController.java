@@ -6,6 +6,7 @@ import com.voltcanary.device.service.MaintenanceWindowService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -15,15 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal")
+@RequiredArgsConstructor
 public class InternalMaintenanceWindowController {
 
     private final MaintenanceWindowService service;
     private final InternalServiceAuth internalServiceAuth;
-
-    public InternalMaintenanceWindowController(MaintenanceWindowService service, InternalServiceAuth internalServiceAuth) {
-        this.service = service;
-        this.internalServiceAuth = internalServiceAuth;
-    }
 
     @GetMapping("/devices/{deviceId}/maintenance-windows")
     public List<MaintenanceWindowResponse> listForDevice(

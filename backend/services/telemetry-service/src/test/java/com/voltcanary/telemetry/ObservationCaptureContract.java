@@ -159,6 +159,35 @@ abstract class ObservationCaptureContract {
         assertEquals("UNKNOWN", progress.read(pin, epoch).upstreamCoverage());
     }
 
+    @Test void coverageSearchCanRequireANewerJournalCut() {
+        var fixture = fixture();
+        schemas.apply(fixture.schema());
+        var binding = fixture.schema().pin();
+        var pin = new com.voltcanary.vcl.VclObservationReadiness.Pin(binding.bindingId(), binding.accountId(), binding.deviceId(),
+                binding.externalSourceId(), binding.schemaRevision(), binding.snapshotId(), binding.definitionDigest());
+        var epoch = UUID.randomUUID();
+        var first = positioned(fixture, epoch, "1");
+        capture.capture(first);
+        var generation = progress.read(pin, epoch).inputGeneration();
+        var from = first.timestamp().minusSeconds(1);
+        var until = first.timestamp().plusSeconds(1);
+        var basis = com.voltcanary.vcl.VclSourceCoverage.SOURCE_EVENT_TIME;
+        var older = new com.voltcanary.telemetry.observation.SourceCoverageAttestations.Proof(UUID.randomUUID(), generation,
+                first.sourcePosition(), from, until.plusMillis(200), basis);
+        assertEquals("COVERED", coverage.attest(pin, older).coverage());
+        var second = positioned(fixture, epoch, "2");
+        var at = until.plusMillis(400);
+        capture.capture(new TelemetryReceivedEvent(second.eventId(), second.deviceId(), second.sourceId(), at, second.metrics(),
+                at.plusSeconds(1), second.eventVersion(), second.correlationId(), second.producer(), second.accountId(), at,
+                second.processingContext(), second.bindingSchemaPin(), second.sourcePosition()));
+        var newer = new com.voltcanary.telemetry.observation.SourceCoverageAttestations.Proof(UUID.randomUUID(), generation,
+                second.sourcePosition(), from, until, basis);
+        assertEquals("COVERED", coverage.attest(pin, newer).coverage());
+        assertEquals(older.proofId(), coverage.findQualified(new com.voltcanary.vcl.VclCoverageSearch(pin, generation, from, until, 0)));
+        assertEquals(newer.proofId(), coverage.findQualified(new com.voltcanary.vcl.VclCoverageSearch(pin, generation, from, until, 2)));
+        assertNull(coverage.findQualified(new com.voltcanary.vcl.VclCoverageSearch(pin, generation, from, until, 3)));
+    }
+
     private TelemetryReceivedEvent positioned(Fixture fixture, UUID epoch, String sequence) {
         var event = event(fixture, UUID.randomUUID(), false, "state");
         return new TelemetryReceivedEvent(event.eventId(), event.deviceId(), event.sourceId(), event.timestamp(), event.metrics(),

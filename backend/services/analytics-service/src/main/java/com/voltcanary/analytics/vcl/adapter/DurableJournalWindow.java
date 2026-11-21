@@ -20,7 +20,7 @@ import java.util.function.LongFunction;
 /** One durable, historical window evaluation over a prepared rule and its retained input cut. */
 public final class DurableJournalWindow {
     private static final VclParser PARSER = new VclParser();
-    private static final String PROFILE = "vcl-durable-journal-window-3";
+    static final String PROFILE = "vcl-durable-journal-window-3";
     private final KeyedStateStore store;
     private final KeyedStateStore.Key key;
     private final String pins;

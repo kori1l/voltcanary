@@ -5,17 +5,18 @@ import com.voltcanary.analytics.scheduling.SchedulerLockService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Instant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AnalyticsOutboxReconciliationService {
 
-    private static final Logger log = LoggerFactory.getLogger(AnalyticsOutboxReconciliationService.class);
     private static final String LOCK_NAME = "analytics-outbox-reconciliation";
 
     private final AnalyticsOutboxReconciliationProperties properties;
@@ -23,19 +24,6 @@ public class AnalyticsOutboxReconciliationService {
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
-
-    public AnalyticsOutboxReconciliationService(
-            AnalyticsOutboxReconciliationProperties properties,
-            SchedulerLockService schedulerLockService,
-            JdbcTemplate jdbcTemplate,
-            TransactionTemplate transactionTemplate,
-            MeterRegistry meterRegistry) {
-        this.properties = properties;
-        this.schedulerLockService = schedulerLockService;
-        this.jdbcTemplate = jdbcTemplate;
-        this.transactionTemplate = transactionTemplate;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Scheduled(fixedDelayString = "#{@analyticsOutboxReconciliationProperties.interval.toMillis()}")
     public void reconcile() {

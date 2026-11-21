@@ -16,6 +16,22 @@ class DashboardSkillContractTest {
     private final ProtocolValidator validator = new ProtocolValidator(mapper);
     private final Set<String> intents = Set.of(DashboardSkillContract.CREATE, DashboardSkillContract.REFINE, DashboardSkillContract.UPDATE);
 
+    @Test void scopedRenameSchemaRejectsAnOldTitleInAllDashboardSkills() {
+        for (String intent : intents) {
+            var schema = DashboardSkillContract.schema(mapper, intent, Map.of("requestedDashboardName", "Новое имя"));
+            var payload = mapper.createObjectNode().put("protocol", DashboardOperationProtocol.VERSION);
+            var rename = payload.putArray("operations").addObject().put("op", "rename_dashboard").put("id", "name");
+            rename.put("name", "Новое имя");
+            if (DashboardSkillContract.CREATE.equals(intent)) {
+                payload.withArray("operations").addObject().put("op", "show_current")
+                        .put("id", "current").put("dataRef", "current_ref");
+            }
+            validator.validateRegistered(schema, payload);
+            rename.put("name", "Старое имя");
+            assertThrows(ProtocolValidator.RegisteredViolation.class, () -> validator.validateRegistered(schema, payload));
+        }
+    }
+
     @Test void examplesValidateAgainstTheirSeparateVersionedContracts() {
         var registry = new SkillRegistry(validator, PrimarySkillPackages.build(mapper, validator, List.of()));
         for (String intent : intents) {
@@ -46,6 +62,9 @@ class DashboardSkillContractTest {
         var twice = payload.deepCopy();
         ((com.fasterxml.jackson.databind.node.ArrayNode) twice.path("operations")).add(payload.at("/operations/0"));
         assertThrows(IllegalArgumentException.class, () -> validator.validateRegistered(schema, twice));
+        var nameOnly = payload.deepCopy();
+        ((ObjectNode) nameOnly).putArray("operations").add(payload.at("/operations/0"));
+        assertThrows(IllegalArgumentException.class, () -> validator.validateRegistered(schema, nameOnly));
         var forward = payload.deepCopy();
         ((ObjectNode) forward.at("/operations/4")).put("target", "@future");
         assertEquals("UNKNOWN_OR_FORWARD_LOCAL_WIDGET_REF", assertThrows(IllegalArgumentException.class,
@@ -65,6 +84,12 @@ class DashboardSkillContractTest {
                 """);
         for (String intent : List.of(DashboardSkillContract.REFINE, DashboardSkillContract.UPDATE)) {
             assertDoesNotThrow(() -> DashboardSkillContract.validate(mapper, validator, intent, payload, context));
+            var extraField = payload.deepCopy();
+            ((ObjectNode) extraField.at("/operations/0")).put("width", "THIRD");
+            var violation = assertThrows(ProtocolValidator.RegisteredViolation.class,
+                    () -> DashboardSkillContract.validate(mapper, validator, intent, extraField, context));
+            assertTrue(violation.locations().startsWith("operations[0].place_widgets:"));
+            assertTrue(violation.locations().contains("additionalProperties"));
             for (String invalid : List.of("foreign", "00000000-0000-0000-0000-000000000000", "@future")) {
                 var changed = payload.deepCopy();
                 ((ObjectNode) changed.at("/operations/0")).putArray("targets").add(invalid);
@@ -72,7 +97,8 @@ class DashboardSkillContractTest {
                 assertEquals(invalid, changed.at("/operations/0/targets/0").asText());
             }
         }
-        assertFalse(DashboardSkillContract.schema(mapper, DashboardSkillContract.UPDATE).toString().contains("restore_review"));
+        assertTrue(DashboardSkillContract.schema(mapper, DashboardSkillContract.UPDATE).toString().contains("restore_review"));
+        assertFalse(DashboardSkillContract.schema(mapper, DashboardSkillContract.UPDATE).toString().contains("keep_review"));
         assertTrue(DashboardSkillContract.schema(mapper, DashboardSkillContract.REFINE).toString().contains("restore_review"));
     }
 

@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class VariableBindings {
     public record Edit(UUID variableId, int revision, int expectedVersion,
             Map<String, String> inputPaths, boolean enabled) { }
@@ -33,19 +35,6 @@ public class VariableBindings {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final com.voltcanary.device.config.VariableDefinitionProperties properties;
-
-    public VariableBindings(VariableStore variables, AccountService accounts, VariableBindingRows rows,
-            VariableRetentionGuard retention, VariableBundles bundles, JdbcTemplate jdbc, ObjectMapper mapper,
-            com.voltcanary.device.config.VariableDefinitionProperties properties) {
-        this.variables = variables;
-        this.accounts = accounts;
-        this.rows = rows;
-        this.retention = retention;
-        this.bundles = bundles;
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.properties = properties;
-    }
 
     public List<VariableBinding> list(AuthenticatedUser user, UUID device, UUID source) {
         rows.source(accounts.currentAccount(user).getId(), device, source, false);

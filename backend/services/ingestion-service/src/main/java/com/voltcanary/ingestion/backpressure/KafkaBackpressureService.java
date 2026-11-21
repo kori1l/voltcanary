@@ -3,19 +3,17 @@ package com.voltcanary.ingestion.backpressure;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class KafkaBackpressureService {
 
     private final IngestionProperties properties;
     private final AtomicReference<Instant> rejectUntil = new AtomicReference<>(Instant.EPOCH);
-
-    public KafkaBackpressureService(IngestionProperties properties) {
-        this.properties = properties;
-    }
 
     public void check() {
         if (!properties.isBackpressureEnabled()) {

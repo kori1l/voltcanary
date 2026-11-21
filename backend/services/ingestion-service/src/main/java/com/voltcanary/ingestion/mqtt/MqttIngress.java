@@ -11,22 +11,21 @@ import com.voltcanary.ingestion.ingress.IngressOrchestrator;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "app.ingestion.mqtt", name = "enabled", havingValue = "true")
+@Slf4j
 public class MqttIngress implements MqttCallback {
 
-    private static final Logger log = LoggerFactory.getLogger(MqttIngress.class);
     private static final String ADAPTER_ID = "generic-mqtt";
 
     private final IngressOrchestrator ingressOrchestrator;

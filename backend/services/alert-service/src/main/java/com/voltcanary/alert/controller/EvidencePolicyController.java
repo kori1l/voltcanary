@@ -3,6 +3,7 @@ package com.voltcanary.alert.controller;
 import com.voltcanary.alert.configurable.application.EvidencePolicyReviews;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/alert-rules/configurable")
+@RequiredArgsConstructor
 public class EvidencePolicyController {
     private final EvidencePolicyReviews policies;
-    public EvidencePolicyController(EvidencePolicyReviews policies) { this.policies = policies; }
 
     @PostMapping("/evidence-policy-reservations")
     public EvidencePolicyReviews.View reserve(@RequestHeader("X-User-Id") UUID actor, @RequestHeader("Authorization") String authorization,

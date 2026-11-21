@@ -11,6 +11,7 @@ import com.voltcanary.dashboard.port.DashboardOwnership;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/dashboards/{id}")
+@RequiredArgsConstructor
 public class DashboardDraftController {
     public record RevisionMetadata(int revision, UUID publishedBy, Instant publishedAt) {
     }
@@ -36,15 +38,6 @@ public class DashboardDraftController {
     private final DashboardPublication publication;
     private final DashboardRequestDecoder decoder;
     private final DefinitionValidation validation;
-
-    public DashboardDraftController(DashboardOwnership ownership, DashboardDrafts drafts,
-            DashboardPublication publication, DashboardRequestDecoder decoder, DefinitionValidation validation) {
-        this.ownership = ownership;
-        this.drafts = drafts;
-        this.publication = publication;
-        this.decoder = decoder;
-        this.validation = validation;
-    }
 
     @GetMapping("/draft")
     public ResponseEntity<Draft> get(@RequestHeader(value = "Authorization", required = false) String authorization,

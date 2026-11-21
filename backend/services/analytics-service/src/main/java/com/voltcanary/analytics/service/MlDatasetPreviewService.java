@@ -33,10 +33,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MlDatasetPreviewService {
 
     private final MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository;
@@ -45,21 +47,6 @@ public class MlDatasetPreviewService {
     private final MlDatasetValidationService validationService;
     private final MlDatasetLabelReadinessService labelReadinessService;
     private final MlDatasetSupportService support;
-
-    public MlDatasetPreviewService(
-            MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository,
-            MaintenanceWindowReadModelRepository maintenanceWindowRepository,
-            TelemetryClient telemetryClient,
-            MlDatasetValidationService validationService,
-            MlDatasetLabelReadinessService labelReadinessService,
-            MlDatasetSupportService support) {
-        this.maintenanceOutcomeRepository = maintenanceOutcomeRepository;
-        this.maintenanceWindowRepository = maintenanceWindowRepository;
-        this.telemetryClient = telemetryClient;
-        this.validationService = validationService;
-        this.labelReadinessService = labelReadinessService;
-        this.support = support;
-    }
 
     @Transactional(readOnly = true)
     public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(

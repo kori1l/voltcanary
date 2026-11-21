@@ -1,19 +1,19 @@
 package com.voltcanary.telemetry.observation;
 
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /** Bounded stored-input recovery; schema arrival never authorizes a new source or substitutes a revision. */
 @Component
+@RequiredArgsConstructor
 public class ObservationReconciliation {
     private final JdbcTemplate jdbc;
     private final ObservationCapture capture;
     private final ObservationCaptureProperties properties;
-    public ObservationReconciliation(JdbcTemplate jdbc, ObservationCapture capture, ObservationCaptureProperties properties) {
-        this.jdbc = jdbc; this.capture = capture; this.properties = properties;
-    }
+
     @Scheduled(fixedDelayString = "${app.observations.reconcile-delay:5s}", initialDelay = 5000)
     public void reconcile() {
         if (!properties.isEnabled()) return;

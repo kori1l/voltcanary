@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "simulation_runs")
+@Getter
+@Setter
 public class SimulationRun {
     @Id
     private UUID id;
@@ -44,34 +48,4 @@ public class SimulationRun {
     @Column(name = "lease_until")
     private Instant leaseUntil;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getConfigId() { return configId; }
-    public void setConfigId(UUID configId) { this.configId = configId; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public UUID getDataSourceId() { return dataSourceId; }
-    public void setDataSourceId(UUID dataSourceId) { this.dataSourceId = dataSourceId; }
-    public SimulationRunStatus getStatus() { return status; }
-    public void setStatus(SimulationRunStatus status) { this.status = status; }
-    public Instant getStartedAt() { return startedAt; }
-    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
-    public Instant getStoppedAt() { return stoppedAt; }
-    public void setStoppedAt(Instant stoppedAt) { this.stoppedAt = stoppedAt; }
-    public UUID getStartedBy() { return startedBy; }
-    public void setStartedBy(UUID startedBy) { this.startedBy = startedBy; }
-    public String getStopReason() { return stopReason; }
-    public void setStopReason(String stopReason) { this.stopReason = stopReason; }
-    public long getGeneratedPoints() { return generatedPoints; }
-    public void setGeneratedPoints(long generatedPoints) { this.generatedPoints = generatedPoints; }
-    public String getLastError() { return lastError; }
-    public void setLastError(String lastError) { this.lastError = lastError; }
-    public String getActiveKey() { return activeKey; }
-    public void setActiveKey(String activeKey) { this.activeKey = activeKey; }
-    public String getLeaseOwner() { return leaseOwner; }
-    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
-    public Instant getLeaseUntil() { return leaseUntil; }
-    public void setLeaseUntil(Instant leaseUntil) { this.leaseUntil = leaseUntil; }
 }

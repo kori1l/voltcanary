@@ -3,6 +3,7 @@ package com.voltcanary.device.configurable.adapter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.configurable.domain.NativeDataset;
 import com.voltcanary.device.configurable.domain.NativeRow;
+import com.voltcanary.device.configurable.domain.NativeSchema;
 import com.voltcanary.device.configurable.port.NativeRowQueries;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
@@ -27,6 +28,40 @@ final class NativeQuerySnapshots {
     record Stored(UUID generation, long dataVersion, Instant expiresAt, List<NativeRow> rows, String projectionDigest) { }
 
     private NativeQuerySnapshots() { }
+
+    /** Reads the immutable schema selected by this actor's snapshot, never a replacement LIVE head. */
+    static NativeDataset pinnedDataset(Connection connection, UUID account, UUID actor, UUID dataset,
+            long revision, UUID snapshot, String scope, Instant now) throws SQLException {
+        try (var query = connection.prepareStatement("""
+                SELECT q.schema_revision,q.generation_id,q.data_version,q.schema_digest,q.scope_digest,q.expires_at,
+                    d.record_id_field_id,g.physical_id,g.status,
+                    s.document_digest,CASE WHEN OCTET_LENGTH(s.canonical_document)<=1048576 THEN s.canonical_document ELSE NULL END
+                FROM cfg_native_query_snapshot q
+                JOIN cfg_dataset d ON d.id=q.dataset_id AND d.account_id=q.account_id AND d.status='READY'
+                JOIN cfg_schema_revision s ON s.dataset_id=q.dataset_id AND s.revision=q.schema_revision
+                JOIN cfg_native_generation g ON g.dataset_id=q.dataset_id AND g.account_id=q.account_id
+                    AND g.generation=q.generation_id AND g.schema_revision=q.schema_revision
+                WHERE q.snapshot_id=? AND q.account_id=? AND q.actor_id=? AND q.dataset_id=?
+                """)) {
+            query.setObject(1, snapshot);
+            query.setObject(2, account);
+            query.setObject(3, actor);
+            query.setObject(4, dataset);
+            try (var row = query.executeQuery()) {
+                if (!row.next()) throw new VclException("SNAPSHOT_UNAVAILABLE", "");
+                if (!now.isBefore(row.getObject(6, OffsetDateTime.class).toInstant())) throw new VclException("SNAPSHOT_EXPIRED", "");
+                if (revision != row.getLong(1) || !scope.equals(row.getString(5))) throw new VclException("SNAPSHOT_CONFLICT", "");
+                String canonical = row.getString(11);
+                if (canonical == null || !List.of("ACTIVE", "RETIRED").contains(row.getString(9))
+                        || !VclCanonical.sha256(canonical).equals(row.getString(10))
+                        || !row.getString(10).equals(row.getString(4))) throw new VclException("SNAPSHOT_INTEGRITY", "");
+                var schema = NativeSchema.compileRevision(canonical, JdbcNativeDatasetCatalog.emptyMetadata(account));
+                if (!schema.id().equals(dataset) || schema.revision() != revision) throw new VclException("SNAPSHOT_INTEGRITY", "");
+                return new NativeDataset(account, row.getObject(2, UUID.class), row.getLong(3),
+                        row.getObject(7, UUID.class), schema, row.getObject(8, UUID.class));
+            }
+        }
+    }
 
     static NativeRowQueries.Snapshot insert(Connection connection, NativeDataset dataset, UUID actor, String scope,
             String queryDigest, List<NativeRow> rows, Instant now, String projectionDigest) throws SQLException {

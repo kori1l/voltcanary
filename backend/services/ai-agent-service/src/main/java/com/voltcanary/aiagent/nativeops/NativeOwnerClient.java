@@ -24,7 +24,7 @@ public class NativeOwnerClient {
             "semanticDigest", "reviewDigest", "typedDiff", "receiptId", "outcomeCode");
     private final RestClient client;
     private final VclParser parser = new VclParser();
-    private final String registryDigest = new VclRegistry(parser).digest();
+    private final JsonNode registryContract = new VclRegistry(parser).capabilities();
 
     public record Review(UUID id, long revision, String status, Instant expiresAt, UUID datasetId, Map<String, UUID> fieldIds,
             String semanticDigest, String digest, JsonNode diff, UUID receiptId) {
@@ -46,7 +46,7 @@ public class NativeOwnerClient {
     public JsonNode language(String authorization) {
         var language = get("/data/language", authorization);
         require(language.isObject() && language.size() == 3 && language.has("registry") && language.has("nativeQuery") && language.has("ruleExecutionReady"), "NATIVE_LANGUAGE_INVALID");
-        require(language.path("registry").path("registryDigest").asText().equals(registryDigest)
+        require(language.path("registry").equals(registryContract)
                 && language.path("nativeQuery").path("profile").asText().equals("native-live-sql-1")
                 && language.path("ruleExecutionReady").isBoolean() && !language.path("ruleExecutionReady").asBoolean(), "NATIVE_PROFILE_UNAVAILABLE");
         return language;
@@ -56,7 +56,11 @@ public class NativeOwnerClient {
         return review(post("/data/review-reservations", authorization, Map.of("kind", "COLLECTION", "fieldKeys", fields, "idempotencyKey", key)));
     }
     public Review prepare(String authorization, UUID reservationId, JsonNode document) {
-        return review(post("/data/dataset-reviews", authorization, Map.of("reservationId", reservationId, "document", document)));
+        require(document != null, "NATIVE_DOCUMENT_REQUIRED");
+        var collection = parser.parse(document.toString());
+        require(collection.kind() == com.voltcanary.vcl.VclDocument.Kind.COLLECTION, "NATIVE_COLLECTION_REQUIRED");
+        return review(post("/data/dataset-reviews", authorization,
+                Map.of("reservationId", reservationId, "document", collection.json())));
     }
     public Review inspect(String authorization, UUID reviewId) { return review(get("/data/reviews/" + reviewId, authorization)); }
     public Review apply(String authorization, UUID reviewId, long revision, String digest, String key) {
@@ -65,6 +69,99 @@ public class NativeOwnerClient {
     }
     public Review reconcile(String authorization, UUID reviewId) { return review(post("/data/reviews/" + reviewId + "/reconcile", authorization, Map.of())); }
     public JsonNode dataset(String authorization, UUID id) { return get("/data/datasets/" + id + "?schemaRevision=1", authorization); }
+
+    public JsonNode previewMapping(String authorization, com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope,
+            UUID bindingId, long revision, UUID fieldId, JsonNode conversion, JsonNode sample) {
+        var source = sourceCapture(authorization, scope, bindingId, revision).source();
+        require(source.sourceActive(), "NATIVE_SOURCE_INACTIVE");
+        require(java.util.stream.StreamSupport.stream(source.definition().path("fields").spliterator(), false)
+                .anyMatch(field -> fieldId.toString().equals(field.path("id").textValue())), "NATIVE_MAPPING_FIELD_UNAVAILABLE");
+        // The owner can accept raw TEXT for a field whose published type reflects a previously applied conversion.
+        require(sample.isBoolean() || sample.isTextual(), "NATIVE_MAPPING_SAMPLE_INVALID");
+        var expectedLiteral = com.voltcanary.vcl.VclSourceMappingReview.convert(
+                sample.isBoolean() ? "BOOLEAN" : "TEXT", conversion, sample);
+        var result = post("/data/source-bindings/" + bindingId + "/mapping-preview", authorization,
+                Map.of("schemaRevision", revision, "fieldId", fieldId, "conversion", conversion, "sample", sample));
+        String digest = com.voltcanary.vcl.VclSourceMappingReview.digest(
+                source.definitionDigest(), source.accessScopeDigest(), fieldId, conversion);
+        require(result.isObject() && result.size() == 5 && bindingId.equals(uuid(result.path("bindingId")))
+                && result.path("schemaRevision").isIntegralNumber() && result.path("schemaRevision").canConvertToLong()
+                && result.path("schemaRevision").longValue() == revision
+                && source.snapshotId().equals(uuid(result.path("schemaSnapshotId")))
+                && digest.equals(result.path("mappingDigest").textValue()) && expectedLiteral.equals(result.path("literal")),
+                "NATIVE_MAPPING_PREVIEW_CHANGED");
+        return result;
+    }
+
+    public com.voltcanary.vcl.VclSourceCaptureDescription sourceCapture(String authorization,
+            com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope, UUID bindingId, long revision) {
+        require(revision >= 1 && revision <= 9_007_199_254_740_991L, "NATIVE_SOURCE_REVISION_INVALID");
+        var response = get("/data/source-bindings/" + bindingId + "/capture?schemaRevision=" + revision, authorization);
+        var capture = com.voltcanary.vcl.VclSourceCaptureDescription.parse(
+                response.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var source = capture.source();
+        require(bindingId.equals(source.id()) && revision == source.schemaRevision()
+                && scope.accountId().equals(source.accountId()) && scope.userId().equals(source.actorId()),
+                "NATIVE_SOURCE_SCOPE_CHANGED");
+        return capture;
+    }
+
+    public JsonNode confirmMapping(String authorization, com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope,
+            UUID bindingId, long revision, UUID fieldId, JsonNode conversion, String reviewedDigest) {
+        var base = mappingSource(authorization, scope, bindingId, revision);
+        require(base.sourceActive() && com.voltcanary.vcl.VclSourceMappingReview.digest(
+                base.definitionDigest(), base.accessScopeDigest(), fieldId, conversion).equals(reviewedDigest),
+                "NATIVE_MAPPING_REVIEW_CHANGED");
+        com.voltcanary.vcl.VclBooleanTokens.parse(conversion, "/conversion");
+        try {
+            var receipt = post("/data/source-bindings/" + bindingId + "/mapping-confirmation", authorization,
+                    Map.of("schemaRevision", revision, "fieldId", fieldId, "conversion", conversion, "mappingDigest", reviewedDigest));
+            return verifyMappingReceipt(authorization, scope, base, fieldId, reviewedDigest, receipt);
+        } catch (RuntimeException unavailable) {
+            throw new Uncertain("NATIVE_MAPPING_OUTCOME_UNVERIFIED");
+        }
+    }
+
+    public JsonNode inspectMapping(String authorization, com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope,
+            UUID bindingId, long revision, UUID fieldId, String reviewedDigest) {
+        try {
+            require(reviewedDigest != null && reviewedDigest.matches("[0-9a-f]{64}"), "NATIVE_MAPPING_REVIEW_CHANGED");
+            var base = mappingSource(authorization, scope, bindingId, revision);
+            var receipt = get("/data/source-bindings/" + bindingId + "/mapping-receipts/" + reviewedDigest
+                    + "?schemaRevision=" + revision, authorization);
+            return verifyMappingReceipt(authorization, scope, base, fieldId, reviewedDigest, receipt);
+        } catch (RuntimeException unavailable) {
+            throw new Uncertain("NATIVE_MAPPING_OUTCOME_UNVERIFIED");
+        }
+    }
+
+    private JsonNode verifyMappingReceipt(String authorization, com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope,
+            com.voltcanary.vcl.VclSourceBindingDescription base, UUID fieldId, String reviewedDigest, JsonNode receipt) {
+        var appliedRevision = receipt.path("schemaRevision");
+        require(receipt.isObject() && receipt.size() == 7 && base.id().equals(uuid(receipt.path("bindingId")))
+                    && base.deviceId().equals(uuid(receipt.path("deviceId"))) && fieldId.equals(uuid(receipt.path("fieldId")))
+                    && reviewedDigest.equals(receipt.path("mappingDigest").textValue())
+                    && appliedRevision.isIntegralNumber() && appliedRevision.canConvertToLong()
+                    && appliedRevision.longValue() > base.schemaRevision(), "NATIVE_MAPPING_RECEIPT_CHANGED");
+        var applied = mappingSource(authorization, scope, base.id(), appliedRevision.longValue());
+        require(applied.deviceId().equals(base.deviceId()) && applied.snapshotId().equals(uuid(receipt.path("schemaSnapshotId")))
+                    && applied.definitionDigest().equals(receipt.path("definitionDigest").textValue())
+                    && java.util.stream.StreamSupport.stream(applied.definition().path("fields").spliterator(), false)
+                            .anyMatch(field -> fieldId.toString().equals(field.path("id").textValue())
+                                    && "BOOLEAN".equals(field.path("type").textValue())), "NATIVE_MAPPING_READBACK_CHANGED");
+        return receipt;
+    }
+
+    private com.voltcanary.vcl.VclSourceBindingDescription mappingSource(String authorization,
+            com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope scope, UUID bindingId, long revision) {
+        require(revision >= 1 && revision <= 9_007_199_254_740_991L, "NATIVE_SOURCE_REVISION_INVALID");
+        var response = get("/data/source-bindings/" + bindingId + "?schemaRevision=" + revision, authorization);
+        var source = com.voltcanary.vcl.VclSourceBindingDescription.parse(
+                response.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        require(bindingId.equals(source.id()) && revision == source.schemaRevision()
+                && scope.accountId().equals(source.accountId()) && scope.userId().equals(source.actorId()), "NATIVE_SOURCE_SCOPE_CHANGED");
+        return source;
+    }
 
     private JsonNode get(String path, String authorization) {
         auth(authorization);
@@ -107,6 +204,10 @@ public class NativeOwnerClient {
         require(value.path("revision").isIntegralNumber() && value.path("revision").canConvertToLong() && value.path("revision").longValue() >= 0,
                 "NATIVE_REVIEW_INVALID");
         require(Set.of("RESERVED", "PREPARED", "APPLYING", "UNKNOWN", "SUCCEEDED", "EXPIRED", "CANCELLED", "FAILED").contains(value.path("status").asText()), "NATIVE_REVIEW_INVALID");
+        var outcome = value.path("outcomeCode");
+        require(outcome.isMissingNode() || outcome.isNull()
+                || outcome.isTextual() && outcome.textValue().matches("[A-Z][A-Z0-9_]{0,79}"), "NATIVE_REVIEW_INVALID");
+        require(!"SUCCEEDED".equals(value.path("status").asText()) || !value.hasNonNull("outcomeCode"), "NATIVE_REVIEW_INVALID");
         var fields = new LinkedHashMap<String, UUID>();
         require(value.path("fieldIdsByKey").isObject() && value.path("fieldIdsByKey").size() >= 1 && value.path("fieldIdsByKey").size() <= 64, "NATIVE_REVIEW_INVALID");
         value.path("fieldIdsByKey").fields().forEachRemaining(field -> {

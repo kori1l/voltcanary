@@ -60,6 +60,26 @@ class SimulationPersistenceTest {
     }
 
     @Test
+    void aSavedCredentialIsRetainedOnlyForTheSameSource() {
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID firstSource = UUID.randomUUID();
+        UUID secondSource = UUID.randomUUID();
+        profileService.save(userId, deviceId, request(firstSource, "sim-first", "original"));
+
+        var sameSource = profileService.save(userId, deviceId, new SaveSimulationConfigRequest(
+                firstSource, "rename", SimulationProfile.FRIDGE, SimulationProtocol.HTTP, yaml("sim-first", "rename"), null));
+        assertThat(sameSource.hasSourceToken()).isTrue();
+
+        var changedSource = profileService.save(userId, deviceId, new SaveSimulationConfigRequest(
+                secondSource, "rebind", SimulationProfile.FRIDGE, SimulationProtocol.HTTP, yaml("sim-second", "rebind"), null));
+        assertThat(changedSource.hasSourceToken()).isFalse();
+        assertThat(configRepository.findByDeviceId(deviceId).orElseThrow().getSourceToken()).isNull();
+        assertThatThrownBy(() -> runManager.start(userId, deviceId))
+                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("Simulation source token is missing");
+    }
+
+    @Test
     void savesConfigVersionsAndRunHistory() {
         UUID userId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();

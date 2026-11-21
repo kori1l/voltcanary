@@ -3,6 +3,7 @@ package com.voltcanary.telemetry.observation;
 import com.voltcanary.common.events.telemetry.SourcePosition;
 import com.voltcanary.vcl.VclObservationReadiness;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -10,15 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Durable contiguous producer positions. The sequence has no event-time coverage authority. */
 @Service
+@RequiredArgsConstructor
 public class SourcePositionProgress {
     private static final String STREAM = "binding_id=? AND input_generation=? AND snapshot_id=? AND producer_epoch=?";
     private final JdbcTemplate jdbc;
     private final ObservationReadiness readiness;
-
-    public SourcePositionProgress(JdbcTemplate jdbc, ObservationReadiness readiness) {
-        this.jdbc = jdbc;
-        this.readiness = readiness;
-    }
 
     public record Evidence(UUID inputGeneration, UUID snapshotId, UUID producerEpoch, String contiguousThrough,
             String highestObserved, boolean gapPresent, String upstreamCoverage) { }

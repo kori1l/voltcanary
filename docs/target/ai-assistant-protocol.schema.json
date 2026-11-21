@@ -929,6 +929,11 @@
         "routing": {
           "$ref": "#/$defs/routingPreference"
         },
+        "continueStepId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
         "replyToQuestionId": {
           "anyOf": [
             {

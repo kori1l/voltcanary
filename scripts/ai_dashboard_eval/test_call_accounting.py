@@ -4,6 +4,27 @@ from .call_accounting import first_pass, from_trace, quality_metrics
 
 
 class CallAccountingTest(unittest.TestCase):
+    def test_denied_reservation_consumes_budget_without_provider_dispatch(self):
+        details = {"callId": "denied", "reservedCostMicros": 100}
+        reserved = {"stage": "BUDGET", "status": "RESERVED", "details": details}
+        denied = {"stage": "BUDGET", "status": "FAILED", "code": "DISPATCH_ACCESS_DENIED", "details": details}
+        self.assertFalse(from_trace(self.events(["PRIMARY"]) + [reserved])["complete"])
+        accounting = from_trace([reserved, denied])
+        self.assertTrue(accounting["complete"])
+        self.assertEqual(0, accounting["modelCalls"])
+        self.assertEqual([details], accounting["deniedReservations"])
+
+    def test_embedding_calls_count_against_budget_but_cannot_prove_generation(self):
+        retrieval = self.events(["CATALOGUE_INDEX", "CATALOGUE_QUERY"])
+        accounting = from_trace(retrieval)
+        self.assertTrue(accounting["complete"])
+        self.assertEqual(2, accounting["modelCalls"])
+        self.assertEqual(0, accounting["repairCalls"])
+        self.assertIsNone(first_pass(True, accounting))
+        combined = from_trace(self.events(["CATALOGUE_INDEX", "CATALOGUE_QUERY", "PRIMARY"]))
+        self.assertEqual(3, combined["modelCalls"])
+        self.assertTrue(first_pass(True, combined))
+
     def events(self, purposes):
         events = []
         for index, purpose in enumerate(purposes):
@@ -18,6 +39,15 @@ class CallAccountingTest(unittest.TestCase):
         self.assertEqual(0, accounting["repairCalls"])
         self.assertTrue(first_pass(True, accounting))
         self.assertFalse(first_pass(False, accounting))
+
+    def test_consultation_is_budgeted_support_for_the_same_first_pass(self):
+        accounting = from_trace(self.events(["PRIMARY", "PRIMARY", "CONSULTATION"]))
+        self.assertTrue(accounting["complete"])
+        self.assertEqual(3, accounting["modelCalls"])
+        self.assertEqual(0, accounting["repairCalls"])
+        self.assertEqual(0, accounting["assessmentCalls"])
+        self.assertTrue(first_pass(True, accounting))
+        self.assertIsNone(first_pass(True, from_trace(self.events(["CONSULTATION"]))))
 
     def test_retry_never_becomes_an_independent_trial_or_first_pass_success(self):
         accounting = from_trace(self.events(["PRIMARY", "FORMAT_CORRECTION", "DOMAIN_RECOVERY"]))

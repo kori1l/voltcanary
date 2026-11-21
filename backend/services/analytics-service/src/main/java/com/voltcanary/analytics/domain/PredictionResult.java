@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "prediction_results")
+@Getter
+@Setter
 public class PredictionResult {
 
     @Id
@@ -62,139 +66,4 @@ public class PredictionResult {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(UUID deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public String getModelName() {
-        return modelName;
-    }
-
-    public void setModelName(String modelName) {
-        this.modelName = modelName;
-    }
-
-    public String getModelVersion() {
-        return modelVersion;
-    }
-
-    public void setModelVersion(String modelVersion) {
-        this.modelVersion = modelVersion;
-    }
-
-    public Double getAnomalyScore() {
-        return anomalyScore;
-    }
-
-    public void setAnomalyScore(Double anomalyScore) {
-        this.anomalyScore = anomalyScore;
-    }
-
-    public Double getDegradationScore() {
-        return degradationScore;
-    }
-
-    public void setDegradationScore(Double degradationScore) {
-        this.degradationScore = degradationScore;
-    }
-
-    public Double getConfidence() {
-        return confidence;
-    }
-
-    public void setConfidence(Double confidence) {
-        this.confidence = confidence;
-    }
-
-    public String getRiskLevel() {
-        return riskLevel;
-    }
-
-    public void setRiskLevel(String riskLevel) {
-        this.riskLevel = riskLevel;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getInputHash() {
-        return inputHash;
-    }
-
-    public void setInputHash(String inputHash) {
-        this.inputHash = inputHash;
-    }
-
-    public UUID getModelId() {
-        return modelId;
-    }
-
-    public void setModelId(UUID modelId) {
-        this.modelId = modelId;
-    }
-
-    public String getPolicySource() {
-        return policySource;
-    }
-
-    public void setPolicySource(String policySource) {
-        this.policySource = policySource;
-    }
-
-    public String getFeatureSchemaHash() {
-        return featureSchemaHash;
-    }
-
-    public void setFeatureSchemaHash(String featureSchemaHash) {
-        this.featureSchemaHash = featureSchemaHash;
-    }
-
-    public String getFallbackReason() {
-        return fallbackReason;
-    }
-
-    public void setFallbackReason(String fallbackReason) {
-        this.fallbackReason = fallbackReason;
-    }
-
-    public boolean isShadowPrediction() {
-        return shadowPrediction;
-    }
-
-    public void setShadowPrediction(boolean shadowPrediction) {
-        this.shadowPrediction = shadowPrediction;
-    }
-
-    public String getPredictionJson() {
-        return predictionJson;
-    }
-
-    public void setPredictionJson(String predictionJson) {
-        this.predictionJson = predictionJson;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
 }

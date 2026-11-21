@@ -1,17 +1,19 @@
 package com.voltcanary.telemetry.observation;
 
 import com.voltcanary.common.events.telemetry.SourceBindingSchemaPin;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.sql.Timestamp;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** First actual accepted write assigns the journal generation and cutover; reads never create identity. */
 @Component
+@RequiredArgsConstructor
 public class ObservationGenerations {
     public record Generation(UUID id, long startCheckpoint, Instant startedAt) {
         public Generation {
@@ -19,7 +21,6 @@ public class ObservationGenerations {
         }
     }
     private final JdbcTemplate jdbc;
-    public ObservationGenerations(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     public Optional<Generation> find(UUID binding) {
         return jdbc.query("SELECT input_generation,generation_start_checkpoint,generation_started_at,head_checkpoint FROM cfg_observation_stream WHERE binding_id=?",

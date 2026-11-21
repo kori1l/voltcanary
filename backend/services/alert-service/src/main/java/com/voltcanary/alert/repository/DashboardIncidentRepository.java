@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Isolation;
@@ -18,14 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Incidents are alerts, not notification attempts. Counts are never page lengths. */
 @Repository
+@RequiredArgsConstructor
 public class DashboardIncidentRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public DashboardIncidentRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode read(DashboardOwnerReadRequest request, List<UUID> allowed) {

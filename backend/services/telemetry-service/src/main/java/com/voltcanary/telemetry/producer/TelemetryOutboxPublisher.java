@@ -1,14 +1,13 @@
 package com.voltcanary.telemetry.producer;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.lang.management.ManagementFactory;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
@@ -20,9 +19,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
 @ConditionalOnProperty(name = "app.kafka.publish-enabled", havingValue = "true", matchIfMissing = true)
+@Slf4j
 public class TelemetryOutboxPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(TelemetryOutboxPublisher.class);
     private static final int BATCH_SIZE = 100;
     private static final int MAX_ATTEMPTS = 5;
     private static final Duration LEASE_TTL = Duration.ofMinutes(2);

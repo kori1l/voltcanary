@@ -23,21 +23,18 @@ Read the local service shape before editing:
 
 ## Spring Boot 4 and Spring AI
 
-For the user-selected 2026-11-11 AI-first work, apply
-`adopt-langgraph4j-agent-orchestration` and follow the
+For AI-first work, follow the
 [priority index](../../../openspec/changes/README.md#ai-first-execution-priority).
 LangGraph4j core1.9.9 is now integrated through AgentGraphRunner and the single
 adapter/langgraph4j implementation; preserve Spring AI exchange, budget and
 domain ports rather than adding stock agent/tool executors. New plans pin the
 engine/definition in schema2; native checkpoints commit inside the authoritative
 plan JSON using existing revision/lease transactions. Legacy schema1 reads and
-saved-review execution remain supported, but generation requires an explicit
-new plan until in-place migration exists. Never auto-resume a raw checkpoint
-or silently switch engines. The serial emitter stays on the caller thread for
-trace context. Compiled in-turn specialist subgraphs and the plan-fenced
-collaboration worker have internal fixture coverage; production role/loader/API/UI
-wiring and the bounded durable executor remain unqualified. Do not expose these
-internal components as completed task2.4 or grant raw checkpoints dispatch authority.
+saved-review execution remain supported. Generation requires an explicit new
+plan. The serial emitter stays on the caller thread for trace context.
+Registered name consultations use compiled in-turn subgraphs and the same
+plan fences, ledger and trace. Keep dispatch authority in the application
+and apply G7's own acceptance to independent worker wakeup.
 See [implemented boundaries](../../../docs/current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11).
 Qualify a different released artifact before changing the pinned version.
 
@@ -162,8 +159,15 @@ primary pipeline and PlanStore. Preserve reserved IDs, owner-bounded review TTL,
 exact receipt/schema readback and GET-only expired UNKNOWN recovery. Controlled
 transport/preparation tests do not qualify model quality or compound workflows.
 The LIVE profile advertises explicit pushdown/order restrictions; historyReady
-stays false until historical reads exist. Snapshot/import/migration and UI/AI
-gates remain open. Provisioning must never recreate
+stays false until historical reads exist. Bounded atomic imports and reviewed
+native generation replacement now use the same owner module. Route native SQL
+through NativeSqlLayout(NativeDataset), using the refreshed physical pointer
+and generation journal; schema-only layouts identify initial provisioning, not
+the current table after replacement. Keep shadow DDL outside active-data
+transactions, verify exact READY contents/history and preserve the shared
+account/head fence for cutover, receipt and outbox. Retired generations and sealed
+snapshots remain retained. Full import/migration/sharing/retention/performance
+and UI/AI gates remain open. Provisioning must never recreate
 a missing READY table as an empty dataset.
 
 The same module journals immutable source binding schemas during ordinary source

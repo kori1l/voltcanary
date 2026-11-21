@@ -4,15 +4,17 @@ import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.config.AnalyticsRuleProperties;
 import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
-import java.time.Instant;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnomalyDetector {
 
     public static final String POWER_SPIKE_RULE = "POWER_SPIKE";
@@ -20,10 +22,6 @@ public class AnomalyDetector {
     public static final String LONG_CYCLE_RULE = "LONG_CYCLE";
 
     private final AnalyticsRuleProperties rules;
-
-    public AnomalyDetector(AnalyticsRuleProperties rules) {
-        this.rules = rules;
-    }
 
     public List<Anomaly> detect(
             UUID deviceId,

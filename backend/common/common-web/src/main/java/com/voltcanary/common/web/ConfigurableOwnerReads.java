@@ -31,6 +31,10 @@ public final class ConfigurableOwnerReads {
         return read(authorization, "/data/datasets/{id}?schemaRevision={revision}", id, revision, deadline, "DATASET");
     }
 
+    public byte[] circleRevision(String authorization, UUID id, long revision, long deadline) {
+        return read(authorization, "/data/spatial-features/{id}/circle?revision={revision}", id, revision, deadline, "SPATIAL_CIRCLE");
+    }
+
     public byte[] datasetAsOf(String authorization, UUID id, byte[] body, long deadline, boolean split) {
         return datasetRead(authorization, id, body, deadline,
                 split ? "/data/datasets/{id}/query-asof-split" : "/data/datasets/{id}/query-asof");
@@ -52,6 +56,7 @@ public final class ConfigurableOwnerReads {
                         int status = response.getStatusCode().value();
                         if (status == 401 || status == 403) throw new Failure("OWNER_ACCESS_REVOKED");
                         if (status == 404) throw new Failure("DATASET_UNAVAILABLE");
+                        if (status == 410) throw new Failure("SNAPSHOT_EXPIRED");
                         if (status == 409) throw new Failure("METADATA_SNAPSHOT_CHANGED");
                         if (status != 200) throw new Failure("DATASET_OWNER_UNAVAILABLE");
                         byte[] payload = readBounded(response.getBody(), deadline);
@@ -215,6 +220,7 @@ public final class ConfigurableOwnerReads {
                         int status = response.getStatusCode().value();
                         if (status == 401 || status == 403) throw new Failure("OWNER_ACCESS_REVOKED");
                         if (status == 404) throw new Failure("DATASET_UNAVAILABLE");
+                        if (status == 410) throw new Failure("SNAPSHOT_EXPIRED");
                         if (status == 409) throw new Failure("METADATA_SNAPSHOT_CHANGED");
                         if (status != 200) throw new Failure("DATASET_OWNER_UNAVAILABLE");
                         return readBounded(response.getBody(), deadline);

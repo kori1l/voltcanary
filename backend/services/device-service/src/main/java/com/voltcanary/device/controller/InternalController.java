@@ -12,6 +12,8 @@ import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,32 +22,18 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-
-
 
 @RestController
 @RequestMapping("/internal")
+@RequiredArgsConstructor
 public class InternalController {
 
-    private final com.voltcanary.device.service.DeviceDeletionService deletions;
     private final DeviceRepository deviceRepository;
     private final DeviceTypeRepository deviceTypeRepository;
     private final AccountService accountService;
     private final InternalServiceAuth internalServiceAuth;
-
-    public InternalController(
-            DeviceRepository deviceRepository,
-            DeviceTypeRepository deviceTypeRepository,
-            AccountService accountService,
-            InternalServiceAuth internalServiceAuth, com.voltcanary.device.service.DeviceDeletionService deletions) {
-        this.deletions = deletions;
-        this.deviceRepository = deviceRepository;
-        this.deviceTypeRepository = deviceTypeRepository;
-        this.accountService = accountService;
-        this.internalServiceAuth = internalServiceAuth;
-    }
+    private final com.voltcanary.device.service.DeviceDeletionService deletions;
 
     @GetMapping("/device-deletions/{deviceId}")
     public Map<String, Object> deletion(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token, @PathVariable("deviceId") UUID deviceId) {

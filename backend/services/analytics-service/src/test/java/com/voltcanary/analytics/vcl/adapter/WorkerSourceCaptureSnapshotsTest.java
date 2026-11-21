@@ -71,6 +71,25 @@ class WorkerSourceCaptureSnapshotsTest {
         verify(reads).coverage(account, epoch, binding, 1, proof, original.capture().pin());
     }
 
+    @Test void startCheckpointRequiresOwnerQualifiedEventTime() {
+        var original = fixture();
+        var from = Instant.parse("2026-11-03T00:00:00Z");
+        var boundary = from.plusSeconds(60);
+        UUID proof = UUID.randomUUID();
+        var position = new VclSourceCoverage.Position(UUID.randomUUID(), "1");
+        var unqualified = new VclSourceCoverage.Evidence(proof, generation, position, from, boundary);
+        var qualified = new VclSourceCoverage.Evidence(proof, generation, position, from, boundary,
+                VclSourceCoverage.SOURCE_EVENT_TIME, java.util.List.of());
+        when(reads.capture(account, epoch, binding, 1)).thenReturn(original);
+        when(reads.coverage(account, epoch, binding, 1, proof, original.capture().pin())).thenReturn(
+                new VclSourceCoverage(proof, generation, schema, "COVERED", null, "5", unqualified),
+                new VclSourceCoverage(proof, generation, schema, "COVERED", null, "5", qualified, boundary));
+        var retained = new WorkerSourceCaptureSnapshots(reads).capture(account, epoch, binding, 1, null);
+        assertEquals("SOURCE_START_CHECKPOINT_UNAVAILABLE", assertThrows(VclException.class,
+                () -> retained.coveredCheckpoint(proof, from, boundary)).code());
+        assertEquals(qualified, retained.coveredCheckpoint(proof, from, boundary).proof().evidence());
+    }
+
     private VclSourceCaptureDescription fixture() {
         var definition = new ObjectMapper().createObjectNode().put("id", binding.toString()).put("schemaRevision", 1)
                 .put("profile", VclSourceBindingProfile.VERSION).put("configurationDigest", "a".repeat(64));

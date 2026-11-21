@@ -2,42 +2,35 @@ package com.voltcanary.telemetry.controller;
 
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
 import com.voltcanary.telemetry.dto.TelemetryChartResponse;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import com.voltcanary.telemetry.dto.TelemetryExportResponse;
 import com.voltcanary.telemetry.dto.TelemetryLatestResponse;
 import com.voltcanary.telemetry.dto.TelemetryMetricResponse;
 import com.voltcanary.telemetry.dto.TelemetryQualityResponse;
-import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import com.voltcanary.telemetry.service.TelemetryAccessService;
 import com.voltcanary.telemetry.service.TelemetryQueryService;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping({"/telemetry/devices/{deviceId}", "/internal/telemetry/devices/{deviceId}"})
+@RequiredArgsConstructor
 public class TelemetryController {
 
     private final TelemetryQueryService telemetryQueryService;
     private final TelemetryAccessService telemetryAccessService;
     private final TelemetryValidationProperties validationProperties;
-
-    public TelemetryController(
-            TelemetryQueryService telemetryQueryService,
-            TelemetryAccessService telemetryAccessService,
-            TelemetryValidationProperties validationProperties) {
-        this.telemetryQueryService = telemetryQueryService;
-        this.telemetryAccessService = telemetryAccessService;
-        this.validationProperties = validationProperties;
-    }
 
     @GetMapping("/readings")
     public TelemetryChartResponse readings(

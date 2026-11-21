@@ -1,7 +1,7 @@
 # Design: Plan assistant intents with durable dependent steps
 
 2026-11-11: [AI-first](../README.md#ai-first-execution-priority) and
-[library migration](../adopt-langgraph4j-agent-orchestration/design.md) supersede
+[library migration](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md) supersede
 handwritten traversal as a target. Preserve A3 records/contracts and acyclic
 user-plan dependencies; bounded library control-flow cycles do not permit
 cyclic step dependencies. A3/1.9 is integrated with the graph slice, not a

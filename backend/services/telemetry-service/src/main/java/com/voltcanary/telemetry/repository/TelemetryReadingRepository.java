@@ -8,17 +8,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class TelemetryReadingRepository {
 
     private final JdbcTemplate jdbcTemplate;
-
-    public TelemetryReadingRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
 
     public void save(TelemetryReading reading) {
         jdbcTemplate.update("""

@@ -88,6 +88,13 @@ spring:
               uri: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
               predicates:
                 - Path=/telemetry/**
+            - id: analytics-rule-preparation
+              metadata:
+                response-timeout: ${GATEWAY_RULE_PREPARATION_TIMEOUT_MS:30000}
+              uri: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+              predicates:
+                - Path=/analytics/configurable-rules/compilations,/analytics/configurable/rule-cutovers/checkpoint,/analytics/configurable/rule-cutovers/session-preview,/analytics/configurable/rule-cutovers/window-preview,/analytics/configurable/rule-cutovers/historical-window-comparison,/analytics/configurable/rule-cutovers/historical-window-corrections,/analytics/configurable/rule-cutovers/historical-measure,/analytics/configurable/rule-cutovers/historical-measure-list,/analytics/configurable/rule-cutovers/deployed-checkpoint,/analytics/configurable/rule-cutovers/{reviewId}/apply
+                - Method=POST
             - id: analytics-service
               uri: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
               predicates:

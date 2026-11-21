@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "analytics_jobs")
+@Getter
+@Setter
 public class AnalyticsJob {
 
     @Id
@@ -56,123 +60,4 @@ public class AnalyticsJob {
     @Column(name = "skip_reason")
     private String skipReason;
 
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(UUID deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public String getJobType() {
-        return jobType;
-    }
-
-    public void setJobType(String jobType) {
-        this.jobType = jobType;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getActiveKey() {
-        return activeKey;
-    }
-
-    public void setActiveKey(String activeKey) {
-        this.activeKey = activeKey;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public Instant getStartedAt() {
-        return startedAt;
-    }
-
-    public void setStartedAt(Instant startedAt) {
-        this.startedAt = startedAt;
-    }
-
-    public Instant getCompletedAt() {
-        return completedAt;
-    }
-
-    public void setCompletedAt(Instant completedAt) {
-        this.completedAt = completedAt;
-    }
-
-    public Instant getWindowStart() {
-        return windowStart;
-    }
-
-    public void setWindowStart(Instant windowStart) {
-        this.windowStart = windowStart;
-    }
-
-    public Instant getWindowEnd() {
-        return windowEnd;
-    }
-
-    public void setWindowEnd(Instant windowEnd) {
-        this.windowEnd = windowEnd;
-    }
-
-    public String getInputHash() {
-        return inputHash;
-    }
-
-    public void setInputHash(String inputHash) {
-        this.inputHash = inputHash;
-    }
-
-    public Instant getLockedAt() {
-        return lockedAt;
-    }
-
-    public void setLockedAt(Instant lockedAt) {
-        this.lockedAt = lockedAt;
-    }
-
-    public String getLockedBy() {
-        return lockedBy;
-    }
-
-    public void setLockedBy(String lockedBy) {
-        this.lockedBy = lockedBy;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
-    public String getSkipReason() {
-        return skipReason;
-    }
-
-    public void setSkipReason(String skipReason) {
-        this.skipReason = skipReason;
-    }
 }

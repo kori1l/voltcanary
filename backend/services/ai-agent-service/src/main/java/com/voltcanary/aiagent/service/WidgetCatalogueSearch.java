@@ -14,8 +14,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 /** Advisory search over owner contracts. Complete catalogue and validation remain authoritative. */
+@RequiredArgsConstructor
 public final class WidgetCatalogueSearch {
     public static final String VERSION = "widget-catalogue-v1";
     private record Document(String type, String setting, String text) { }
@@ -25,16 +27,16 @@ public final class WidgetCatalogueSearch {
     private final CapabilityEmbeddings embeddings;
     private final Map<String, Index> indexes = new LinkedHashMap<>();
 
-    public WidgetCatalogueSearch(ObjectMapper mapper, CapabilityEmbeddings embeddings) {
-        this.mapper = mapper;
-        this.embeddings = embeddings;
-    }
-
     public String identity() {
         return VERSION + ":" + (embeddings == null ? "lexical" : embeddings.identity());
     }
 
     public ObjectNode search(JsonNode catalogue, String message) {
+        return search(catalogue, message, (purpose, texts) -> embeddings.embed(texts));
+    }
+
+    public ObjectNode search(JsonNode catalogue, String message,
+            java.util.function.BiFunction<String, List<String>, List<float[]>> dispatch) {
         var result = mapper.createObjectNode().put("version", VERSION).put("advisoryOnly", true);
         String digest = SkillRegistry.digest(identity() + ":" + catalogue);
         result.put("catalogueDigest", digest);
@@ -55,7 +57,7 @@ public final class WidgetCatalogueSearch {
                     index = indexes.get(digest);
                     if (index == null) {
                         calls++;
-                        var proposed = embeddings.embed(documents.stream().map(Document::text).toList());
+                        var proposed = dispatch.apply("CATALOGUE_INDEX", documents.stream().map(Document::text).toList());
                         int dimensions = validate(proposed, documents.size(), 0);
                         // Copy arrays so mutable provider buffers cannot change an accepted index.
                         index = new Index(proposed.stream().map(float[]::clone).toList(), dimensions);
@@ -64,7 +66,7 @@ public final class WidgetCatalogueSearch {
                     }
                 }
                 calls++;
-                var queryVectors = embeddings.embed(List.of(query));
+                var queryVectors = dispatch.apply("CATALOGUE_QUERY", List.of(query));
                 validate(queryVectors, 1, index.dimensions());
                 queryVector = queryVectors.getFirst();
                 vectors = index.vectors();
@@ -91,6 +93,10 @@ public final class WidgetCatalogueSearch {
                 });
         return result.put("mode", vectors == null ? "LEXICAL_ONLY" : "HYBRID")
                 .put("diagnostic", diagnostic).put("embeddingCalls", calls);
+    }
+
+    public List<float[]> embed(List<String> texts) {
+        return embeddings.embed(texts);
     }
 
     private static List<Document> documents(JsonNode catalogue) {

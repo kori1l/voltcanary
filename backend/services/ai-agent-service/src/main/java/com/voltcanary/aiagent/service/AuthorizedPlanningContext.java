@@ -2,6 +2,7 @@ package com.voltcanary.aiagent.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.aiagent.config.AiAgentProperties;
+import com.voltcanary.aiagent.port.DeviceIntegration;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -26,13 +27,20 @@ public class AuthorizedPlanningContext {
     private final RestClient dashboards;
     private final PlanningInputGuard guard;
     private final AiAgentProperties properties;
+    private final boolean hslInstalled;
 
-    public AuthorizedPlanningContext(AiAgentProperties properties, RestClient.Builder builder, PlanningInputGuard guard) {
+    public AuthorizedPlanningContext(AiAgentProperties properties, RestClient.Builder builder, PlanningInputGuard guard,
+            List<DeviceIntegration> integrations) {
         devices = builder.baseUrl(properties.getServices().getDeviceBaseUrl()).build();
         alerts = builder.baseUrl(properties.getServices().getAlertBaseUrl()).build();
         dashboards = builder.baseUrl(properties.getServices().getDashboardBaseUrl()).build();
         this.guard = guard;
         this.properties = properties;
+        this.hslInstalled = integrations.stream().anyMatch(integration -> "HSL_HFP".equals(integration.provider()));
+    }
+
+    public boolean hslSourceAvailable() {
+        return hslInstalled && properties.isDeviceSetupEnabled();
     }
 
     public Scope scope(AuthenticatedUser user, String authorization) {
@@ -51,21 +59,21 @@ public class AuthorizedPlanningContext {
         List<ResourceRef> refs = new ArrayList<>();
         Map<String, Object> input = supplied == null ? Map.of() : supplied;
         if (input.get("originalDeviceRequest") instanceof String original) context.put("originalDeviceRequest", original);
-        if (properties.isDeviceSetupEnabled()) context.put("deviceSetupCapabilities", List.of("HSL_HFP"));
+        if (hslSourceAvailable()) context.put("deviceSetupCapabilities", List.of("HSL_HFP"));
         for (String key : Set.of("name", "type", "manufacturer", "model", "profile", "protocol", "preset",
                 "sourceType", "externalId", "sourceId", "metric", "from", "to", "yamlConfig", "startImmediately", "priorAssistantQuestion")) {
             Object value = input.get(key);
             if (value instanceof String || value instanceof Boolean || value instanceof Number) context.put(key, value);
         }
         if (input.get("clarificationAnswers") instanceof List<?> answers) context.put("clarificationAnswers", List.copyOf(answers));
-        for (String kind : List.of("device", "location", "alert")) {
+        for (String kind : List.of("device", "location", "alert", "rule")) {
             Object candidate = input.get(kind + "Id");
             if (candidate == null) continue;
             UUID id;
             try { id = UUID.fromString(candidate.toString()); }
             catch (IllegalArgumentException invalid) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid resource selection"); }
-            JsonNode resource = read(kind.equals("alert") ? alerts : devices,
-                    "/" + kind + "s/" + id, authorization);
+            JsonNode resource = read(kind.equals("alert") || kind.equals("rule") ? alerts : devices,
+                    (kind.equals("rule") ? "/alert-rules/" : "/" + kind + "s/") + id, authorization);
             Map<String, Object> summary = summary(resource);
             ResourceRef ref = new ResourceRef(UUID.randomUUID().toString(), kind, id.toString(), summary);
             refs.add(ref);
@@ -131,8 +139,9 @@ public class AuthorizedPlanningContext {
                 }
                 continue;
             }
-            readOnce(ref.kind().equals("alert") ? alerts : devices,
-                    "/" + ref.kind() + "s/" + ref.resourceId(), authorization, checkedPaths);
+            boolean rule = ref.kind().equals("rule");
+            readOnce(rule || ref.kind().equals("alert") ? alerts : devices,
+                    (rule ? "/alert-rules/" : "/" + ref.kind() + "s/") + ref.resourceId(), authorization, checkedPaths);
         }
     }
 

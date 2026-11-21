@@ -6,17 +6,14 @@ import com.voltcanary.device.domain.DataSource;
 import com.voltcanary.device.dto.DataSourceRequest;
 import com.voltcanary.device.variable.application.VariableRetentionGuard;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SourceRuntimeMappings {
     private final ObjectMapper objectMapper;
     private final VariableRetentionGuard retention;
-
-    public SourceRuntimeMappings(ObjectMapper objectMapper, VariableRetentionGuard retention) {
-        this.objectMapper = objectMapper;
-        this.retention = retention;
-    }
 
     public void apply(DataSource source, DataSourceRequest request) {
         var stored = objectMap(source.getMappingJson());

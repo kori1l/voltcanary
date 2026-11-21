@@ -5,25 +5,24 @@ import com.voltcanary.device.telemetry.TelemetryTemplates;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/devices/telemetry-templates")
+@RequiredArgsConstructor
 public class TelemetryTemplatesController {
     private final TelemetryTemplates templates;
     private final AuthenticatedUserResolver users;
-    public TelemetryTemplatesController(TelemetryTemplates templates, AuthenticatedUserResolver users) {
-        this.templates = templates;
-        this.users = users;
-    }
+
     @GetMapping
     public List<TelemetryTemplates.Template> list(@RequestHeader HttpHeaders headers) {
         return templates.list(users.resolve(headers));

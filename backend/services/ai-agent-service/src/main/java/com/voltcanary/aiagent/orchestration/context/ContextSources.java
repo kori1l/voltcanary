@@ -31,6 +31,8 @@ public final class ContextSources {
     }
     public record Page(String snapshotId, Instant asOf, JsonNode data, Position next) { }
     public record BaseReview(String reviewId, String digest, JsonNode data) { }
+    public record ModelBudget(com.voltcanary.aiagent.orchestration.routing.AttemptLedger ledger,
+            com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.RoutingPolicy policy, String stepId, UUID callId) { }
     @FunctionalInterface
     public interface Reviews {
         BaseReview read(IntentPlans.ModelInput input, Session session);
@@ -44,6 +46,19 @@ public final class ContextSources {
     public interface Loader {
         String id();
         JsonNode resultSchema();
+        default Page initial(IntentPlans.ModelInput input, Session session,
+                java.util.function.Supplier<JsonNode> submitted) { return null; }
+        default JsonNode initialSchema() { return null; }
+        default void verifyForDispatch(IntentPlans.ModelInput input, Session session, JsonNode data) { }
+        default void verifyInitialForDispatch(IntentPlans.ModelInput input, Session session, JsonNode data) { }
         Page load(IntentPlans.ModelInput input, Session session, JsonNode arguments, Position position);
+        default Page load(IntentPlans.ModelInput input, Session session, JsonNode arguments, Position position,
+                JsonNode previousResults) {
+            return load(input, session, arguments, position);
+        }
+        default Page load(IntentPlans.ModelInput input, Session session, JsonNode arguments, Position position,
+                JsonNode previousResults, ModelBudget budget) {
+            return load(input, session, arguments, position, previousResults);
+        }
     }
 }

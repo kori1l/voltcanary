@@ -4,19 +4,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class ResourceGrantRepository {
     public record Grant(UUID id, UUID accountId, UUID subjectId, String subjectKind, String action, String scopeKind, UUID resourceId) {
     }
     public record Association(UUID accountId, boolean active, long version) {
     }
     private final JdbcTemplate jdbc;
-    public ResourceGrantRepository(JdbcTemplate jdbc) {
-        this.jdbc=jdbc;
-    }
+
     public boolean owner(UUID account, UUID actor) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM accounts WHERE id=? AND user_id=? AND status='ACTIVE')",Boolean.class,account,actor));
     }

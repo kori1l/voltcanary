@@ -3,9 +3,9 @@ package com.voltcanary.device.service;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.Device;
+import com.voltcanary.device.domain.MaintenanceOperation;
 import com.voltcanary.device.domain.MaintenanceOutcome;
 import com.voltcanary.device.domain.MaintenanceOutcomeSource;
-import com.voltcanary.device.domain.MaintenanceOperation;
 import com.voltcanary.device.domain.MaintenanceWindow;
 import com.voltcanary.device.dto.MaintenanceOutcomeRequest;
 import com.voltcanary.device.dto.MaintenanceOutcomeResponse;
@@ -17,12 +17,14 @@ import com.voltcanary.device.security.AuthenticatedUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MaintenanceOutcomeService {
 
     private static final int DEFAULT_CHANGE_LIMIT = 100;
@@ -34,21 +36,6 @@ public class MaintenanceOutcomeService {
     private final MaintenanceWindowRepository windowRepository;
     private final MaintenanceOutcomeRepository outcomeRepository;
     private final DeviceAuditService auditService;
-
-    public MaintenanceOutcomeService(
-            AccountService accountService,
-            DeviceService deviceService,
-            MaintenanceOperationRepository operationRepository,
-            MaintenanceWindowRepository windowRepository,
-            MaintenanceOutcomeRepository outcomeRepository,
-            DeviceAuditService auditService) {
-        this.accountService = accountService;
-        this.deviceService = deviceService;
-        this.operationRepository = operationRepository;
-        this.windowRepository = windowRepository;
-        this.outcomeRepository = outcomeRepository;
-        this.auditService = auditService;
-    }
 
     @Transactional(readOnly = true)
     public List<MaintenanceOutcomeResponse> list(AuthenticatedUser user, UUID operationId) {

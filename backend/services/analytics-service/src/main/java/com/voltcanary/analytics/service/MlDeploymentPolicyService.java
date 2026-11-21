@@ -18,33 +18,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class MlDeploymentPolicyService {
-
-    private static final Logger log = LoggerFactory.getLogger(MlDeploymentPolicyService.class);
 
     private final MlDeploymentPolicyRepository policyRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDeploymentAuditWriter auditWriter;
     private final MlModelRegistryResponseMapper mapper;
-
-    public MlDeploymentPolicyService(
-            MlDeploymentPolicyRepository policyRepository,
-            MlModelVersionRepository modelVersionRepository,
-            MlDeploymentAuditWriter auditWriter,
-            MlModelRegistryResponseMapper mapper) {
-        this.policyRepository = policyRepository;
-        this.modelVersionRepository = modelVersionRepository;
-        this.auditWriter = auditWriter;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public MlDeploymentPolicyDto disablePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {

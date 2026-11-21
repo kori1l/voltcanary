@@ -56,9 +56,10 @@ public final class ConsultationPolicy {
                     || !contracts.role(parent.request()).delegates().contains(request.skillId())) {
                 throw invalid("CONSULTATION_PARENT_NOT_DELEGATING");
             }
-            var proposed = mapper.valueToTree(request);
             boolean declared = false;
-            for (var child : parent.result().path("requests")) if (child.equals(proposed)) declared = true;
+            for (var child : parent.result().path("requests")) {
+                if (request.equals(decodeChild(child))) declared = true;
+            }
             if (!declared) throw invalid("UNDECLARED_CHILD_CONSULTATION");
             depth = parent.depth() + 1;
         }
@@ -96,6 +97,7 @@ public final class ConsultationPolicy {
 
     public Tree claim(Tree tree, UUID taskId, long expectedRevision, Requirements.Snapshot requirements, UUID turnId,
             Map<UUID, String> currentArtifacts, String authorityEpoch, Instant now, Instant turnDeadline, Duration lease) {
+        tree = expireAssignments(tree, now);
         var old = task(tree, taskId);
         if (!tree.planId().equals(requirements.planId())) throw invalid("CONSULTATION_SCOPE_CHANGED");
         if (old.revision() != expectedRevision || old.status() != Status.QUEUED) throw conflict("CONSULTATION_NOT_QUEUED_OR_STALE");
@@ -111,6 +113,22 @@ public final class ConsultationPolicy {
         var assignment = new Assignment(UUID.randomUUID(), turnId, requirements.revision(), old.continuationEpoch(), old.cancellationEpoch(), manifest, deadline, until);
         return tree.replace(new Task(old.id(), old.request(), old.reason(), old.requestDigest(), old.obligationDigest(), old.depth(), Status.RUNNING,
                 old.exchanges() + 1, old.revision() + 1, old.continuationEpoch(), old.cancellationEpoch(), assignment, old.children(), old.result(), null));
+    }
+
+    /** An expired assignment may have sent its reserved exchange. Preserve its identity and never requeue it. */
+    public Tree expireAssignments(Tree tree, Instant now) {
+        var next = tree;
+        for (var task : tree.tasks().values()) {
+            var assignment = task.assignment();
+            if (task.status() != Status.RUNNING || assignment.leaseUntil().isAfter(now)) continue;
+            var diagnostic = mapper.createObjectNode().put("taskId", task.id().toString())
+                    .put("attemptId", assignment.attemptId().toString())
+                    .put("requirementsRevision", assignment.requirementsRevision()).put("readSetDigest", assignment.reads().digest())
+                    .put("outcome", "FAILURE").put("code", "CONSULTATION_ASSIGNMENT_EXPIRED")
+                    .put("retryClass", "UNKNOWN_OUTCOME");
+            next = next.replace(task.transition(Status.EXPIRED, assignment, task.children(), diagnostic, null));
+        }
+        return next;
     }
 
     public Tree complete(Tree tree, UUID id, UUID attemptId, JsonNode response, Requirements.Snapshot requirements,
@@ -152,12 +170,94 @@ public final class ConsultationPolicy {
         if (old.revision() != expectedRevision || !Set.of(Status.WAITING_CHILD, Status.WAITING_DATA, Status.WAITING_USER).contains(old.status())) {
             throw conflict("CONSULTATION_NOT_WAITING_OR_STALE");
         }
-        if (old.status() == Status.WAITING_CHILD && (old.children().isEmpty()
-                || old.children().stream().map(child -> task(tree, child)).anyMatch(child -> !Consultations.TERMINAL.contains(child.status())))) {
+        if (old.status() == Status.WAITING_CHILD && !childrenComplete(tree, old)) {
             throw conflict("CONSULTATION_CHILDREN_NOT_COMPLETE");
         }
         return tree.replace(new Task(old.id(), old.request(), old.reason(), old.requestDigest(), old.obligationDigest(), old.depth(), Status.QUEUED,
                 old.exchanges(), old.revision() + 1, old.continuationEpoch() + 1, old.cancellationEpoch(), null, old.children(), old.result(), null));
+    }
+
+    /** Admit the entire validated delegation in the same snapshot as its parent result. */
+    public Tree admitDelegatedChildren(Tree tree, UUID parentId, Requirements.Snapshot requirements,
+            Set<UUID> authorizedInputs, String authorityEpoch) {
+        var parent = task(tree, parentId);
+        if (parent.status() != Status.WAITING_CHILD) return tree;
+        var next = tree;
+        var keys = new HashSet<String>();
+        for (var declaration : parent.result().path("requests")) {
+            var child = decodeChild(declaration);
+            if (!keys.add(child.requestKey())) throw invalid("CONSULTATION_DUPLICATE_CHILD_KEY");
+            next = request(next, child, requirements, Set.copyOf(parent.request().goalIds()), authorizedInputs, authorityEpoch);
+        }
+        return next;
+    }
+
+    private Request decodeChild(JsonNode declaration) {
+        try {
+            return mapper.treeToValue(declaration, Request.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+            throw invalid("CONSULTATION_CHILD_REQUEST_INVALID");
+        }
+    }
+
+    static boolean childrenComplete(Tree tree, Task parent) {
+        if (parent.status() != Status.WAITING_CHILD || parent.result() == null
+                || !"DELEGATE".equals(parent.result().path("outcome").asText())) return false;
+        var requests = parent.result().path("requests");
+        if (requests.isEmpty() || parent.children().size() != requests.size()) return false;
+        var completed = new HashSet<String>();
+        for (UUID id : parent.children()) {
+            var child = tree.tasks().get(id);
+            if (child == null || !parent.id().equals(child.request().parentTaskId())
+                    || !Consultations.TERMINAL.contains(child.status())) return false;
+            completed.add(child.request().requestKey());
+        }
+        return completed.size() == requests.size()
+                && java.util.stream.StreamSupport.stream(requests.spliterator(), false)
+                        .allMatch(request -> completed.contains(request.path("requestKey").asText()));
+    }
+
+    public List<JsonNode> childResults(Tree tree, Task parent, Requirements.Snapshot requirements,
+            Map<UUID, String> artifacts, String authorityEpoch) {
+        return parent.children().stream().sorted().map(id -> {
+            var child = task(tree, id);
+            if (!parent.id().equals(child.request().parentTaskId()) || !Consultations.TERMINAL.contains(child.status())) {
+                throw conflict("CONSULTATION_CHILDREN_NOT_COMPLETE");
+            }
+            var result = mapper.createObjectNode().put("taskId", id.toString()).put("status", child.status().name());
+            var assignment = child.assignment();
+            if (child.status() == Status.SUCCEEDED && assignment != null && child.result() != null) {
+                var reads = assignment.reads();
+                boolean fresh = authorityEpoch.equals(reads.authorityEpoch())
+                        && reads.slots().entrySet().stream().allMatch(entry -> {
+                            var slot = requirements.slots().get(entry.getKey());
+                            return slot != null && slot.revision() == entry.getValue();
+                        })
+                        && reads.artifacts().entrySet().stream().allMatch(entry -> entry.getValue().equals(artifacts.get(entry.getKey())));
+                if (fresh) result.set("payload", child.result().path("payload"));
+                else result.put("status", Status.STALE.name());
+            }
+            return (JsonNode) result;
+        }).toList();
+    }
+
+    public Tree wakeAfterAnswer(Tree tree, UUID id, long expectedRevision, Requirements.Snapshot requirements) {
+        var task = task(tree, id);
+        if (task.revision() != expectedRevision || task.status() != Status.WAITING_USER) {
+            throw conflict("CONSULTATION_NOT_WAITING_OR_STALE");
+        }
+        if (!tree.planId().equals(requirements.planId()) || task.assignment() == null || task.result() == null) {
+            throw invalid("CONSULTATION_SCOPE_CHANGED");
+        }
+        var requested = new HashSet<UUID>();
+        task.result().path("questions").forEach(question ->
+                question.path("slotIds").forEach(slot -> requested.add(UUID.fromString(slot.asText()))));
+        if (requested.isEmpty() || !requested.stream().allMatch(slotId -> {
+            var slot = requirements.slots().get(slotId);
+            var prior = task.assignment().reads().slots().get(slotId);
+            return slot != null && prior != null && slot.revision() > prior && slot.status() == Requirements.Status.CONFIRMED;
+        })) return tree;
+        return wake(tree, id, expectedRevision);
     }
 
     /** Freshness guard before provider I/O; loss of a dependency invalidates the task without spending another call. */
@@ -180,7 +280,7 @@ public final class ConsultationPolicy {
         return tree;
     }
 
-    public Tree cancel(Tree tree, UUID id, long expectedRevision) {
+    public static Tree cancel(Tree tree, UUID id, long expectedRevision) {
         var target = task(tree, id);
         if (target.revision() != expectedRevision) throw conflict("CONSULTATION_REVISION_CHANGED");
         var cancelled = new HashSet<UUID>();
@@ -214,7 +314,7 @@ public final class ConsultationPolicy {
         return new ReadSet(slots, selected, authorityEpoch, digest(List.of(slots, selected, authorityEpoch)));
     }
 
-    private Task task(Tree tree, UUID id) {
+    private static Task task(Tree tree, UUID id) {
         var task = tree.tasks().get(id);
         if (task == null) throw new Requirements.Rejected(404, "CONSULTATION_UNAVAILABLE");
         return task;

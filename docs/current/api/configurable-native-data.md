@@ -1,14 +1,475 @@
 # Native collections, reviewed rows and queries
 
-Current backend checkpoint, 2026-11-05. Device-service exposes reviewed native
+Current backend checkpoint, 2026-11-17. Device-service exposes reviewed native
 schema creation, single-row INSERT/UPDATE/DELETE with CAS, optional dense history
 capture, bounded LIVE queries and sealed query snapshots. The /data console provides the first
-manual table/row workbench. Imports, schema migrations, external adapters,
-workspace/field sharing remain pending. AI has a separate default-off native-table
+manual table/row workbench. Bounded atomic imports and reviewed generation
+replacement are available through the API described below. Chunked imports and
+schema migration/archive routes are now implemented in source but await the
+deferred full-feature qualification campaign; their contracts are below.
+Workspace field/row grants and shared reviewed row operations are also present
+in source and await qualification. External adapters remain pending.
+AI has a separate default-off native-table
 authoring slice described below; broader AI composition remains pending.
 Descriptions return liveQueryReady=true with explicit queryCapabilities;
-historyReady=false for the mutable history store. The sealed event-time lookup
+historyReady reflects the presence of a verified capture checkpoint for the current head. The sealed event-time lookup
 described below resolves one captured selection.
+
+### Table action capabilities
+
+`GET /data/datasets/{id}/capabilities` returns a current owner-authorized
+`dataset-actions-1` snapshot with `datasetId`, `schemaRevision`,
+`generation`, `sourceMode`, `actions` and `unavailableReasons`. Responses
+use `Cache-Control: no-store`. The implemented owner publishes `NATIVE`.
+Import requires business keys. History depends on a verified history cut.
+Reviewed writes still recheck current authority and target preconditions.
+
+The workbench matches capability identity, revision and generation to the
+described table before enabling actions. A capability outage or unsupported
+snapshot leaves mutation controls disabled while an authorized row page
+remains readable. Refresh retries discovery. UI support for owner-published
+read-only EXTERNAL/PROJECTED modes is covered with controlled responses;
+external runtime adapters remain pending.
+
+## Implementation awaiting full-feature qualification
+
+G1 qualification is in progress. The import adapter suite passes on H2 and
+PostgreSQL, including committed-prefix cancellation. The signed Compose
+scenario covers scheduled worker dispatch and two exact receipts, migration
+dependency calls and preserved history, archive guards, and archive replay.
+
+### Chunked imports
+
+`GET /data/import-capabilities` publishes the supported formats, modes and
+limits. The workbench uses these to populate the import form and build the
+validation manifest. A saved review can be opened independently. A completely
+validated `CHUNKED_UPSERT` review accepts up to10000 rows from a1 MiB source,
+within a16 MiB sealed plan. Apply returns202/RUNNING and reserves durable
+progress. The scheduled worker dispatches100 rows per transaction using the
+original actor's fresh authority. Each chunk commits its rows/history, one head
+increment, exact receipt, progress CAS and local outbox together.
+
+| Method and route | Contract |
+| --- | --- |
+| GET /data/jobs/{id} | Current owned job/progress and original review; reads never dispatch. |
+| POST /data/jobs/{id}/advance | Exactly `{expectedRevision:integer}`; advances at most one chunk. A stale progress revision returns current state without another dispatch. |
+| POST /data/jobs/{id}/cancel | Empty body or `{}`; preserves already committed rows and receipts. |
+| GET /data/jobs/{id}/chunks?afterChunk=-1&limit=20 | Scoped receipt page; limit1..20. |
+
+The saved workbench review displays the committed row count and the pending
+or terminal uncommitted count. If reconciliation is needed, it labels the
+last confirmed committed count and leaves the current remaining count unknown.
+Users can page through committed batch receipts and inspect exact record IDs
+and version strings.
+
+Transient commit uncertainty remains recoverable through the same job and
+receipt journal. The worker stores a 15-second retry delay for the same job
+revision after an unavailable advance. Other eligible jobs can proceed during
+that delay.
+A deterministic stale target/reference or validation failure
+ends FAILED with no committed rows, or PARTIAL with its committed prefix.
+Partial/cancelled work is explicitly non-atomic; a changed source or target
+requires a newly validated review. No background task impersonates the account
+owner or stores a bearer token. V035 resets obsolete pre-production import
+control records/artifacts; existing native rows/history/snapshots remain retained.
+`NATIVE_IMPORT_WORKER_ENABLED` and `NATIVE_IMPORT_WORKER_DELAY_MS` control the
+worker (defaults true/1000ms).
+
+In the table import form, the saved owner review reports examined, valid and
+invalid records. Confirmation requires completed validation, and the review
+details show the owner digest. Batch progress reports confirmed commits and
+the remainder of the validated input. If an apply or cancellation response
+fails, the form shows an unknown outcome and offers inspection of the same
+saved review. Back to records refreshes the LIVE table query.
+
+When CSV or JSONL exceeds the configured record budget before EOF, the owner
+seals a rejected review with `validationComplete=false`, the examined prefix's
+`processedRows`, `validRows`, and `invalidRows`, and
+`outcomeCode=ROW_LIMIT_REACHED`. `totalRows` and `unprocessedRows` are null.
+The rejected review can be inspected again, and applying it changes no rows.
+
+The form maps named file columns to schema fields and asks how to handle
+empty strings. For CSV, mapped columns must follow the exact file header
+order. The form generates explicit parsers for integers, decimals, booleans,
+dates and offset timestamps. For JSONL, it declares the target's wire type.
+The JSON mapping editor remains available for custom conversions such as
+resolving references or converting units. The owner validates either mapping
+through the same import contract.
+
+The saved review returns `typedDiff.mapping.format` and
+`typedDiff.mapping.columns` projected from the sealed import document. The
+browser uses those values to display the exact mappings and conversion
+settings after a reload. It uses current field labels only when the current
+schema revision matches the review's target revision.
+
+### Schema migrations and archive
+
+| Method and route | Contract |
+| --- | --- |
+| POST /data/datasets/{id}/migration-reviews | Exactly `{idempotencyKey,fieldKeys:[...]}`; reserves review/new-field/generation/receipt IDs for15 minutes. Empty fieldKeys supports index-only changes and archive. |
+| POST /data/datasets/{id}/migration-reviews/{review}/prepare | Exactly `{schema:<VCL COLLECTION>,mappings:[...],dataMode:"PRESERVE"\|"RESET"}`. Schema revision is exactly current+1. Returns reviewRevision2, exact reviewDigest and impact. |
+| GET /data/datasets/{id}/migration-reviews/{review} | Current signed owner inspection and exact saved receipt; no dispatch. |
+| POST /data/datasets/{id}/migration-reviews/{review}/apply | Exactly `{reviewRevision:2,reviewDigest,idempotencyKey}`; uses only the sealed stored plan. |
+| POST /data/datasets/{id}/archive | Exactly `{reviewId,reviewRevision:2,reviewDigest,idempotencyKey}` for a previously prepared archive review. |
+
+An archive review uses the same reservation and preparation routes, with
+`{schema:null,mappings:[],dataMode:"ARCHIVE"}`. Active incoming schema references,
+unexpired sealed snapshots, running imports and blocking owner dependencies
+prevent archive. Prepared imports/row reviews/other migration reviews are
+reported or cancelled with the reviewed archive; retained physical rows and
+immutable schemas are not deleted.
+
+The table workbench supports reserving field IDs, editing the migration schema
+and mappings as JSON, inspecting impact and confirming the saved review.
+The impact panel lists the rule, dashboard and grant dependencies reported by
+their owners and identifies blocking entries. The URL retains the review ID
+for recovery and the owned response includes the original idempotency key.
+An exact confirmation rejected as stale or expired through the review apply
+route records a failed outcome. A fresh review is required to proceed.
+
+Each migration mapping is exactly `{targetFieldId,literal:<typed literal>}` or
+`{targetFieldId,sourceFieldId,column:<ordinary closed VCL import column>}`.
+The column's sourceColumn is the source field UUID; converters, types and units
+use the shared compiler/import implementation. Unmapped retained fields copy
+their typed values. Every new field needs a reserved ID and explicit fill.
+Changing a field's type/unit/reference target requires a new ID and mapping;
+the old ID cannot acquire another meaning. Constraints are revalidated for
+every row, with complete valid/invalid counts and at most100 value-free errors.
+The bounded profile accepts up to10000 existing rows and a16 MiB sealed plan.
+RESET explicitly reviews removal of the old current row set and checks actual
+incoming row references; it is not an implicit fallback for conversion errors.
+
+Schema/index migrations provision a reserved shadow outside active-data
+transactions. The exact READY row set, values, versions, creation timestamps,
+optional history and physical indexes are verified before schema/field/index
+metadata, generation pointer, result and outbox switch atomically under the
+account/head fence. PRESERVE keeps record UUIDs and advances their versions.
+Old generations/schema revisions remain retained. Snapshot pages and event-time
+lookups resolve the snapshot's own schema and values after current access checks,
+without falling back to LIVE. Ordinary description without schemaRevision selects
+the current schema; explicit LIVE revisions must match that current schema.
+
+Device-service obtains actual dependency observations from analytics, alert and
+dashboard services at
+`GET /internal/native-datasets/{id}/dependencies?accountId=...&schemaRevision=...`,
+protected by the internal service token. Typed verified compilation dependencies,
+actual deployment state, grants/in-flight grant reviews and structural dashboard
+query/binding declarations determine impact. Published/active/in-flight effects
+block changes; drafts require recompilation. Incomplete scans, corrupt owner
+data, mismatched cuts, non-success responses or unavailable owners stop review
+or apply. Each owner has an explicit500-row observation bound; overload is not
+an empty dependency set. The device client accepts at most256 KiB per response.
+
+Owner cuts are separate observations, renewed after shadow provisioning and
+compared to the reviewed vector; there is no global cross-service transaction.
+Dependent owners must retain their fresh schema/generation admission checks.
+`ANALYTICS_SERVICE_URI`, `ALERT_SERVICE_URI`, `DASHBOARD_SERVICE_URI`,
+`INTERNAL_SERVICE_TOKEN` and `NATIVE_DEPENDENCY_TIMEOUT` (default2s) configure
+these fixed owner calls. Clients cannot supply replacement owner endpoints or
+dependency attestations. Same-key dispatch recovers the same durable receipt;
+an uncertain transport result does not authorize a new review/key.
+
+### Historical rows
+
+V038 records capture checkpoints and exact commit manifests alongside the
+optional dense history tables. New history starts at an empty creation or a
+verified generation baseline. For existing tables the first subsequent write
+can establish a baseline from verified current rows. Earlier cuts are unavailable.
+
+| Route under the dataset | Contract |
+| --- | --- |
+| GET /history/generations | Owner-only discovery of captured generations and their recorded version ranges. Use optional `afterGeneration` and `limit` (1–100). |
+| GET /history/generations/{generation}/schema | Owner-only immutable field definitions, schema digest, system record ID field and recorded version range for the specified generation. |
+| POST /history/revision | Exactly `{generation,recordId,recordVersion,select}`. The record version is decimal text. The response identifies the captured data version, selected values, recording time and deletion status. |
+| POST /history/query | Exactly `{generation,throughDataVersion,document}`. Use a VCL QUERY with its LIVE template and the generation's schema revision. The response manifest identifies the fixed HISTORY cut. |
+
+`GET /data/datasets/archived` lists up to 100 archived tables for the current
+account owner. The workbench uses it to open an archived table's history.
+History generation discovery, schema, and POST reads also accept the shared
+workspace dataset base and `grantId`. Shared schema responses contain only
+readable fields and generations of the granted schema revision.
+Shared access needs the explicit HISTORY action and is limited to the granted
+schema revision, rows and readable fields. The owner can read retained
+generations by ID, including after archive while the owner account remains active.
+State reads check up to 1,000 cuts, 100,000 checkpoint entries and 10,000
+selected row identities within a 16 MiB validation budget. Pages are capped at
+512 KiB. An unavailable cut or integrity error fails the request. A cursor
+identifies the original cut and current access scope.
+
+Owners can pin a captured cut using `POST /history/leases` with exactly
+`{generation,throughDataVersion,durationSeconds,idempotencyKey}`. The lease
+lasts 60 to 86,400 seconds, with up to 100 active leases per account. A retry
+with the same key and parameters returns the same lease and original expiry.
+`DELETE /history/leases/{lease}` releases it. Active leases appear in archive
+impact and block dataset archive until release or expiry. Account deletion
+releases the account's active leases.
+
+Generation reclamation is opt-in on PostgreSQL through
+`NATIVE_GENERATION_RETENTION_ENABLED`. The worker checks up to ten retired
+generations per pass after the grace period, which defaults to 30 days
+(`NATIVE_GENERATION_RETENTION_GRACE`, minimum one day). It checks active
+snapshots and leases again under the account lock before dropping the retired
+tables. The deletion and reclamation marker commit together. The worker
+preserves schema metadata and excludes active and archived datasets.
+Historical reads of reclaimed generations return `HISTORY_GENERATION_UNAVAILABLE`.
+
+### Workspace row and field grants
+
+V037 adds immutable reviewed native access grants. The existing workspace/account
+association must already have reviewed consent from the current account owner.
+Native grants reuse fresh USER/TEAM membership from the identity service and
+the existing canonical device/resource permission owner; workspace roles alone
+grant no native rows. The shared actor also needs an active personal account.
+The signed Compose scenario verifies scoped user reads and revocation. It
+checks that the recipient cannot discover or project a real field outside the
+grant, including when the owner can read a migrated value for that field.
+
+Owner routes use the ordinary signed actor and current owned account:
+
+| Method and route | Contract |
+| --- | --- |
+| POST /data/datasets/{id}/sharing-reviews | Exactly `{idempotencyKey,definition:{workspaceId,subject:{kind:"USER"\|"TEAM",id},policy}}`; prepares15-minute consent and reserves grant/receipt IDs. |
+| GET /data/datasets/{id}/sharing-reviews/{review} | Read the saved definition, digest and result under fresh account ownership. |
+| POST /data/datasets/{id}/sharing-reviews/{review}/apply | Exactly `{reviewRevision:1,reviewDigest,idempotencyKey}`; refreshes membership, association, schema/generation/head and requested row identities. |
+| GET /data/datasets/{id}/sharing | Bounded active grants for the owner, up to1000. |
+| POST /data/datasets/{id}/sharing/{grant}/revoke | Exactly `{expectedRevision:1,idempotencyKey}`; subtractive owner revocation remains available without workspace/identity I/O. Same-key retry returns the exact saved receipt. |
+
+Policy is exactly `{readFieldIds:[UUID...],writeFieldIds:[UUID...],rows:{mode:"ALL"\|"IDS",recordIds:[UUID...]},actions:[...]}`.
+
+The table workbench lets an owner review grants by workspace and recipient ID,
+select fields and actions, and revoke active grants. The saved review ID remains
+in the URL and its owned response provides the original idempotency key.
+There are1..64 readable fields, at most64 writable fields and at most500 explicit
+record IDs. Writable fields must also be readable. READ is required. HISTORY grants access to retained row versions. INSERT,
+UPDATE and DELETE are separate reviewed actions. INSERT requires ALL rows,
+write access to business keys and every required field. ALL has no explicit IDs.
+IDS may be empty and permits only those stable row UUIDs. Each query uses one
+explicit grant as a coherent field/row/action scope; combining fields from one
+grant with the row set from another is not supported.
+
+Shared routes have the base
+`/data/workspaces/{workspace}/accounts/{account}/datasets/{id}` and require
+`?grantId={grant}`. Signed identity supplies the actual actor. The supplied account,
+workspace and grant IDs are selectors, never authority or an owner impersonation.
+
+`GET /data/workspaces/{workspace}/datasets` lists active grants for the current
+member or their teams. It returns table labels and the selectors needed to open
+each table, with optional `afterGrant` and `limit` (1–100). The workbench uses
+this route to browse shared records in a workspace. Reads still resolve the
+selected grant and its field and row scope.
+
+The shared table description returns `keysVisible` and includes `keyFieldIds`
+only when the grant permits every business key. The workbench offers the
+allowed row operations when it can address a record and routes changes through
+the shared review and confirmation endpoints.
+The workbench retains the review and grant selectors in the URL for recovery.
+Reopening it performs a fresh scoped description and review read. Confirmation
+uses the original saved document key.
+
+| Method and suffix | Contract |
+| --- | --- |
+| GET base | Scoped descriptor: only readable field definitions, the system row ID, granted policy, scope digest and query capabilities. |
+| POST /query | Ordinary closed `{document:<VCL QUERY>}` with authorized fields in projection/filter/order. |
+| POST /query-snapshots | Seal the same scoped query; ordinary snapshot limits apply. |
+| POST /query-asof-snapshots, /query-asof-manifest, /query-asof, /query-asof-split | Same closed request forms as the ordinary native routes, over the authorized sealed selection. |
+| POST /mutation-reservations | Exactly `{schemaRevision,idempotencyKey}`; requires a current write action and reserves the ordinary row review/mutation/record/receipt IDs. |
+| POST /mutation-reviews | Exactly `{reservationId,document:<VCL MUTATION>}`; uses the existing compiler and reviewed row engine. |
+| GET /reviews/{review} | Current scoped review/result; scope changes do not expose the old document. |
+| POST /reviews/{review}/apply | Ordinary `{reviewRevision,reviewDigest,idempotencyKey}`. |
+| POST /reviews/{review}/reconcile | Empty body or `{}`; inspect only, without dispatch. |
+
+The compiler receives only readable field metadata, including for predicates
+and ordering. SQL appends the grant's row predicate before seeking and limiting;
+hidden rows do not contribute pages, row counts or temporal cardinality.
+Snapshot sealing captures that selection. Cursor, review and snapshot scopes
+bind the actual actor, grant/revision/policy, workspace membership/team version,
+active association version and active actor/account state. Fresh identity and
+local grant/association checks surround operations; no saved JWT or thread-local
+owner context supplies permission.
+
+Shared row writes recheck action and field scope, then actual row membership
+before CAS can expose an ungranted identity. Direct references to other native
+rows require a current matching native read grant. DEVICE/SOURCE references
+require current canonical device read permission from the existing workspace
+resource owner, with membership and association cuts checked against the native
+transaction. Every reference still undergoes normal type/account/existence
+validation. Permission snapshots are renewed around operations; they do not
+claim a cross-service transaction with the identity owner.
+
+Owner writes also accept `REF(LOCATION)`, `REF(VARIABLE)`, `REF(SCHEDULE)`,
+`REF(OPERATIONAL_FACT)` and `REF(SPATIAL_FEATURE)`. These resolve against
+canonical records of the owning account. A reference stores the identity.
+Consumers that need geometry, schedule or fact contents must request their
+own authorized revision. Shared writes currently accept native dataset,
+device and source references under their respective grants.
+
+The table creation form displays reference targets from the published VCL
+registry and the current owner's table list. A self reference uses the table
+ID assigned by the reservation.
+The workbench also creates and edits time intervals and WGS84 points.
+An interval takes UTC timestamps with an optional end. A point takes longitude
+and latitude. Neither type is selectable as a business key or a scalar index.
+
+Grant creation/revocation changes the association epoch, invalidating stale
+cursors, reviews and snapshots. Account archive revokes grants and cancels pending
+sharing reviews. Active grants are included as blocking native migration/archive
+dependencies; an owner must revoke them explicitly before changing the schema.
+Metadata/import/schema administration remains owner-only. Public dashboard
+sharing creates no native permission, and these routes do not publish data or
+activate RULEs.
+
+## Bounded atomic imports
+
+The `native-atomic-import-1` profile uses the ordinary signed actor and current
+account owner fence. The table workbench supports file upload, JSON column
+mappings, validation, confirmation and saved review recovery. V033 stores
+immutable uploaded artifacts and owner-sealed validation plans separately from
+the dense target rows. Public routes are:
+
+| Method and route | Contract |
+| --- | --- |
+| POST /data/import-artifacts | `application/octet-stream`, required `Idempotency-Key`; returns `{id,sha256,bytes,expiresAt}`. Read is bounded before body allocation; at most 1 MiB. |
+| POST /data/datasets/{id}/import-reviews | Exactly `{idempotencyKey,document}` with an ordinary VCL `IMPORT/1` document. Returns an immutable review and typed change counts. |
+| GET /data/datasets/{id}/import-reviews/{reviewId} | Fresh signed account authority; reads the saved validation/result without dispatching writes. |
+| POST /data/datasets/{id}/import-reviews/{reviewId}/apply | Exactly `{reviewRevision:1,reviewDigest,idempotencyKey}`. The key must equal the validation key. |
+
+`ATOMIC_INSERT`, `ATOMIC_UPSERT` and the generation-replacement profile below use
+declared `maxRows <= 500`, `maxBytes <= 1048576`, and a canonical plan of at most
+16 MiB in the current sealed-plan profile (source uploads remain 1 MiB).
+The target must have declared nonnullable business keys in their exact
+schema order. All data uses the existing typed dense row/CAS/history path.
+Uploads expire after 30 minutes; prepared reviews expire after 15 minutes.
+There are at most 100 unexpired artifacts and 100 active imports per account.
+The import quota covers unexpired prepared reviews and running chunked jobs.
+Completed, rejected, expired and cancelled reviews remain available for
+inspection without occupying an active slot. Upload lazily removes
+that account's expired raw artifacts; account deletion removes all raw artifacts
+and cancels prepared jobs. No background retention worker is claimed.
+
+CSV uses the document's delimiter and exact header, doubled quote escaping,
+quoted newlines and UTF-8 BOM at the beginning. JSONL requires one exact object
+per line, rejects duplicate keys, unknown/missing columns and trailing input.
+Invalid UTF-8, malformed structure or exhausted file/row limits fails validation
+without a prepared review or target writes. Row conversion errors produce a
+`REJECTED` review with exact `totalRows/validRows/invalidRows`,
+`validationComplete=true`, at most 100 value-free errors, and an explicit
+`displayedErrorsTruncated` flag. No rejected review can be applied.
+
+Implemented conversions are identity, parse_int64, parse_decimal, parse_boolean,
+parse_date, parse_instant, parse_duration, exact convert_unit and owner-batched
+resolve_ref. Source types
+and units are explicit. CSV text carrying a unit retains that mapping unit
+through numeric parsing. Decimal rounding is explicit; inexact unit division
+fails instead of rounding silently. Local instants reject DST gaps and honor
+the declared overlap policy. Duration input is numeric text in the grammar's
+explicit fixed source unit. Empty, NULL and omission remain distinct.
+`CHUNKED_UPSERT` uses the durable progress contract below. External imports fail
+explicitly as unsupported before any target write.
+
+Validation seals the artifact hash, document/mapping/schema, generation/head,
+scope digest, exact target row IDs/versions and canonical typed mutation plan.
+The review's `typedDiff` exposes the target/precondition, artifact ID/hash,
+mapping revision, inserts, updates and zero deletes. Counts on rejected reviews
+describe valid candidate rows only; `invalidRows` still blocks the whole batch.
+The owned review includes the original idempotency key in `typedDiff` for
+confirmation after reload.
+Apply checks the exact review digest/key, current access, expiry and head before
+rechecking every typed mutation and referenced resource. Target changes return
+`VALIDATION_STALE`/409 and require a new validation. Updates retain their record
+UUIDs; omitted nullable columns retain existing values, explicit NULL clears.
+
+All rows, selected history entries, one head-version increment, saved result and
+one `NATIVE_ROWS_IMPORTED` local outbox intent commit in one transaction. The
+saved result is the batch receipt and includes every record ID/version.
+Concurrent applications of the same review return that same receipt. An outbox
+failure rolls back the entire batch. A lost response is inspected by GET or
+replayed with the same review/digest/key; no new job is needed. This local
+transaction does not claim cross-service atomicity or an activated RULE runtime.
+
+## Reviewed generation replacement
+
+`STAGED_REPLACE` uses the same upload/review/inspect/apply routes with the
+`native-generation-replace-1` profile. Source and existing target selections are
+each bounded to 500 rows; the declared source byte/row limits and canonical plan
+limit above still apply. A larger current target fails `REPLACEMENT_TARGET_LIMIT`
+before preparing a replacement. This profile replaces the whole dataset's row
+set. Optional fields omitted from the mapping become NULL in the new generation;
+ordinary UPSERT still preserves omitted columns.
+
+Validation seals the complete desired row set, old generation/dataVersion,
+original row versions and created timestamps, stable record IDs for matching
+business keys, new server-reserved record IDs, and the exact removed row IDs and
+versions. `typedDiff` adds `generation`, `removed` and the exact deletion count.
+An empty source can prepare a reviewed empty generation only after showing the
+complete deletion impact. It never deletes rows during upload or validation.
+Incoming native references are checked by bounded indexed batches; surviving
+self-references are checked against the final planned rows. Unindexed incoming
+references fail `INDEX_REQUIRED`; referenced removals fail `ROW_REFERENCED`.
+
+After exact confirmation, a durable generation journal owns a shadow table and
+optional dense history table with separate trusted physical/index identities.
+DDL executes outside the active data transaction, including on H2 where DDL
+commits implicitly. Population and READY commit together. READY stages are
+verified against every planned row, typed value, key, version, original created
+timestamp and selected history entry; they are never refilled or recreated on
+retry after corruption/loss. Interrupted pre-READY provisioning can reconcile
+the same reserved physical identity. Ordinary readers cannot select a shadow
+table by its physical ID.
+
+Cutover holds the same account/dataset fences used by ordinary row writers.
+It rechecks the captured head and exact old row identities/versions, current
+reference guards, and actual shadow contents. It then atomically switches the
+logical dataset's generation/physical pointer, advances dataVersion once,
+retires the old journal entry, activates the new one, updates index metadata,
+stores deletion history tombstones when selected, and commits the exact batch
+receipt and one `NATIVE_GENERATION_REPLACED` local outbox intent.
+Concurrent same-review applications return one receipt. An outbox failure keeps
+the old pointer and leaves the verified stage available for the same-key retry.
+A writer that commits first invalidates the stage; a review for the retired head
+cannot write after the pointer switch.
+
+Old physical generations remain retained. Existing sealed query snapshots keep
+their original contents/generation and fresh access checks; LIVE queries and new
+row reviews refresh the current pointer, while old LIVE cursors fail on generation
+change. The owner verifies the active pointer against its account-scoped journal
+and actual catalog; drift fails `NATIVE_CATALOG_DRIFT`/503. Historical table-query
+capability, generation garbage collection/retention leases, schema migration and
+external database replacement are not claimed by this profile.
+
+With the Compose application profile running, execute
+`python scripts/native-import-docker-smoke.py --summary artifacts/native-import-smoke-summary.json`.
+The script uses a separate synthetic account and ordinary signed gateway APIs;
+it checks atomic insert, exact replacement review/receipt replay, stable IDs,
+retained sealed snapshots, stale-import rejection and key-only UPSERT readback.
+It makes no model calls. The ignored summary records fixture IDs, never credentials.
+
+## Reference resolution during import
+
+`resolve_ref` supports the document's exact authorized native target/revision,
+one declared unique key field and `EXACT_ONE` cardinality. It works at each
+declared position in the ordered conversion chain, including REF-key lookups
+after another `resolve_ref`. No first/nearest match or cross-account lookup is
+allowed. Missing identities produce value-free `REF_NOT_FOUND` row errors;
+unqualified/mismatched key or target types fail before writes. Explicit NULL for
+a nullable target remains NULL rather than an invented record ID.
+
+The owner deduplicates lookup keys and executes batches of at most 500 keys per
+table and conversion round. The profile caps reference owners at32 and distinct
+lookup keys at2048; these are resource limits, not a throughput claim. The
+resolver selects only key/identity/version columns. Its checked results also
+supply mutation reference authorization, avoiding per-row authorization queries
+for those already resolved IDs. Direct REF values still use normal owner checks.
+
+The sealed plan retains every consulted schema digest/revision, generation and
+dataVersion, exact key tuple, resolved record ID and string-encoded row version.
+Declared owner metadata is pinned even when every supplied value is NULL.
+`typedDiff.referenceReadSet` exposes the owner cuts and resolved-record counts,
+without raw lookup keys. Apply and each shadow/cutover phase recheck actual owner
+heads and batch-read exact identities/versions. Any changed cut returns
+`VALIDATION_STALE`/409 and requires new validation, even if a matching ID still
+exists. The original review digest is recomputed against the document, plan,
+actor, scope and expiry; changing a stored plan and its checksum cannot reuse
+the old approval. Existing current-operation snapshots remain independent.
 
 ## AI native table authoring
 
@@ -75,7 +536,7 @@ and the original expiry; it does not renew authority. First preparation binds
 the exact canonical document, actor/account scope, generation, system record-key
 ID, receipt ID and expiry into reviewDigest. A changed preview advances revision
 and invalidates the previous digest. Only revision1 native schema creation is
-supported; schema changes require the future migration workflow.
+accepted by creation; later revisions use the separate reviewed migration workflow.
 
 Apply authenticates the actor, locks its current account and review and checks
 the exact revision/digest and current scope before new dispatch. There is no
@@ -141,8 +602,9 @@ Collections without business keys receive a server record UUID on INSERT;
 UPDATE/DELETE use the described system recordIdFieldId as a REF key. System IDs
 and business keys cannot be assigned through values. Native references are
 authorized at preparation and again at commit. Bounded indexed incoming DATASET
-references block row deletion; broader canonical DEVICE/SOURCE archive guards and
-temporal relation cardinality are still pending.
+references block row deletion. The sealed event-time lookup below documents
+cardinality and interval rules. Canonical DEVICE/SOURCE archive guards remain
+outside the verified native row deletion contract.
 
 Each new write locks the ACTIVE owner account and READY dataset head, rechecks
 the stored generation/dataVersion and expectedRowVersion, and commits one row,
@@ -172,11 +634,17 @@ order field: the described system record ID. SQL predicates support eq/ne/lt/le/
 gt/ge/and/or/not/is_null/is_known over BOOLEAN, INT64, DECIMAL, DATE, INSTANT and
 DURATION. Predicate field access requires a declared ready index. is_known accepts
 only FIELD/CONST, so it cannot hide an unsupported or failing nested expression.
-TEXT/ENUM/REF/POINT/INTERVAL comparisons, other ordering and arithmetic pushdown
-return typed unsupported errors. There is no local scan/evaluator fallback or
-implicit collation choice. Each SQL read has a 2s
+Indexed TEXT and ENUM support equality, inequality and null checks. Indexed REF
+fields support equality and inequality with another compatible field and null
+checks. The profile publishes these types separately as equality-only and
+reports that reference constants are unsupported. Point and interval
+comparisons, other ordering and arithmetic return typed unsupported errors.
+Each SQL read has a 2s
 query timeout; expiry produces QUERY_BUDGET_EXCEEDED. Performance acceptance at
 production volume remains open.
+
+The owner and shared workbenches offer a filter over the readable ready
+indexes and the published SQL operations. A new filter starts a new traversal.
 
 Rows contain recordId, exact-string recordVersion and field-ID→typed-literal
 values. A page reads limit+1 rows to distinguish PAGE_LIMIT from exhaustion.
@@ -215,6 +683,10 @@ dataset access. Account deletion removes the materialized rows. Snapshot
 completeness applies to the sealed selection at its captured version.
 
 ### Event-time lookup within a sealed selection
+
+The table workbench can capture a snapshot and look up a record at an event
+time or split a requested interval. It displays the captured data version
+and reports gaps, overlapping matches and unknown intervals individually.
 
 Create the index with a signed `POST /data/datasets/{id}/query-asof-snapshots`.
 Use the same LIVE template as for a plain seal and include `intervalFieldId`
@@ -257,16 +729,40 @@ selected immutable schema and loads25-row LIVE pages. No row totals are invented
 UNKNOWN after a changed traversal is shown separately from empty or exhausted
 pages. Obsolete table/page reads are aborted and cannot replace newer selections.
 
-Table creation currently offers Text, Boolean, Whole number, Decimal, Date, UTC
-timestamp and Duration (integer microseconds). Choices intersect the published
+Table creation offers Text, Boolean, Whole number, Decimal, Date, UTC timestamp,
+Duration (integer microseconds), Choice, Reference, Coordinates and Time interval.
+The Choice editor accepts up to 64 distinct values, entered one per line, and
+the saved preview displays those values. Available types intersect the published
 registry with the available form renderers. The form uses TEXT120 and
 DECIMAL(18,3), optional nullable fields, ordered business-key components, selected
 indexes and row-revision capture. IDs come only from the reservation. The saved
 owner preview displays fields, units, requiredness, keys, indexes and history
 before an explicit confirmation applies its exact stored revision/digest.
 
-Row editing supports those types plus existing ENUM fields. POINT/REF/INTERVAL
-remain readable; authoring them needs later editors. Updates distinguish
+The default-off assistant table creation workflow also accepts all eleven
+field types. It uses the same VCL field definitions, renders the same saved
+preview, and resolves a self-reference against the reserved table UUID.
+
+Row editing uses an allowed-value selector for ENUM, a target row or resource
+UUID for REF, a longitude/latitude pair for POINT and UTC endpoints for INTERVAL.
+For table references in the owned row editor, Browse records lists authorized
+LIVE rows from the declared target table, using business-key values when
+available and preserving the selected row UUID in the reviewed mutation.
+For DEVICE and LOCATION references in the owned row editor, the picker
+searches the existing authenticated resource lists and fills the selected
+UUID. Decommissioned devices are excluded. The owner validates the reference
+again when it prepares and applies the row mutation.
+SOURCE, VARIABLE, SCHEDULE and OPERATIONAL_FACT references can be selected
+from the corresponding device owner lists. Variables use the chosen device's
+type. Operational event selection uses an explicit bounded UTC date range.
+For POINT fields, Choose on map fills the same longitude and latitude inputs
+used for manual entry. Both paths prepare the same typed POINT mutation.
+For SPATIAL_FEATURE references, the owned row editor lets the user select a
+circle from the same catalog used by Manage circle zones. The saved reference
+is the feature UUID. GET /data/spatial-features/circles returns current owned
+circle revisions as `{items,nextAfter}`. Use the returned UUID as `after`
+to read the next page. The default limit is 25 and the maximum is 100.
+Updates distinguish
 Unchanged from Set value and Clear to empty. Keys stay immutable. INT64,
 DECIMAL, DURATION and row versions remain strings through forms/JSON. No Number
 conversion or guessed unit conversion occurs. Delete is independently reviewed.
@@ -288,6 +784,14 @@ for them.
 
 ## Verification and remaining gates
 
+The G1 functional Compose scenario passes with Postgres 16 and Flyway V041.
+It covers approved imports and replay, revision migration with dependency cuts,
+preserved historical reads, archive and workspace field/row scope. The complete
+Java 21 reactor passed 2,051 tests across 16 modules before the catalog hot-path
+optimization. The focused reruns and the signed Compose replay on the optimized
+implementation passed. See the
+[G1 task evidence](../../../openspec/changes/archive/2026-11-17-define-configurable-domain-data/tasks.md).
+
 NativeCatalogH2Test/NativeCatalogPostgresTest verify actual typed tables, optional
 history allocation, selected indexes, restart identity, scope rejection, catalog
 drift, compiler metadata, assignment bounds and expiry. NativeCollectionsApiTest
@@ -301,12 +805,10 @@ reference deletion/commit guards, indexed predicates and signed seek leases.
 
 Run `mvn -pl services/device-service -am test` from backend. Docker PostgreSQL16
 is required for the PostgreSQL contracts. Gateway tests cover route loading and
-existing identity guards. No capacity/latency or complete configurable-platform
-acceptance is implied. Next work includes actual G0 bundle-owner integration and
-AI registration over the shared native contracts. Snapshot reads, imports/staged replacement, complete migrations,
-sharing and relation guards retain their own unfinished gates.
+existing identity guards. Platform acceptance and the PostgreSQL latency gate
+require their own evidence.
 
-Verification checkpoint: the full backend reactor passes1105 tests with no
+Earlier single-row checkpoint: the full backend reactor passed 1105 tests with no
 failures/errors/skips, including32 new cases in this increment. The final16-case
 signed API run also passes after the account-deletion row-review assertion.
 Structure, OpenSpec104/104 and VCL documentation checks pass. Ignored logs:
@@ -654,6 +1156,20 @@ the current revision. Coordinates are WGS84 and radius is positive decimal
 text in metres up to 20,100,000. Exact retries return the immutable revision.
 `GET /data/spatial-features/{id}/circle?revision=N` returns a specific revision
 and its digest. Both routes require current account ownership.
+
+`GET /analytics/configurable-rules/circles/{id}/dependencies?revision=N`
+verifies access to that revision with the device owner, then returns the
+analytics owner's bounded dependency snapshot. The workbench shows compiled
+rule bundles and their staged or active deployments before reviewing new
+geometry. Deployments retain their immutable circle pins. Switching a rule
+to the new revision uses the ordinary compilation and deployment review.
+
+Vehicle fleet selection, GPS maps and per-vehicle monitoring zones use the existing
+`/vehicles` console and telemetry monitoring owner. The shared manual/AI review extension
+is described in the [monitoring contract](../flows/vehicle-monitoring-verification.md#shared-vehicles-and-ai-workflow--2026-11-18).
+The standalone circle dashboard widget and its assistant composition path were
+withdrawn on 2026-11-18; generic immutable geometry and rule dependency APIs above
+remain supported.
 
 ## Accepted observation prefix reads
 

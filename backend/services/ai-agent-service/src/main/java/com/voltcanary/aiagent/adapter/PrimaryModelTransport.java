@@ -6,6 +6,7 @@ import com.voltcanary.aiagent.llm.adapter.AiResolvedModel;
 import com.voltcanary.aiagent.llm.adapter.AiAgentModelRunRecorder;
 import com.voltcanary.aiagent.orchestration.context.BoundedSkillRequests;
 import com.voltcanary.aiagent.orchestration.routing.BudgetedModelCalls;
+import com.voltcanary.aiagent.orchestration.routing.DispatchPermit;
 import com.voltcanary.aiagent.orchestration.routing.ModelRouting;
 import com.voltcanary.aiagent.orchestration.routing.RoutedModelCalls;
 import com.voltcanary.aiagent.orchestration.routing.StrictOutputProjection;
@@ -17,6 +18,7 @@ import java.util.UUID;
 /** Exactly one exchange; retries, selection, timeout and cost reservation belong to A2. */
 public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter {
     private final ObjectMapper mapper;
+    private final io.micrometer.observation.ObservationRegistry observations;
     private final AiResolvedModel model;
     private final AuthenticatedUser user;
     private final AiAgentModelRunRecorder runs;
@@ -27,12 +29,50 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
     private final Map<String, PrimaryPlannerProjection> plannerProjections = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, DashboardCreationPeriodProjection> creationProjections = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Set<String> dashboardRequests = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Map<String, DashboardWidgetReferences> widgetReferences = new java.util.concurrent.ConcurrentHashMap<>();
     public PrimaryModelTransport(ObjectMapper mapper, AiResolvedModel model, AuthenticatedUser user, AiAgentModelRunRecorder runs) {
         this(mapper, model, user, runs, new com.voltcanary.aiagent.service.WidgetCatalogueSearch(mapper, null));
     }
+    @Override
+    public JsonNode prepareContext(JsonNode request, com.voltcanary.aiagent.orchestration.routing.AttemptLedger ledger,
+            com.voltcanary.aiagent.orchestration.routing.AttemptLedger.Turn turn,
+            com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.RoutingPolicy policy, UUID callId, String phase) {
+        if (phase.equals("VERIFY") || !com.voltcanary.aiagent.service.DashboardSkillContract.supports(request.path("intentId").asText())) {
+            return request;
+        }
+        for (var loaded : request.path("loadResults")) {
+            if (!loaded.path("loaderId").asText().equals("workflow.context")
+                    || !(loaded.at("/data/context") instanceof com.fasterxml.jackson.databind.node.ObjectNode context)
+                    || !context.path("dashboardWidgetTypes").isArray()) continue;
+            var catalogue = context.path("dashboardWidgetTypes");
+            String query = request.path("message").asText();
+            String key = SkillRegistry.digest(turn.turnId() + ":" + catalogueSearch.identity() + ":" + catalogue + ":" + query);
+            var hints = catalogueHints.computeIfAbsent(key, ignored -> {
+                var found = catalogueSearch.search(catalogue, query, (purpose, texts) ->
+                        BudgetedEmbedding.exchange(mapper, catalogueSearch.identity(),
+                                com.voltcanary.aiagent.service.WidgetCatalogueSearch.VERSION, "widget-catalogue",
+                                catalogueSearch::embed, ledger, turn, policy,
+                                request.path("stepId").asText(), callId, purpose, texts));
+                com.voltcanary.aiagent.trace.AssistantTrace.event("CONTEXT", "OBSERVED", "WIDGET_CAPABILITY_RETRIEVAL",
+                        Map.of("catalogueDigest", found.path("catalogueDigest").asText(), "retrievalMode", found.path("mode").asText(),
+                                "embeddingCalls", found.path("embeddingCalls").asInt(), "diagnostic", found.path("diagnostic").asText()));
+                return found;
+            });
+            var projectedHints = hints.<com.fasterxml.jackson.databind.node.ObjectNode>deepCopy();
+            projectedHints.remove("embeddingCalls");
+            context.set("widgetCapabilityMatches", projectedHints);
+        }
+        return request;
+    }
     public PrimaryModelTransport(ObjectMapper mapper, AiResolvedModel model, AuthenticatedUser user, AiAgentModelRunRecorder runs,
             com.voltcanary.aiagent.service.WidgetCatalogueSearch catalogueSearch) {
+        this(mapper, model, user, runs, catalogueSearch, io.micrometer.observation.ObservationRegistry.NOOP);
+    }
+
+    public PrimaryModelTransport(ObjectMapper mapper, AiResolvedModel model, AuthenticatedUser user, AiAgentModelRunRecorder runs,
+            com.voltcanary.aiagent.service.WidgetCatalogueSearch catalogueSearch, io.micrometer.observation.ObservationRegistry observations) {
         this.mapper = mapper;
+        this.observations = observations;
         this.model = model;
         this.user = user;
         this.runs = runs;
@@ -73,6 +113,11 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
             data = plannerProjection.request();
         }
         boolean assessing = selectedSchema.at("/$defs/assessmentResponse").isObject();
+        var references = !assessing && com.voltcanary.aiagent.service.DashboardSkillContract.supports(request.path("intentId").asText())
+                ? new DashboardWidgetReferences(request) : null;
+        if (references != null && references.available()) {
+            references.project(selectedSchema);
+        }
         var creationProjection = !assessing && !planner
                 && request.path("intentId").asText().equals(com.voltcanary.aiagent.service.DashboardSkillContract.CREATE)
                 && DashboardCreationPeriodProjection.supports(selectedSchema)
@@ -87,7 +132,8 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
                 + (planner ? "" : "\n" + PrimaryPromptProjection.GUIDANCE)
                 + (outputMode.equals("JSON_TEXT") ? "\nResponse schema:\n" + selectedSchema : "");
         if (assessing) {
-            instructions += "\n" + com.voltcanary.aiagent.service.DashboardAssessmentGuide.text();
+            instructions += "\n" + com.voltcanary.aiagent.service.DashboardAssessmentGuide.text()
+                    + "\nFor SATISFIED, include a check with a literal quote for each requiredSourceMessageId.";
         } else if (planner) {
             instructions += "\n" + PrimaryPlannerProjection.GUIDANCE
                     + "\n" + com.voltcanary.aiagent.service.PrimaryPlannerGuide.text()
@@ -96,6 +142,15 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
                     + ". Do not copy request metadata. For PLAN/AMEND targetStepId is null.";
         } else {
             instructions += "\nEmit ONLY fields of ONE selected outcome branch. PREPARED requires a registered command; QUESTION is only for genuinely missing meaning; NEED_CONTEXT loads authorized domain choices.";
+            if (com.voltcanary.aiagent.service.DashboardSkillContract.supports(request.path("intentId").asText())) {
+                instructions += "\nBefore composing a dashboard command, identify each requested effect separately from its implementation. "
+                        + "Use the exact user message and retained requests to identify the affected resource, role and property. "
+                        + "Resolve existing widget keys or offered data references for those effects. "
+                        + "Then emit operations that cover the effects. Check every operation target and property against its source request. "
+                        + "For a compound request, a target of a view change belongs to a placement operation only if its movement was also requested. "
+                        + "For creation, check each requested field and role separately, including current and historical views of the same field. "
+                        + "Return only the existing response fields.";
+            }
             if (request.has("instructions")) {
                 var contract = PrimaryPromptProjection.skillContract(request.path("contract"));
                 instructions += "\nSelected server skill:\n" + request.path("instructions").path("text").asText()
@@ -105,25 +160,20 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
         if (data instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
             PrimaryPromptProjection.dashboardBase(object);
             if (!assessing) PrimaryPromptProjection.changeContext(object);
+            if (references != null && references.available()) {
+                references.describe(object);
+                instructions += "\nFor existing widgets, use the short references in changeRequest.widgetRefs. "
+                        + "Match their exact inventory keys to the requested field and role.";
+            }
             PrimaryPromptProjection.workflowCatalogues(object);
             if (!assessing && !planner && com.voltcanary.aiagent.service.DashboardSkillContract.supports(request.path("intentId").asText())) {
-                for (var loaded : object.path("loadResults")) {
-                    if (!loaded.path("loaderId").asText().equals("workflow.context")
-                            || !(loaded.at("/data/context") instanceof com.fasterxml.jackson.databind.node.ObjectNode context)
-                            || !context.path("dashboardWidgetTypes").isArray()) continue;
-                    var catalogue = context.path("dashboardWidgetTypes");
-                    String query = object.path("message").asText();
-                    String key = SkillRegistry.digest(catalogueSearch.identity() + ":" + catalogue + ":" + query);
-                    var hints = catalogueHints.computeIfAbsent(key, ignored -> {
-                        var found = catalogueSearch.search(catalogue, query);
-                        com.voltcanary.aiagent.trace.AssistantTrace.event("CONTEXT", "OBSERVED", "WIDGET_CAPABILITY_RETRIEVAL",
-                                Map.of("catalogueDigest", found.path("catalogueDigest").asText(), "retrievalMode", found.path("mode").asText(),
-                                        "embeddingCalls", found.path("embeddingCalls").asInt(), "diagnostic", found.path("diagnostic").asText()));
-                        return found;
-                    });
-                    context.set("widgetCapabilityMatches", hints.deepCopy());
-                }
                 WidgetCatalogueProjection.compactRequest(object, mapper);
+            }
+            if (assessing) {
+                for (var loaded : object.path("loadResults")) {
+                    if (loaded.at("/data/context") instanceof com.fasterxml.jackson.databind.node.ObjectNode context)
+                        context.remove("widgetCapabilityMatches");
+                }
             }
             object.remove("instructions");
             if (object.path("contract") instanceof com.fasterxml.jackson.databind.node.ObjectNode contract)
@@ -135,6 +185,8 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
                     context.remove("operationSchema");
             if (assessing) {
                 object.remove("contract");
+                object.set("requiredSourceMessageIds", mapper.valueToTree(
+                        com.voltcanary.aiagent.orchestration.contract.AssessmentSources.required(request)));
                 if (object.path("context") instanceof com.fasterxml.jackson.databind.node.ObjectNode context) context.remove("goals");
                 for (var loaded : object.path("loadResults")) if (loaded.path("loaderId").asText().equals("review.base"))
                     for (var action : loaded.at("/data/actions")) if (action.path("parameters") instanceof com.fasterxml.jackson.databind.node.ObjectNode parameters)
@@ -178,7 +230,8 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
             var projection = new StrictOutputProjection(mapper, selectedSchema);
             var wireSchema = projection.schema();
             body.put("instructions", instructions + "\nWire format " + StrictOutputProjection.VERSION
-                    + ": wrap the selected response in {proposal: ...}. Free JSON fields are JSON-encoded strings on this wire only. Optional fields use null when absent.");
+                    + ": wrap the selected response in {proposal: ...}. Free JSON fields are JSON-encoded strings on this wire only. "
+                    + "Use null only for nullable fields declared in the selected branch. Omit fields from other outcome or operation branches entirely.");
             if (outputMode.equals("STRICT_JSON")) {
                 body.putObject("text").putObject("format").put("type", "json_schema").put("name", "assistant_proposal_v1")
                         .put("strict", true).set("schema", wireSchema);
@@ -195,6 +248,7 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
         if (com.voltcanary.aiagent.service.DashboardSkillContract.supports(request.path("intentId").asText())) dashboardRequests.add(SkillRegistry.digest(serialized));
         if (plannerProjection != null) plannerProjections.put(SkillRegistry.digest(serialized), plannerProjection);
         if (creationProjection != null) creationProjections.put(SkillRegistry.digest(serialized), creationProjection);
+        if (references != null && references.available()) widgetReferences.put(SkillRegistry.digest(serialized), references);
         return serialized;
     }
 
@@ -238,23 +292,28 @@ public final class PrimaryModelTransport implements RoutedModelCalls.WireAdapter
         if (projection != null) return projection.normalize(proposal, validator);
         var creation = creationProjections.get(SkillRegistry.digest(completeSerializedBody));
         if (creation != null) proposal = creation.normalize(proposal);
+        var references = widgetReferences.get(SkillRegistry.digest(completeSerializedBody));
+        if (references != null) proposal = references.lower(proposal);
         return dashboardRequests.contains(SkillRegistry.digest(completeSerializedBody)) ? DashboardProposalIdentifiers.normalize(proposal) : proposal;
     }
     @Override
     public BudgetedModelCalls.Reply send(String body, ModelRouting.Route route, long timeout) throws Exception {
+        return send(body, route, timeout, null);
+    }
+
+    @Override
+    public BudgetedModelCalls.Reply send(String body, ModelRouting.Route route, long timeout, DispatchPermit permit) throws Exception {
+        if (permit != null) permit.verifyBody(body);
         long started = System.nanoTime();
         UUID planId = null;
         try {
-            var envelope = mapper.readTree(body);
-            var input = mapper.readTree(envelope.path("input").asText());
-            if (input.has("planId")) planId = UUID.fromString(input.path("planId").asText());
             String mode = route.candidate().outputMode();
-            JsonNode schema = mode.equals("STRICT_JSON") ? envelope.at("/text/format/schema")
-                    : mode.equals("NATIVE_TOOLS") ? envelope.at("/tools/0/parameters") : null;
-            var result = new com.voltcanary.aiagent.adapter.springai.SpringAiExchange(mapper).call(model,
-                    envelope.path("instructions").asText(), envelope.path("input").asText(), schema,
-                    mode.equals("NATIVE_TOOLS"), mode.equals("NATIVE_TOOLS")
-                            ? envelope.at("/tools/0/name").asText() : com.voltcanary.aiagent.adapter.springai.ReviewedProposalTool.NAME, timeout);
+            var prepared = new PreparedExchangeFactory(mapper).prepare(body, mode);
+            planId = prepared.planId();
+            JsonNode schema = prepared.schema() == null ? null : mapper.readTree(prepared.schema());
+            var result = new com.voltcanary.aiagent.adapter.springai.SpringAiExchange(mapper, observations).call(model,
+                    prepared.instructions(), prepared.input(), schema, prepared.nativeTools(), prepared.nativeTools()
+                            ? prepared.tool() : com.voltcanary.aiagent.adapter.springai.ReviewedProposalTool.NAME, timeout, permit);
             var reply = complete(result, mode, body);
             record(reply.completionCode() == null ? "SUCCESS" : "FAILED",
                     (System.nanoTime() - started) / 1_000_000, reply.completionCode(), reply.completionCode() == null ? null : "Rejected response; actual usage retained", planId);

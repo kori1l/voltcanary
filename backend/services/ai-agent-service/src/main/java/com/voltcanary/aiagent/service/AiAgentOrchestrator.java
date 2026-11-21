@@ -111,7 +111,7 @@ public class AiAgentOrchestrator {
         boolean claimed = planStore.claim(saved, scope, expectedVersion, digest);
         boolean recovering = !claimed && "UNKNOWN".equals(saved.status())
                 && plan.actions().size() == 1 && reconciliation.supports(plan.actions().getFirst());
-        boolean nativeInspectionOnly = recovering && plan.actions().getFirst().tool() == com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE
+        boolean nativeInspectionOnly = recovering && java.util.Set.of(com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE, com.voltcanary.aiagent.model.AgentTool.UPDATE_VEHICLE_MONITORING).contains(plan.actions().getFirst().tool())
                 && !saved.expiresAt().isAfter(java.time.Instant.now());
         if (recovering) claimed = nativeInspectionOnly ? planStore.claimNativeReceiptInspection(saved, scope) : planStore.claimReconciliation(saved, scope);
         if (!claimed) {

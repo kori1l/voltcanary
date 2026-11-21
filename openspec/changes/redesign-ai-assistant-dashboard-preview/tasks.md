@@ -15,7 +15,7 @@
 - [x] 3.3 Verify map plus charts in the shared preview and ordinary dashboard, including real model/browser evidence and screenshots; align documentation and run required checks.
 
 ## 4. Long model requests
-- [x] 4.1 Remove provider and gateway response deadlines, distinguish connection settings, and verify delayed replies.
+- [x] 4.1 Historical preview checkpoint: remove the former provider/gateway response deadlines, distinguish connection settings, and verify delayed replies. Current pending behavior follows the server deadlines in `assistant-graph-runtime`.
 - [x] 4.2 Show persistent thinking/elapsed status; verify95s minimize/reopen in tests, real provider response beyond60s, successful live refinement/creation and screenshots.
 
 ## 5. Vehicle freshness correction

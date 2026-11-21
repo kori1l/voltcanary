@@ -9,6 +9,79 @@ const login=(owner="history-owner")=>setTokens(`header.${btoa(JSON.stringify({su
 const response={planId:"saved",summary:"Review bus22",explanation:"Проверьте bus22",confirmationRequired:true,planningStatus:"READY",executionStatus:"READY",safetyNotes:[],actions:[{id:"create",tool:"CREATE_DEVICE",title:"bus22",description:"Vehicle",requiresConfirmation:true,parameters:{name:"bus22"}}]};
 afterEach(()=>{cleanup();clearTokens();localStorage.clear();vi.restoreAllMocks();});
 
+it.each([200,409])("controls only the displayed plan revision and refreshes on HTTP %s",async(status)=>{
+  login();
+  mockAssistantFetch().mockResolvedValue(new Response(JSON.stringify(response)));
+  const route=vi.mocked(globalThis.fetch).getMockImplementation()!;
+  const writes:{url:string;body:unknown}[]=[];
+  let replaced=false;
+  vi.mocked(globalThis.fetch).mockImplementation(async(input,options)=>{
+    const url=String(input);
+    if(url.endsWith("/control")){
+      writes.push({url,body:JSON.parse(String(options?.body))});
+      return Response.json({}, {status});
+    }
+    const result=await route(input,options);
+    if((options?.method??"GET")==="GET"&&url.includes("/ai-agent/conversations/")){
+      const body=await result.clone().json();
+      if(body.conversation)return Response.json({...body,orchestration:{
+        version:"assistant-v2",planId:replaced?"new-plan":"displayed-plan",
+        revision:replaced?8:3,status:"ACTIVE",steps:[],
+      }});
+    }
+    return result;
+  });
+  const hook=renderHook(()=>useServerConversation());
+  await waitFor(()=>expect(hook.result.current.busy).toBe(false));
+  await act(()=>hook.result.current.send("Создай устройство"));
+  await act(()=>hook.result.current.reload());
+  expect(hook.result.current.conversation.orchestration?.planId).toBe("displayed-plan");
+  replaced=true;
+  await act(()=>hook.result.current.control("CANCEL"));
+  expect(writes).toEqual([{
+    url:expect.stringContaining("/orchestrations/displayed-plan/control"),
+    body:expect.objectContaining({expectedRevision:3,action:"CANCEL"}),
+  }]);
+  expect(hook.result.current.conversation.orchestration?.planId).toBe("new-plan");
+  if(status===409)expect(hook.result.current.error).toContain("Состояние плана обновлено");
+});
+
+it("sends a saved name question through the typed answer endpoint",async()=>{
+  login();
+  const domain=mockAssistantFetch().mockImplementation(async()=>new Response(JSON.stringify(response)));
+  const route=vi.mocked(globalThis.fetch).getMockImplementation()!;
+  let answered=false;
+  const writes:unknown[]=[];
+  const snapshot={revision:4,question:{id:"question",revision:2,slots:["slot"],choices:[]},slots:{slot:{schemaId:"text-v1"}}};
+  vi.mocked(globalThis.fetch).mockImplementation(async(input,options)=>{
+    const url=String(input);
+    if(url.endsWith("/requirements"))return new Response(JSON.stringify(snapshot));
+    if(url.endsWith("/requirements/answers")){
+      writes.push(JSON.parse(String(options?.body)));
+      answered=true;
+      return new Response(JSON.stringify({...snapshot,question:null}));
+    }
+    const result=await route(input,options);
+    if((options?.method??"GET")==="GET"&&url.includes("/ai-agent/conversations/")){
+      const body=await result.clone().json();
+      if(body.conversation)return new Response(JSON.stringify({...body,
+        plan:{...response,clarification:answered?null:{missingFields:["name"]}},
+        orchestration:{version:"assistant-v2",planId:"root",revision:answered?6:4,status:answered?"ACTIVE":"WAITING_INPUT",
+          pendingQuestion:answered?null:{questionId:"question"},steps:[]}}));
+    }
+    return result;
+  });
+  const hook=renderHook(()=>useServerConversation());
+  await waitFor(()=>expect(hook.result.current.busy).toBe(false));
+  await act(()=>hook.result.current.send("Создай дашборд"));
+  await act(()=>hook.result.current.reload());
+  await act(()=>hook.result.current.send("Скорость"));
+  expect(writes).toEqual([expect.objectContaining({planId:"root",questionId:"question",expectedQuestionRevision:2,
+    expectedRequirementsRevision:4,answer:{kind:"TEXT",text:"Скорость"}})]);
+  expect(domain).toHaveBeenCalledTimes(1);
+  expect(hook.result.current.conversation.orchestration?.pendingQuestion).toBeNull();
+});
+
 it("restores the server accepted dashboard preview after a failed edit using GET only",async()=>{
   login();
   const domain=mockAssistantFetch().mockResolvedValue(new Response(JSON.stringify({...response,planningStatus:"FAILED",actions:[]})));

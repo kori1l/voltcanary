@@ -8,6 +8,7 @@
 .native-workbench input[type="checkbox"] { width: auto; }
 .native-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
 .native-field { display: grid; align-content: start; gap: 8px; padding: 12px; border: 1px solid var(--border-color, #d5dde5); border-radius: 8px; }
+.native-point-map { width: 100%; min-height: 16rem; height: 32vh; }
 .native-editor { display: grid; gap: 16px; }
 .native-table-scroll { overflow: auto; max-width: 100%; }
 .native-table table { min-width: 480px; width: 100%; }

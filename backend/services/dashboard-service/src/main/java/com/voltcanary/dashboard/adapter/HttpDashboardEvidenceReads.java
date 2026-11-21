@@ -175,15 +175,45 @@ public class HttpDashboardEvidenceReads implements DashboardEvidenceReads {
         return result;
     }
 
+    @Override
+    public JsonNode nativeRows(String authorization, JsonNode document) {
+        var dataset = com.voltcanary.dashboard.query.NativeDashboardRows.validate(document);
+        return read(properties.deviceBaseUrl(), "/data/datasets/" + dataset + "/query", authorization,
+                mapper.createObjectNode().set("document", document));
+    }
+
+    @Override
+    public JsonNode ruleMeasure(String authorization, DashboardActor actor, JsonNode selection) {
+        var query = com.voltcanary.dashboard.query.DashboardRuleMeasure.parse(selection);
+        var body = mapper.createObjectNode().put("account", actor.accountId().toString())
+                .put("epoch", query.epoch().toString()).put("measure", query.measure().toString());
+        return read(properties.analyticsBaseUrl(), "/analytics/configurable/rule-cutovers/historical-measure",
+                authorization, body, actor.userId());
+    }
+
     private JsonNode read(URI base, String path, String authorization, JsonNode body) {
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(path)).timeout(properties.timeout())
+        return read(base, path, authorization, body, null);
+    }
+
+    private JsonNode read(URI base, String path, String authorization, JsonNode body, UUID actor) {
+        var builder = HttpRequest.newBuilder(base.resolve(path)).timeout(properties.timeout())
                 .header("Authorization", authorization).header("X-Internal-Service-Token", properties.internalServiceToken())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
+                .header("Content-Type", "application/json");
+        if (actor != null) builder.header("X-User-Id", actor.toString());
+        HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         try {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 401 || response.statusCode() == 403) {
                 throw failed("NO_ACCESS", "Current resource access is unavailable");
+            }
+            if (path.startsWith("/data/datasets/") && response.statusCode() == 404) {
+                throw failed("NO_ACCESS", "The selected resource is unavailable");
+            }
+            if (path.endsWith("/historical-measure") && (response.statusCode() == 404 || response.statusCode() == 410)) {
+                throw failed("MEASURE_UNAVAILABLE", "The saved rule measure is unavailable");
+            }
+            if (path.startsWith("/data/datasets/") && (response.statusCode() == 400 || response.statusCode() == 409)) {
+                throw failed("VALIDATION_ERROR", "Review the table schema and selected fields");
             }
             if (response.statusCode() == 422) {
                 if (path.startsWith("/internal/dashboard/energy")) throw failed("VALIDATION_ERROR","Review distinct physical meters and their independence; use a supported non-overlapping scope and period");

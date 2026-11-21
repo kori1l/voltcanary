@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -17,16 +18,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** One bounded SQL read of canonical streams; unqualified samples remain barriers. */
 @Repository
+@RequiredArgsConstructor
 public class EnergyReadingRepository {
     public record StoredReading(String metric, Reading reading) { }
     public record Range(UUID deviceId, String sourceId, String metric, Instant from, Instant to, boolean inclusiveEnd) { }
     public record ReadQuery(String sql, List<Object> parameters) { }
     private record Stream(UUID deviceId, String sourceId, String metric) { }
     private final JdbcTemplate jdbc;
-
-    public EnergyReadingRepository(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
 
     public Map<UUID, List<StoredReading>> readSelected(UUID accountId, List<Range> ranges) {
         Map<UUID, List<StoredReading>> result = new HashMap<>();

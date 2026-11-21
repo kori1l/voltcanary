@@ -16,6 +16,15 @@ Use `rg` / `rg --files` first for repository search. On Windows PowerShell, if
 `npm.ps1` is blocked by execution policy, check `Get-ExecutionPolicy -List` and
 set `CurrentUser` to `RemoteSigned`.
 
+The platform is pre-production. Prefer one current contract; obsolete API/data
+formats do not require backward-compatibility paths. Local data may be migrated,
+rebuilt or reset when needed within the task scope. Preserve supported features
+and the correctness of current operations.
+
+For an implementation request, complete the agreed change's features first,
+then run its systematic tests and qualification together. Do not restart broad
+verification campaigns after each small implementation slice.
+
 ## Project Skills
 
 Project-local skills live under `.codex/skills/`. Load only the skills relevant

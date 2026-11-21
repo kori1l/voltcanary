@@ -5,16 +5,18 @@ import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.repository.AlertRepository;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AlertDeduplicationService {
 
     private static final DateTimeFormatter HOUR_FORMATTER =
@@ -22,10 +24,6 @@ public class AlertDeduplicationService {
 
     private final AlertRepository alertRepository;
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
-
-    public AlertDeduplicationService(AlertRepository alertRepository) {
-        this.alertRepository = alertRepository;
-    }
 
     public String key(UUID deviceId, String alertType, AlertSeverity severity, Instant occurredAt) {
         return deviceId + ":" + alertType + ":" + severity + ":" + HOUR_FORMATTER.format(occurredAt == null ? Instant.now() : occurredAt);

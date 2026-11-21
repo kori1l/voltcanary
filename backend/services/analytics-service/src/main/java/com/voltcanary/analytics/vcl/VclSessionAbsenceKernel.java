@@ -150,7 +150,7 @@ public final class VclSessionAbsenceKernel {
         authorizeSession(plan, session.planDigest(), scope);
         if (session.phase() != VclWindowSessionKernel.Phase.CLOSED) return unknown("SESSION_NOT_OBSERVED_CLOSED");
         if (input.correctionRequired() != null) {
-            var replayed = replayWindow(plan, session, input, scope);
+            var replayed = replayWindow(plan, session.key(), input, scope);
             if (replayed == null) return correctionRequired(input);
             if (replayed.phase() == VclWindowSessionKernel.Phase.OPEN) return unknown("SESSION_REPLAY_OPEN");
             if (replayed.phase() != VclWindowSessionKernel.Phase.CLOSED) return correctionRequired(input);
@@ -161,12 +161,12 @@ public final class VclSessionAbsenceKernel {
                 session.startWitness(), session.closeWitness()), input, proof, scope);
     }
 
-    private static VclWindowSessionKernel.State replayWindow(Plan plan, VclWindowSessionKernel.State original,
+    private static VclWindowSessionKernel.State replayWindow(Plan plan, KeyedStateStore.Key key,
             InputCut input, String scope) {
         if (plan.windowSession() == null || input.unresolvedIdentity() != null || input.unresolvedFilter() != null) return null;
         var windowPlan = plan.windowSession();
         var kernel = new VclWindowSessionKernel();
-        var state = VclWindowSessionKernel.empty(windowPlan, original.key());
+        var state = VclWindowSessionKernel.empty(windowPlan, key);
         for (var row : ordered(input)) {
             if (plan.timing().classify(row.at(), row.recordedAt()) == VclTimingPlan.Admission.QUARANTINED_FUTURE) return null;
             state = kernel.observe(windowPlan, state, new VclWindowSessionKernel.Observation(row.id(), row.at(), row.fields()), scope);
@@ -179,7 +179,7 @@ public final class VclSessionAbsenceKernel {
         authorizeSession(plan, session.planDigest(), scope);
         if (session.phase() != VclZoneSessionKernel.Phase.CLOSED) return unknown("SESSION_NOT_OBSERVED_CLOSED");
         if (input.correctionRequired() != null) {
-            var replayed = replayZone(plan, session, input);
+            var replayed = replayZone(plan, session.key(), input);
             if (replayed == null) return correctionRequired(input);
             if (replayed.phase() == VclZoneSessionKernel.Phase.OPEN) return unknown("SESSION_REPLAY_OPEN");
             if (replayed.phase() != VclZoneSessionKernel.Phase.CLOSED) return correctionRequired(input);
@@ -190,16 +190,31 @@ public final class VclSessionAbsenceKernel {
                 session.entryWitness(), session.exitWitness()), input, proof, scope);
     }
 
-    private static VclZoneSessionKernel.State replayZone(Plan plan, VclZoneSessionKernel.State original, InputCut input) {
+    private static VclZoneSessionKernel.State replayZone(Plan plan, KeyedStateStore.Key key, InputCut input) {
         var replay = plan.zoneReplay();
         if (replay == null || input.unresolvedIdentity() != null || input.unresolvedFilter() != null) return null;
         var kernel = new VclZoneSessionKernel();
-        var state = VclZoneSessionKernel.empty(replay.plan(), original.key());
+        var state = VclZoneSessionKernel.empty(replay.plan(), key);
         for (var row : ordered(input)) {
             if (plan.timing().classify(row.at(), row.recordedAt()) == VclTimingPlan.Admission.QUARANTINED_FUTURE) return null;
             state = kernel.observe(replay.plan(), state, zoneObservation(replay, row), replay.geometry());
         }
         return state;
+    }
+
+    public Result preview(Plan plan, KeyedStateStore.Key key, InputCut input, VclSourceCoverage proof, String scope) {
+        require(plan.scope().equals(scope), "ACCESS_SCOPE_CHANGED");
+        require(plan.source().id().equals(input.binding()) && plan.source().revision() == input.schemaRevision(),
+                "SESSION_SOURCE_CHANGED");
+        if (input.unresolvedIdentity() != null || input.unresolvedFilter() != null || input.correctionRequired() != null) {
+            return correctionRequired(input);
+        }
+        if (plan.zoneReplay() != null) {
+            var zone = replayZone(plan, key, input);
+            return zone == null ? unknown("SESSION_FUTURE_OBSERVATION") : evaluate(plan, zone, input, proof, scope);
+        }
+        var session = replayWindow(plan, key, input, scope);
+        return session == null ? unknown("SESSION_FUTURE_OBSERVATION") : evaluate(plan, session, input, proof, scope);
     }
 
     private static List<Sample> ordered(InputCut input) {
@@ -246,8 +261,11 @@ public final class VclSessionAbsenceKernel {
             var replay = plan.zoneReplay();
             for (var row : matching) {
                 var observation = zoneObservation(replay, row);
-                if (observation.position() != null && replay.plan().circle().id().equals(observation.zone())) {
-                    var evidence = new PositionEvidence(VclZoneSessionKernel.classify(replay.plan(), observation), row.id());
+                if (observation.position() != null) {
+                    var region = replay.plan().circle().id().equals(observation.zone())
+                            ? VclZoneSessionKernel.classify(replay.plan(), observation)
+                            : Wgs84ScalarKernel.Region.UNCERTAIN;
+                    var evidence = new PositionEvidence(region, row.id());
                     positions.merge(row.at(), evidence, PositionEvidence::merge);
                 }
             }
@@ -293,8 +311,11 @@ public final class VclSessionAbsenceKernel {
         if (!qualified(plan, closed.window(), input, proof)) {
             return new Result(witness, ScalarValue.unknown("SESSION_COVERAGE_UNKNOWN", List.of()));
         }
-        if (!continuous(rows, plan.maxGapUs())) {
+        if (!continuous(rows.stream().map(VclDurationWitnessKernel.Input::eventTime).toList(), plan.maxGapUs())) {
             return new Result(witness, ScalarValue.unknown("SESSION_SOURCE_GAP", List.of()));
+        }
+        if (plan.zoneReplay() != null && !continuousPositions(positions, plan.zoneReplay().plan().maxGapUs())) {
+            return new Result(witness, ScalarValue.unknown("SESSION_POSITION_GAP", List.of()));
         }
         return new Result(witness, truth(true));
     }
@@ -319,6 +340,9 @@ public final class VclSessionAbsenceKernel {
     }
 
     private static Result correctionRequired(InputCut input) {
+        if (input.unresolvedIdentity() != null) {
+            return new Result(null, ScalarValue.unknown("SESSION_IDENTITY_UNKNOWN", List.of(input.unresolvedIdentity())));
+        }
         if (input.unresolvedFilter() != null) {
             return new Result(null, ScalarValue.unknown("SESSION_FILTER_UNKNOWN", List.of(input.unresolvedFilter())));
         }
@@ -343,12 +367,19 @@ public final class VclSessionAbsenceKernel {
                 && !Instant.parse(frontier.literal().path("value").textValue()).isBefore(window.endExclusive());
     }
 
-    private static boolean continuous(List<VclDurationWitnessKernel.Input> rows, long maxGap) {
-        var times = rows.stream().map(VclDurationWitnessKernel.Input::eventTime).sorted().toList();
+    private static boolean continuous(List<Instant> evidenceTimes, long maxGap) {
+        var times = evidenceTimes.stream().sorted().toList();
         for (int i = 1; i < times.size(); i++) {
             if (VclWindowPlan.micros(times.get(i)) - VclWindowPlan.micros(times.get(i - 1)) > maxGap) return false;
         }
         return true;
+    }
+
+    private static boolean continuousPositions(Map<Instant, PositionEvidence> positions, long maxGap) {
+        var qualified = positions.entrySet().stream()
+                .filter(position -> position.getValue().region() != Wgs84ScalarKernel.Region.UNCERTAIN)
+                .map(Map.Entry::getKey).toList();
+        return continuous(qualified, maxGap);
     }
 
     private static VclCompilation.Node node(VclCompilation compiled, String id, String method) {

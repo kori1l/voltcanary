@@ -3,6 +3,7 @@ package com.voltcanary.alert.controller;
 import com.voltcanary.alert.configurable.application.AutomationGrantReviews;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/alert-rules/configurable")
+@RequiredArgsConstructor
 public class AutomationGrantController {
     private final AutomationGrantReviews grants;
-    public AutomationGrantController(AutomationGrantReviews grants) { this.grants = grants; }
 
     @PostMapping("/grant-review-reservations")
     public AutomationGrantReviews.View reserve(@RequestHeader("X-User-Id") UUID actor, @RequestBody byte[] body) {

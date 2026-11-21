@@ -2,9 +2,11 @@ package com.voltcanary.simulator.generator;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class MetricValueGenerator {
 
     private final ConstantMetricGenerator constantMetricGenerator;
@@ -12,19 +14,6 @@ public class MetricValueGenerator {
     private final DerivedMetricCalculator derivedMetricCalculator;
     private final EnergyAccumulator energyAccumulator;
     private final AnomalyInjector anomalyInjector;
-
-    public MetricValueGenerator(
-            ConstantMetricGenerator constantMetricGenerator,
-            CycleMetricGenerator cycleMetricGenerator,
-            DerivedMetricCalculator derivedMetricCalculator,
-            EnergyAccumulator energyAccumulator,
-            AnomalyInjector anomalyInjector) {
-        this.constantMetricGenerator = constantMetricGenerator;
-        this.cycleMetricGenerator = cycleMetricGenerator;
-        this.derivedMetricCalculator = derivedMetricCalculator;
-        this.energyAccumulator = energyAccumulator;
-        this.anomalyInjector = anomalyInjector;
-    }
 
     public Map<String, Object> metrics(SimulationContext context) {
         Map<String, Object> metrics = new LinkedHashMap<>();

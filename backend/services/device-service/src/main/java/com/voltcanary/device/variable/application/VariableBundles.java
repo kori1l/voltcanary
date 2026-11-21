@@ -13,10 +13,12 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class VariableBundles {
     private final VariableBindingRows rows;
     private final VariableStore variables;
@@ -25,19 +27,6 @@ public class VariableBundles {
     private final DeviceOutboxService outbox;
     private final com.voltcanary.device.repository.DataSourceRepository sources;
     private final com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtime;
-
-    public VariableBundles(VariableBindingRows rows, VariableStore variables, JdbcTemplate jdbc,
-            ObjectMapper mapper, DeviceOutboxService outbox,
-            com.voltcanary.device.repository.DataSourceRepository sources,
-            com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtime) {
-        this.rows = rows;
-        this.variables = variables;
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.outbox = outbox;
-        this.sources = sources;
-        this.runtime = runtime;
-    }
 
     /** Caller holds the source row lock in the same transaction. */
     public SourceProcessingConfigEvent rebuild(VariableBindingRows.Source source) {

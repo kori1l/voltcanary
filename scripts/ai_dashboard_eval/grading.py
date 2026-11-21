@@ -128,7 +128,8 @@ def check_preservation(previous, doc, expected, check):
     removed = {w["id"] for s in expected.get("absent", []) for w in matches(previous, s)}
     permitted_new = expected.get("allowNewRoles", [])
     check("preserved_widget_ids", set(old) - removed <= set(new))
-    check("no_unrequested_new_roles", all(any(role(new[key], s) for s in permitted_new) for key in set(new) - set(old)))
+    unexpected = [key for key in new if key not in old and not any(role(new[key], s) for s in permitted_new)]
+    check("no_unrequested_new_roles", not unexpected, unexpected)
     violations = []
     for key in old.keys() & new.keys():
         selectors = [s for s in allowed if s == "all" or role(old[key], s)]
@@ -150,7 +151,7 @@ def check_preservation(previous, doc, expected, check):
         for bp in ("desktop", "tablet", "mobile"):
             old_order = [key for key in ordered(previous, bp) if key not in moved]
             new_order = [key for key in ordered(doc, bp) if key in old and key not in moved]
-            check("untouched_order:" + bp, old_order == new_order)
+            check("untouched_order:" + bp, old_order == new_order, {"before": old_order, "after": new_order})
 
 
 def classify(plan, error=None):

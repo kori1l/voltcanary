@@ -151,7 +151,7 @@ public final class DurableZoneSession {
                 .put("phase", value.phase().name()).put("lastAt", text(value.lastAt())).put("lastId", text(value.lastId()))
                 .put("deadline", text(value.deadline())).put("lastRegion", value.lastRegion().name())
                 .put("enteredAt", text(value.enteredAt())).put("entryWitness", text(value.entryWitness()))
-                .put("outsideSince", text(value.outsideSince())).put("outsideCount", value.outsideCount())
+                .put("outsideSince", text(value.outsideSince())).put("outsideCount", Integer.toString(value.outsideCount()))
                 .put("exitWitness", text(value.exitWitness())).put("reason", value.reason());
         return KeyedStateStore.State.parse(VclCanonical.encode(json));
     }
@@ -159,15 +159,16 @@ public final class DurableZoneSession {
     private static Stored decode(KeyedStateStore.Key key, KeyedStateStore.State stored) {
         try {
             var json = PARSER.readJson(stored.payload().getBytes(StandardCharsets.UTF_8));
+            String count = json.path("outsideCount").textValue();
             require(json.size() == 17 && PROFILE.equals(json.path("profile").textValue())
                     && key.digest().equals(json.path("keyDigest").textValue())
-                    && json.path("outsideCount").isIntegralNumber(), "SESSION_STATE_INVALID");
+                    && count != null && count.matches("[0-9]|[12][0-9]|30"), "SESSION_STATE_INVALID");
             var geometry = new GeometryPin(uuid(json.path("zone")), Long.parseLong(json.path("zoneRevision").textValue()));
             var state = new VclZoneSessionKernel.State(json.path("planDigest").textValue(), key,
                     VclZoneSessionKernel.Phase.valueOf(json.path("phase").textValue()), instant(json.path("lastAt")),
                     uuid(json.path("lastId")), instant(json.path("deadline")),
                     Wgs84ScalarKernel.Region.valueOf(json.path("lastRegion").textValue()), instant(json.path("enteredAt")),
-                    uuid(json.path("entryWitness")), instant(json.path("outsideSince")), json.path("outsideCount").intValue(),
+                    uuid(json.path("entryWitness")), instant(json.path("outsideSince")), Integer.parseInt(count),
                     uuid(json.path("exitWitness")), json.path("reason").textValue());
             var openedAt = instant(json.path("openedAt"));
             require((openedAt == null) == (state.phase() == VclZoneSessionKernel.Phase.UNSEEN)

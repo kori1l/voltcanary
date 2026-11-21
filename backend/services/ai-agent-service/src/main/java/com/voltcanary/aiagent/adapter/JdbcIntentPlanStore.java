@@ -9,6 +9,9 @@ import com.voltcanary.aiagent.orchestration.collaboration.CollaborationStore;
 import com.voltcanary.aiagent.orchestration.collaboration.RequirementAnswers;
 import com.voltcanary.aiagent.orchestration.collaboration.Requirements;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Focus;
+import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Input;
+import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.BindingLiteral;
+import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.StepState;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Question;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Focus;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.PendingQuestion;
@@ -21,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Objects;
 import java.util.List;
@@ -39,6 +43,7 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
     private final ProtocolValidator validator;
     private final Clock clock;
     private final Duration lease;
+    private final JdbcCollaborationStore collaboration;
 
     public JdbcIntentPlanStore(JdbcTemplate jdbc, TransactionTemplate tx, ObjectMapper mapper,
             ProtocolValidator validator, ConversationProperties properties) {
@@ -47,6 +52,11 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
 
     public JdbcIntentPlanStore(JdbcTemplate jdbc, TransactionTemplate tx, ObjectMapper mapper,
             ProtocolValidator validator, Clock clock, Duration lease) {
+        this(jdbc, tx, mapper, validator, clock, lease, null);
+    }
+
+    public JdbcIntentPlanStore(JdbcTemplate jdbc, TransactionTemplate tx, ObjectMapper mapper,
+            ProtocolValidator validator, Clock clock, Duration lease, JdbcCollaborationStore collaboration) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(tx.getTransactionManager());
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -54,6 +64,7 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
         this.validator = validator;
         this.clock = clock;
         this.lease = lease;
+        this.collaboration = collaboration;
     }
 
     @Override
@@ -149,7 +160,86 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
 
     @Override
     public IntentPlans.State commit(IntentPlans.Token token, IntentPlans.State state, String reply, boolean terminal) {
-        return tx.execute(transaction -> commitInTransaction(token, state, reply, terminal));
+        return tx.execute(transaction -> {
+            var updated = terminal && collaboration != null ? arbitrateConsultationQuestion(token, state) : state;
+            if (terminal && collaboration != null && updated == state) synchronizeRequirementQuestion(token, state);
+            return commitInTransaction(token, updated, updated == state ? reply : updated.pendingQuestion().question().text(), terminal);
+        });
+    }
+
+    private IntentPlans.State arbitrateConsultationQuestion(IntentPlans.Token token, IntentPlans.State state) {
+        if (state.pendingQuestion() != null || !"ACTIVE".equals(state.status())
+                || state.steps().stream().noneMatch(step -> "PREPARING".equals(step.status()))) return state;
+        lockConversation(token.owner(), token.conversationId());
+        var snapshot = collaboration.readInTransaction(token.owner(), token.planId());
+        var waiting = snapshot.consultations().tasks().values().stream()
+                .filter(task -> task.status() == com.voltcanary.aiagent.orchestration.collaboration.Consultations.Status.WAITING_USER
+                        && task.assignment() != null && token.requestId().equals(task.assignment().originatingTurnId())
+                        && task.request().inputRefs().isEmpty())
+                .sorted(java.util.Comparator.comparing(com.voltcanary.aiagent.orchestration.collaboration.Consultations.Task::id))
+                .toList();
+        if (waiting.isEmpty() || snapshot.requirements().question() != null) return state;
+        var eligibleSteps = state.steps().stream()
+                .filter(step -> "CREATE_DASHBOARD".equals(step.intentId()) && "PREPARING".equals(step.status())
+                        && step.reviewId() == null && step.receiptId() == null).toList();
+        if (eligibleSteps.size() != 1) return state;
+        var step = eligibleSteps.getFirst();
+        String prefix = com.voltcanary.aiagent.orchestration.collaboration.NameConsultation.pathPrefix(step.stepId());
+        var changes = new com.voltcanary.aiagent.orchestration.collaboration.RequirementChanges((type, value) ->
+                validator.validate("collab.VclLiteral", value));
+        var arbiter = new com.voltcanary.aiagent.orchestration.collaboration.QuestionArbiter(changes);
+        UUID questionId = stable(token.requestId(), "consultation-question");
+        Instant now = clock.instant();
+        Instant expiry = now.plusSeconds(600).isBefore(state.expiresAt()) ? now.plusSeconds(600) : state.expiresAt();
+        var decision = arbiter.decide(snapshot.requirements(), waiting, Set.of(), questionId, token.requestId(), now, expiry);
+        var question = decision.requirements().question();
+        if (question == null || question.slots().size() != 1) return state;
+        var slot = decision.requirements().slots().get(question.slots().getFirst());
+        if (!slot.path().startsWith(prefix) || !slot.path().endsWith("/name") || !"text-v1".equals(slot.schemaId())) return state;
+        collaboration.updateInTransaction(token, snapshot.revision(), "consultation-question:" + token.requestId(),
+                SkillRegistry.digest(json(question)), (before, time) -> {
+                    if (!question.expiresAt().isAfter(time)) throw conflict("QUESTION_EXPIRED");
+                    return new CollaborationStore.State(before.revision() + 1, decision.requirements(), before.consultations());
+                }, (before, next) -> {});
+        var pending = new PendingQuestion(questionId.toString(), stable(token.requestId(), "REPLY").toString(), step.stepId(),
+                token.revision() + 1, new Question(question.text(), List.of("name"), List.of()));
+        return IntentPlans.replace(state, IntentPlans.step(step, "WAITING_INPUT", null, null, null), "WAITING_INPUT", pending);
+    }
+
+    private void synchronizeRequirementQuestion(IntentPlans.Token token, IntentPlans.State state) {
+        lockConversation(token.owner(), token.conversationId());
+        var current = read(token.owner(), token.planId());
+        var pending = state.pendingQuestion();
+        if (pending != null && Objects.equals(token.answeredQuestion(), pending)) return;
+        boolean supported = pending != null && pending.stepId() != null && pending.question().missingFields().equals(List.of("name"))
+                && (pending.question().choices() == null || pending.question().choices().isEmpty())
+                && state.steps().stream().anyMatch(step -> pending.stepId().equals(step.stepId())
+                    && Set.of("CREATE_DASHBOARD", "CREATE_DEVICE").contains(step.intentId()));
+        if (!supported && current.pendingQuestion() == null && token.answeredQuestion() == null) return;
+        var snapshot = collaboration.readInTransaction(token.owner(), token.planId());
+        if (!supported && snapshot.requirements().question() == null) return;
+        String key = "question:" + token.requestId();
+        collaboration.updateInTransaction(token, snapshot.revision(), key, SkillRegistry.digest(json(state)), (before, now) -> {
+            var requirements = before.requirements();
+            if (supported) {
+                UUID questionId = UUID.fromString(pending.questionId());
+                String path = com.voltcanary.aiagent.orchestration.collaboration.NameConsultation.pathPrefix(pending.stepId()) + questionId + "/name";
+                var slot = new Requirements.Slot(questionId, path, "text-v1", true,
+                        Requirements.Status.UNKNOWN, null, Set.of(token.messageId()), Set.of(), Set.of(), 0,
+                        Requirements.Origin.MODEL_PROPOSED);
+                var changes = new com.voltcanary.aiagent.orchestration.collaboration.RequirementChanges((schema, value) ->
+                        validator.validate("collab.VclLiteral", value));
+                requirements = changes.propose(requirements, requirements.revision(), token.requestId(), List.of(slot), Set.of(token.messageId()));
+                var expires = now.plusSeconds(600);
+                if (state.expiresAt().isBefore(expires)) expires = state.expiresAt();
+                requirements = changes.question(requirements, new Requirements.Question(questionId, 0, requirements.revision(),
+                        List.of(slot.id()), pending.question().text(), List.of(), Set.of(), expires), now);
+            } else if (requirements.question() != null) {
+                requirements = new Requirements.Snapshot(requirements.version(), requirements.planId(), requirements.revision(),
+                        requirements.slots(), null, requirements.events());
+            }
+            return new CollaborationStore.State(before.revision() + 1, requirements, before.consultations());
+        }, (before, next) -> {});
     }
 
     /** The caller supplies the affected step IDs from the reviewed requirement bindings. */
@@ -157,12 +247,6 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
             long expectedCollaboration, String requestKey, String digest, CollaborationStore.Mutation mutation,
             Set<String> affectedSteps, String reply) {
         return commitRequirements(collaboration, token, expectedCollaboration, requestKey, digest, mutation, affectedSteps, reply, "TURN");
-    }
-
-    public IntentPlans.State commitRequirementAnswer(JdbcCollaborationStore collaboration, RequirementAnswers answers,
-            IntentPlans.Token token, long expectedCollaboration, JsonNode body, Set<String> affectedSteps) {
-        return tx.execute(transaction -> commitRequirementAnswerInTransaction(collaboration, answers, token,
-                expectedCollaboration, body, affectedSteps));
     }
 
     public IntentPlans.State submitRequirementAnswer(JdbcCollaborationStore collaboration, RequirementAnswers answers,
@@ -272,13 +356,39 @@ public class JdbcIntentPlanStore implements IntentPlanStore {
                 }
                 outputs.remove(id);
             }
-            var steps = current.steps().stream().map(step -> stepIds.contains(step.stepId())
-                    ? IntentPlans.step(step, "WAITING_INPUT", null, step.receiptId(), null) : step).toList();
+            var steps = current.steps().stream().map(step -> {
+                if (kind.equals("REQUIREMENTS_ANSWER") && current.pendingQuestion() != null
+                        && step.stepId().equals(current.pendingQuestion().stepId())) {
+                    return bindAnsweredName(step, previous, requirements);
+                }
+                return stepIds.contains(step.stepId())
+                        ? IntentPlans.step(step, "WAITING_INPUT", null, step.receiptId(), null) : step;
+            }).toList();
             var state = current.revise(current.revision(), pending == null ? "ACTIVE" : "WAITING_INPUT",
                     steps, current.goals(), current.facts(), pending, focus, current.skills(), reviews, outputs);
             commitInTransaction(token, state, question == null ? reply : question.text(), true);
         });
         return read(token.owner(), token.planId());
+    }
+
+    private static StepState bindAnsweredName(StepState step, Requirements.Question previous, Requirements.Snapshot requirements) {
+        if (previous == null || previous.slots().size() != 1 || !"WAITING_INPUT".equals(step.status())
+                || step.reviewId() != null || step.receiptId() != null) {
+            throw conflict("REQUIREMENT_STEP_CHANGED");
+        }
+        var slot = requirements.slots().get(previous.slots().getFirst());
+        String prefix = com.voltcanary.aiagent.orchestration.collaboration.NameConsultation.pathPrefix(step.stepId());
+        if (slot == null || slot.status() != Requirements.Status.CONFIRMED || !slot.path().startsWith(prefix)
+                || !slot.path().endsWith("/name") || !"text-v1".equals(slot.schemaId())) throw conflict("REQUIREMENT_STEP_CHANGED");
+        var name = slot.value().path("value");
+        int limit = "CREATE_DASHBOARD".equals(step.intentId()) ? 80 : 255;
+        if (!name.isTextual() || name.textValue().isBlank() || name.textValue().length() > limit) {
+            throw Requirements.invalid("REQUIREMENT_NAME_INVALID");
+        }
+        var inputs = new java.util.ArrayList<>(step.inputs().stream().filter(input -> !"name".equals(input.field())).toList());
+        inputs.add(new Input("name", new BindingLiteral("literal", name)));
+        return new StepState(step.stepId(), step.intentId(), step.skillVersion(), step.schemaVersion(), step.revision() + 1,
+                step.dependsOn(), List.copyOf(inputs), step.goalIds(), "READY", null, null, null);
     }
 
     private PendingQuestion requirementQuestion(IntentPlans.Token token, Requirements.Snapshot requirements) {

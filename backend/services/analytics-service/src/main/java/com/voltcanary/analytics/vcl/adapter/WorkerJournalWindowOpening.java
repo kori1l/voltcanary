@@ -7,13 +7,12 @@ import com.voltcanary.vcl.VclRegistry;
 import com.voltcanary.vcl.VclUnits;
 import java.util.UUID;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /** Opens windows from a bounded journal page per active reviewed epoch. */
+@Slf4j
 final class WorkerJournalWindowOpening {
-    private static final Logger LOG = LoggerFactory.getLogger(WorkerJournalWindowOpening.class);
     private static final int PAGE_SIZE = 8;
     private final JdbcKeyedStateStore store;
     private final WorkerRuleCompilationSnapshots snapshots;
@@ -34,7 +33,7 @@ final class WorkerJournalWindowOpening {
             try {
                 snapshots.openPage(candidate, store, compiler, holder);
             } catch (RuntimeException pending) {
-                LOG.warn("VCL journal opening remains pending: {}",
+                log.warn("VCL journal opening remains pending for epoch {}: {}", candidate.epoch(),
                         pending instanceof VclException vcl ? vcl.code() : pending.getClass().getSimpleName());
             }
         }

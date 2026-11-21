@@ -98,8 +98,56 @@ public final class ProtocolValidator {
         bounded(document, 0);
         var errors = compile(schema).validate(document);
         if (!errors.isEmpty()) throw new RegisteredViolation(errors.stream()
-                .map(error -> error.getType() + ":" + error.getSchemaLocation()).distinct().sorted().limit(8)
+                .map(error -> error.getType() + ":" + error.getSchemaLocation()).distinct()
+                .sorted(java.util.Comparator.comparingInt((String location) ->
+                        location.contains("/$defs/stepResponse/oneOf/") ? 1 : 0).thenComparing(java.util.Comparator.naturalOrder()))
+                .limit(8)
                 .collect(java.util.stream.Collectors.joining("; ")));
+    }
+
+    public void validateOperationDocument(JsonNode schema, JsonNode document, JsonNode commandSchema, JsonNode operations) {
+        try {
+            validateRegistered(schema, document);
+        } catch (RegisteredViolation invalid) {
+            var variants = commandSchema.at("/properties/operations/items/anyOf");
+            if (operations != null && operations.isArray() && variants.isArray()) {
+                for (int index = 0; index < operations.size(); index++) {
+                    var operation = operations.get(index);
+                    var matching = java.util.stream.StreamSupport.stream(variants.spliterator(), false)
+                            .filter(variant -> variant.at("/properties/op/enum/0").isTextual()
+                                    && variant.at("/properties/op/enum/0").equals(operation.path("op")))
+                            .toList();
+                    if (!matching.isEmpty() && operation.isObject() && matching.stream().allMatch(variant ->
+                            variant.path("additionalProperties").isBoolean() && !variant.path("additionalProperties").booleanValue())) {
+                        var fields = new java.util.HashSet<String>();
+                        matching.forEach(variant -> variant.path("properties").fieldNames().forEachRemaining(fields::add));
+                        var actualFields = operation.fieldNames();
+                        while (actualFields.hasNext()) {
+                            if (!fields.contains(actualFields.next())) throw new RegisteredViolation("operations[" + index + "]."
+                                    + operation.path("op").asText() + ": additionalProperties:#/additionalProperties");
+                        }
+                    }
+                    RegisteredViolation closest = null;
+                    int fewestErrors = Integer.MAX_VALUE;
+                    for (var variant : matching) {
+                        try {
+                            validateRegistered(variant, operation);
+                            closest = null;
+                            break;
+                        } catch (RegisteredViolation operationError) {
+                            int errors = operationError.locations().split("; ", -1).length;
+                            if (errors < fewestErrors) {
+                                fewestErrors = errors;
+                                closest = operationError;
+                            }
+                        }
+                    }
+                    if (closest != null) throw new RegisteredViolation("operations[" + index + "]."
+                            + operation.path("op").asText() + ": " + closest.locations());
+                }
+            }
+            throw invalid;
+        }
     }
 
     public static final class RegisteredViolation extends IllegalArgumentException {

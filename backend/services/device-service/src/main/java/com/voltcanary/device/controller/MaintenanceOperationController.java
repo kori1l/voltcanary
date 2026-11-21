@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -22,15 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/maintenance-operations")
+@RequiredArgsConstructor
 public class MaintenanceOperationController {
 
     private final MaintenanceOperationService service;
     private final AuthenticatedUserResolver userResolver;
-
-    public MaintenanceOperationController(MaintenanceOperationService service, AuthenticatedUserResolver userResolver) {
-        this.service = service;
-        this.userResolver = userResolver;
-    }
 
     @GetMapping
     public List<MaintenanceOperationResponse> list(

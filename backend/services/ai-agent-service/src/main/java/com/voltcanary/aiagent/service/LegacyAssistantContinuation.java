@@ -7,21 +7,16 @@ import com.voltcanary.aiagent.orchestration.contract.SkillRegistry;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Import immutable legacy request/question context once; no provider call or domain mutation. */
+@RequiredArgsConstructor
 public final class LegacyAssistantContinuation {
     private final PlanStore reviews;
     private final ConversationStore conversations;
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
-
-    public LegacyAssistantContinuation(PlanStore reviews, ConversationStore conversations, ObjectMapper mapper, TransactionTemplate transactions) {
-        this.reviews = reviews;
-        this.conversations = conversations;
-        this.mapper = mapper;
-        this.transactions = transactions;
-    }
 
     public UUID prepare(AuthorizedPlanningContext.Scope owner, UUID reviewId) {
         // The calling application already revalidates the original review's resource access.

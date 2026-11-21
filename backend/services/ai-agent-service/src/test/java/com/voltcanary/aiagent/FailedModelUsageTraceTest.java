@@ -34,8 +34,9 @@ class FailedModelUsageTraceTest {
             if (stage.equals("MODEL_CALL") && status.equals("FAILED")) outcomes.add(details);
         };
         var usage = new AssistantProtocol.Usage(123L, 12L, 45L, 20L, null);
-        var exchange = mock(BudgetedModelCalls.SingleExchange.class);
-        try { when(exchange.send(body, route, 1000)).thenReturn(new BudgetedModelCalls.Reply("JSON_TEXT", "{}", usage)); }
+        var exchange = mock(BudgetedModelCalls.SingleExchange.class, CALLS_REAL_METHODS);
+        try { when(exchange.send(eq(body), eq(route), longThat(timeout -> timeout > 0 && timeout <= 1000)))
+                .thenReturn(new BudgetedModelCalls.Reply("JSON_TEXT", "{}", usage)); }
         catch (Exception impossible) { throw new AssertionError(impossible); }
         when(exchange.normalize(any(), eq(body))).thenAnswer(invocation -> invocation.getArgument(0));
         var correlation = new AssistantTraceRecorder.Correlation(turn.owner(), turn.conversationId(), UUID.randomUUID(), turn.turnId(), UUID.randomUUID());
@@ -45,7 +46,7 @@ class FailedModelUsageTraceTest {
         assertEquals(usage, outcomes.getFirst().get("usage"));
         assertEquals(Map.of("jsonObject", true, "hasQuestion", false, "hasCommand", false, "stepCount", 0, "operationCount", 0), outcomes.getFirst().get("proposalShape"));
         verify(ledger).finish(turn, attempt.callId(), "FAILED", usage, null);
-        try { verify(exchange, times(1)).send(body, route, 1000); }
+        try { verify(exchange, times(1)).send(eq(body), eq(route), longThat(timeout -> timeout > 0 && timeout <= 1000)); }
         catch (Exception impossible) { throw new AssertionError(impossible); }
     }
 }

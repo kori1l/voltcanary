@@ -2,10 +2,11 @@ package com.voltcanary.device.controller;
 
 import com.voltcanary.device.configurable.application.NativeCollectionReviews;
 import com.voltcanary.device.configurable.application.NativeReviewRequests;
-import com.voltcanary.device.configurable.application.NativeRowWorkflows;
 import com.voltcanary.device.configurable.application.NativeReviewRouting;
+import com.voltcanary.device.configurable.application.NativeRowWorkflows;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,18 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/data")
+@RequiredArgsConstructor
 public class NativeCollectionReviewsController {
     private final NativeCollectionReviews reviews;
     private final AuthenticatedUserResolver users;
     private final NativeRowWorkflows rows;
     private final NativeReviewRouting routing;
-
-    public NativeCollectionReviewsController(NativeCollectionReviews reviews, AuthenticatedUserResolver users, NativeRowWorkflows rows, NativeReviewRouting routing) {
-        this.reviews = reviews;
-        this.users = users;
-        this.rows = rows;
-        this.routing = routing;
-    }
 
     @PostMapping("/review-reservations")
     public Object reserve(@RequestHeader HttpHeaders headers, @RequestBody byte[] body) {

@@ -23,10 +23,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Focused native creation preparation. HTTP completes before the existing short review-store transaction. */
 @Component
+@RequiredArgsConstructor
 public class NativeTableWorkflow {
     private final ObjectMapper mapper;
     private final ProtocolValidator validator;
@@ -36,15 +38,57 @@ public class NativeTableWorkflow {
     private final PlanStore reviews;
     private final PrimaryOrchestrationJournal journal;
 
-    public NativeTableWorkflow(ObjectMapper mapper, ProtocolValidator validator, NativeOwnerClient owner,
-            PrimaryAssistantProperties properties, AuthorizedPlanningContext authority, PlanStore reviews, PrimaryOrchestrationJournal journal) {
-        this.mapper = mapper;
-        this.validator = validator;
-        this.owner = owner;
-        this.properties = properties;
-        this.authority = authority;
-        this.reviews = reviews;
-        this.journal = journal;
+    private com.voltcanary.vcl.VclSourceBindingDescription mappingSource(IntentPlans.ModelInput input,
+            OrchestrationPorts.Session session, String submitted) {
+        require(properties.isNativeDataEnabled(), "NATIVE_AUTHORING_DISABLED");
+        require(input.token().owner().equals(session.owner()), "NATIVE_SESSION_SCOPE_CHANGED");
+        checkSession(session);
+        var refs = new java.util.ArrayList<String>();
+        for (var item : validator.parse(submitted).path("selection")) {
+            if ("sourceBinding".equals(item.path("field").asText())) refs.add(item.path("ref").asText());
+        }
+        require(refs.size() == 1, "SOURCE_CAPTURE_EXPLICIT_SELECTION_REQUIRED");
+        var parts = refs.getFirst().split(":", -1);
+        require(parts.length == 2, "SOURCE_CAPTURE_SELECTION_INVALID");
+        return owner.sourceCapture(session.authorization(), session.owner(), UUID.fromString(parts[0]),
+                Long.parseLong(parts[1])).source();
+    }
+
+    ContextSources.Page mappingContext(IntentPlans.ModelInput input, OrchestrationPorts.Session session, String submitted) {
+        var source = mappingSource(input, session, submitted);
+        var data = mapper.createObjectNode();
+        var context = data.putObject("context").put("bindingId", source.id().toString()).put("schemaRevision", source.schemaRevision());
+        context.set("fields", source.definition().path("fields"));
+        data.set("operationSchema", NativeMappingSkill.commandSchema(validator));
+        return new ContextSources.Page(SkillRegistry.digest(data.toString()), Instant.now(), data, null);
+    }
+
+    OrchestrationPorts.Prepared prepareMapping(IntentPlans.ModelInput input, AssistantProtocol.Command command,
+            OrchestrationPorts.Session session, String submitted) {
+        require(NativeMappingSkill.COMMAND.equals(command.schemaId()) && "1".equals(command.schemaVersion()),
+                "NATIVE_SKILL_VERSION_CHANGED");
+        var source = mappingSource(input, session, submitted);
+        var payload = command.payload();
+        validator.validateRegistered(NativeMappingSkill.commandSchema(validator), payload);
+        var field = UUID.fromString(payload.path("fieldId").textValue());
+        var conversion = payload.path("conversion");
+        com.voltcanary.vcl.VclBooleanTokens.parse(conversion, "/conversion");
+        var preview = owner.previewMapping(session.authorization(), session.owner(), source.id(), source.schemaRevision(),
+                field, conversion, payload.path("sample"));
+        require(source.snapshotId().toString().equals(preview.path("schemaSnapshotId").asText()), "NATIVE_MAPPING_PREVIEW_CHANGED");
+        var action = new AgentAction(UUID.randomUUID(), AgentTool.APPLY_SOURCE_MAPPING, "Применить маппинг источника",
+                "Проверьте правила преобразования в логическое значение.", true,
+                Map.of("accountId", session.owner().accountId().toString(), "userId", session.owner().userId().toString(),
+                        "bindingId", source.id().toString(), "schemaRevision", source.schemaRevision(),
+                        "fieldId", field.toString(), "conversion", conversion, "mappingDigest", preview.path("mappingDigest").textValue(),
+                        "mappingExample", Map.of("sample", payload.path("sample"), "literal", preview.path("literal"))));
+        var plan = new AgentPlan(UUID.randomUUID(), session.owner().userId(), input.currentMessage().text(),
+                "Подготовлен маппинг источника", "Проверьте преобразование перед подтверждением.",
+                List.of("assistant-v2"), List.of(action), Instant.now());
+        var saved = reviews.save(plan, new AuthorizedPlanningContext.Prepared(session.owner(), Map.of(), List.of()));
+        journal.bind(saved.plan().id(), input.state().planId(), step(input));
+        return new OrchestrationPorts.Prepared(new IntentPlans.Review(saved.plan().id(), saved.version(), saved.digest(),
+                List.of(action.id()), true), List.of());
     }
 
     public Set<String> capabilities(OrchestrationPorts.Session session) {
@@ -86,6 +130,7 @@ public class NativeTableWorkflow {
         String key = "ai-native-" + VclCanonical.sha256(session.owner() + "\n" + input.state().planId() + "\n" + step
                 + "\n" + input.token().requestId() + "\n" + VclCanonical.encode(draft.value()));
         var reserved = owner.reserve(session.authorization(), key, draft.fieldKeys());
+        require(Set.of("RESERVED", "PREPARED").contains(reserved.status()), "NATIVE_RESERVATION_NOT_PREPARABLE");
         var document = draft.document(reserved.datasetId(), reserved.fieldIds(), mapper);
         var prepared = owner.prepare(session.authorization(), reserved.id(), document.json());
         require(prepared.id().equals(reserved.id()) && prepared.datasetId().equals(reserved.datasetId())

@@ -1,26 +1,22 @@
 package com.voltcanary.ingestion.source;
 
 import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class SourceRuntimeConfigConsumer {
 
     public static final String TOPIC = "source.runtime-config.v1";
-    private static final Logger log = LoggerFactory.getLogger(SourceRuntimeConfigConsumer.class);
 
     private final SourceRegistryCache cache;
     private final SourceRuntimeConfigStore runtimeConfigStore;
-
-    public SourceRuntimeConfigConsumer(SourceRegistryCache cache, SourceRuntimeConfigStore runtimeConfigStore) {
-        this.cache = cache;
-        this.runtimeConfigStore = runtimeConfigStore;
-    }
 
     @KafkaListener(
             topics = TOPIC,

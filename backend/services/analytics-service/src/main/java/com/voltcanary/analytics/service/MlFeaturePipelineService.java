@@ -7,27 +7,18 @@ import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MlFeaturePipelineService {
 
     private final MlFeatureSnapshotGenerationService generationService;
     private final MlFeatureSnapshotLifecycleService lifecycleService;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlFeatureSnapshotResponseMapper mapper;
-
-    public MlFeaturePipelineService(
-            MlFeatureSnapshotGenerationService generationService,
-            MlFeatureSnapshotLifecycleService lifecycleService,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlFeatureSnapshotResponseMapper mapper) {
-        this.generationService = generationService;
-        this.lifecycleService = lifecycleService;
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.mapper = mapper;
-    }
 
     public MlFeatureSnapshotResponse generate(UUID accountId, MlFeatureSnapshotRequest request) {
         return generationService.generate(accountId, request);

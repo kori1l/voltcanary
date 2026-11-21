@@ -5,6 +5,7 @@ import com.voltcanary.common.events.device.SourceProcessingConfigEvent;
 import com.voltcanary.device.config.InternalServiceAuth;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class InternalProcessingBundlesController {
     public record Entry(long cursor, SourceProcessingConfigEvent bundle) { }
     public record RuntimeTarget(UUID dataSourceId, UUID variableId) { }
@@ -21,12 +23,6 @@ public class InternalProcessingBundlesController {
     private final InternalServiceAuth auth;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public InternalProcessingBundlesController(InternalServiceAuth auth, JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.auth = auth;
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @GetMapping("/internal/source-processing-bundles")
     public List<Entry> list(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,

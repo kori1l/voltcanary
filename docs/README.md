@@ -23,6 +23,7 @@ topic, then follow the folder-level index for the specific contract or runbook.
 | Assistant intents, skills, model routing and economical execution | [Target architecture and JSON formats](target/ai-assistant-orchestration.md), [migration program](../openspec/changes/README.md#ai-assistant-orchestration-program) | Proposed replacement for semantic regex routing and oversized prompts; implementation/live trials remain stopped |
 | UI/UX and dashboard implementation proposals | [OpenSpec program](../openspec/changes/README.md) | Proposed changes, delivery order, dependencies, and audit/product requirement coverage |
 | HTTP contracts | [current/api](current/api/README.md) | Public gateway routes and service API contracts implemented in code |
+| Proposed ingestion transport | [Netty multiprotocol target](target/ingestion-event-transport.md), [OpenSpec change](../openspec/changes/adopt-netty-multiprotocol-ingestion/proposal.md) | Future transport/protocol/adapter/core separation and qualification gates; not implemented |
 | Kafka/event contracts | [current/events](current/events/README.md) | Event envelope, topic keys, producer/consumer ownership implemented in code |
 | Operations and local deployment | [current/operations](current/operations/README.md) | Local Kubernetes, connector operation, ML operation, repository structure |
 | Verification | [current/flows](current/flows/README.md) | Canonical E2E runbook, ML verification, maintenance checks |
@@ -38,10 +39,10 @@ topic, then follow the folder-level index for the specific contract or runbook.
 
 AI-first priority (2026-11-11): [Java/LangGraph4j assessment and delivery order](../openspec/changes/README.md#ai-first-execution-priority),
 [target framework amendment](target/ai-assistant-spring-implementation.md#langgraph4j-assessment-and-migration-2026-11-11).
-LangGraph4j core is integrated for new turns/context/confirmation with atomic
-plan checkpoints; [current boundaries](current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11)
-and [ADR-015](adr/ADR-015-library-backed-agent-graph.md) distinguish implemented
-core from pending specialists, in-place migration and model-quality acceptance.
+LangGraph4j handles new turns, typed name clarification, registered name
+consultations and confirmation with atomic plan checkpoints. The runtime and
+its rollout scope are described in [current architecture](current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11)
+and [ADR-015](adr/ADR-015-library-backed-agent-graph.md).
 
 AI reviewed creation: [API](current/api/ai-agent-api.md),
 [task recovery](current/operations/ai-reviewed-tasks.md),

@@ -2,16 +2,14 @@ package com.voltcanary.ingestion.connector;
 
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ConnectorBackoffPolicy {
 
     private final ConnectorRuntimeProperties properties;
-
-    public ConnectorBackoffPolicy(ConnectorRuntimeProperties properties) {
-        this.properties = properties;
-    }
 
     public Duration nextDelay(int consecutiveFailures) {
         int exponent = Math.max(0, consecutiveFailures - 1);

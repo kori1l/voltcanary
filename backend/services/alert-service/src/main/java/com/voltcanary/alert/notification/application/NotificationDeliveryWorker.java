@@ -11,24 +11,25 @@ import com.voltcanary.alert.notification.port.AlertNotificationRequest;
 import com.voltcanary.alert.notification.provider.NotificationDeliveryCommand;
 import com.voltcanary.alert.notification.provider.NotificationDeliveryResult;
 import com.voltcanary.alert.notification.provider.NotificationProviderRegistry;
-import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.notification.repository.NotificationChannelRepository;
+import com.voltcanary.alert.repository.AlertRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class NotificationDeliveryWorker {
 
-    private static final Logger log = LoggerFactory.getLogger(NotificationDeliveryWorker.class);
     private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {
     };
 
@@ -41,25 +42,6 @@ public class NotificationDeliveryWorker {
     private final NotificationProviderRegistry providerRegistry;
     private final MeterRegistry meterRegistry;
     private final String workerId = "alert-notification-" + UUID.randomUUID();
-
-    public NotificationDeliveryWorker(
-            AlertRepository alertRepository,
-            NotificationChannelRepository channelRepository,
-            NotificationAttemptService attemptService,
-            NotificationPreferenceService preferenceService,
-            AlertNotificationProperties properties,
-            ObjectMapper objectMapper,
-            NotificationProviderRegistry providerRegistry,
-            MeterRegistry meterRegistry) {
-        this.alertRepository = alertRepository;
-        this.channelRepository = channelRepository;
-        this.attemptService = attemptService;
-        this.preferenceService = preferenceService;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-        this.providerRegistry = providerRegistry;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Scheduled(
             initialDelayString = "${app.alert.notifications.initial-delay-ms:5000}",
@@ -118,7 +100,8 @@ public class NotificationDeliveryWorker {
             attemptService.markDisabled(attempt.getId(), "Notification channel is disabled");
             return;
         }
-        if (!isTestDelivery(attempt) && !preferenceService.shouldDeliver(request, channel.getChannelType())) {
+        if (!isTestDelivery(attempt) && (!allowsRecipient(channel, request)
+                || !preferenceService.shouldDeliver(request, channel.getChannelType()))) {
             attemptService.markDisabled(attempt.getId(), "Suppressed by notification preferences");
             meterRegistry.counter(
                     "alert.notifications.deliveries",
@@ -196,6 +179,13 @@ public class NotificationDeliveryWorker {
         }
     }
 
+    boolean allowsRecipient(NotificationChannel channel, AlertNotificationRequest request) {
+        if (!"CONFIGURABLE_RULE".equals(request.alertType())) return true;
+        return request.ruleId() != null && channel.getAccountId().equals(request.accountId())
+                && readConfig(channel).get("configurableRuleIds") instanceof java.util.List<?> rules
+                && rules.contains(request.ruleId());
+    }
+
     private AlertNotificationRequest requestFor(NotificationAttempt attempt, NotificationChannel channel) {
         if (isTestDelivery(attempt)) {
             return AlertNotificationRequest.fromTestDelivery(
@@ -215,8 +205,9 @@ public class NotificationDeliveryWorker {
             return null;
         }
         if ("CONFIGURABLE_RULE".equals(alert.getAlertType())
-                && alert.getStatus() == com.voltcanary.alert.domain.AlertStatus.RESOLVED) {
-            attemptService.markDisabled(attempt.getId(), "Configurable rule alert is resolved");
+                && (alert.getStatus() == com.voltcanary.alert.domain.AlertStatus.RESOLVED
+                || channel.getUpdatedAt().isAfter(attempt.getCreatedAt()))) {
+            attemptService.markDisabled(attempt.getId(), "Configurable rule alert or channel changed");
             return null;
         }
         return AlertNotificationRequest.fromDeliveryAttempt(

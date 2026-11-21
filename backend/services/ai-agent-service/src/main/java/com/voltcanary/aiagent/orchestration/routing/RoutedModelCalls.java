@@ -15,6 +15,10 @@ import java.util.function.Consumer;
 /** A2 application seam; A3/A4 provide durable turns and real bounded context, A5 provides production skills. */
 public final class RoutedModelCalls {
     public interface WireAdapter extends BudgetedModelCalls.SingleExchange {
+        default JsonNode prepareContext(JsonNode request, AttemptLedger ledger, AttemptLedger.Turn turn,
+                RoutingPolicy policy, UUID callId, String phase) {
+            return request;
+        }
         /** Pure serialization of the complete model exchange, including options, schema/tools and mandatory dialogue.
          * SDK adapters may lower this losslessly to provider messages; reserve their framing allowance as well.
          * No I/O, semantic rewriting, truncation, fallback or retry is allowed here.
@@ -58,6 +62,14 @@ public final class RoutedModelCalls {
             Selection selection, Set<String> authorizedIntents, Set<String> capabilities,
             ModelRouting.Availability availability, AssistantTraceRecorder.Correlation correlation, WireAdapter adapter, ModelProposalRejected correction,
             Consumer<JsonNode> applicationCheck) {
+        return call(turn, callId, policyDocument, request, selection, authorizedIntents, capabilities, availability,
+                correlation, adapter, correction, applicationCheck, prepared -> { });
+    }
+
+    public JsonNode call(AttemptLedger.Turn turn, UUID callId, JsonNode policyDocument, JsonNode request,
+            Selection selection, Set<String> authorizedIntents, Set<String> capabilities,
+            ModelRouting.Availability availability, AssistantTraceRecorder.Correlation correlation, WireAdapter adapter,
+            ModelProposalRejected correction, Consumer<JsonNode> applicationCheck, Consumer<JsonNode> verifyAccess) {
         RoutingPolicy policy = validator.read("routingPolicy", policyDocument, RoutingPolicy.class);
         boolean planner = request.path("kind").asText().equals("planner.request");
         String responseDefinition;
@@ -86,10 +98,11 @@ public final class RoutedModelCalls {
             check = verifying ? response -> validateAssessment(request, response) : response -> registry.validateStep(request, response, authorizedIntents, capabilities);
         }
         ledger.open(turn, policy);
+        JsonNode prepared = adapter.prepareContext(request.deepCopy(), ledger, turn, policy, callId, selection.phase());
         var bodies = new HashMap<String, String>();
         var route = ModelRouting.select(policy, selection.profileId(), intent, selection.phase(), candidate -> {
-            String body = correction == null ? adapter.serialize(request.deepCopy(), responseSchema.deepCopy(), candidate.outputMode())
-                    : adapter.serializeCorrection(request.deepCopy(), responseSchema.deepCopy(), candidate.outputMode(), correction);
+            String body = correction == null ? adapter.serialize(prepared.deepCopy(), responseSchema.deepCopy(), candidate.outputMode())
+                    : adapter.serializeCorrection(prepared.deepCopy(), responseSchema.deepCopy(), candidate.outputMode(), correction);
             bodies.put(candidate.modelConfigId(), body);
             return ModelRouting.estimate(body, selection.outputIncludingReasoning(), selection.framingAllowance());
         }, availability, ledger.remainingCost(turn), selection.previousModel(), clock.instant());
@@ -97,30 +110,24 @@ public final class RoutedModelCalls {
         var attempt = new AttemptLedger.Attempt(callId, selection.phase(), planner ? null : request.path("stepId").asText(),
                 SkillRegistry.digest(body), policy.policyId(), policy.policyVersion(), skillVersion, "assistant-v2",
                 planner ? "dialogue-v1" : request.at("/context/projectionVersion").asText(), route,
-                selection.phase().equals("VERIFY") ? "OUTCOME_ASSESSMENT" : correction != null ? "FORMAT_CORRECTION" : selection.phase().equals("REPAIR") ? "DOMAIN_RECOVERY"
+                selection.phase().equals("VERIFY") ? "OUTCOME_ASSESSMENT" : correction != null ? "FORMAT_CORRECTION" : selection.phase().equals("REPAIR")
+                        ? ("OUTCOME".equals(request.at("/repair/category").asText()) ? "OUTCOME_RECOVERY" : "DOMAIN_RECOVERY")
                         : !request.at("/context/contextRequests").isEmpty() && request.at("/context/contextRequests").isArray() ? "CONTEXT_ACQUISITION" : "PRIMARY");
         return calls.call(turn, attempt, body, responseDefinition, correlation, adapter, proposal -> {
             check.accept(proposal);
             if (correction != null && planner && !proposal.path("supersedesGoalIds").equals(correction.proposal().path("supersedesGoalIds"))
                     && !proposal.path("supersedesGoalIds").isEmpty()) throw new ModelRouting.Stop("TECHNICAL_REPAIR_CANNOT_SUPERSEDE_GOALS");
             applicationCheck.accept(proposal);
-        });
+        }, () -> verifyAccess.accept(prepared));
     }
 
     private void validateAssessment(JsonNode request, JsonNode response) {
-        var sources = new HashMap<String, String>();
-        sources.put(request.path("messageId").asText(), request.path("message").asText());
-        for (var message : request.at("/context/dialogue/messages"))
-            if (message.path("role").asText().equals("USER")) sources.put(message.path("messageId").asText(), message.path("text").asText());
         var candidates = new java.util.ArrayList<JsonNode>();
         for (var loaded : request.path("loadResults")) if (loaded.path("loaderId").asText().equals("verification.candidate")) candidates.add(loaded.path("data"));
         if (candidates.size() != 1 || !response.path("candidateDigest").equals(candidates.getFirst().path("candidateDigest")))
             throw new ModelRouting.Stop("ASSESSMENT_CANDIDATE_CHANGED");
-        for (var check : response.path("checks")) {
-            String source = sources.get(check.path("sourceMessageId").asText());
-            if (source == null || !source.contains(check.path("sourceQuote").asText()))
-                throw new ModelRouting.Stop("ASSESSMENT_SOURCE_EVIDENCE_INVALID");
-        }
+        String violation = com.voltcanary.aiagent.orchestration.contract.AssessmentSources.violation(request, response);
+        if (violation != null) throw new ModelRouting.Stop(violation);
     }
 
     /** Consultation exchanges use the original plan/turn reservation and the same single-exchange transport. */
@@ -128,7 +135,8 @@ public final class RoutedModelCalls {
             com.voltcanary.aiagent.orchestration.collaboration.ConsultationContracts contracts,
             com.voltcanary.aiagent.orchestration.collaboration.Consultations.Task task,
             com.voltcanary.aiagent.orchestration.collaboration.Requirements.Snapshot requirements,
-            java.util.Map<UUID, JsonNode> inputs, Set<UUID> authorizedEvidence, ModelRouting.Availability availability,
+            java.util.Map<UUID, JsonNode> inputs, java.util.List<JsonNode> childResults, java.util.List<JsonNode> loaderResults,
+            Set<UUID> authorizedEvidence, ModelRouting.Availability availability,
             AssistantTraceRecorder.Correlation correlation, WireAdapter adapter) {
         if (!"CONSULT".equals(selection.phase()) || !turn.planId().equals(requirements.planId())
                 || task.assignment() == null || !turn.turnId().equals(task.assignment().originatingTurnId())) {
@@ -138,8 +146,11 @@ public final class RoutedModelCalls {
         var role = contracts.role(task.request());
         var request = com.voltcanary.aiagent.orchestration.collaboration.ConsultationPrompt.request(mapper, task, role, requirements, inputs);
         ((com.fasterxml.jackson.databind.node.ObjectNode) request).set("capabilities", contracts.capabilities(role));
+        if (!childResults.isEmpty()) ((com.fasterxml.jackson.databind.node.ObjectNode) request).set("childResults", mapper.valueToTree(childResults));
+        if (!loaderResults.isEmpty()) ((com.fasterxml.jackson.databind.node.ObjectNode) request).set("loaderResults", mapper.valueToTree(loaderResults));
         validator.parse(request.toString());
-        var schema = com.voltcanary.aiagent.orchestration.collaboration.ConsultationPrompt.responseSchema(validator, role);
+        var schema = com.voltcanary.aiagent.orchestration.collaboration.ConsultationPrompt.responseSchema(
+                validator, role, task, requirements, authorizedEvidence);
         ledger.open(turn, policy);
         var bodies = new HashMap<String, String>();
         var route = ModelRouting.select(policy, selection.profileId(), role.id(), "CONSULT", candidate -> {

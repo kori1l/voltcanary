@@ -38,6 +38,51 @@ are written. A fixture contract correction must not be counted as AI recovery or
 erase the earlier failed run. This qualifies integration only; existing A5/A6
 semantic, native-tool model-quality, UI and rollout gates remain open.
 
+## A5 first-pass diagnostic checkpoint
+
+Generate the case and budget manifest before connecting an account.
+
+```powershell
+python scripts/ai-first-pass-checkpoint.py --preflight-only --output artifacts/a5-preflight
+```
+
+The manifest fixes the two original dialogue families and two held-out
+paraphrases, one trial per case, and the total ceilings of 40 calls, 7,000,000
+estimated input tokens, 720,000 reserved output tokens, 4,000,000 reserved cost
+micros and 20 minutes. The reserved cost is an upper bound.
+
+Use an isolated AI service with `APP_AI_ORCHESTRATION_PROFILE=FIRST_PASS_DIAGNOSTIC`
+and the configured account's approved model. Check that
+`GET /ai-agent/orchestration/profile` returns `automaticCorrections=false`
+and `modelJudge=false`. The account file identifies `email`, `accountId`,
+`providerId`, `modelConfigId` and `modelId`. Supply authentication through
+`VOLT_EVAL_PASSWORD` or `VOLT_EVAL_ACCESS_TOKEN` and
+`VOLT_EVAL_REFRESH_TOKEN` in the process environment.
+
+On the isolated Compose stand, set `APP_AI_ORCHESTRATION_PROFILE` in the
+shell before recreating the AI service. Use the same Compose files and project
+name as the running stand.
+
+```powershell
+$env:APP_AI_ORCHESTRATION_PROFILE = 'FIRST_PASS_DIAGNOSTIC'
+docker compose --profile app up -d --no-deps ai-agent-service
+```
+
+After the run, set the previous profile in the shell and run the same Compose
+command. The Compose default is `STANDARD`.
+
+```powershell
+python scripts/ai-first-pass-checkpoint.py --account artifacts/a5-account.json --preflight-manifest artifacts/a5-preflight/predeclared.json --output artifacts/a5-first-pass-run
+```
+
+Use a fresh output directory. The script compares the frozen inputs before
+authentication. Inspect the trace accounting, case predicates and unchanged
+dashboard inventory after the run.
+Restore the previous profile on the isolated service and verify it through the
+same profile endpoint. Existing saved reviews, receipts and conversations
+remain readable when generation is disabled. The A5 task checklist records the
+separate Docker and browser evidence for actual confirmation and owner readback.
+
 ## Stage4 scenario follow-up, 2026-10-26
 
 The bounded stage4 corrective pass preserves failed dashboard task context,

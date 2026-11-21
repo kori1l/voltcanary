@@ -17,6 +17,53 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PrimaryPromptProjectionTest {
+    @Test void embeddingIndexAndQueryReplayFromTheDurableLedger() throws Exception {
+        var fixture = new IntentScenarioSupport();
+        var network = new java.util.concurrent.atomic.AtomicInteger();
+        var embeddings = new com.voltcanary.aiagent.port.CapabilityEmbeddings() {
+            public String identity() { return "durable-fixture"; }
+            public List<float[]> embed(List<String> texts) {
+                assertEquals((long) network.incrementAndGet(), fixture.jdbc.queryForObject(
+                        "select sum(calls) from ai_model_budget_plans", Long.class));
+                return texts.stream().map(text -> new float[]{1, 1}).toList();
+            }
+        };
+        var request = fixture();
+        request.put("message", "show map");
+        request.withObject("/loadResults/1/data/context").putArray("dashboardWidgetTypes")
+                .addObject().put("type", "vehicle-map");
+        var limits = new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Limits(
+                2L, 100_000L, 1_000L, 60_000L, 200L, "USD");
+        var candidate = new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Candidate(
+                "provider", "pinned", null, 100_000L, 90_000L, 1_000L, "JSON_TEXT", null);
+        var policy = new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.RoutingPolicy(
+                "assistant-v2", "routing.policy", "fixture", "1", "PINNED", "pinned",
+                List.of(new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.RoutingPolicyProfilesItem(
+                        "primary", List.of(), List.of("STEP"), List.of(candidate), false)), limits, limits,
+                "RESERVED_UPPER_BOUND", 100L, java.math.BigDecimal.ONE, null);
+        var turn = new com.voltcanary.aiagent.orchestration.routing.AttemptLedger.Turn(
+                fixture.session.owner(), fixture.conversation, java.util.UUID.randomUUID(), java.util.UUID.randomUUID());
+        var call = java.util.UUID.randomUUID();
+        var config = new AiModelConfig();
+        config.setModelId("fixture");
+        var selected = new AiResolvedModel(null, config, "unused");
+        var first = new PrimaryModelTransport(mapper, selected, null, null,
+                new com.voltcanary.aiagent.service.WidgetCatalogueSearch(mapper, embeddings));
+        var ledger = fixture.ledger();
+        ledger.open(turn, policy);
+        var prepared = first.prepareContext(request.deepCopy(), ledger, turn, policy, call, "STEP");
+        assertEquals("HYBRID", prepared.at("/loadResults/1/data/context/widgetCapabilityMatches/mode").asText());
+        assertEquals(2, network.get());
+
+        var restarted = new PrimaryModelTransport(mapper, selected, null, null,
+                new com.voltcanary.aiagent.service.WidgetCatalogueSearch(mapper, embeddings));
+        assertEquals(prepared, restarted.prepareContext(request.deepCopy(), fixture.ledger(), turn, policy, call, "STEP"));
+        assertEquals(2, network.get());
+        assertEquals(2L, fixture.jdbc.queryForObject(
+                "select count(*) from ai_model_budget_attempts where status='SUCCEEDED' and usage_json is not null", Long.class));
+        assertEquals(0, ledger.remainingCost(turn));
+    }
+
     @Test void dashboardWriterRetrievesOnceWithoutRemovingContractsOrLeakingHintsToAssessor() throws Exception {
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         var embeddings = new com.voltcanary.aiagent.port.CapabilityEmbeddings() {
@@ -38,18 +85,52 @@ class PrimaryPromptProjectionTest {
                 .put("key", "showMapNotices").put("label", "Show notices");
         var before = request.deepCopy();
         var validator = new ProtocolValidator(mapper);
+        var ledger = org.mockito.Mockito.mock(com.voltcanary.aiagent.orchestration.routing.AttemptLedger.class);
+        var turn = new com.voltcanary.aiagent.orchestration.routing.AttemptLedger.Turn(null, null, null, java.util.UUID.randomUUID());
+        org.mockito.Mockito.when(ledger.reserve(org.mockito.ArgumentMatchers.eq(turn), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.voltcanary.aiagent.orchestration.routing.AttemptLedger.Receipt(true, "STARTED", null));
+        var policy = new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.RoutingPolicy(
+                "assistant-v2", "routing.policy", "fixture", "1", "PINNED", null, List.of(), null, null,
+                "RESERVED_UPPER_BOUND", 100L, null, null);
+        var unprepared = mapper.readTree(transport.serialize(request, validator.projection("stepResponse"), "JSON_TEXT"));
+        assertFalse(mapper.readTree(unprepared.path("input").asText()).at("/loadResults/1/data/context").has("widgetCapabilityMatches"));
+        assertEquals(0, calls.get());
+        var prepared = transport.prepareContext(request.deepCopy(), ledger, turn, policy, java.util.UUID.randomUUID(), "STEP");
         for (int i = 0; i < 2; i++) {
-            var body = mapper.readTree(transport.serialize(request, validator.projection("stepResponse"), "JSON_TEXT"));
+            var body = mapper.readTree(transport.serialize(prepared, validator.projection("stepResponse"), "JSON_TEXT"));
             var input = mapper.readTree(body.path("input").asText());
             assertEquals(catalogue, input.at("/loadResults/1/data/context/dashboardWidgetTypes"));
             assertEquals("HYBRID", input.at("/loadResults/1/data/context/widgetCapabilityMatches/mode").asText());
         }
         assertEquals(2, calls.get());
-        var assessment = mapper.readTree(transport.serialize(request, validator.projection("assessmentResponse"), "JSON_TEXT"));
+        org.mockito.Mockito.verify(ledger, org.mockito.Mockito.times(2)).reserve(org.mockito.ArgumentMatchers.eq(turn), org.mockito.ArgumentMatchers.any());
+        var assessment = mapper.readTree(transport.serialize(prepared, validator.projection("assessmentResponse"), "JSON_TEXT"));
         var assessmentInput = mapper.readTree(assessment.path("input").asText());
         assertFalse(assessmentInput.at("/loadResults/1/data/context").has("widgetCapabilityMatches"));
         assertEquals(2, calls.get());
         assertEquals(before, request);
+
+        var deniedTurn = new com.voltcanary.aiagent.orchestration.routing.AttemptLedger.Turn(null, null, null, java.util.UUID.randomUUID());
+        org.mockito.Mockito.when(ledger.reserve(org.mockito.ArgumentMatchers.eq(deniedTurn), org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new com.voltcanary.aiagent.orchestration.routing.ModelRouting.Stop("CALL_BUDGET_EXHAUSTED"));
+        var denied = transport.prepareContext(request.deepCopy(), ledger, deniedTurn, policy, java.util.UUID.randomUUID(), "STEP");
+        assertEquals("LEXICAL_ONLY", denied.at("/loadResults/1/data/context/widgetCapabilityMatches/mode").asText());
+        assertEquals(2, calls.get());
+    }
+
+    @Test void plannerProjectsOnlyLiveCoveringStepsForPendingGoals() throws Exception {
+        var request = mapper.readTree("""
+                {"planSummary":{"goals":[{"goalId":"keep","disposition":"PENDING"},{"goalId":"done","disposition":"SATISFIED"}],
+                 "steps":[{"stepId":"live","status":"PREPARING","goalIds":["keep"]},
+                          {"stepId":"old","status":"SUPERSEDED","goalIds":["keep"],"dependsOn":["live"]},
+                          {"stepId":"cancelled","status":"CANCELLED","goalIds":["keep"],"dependsOn":["old"]}]}}
+                """);
+        var projected = new com.voltcanary.aiagent.adapter.PrimaryPlannerProjection(mapper, request,
+                new ProtocolValidator(mapper).projection("plannerResponse")).request();
+        assertEquals(mapper.readTree("[{\"goalId\":\"keep\",\"coveringStepIds\":[\"live\"]}]"),
+                projected.path("pendingGoalCoverage"));
+        assertEquals(request.path("planSummary"), projected.path("planSummary"));
+        assertEquals(mapper.readTree("[\"old\",\"cancelled\"]"), projected.at("/supersessionImpact/live"));
     }
 
     @Test void explicitReviewSeedsTheWorkSubjectOfAnIndependentConversation() {
@@ -64,14 +145,47 @@ class PrimaryPromptProjectionTest {
     @Test void editBoundaryKeepsExactCurrentTextAndAcceptedIdentityWithoutParsingProse() {
         var request = mapper.createObjectNode().put("kind", "step.request").put("messageId", "message-3")
                 .put("message", "Use this new caption; leave the other choices unchanged.");
-        request.putObject("context").putArray("goals").addObject().put("goalId", "retained");
-        var base = request.putArray("loadResults").addObject().put("loaderId", "review.base").putObject("data").put("reviewId", "accepted");
-        base.putArray("actions").addObject().put("tool", "CREATE_DASHBOARD").putObject("parameters").putObject("definition").put("name", "Existing name");
+        var context = request.putObject("context");
+        var goals = context.putArray("goals");
+        goals.addObject().put("goalId", "retained").put("disposition", "PENDING").put("sourceMessageId", "message-1");
+        goals.addObject().put("goalId", "same-source").put("disposition", "PENDING").put("sourceMessageId", "message-1");
+        goals.addObject().put("goalId", "new").put("disposition", "PENDING").put("sourceMessageId", "message-3");
+        goals.addObject().put("goalId", "other").put("disposition", "PENDING").put("sourceMessageId", "message-2");
+        var messages = context.putObject("dialogue").putArray("messages");
+        messages.addObject().put("messageId", "message-1").put("role", "USER").put("text", "Keep the original chart");
+        messages.addObject().put("messageId", "message-2").put("role", "ASSISTANT").put("text", "Previous proposal");
+        var loads = request.putArray("loadResults");
+        var base = loads.addObject().put("loaderId", "review.base").putObject("data").put("reviewId", "accepted");
+        var action = base.putArray("actions").addObject().put("tool", "CREATE_DASHBOARD");
+        action.putObject("parameters").putObject("definition").put("name", "Existing name");
+        var widgets = action.putObject("currentWidgetInventory").putArray("widgets");
+        action.withObject("/currentWidgetInventory").putObject("order").putArray("desktop")
+                .add("speed-chart").add("speed-card").add("another-speed-card");
+        widgets.addObject().put("role", "CURRENT").put("fieldKey", "speedKmh").put("key", "speed-card");
+        widgets.addObject().put("role", "HISTORY").put("fieldKey", "speedKmh").put("key", "speed-chart");
+        widgets.addObject().put("role", "CURRENT").put("fieldKey", "speedKmh").put("key", "another-speed-card");
+        loads.addObject().put("loaderId", "workflow.context").putObject("data").putObject("context").put("requestedDashboardName", "Requested name");
         PrimaryPromptProjection.changeContext(request);
         assertEquals("message-3", request.at("/changeRequest/sourceMessageId").asText());
         assertEquals(request.path("message"), request.at("/changeRequest/text"));
         assertEquals("Existing name", request.at("/changeRequest/acceptedName").asText());
+        assertEquals("Requested name", request.at("/changeRequest/requestedName").asText());
+        assertEquals(mapper.createArrayNode().add("speed-card").add("another-speed-card"),
+                request.at("/changeRequest/widgetKeysByRoleAndField/CURRENT/speedKmh"));
+        assertEquals(mapper.createArrayNode().add("speed-chart"),
+                request.at("/changeRequest/widgetKeysByRoleAndField/HISTORY/speedKmh"));
+        assertEquals(mapper.createArrayNode().add("speed-chart").add("speed-card").add("another-speed-card"),
+                request.at(request.at("/changeRequest/widgetOrderRef").asText()).path("desktop"));
         assertEquals("retained", request.at(request.at("/changeRequest/retainedGoalsRef").asText()).at("/0/goalId").asText());
+        assertEquals("Keep the original chart",
+                request.at(request.at("/changeRequest/pendingGoalSources/retained").asText()).path("text").asText());
+        assertEquals("/changeRequest", request.at("/changeRequest/pendingGoalSources/new").asText());
+        assertFalse(request.at("/changeRequest/pendingGoalSources").has("other"));
+        var retained = request.at("/changeRequest/retainedRequests");
+        assertEquals(1, retained.size());
+        assertEquals("message-1", retained.at("/0/sourceMessageId").asText());
+        assertEquals("Keep the original chart", retained.at("/0/text").asText());
+        assertEquals(mapper.createArrayNode().add("retained").add("same-source"), retained.at("/0/goalIds"));
     }
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -114,6 +228,7 @@ class PrimaryPromptProjectionTest {
             assertEquals(oldInventory.at("/widgets/0/" + field), inventory.at("/widgets/0/" + field));
         }
         assertEquals(oldInventory.path("order"), inventory.path("order"));
+        assertEquals("measurement", inventory.at("/widgets/0/fieldKey").asText());
         assertFalse(inventory.at("/widgets/0").has("binding"));
         assertFalse(request.at("/loadResults/1/data/context").has("previousDashboardIntent"));
         assertEquals(before.at("/loadResults/1/data/context/dashboardDraftTarget"), request.at("/loadResults/1/data/context/dashboardDraftTarget"));
@@ -152,6 +267,11 @@ class PrimaryPromptProjectionTest {
         var loader = contract.putArray("loaders").addObject().put("loaderId", "workflow.context").put("argumentsSchemaId", "workflow:args:1");
         loader.putObject("argumentsSchema").put("description", "AUTHORIZED_ARGUMENTS");
         loader.putObject("resultSchema").put("description", "REDUNDANT_RESULT_SCHEMA");
+        String requestedName = "Новое точное название";
+        var workflow = request.withObject("/loadResults/1/data");
+        workflow.withObject("/context").put("requestedDashboardName", requestedName);
+        workflow.set("operationSchema", DashboardSkillContract.schema(mapper, DashboardSkillContract.REFINE,
+                java.util.Map.of("requestedDashboardName", requestedName)));
         var before = request.deepCopy();
         var schema = registry.responseProjection(DashboardSkillContract.REFINE, Set.of(DashboardSkillContract.REFINE), Set.of());
         for (String mode : List.of("JSON_TEXT", "STRICT_JSON", "NATIVE_TOOLS")) {
@@ -166,6 +286,18 @@ class PrimaryPromptProjectionTest {
                 assertTrue(body.path("instructions").asText().contains(required));
             }
             assertEquals(mode.equals("JSON_TEXT"), body.path("instructions").asText().contains("Response schema:"));
+            assertEquals(requestedName, input.at("/changeRequest/requestedName").asText());
+            var wire = switch (mode) {
+                case "JSON_TEXT" -> mapper.readTree(body.path("instructions").asText()
+                        .split("Response schema:\\R", 2)[1].lines().findFirst().orElseThrow());
+                case "STRICT_JSON" -> body.at("/text/format/schema");
+                default -> body.at("/tools/0/parameters");
+            };
+            var variants = wire.at("/$defs/command/properties/payload/properties/operations/items/anyOf");
+            var rename = java.util.stream.StreamSupport.stream(variants.spliterator(), false)
+                    .filter(variant -> "rename_dashboard".equals(variant.at("/properties/op/enum/0").asText()))
+                    .findFirst().orElseThrow();
+            assertEquals(mapper.createArrayNode().add(requestedName), rename.at("/properties/name/enum"));
             assertEquals(before, request);
         }
     }

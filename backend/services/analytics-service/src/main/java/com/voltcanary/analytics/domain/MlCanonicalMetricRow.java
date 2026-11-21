@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_canonical_metric_rows")
+@Getter
+@Setter
 public class MlCanonicalMetricRow {
     @Id
     private UUID id;
@@ -54,44 +58,4 @@ public class MlCanonicalMetricRow {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public MlDatasetSourceType getSourceType() { return sourceType; }
-    public void setSourceType(MlDatasetSourceType sourceType) { this.sourceType = sourceType; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public String getExternalDeviceKey() { return externalDeviceKey; }
-    public void setExternalDeviceKey(String externalDeviceKey) { this.externalDeviceKey = externalDeviceKey; }
-    public String getVirtualDeviceKey() { return virtualDeviceKey; }
-    public void setVirtualDeviceKey(String virtualDeviceKey) { this.virtualDeviceKey = virtualDeviceKey; }
-    public String getDeviceType() { return deviceType; }
-    public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
-    public String getSourceId() { return sourceId; }
-    public void setSourceId(String sourceId) { this.sourceId = sourceId; }
-    public String getSensorId() { return sensorId; }
-    public void setSensorId(String sensorId) { this.sensorId = sensorId; }
-    public Instant getTimestamp() { return timestamp; }
-    public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
-    public String getMetricName() { return metricName; }
-    public void setMetricName(String metricName) { this.metricName = metricName; }
-    public String getCanonicalMetricName() { return canonicalMetricName; }
-    public void setCanonicalMetricName(String canonicalMetricName) { this.canonicalMetricName = canonicalMetricName; }
-    public double getNumericValue() { return numericValue; }
-    public void setNumericValue(double numericValue) { this.numericValue = numericValue; }
-    public String getRawUnit() { return rawUnit; }
-    public void setRawUnit(String rawUnit) { this.rawUnit = rawUnit; }
-    public String getCanonicalUnit() { return canonicalUnit; }
-    public void setCanonicalUnit(String canonicalUnit) { this.canonicalUnit = canonicalUnit; }
-    public String getQualityFlags() { return qualityFlags; }
-    public void setQualityFlags(String qualityFlags) { this.qualityFlags = qualityFlags; }
-    public String getMetadataJson() { return metadataJson; }
-    public void setMetadataJson(String metadataJson) { this.metadataJson = metadataJson; }
-    public String getSourceLineage() { return sourceLineage; }
-    public void setSourceLineage(String sourceLineage) { this.sourceLineage = sourceLineage; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

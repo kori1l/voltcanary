@@ -6,16 +6,14 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsMlRecommendationService {
 
     private final AnalyticsPredictionTraceService traceService;
-
-    public AnalyticsMlRecommendationService(AnalyticsPredictionTraceService traceService) {
-        this.traceService = traceService;
-    }
 
     public List<Recommendation> mlRecommendations(UUID deviceId, PredictionResult prediction, Instant now) {
         if (prediction == null || prediction.getPredictionJson() == null) {

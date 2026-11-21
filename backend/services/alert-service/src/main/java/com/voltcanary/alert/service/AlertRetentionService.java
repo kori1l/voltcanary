@@ -9,15 +9,16 @@ import com.voltcanary.alert.scheduling.SchedulerLockService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AlertRetentionService {
 
-    private static final Logger log = LoggerFactory.getLogger(AlertRetentionService.class);
     private static final String LOCK_NAME = "alert.retention-cleanup";
     private static final Duration LOCK_LEASE = Duration.ofMinutes(30);
 
@@ -27,21 +28,6 @@ public class AlertRetentionService {
     private final NotificationAttemptRepository notificationAttemptRepository;
     private final MeterRegistry meterRegistry;
     private final SchedulerLockService schedulerLockService;
-
-    public AlertRetentionService(
-            AlertRetentionProperties properties,
-            AlertRepository alertRepository,
-            AlertEventRepository alertEventRepository,
-            NotificationAttemptRepository notificationAttemptRepository,
-            MeterRegistry meterRegistry,
-            SchedulerLockService schedulerLockService) {
-        this.properties = properties;
-        this.alertRepository = alertRepository;
-        this.alertEventRepository = alertEventRepository;
-        this.notificationAttemptRepository = notificationAttemptRepository;
-        this.meterRegistry = meterRegistry;
-        this.schedulerLockService = schedulerLockService;
-    }
 
     @Scheduled(
             initialDelayString = "${app.alert.retention.initial-delay-ms:300000}",

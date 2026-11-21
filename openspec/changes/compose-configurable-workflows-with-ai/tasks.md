@@ -3,7 +3,7 @@
 Priority 2026-11-11: [AI-first](../README.md#ai-first-execution-priority).
 Tasks100.1–100.2/101.* and applicable102.* join the library-backed agent slice
 after its compatibility gate;100.3 knowledge/RAG remains later. Scheduler work
-in100.2/102.2 uses [the LangGraph4j change](../adopt-langgraph4j-agent-orchestration/tasks.md),
+in100.2/102.2 uses [the LangGraph4j change](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/tasks.md),
 not a second custom execution engine. Broad1.1–1.6/3.1 still require real owners.
 This reorder checks no implementation task and preserves all existing evidence.
 
@@ -27,12 +27,21 @@ Ignored evidence: artifacts/g7-native-*. No live/paid model campaign was run.
 - [ ] 1.3 Implement schema/record/ref/map/derivation/rule proposals and shared dry-run/review/apply receipts.
 - [ ] 1.4 Integrate bounded research jobs and A2-backed qualified per-skill profiles without hidden escalation.
 - [ ] 1.5 Test novel schemas, compound local refs, user facts, reload/replay, partial failure and cross-account denial.
-- [ ] 1.6 Reuse V/R acceptance and shared renderer; keep model quality gates open until independent qualification.
+- [ ] 1.6 Reuse V/R acceptance and the shared renderer. Record reproducible workflow inputs, expected persisted effects, preservation and access checks, and trace references for the final A6 qualification.
 
 
 - [ ] 3.1 Implement owner reservations, DRAFT_ONLY previews, exact receipt resolution and A64/A66 without a second ledger.
 
 ## 100. Requirements, consultation and retrieval integration
+
+Reuse the registered text-name slot, atomic question/answer commit, bounded
+consultation subgraphs, revision fences and shared chat ledger verified by
+[LangGraph4j adoption](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md#supported-scope-acceptance-inventory).
+Keep these tasks open for the wider configured-resource scope. Map each supported
+role and slot to its owner and acceptance case. Verify multi-slot conflict and
+staleness, additional scoped loaders and role contracts, and any enabled
+embedding/reranking reservations through the same runtime. Task 102.2 owns
+independent worker wakeup and durable scheduler acceptance.
 
 - [ ] 100.1 Implement typed requirement slots, source-message bindings, conflict/stale propagation and one root question arbiter; verify AI01/AI02/AI04.
 - [ ] 100.2 Implement consultation registry/DTOs and bounded nested consultation semantics through the single qualified LangGraph4j runtime, replay/cancel/revision fences and shared CHAT/EMBED/RERANK reservations; verify AI03/AI05/AI06. Graph/checkpoint mechanics are owned by adopt-langgraph4j-agent-orchestration/2.4, not a second scheduler.

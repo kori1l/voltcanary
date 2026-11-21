@@ -3,25 +3,20 @@ package com.voltcanary.dashboard.controller;
 import com.voltcanary.dashboard.port.DashboardOwnership;
 import com.voltcanary.dashboard.templates.DashboardTaskTemplates;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardTemplateController {
     private final DashboardOwnership ownership;
     private final DashboardTaskTemplates templates;
     private final com.voltcanary.dashboard.templates.DashboardTemplatePreparation preparation;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
     private final com.voltcanary.dashboard.application.DefinitionValidation validation;
-    public DashboardTemplateController(DashboardOwnership ownership, DashboardTaskTemplates templates,
-            com.voltcanary.dashboard.templates.DashboardTemplatePreparation preparation,
-            com.fasterxml.jackson.databind.ObjectMapper mapper, com.voltcanary.dashboard.application.DefinitionValidation validation) {
-        this.ownership = ownership; this.templates = templates;
-        this.preparation = preparation;
-        this.mapper = mapper;
-        this.validation = validation;
-    }
+
     @GetMapping("/dashboard-templates")
     public List<DashboardTaskTemplates.Template> list(@RequestHeader(value = "Authorization", required = false) String authorization) {
         ownership.resolveReadOnly(authorization);

@@ -59,6 +59,7 @@ class RuleCompilationSnapshotsTest {
     private int journalPageSize = 1;
     private String unknownSubjectCheckpoint;
     private String journalRecordedAt = "2026-11-05T00:00:03Z";
+    private java.util.function.Consumer<ObjectNode> augmentObservation = row -> { };
 
     @BeforeEach void start() throws Exception {
         String expires = Instant.now().plusSeconds(3600).truncatedTo(ChronoUnit.MICROS).toString();
@@ -248,6 +249,334 @@ class RuleCompilationSnapshotsTest {
 
     private RuleCompilationSnapshot captureJournal() {
         return snapshots.captureJournal(AUTH, ACTOR, ACCOUNT, document(), 10);
+    }
+
+    @Test void publicCompilationPersistsOwnerValidatedDirectBundles() throws Exception {
+        var definition = (ObjectNode) source.path("definition");
+        definition.putObject("sampleHold").put("version", "bounded-sample-hold-1").put("maxHoldUs", "2000000");
+        var startField = UUID.randomUUID().toString();
+        var endField = UUID.randomUUID().toString();
+        definition.putObject("intervalReport").put("version", "interval-end-event-time-1")
+                .put("startKey", "start").put("endKey", "end").put("maxSpanUs", "10000000");
+        var mappings = definition.putArray("fieldMappings");
+        for (var key : List.of("start", "end")) {
+            var id = key.equals("start") ? startField : endField;
+            ((com.fasterxml.jackson.databind.node.ArrayNode) definition.path("fields")).addObject()
+                    .put("id", id).put("label", key).put("type", "INSTANT").put("nullable", true);
+            mappings.addObject().put("sourceKey", key).put("sourceType", "instant").put("fieldId", id).put("vclReady", true);
+            ((com.fasterxml.jackson.databind.node.ArrayNode) grant.at("/definition/sourceBindings/0/fieldIds")).add(id);
+        }
+        grant.put("definitionDigest", hash(grant.path("definition")));
+        policy.put("grantDefinitionDigest", grant.path("definitionDigest").textValue());
+        source.put("definitionDigest", hash(definition));
+        var journal = journalResponse();
+        UUID proof = UUID.randomUUID();
+        var from = Instant.parse("2026-11-05T00:00:00Z");
+        var until = from.plusSeconds(5);
+        var coverage = JSON.createObjectNode().put("proofId", proof.toString())
+                .put("inputGeneration", journal.path("inputGeneration").textValue())
+                .put("snapshotId", journal.at("/pin/snapshotId").textValue())
+                .put("coverage", "COVERED").putNull("reason").put("requiredCheckpoint", "5")
+                .put("acceptedAt", until.toString());
+        coverage.putObject("evidence").put("proofId", proof.toString())
+                .put("inputGeneration", journal.path("inputGeneration").textValue())
+                .put("from", from.toString()).put("until", until.toString()).put("eventTimeBasis", "SOURCE_EVENT_TIME_V1")
+                .putObject("position").put("epoch", UUID.randomUUID().toString()).put("sequence", "5");
+        responses.put("/data/source-bindings/" + BINDING + "/coverage/" + proof, coverage);
+        var database = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
+        TemporalRuntimeContract.migrate(database);
+        var properties = new AnalyticsDownstreamProperties();
+        properties.getDeviceService().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        properties.getAlertService().setBaseUrl(properties.getDeviceService().getBaseUrl());
+        var service = new ReviewedRuleCutovers(database, snapshots, JacksonRestClients.builder(), properties);
+        var request = JSON.createObjectNode();
+        request.set("document", document().json());
+        request.putObject("readSet").put("account", ACCOUNT.toString()).put("binding", BINDING.toString())
+                .put("schemaRevision", 1).put("proofId", proof.toString()).put("from", from.toString()).put("boundary", until.toString());
+        var http = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+                new com.voltcanary.analytics.controller.ReviewedRuleCutoversController(service))
+                .setMessageConverters(new org.springframework.http.converter.ByteArrayHttpMessageConverter(),
+                        new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(
+                                JSON.copy().findAndRegisterModules())).build();
+        var post = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/analytics/configurable-rules/compilations")
+                .header("Authorization", AUTH).header("X-User-Id", ACTOR)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        var response = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        var receipt = PARSER.readJson(response.getContentAsByteArray());
+        UUID reviewId = UUID.randomUUID();
+        var apply = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/analytics/configurable/rule-cutovers/{reviewId}/apply", reviewId)
+                .header("Authorization", AUTH).header("X-User-Id", ACTOR)
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        var substituted = ((ObjectNode) receipt.path("checkpoint")).deepCopy();
+        substituted.set("document", request.path("document"));
+        var invalidApply = http.perform(apply.content(substituted.toString())).andReturn().getResponse();
+        assertEquals(400, invalidApply.getStatus(), invalidApply.getContentAsString());
+        assertEquals("RULE_APPLY_REQUEST_INVALID", PARSER.readJson(invalidApply.getContentAsByteArray()).path("code").asText());
+        var intent = new com.voltcanary.vcl.VclRuleCutoverIntent(RULE, GRANT, null, UUID.randomUUID(),
+                UUID.fromString(receipt.path("bundleId").asText()), receipt.path("bundleDigest").asText(),
+                receipt.at("/checkpoint/digest").asText());
+        var confirmed = JSON.createObjectNode().put("id", reviewId.toString()).put("accountId", ACCOUNT.toString())
+                .put("actorId", ACTOR.toString()).put("grantEpoch", 1).put("confirmedAt", until.toString())
+                .put("reviewDigest", intent.reviewDigest(ACCOUNT, ACTOR, reviewId, 1));
+        confirmed.set("intent", JSON.valueToTree(intent));
+        responses.put("/alert-rules/configurable/cutover-reviews/" + reviewId + "/confirmed", confirmed);
+        var stale = ((ObjectNode) receipt.path("checkpoint")).deepCopy().put("digest", "0".repeat(64));
+        var staleApply = http.perform(apply.content(stale.toString())).andReturn().getResponse();
+        assertEquals(409, staleApply.getStatus(), staleApply.getContentAsString());
+        assertEquals("START_CHECKPOINT_CHANGED", PARSER.readJson(staleApply.getContentAsByteArray()).path("code").asText());
+        journalRecordedAt = from.plusSeconds(6).toString();
+        augmentObservation = row -> {
+            var values = (com.fasterxml.jackson.databind.node.ArrayNode) row.path("fields");
+            unknownField(values, startField, "INSTANT");
+            unknownField(values, endField, "INSTANT");
+        };
+        var sustainedPreview = rulePreview(http, "window-preview", receipt, "condition", from, until, null, null);
+        assertEquals("OK", sustainedPreview.at("/result/status").textValue());
+        assertTrue(sustainedPreview.at("/result/literal/value").booleanValue(), sustainedPreview.toString());
+        assertEquals(2, sustainedPreview.at("/result/evidence").size());
+        UUID bundleId = UUID.fromString(receipt.path("bundleId").textValue());
+        var saved = new JdbcCompilationBundleStore(database).find(ACCOUNT, bundleId).orElseThrow();
+        assertEquals(receipt.path("bundleDigest").textValue(), saved.digest());
+        var replay = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, replay.getStatus(), replay.getContentAsString());
+        assertEquals(receipt, PARSER.readJson(replay.getContentAsByteArray()));
+        assertEquals(receipt.at("/checkpoint/digest").textValue(), saved.json().at("/ownerValidation/execution/snapshotSetDigest").textValue());
+        request.set("document", windowRule().json());
+        var window = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, window.getStatus(), window.getContentAsString());
+        var windowReceipt = PARSER.readJson(window.getContentAsByteArray());
+        var aggregatePreview = rulePreview(http, "window-preview", windowReceipt, "aggregate", from, until, null, null);
+        assertEquals("OK", aggregatePreview.at("/result/status").textValue());
+        assertEquals("4", aggregatePreview.at("/result/literal/value").textValue());
+        var savedWindow = new JdbcCompilationBundleStore(database)
+                .find(ACCOUNT, UUID.fromString(windowReceipt.path("bundleId").textValue())).orElseThrow();
+        assertEquals(windowReceipt.path("bundleDigest").textValue(), savedWindow.digest());
+        assertEquals(3L * com.voltcanary.analytics.vcl.KeyedStateStore.MAX_STATE_BYTES,
+                savedWindow.json().at("/ownerValidation/cost/stateBytes").longValue());
+        var interval = windowRule().json();
+        var operator = (ObjectNode) interval.at("/spec/nodes/2");
+        operator.put("method", "interval_union_window");
+        var measure = operator.at("/config/measureFieldId").textValue();
+        var config = operator.putObject("config").put("subjectFieldId", SUBJECT.toString())
+                .put("startFieldId", startField).put("endFieldId", endField).put("timezone", "UTC")
+                .put("window", "LOCAL_DAY").put("emit", "ON_CLOSE").put("measureFieldId", measure);
+        config.putObject("includeWhere").put("op", "FIELD").put("fieldId", FLAG.toString());
+        config.putObject("excludeWhere").put("op", "CALL").put("method", "not").putArray("args")
+                .addObject().put("op", "FIELD").put("fieldId", FLAG.toString());
+        ((ObjectNode) interval.at("/spec/nodes/3/config/predicate/args/1/literal")).put("type", "DURATION");
+        request.set("document", interval);
+        var intervalResponse = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, intervalResponse.getStatus(), intervalResponse.getContentAsString());
+        augmentObservation = row -> {
+            int checkpoint = row.path("checkpoint").asInt();
+            var values = (com.fasterxml.jackson.databind.node.ArrayNode) row.path("fields");
+            ((ObjectNode) values.get(1)).put("value", checkpoint != 3);
+            int[] startOffsets = {0, 0, 2, 1, 4};
+            instantField(values, startField, from.plusSeconds(startOffsets[checkpoint - 1]));
+            instantField(values, endField, from.plusSeconds(checkpoint));
+        };
+        var intervalReceipt = PARSER.readJson(intervalResponse.getContentAsByteArray());
+        var workDuration = rulePreview(http, "window-preview", intervalReceipt, "aggregate", from,
+                from.plusSeconds(86_400), null, null);
+        assertEquals("OK", workDuration.at("/result/status").textValue());
+        assertEquals("DURATION", workDuration.at("/result/literal/type").textValue());
+        assertEquals("4000000", workDuration.at("/result/literal/value").textValue());
+        var session = document().json();
+        var sessionNodes = (com.fasterxml.jackson.databind.node.ArrayNode) session.at("/spec/nodes");
+        sessionNodes.remove(1);
+        ((ObjectNode) sessionNodes.get(1).path("inputs")).put("decisions", "absence");
+        var opening = sessionNodes.addObject().put("id", "session").put("method", "window_session");
+        opening.putObject("inputs").put("events", "source");
+        var sessionConfig = opening.putObject("config").put("subjectFieldId", SUBJECT.toString())
+                .put("occurrenceFieldId", SUBJECT.toString()).put("maxDurationUs", "10000000");
+        sessionConfig.putObject("startWhen").put("op", "FIELD").put("fieldId", FLAG.toString());
+        sessionConfig.putObject("closeWhen").put("op", "CONST").putObject("literal")
+                .put("type", "BOOLEAN").put("value", true);
+        var witness = sessionNodes.addObject().put("id", "witness").put("method", "observed_within");
+        witness.putObject("inputs").put("sessions", "session");
+        witness.putObject("config").put("minimumDurationUs", "1000000")
+                .putObject("predicate").put("op", "FIELD").put("fieldId", FLAG.toString());
+        var absence = sessionNodes.addObject().put("id", "absence").put("method", "absent_within");
+        absence.putObject("inputs").put("sessions", "session").put("witnesses", "witness");
+        absence.putObject("config").put("allowedLatenessUs", "1000000").put("onUnknown", "UNKNOWN");
+        request.set("document", session);
+        var sessionResponse = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, sessionResponse.getStatus(), sessionResponse.getContentAsString());
+        var sessionReceipt = PARSER.readJson(sessionResponse.getContentAsByteArray());
+        var savedSession = new JdbcCompilationBundleStore(database)
+                .find(ACCOUNT, UUID.fromString(sessionReceipt.path("bundleId").textValue())).orElseThrow();
+        assertEquals("vcl-durable-window-session-1",
+                savedSession.json().at("/ownerValidation/execution/operatorVersions/window_session").textValue());
+        var invalidGraph = request.deepCopy();
+        var invalidNodes = (com.fasterxml.jackson.databind.node.ArrayNode) invalidGraph.at("/document/spec/nodes");
+        var otherSession = opening.deepCopy().put("id", "other_session");
+        invalidNodes.add(otherSession);
+        assertCompilationRejected(http, post, invalidGraph, "GRAPH_UNREACHABLE");
+        for (var node : invalidNodes) {
+            if ("observed_within".equals(node.path("method").textValue())) {
+                ((ObjectNode) node.path("inputs")).put("sessions", "other_session");
+            }
+        }
+        assertCompilationRejected(http, post, invalidGraph, "SESSION_MISMATCH");
+        UUID zone = UUID.randomUUID();
+        UUID zoneField = UUID.randomUUID();
+        UUID position = UUID.randomUUID();
+        UUID occurrence = UUID.randomUUID();
+        var fields = (com.fasterxml.jackson.databind.node.ArrayNode) definition.path("fields");
+        fields.addObject().put("id", zoneField.toString()).put("label", "Zone").put("type", "REF").put("nullable", false)
+                .putObject("target").put("kind", "RESOURCE").put("resourceKind", "SPATIAL_FEATURE");
+        fields.addObject().put("id", position.toString()).put("label", "Position").put("type", "POINT").put("nullable", false);
+        fields.addObject().put("id", occurrence.toString()).put("label", "Occurrence").put("type", "TEXT").put("nullable", false);
+        mappings.addObject().put("sourceKey", "subject").put("sourceType", "string").put("fieldId", SUBJECT.toString()).put("vclReady", true);
+        mappings.addObject().put("sourceKey", "occurrence").put("sourceType", "string").put("fieldId", occurrence.toString()).put("vclReady", true);
+        definition.putObject("occurrenceRouting").put("version", "direct-occurrence-1")
+                .put("subjectKey", "subject").put("occurrenceKey", "occurrence");
+        var grantFields = (com.fasterxml.jackson.databind.node.ArrayNode) grant.at("/definition/sourceBindings/0/fieldIds");
+        for (var id : List.of(zoneField, position, occurrence)) grantFields.add(id.toString());
+        grant.put("definitionDigest", hash(grant.path("definition")));
+        policy.put("grantDefinitionDigest", grant.path("definitionDigest").textValue());
+        source.put("definitionDigest", hash(definition));
+        ((ObjectNode) journal.path("pin")).put("definitionDigest", source.path("definitionDigest").textValue());
+        opening.put("method", "zone_session").putObject("config")
+                .put("subjectFieldId", SUBJECT.toString()).put("occurrenceFieldId", occurrence.toString())
+                .put("zoneFieldId", zoneField.toString()).put("positionFieldId", position.toString())
+                .putNull("accuracyFieldId").put("uncertaintyFloorMetres", 5).put("exitDebounceUs", "1000000")
+                .put("maxDurationUs", "10000000").put("minimumExitObservations", 2).put("accuracyFallback", "APPROVED_FLOOR");
+        ((ObjectNode) witness.path("config")).put("minimumDurationUs", "0");
+        var circle = com.voltcanary.vcl.VclCircleRevision.create(zone, ACCOUNT, 1,
+                new com.voltcanary.vcl.VclCircleRevision.Definition(24, 60, "100"));
+        var circlePath = "/data/spatial-features/" + zone + "/circle?revision=1";
+        responses.put(circlePath, JSON.valueToTree(circle));
+        ((ObjectNode) request.path("readSet")).putArray("circles").addObject().put("id", zone.toString()).put("revision", 1);
+        var zoneResponse = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(200, zoneResponse.getStatus(), zoneResponse.getContentAsString());
+        var zoneReceipt = PARSER.readJson(zoneResponse.getContentAsByteArray());
+        UUID zoneBundle = UUID.fromString(zoneReceipt.path("bundleId").textValue());
+        var savedZone = new JdbcCompilationBundleStore(database).find(ACCOUNT, zoneBundle).orElseThrow();
+        assertTrue(savedZone.payload().contains(circle.digest()));
+        var circleImpact = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/analytics/configurable-rules/circles/{id}/dependencies", zone)
+                .param("revision", "1").header("Authorization", AUTH);
+        var impactResponse = http.perform(circleImpact.header("X-User-Id", ACTOR)).andReturn().getResponse();
+        assertEquals(200, impactResponse.getStatus(), impactResponse.getContentAsString());
+        var impact = PARSER.readJson(impactResponse.getContentAsByteArray());
+        assertTrue(impact.path("complete").asBoolean());
+        assertEquals(1, impact.path("dependencies").size());
+        assertEquals(zoneBundle.toString(), impact.at("/dependencies/0/id").textValue());
+        responses.put(circlePath, JSON.valueToTree(com.voltcanary.vcl.VclCircleRevision.create(UUID.randomUUID(), ACCOUNT, 1,
+                new com.voltcanary.vcl.VclCircleRevision.Definition(24, 60, "100"))));
+        var foreignImpact = http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/analytics/configurable-rules/circles/{id}/dependencies", zone)
+                .param("revision", "1").header("Authorization", AUTH).header("X-User-Id", ACTOR)).andReturn().getResponse();
+        assertEquals(409, foreignImpact.getStatus());
+        responses.remove(circlePath);
+        var unavailableImpact = http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/analytics/configurable-rules/circles/{id}/dependencies", zone)
+                .param("revision", "1").header("Authorization", AUTH).header("X-User-Id", ACTOR)).andReturn().getResponse();
+        assertEquals(404, unavailableImpact.getStatus());
+        responses.put(circlePath, JSON.valueToTree(circle));
+        var preview = new ReviewedRuleCutovers.Preview(ACCOUNT, zoneBundle, from, until,
+                List.of(new RuleCompilationSnapshot.SourceStartProof(BINDING, 1, proof)), Map.of());
+        var previewed = service.preview(AUTH, ACTOR, preview);
+        var returned = JSON.copy().findAndRegisterModules().treeToValue(zoneReceipt.path("checkpoint"),
+                RuleCompilationSnapshots.StartCheckpoint.class);
+        assertEquals(previewed, returned);
+        augmentObservation = row -> {
+            long checkpoint = row.path("checkpoint").asLong();
+            var values = (com.fasterxml.jackson.databind.node.ArrayNode) row.path("fields");
+            ((ObjectNode) values.get(1)).put("value", checkpoint == 3);
+            unknownField(values, startField, "INSTANT");
+            unknownField(values, endField, "INSTANT");
+            values.addObject().put("fieldId", occurrence.toString()).put("type", "TEXT")
+                    .put("knowledge", "KNOWN").putNull("reason").put("value", "trip-1");
+            values.addObject().put("fieldId", zoneField.toString()).put("type", "REF")
+                    .put("knowledge", "KNOWN").putNull("reason").put("value", zone.toString())
+                    .putObject("target").put("kind", "RESOURCE").put("resourceKind", "SPATIAL_FEATURE");
+            values.addObject().put("fieldId", position.toString()).put("type", "POINT")
+                    .put("knowledge", "KNOWN").putNull("reason").putObject("value")
+                    .put("longitude", checkpoint == 2 || checkpoint == 3 ? 24.0 : 24.01).put("latitude", 60.0);
+        };
+        var visitPreview = rulePreview(http, "session-preview", zoneReceipt, "absence", from, until.plusSeconds(1), zone, "trip-1");
+        assertEquals("OK", visitPreview.path("status").textValue());
+        assertFalse(visitPreview.at("/literal/value").booleanValue());
+        assertTrue(visitPreview.path("firstWitness").isTextual());
+        assertEquals(1, visitPreview.path("positionWitnesses").size());
+        var noVisit = rulePreview(http, "session-preview", zoneReceipt, "absence", from, until.plusSeconds(1), zone, "never-entered");
+        assertEquals("UNKNOWN", noVisit.path("status").textValue());
+        assertEquals("SESSION_NOT_OBSERVED_CLOSED", noVisit.path("reason").textValue());
+        assertTrue(noVisit.path("exit").isNull());
+        var unsupported = request.deepCopy();
+        var graph = (com.fasterxml.jackson.databind.node.ArrayNode) unsupported.at("/document/spec/nodes");
+        for (var node : graph) {
+            if ("zone_session".equals(node.path("method").textValue())) {
+                ((ObjectNode) node).put("method", "expectation_event");
+            }
+        }
+        var rejected = http.perform(post.content(unsupported.toString())).andReturn().getResponse();
+        assertEquals(409, rejected.getStatus());
+        assertEquals("GRAMMAR", PARSER.readJson(rejected.getContentAsByteArray()).path("code").textValue());
+        verifyResumeBoundary(database, service, request, savedZone, returned, coverage);
+        responses.put(circlePath, JSON.valueToTree(com.voltcanary.vcl.VclCircleRevision.create(zone, ACCOUNT, 1,
+                new com.voltcanary.vcl.VclCircleRevision.Definition(24, 60, "200"))));
+        code("SPATIAL_REVISION_CHANGED", () -> service.preview(AUTH, ACTOR, preview));
+        journal.put("headCheckpoint", "4097");
+        var denied = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(409, denied.getStatus());
+        assertEquals("JOURNAL_INPUT_BUDGET_EXCEEDED", PARSER.readJson(denied.getContentAsByteArray()).path("code").textValue());
+        ((ObjectNode) request.path("readSet")).put("unknown", true);
+        paths.clear();
+        var malformed = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(400, malformed.getStatus());
+        assertEquals("RULE_COMPILATION_REQUEST_INVALID",
+                PARSER.readJson(malformed.getContentAsByteArray()).path("code").textValue());
+        assertTrue(paths.isEmpty());
+        var jdbc = new org.springframework.jdbc.core.JdbcTemplate(database);
+        assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM vcl_compilation_bundles", Integer.class));
+    }
+
+    private void verifyResumeBoundary(javax.sql.DataSource database, ReviewedRuleCutovers service, ObjectNode request,
+            com.voltcanary.analytics.vcl.CompilationBundle bundle, RuleCompilationSnapshots.StartCheckpoint checkpoint,
+            ObjectNode coverage) {
+        var deployments = new JdbcRuleDeployments(database, new JdbcCompilationBundleStore(database));
+        var initial = activate(deployments, bundle, checkpoint);
+        assertEquals(JdbcRuleDeployments.State.PAUSED, deployments.pause(ACCOUNT, initial.epoch(), value -> { }).state());
+        code("DEPLOYMENT_RESUME_BOUNDARY_INVALID", () -> activate(deployments, bundle, checkpoint));
+        var boundary = new JdbcKeyedStateStore(database).databaseTime().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+        var from = boundary.minusSeconds(1);
+        UUID proofId = UUID.randomUUID();
+        var fresh = coverage.deepCopy().put("proofId", proofId.toString()).put("acceptedAt", boundary.toString());
+        ((ObjectNode) fresh.path("evidence")).put("proofId", proofId.toString())
+                .put("from", from.toString()).put("until", boundary.toString());
+        responses.put("/data/source-bindings/" + BINDING + "/coverage/" + proofId, fresh);
+        var resumeRequest = request.deepCopy();
+        ((ObjectNode) resumeRequest.path("readSet")).put("proofId", proofId.toString())
+                .put("from", from.toString()).put("boundary", boundary.toString());
+        var receipt = service.compile(AUTH, ACTOR, resumeRequest.toString().getBytes(StandardCharsets.UTF_8));
+        var resumedBundle = new JdbcCompilationBundleStore(database).find(ACCOUNT, receipt.bundleId()).orElseThrow();
+        var resumed = activate(deployments, resumedBundle, receipt.checkpoint());
+        assertEquals(JdbcRuleDeployments.State.ACTIVE, resumed.state());
+        assertNotEquals(initial.epoch(), resumed.epoch());
+        assertTrue(resumed.resumeFrom().isAfter(boundary));
+        assertFalse(resumed.includesSessionObservation(boundary));
+        assertFalse(resumed.includesSessionObservation(resumed.resumeFrom().minus(1, java.time.temporal.ChronoUnit.MICROS)));
+        assertTrue(resumed.includesSessionObservation(resumed.resumeFrom()));
+        assertEquals(JdbcRuleDeployments.State.PAUSED, deployments.find(ACCOUNT, initial.epoch()).orElseThrow().state());
+    }
+
+    private static JdbcRuleDeployments.Deployment activate(JdbcRuleDeployments deployments,
+            com.voltcanary.analytics.vcl.CompilationBundle bundle, RuleCompilationSnapshots.StartCheckpoint checkpoint) {
+        var epoch = UUID.randomUUID();
+        var staged = deployments.stage(ACTOR, bundle, epoch);
+        var start = new JdbcRuleDeployments.CutoverStart(null, checkpoint.source().boundary(), checkpoint.digest());
+        var recipe = RuleStartCheckpointRecipe.from(checkpoint);
+        var pending = deployments.cutover(ACCOUNT, epoch, start, recipe, (previous, next, boundary) -> { }, false);
+        deployments.acknowledgeEvaluatorReadiness(pending, new JdbcRuleDeployments.EvaluatorReadiness(
+                staged.bundleDigest(), checkpoint.digest(), "a".repeat(64)));
+        return deployments.cutover(ACCOUNT, epoch, start, recipe, (previous, next, boundary) -> { }, true);
     }
 
     @Test void coverageCannotAdvancePastTheOriginalCapturedCut() {
@@ -484,7 +813,7 @@ class RuleCompilationSnapshotsTest {
         org.mockito.Mockito.when(sealedBundle.digest()).thenReturn(bundleDigest);
         var bundlePayload = JSON.createObjectNode();
         bundlePayload.set("compilation", JSON.valueToTree(captured.compile(COMPILER)));
-        org.mockito.Mockito.when(sealedBundle.payload()).thenReturn(bundlePayload.toString());
+        org.mockito.Mockito.when(sealedBundle.json()).thenReturn(bundlePayload);
         org.mockito.Mockito.when(machineBundles.find(ACCOUNT, bundleId)).thenReturn(java.util.Optional.of(sealedBundle));
         var machine = new WorkerRuleCompilationSnapshots(machineBundles, machineRegistry,
                 new WorkerSourceCaptureSnapshots(machineReads), machineGrant, machinePolicy);
@@ -597,6 +926,22 @@ class RuleCompilationSnapshotsTest {
     private VclObservationPage observationPage(VclObservationRead request) {
         long after = Long.parseLong(request.afterCheckpoint());
         long through = Long.parseLong(request.throughCheckpoint());
+        if (request.eventFrom() != null) {
+            var from = Instant.parse(request.eventFrom());
+            var until = Instant.parse(request.eventUntil());
+            int limit = Math.min(journalPageSize, request.limit());
+            var matches = new ArrayList<JsonNode>();
+            for (long index = after + 1; index <= through; index++) {
+                var row = observationRow(request, Long.toString(index));
+                var at = Instant.parse(row.path("eventTime").textValue());
+                if (at.isBefore(from) || !at.isBefore(until)) continue;
+                if (matches.size() == limit) {
+                    return VclObservationPage.ranged(request, matches, true, limit == request.limit() ? "PAGE_ROWS" : "PAGE_BYTES");
+                }
+                matches.add(row);
+            }
+            return VclObservationPage.ranged(request, matches, false, null);
+        }
         int count = (int) Math.min(through - after, Math.min(journalPageSize, request.limit()));
         var rows = new ArrayList<JsonNode>(count);
         for (int index = 1; index <= count; index++) rows.add(observationRow(request, Long.toString(after + index)));
@@ -623,7 +968,44 @@ class RuleCompilationSnapshotsTest {
             subject.put("knowledge", "KNOWN").putNull("reason").put("value", journalSubject);
         }
         fields.addObject().put("fieldId", FLAG.toString()).put("type", "BOOLEAN").put("knowledge", "KNOWN").putNull("reason").put("value", true);
+        augmentObservation.accept(row);
         return row;
+    }
+
+    private static void unknownField(com.fasterxml.jackson.databind.node.ArrayNode fields, String id, String type) {
+        fields.addObject().put("fieldId", id).put("type", type).put("knowledge", "UNKNOWN")
+                .put("reason", "MISSING_OR_NULL_INPUT").putNull("value");
+    }
+
+    private static void instantField(com.fasterxml.jackson.databind.node.ArrayNode fields, String id, Instant value) {
+        fields.addObject().put("fieldId", id).put("type", "INSTANT").put("knowledge", "KNOWN")
+                .putNull("reason").put("value", value.toString());
+    }
+
+    private static void assertCompilationRejected(org.springframework.test.web.servlet.MockMvc http,
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder post, JsonNode request, String code)
+            throws Exception {
+        var response = http.perform(post.content(request.toString())).andReturn().getResponse();
+        assertEquals(409, response.getStatus());
+        assertEquals(code, PARSER.readJson(response.getContentAsByteArray()).path("code").textValue());
+    }
+
+    private static JsonNode rulePreview(org.springframework.test.web.servlet.MockMvc http, String endpoint, JsonNode receipt,
+            String node, Instant from, Instant until, UUID circle, String occurrence) throws Exception {
+        var body = JSON.createObjectNode().put("account", ACCOUNT.toString()).put("bundle", receipt.path("bundleId").textValue())
+                .put("node", node).put("from", from.toString()).put("until", until.toString())
+                .put("subjectLiteral", "{\"type\":\"TEXT\",\"value\":\"subject\"}");
+        body.set("checkpoint", receipt.path("checkpoint"));
+        if (circle != null) {
+            body.put("circle", circle.toString()).put("occurrenceLiteral",
+                    JSON.createObjectNode().put("type", "TEXT").put("value", occurrence).toString());
+        }
+        var response = http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/analytics/configurable/rule-cutovers/" + endpoint).header("Authorization", AUTH)
+                .header("X-User-Id", ACTOR).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content(body.toString())).andReturn().getResponse();
+        assertEquals(200, response.getStatus(), response.getContentAsString());
+        return PARSER.readJson(response.getContentAsByteArray());
     }
 
     private ObjectNode journalResponse() {
@@ -748,6 +1130,7 @@ class RuleCompilationSnapshotsTest {
         var outcome = JSON.createObjectNode().put("status", "UNKNOWN").put("reason", "ASOF_MISSING").putNull("row");
         outcome.set("readManifest", manifest.deepCopy());
         responses.put(path + "/query-asof", outcome);
+        verifyLookupBundle(datasetId, query, interval, manifest);
         var prepared = snapshots.prepareLookups(AUTH, ACTOR, ACCOUNT, withLookup(datasetId), COMPILER,
                 Map.of("reference", new RuleCompilationSnapshot.LookupSelection(query, interval)));
         assertTrue(prepared.compilation().graph().stream().anyMatch(node -> node.method().equals("lookup_asof")));
@@ -766,6 +1149,41 @@ class RuleCompilationSnapshotsTest {
         paths.clear();
         code("AUTOMATION_GRANT_INACTIVE", () -> prepared.lookup("reference", event, time));
         assertFalse(paths.contains(path + "/query-asof"));
+    }
+
+    private void verifyLookupBundle(UUID datasetId, VclDocument query, UUID interval, ObjectNode manifest) {
+        var journal = journalResponse();
+        UUID proof = UUID.randomUUID();
+        var from = "2026-11-05T00:00:00Z";
+        var until = "2026-11-05T00:00:05Z";
+        var coverage = JSON.createObjectNode().put("proofId", proof.toString())
+                .put("inputGeneration", journal.path("inputGeneration").textValue())
+                .put("snapshotId", journal.at("/pin/snapshotId").textValue())
+                .put("coverage", "COVERED").putNull("reason").put("requiredCheckpoint", "5").put("acceptedAt", until);
+        coverage.putObject("evidence").put("proofId", proof.toString())
+                .put("inputGeneration", journal.path("inputGeneration").textValue())
+                .put("from", from).put("until", until).put("eventTimeBasis", "SOURCE_EVENT_TIME_V1")
+                .putObject("position").put("epoch", UUID.randomUUID().toString()).put("sequence", "5");
+        responses.put("/data/source-bindings/" + BINDING + "/coverage/" + proof, coverage);
+        var document = windowRule().json();
+        ((ObjectNode) document.at("/spec/nodes/2/inputs")).put("events", "reference");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/spec/nodes"))
+                .add(withLookup(datasetId).json().at("/spec/nodes/3"));
+        var request = JSON.createObjectNode();
+        request.set("document", document);
+        request.putObject("readSet").put("account", ACCOUNT.toString()).put("binding", BINDING.toString())
+                .put("schemaRevision", 1).put("proofId", proof.toString()).put("from", from).put("boundary", until)
+                .putObject("lookups").putObject("reference").put("intervalField", interval.toString()).set("query", query.json());
+        var database = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "");
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("db/migration/V034__vcl_compilation_bundles.sql")).execute(database);
+        var service = new ReviewedRuleCutovers(database, snapshots, JacksonRestClients.builder(), new AnalyticsDownstreamProperties());
+        var receipt = service.compile(AUTH, ACTOR, request.toString().getBytes(StandardCharsets.UTF_8));
+        var bundle = new JdbcCompilationBundleStore(database).find(ACCOUNT, receipt.bundleId()).orElseThrow();
+        assertEquals(receipt.bundleDigest(), bundle.digest());
+        assertEquals(hash(manifest), receipt.checkpoint().references().get("reference").manifestDigest());
+        receipt.checkpoint().verifyBundleInputs(bundle);
     }
 
     @Test void nativeScopeOrDataHeadDriftInvalidatesCompositeSnapshot() {

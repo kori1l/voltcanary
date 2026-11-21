@@ -1,21 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { nativeDataApi, type Language, type Review, type Summary } from "./nativeDataApi";
-import { collectionDocument, mutationDocument, publishedCreationTypes, type CollectionDraft } from "./nativeDocuments";
+import { collectionDocument, mutationDocument, publishedCreationTypes, publishedReferenceKinds, type CollectionDraft } from "./nativeDocuments";
 import { CollectionForm } from "./CollectionForm";
 import { NativeTablePane, type RowIntent } from "./NativeTablePane";
 import { NativeReviewPanel } from "./NativeReviewPanel";
+import { NativeArchivePane } from "./NativeArchivePane";
+import { NativeSharedPane } from "./NativeSharedPane";
+import { ConfigurableRuleWorkbench } from "./ConfigurableRuleWorkbench";
+import { NativeCircleEditor } from "./NativeCircleEditor";
 import "./nativeData.css";
 
 export function NativeDataWorkbench() {
   const [params, setParams] = useSearchParams();
   const selected = params.get("datasetId") ?? "";
   const reviewId = params.get("reviewId");
+  const sharedReview = params.has("sharedReview");
   const [tables, setTables] = useState<Summary[]>([]);
   const [language, setLanguage] = useState<Language | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [reload, setReload] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+  const [showShared, setShowShared] = useState(false);
+  const [circlePanel, setCirclePanel] = useState<"closed" | "open" | "hidden">("closed");
+  const showRules = params.get("panel") === "rules";
+  const [activationOpen, setActivationOpen] = useState(false);
   const [rowEditing, setRowEditing] = useState(false);
   const [review, setReview] = useState<Review | null>(null);
   const [applyKey, setApplyKey] = useState<string | null>(null);
@@ -92,21 +102,51 @@ export function NativeDataWorkbench() {
     setParams(current => { const next = new URLSearchParams(current); next.delete("reviewId"); return next; });
     setReload(value => value + 1);
   }
-  const blocked = busy || Boolean(reviewId);
+  const datasetReview = params.has("importReview") || params.has("migrationReview") || params.has("sharingReview") || sharedReview;
+  const blocked = busy || Boolean(reviewId) || datasetReview;
   const types = publishedCreationTypes(language);
   return <section className="native-workbench form-stack">
     <header className="page-header"><h1>Data tables</h1><p>Define your own tables and review each change before saving.</p></header>
     {error ? <p className="error-message" role="alert">{error}</p> : null}
     {!loaded && !error ? <p role="status">Loading tables…</p> : null}
-    <div className="panel action-row"><label>Table<select value={selected} disabled={busy || creating || rowEditing} onChange={event => { setCreating(false); const next = new URLSearchParams(params); next.set("datasetId", event.target.value); setParams(next); }}>
+    <div className="panel action-row"><label>Table<select value={selected} disabled={busy || creating || rowEditing || datasetReview} onChange={event => { setCreating(false); const next = new URLSearchParams(params); next.set("datasetId", event.target.value); setParams(next); }}>
       <option value="">Select table</option>{tables.map(table => <option key={table.id} value={table.id}>{table.label}</option>)}
     </select></label><button type="button" className="primary-button" disabled={!types.includes("TEXT") || blocked || rowEditing || creating} onClick={() => setCreating(true)}>Create table</button></div>
     {loaded && !tables.length ? <p>No tables yet. Create a table to start adding records.</p> : null}
+    <button type="button" className="ghost-button" aria-expanded={showArchive} onClick={() => setShowArchive(value => !value)}>
+      {showArchive ? "Hide archived tables" : "View archived tables"}
+    </button>
+    {showArchive ? <NativeArchivePane revision={reload}/> : null}
+    <button type="button" className="ghost-button" disabled={sharedReview} aria-expanded={showShared || sharedReview} onClick={() => setShowShared(value => !value)}>
+      {showShared ? "Hide shared tables" : "View shared tables"}
+    </button>
+    {showShared || sharedReview ? <NativeSharedPane/> : null}
+    <button type="button" className="ghost-button" aria-expanded={circlePanel === "open"}
+      onClick={() => setCirclePanel(value => value === "open" ? "hidden" : "open")}>
+      {circlePanel === "open" ? "Hide circle zones" : "Manage circle zones"}
+    </button>
+    {circlePanel === "closed" ? null : <div hidden={circlePanel === "hidden"}><NativeCircleEditor/></div>}
+    <button type="button" className="ghost-button" aria-expanded={showRules} onClick={() => {
+      setActivationOpen(false);
+      setParams(current => {
+        const next = new URLSearchParams(current);
+        if (showRules) next.delete("panel");
+        else next.set("panel", "rules");
+        return next;
+      }, { replace: true });
+    }}>
+      {showRules ? "Hide configurable rules" : "Configure rules"}
+    </button>
+    {showRules ? <ConfigurableRuleWorkbench language={language} activationOpen={activationOpen} onActivationChange={setActivationOpen}/> : null}
     {review ? <NativeReviewPanel review={review} busy={busy} uncertain={uncertain} onApply={() => void apply()} onInspect={() => void inspect()} onClose={close}/> : null}
     {reviewId && !review && !busy ? <div><p role="status">Review not loaded. Inspect its saved outcome before retrying a change.</p>
       <button type="button" className="ghost-button" onClick={() => setInspectRetry(value => value + 1)}>Load saved review</button>
       <button type="button" className="ghost-button" onClick={close}>Back to tables</button></div> : null}
-    {creating && !reviewId ? <CollectionForm busy={busy} types={types} onPrepare={draft => void prepareCollection(draft)} onCancel={() => setCreating(false)}/> : null}
-    {selected ? <NativeTablePane key={`${selected}:${reload}`} id={selected} blocked={blocked || creating} onPrepare={prepareRow} onEditingChange={setRowEditing}/> : null}
+    {creating && !reviewId ? <CollectionForm busy={busy} types={types} tables={tables} resourceKinds={publishedReferenceKinds(language)}
+      onPrepare={draft => void prepareCollection(draft)} onCancel={() => setCreating(false)}/> : null}
+    {selected ? <NativeTablePane key={`${selected}:${reload}`} id={selected} blocked={blocked || creating} onPrepare={prepareRow} onEditingChange={setRowEditing} onArchive={() => {
+      setShowArchive(true);
+      setReload(value => value + 1);
+    }}/> : null}
   </section>;
 }

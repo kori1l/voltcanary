@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_horizon_label_generation_jobs")
+@Getter
+@Setter
 public class MlHorizonLabelGenerationJob {
     @Id
     private UUID id;
@@ -60,50 +64,4 @@ public class MlHorizonLabelGenerationJob {
     @Column(name = "unobservable_rows")
     private Integer unobservableRows;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public UUID getSubmittedBy() { return submittedBy; }
-    public void setSubmittedBy(UUID submittedBy) { this.submittedBy = submittedBy; }
-    public int getHorizonDays() { return horizonDays; }
-    public void setHorizonDays(int horizonDays) { this.horizonDays = horizonDays; }
-    public String getGenerationVersion() { return generationVersion; }
-    public void setGenerationVersion(String generationVersion) { this.generationVersion = generationVersion; }
-    public boolean isIncludePreventiveMaintenance() { return includePreventiveMaintenance; }
-    public void setIncludePreventiveMaintenance(boolean includePreventiveMaintenance) { this.includePreventiveMaintenance = includePreventiveMaintenance; }
-    public String getInputLineageHash() { return inputLineageHash; }
-    public void setInputLineageHash(String inputLineageHash) { this.inputLineageHash = inputLineageHash; }
-    public String getIdempotencyKey() { return idempotencyKey; }
-    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
-    public MlHorizonLabelGenerationStatus getStatus() { return status; }
-    public void setStatus(MlHorizonLabelGenerationStatus status) { this.status = status; }
-    public Instant getSubmittedAt() { return submittedAt; }
-    public void setSubmittedAt(Instant submittedAt) { this.submittedAt = submittedAt; }
-    public Instant getStartedAt() { return startedAt; }
-    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
-    public Instant getCompletedAt() { return completedAt; }
-    public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
-    public Integer getProgressPercent() { return progressPercent; }
-    public void setProgressPercent(Integer progressPercent) { this.progressPercent = progressPercent; }
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
-    public String getFailureReason() { return failureReason; }
-    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
-    public String getLineageHash() { return lineageHash; }
-    public void setLineageHash(String lineageHash) { this.lineageHash = lineageHash; }
-    public Integer getGeneratedLabels() { return generatedLabels; }
-    public void setGeneratedLabels(Integer generatedLabels) { this.generatedLabels = generatedLabels; }
-    public Integer getPositiveLabels() { return positiveLabels; }
-    public void setPositiveLabels(Integer positiveLabels) { this.positiveLabels = positiveLabels; }
-    public Integer getNormalLabels() { return normalLabels; }
-    public void setNormalLabels(Integer normalLabels) { this.normalLabels = normalLabels; }
-    public Integer getMaintenanceExcludedLabels() { return maintenanceExcludedLabels; }
-    public void setMaintenanceExcludedLabels(Integer maintenanceExcludedLabels) { this.maintenanceExcludedLabels = maintenanceExcludedLabels; }
-    public Integer getUnresolvedLabels() { return unresolvedLabels; }
-    public void setUnresolvedLabels(Integer unresolvedLabels) { this.unresolvedLabels = unresolvedLabels; }
-    public Integer getUnobservableRows() { return unobservableRows; }
-    public void setUnobservableRows(Integer unobservableRows) { this.unobservableRows = unobservableRows; }
 }

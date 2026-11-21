@@ -6,15 +6,15 @@ import com.voltcanary.identity.workspace.WorkspaceMembership.Workspace;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class WorkspaceRepository {
     private final JdbcTemplate jdbc;
-    public WorkspaceRepository(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
-    }
+
     public boolean activeUser(UUID id) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND status='ACTIVE')", Boolean.class, id));
     }

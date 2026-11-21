@@ -5,21 +5,20 @@ import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.PrimaryAssistant;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class PrimaryAssistantControlController {
     private final PrimaryAssistant primary;
     private final JwtIdentityService identity;
-    public PrimaryAssistantControlController(PrimaryAssistant primary, JwtIdentityService identity) {
-        this.primary = primary;
-        this.identity = identity;
-    }
+
     @GetMapping("/ai-agent/orchestrations/runtime")
     public Map<String, Object> mode(@RequestHeader("Authorization") String authorization) {
         primary.session(identity.parseBearerToken(authorization), authorization);

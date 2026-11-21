@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_validation_reports")
+@Getter
+@Setter
 public class MlValidationReport {
     @Id
     private UUID id;
@@ -33,26 +37,4 @@ public class MlValidationReport {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public UUID getImportedFileId() { return importedFileId; }
-    public void setImportedFileId(UUID importedFileId) { this.importedFileId = importedFileId; }
-    public long getAcceptedRows() { return acceptedRows; }
-    public void setAcceptedRows(long acceptedRows) { this.acceptedRows = acceptedRows; }
-    public long getRejectedRows() { return rejectedRows; }
-    public void setRejectedRows(long rejectedRows) { this.rejectedRows = rejectedRows; }
-    public long getWarningCount() { return warningCount; }
-    public void setWarningCount(long warningCount) { this.warningCount = warningCount; }
-    public String getRejectedReasonsJson() { return rejectedReasonsJson; }
-    public void setRejectedReasonsJson(String rejectedReasonsJson) { this.rejectedReasonsJson = rejectedReasonsJson; }
-    public String getMappingStatsJson() { return mappingStatsJson; }
-    public void setMappingStatsJson(String mappingStatsJson) { this.mappingStatsJson = mappingStatsJson; }
-    public String getQualityProfileJson() { return qualityProfileJson; }
-    public void setQualityProfileJson(String qualityProfileJson) { this.qualityProfileJson = qualityProfileJson; }
-    public String getSummary() { return summary; }
-    public void setSummary(String summary) { this.summary = summary; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

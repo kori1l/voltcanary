@@ -5,10 +5,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class VariableSeriesQueries {
     public record Descriptor(UUID variableId, UUID dataSourceId, String sourceId, String key, String label,
             String origin, String unit, int revision, long generation, boolean enabled, String metricToken) { }
@@ -16,8 +18,6 @@ public class VariableSeriesQueries {
     public record Series(UUID deviceId, UUID variableId, UUID dataSourceId, String metric, String unit,
             List<Point> points, boolean hasMore, Instant nextCursor, String aggregationMode) { }
     private final JdbcTemplate jdbc;
-
-    public VariableSeriesQueries(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     public List<Descriptor> descriptors(UUID device) {
         return jdbc.query("select * from variable_series_catalog where device_id=? order by label,data_source_id,variable_id",

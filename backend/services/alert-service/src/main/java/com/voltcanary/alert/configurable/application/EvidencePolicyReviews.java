@@ -12,9 +12,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class EvidencePolicyReviews {
     public record Created(UUID policyId, UUID ruleId, String revision) { }
     public record View(UUID reviewId, UUID policyId, UUID receiptId, UUID grantId, UUID ruleId, String grantEpoch,
@@ -27,12 +29,6 @@ public class EvidencePolicyReviews {
     private final AutomationGrantReviews grants;
     private final EvidencePolicyStore store;
     private final VclParser parser = new VclParser();
-
-    public EvidencePolicyReviews(RuleAccountAuthority accounts, AutomationGrantReviews grants, EvidencePolicyStore store) {
-        this.accounts = accounts;
-        this.grants = grants;
-        this.store = store;
-    }
 
     public View reserve(UUID actor, String authorization, byte[] body) {
         var request = EvidencePolicyRequests.reserve(body);

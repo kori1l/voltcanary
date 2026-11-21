@@ -5,6 +5,7 @@ import com.voltcanary.alert.notification.dto.NotificationPreferenceRequest;
 import com.voltcanary.alert.notification.dto.NotificationPreferenceResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,13 +19,10 @@ import org.springframework.web.bind.annotation.RestController;
         @ApiResponse(responseCode = "400", description = "Invalid account scope, timezone, severity, or preference request"),
         @ApiResponse(responseCode = "401", description = "Missing authenticated user context")
 })
+@RequiredArgsConstructor
 public class NotificationPreferenceController {
 
     private final NotificationPreferenceService service;
-
-    public NotificationPreferenceController(NotificationPreferenceService service) {
-        this.service = service;
-    }
 
     @GetMapping
     public NotificationPreferenceResponse getDefault(

@@ -1,11 +1,15 @@
 package com.voltcanary.analytics.config;
 
 import java.time.Duration;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app.analytics.retention")
+@Getter
+@Setter
 public class AnalyticsRetentionProperties {
 
     private boolean enabled = true;
@@ -18,75 +22,4 @@ public class AnalyticsRetentionProperties {
     private Duration recommendations = Duration.ofDays(180);
     private Duration outbox = Duration.ofDays(7);
 
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public Duration getBaselines() {
-        return baselines;
-    }
-
-    public void setBaselines(Duration baselines) {
-        this.baselines = baselines;
-    }
-
-    public Duration getFeatureSets() {
-        return featureSets;
-    }
-
-    public void setFeatureSets(Duration featureSets) {
-        this.featureSets = featureSets;
-    }
-
-    public Duration getPredictions() {
-        return predictions;
-    }
-
-    public void setPredictions(Duration predictions) {
-        this.predictions = predictions;
-    }
-
-    public Duration getAnomalies() {
-        return anomalies;
-    }
-
-    public void setAnomalies(Duration anomalies) {
-        this.anomalies = anomalies;
-    }
-
-    public Duration getRiskScores() {
-        return riskScores;
-    }
-
-    public void setRiskScores(Duration riskScores) {
-        this.riskScores = riskScores;
-    }
-
-    public Duration getJobs() {
-        return jobs;
-    }
-
-    public void setJobs(Duration jobs) {
-        this.jobs = jobs;
-    }
-
-    public Duration getRecommendations() {
-        return recommendations;
-    }
-
-    public void setRecommendations(Duration recommendations) {
-        this.recommendations = recommendations;
-    }
-
-    public Duration getOutbox() {
-        return outbox;
-    }
-
-    public void setOutbox(Duration outbox) {
-        this.outbox = outbox;
-    }
 }

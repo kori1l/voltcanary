@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class AlertRuleService {
 
     private static final TypeReference<List<UUID>> UUID_LIST_TYPE = new TypeReference<>() {
@@ -53,18 +55,6 @@ public class AlertRuleService {
     private final AlertAccessService accessService;
     private final AlertRuleEvaluationClient evaluationClient;
     private final VariableRuleValidation variableRules;
-
-    public AlertRuleService(
-            AlertRuleRepository repository,
-            ObjectMapper objectMapper,
-            AlertAccessService accessService,
-            AlertRuleEvaluationClient evaluationClient, VariableRuleValidation variableRules) {
-        this.repository = repository;
-        this.objectMapper = objectMapper;
-        this.accessService = accessService;
-        this.evaluationClient = evaluationClient;
-        this.variableRules = variableRules;
-    }
 
     @Transactional(readOnly = true)
     public List<AlertRuleResponse> list(

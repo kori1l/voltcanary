@@ -46,10 +46,17 @@ final class DashboardCreationPeriodProjection {
         var result = rejected.<ObjectNode>deepCopy();
         var payload = (ObjectNode) result.at("/command/payload");
         var operations = mapper.createArrayNode();
+        JsonNode globalPeriod = null;
         for (var operation : payload.path("operations")) {
-            if (global(operation)) payload.set("dashboardPeriod", operation.path("period").deepCopy());
-            else operations.add(operation.deepCopy());
+            if (!global(operation)) {
+                operations.add(operation.deepCopy());
+                continue;
+            }
+            var period = operation.path("period");
+            if (!period.isTextual() || globalPeriod != null && !globalPeriod.equals(period)) return rejected.deepCopy();
+            globalPeriod = period;
         }
+        if (globalPeriod != null) payload.set("dashboardPeriod", globalPeriod.deepCopy());
         payload.set("operations", operations);
         return result;
     }
@@ -80,7 +87,8 @@ final class DashboardCreationPeriodProjection {
     }
 
     private static boolean global(JsonNode operation) {
+        var targets = operation.path("targets");
         return operation.path("op").asText().equals("set_period")
-                && (operation.path("targets").isNull() || operation.path("targets").isArray() && operation.path("targets").isEmpty());
+                && (targets.isMissingNode() || targets.isNull() || targets.isArray() && targets.isEmpty());
     }
 }

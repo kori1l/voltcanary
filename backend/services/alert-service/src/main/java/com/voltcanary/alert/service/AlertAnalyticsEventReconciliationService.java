@@ -8,15 +8,16 @@ import com.voltcanary.alert.domain.AlertAnalyticsEventInboxStatus;
 import com.voltcanary.alert.scheduling.SchedulerLockService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AlertAnalyticsEventReconciliationService {
 
-    private static final Logger log = LoggerFactory.getLogger(AlertAnalyticsEventReconciliationService.class);
     private static final String LOCK_NAME = "alert-analytics-event-reconciliation";
 
     private final AlertReconciliationProperties properties;
@@ -24,19 +25,6 @@ public class AlertAnalyticsEventReconciliationService {
     private final AlertAnalyticsEventInboxService inboxService;
     private final AnalyticsAlertEventHandler eventHandler;
     private final ObjectMapper objectMapper;
-
-    public AlertAnalyticsEventReconciliationService(
-            AlertReconciliationProperties properties,
-            SchedulerLockService schedulerLockService,
-            AlertAnalyticsEventInboxService inboxService,
-            AnalyticsAlertEventHandler eventHandler,
-            ObjectMapper objectMapper) {
-        this.properties = properties;
-        this.schedulerLockService = schedulerLockService;
-        this.inboxService = inboxService;
-        this.eventHandler = eventHandler;
-        this.objectMapper = objectMapper;
-    }
 
     @Scheduled(fixedDelayString = "#{@alertReconciliationProperties.interval.toMillis()}")
     public void reconcileDueAnalyticsEvents() {

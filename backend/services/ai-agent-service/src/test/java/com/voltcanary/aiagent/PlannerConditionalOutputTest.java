@@ -54,6 +54,24 @@ class PlannerConditionalOutputTest {
         assertFalse(initial.schema().at("/$defs/plannerResponse/properties/decision/enum").toString().contains("AMEND"));
     }
 
+    @Test void strictGoalSchemaPreservesFreshIdGuidanceAndServerRejectsOccupiedIds() throws Exception {
+        var request = mapper.createObjectNode();
+        request.putObject("planSummary").putArray("goals").addObject()
+                .put("goalId", "goal").put("disposition", "PENDING");
+        var planner = new PrimaryPlannerProjection(mapper, request, validator.projection("plannerResponse"));
+        var strict = new StrictOutputProjection(mapper, planner.schema());
+        var id = strict.schema().at("/$defs/goalProposal/properties/goalId");
+        assertTrue(id.path("description").asText().contains("existingGoalIds"));
+        assertFalse(id.has("not"), "Provider schema uses the supported subset");
+
+        var plan = response("PLAN");
+        ((ObjectNode) plan.at("/proposedGoals/0")).remove("sourceMessageId");
+        var wire = mapper.createObjectNode().set("proposal", plan);
+        validator.validateRegistered(strict.schema(), wire);
+        var rejected = assertThrows(ModelProposalRejected.class, () -> planner.normalize(strict.normalize(wire), validator));
+        assertTrue(rejected.diagnostic().contains("PLANNER_GOAL_ID_ALREADY_USED"));
+    }
+
     @Test void selectedSubjectCannotBecomeAnEmptyTargetQuestionForDomainValues() throws Exception {
         var request = mapper.createObjectNode().put("messageId", "00000000-0000-0000-0000-000000000001");
         request.putObject("dialogue").putObject("focus").put("reviewId", "accepted");

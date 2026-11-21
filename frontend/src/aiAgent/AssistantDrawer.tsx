@@ -1,5 +1,6 @@
 import {AssistantReviewHistory} from "./AssistantReviewHistory";
 import {AssistantPlanProgress} from "./AssistantPlanProgress";
+import {AssistantConsultations} from "./AssistantConsultations";
 import {AssistantTurnTrace,AssistantTraceProgress} from "./AssistantTurnTrace";
 import {DashboardCreationPreview} from "./DashboardCreationPreview";
 import {ArrowUp, Check, ChevronDown, History, Maximize2, Minus, PanelRight, PictureInPicture2, Plus, Sparkles, SquarePen, X} from "lucide-react";
@@ -35,8 +36,10 @@ export function AssistantDrawer() {
   useEffect(()=>{
     if(location.pathname!=="/ai-agent")return;
     setOpen(true);
-    const params=new URLSearchParams(location.search),deviceId=params.get("deviceId");
-    if(params.get("workflow")==="dashboard"&&deviceId)assistant.newConversation({deviceId},"Создай личный дашборд для выбранного устройства. Предложи подходящий шаблон и уточни имя перед созданием.");
+    const { searchParams, deviceId } = buildAssistantContext(location.pathname, location.search);
+    if(searchParams.workflow==="dashboard"&&deviceId)assistant.newConversation({deviceId},"Создай личный дашборд для выбранного устройства. Предложи подходящий шаблон и уточни имя перед созданием.");
+    if(searchParams.workflow==="source-mapping"&&searchParams.sourceBinding)assistant.newConversation(
+      {sourceBinding:searchParams.sourceBinding},"Подготовь маппинг выбранного источника в логическое значение. ");
   },[location.pathname,location.search]);
   useEffect(()=>{if(open)input.current?.focus();else if(wasOpen.current)launcher.current?.focus();wasOpen.current=open;},[open]);
   useEffect(()=>{if(content.current)content.current.scrollTop=content.current.scrollHeight;},[conversation.turns.length]);
@@ -61,7 +64,8 @@ export function AssistantDrawer() {
           {turn.role==="assistant"&&index===conversation.turns.length-1&&conversation.plan&&conversation.resourceStatus!=="UNAVAILABLE"?<><AssistantReviewHistory ids={conversation.reviewIds??[]} index={conversation.reviewIndex??0} undoIndex={assistant.undoIndex} redoIndex={assistant.redoIndex} disabled={locked||!!conversation.plan.execution||["SUCCESS","RUNNING","UNKNOWN","PARTIAL_SUCCESS"].includes(conversation.plan.executionStatus??"")} onSelect={index=>{autoReply.cancel();void assistant.selectReview(index);}}/><PlanReview key={conversation.plan.planId} plan={conversation.plan} conversational clarifying={busy||Boolean(conversation.draft.trim())} onBusyChange={setExecuting} onExecution={assistant.executed} onOpen={()=>setOpen(false)}/></>:null}
         </div>)}</div>}
         {conversation.retainedPreview?.actions[0]?<section aria-label="Предыдущий предпросмотр"><p role="status">Последний подготовленный вариант. Новые изменения ещё не выполнены.</p><DashboardCreationPreview action={conversation.retainedPreview.actions[0]}/></section>:null}
-        {conversation.orchestration?<AssistantPlanProgress plan={conversation.orchestration} busy={busy} onControl={(action,step)=>void assistant.control(action,step)}/>:null}
+        {conversation.orchestration?<AssistantPlanProgress plan={conversation.orchestration} busy={locked} onControl={(action,step)=>void assistant.control(action,step)} onContinue={step=>void assistant.send("Продолжи подготовку выбранного шага.",false,undefined,step)}/>:null}
+        {open&&conversation.orchestration?<AssistantConsultations key={conversation.orchestration.planId} planId={conversation.orchestration.planId} revision={conversation.orchestration.revision}/>:null}
         {assistant.error?<p className="error-message" role="alert">{assistant.error}</p>:null}
         {conversation.saved||assistant.error?<button type="button" className="ghost-button" disabled={busy||executing} onClick={()=>void assistant.reload()}>{conversation.saved?"Обновить разговор":"Повторить загрузку истории"}</button>:null}
         {conversation.pendingStatus==="PENDING"?<p role="status">Сообщение сохранено. Ожидаем завершения запроса…</p>:null}

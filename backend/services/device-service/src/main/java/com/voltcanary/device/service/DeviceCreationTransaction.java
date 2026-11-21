@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class DeviceCreationTransaction {
     private record Receipt(String digest, UUID deviceId) { }
     private final JdbcTemplate jdbc;
@@ -27,15 +29,6 @@ public class DeviceCreationTransaction {
     private final AccountService accounts;
     private final ObjectMapper mapper;
     private final EntityManager entities;
-
-    public DeviceCreationTransaction(JdbcTemplate jdbc, DeviceService devices, AccountService accounts,
-            ObjectMapper mapper, EntityManager entities) {
-        this.jdbc = jdbc;
-        this.devices = devices;
-        this.accounts = accounts;
-        this.mapper = mapper;
-        this.entities = entities;
-    }
 
     @Transactional
     public DeviceResponse create(AuthenticatedUser actor, UUID accountId, DeviceRequest request, String key) {

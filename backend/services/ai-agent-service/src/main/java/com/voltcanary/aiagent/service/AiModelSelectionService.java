@@ -12,21 +12,17 @@ import com.voltcanary.aiagent.security.AuthenticatedUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-
 @Service
+@RequiredArgsConstructor
 public class AiModelSelectionService {
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelRepository;
-
-    public AiModelSelectionService(AiModelProviderRepository providerRepository, AiModelConfigRepository modelRepository) {
-        this.providerRepository = providerRepository;
-        this.modelRepository = modelRepository;
-    }
 
     public List<ModelConfigResponse> list(AuthenticatedUser user, UUID providerId) {
         requireProvider(user, providerId);

@@ -3,6 +3,7 @@ package com.voltcanary.alert.controller;
 import com.voltcanary.alert.configurable.application.ConfigurableRuleReservations;
 import com.voltcanary.alert.configurable.domain.RuleReservation;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,10 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/alert-rules/configurable")
+@RequiredArgsConstructor
 public class ConfigurableRuleReservationsController {
     private final ConfigurableRuleReservations reservations;
-
-    public ConfigurableRuleReservationsController(ConfigurableRuleReservations reservations) { this.reservations = reservations; }
 
     @PostMapping("/review-reservations")
     public RuleReservation reserve(@RequestHeader("X-User-Id") String actor, @RequestBody byte[] body) {

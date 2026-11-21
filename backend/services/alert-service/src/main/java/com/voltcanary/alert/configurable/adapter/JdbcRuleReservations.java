@@ -15,15 +15,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Short, serialized owner-local transactions. No rule/grant/alert/delivery rows are created. */
 @Component
+@RequiredArgsConstructor
 public class JdbcRuleReservations implements RuleReservationStore {
     private final DataSource source;
     private final VclParser parser = new VclParser();
-
-    public JdbcRuleReservations(DataSource source) { this.source = source; }
 
     @Override
     public RuleReservation reserve(UUID account, UUID actor, List<String> keys, String key) {

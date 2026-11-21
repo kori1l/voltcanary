@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { activationRoute } from "../DeviceActivationSummary";
 import { CsvImportPreview, inspectImportCsv } from "../CsvImportPreview";
 import { AnalyticsConfigurationFields } from "../AnalyticsConfigurationFields";
+import { SourceMappingLauncher } from "./SourceMappingLauncher";
 
 import { DeviceMetricCard as Metric } from "./DeviceMetricCard";
 import { useDeviceRegistryActions } from "./useDeviceRegistryActions";
@@ -108,6 +109,7 @@ export function DeviceConfigurationPanel({ registry, sourceToken }: { registry: 
                       </div>
                       <div className="action-row">
                         <Link className="ghost-button button-link" to={activationRoute(source.deviceId, source.id)}>Open activation</Link>
+                        <SourceMappingLauncher sourceId={source.id} deviceId={source.deviceId} />
                         <button className="ghost-button" type="button" onClick={() => void rotateSourceToken(source.id)} disabled={isRegistryBusy}>
                           Rotate token
                         </button>

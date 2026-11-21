@@ -1,11 +1,15 @@
 package com.voltcanary.telemetry.config;
 
 import java.time.Duration;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app.telemetry.authorization")
+@Getter
+@Setter
 public class TelemetryAuthorizationProperties {
 
     private boolean enabled = true;
@@ -13,35 +17,4 @@ public class TelemetryAuthorizationProperties {
     private String internalServiceToken = "dev-internal-token";
     private Duration timeout = Duration.ofSeconds(2);
 
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public String getDeviceServiceBaseUrl() {
-        return deviceServiceBaseUrl;
-    }
-
-    public void setDeviceServiceBaseUrl(String deviceServiceBaseUrl) {
-        this.deviceServiceBaseUrl = deviceServiceBaseUrl;
-    }
-
-    public String getInternalServiceToken() {
-        return internalServiceToken;
-    }
-
-    public void setInternalServiceToken(String internalServiceToken) {
-        this.internalServiceToken = internalServiceToken;
-    }
-
-    public Duration getTimeout() {
-        return timeout;
-    }
-
-    public void setTimeout(Duration timeout) {
-        this.timeout = timeout;
-    }
 }

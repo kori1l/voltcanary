@@ -20,7 +20,8 @@ Bypass OpenSpec only for small local fixes that do not change those surfaces.
 2. If the user named a change, run `npm run openspec:apply -- <change-id>`
    before editing implementation files.
 3. If no change was named and the user asks for the next change, select from
-   the current `openspec:list` using the applicable sequence below. Honor an
+   the current `openspec:list` using the applicable sequence below. For an unqualified next-change request,
+   follow the current release order in the program index. Honor an
    explicit AI, security, UI/UX, dashboard, notification or ML scope; check prerequisites
    before applying. Ask for change selection only when no applicable sequence
    or unambiguous active target resolves the request. Never select archived
@@ -54,39 +55,27 @@ provider registry, and focused frontend notification settings modules. Do not
 add provider-specific delivery branches directly to alert lifecycle code or large
 route pages.
 
-## Explicit Spring AI Migration
-
-The user-authorized `rebuild-assistant-with-spring-ai` change owns Spring AI 2 and
-the prerequisite Spring Boot 4 upgrade. During this explicit migration it takes
-precedence over the A5/A6 sequence below. Reuse existing domain contracts and
-preserve their unfinished quality gates; framework migration does not qualify
-model quality or authorize paid evaluation.
-
 ## AI Assistant Orchestration Sequence
 
-The user reprioritized delivery on 2026-11-11: **AI agent first, Java,
-assess LangGraph4j**. Follow the authoritative
-[AI-first priority](../../../openspec/changes/README.md#ai-first-execution-priority)
-and `adopt-langgraph4j-agent-orchestration` before broad configurable G0/G4 work
-or the former unconditional A5 -> A6 selection. Core1.9.9 is now integrated for
-new turns/context/confirmation with atomic schema2 plan checkpoints. Use its
-actual unchecked tasks and evidence for continuation; do not repeat completed
-compatibility work or claim specialist/in-place migration/model qualification.
-Reuse Spring AI, one ledger and existing domain owners. Existing
-A3/A5/V/R/G7 criteria remain open and integrate through that one library runtime.
-Only exact missing owner prerequisites may interrupt this agent-first sequence.
-The older paragraphs below describe platform progress/internal dependencies;
-they do not override the new priority. Planning does not authorize live calls.
+Use the [current AI-first order](../../../openspec/changes/README.md#ai-first-execution-priority)
+for assistant continuation after Spring AI and LangGraph4j adoption. A5 is archived.
+G0 and G1 owner delivery are archived. Follow the remaining owner dependencies in the release queue. Complete release functionality, including
+applicable V/R/C3 and preview work, and G8 platform acceptance before A6.
+Reuse
+verified runtime evidence. Keep the
+first-pass checkpoint, final integration and qualification gates owned by the
+linked changes. Treat superseded transit proposals as reference scenarios.
 
 For configurable tables/relations, map features, temporal rules and their AI
 authoring, use the
 [configurable operations program](../../../openspec/changes/README.md#configurable-operations-program).
 It supersedes specialized transit T1–T7; HSL is a package/example, not a core
 model. The user explicitly resumed configurable implementation on2026-11-03.
-G0 scalar task1.3 and bundle storage infrastructure are verified. Continue G0
-task1.4 real owner adapters/validation and bundle integration, then1.5 UI/AI use.
-Use prerequisite G1/M1 owner slices where configurable metadata is still absent,
-as the index directs; do not count test attestations as real owner integration.
+G0 is complete and archived on 2026-11-17 with public owner-validated RULE
+preparation, immutable packages and shared native UI/AI contracts. G1 is complete
+and archived with verified native imports, migration, sharing, history and the
+declared PostgreSQL p95 gate. Continue the dependent G6/G7 workflow slices as
+the index directs; do not count test attestations as real owner integration.
 Document-bound static RULE source/native/grant/policy composition now exists.
 It returns STATIC_TYPED_IR only, requires every exposed schema field in
 the grant, and does not qualify runtime/cost readiness or public bundle admission.
@@ -106,8 +95,9 @@ are implemented too; actual evidence storage/retention, atomic alert/effect
 admission remain separate gates. Actual normalized input generation/cutover and
 the signed source capture readiness adapter are now implemented (G3/4.4–4.5,
 G0/2.7), with legacy facts unchanged and all upstream/negative/runtime flags
-conservative. Continue qualified operator/readiness/cost checks and actual owner
-composition before qualifying the public bundle path or marking G0 complete.
+conservative. The completed G0 change records the later qualified
+operator/readiness/cost checks and public bundle owner composition. Broader
+runtime and effect qualification follows the remaining G4/G8 gates.
 G4/5.1 now provides pure bounded FIXED/ROLLING/calendar window assignment with
 timezone replay pins; actual aggregates, coverage/finalization and durable runtime
 remain prerequisites. Do not advertise the assignment kernel as an executable
@@ -142,8 +132,8 @@ supplied target state/timer/output transition. Preserve ordered dual-key leases,
 source-qualified receipt namespaces and exact pin/replay fences. The102 focused
 H2/PostgreSQL cases and593-test analytics reactor do not qualify an autonomous
 evaluator/worker, actual owner/grant/generation/coverage admission or alert effects.
-These increments do not complete G1/M1;
-SNAPSHOT/import/migration/sharing and full acceptance remain open.
+The index distinguishes completed G1 owner delivery from open M1 integration
+and cross-domain acceptance.
 Do not skip unmet prerequisites or restart the retired transit queue. The index execution-status section
 is authoritative; earlier stop notes in design history do not revoke this resume.
 Follow G0/G1/GX/G2–G8 owner dependencies and M0–M4 vertical milestones,
@@ -168,8 +158,7 @@ portability and shared budgets), use the
 [orchestration program](../../../openspec/changes/README.md#ai-assistant-orchestration-program).
 It supersedes the C3 -> stages5/6 implementation order while preserving their
 unfinished acceptance requirements, existing history/trace/execution baselines
-and failed-quality/default-off release gates. Continue an eligible in-progress
-new-program member, otherwise select its earliest unfinished eligible change.
+and failed-quality/default-off release gates. Use the AI-first entry point above for sequencing within this program.
 For the 2026-10-28 amendment, remaining program stages are A5 then A6: improve
 core skills/context/output/workflows and record first-pass results before adding
 V/R resilience at the end of A5. Diagnostic profiles disable automatic correction
@@ -196,10 +185,9 @@ scope, continue an eligible in-progress member of that program, otherwise select
 its earliest unfinished eligible stage. Do not use list recency or an older
 preview change's checked-task count to override that order.
 
-The first stage is `establish-ai-dashboard-conversation-evals`: establish the
-real-dialogue baseline before changing runtime behavior. Baseline completion may
-record known failures; it is not final model-quality acceptance. Later default
-enable remains gated by the outcome-verification and recovery release checks.
+Reuse the archived conversation-evaluation baseline and recorded failures.
+Current default enablement follows the outcome-verification, recovery and
+shared A6 qualification gates.
 
 Unfinished preview tasks11/12 are delegated acceptance traceability, not a second
 implementation queue or a prerequisite to finish/archive before this program.

@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,18 +20,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class VariableTelemetryController {
     public record Preview(UUID deviceId, UUID dataSourceId, VariableContract contract, Map<String, Double> inputs) { }
     private final TelemetryAccessService access;
     private final VariableSourceAccess sources;
     private final VariableSeriesQueries queries;
     private final VariableEvaluator evaluator = new VariableEvaluator();
-
-    public VariableTelemetryController(TelemetryAccessService access, VariableSourceAccess sources, VariableSeriesQueries queries) {
-        this.access = access;
-        this.sources = sources;
-        this.queries = queries;
-    }
 
     @PostMapping("/telemetry/variables/preview")
     public VariableEvaluator.Result preview(@RequestHeader HttpHeaders headers, @RequestBody Preview request) {

@@ -1,9 +1,9 @@
 package com.voltcanary.telemetry.service;
 
-import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
-import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
+import com.voltcanary.common.events.telemetry.TelemetryValidatedEvent;
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
 import com.voltcanary.telemetry.domain.QualityFlag;
 import com.voltcanary.telemetry.domain.TelemetryMeasurement;
@@ -22,17 +22,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class TelemetryEventProcessor {
-    private final DeviceHistoryDeletion deletions;
-
-    private static final Logger log = LoggerFactory.getLogger(TelemetryEventProcessor.class);
-
     private final TelemetryMeasurementRepository measurementRepository;
     private final TelemetryReadingRepository readingRepository;
     private final TelemetryQualityFlagRepository qualityFlagRepository;
@@ -45,33 +43,7 @@ public class TelemetryEventProcessor {
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final PositionProjection positions;
-
-    public TelemetryEventProcessor(
-            TelemetryMeasurementRepository measurementRepository,
-            TelemetryReadingRepository readingRepository,
-            TelemetryQualityFlagRepository qualityFlagRepository,
-            TelemetryValidatedPublisher validatedPublisher,
-            TelemetryDeadLetterPublisher deadLetterPublisher,
-            MetricCatalog metricCatalog,
-            TelemetryValidationProperties validationProperties,
-            TelemetryIngestionRateLimiter rateLimiter,
-            ProcessedEventService processedEventService,
-            ObjectMapper objectMapper,
-            MeterRegistry meterRegistry, PositionProjection positions, DeviceHistoryDeletion deletions) {
-        this.measurementRepository = measurementRepository;
-        this.readingRepository = readingRepository;
-        this.qualityFlagRepository = qualityFlagRepository;
-        this.validatedPublisher = validatedPublisher;
-        this.deadLetterPublisher = deadLetterPublisher;
-        this.metricCatalog = metricCatalog;
-        this.validationProperties = validationProperties;
-        this.rateLimiter = rateLimiter;
-        this.processedEventService = processedEventService;
-        this.objectMapper = objectMapper;
-        this.meterRegistry = meterRegistry;
-        this.positions = positions;
-        this.deletions = deletions;
-    }
+    private final DeviceHistoryDeletion deletions;
 
     public record InputOutcome(int inserted, boolean eligibleForDerived) { }
 

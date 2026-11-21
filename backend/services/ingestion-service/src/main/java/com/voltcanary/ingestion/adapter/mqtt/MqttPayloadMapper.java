@@ -8,16 +8,14 @@ import com.voltcanary.ingestion.canonical.TelemetryOrigin;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class MqttPayloadMapper {
 
     private final ObjectMapper objectMapper;
-
-    public MqttPayloadMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public IncomingTelemetryMessage map(String sourceId, byte[] payload) {
         return map(sourceId, null, payload);

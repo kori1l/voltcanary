@@ -143,7 +143,7 @@ public class PlanStore {
     /** Private journal claim only. The executor must use native receipt/resource GETs, with no owner POST. */
     @Transactional
     public boolean claimNativeReceiptInspection(Stored saved, Scope scope) {
-        if (saved.plan().actions().size() != 1 || saved.plan().actions().getFirst().tool() != com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE) {
+        if (saved.plan().actions().size() != 1 || !java.util.Set.of(com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE, com.voltcanary.aiagent.model.AgentTool.UPDATE_VEHICLE_MONITORING).contains(saved.plan().actions().getFirst().tool())) {
             throw new IllegalArgumentException("Native receipt inspection required");
         }
         int claimed = jdbc.update("""

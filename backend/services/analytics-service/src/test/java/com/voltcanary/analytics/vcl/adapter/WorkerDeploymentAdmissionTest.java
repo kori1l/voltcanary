@@ -59,9 +59,9 @@ class WorkerDeploymentAdmissionTest {
         when(deployments.find(account, epoch)).thenReturn(Optional.of(active));
         var bundle = mock(CompilationBundle.class);
         when(bundle.digest()).thenReturn(digest);
-        when(bundle.payload()).thenReturn("{\"compilation\":{\"graph\":["
+        when(bundle.json()).thenReturn(new com.voltcanary.vcl.VclParser().readJson(("{\"compilation\":{\"graph\":["
                 + "{\"method\":\"read_stream\",\"config\":{\"bindingId\":\"" + binding + "\",\"schemaRevision\":1}},"
-                + "{\"method\":\"emit_alert\",\"config\":{\"evidencePolicyId\":\"" + policy + "\"}}]}}");
+                + "{\"method\":\"emit_alert\",\"config\":{\"evidencePolicyId\":\"" + policy + "\"}}]}}").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         when(bundles.find(account, bundleId)).thenReturn(Optional.of(bundle));
         var source = mock(VclSourceCaptureDescription.class);
         var readiness = mock(VclObservationReadiness.class);

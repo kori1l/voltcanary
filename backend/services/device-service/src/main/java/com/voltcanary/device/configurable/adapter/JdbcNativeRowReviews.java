@@ -17,17 +17,24 @@ import javax.sql.DataSource;
 import static com.voltcanary.device.configurable.adapter.NativeRowReviewRows.require;
 
 public final class JdbcNativeRowReviews implements NativeRowReviews {
-    private final DataSource source;
+    private final NativeDataTransactions transactions;
     private final Clock clock;
 
     public JdbcNativeRowReviews(DataSource source, Clock clock) {
-        this.source = source;
+        this(clock, NativeDataTransactions.owner(source));
+    }
+
+    JdbcNativeRowReviews(Clock clock, NativeDataTransactions transactions) {
+        this.transactions = transactions;
         this.clock = clock;
     }
 
     @Override
     public NativeRowReview reserve(UUID account, UUID actor, UUID dataset, long revision, String key) {
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            access.target(dataset);
+            NativeSharedMutationChecks.writer(access);
             expire(connection, account);
             try (var query = connection.prepareStatement("SELECT id,actor_id,dataset_id,schema_revision FROM cfg_row_review WHERE account_id=? AND reservation_key=?")) {
                 query.setObject(1, account);
@@ -36,7 +43,9 @@ public final class JdbcNativeRowReviews implements NativeRowReviews {
                     if (rows.next()) {
                         require(actor.equals(rows.getObject("actor_id", UUID.class)) && dataset.equals(rows.getObject("dataset_id", UUID.class))
                                 && revision == rows.getLong("schema_revision"), "IDEMPOTENCY_KEY_REUSED");
-                        return NativeRowReviewRows.locked(connection, account, actor, rows.getObject("id", UUID.class));
+                        var reused = NativeRowReviewRows.locked(connection, account, actor, rows.getObject("id", UUID.class));
+                        NativeSharedMutationChecks.review(access, reused);
+                        return reused;
                     }
                 }
             }
@@ -60,8 +69,11 @@ public final class JdbcNativeRowReviews implements NativeRowReviews {
 
     @Override
     public NativeRowReview prepare(UUID account, UUID actor, UUID id, VclDocument document) {
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            NativeSharedMutationChecks.writer(access);
             var review = NativeRowReviewRows.locked(connection, account, actor, id);
+            NativeSharedMutationChecks.review(access, review);
             require(clock.instant().isBefore(review.expiresAt()) && !review.status().equals("EXPIRED"), "REVIEW_EXPIRED");
             require(List.of("RESERVED", "PREPARED").contains(review.status()), "REVIEW_STATE_CONFLICT");
             var spec = document.spec();
@@ -71,7 +83,7 @@ public final class JdbcNativeRowReviews implements NativeRowReviews {
             require(spec.path("reviewId").asText().equals(id.toString()) && spec.path("mutationId").asText().equals(review.mutationId().toString()), "RESERVED_RESOURCE_MISMATCH");
             require(spec.path("idempotencyKey").asText().equals(review.reservationKey()), "IDEMPOTENCY_KEY_REUSED");
             var dataset = NativeRowTransactions.head(connection, account, review.datasetId(), review.schemaRevision());
-            String canonical = NativeMutationValidation.compile(connection, dataset, scope, document, review.createdRecordId());
+            String canonical = NativeMutationValidation.compile(connection, dataset, scope, document, review.createdRecordId(), null, access);
             long revision = review.canonicalDocument() == null || canonical.equals(review.canonicalDocument()) && scope.equals(review.scopeDigest())
                     ? review.revision() : Math.addExact(review.revision(), 1);
             String documentDigest = VclCanonical.sha256(canonical);
@@ -90,8 +102,11 @@ public final class JdbcNativeRowReviews implements NativeRowReviews {
 
     @Override
     public NativeRowReview begin(UUID account, UUID actor, UUID id, long revision, String digest, String key) {
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            NativeSharedMutationChecks.writer(access);
             var review = NativeRowReviewRows.locked(connection, account, actor, id);
+            NativeSharedMutationChecks.review(access, review);
             require(review.revision() == revision && digest.equals(review.reviewDigest()), "REVIEW_CONFLICT");
             require(key.equals(review.reservationKey()), "IDEMPOTENCY_KEY_REUSED");
             if (List.of("SUCCEEDED", "APPLYING", "UNKNOWN", "FAILED").contains(review.status())) return review;
@@ -105,17 +120,21 @@ public final class JdbcNativeRowReviews implements NativeRowReviews {
 
     @Override
     public NativeRowReview inspect(UUID account, UUID actor, UUID id) {
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+        return transactions.run(account, actor, (connection, access) -> {
             expire(connection, account);
-            return NativeRowReviewRows.locked(connection, account, actor, id);
+            var review = NativeRowReviewRows.locked(connection, account, actor, id);
+            NativeSharedMutationChecks.review(access, review);
+            return review;
         });
     }
 
     @Override
     public NativeRowReview outcome(UUID account, UUID actor, UUID id, String status, String code) {
         require(List.of("UNKNOWN", "FAILED").contains(status) && code.matches("[A-Z][A-Z0-9_]{0,63}"), "INVALID_DIAGNOSTIC");
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
+        return transactions.run(account, actor, (connection, access) -> {
+            NativeSharedMutationChecks.writer(access);
             var review = NativeRowReviewRows.locked(connection, account, actor, id);
+            NativeSharedMutationChecks.review(access, review);
             if (List.of("SUCCEEDED", "FAILED").contains(review.status())) return review;
             require(List.of("APPLYING", "UNKNOWN").contains(review.status()), "REVIEW_STATE_CONFLICT");
             JdbcNativeDatasetCatalog.execute(connection, "UPDATE cfg_row_review SET status=?,outcome_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", status, code, id);

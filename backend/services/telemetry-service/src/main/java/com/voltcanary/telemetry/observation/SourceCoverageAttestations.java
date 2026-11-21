@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -15,14 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Evaluates an explicitly trusted completeness statement against durable, gap-free journal evidence. */
 @Service
+@RequiredArgsConstructor
 public class SourceCoverageAttestations {
     private final JdbcTemplate jdbc;
     private final SourcePositionProgress positions;
-
-    public SourceCoverageAttestations(JdbcTemplate jdbc, SourcePositionProgress positions) {
-        this.jdbc = jdbc;
-        this.positions = positions;
-    }
 
     public record Proof(UUID proofId, UUID inputGeneration, SourcePosition position,
             @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING) Instant from,
@@ -122,27 +119,55 @@ public class SourceCoverageAttestations {
                 com.voltcanary.vcl.VclSourceCoverage.SOURCE_EVENT_TIME, Timestamp.from(search.until()), Timestamp.from(search.from()));
         var groups = new java.util.LinkedHashMap<UUID, java.util.List<Segment>>();
         candidates.forEach(segment -> groups.computeIfAbsent(segment.epoch(), ignored -> new java.util.ArrayList<>()).add(segment));
-        var checked = new java.util.HashMap<UUID, Boolean>();
+        var checked = new java.util.HashMap<UUID, Long>();
+        java.util.function.ToLongFunction<Segment> checkpoint = segment -> checked.computeIfAbsent(segment.id(), id -> {
+            var saved = stored(pin, id);
+            var result = saved == null ? null : evaluate(pin, saved);
+            return result != null && "COVERED".equals(result.coverage())
+                    ? Long.parseLong(result.requiredCheckpoint()) : -1L;
+        });
         for (var segments : groups.values()) {
-            Instant frontier = search.from();
-            var parts = new java.util.ArrayList<UUID>();
-            while (frontier.isBefore(search.until()) && parts.size() < 64) {
-                Instant point = frontier;
-                var next = segments.stream().filter(segment -> !segment.from().isAfter(point) && segment.until().isAfter(point))
-                        .filter(segment -> checked.computeIfAbsent(segment.id(), id -> {
-                            var saved = stored(pin, id);
-                            return saved != null && "COVERED".equals(evaluate(pin, saved).coverage());
-                        })).findFirst();
-                if (next.isEmpty()) break;
-                parts.add(next.get().id());
-                frontier = next.get().until();
-            }
-            if (!frontier.isBefore(search.until())) {
-                if (parts.size() == 1) return parts.getFirst();
-                return saveComposite(pin, new Composite(search.generation(), search.from(), search.until(), java.util.List.copyOf(parts)));
+            var parts = cover(search, segments, checkpoint, null);
+            if (!parts.isEmpty()) return saveCoverageSearch(pin, search, parts);
+            for (var anchor : segments) {
+                if (checkpoint.applyAsLong(anchor) < search.minimumCheckpoint()) continue;
+                parts = cover(search, segments, checkpoint, anchor);
+                if (!parts.isEmpty()) return saveCoverageSearch(pin, search, parts);
             }
         }
         return null;
+    }
+
+    private UUID saveCoverageSearch(VclObservationReadiness.Pin pin, com.voltcanary.vcl.VclCoverageSearch search,
+            java.util.List<UUID> parts) {
+        return parts.size() == 1 ? parts.getFirst()
+                : saveComposite(pin, new Composite(search.generation(), search.from(), search.until(), parts));
+    }
+
+    private static java.util.List<UUID> cover(com.voltcanary.vcl.VclCoverageSearch search, java.util.List<Segment> segments,
+            java.util.function.ToLongFunction<Segment> checkpoint, Segment anchor) {
+        var parts = new java.util.ArrayList<UUID>();
+        Instant frontier = search.from();
+        long through = -1;
+        while ((frontier.isBefore(search.until()) || anchor != null) && parts.size() < 64) {
+            Instant point = frontier;
+            Segment next;
+            if (anchor != null && !anchor.from().isAfter(point)) {
+                next = anchor;
+                anchor = null;
+            } else {
+                var required = anchor;
+                next = segments.stream().filter(segment -> !segment.from().isAfter(point) && segment.until().isAfter(point))
+                        .filter(segment -> required == null || segment.until().isBefore(required.until()))
+                        .filter(segment -> checkpoint.applyAsLong(segment) >= 0).findFirst().orElse(null);
+            }
+            if (next == null) break;
+            parts.add(next.id());
+            through = Math.max(through, checkpoint.applyAsLong(next));
+            frontier = next.until();
+        }
+        return !frontier.isBefore(search.until()) && through >= search.minimumCheckpoint()
+                ? java.util.List.copyOf(parts) : java.util.List.of();
     }
 
     private record Segment(UUID id, UUID epoch, Instant from, Instant until) { }

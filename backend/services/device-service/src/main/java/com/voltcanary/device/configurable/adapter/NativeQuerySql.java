@@ -39,6 +39,9 @@ final class NativeQuerySql {
             }
             case "is_null" -> "(" + value(args.get(0)) + " IS NULL)";
             case "eq", "ne", "lt", "le", "gt", "ge" -> {
+                if (!method.equals("eq") && !method.equals("ne") && (equalityOnly(args.get(0)) || equalityOnly(args.get(1)))) {
+                    throw unsupported();
+                }
                 String sql = switch (method) {
                     case "eq" -> "=";
                     case "ne" -> "<>";
@@ -65,6 +68,11 @@ final class NativeQuerySql {
             case "DECIMAL" -> new java.math.BigDecimal(literal.path("value").asText());
             case "DATE" -> java.time.LocalDate.parse(literal.path("value").asText());
             case "INSTANT" -> java.time.OffsetDateTime.parse(literal.path("value").asText());
+            case "TEXT", "ENUM" -> {
+                String text = literal.path("value").asText();
+                if (text.indexOf(0) >= 0) throw new VclException("NATIVE_TEXT_UNSUPPORTED", "");
+                yield text;
+            }
             default -> throw unsupported();
         };
         parameters.add(value);
@@ -74,9 +82,18 @@ final class NativeQuerySql {
     private String field(UUID id) {
         if (id.equals(dataset.recordIdFieldId())) return "record_id";
         var type = dataset.schema().type(id);
-        if (List.of(VclType.Kind.TEXT, VclType.Kind.ENUM, VclType.Kind.REF, VclType.Kind.POINT, VclType.Kind.INTERVAL).contains(type.kind())) throw unsupported();
+        if (List.of(VclType.Kind.POINT, VclType.Kind.INTERVAL).contains(type.kind())) throw unsupported();
         if (!dataset.schema().indexes().contains(id)) throw new VclException("INDEX_REQUIRED", "");
         return NativeSqlLayout.identifier(NativeSqlLayout.column(id));
+    }
+
+    private boolean equalityOnly(JsonNode operand) {
+        if (operand.path("op").asText().equals("FIELD")) {
+            UUID id = UUID.fromString(operand.path("fieldId").asText());
+            return id.equals(dataset.recordIdFieldId())
+                    || List.of(VclType.Kind.TEXT, VclType.Kind.ENUM, VclType.Kind.REF).contains(dataset.schema().type(id).kind());
+        }
+        return List.of("TEXT", "ENUM", "REF").contains(operand.at("/literal/type").asText());
     }
 
     private static VclException unsupported() { return new VclException("QUERY_PUSHDOWN_UNSUPPORTED", ""); }

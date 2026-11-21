@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class VariableDefaults {
     public record Edit(int expectedVersion, int revision, String sourceType, Map<String, String> inputPaths) { }
     public record Outcome(UUID deviceId, String status, String diagnostic) { }
@@ -27,16 +29,6 @@ public class VariableDefaults {
     private final VariableBindings bindings;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public VariableDefaults(VariableStore variables, AccountService accounts, VariableBindingRows rows,
-            VariableBindings bindings, JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.variables = variables;
-        this.accounts = accounts;
-        this.rows = rows;
-        this.bindings = bindings;
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public void configure(AuthenticatedUser user, String type, UUID variable, Edit edit) {

@@ -3,19 +3,19 @@ package com.voltcanary.dashboard.sharing;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class DashboardAudienceRepository {
     public record Audience(UUID subjectId,String subjectKind,List<String> capabilities) {
     }
     public record Collaboration(UUID dashboardId,UUID workspaceId,long version) {
     }
     private final JdbcTemplate jdbc;
-    public DashboardAudienceRepository(JdbcTemplate jdbc) {
-        this.jdbc=jdbc;
-    }
+
     public Collaboration collaboration(UUID dashboard) {
         return jdbc.query("SELECT * FROM dashboard_workspaces WHERE dashboard_id=?",(r,i)->new Collaboration(dashboard,r.getObject("workspace_id",UUID.class),r.getLong("version")),dashboard).stream().findFirst().orElse(null);
     }

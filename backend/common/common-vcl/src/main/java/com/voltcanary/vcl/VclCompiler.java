@@ -11,6 +11,7 @@ import java.util.UUID;
 
 /** Static front end over owner-authorized immutable metadata snapshots; no SQL/network/runtime effects. */
 public final class VclCompiler {
+    private static final VclParser MAPPINGS = new VclParser();
     private final VclRegistry registry;
     private final VclUnits units;
 
@@ -36,6 +37,19 @@ public final class VclCompiler {
         VclException.require(scopeDigest.equals(metadata.accessScopeDigest()), "ACCESS_SCOPE_CHANGED", "");
         return new VclCompilation(document.kind(), VclCanonical.json(document), VclCanonical.documentDigest(document), VclCanonical.semanticDigest(document),
                 "vcl-1-spec-2", "vcl-frontend-1", registry.digest(), units.digest(), scopeDigest, List.copyOf(session.dependencies.values()), graph);
+    }
+
+    /** Type-check one closed registered mapping without inventing an uploaded artifact or runtime authority. */
+    public List<VclCompilation.Dependency> checkImportColumn(JsonNode column, VclType source, JsonNode targetField, VclMetadata metadata) {
+        var checked = MAPPINGS.importColumn(column.toString());
+        VclException.require(metadata != null && metadata.accessScopeDigest() != null
+                && metadata.accessScopeDigest().matches("[0-9a-f]{64}"), "ACCESS_SCOPE_REQUIRED", "");
+        String scope = metadata.accessScopeDigest();
+        VclException.require(checked.path("targetFieldId").asText().equals(targetField.path("id").asText()), "FIELD_NOT_IN_SCOPE", "");
+        var session = new Session(metadata);
+        new VclImportChecks(units, session).column(checked, source, VclType.from(targetField));
+        VclException.require(scope.equals(metadata.accessScopeDigest()), "ACCESS_SCOPE_CHANGED", "");
+        return List.copyOf(session.dependencies.values());
     }
 
     final class Session {

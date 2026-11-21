@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,15 +18,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DeviceDeletionController {
     public record Request(@NotNull Boolean deleteHistory) { }
     private final AuthenticatedUserResolver users;
     private final DeviceDeletionService deletions;
-
-    public DeviceDeletionController(AuthenticatedUserResolver users, DeviceDeletionService deletions) {
-        this.users = users;
-        this.deletions = deletions;
-    }
 
     @PostMapping("/devices/{id}/deletion")
     @ResponseStatus(HttpStatus.ACCEPTED)

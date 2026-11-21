@@ -16,18 +16,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 import static com.voltcanary.aiagent.orchestration.collaboration.Requirements.conflict;
 import static com.voltcanary.aiagent.orchestration.collaboration.Requirements.invalid;
 
 /** Pure versioned changes. The application supplies verified message/evidence identity and registered schemas. */
+@RequiredArgsConstructor
 public final class RequirementChanges {
     public interface Types {
         void validate(String schemaId, JsonNode literal);
     }
 
     private final Types types;
-    public RequirementChanges(Types types) { this.types = types; }
 
     public Snapshot propose(Snapshot before, long expected, UUID request, List<Slot> proposals, Set<UUID> authorizedMessages) {
         revision(before, expected);
@@ -123,6 +124,31 @@ public final class RequirementChanges {
                     Set.of(verifiedUserMessage), Set.of(), old.dependsOn(), next(old.revision()), Origin.USER_VALUES));
         }
         return updated(before, slots, values.keySet(), request, verifiedUserMessage, Origin.USER_VALUES);
+    }
+
+    public Snapshot confirmKnowledgeScope(Snapshot before, UUID request, UUID source, JsonNode value) {
+        if (before.question() != null) throw conflict("KNOWLEDGE_SCOPE_REQUIRES_RESOLVED_QUESTION");
+        if (request == null || source == null || !value.isArray() || value.size() > 32) {
+            throw invalid("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+        }
+        var unique = new HashSet<UUID>();
+        for (var item : value) {
+            try {
+                var id = UUID.fromString(item.asText());
+                if (!id.toString().equals(item.textValue()) || !unique.add(id)) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException malformed) {
+                throw invalid("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+            }
+        }
+        var slots = new LinkedHashMap<>(before.slots());
+        var previous = slots.values().stream().filter(slot -> "/knowledge/corpusRefs".equals(slot.path()))
+                .findFirst().orElse(null);
+        UUID id = previous == null ? UUID.nameUUIDFromBytes((before.planId() + ":knowledge-corpora")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)) : previous.id();
+        slots.put(id, new Slot(id, "/knowledge/corpusRefs", "knowledge-corpus-refs-v1", false,
+                Status.CONFIRMED, value, Set.of(source), Set.of(), Set.of(),
+                previous == null ? 0 : next(previous.revision()), Origin.OWNER_EVIDENCE));
+        return updated(before, slots, Set.of(id), request, source, Origin.OWNER_EVIDENCE);
     }
 
     public boolean complete(Snapshot state) {

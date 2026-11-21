@@ -231,6 +231,21 @@ class AssistantRoutingBudgetScenarioTest {
         int beforeDuplicate = network.get();
         coordinator.call(coordinatedTurn, coordinatedCall, mapper.valueToTree(policy), planner, selection, Set.of("EDIT_DASHBOARD"), Set.of(), available, coordinatedCorrelation, adapter);
         assertEquals(beforeDuplicate, network.get());
+
+        var accessChecks = new java.util.concurrent.atomic.AtomicInteger();
+        var deniedCall = UUID.randomUUID();
+        var denied = assertThrows(ModelRouting.Stop.class, () -> coordinator.call(coordinatedTurn, deniedCall,
+                mapper.valueToTree(policy), planner, selection, Set.of("EDIT_DASHBOARD"), Set.of(), available,
+                coordinatedCorrelation, adapter, null, ignored -> { }, prepared -> {
+                    if (accessChecks.incrementAndGet() == 2) {
+                        throw new ModelRouting.Stop("KNOWLEDGE_EVIDENCE_ACCESS_CHANGED");
+                    }
+                }));
+        assertEquals("KNOWLEDGE_EVIDENCE_ACCESS_CHANGED", denied.getMessage());
+        assertEquals(2, accessChecks.get());
+        assertEquals(beforeDuplicate, network.get());
+        assertEquals("FAILED", jdbc.queryForObject("select status from ai_model_budget_attempts where call_id=?",
+                String.class, deniedCall));
     }
 
     private static AttemptLedger.Attempt attempt(ModelRouting.Route route, RoutingPolicy policy, UUID id, String phase) {

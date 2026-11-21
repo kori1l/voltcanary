@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { collectionDocument, mutationDocument, literal, publishedCreationTypes, newField } from "./nativeDocuments";
+import { collectionDocument, mutationDocument, literal, publishedCreationTypes, newField, type CollectionDraft } from "./nativeDocuments";
 import type { Dataset, Review } from "./nativeDataApi";
 import nativeAuthoring from "../../../../backend/common/common-vcl/src/test/resources/native-authoring/native-table-authoring.json";
 
@@ -7,8 +7,8 @@ const reserved: Review = { reviewId: "review", resourceId: "table", mutationId: 
   revision: 1, reviewDigest: null, semanticDigest: null, status: "RESERVED", expiresAt: "2099-11-03T00:00:00Z", receiptId: "receipt", outcomeCode: null, typedDiff: null };
 const dataset: Dataset = { id: "table", schemaRevision: 1, generation: "generation", dataVersion: 7, liveQueryReady: true,
   definition: { label: "Orders", fields: [{ id: "field-a", label: "Name", type: "TEXT", nullable: false }, { id: "field-b", label: "Amount", type: "DECIMAL", nullable: true, unit: "V" }], keyFieldIds: [], systemFields: { recordIdFieldId: "system-id" } } };
-it("matches the shared UI/AI native authoring contract fixture for all seven supported field types", () => {
-  expect(collectionDocument(nativeAuthoring.draft, nativeAuthoring.reservation)).toEqual(nativeAuthoring.document);
+it("matches the shared UI/AI native authoring contract fixture for all eleven field types", () => {
+  expect(collectionDocument(nativeAuthoring.draft as CollectionDraft, nativeAuthoring.reservation)).toEqual(nativeAuthoring.document);
 });
 it("uses reserved field identities, exact declared keys and optional storage features", () => {
   const a = { ...newField("name"), label: "Order", businessKey: true, nullable: true };

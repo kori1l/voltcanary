@@ -4,15 +4,15 @@ import com.voltcanary.device.variable.application.VariableDefinitions;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class VariableArchiveIntent {
     private final JdbcTemplate jdbc;
-
-    public VariableArchiveIntent(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     /** Synchronous listener: disable intents share the archive transaction. */
     @EventListener

@@ -7,17 +7,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Ground new dashboard tasks before catalogue/model work; never reuse device task intent. */
+@RequiredArgsConstructor
 public final class ConversationContinuation {
     public record Resolution(Map<String, Object> context, String question) { }
     private final ConversationStore store;
     private final AuthorizedPlanningContext contexts;
-
-    public ConversationContinuation(ConversationStore store, AuthorizedPlanningContext contexts) {
-        this.store = store;
-        this.contexts = contexts;
-    }
 
     public Resolution resolve(AuthorizedPlanningContext.Scope scope, UUID conversationId, String message,
             Map<String, Object> input, String authorization) {

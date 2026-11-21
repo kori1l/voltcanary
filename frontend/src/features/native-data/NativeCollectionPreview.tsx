@@ -22,6 +22,10 @@ export function readNativeCollectionDefinition(value: unknown): NativeCollection
   if (!fields.every(field => record(field) && typeof field.id === "string" && field.id.length > 0 && typeof field.label === "string"
     && field.label.length > 0 && typeof field.type === "string" && field.type.length > 0 && typeof field.nullable === "boolean"
     && (field.unit === undefined || typeof field.unit === "string")
+    && (field.values === undefined || (Array.isArray(field.values) && field.values.every(value => typeof value === "string")))
+    && (field.target === undefined || (record(field.target) &&
+      (field.target.kind === "DATASET" && typeof field.target.datasetId === "string"
+        || field.target.kind === "RESOURCE" && typeof field.target.resourceKind === "string")))
     && [field.maxLength, field.precision, field.scale].every(value => value === undefined || (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)))) return null;
   const ids = new Set(fields.map(field => String(field.id)));
   if (ids.size !== fields.length) return null;
@@ -39,7 +43,9 @@ export function NativeCollectionPreview({ definition }: { definition: NativeColl
     <ul>{fields.map(field => <li key={field.id}>{field.label}: {typeLabels[field.type] ?? field.type}
       {field.unit && field.unit !== "1" ? ` (${field.unit})` : ""}{field.nullable ? " · Allows empty" : " · Required"}
       {field.type === "TEXT" && field.maxLength ? ` · Maximum ${field.maxLength} characters` : ""}
+      {field.type === "ENUM" && field.values?.length ? ` · Allowed values: ${field.values.join(", ")}` : ""}
       {field.type === "DECIMAL" && field.precision !== undefined && field.scale !== undefined ? ` · Precision ${field.precision}, scale ${field.scale}` : ""}
+      {field.target ? ` · ${field.target.kind === "DATASET" ? "Table " + field.target.datasetId : field.target.resourceKind.toLowerCase().replace(/_/g, " ")}` : ""}
     </li>)}</ul>
     <p>Unique key: {labels(definition.keyFieldIds) || "Automatically assigned row identity"}</p>
     <p>Indexed columns: {labels(definition.storage.indexedFieldIds) || "None"}</p>

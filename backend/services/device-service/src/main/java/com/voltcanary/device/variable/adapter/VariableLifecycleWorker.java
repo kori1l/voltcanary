@@ -4,25 +4,20 @@ import com.voltcanary.device.security.AuthenticatedUser;
 import com.voltcanary.device.variable.application.VariableDefaults;
 import com.voltcanary.device.variable.application.VariableRollouts;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class VariableLifecycleWorker {
-    private static final Logger LOG = LoggerFactory.getLogger(VariableLifecycleWorker.class);
     private final JdbcTemplate jdbc;
     private final VariableRollouts rollouts;
     private final VariableDefaults defaults;
     private String defaultCursor = "";
-
-    public VariableLifecycleWorker(JdbcTemplate jdbc, VariableRollouts rollouts, VariableDefaults defaults) {
-        this.jdbc = jdbc;
-        this.rollouts = rollouts;
-        this.defaults = defaults;
-    }
 
     @Scheduled(fixedDelay = 15000, initialDelay = 15000)
     public void runOnce() {
@@ -36,7 +31,7 @@ public class VariableLifecycleWorker {
                 rollouts.resume(actor(row.getObject("user_id", UUID.class)), row.getString("device_type"),
                         row.getObject("variable_id", UUID.class), id);
             } catch (RuntimeException failure) {
-                LOG.warn("Variable rollout temporarily unavailable targetId={} cause={}", id,
+                log.warn("Variable rollout temporarily unavailable targetId={} cause={}", id,
                         failure.getClass().getSimpleName());
             }
             return id;
@@ -52,7 +47,7 @@ public class VariableLifecycleWorker {
             defaultCursor = id.toString();
             try { defaults.reconcile(actor(row.getObject("user_id", UUID.class)), row.getString("device_type"), id); }
             catch (RuntimeException failure) {
-                LOG.warn("Variable inheritance temporarily unavailable variableId={} cause={}", id,
+                log.warn("Variable inheritance temporarily unavailable variableId={} cause={}", id,
                         failure.getClass().getSimpleName());
             }
             return id;

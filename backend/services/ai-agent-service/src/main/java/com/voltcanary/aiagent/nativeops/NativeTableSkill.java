@@ -34,10 +34,11 @@ public final class NativeTableSkill {
                 + "Interpret the exact current message and required dialogue/pending question; retain confirmed field meanings. "
                 + "Propose only label, fields and history under this command schema. Symbolic field keys are technical ASCII tokens, not UUIDs. "
                 + "The server reserves actual dataset/field/review/receipt IDs. Never invent IDs, SQL, credentials, URLs or approved flags. "
-                + "This profile matches the manual native form: TEXT maxLength=120; DECIMAL precision=18 scale=3; seven declared scalar types. "
-                + "Numeric unit must be registered and grounded in user meaning; nonnumeric unit='1'. Business keys are nonnullable TEXT/INT64/DATE/INSTANT. "
+                + "This profile matches the manual native form: TEXT maxLength=120; DECIMAL precision=18 scale=3. "
+                + "For ENUM provide choices, one exact value per line. For REF provide SELF, an authorized DATASET ID provided by the workflow, or a RESOURCE kind. "
+                + "Numeric unit must be registered and grounded in user meaning; nonnumeric unit='1'. Business keys are nonnullable TEXT/INT64/DATE/INSTANT/ENUM/REF. POINT and INTERVAL cannot be indexed. "
                 + "Ask a focused question only for missing field meaning/type/unit or unresolved requested policy, not optional metadata or technical owner failures. "
-                + "History capture does not make historical queries available. Existing table edits, rows, imports, references, maps and RULE activation are unsupported by this intent. "
+                + "History capture does not make historical queries available. This intent defines reference fields but does not link rows, edit existing tables, import data, edit maps or activate rules. "
                 + "PREPARED is a proposal for explicit review, never a creation/execution claim. Use workflow.context for current owner capability and this exact operation schema. "
                 + "Schema digest=" + SkillRegistry.digest(command.toString()) + "; VCL registry=" + new VclRegistry(new VclParser()).digest();
         var rules = List.of(

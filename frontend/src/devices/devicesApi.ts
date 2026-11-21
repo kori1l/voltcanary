@@ -1,5 +1,10 @@
 import { apiRequest, apiTextRequest } from "../api/client";
 
+export function describeSourceBinding(id: string) {
+  return apiRequest<{ id: string; deviceId: string; schemaRevision: number; currentSchemaRevision: number; sourceActive: boolean }>(
+    `/data/source-bindings/${encodeURIComponent(id)}`);
+}
+
 export type DeviceStatus = "ACTIVE" | "ONLINE" | "DISABLED" | "OFFLINE" | "DECOMMISSIONED";
 
 export interface Device {
@@ -213,8 +218,8 @@ export function listDeviceTypes() {
   return apiRequest<DeviceType[]>("/device-types");
 }
 
-export function getCurrentDeviceAccount() {
-  return apiRequest<DeviceAccount>("/accounts/current");
+export function getCurrentDeviceAccount(signal?: AbortSignal) {
+  return apiRequest<DeviceAccount>("/accounts/current", { signal });
 }
 
 export function createDevice(request: CreateDeviceRequest) {
@@ -238,8 +243,8 @@ export function exportDevicesCsv() {
   });
 }
 
-export function listDataSources(deviceId: string) {
-  return apiRequest<DataSource[]>(`/devices/${deviceId}/data-sources`);
+export function listDataSources(deviceId: string, signal?: AbortSignal) {
+  return apiRequest<DataSource[]>(`/devices/${deviceId}/data-sources`, { signal });
 }
 
 export function createDataSource(deviceId: string, request: CreateDataSourceRequest) {

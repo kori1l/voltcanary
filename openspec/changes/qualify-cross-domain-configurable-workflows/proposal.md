@@ -12,7 +12,9 @@ Prove flexibility by composing transit visits, fleet work duration and a third h
 
 ## Dependencies
 
-Harness design starts now; final release consumes G1–G7. Preserve original A5/A6 criteria and evidence.
+G8 platform acceptance consumes G1–G7 and precedes final A6 model qualification.
+Keep platform outcome fixtures and evidence reusable by A6 so that the final
+campaign grades the same released workflows.
 
 ## Design and Impact
 
@@ -29,7 +31,7 @@ No paid/live campaigns, arbitrary executable SQL/scripts, silent source/identity
 
 ## Requirements and retrieval amendment (2026-11-03)
 
-The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. This extends existing G7/A5/A6/G8 ownership; runtime and live trials remain stopped. Existing frozen acceptance/checked-task evidence is retained.
+The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. Implementation follows the [AI-first order](../README.md#ai-first-execution-priority). Live evaluation follows the owning change’s authorization and evidence gates. Existing frozen acceptance/checked-task evidence is retained.
 
 ## Second implementer audit
 

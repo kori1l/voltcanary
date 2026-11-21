@@ -22,7 +22,18 @@ final class NativeMutationValidation {
     private NativeMutationValidation() { }
 
     static String compile(Connection connection, NativeDataset dataset, String scope, VclDocument document, UUID createdId) throws SQLException {
+        return compile(connection, dataset, scope, document, createdId, null);
+    }
+
+    static String compile(Connection connection, NativeDataset dataset, String scope, VclDocument document, UUID createdId,
+            NativeImportReferences resolved) throws SQLException {
+        return compile(connection, dataset, scope, document, createdId, resolved, null);
+    }
+
+    static String compile(Connection connection, NativeDataset dataset, String scope, VclDocument document, UUID createdId,
+            NativeImportReferences resolved, NativeReadScope access) throws SQLException {
         if (document.kind() != VclDocument.Kind.MUTATION) throw new VclException("MUTATION_REQUIRED", "");
+        NativeSharedMutationChecks.fields(access, dataset, document);
         var references = new LinkedHashMap<UUID, VclType>();
         for (String group : java.util.List.of("key", "values")) {
             for (var pair : document.spec().path(group)) {
@@ -37,7 +48,10 @@ final class NativeMutationValidation {
                         var field = dataset.schema().field(fieldId);
                         type = VclType.from(field);
                         if (type.kind() != VclType.Kind.REF) throw new VclException("TYPE_MISMATCH", "");
-                        authorize(connection, dataset, field.path("target"), value, createdId, document.spec().path("operation").asText());
+                        NativeSharedMutationChecks.reference(connection, access, dataset, field.path("target"), value, createdId, document.spec().path("operation").asText());
+                        if (resolved == null || !resolved.permits(field.path("target"), value)) {
+                            authorize(connection, dataset, field.path("target"), value, createdId, document.spec().path("operation").asText());
+                        }
                     }
                     var previous = references.putIfAbsent(value, type);
                     if (previous != null) previous.compatible(type, "");
@@ -55,6 +69,7 @@ final class NativeMutationValidation {
             public Optional<VclType> referenceType(UUID id) { return Optional.ofNullable(references.get(id)); }
         };
         String canonical = COMPILER.compile(document, metadata).canonicalDocument();
+        NativeSharedMutationChecks.rows(connection, access, dataset, document);
         var spec = PARSER.parse(canonical).spec();
         for (String group : java.util.List.of("key", "values")) {
             for (var pair : spec.path(group)) {
@@ -72,7 +87,7 @@ final class NativeMutationValidation {
         if (target.path("kind").asText().equals("DATASET")) {
             UUID targetId = UUID.fromString(target.path("datasetId").asText());
             if (targetId.equals(dataset.schema().id()) && operation.equals("INSERT") && id.equals(createdId)) return;
-            var destination = JdbcNativeDatasetCatalog.definition(connection, dataset.accountId(), targetId, 1, true)
+            var destination = JdbcNativeDatasetCatalog.definition(connection, dataset.accountId(), targetId, 0, true)
                     .orElseThrow(() -> new VclException("REFERENCE_TARGET_UNAVAILABLE", ""));
             if (!record(connection, destination, id)) throw new VclException("REFERENCE_TARGET_UNAVAILABLE", "");
             return;
@@ -80,6 +95,21 @@ final class NativeMutationValidation {
         String sql = switch (target.path("resourceKind").asText()) {
             case "DEVICE" -> "SELECT 1 FROM devices WHERE account_id=? AND id=? AND status<>'DECOMMISSIONED'";
             case "SOURCE" -> "SELECT 1 FROM data_sources s JOIN devices d ON d.id=s.device_id WHERE d.account_id=? AND s.id=? AND s.status<>'REVOKED' AND d.status<>'DECOMMISSIONED'";
+            case "LOCATION" -> "SELECT 1 FROM locations WHERE account_id=? AND id=?";
+            case "VARIABLE" -> "SELECT 1 FROM device_variables WHERE account_id=? AND id=? AND archived=FALSE";
+            case "SCHEDULE" -> """
+                    SELECT 1 FROM operating_schedule_revisions r JOIN devices d ON d.id=r.device_id AND d.account_id=r.account_id
+                    WHERE r.account_id=? AND r.schedule_id=? AND d.status<>'DECOMMISSIONED' LIMIT 1
+                    """;
+            case "OPERATIONAL_FACT" -> """
+                    SELECT 1 FROM operational_fact_revisions r JOIN devices d ON d.id=r.device_id AND d.account_id=r.account_id
+                    WHERE r.account_id=? AND r.event_id=? AND d.status<>'DECOMMISSIONED' LIMIT 1
+                    """;
+            case "SPATIAL_FEATURE" -> """
+                    SELECT 1 FROM cfg_circle_feature f JOIN cfg_circle_feature_revision r
+                        ON r.feature_id=f.id AND r.revision=f.head_revision
+                    WHERE f.account_id=? AND f.id=?
+                    """;
             default -> throw new VclException("REFERENCE_TARGET_UNAVAILABLE", "");
         };
         try (var query = connection.prepareStatement(sql)) {
@@ -90,7 +120,7 @@ final class NativeMutationValidation {
     }
 
     static boolean record(Connection connection, NativeDataset dataset, UUID id) throws SQLException {
-        try (var query = connection.prepareStatement("SELECT 1 FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset.schema()).table()) + " WHERE record_id=?")) {
+        try (var query = connection.prepareStatement("SELECT 1 FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset).table()) + " WHERE record_id=?")) {
             query.setObject(1, id);
             try (var rows = query.executeQuery()) { return rows.next(); }
         }

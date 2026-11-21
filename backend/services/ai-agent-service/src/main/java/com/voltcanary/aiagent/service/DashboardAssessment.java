@@ -14,18 +14,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Optional application assessment; structural verification remains in the existing pure verifier. */
+@RequiredArgsConstructor
 public final class DashboardAssessment {
     private final ObjectMapper mapper;
     private final RoutedIntentModels models;
     private final AssistantTraceRecorder traces;
-
-    public DashboardAssessment(ObjectMapper mapper, RoutedIntentModels models, AssistantTraceRecorder traces) {
-        this.mapper = mapper;
-        this.models = models;
-        this.traces = traces;
-    }
 
     public void verify(IntentPlans.ModelInput input, OrchestrationPorts.Session session, AgentPlan plan) {
         JsonNode definition = mapper.valueToTree(plan.actions().getFirst().parameters().get("definition"));
@@ -54,7 +50,15 @@ public final class DashboardAssessment {
         definition.path("widgets").forEach(widget -> keys.add(widget.path("id").asText()));
         if (report.checks().stream().anyMatch(check -> !keys.containsAll(check.widgetKeys())))
             throw IntentPlans.reject("ASSESSMENT_WIDGET_EVIDENCE_INVALID");
-        if (report.verdict().equals("SATISFIED") != report.checks().stream().allMatch(check -> check.verdict().equals("SATISFIED")))
+        String verdict = "SATISFIED";
+        for (var check : report.checks()) {
+            if (check.verdict().equals("REJECTED")) {
+                verdict = "REJECTED";
+                break;
+            }
+            if (check.verdict().equals("UNCERTAIN")) verdict = "UNCERTAIN";
+        }
+        if (!report.verdict().equals(verdict))
             throw IntentPlans.reject("ASSESSMENT_VERDICT_INCONSISTENT");
     }
 }

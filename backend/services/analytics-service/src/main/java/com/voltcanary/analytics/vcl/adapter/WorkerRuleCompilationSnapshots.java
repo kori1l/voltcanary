@@ -7,6 +7,7 @@ import com.voltcanary.analytics.vcl.DurableZoneSession;
 import com.voltcanary.analytics.vcl.DurableSustained;
 import com.voltcanary.analytics.vcl.KeyedStateStore;
 import com.voltcanary.analytics.vcl.VclSessionAbsenceKernel;
+import com.voltcanary.analytics.vcl.VclSustainedPlan;
 import com.voltcanary.analytics.vcl.VclWindowPlan;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclCompiler;
@@ -77,24 +78,46 @@ public final class WorkerRuleCompilationSnapshots {
         if (after == head) return;
         Long referenceRevision = input.references() ? store.referenceCorrectionRevision(active) : null;
         var page = latest.readPage(Long.toString(after), 8);
+        var plans = prepareOpeningPlans(active, input, compiler);
         for (var observation : page.observations()) {
             String checkpoint = observation.path("checkpoint").textValue();
             long next = VclObservationReadiness.checkpoint(checkpoint);
-            openObservation(active, input, latest, observation, checkpoint, next, store, compiler, holder, draining);
+            openObservation(active, input, latest, observation, checkpoint, next, store, plans, compiler, holder, draining);
             if (!store.advanceOpeningCheckpoint(active, generation, initial, after, next, referenceRevision)) return;
             after = next;
         }
     }
 
-    private void openObservation(JdbcRuleDeployments.Deployment active, ReviewedInput input, SourceCaptureSnapshot latest,
-            JsonNode observation, String checkpoint, long next, JdbcKeyedStateStore store, VclCompiler compiler, UUID holder,
-            boolean draining) {
+    private record OpeningPlans(RuleCompilationSnapshot snapshot, RuleCompilationSnapshot.PreparedLookups references,
+            RuleCompilationSnapshot.ZoneBatch zone, RuleCompilationSnapshot.SessionBatch session,
+            VclSustainedPlan sustained, RuleCompilationSnapshot.JournalWindowBatch aggregate) { }
+
+    private OpeningPlans prepareOpeningPlans(JdbcRuleDeployments.Deployment active, ReviewedInput input, VclCompiler compiler) {
+        var snapshot = input.snapshot(input.start());
         var references = input.references() ? windowReferences(active, compiler).lookups() : null;
+        var zone = input.zone() ? snapshot.prepareZoneSession(compiler, input.session()) : null;
+        var session = input.session() != null && !input.zone() ? snapshot.prepareWindowSession(compiler, input.session()) : null;
+        var sustained = input.sustained() == null ? null : snapshot.prepareSustained(compiler, input.sustained());
+        var aggregate = input.aggregate() == null ? null : references != null ? references.journalAggregate(input.aggregate())
+                : snapshot.prepareJournalWindowBatch(compiler, input.aggregate(),
+                        64L * com.voltcanary.analytics.vcl.VclWindowAggregateKernel.MAX_INPUTS, true);
+        return new OpeningPlans(snapshot, references, zone, session, sustained, aggregate);
+    }
+
+    private void openObservation(JdbcRuleDeployments.Deployment active, ReviewedInput input, SourceCaptureSnapshot latest,
+            JsonNode observation, String checkpoint, long next, JdbcKeyedStateStore store, OpeningPlans plans, VclCompiler compiler, UUID holder,
+            boolean draining) {
+        var snapshot = plans.snapshot();
+        var references = plans.references();
         if (input.session() != null) {
-            var snapshot = input.snapshot(latest.atCheckpoint(checkpoint));
             if (input.zone()) {
-                var session = snapshot.prepareZoneSession(compiler, input.session());
-                session.route(active.epoch(), observation).filter(candidate ->
+                var session = plans.zone();
+                var routed = session.route(active.epoch(), observation);
+                if (routed.isEmpty() && input.absence() != null) {
+                    session.unresolved(observation).ifPresent(value -> reconsiderSessions(active, input, snapshot, store,
+                            holder, observation, checkpoint, value));
+                }
+                routed.filter(candidate ->
                         active.includesSessionObservation(candidate.value().eventTime())).ifPresent(candidate -> {
                             var value = candidate.value();
                             var pinned = store.zonePin(value.key());
@@ -105,18 +128,23 @@ public final class WorkerRuleCompilationSnapshots {
                                     pinned.map(com.voltcanary.analytics.vcl.DurableZoneSession.GeometryPin::revision).orElse(0L),
                                     circles(), () -> current(active), input.absence(), checkpoint,
                                     value.eventTime()).observe(value, holder,
-                                            (from, through) -> session.replayHistory(active, value.key(), from, through),
+                                            (from, through) -> session.replayHistory(active, value.key(), checkpoint, from, through),
                                             candidate.included());
                         });
             } else {
-                var session = snapshot.prepareWindowSession(compiler, input.session());
-                session.route(active.epoch(), observation).filter(value ->
+                var session = plans.session();
+                var routed = session.route(active.epoch(), observation);
+                if (routed.isEmpty() && input.absence() != null) {
+                    session.unresolved(observation).ifPresent(value -> reconsiderSessions(active, input, snapshot, store,
+                            holder, observation, checkpoint, value));
+                }
+                routed.filter(value ->
                         active.includesSessionObservation(value.value().eventTime())
                                 && (draining || !value.included() ? store.hasCommittedState(value.key())
                                         : !store.drainingOccurrence(active, value.key()))).ifPresent(value ->
                                 session.durable(store, active, value.key(), () -> current(active),
                                         input.absence(), checkpoint, value.value().eventTime()).observe(value.value(), holder,
-                                                (from, through) -> session.replayHistory(active, value.key(), from, through),
+                                                (from, through) -> session.replayHistory(active, value.key(), checkpoint, from, through),
                                                 value.included()));
             }
             snapshot.reauthorize();
@@ -124,37 +152,31 @@ public final class WorkerRuleCompilationSnapshots {
             if (references != null) {
                 references.stageIntervalWindows(input.interval(), input.target(), active, store, observation, holder);
             } else {
-                var snapshot = input.snapshot(input.start());
                 snapshot.stageIntervalWindows(compiler, input.interval(), input.target(), active, store, observation, holder);
                 snapshot.reauthorize();
             }
         } else if (input.sustained() != null) {
-            var snapshot = input.snapshot(latest.atCheckpoint(checkpoint));
-            snapshot.observeSustained(compiler, input.sustained(), active, store, observation, holder,
+            snapshot.observeSustained(plans.sustained(), input.sustained(), active, store, observation, holder,
                     () -> current(active));
             snapshot.reauthorize();
         } else {
-            var snapshot = input.snapshot(latest.atCheckpoint(checkpoint));
-            var batch = references != null ? references.journalAggregate(input.aggregate())
-                    : snapshot.prepareJournalWindowBatch(compiler, input.aggregate(),
-                            64L * com.voltcanary.analytics.vcl.VclWindowAggregateKernel.MAX_INPUTS, true);
-            for (var opening : batch.openings(observation)) {
-                if (!active.includesWindow(opening.window().startInclusive())) continue;
-                if (batch.usesCountPrefixes() || input.references() || !opening.textSubject()) {
-                    batch.stageAggregateWindow(store, active, opening, next, observation, holder);
-                    continue;
+            var batch = plans.aggregate();
+            var route = batch.route(observation);
+            var windows = route.windows().stream().filter(window -> active.includesWindow(window.startInclusive())).toList();
+            if (route.subject() == null) {
+                var occurrences = windows.stream().map(IntervalWindowSchedule::occurrence).toList();
+                for (var window : store.registeredWindows(active, occurrences)) {
+                    snapshot.reauthorize();
+                    IntervalWindowSchedule.stageCorrected(store, active, window, next, holder);
                 }
-                var staged = batch.durable(store, active.epoch(), opening.subject(), opening.window(), null,
-                        () -> current(active), (key, lease, transition, watermark) -> store.commitJournalWindow(
-                                key, lease, transition, opening.window().startInclusive(), active, watermark), active.bundleDigest());
-                if (!store.hasStagedWindow(staged.key(), opening.subject(), opening.window())) {
-                    batch.stageAggregateWindow(store, active, opening, next, observation, holder);
+            } else {
+                for (var window : windows) {
+                    batch.stageAggregateWindow(store, active, route.subject(), window, next, observation, holder);
                 }
             }
             snapshot.reauthorize();
         }
         if (references != null) {
-            var snapshot = input.snapshot(latest.atCheckpoint(checkpoint));
             var timing = com.voltcanary.analytics.vcl.VclTimingPlan.compile(references.compilation());
             var eventTime = java.time.Instant.parse(observation.path("eventTime").textValue());
             var recordedAt = java.time.Instant.parse(observation.path("recordedAt").textValue());
@@ -166,6 +188,34 @@ public final class WorkerRuleCompilationSnapshots {
                     IntervalWindowSchedule.stageCorrected(store, active, corrected, next, holder);
                 }
             }
+        }
+    }
+
+    private void reconsiderSessions(JdbcRuleDeployments.Deployment active, ReviewedInput input,
+            RuleCompilationSnapshot snapshot, JdbcKeyedStateStore store, UUID holder, JsonNode observation, String checkpoint,
+            RuleCompilationSnapshot.UnresolvedSessionInput unresolved) {
+        if (!active.includesSessionObservation(unresolved.at())) return;
+        UUID event = uuid(observation.path("inputEventId").textValue());
+        String digest = VclCanonical.sha256("UNRESOLVED_SESSION_INPUT/1\n" + VclCanonical.encode(observation));
+        for (var candidate : store.sessionCandidates(active, unresolved)) {
+            var key = candidate.key();
+            var saved = store.inspect(key, candidate.pins());
+            var window = SessionAbsenceSchedule.window(key, saved.state(), input.zone());
+            if (window == null || unresolved.at().isBefore(window.startInclusive())
+                    || unresolved.at().isAfter(window.endExclusive())) continue;
+            var prior = store.inputReceipt(key, candidate.pins(), KeyedStateStore.InputKind.OBSERVATION, event, 1);
+            if (prior.isPresent()) {
+                if (!digest.equals(prior.get().inputDigest())) throw new VclException("KEY_INPUT_CONFLICT", "");
+                continue;
+            }
+            var lease = store.acquire(key, candidate.pins(), holder);
+            if (!lease.snapshot().equals(saved)) throw new VclException("SESSION_WAIT_CHANGED", "");
+            var unchanged = new KeyedStateStore.Transition(event, 1, digest, saved.revision(), saved.state(), List.of(), null);
+            var scheduled = SessionAbsenceSchedule.schedule(store, key, lease, unchanged, input.absence(), checkpoint,
+                    candidate.openedAt(), unresolved.at(), input.zone(), unresolved.timing());
+            if (scheduled.timers().equals(lease.timers().stream().map(KeyedStateStore.ScheduledTimer::timer).toList())) continue;
+            snapshot.reauthorize();
+            store.commitSession(key, lease, scheduled, candidate.openedAt(), active);
         }
     }
 
@@ -185,9 +235,6 @@ public final class WorkerRuleCompilationSnapshots {
             throw new VclException("INTERVAL_SCHEDULE_CHANGED", "");
         }
         var journal = input.start();
-        if (count && recipe.minimumCheckpoint() > VclObservationReadiness.checkpoint(journal.capturedHeadCheckpoint())) {
-            journal = journal.atCheckpoint(Long.toString(recipe.minimumCheckpoint()));
-        }
         var snapshot = input.snapshot(journal);
         var restored = input.references() ? windowReferences(active, compiler) : null;
         var countBatch = !count ? null : restored != null ? restored.lookups().journalAggregate(recipe.node())
@@ -346,6 +393,9 @@ public final class WorkerRuleCompilationSnapshots {
         var next = complete ? recipe : recipe.next(intent == null ? null : output.id());
         var timers = complete ? List.<KeyedStateStore.Timer>of() : List.of(IntervalWindowSchedule.timer(due.pinsDigest(), next));
         snapshot.reauthorize();
+        if (!idle) {
+            recheckCoverage(journal, finalization.proof(), "INTERVAL_COVERAGE_CHANGED");
+        }
         var transition = new KeyedStateStore.Transition(timer.id(), scheduled.stateRevision(), timer.digest(),
                 lease.snapshot().revision(), next.state(), timers,
                 new KeyedStateStore.TimerInput(timer.id(), scheduled.stateRevision()), outputs);
@@ -379,7 +429,7 @@ public final class WorkerRuleCompilationSnapshots {
         return (from, until) -> {
             if (!until.equals(expectedDue)) throw new VclException("INTERVAL_SCHEDULE_CHANGED", "");
             return captures.findCoverage(active.account(), active.epoch(), input.target().id(), input.target().revision(),
-                    recipe.generation(), from, until);
+                    recipe.generation(), from, until, recipe.minimumCheckpoint());
         };
     }
 
@@ -436,10 +486,10 @@ public final class WorkerRuleCompilationSnapshots {
         var replayStart = plan.replayStart(window.startInclusive(), boundary);
         var coverageWindow = recipe.through() != null && recipe.through().isAfter(window.endExclusive())
                 ? new VclWindowPlan.Window(window.startInclusive(), recipe.through()) : window;
-        var facts = readSessionFacts(active, input, snapshot, plan, key, replayStart, coverageWindow, recipe.checkpoint());
+        long trigger = VclObservationReadiness.checkpoint(recipe.trigger());
+        var facts = readSessionFacts(active, input, snapshot, plan, key, replayStart, coverageWindow, recipe.checkpoint(), trigger);
         var kernel = new VclSessionAbsenceKernel();
         var result = evaluateSession(kernel, plan, key, saved.state(), facts, input.zone());
-        long trigger = VclObservationReadiness.checkpoint(recipe.trigger());
         boolean waiting = false;
         if (replayOpen(result) || VclObservationReadiness.checkpoint(facts.cut().throughCheckpoint()) < trigger) {
             facts = snapshot.readSessionAbsenceInput(plan, key, plan.replayEnd(window.endExclusive()),
@@ -462,7 +512,8 @@ public final class WorkerRuleCompilationSnapshots {
                             ? corrected.startInclusive() : coverageWindow.startInclusive(),
                     corrected.endExclusive().isAfter(coverageWindow.endExclusive())
                             ? corrected.endExclusive() : coverageWindow.endExclusive());
-            var expanded = readSessionFacts(active, input, snapshot, plan, key, replayStart, coverageWindow, recipe.checkpoint());
+            var expanded = readSessionFacts(active, input, snapshot, plan, key, replayStart, coverageWindow,
+                    recipe.checkpoint(), Math.max(trigger, facts.lastRelevantCheckpoint()));
             if (expanded.proof() == null || !expanded.proof().qualifiesEventTime()
                     || VclObservationReadiness.checkpoint(expanded.cut().throughCheckpoint())
                             < Math.max(trigger, facts.lastRelevantCheckpoint())) {
@@ -507,33 +558,52 @@ public final class WorkerRuleCompilationSnapshots {
         String coverageDigest = coverage != null && coverage.qualifiesEventTime() ? coverage.eventTimeDigest() : null;
         if (coverageDigest != null) measure.put("coverageDigest", coverageDigest);
         String purpose = recipe.previous() == null ? "measure" : "measure:" + recipe.trigger();
-        var output = new KeyedStateStore.Output(SessionAbsenceSchedule.id(due.pinsDigest(), purpose),
-                KeyedStateStore.OutputKind.MEASURE, null, KeyedStateStore.State.parse(VclCanonical.encode(measure)));
+        UUID measureId = SessionAbsenceSchedule.id(due.pinsDigest(), purpose);
+        UUID alertBasis = sessionAlertBasis(store, due, recipe);
+        var resultWindow = result.window();
+        boolean coveredDecision = resultWindow != null && coverageDigest != null
+                && absence.status() == com.voltcanary.analytics.vcl.ScalarValue.Status.OK;
+        boolean matched = coveredDecision && absence.literal().path("value").booleanValue();
+        boolean retraction = coveredDecision && !matched && alertBasis != null && result.witness() != null
+                && result.witness().firstObservationId() != null;
+        var intent = matched || retraction ? snapshot.sessionAlertIntent(recipe.node(), active.bundleDigest())
+                .orElseThrow(() -> new VclException("SESSION_ALERT_INTENT_CHANGED", "")) : null;
+        UUID nextBasis = matched ? measureId : retraction ? null : alertBasis;
+        measure.put("alertBasis", nextBasis == null ? null : nextBasis.toString());
+        var output = new KeyedStateStore.Output(measureId, KeyedStateStore.OutputKind.MEASURE, null,
+                KeyedStateStore.State.parse(VclCanonical.encode(measure)));
         var outputs = new java.util.ArrayList<KeyedStateStore.Output>();
         outputs.add(output);
-        var verdict = absence;
-        var resultWindow = result.window();
-        boolean known = verdict.status() == com.voltcanary.analytics.vcl.ScalarValue.Status.OK;
-        boolean retraction = known && recipe.previous() != null && result.witness() != null
-                && result.witness().firstObservationId() != null && !verdict.literal().path("value").asBoolean();
         String effectProfile = retraction ? SessionAlertProposal.RETRACTION
                 : recipe.previous() == null ? SessionAlertProposal.PROFILE : SessionAlertProposal.CORRECTION;
-        if (resultWindow != null && coverageDigest != null
-                && known
-                && (verdict.literal().path("value").booleanValue() || retraction)) {
-            snapshot.sessionAlertIntent(recipe.node(), active.bundleDigest()).ifPresent(intent ->
-                    outputs.add(SessionAlertProposal.create(key, SessionAbsenceSchedule.id(due.pinsDigest(), "alert:" + purpose),
-                            output, resultWindow, intent, input.target().id(), input.target().revision(),
-                            coverage, coverageDigest, effectProfile)));
+        if (intent != null) {
+            outputs.add(SessionAlertProposal.createSession(key, SessionAbsenceSchedule.id(due.pinsDigest(), "alert:" + purpose),
+                    output, resultWindow, intent, input.target().id(), input.target().revision(),
+                    coverage, coverageDigest, effectProfile, measure, input.policy().observationReferenceLimit()));
         }
-        snapshot.reauthorize();
         var lease = store.acquire(key, due.pinsDigest(), holder);
         if (!lease.snapshot().equals(saved) || !lease.timers().equals(List.of(due.scheduled()))) {
             throw new VclException("SESSION_WAIT_CHANGED", "");
         }
+        snapshot.reauthorize();
+        if (coverageDigest != null) recheckCoverage(input.start(), coverage, "SESSION_COVERAGE_CHANGED");
         store.commitSession(key, lease, new KeyedStateStore.Transition(timer.id(), saved.revision(), timer.digest(),
                 saved.revision(), saved.state(), List.of(), new KeyedStateStore.TimerInput(timer.id(), saved.revision()),
                 outputs), recipe.openedAt(), active);
+    }
+
+    private static UUID sessionAlertBasis(JdbcKeyedStateStore store, KeyedStateStore.DueTimer due,
+            SessionAbsenceSchedule.Recipe recipe) {
+        if (recipe.previous() == null) return null;
+        var prior = store.inspectOutput(due.key(), due.pinsDigest(), recipe.previous()).output();
+        var measure = new VclParser().readJson(prior.payload().payload().getBytes(StandardCharsets.UTF_8));
+        if (prior.kind() != KeyedStateStore.OutputKind.MEASURE
+                || !SessionAbsenceSchedule.MEASURE.equals(measure.path("profile").textValue())
+                || !recipe.node().equals(measure.path("node").textValue())) {
+            throw new VclException("SESSION_MEASURE_CHANGED", "");
+        }
+        var basis = measure.path("alertBasis");
+        return basis.isTextual() ? uuid(basis.textValue()) : null;
     }
 
     private static boolean sourceIdle(JdbcKeyedStateStore store, SourceCaptureSnapshot journal,
@@ -548,10 +618,10 @@ public final class WorkerRuleCompilationSnapshots {
     private RuleCompilationSnapshot.SessionAbsenceInput readSessionFacts(JdbcRuleDeployments.Deployment active,
             ReviewedInput input, RuleCompilationSnapshot snapshot, VclSessionAbsenceKernel.Plan plan,
             KeyedStateStore.Key key, java.time.Instant replayStart,
-            VclWindowPlan.Window coverageWindow, String closingCheckpoint) {
+            VclWindowPlan.Window coverageWindow, String closingCheckpoint, long minimumCheckpoint) {
         UUID proof = captures.findCoverage(active.account(), active.epoch(), input.target().id(), input.target().revision(),
                 input.start().inputGeneration(), coverageWindow.startInclusive(),
-                plan.timing().windowCloseDueAt(coverageWindow.endExclusive()));
+                plan.timing().windowCloseDueAt(coverageWindow.endExclusive()), minimumCheckpoint);
         return snapshot.readSessionAbsenceInput(plan, key, coverageWindow.endExclusive(), replayStart, coverageWindow,
                 closingCheckpoint, proof, false);
     }
@@ -568,8 +638,15 @@ public final class WorkerRuleCompilationSnapshots {
                 : kernel.evaluate(plan, DurableWindowSession.decode(key, state), facts.cut(), facts.proof(), plan.scope());
     }
 
+    private static void recheckCoverage(SourceCaptureSnapshot journal, VclSourceCoverage proof, String error) {
+        if (!proof.equals(journal.coverage(proof.proofId(), proof.evidence().from(), proof.evidence().until(), true))) {
+            throw new VclException(error, "");
+        }
+    }
+
     record SustainedFinalization(VclWindowPlan.Window window, VclSourceCoverage proof, String inputDigest,
-            boolean confirmed, boolean retraction, UUID binding, long revision, DurableJournalWindow.AlertIntent intent) { }
+            boolean confirmed, boolean retraction, UUID binding, long revision, DurableJournalWindow.AlertIntent intent,
+            SourceCaptureSnapshot journal) { }
 
     void finishSustained(JdbcRuleDeployments.Deployment candidate, JdbcKeyedStateStore store,
             JdbcKeyedStateStore.PendingSustained pending, VclCompiler compiler, UUID holder) {
@@ -610,6 +687,7 @@ public final class WorkerRuleCompilationSnapshots {
         }
         var active = current(candidate);
         var lease = store.acquire(key, pending.pins(), holder);
+        if (!idle) recheckCoverage(result.journal(), result.proof(), "SUSTAINED_COVERAGE_CHANGED");
         var receipt = new KeyedStateStore.Acknowledgement(pending.measure(), source.output().digest(), measureId, output.digest());
         store.commitSustainedFinalization(key, lease, new KeyedStateStore.Transition(measureId, 1,
                 source.output().digest(), lease.snapshot().revision(), lease.snapshot().state(),
@@ -640,13 +718,14 @@ public final class WorkerRuleCompilationSnapshots {
             throw new VclException("DEPLOYMENT_CHANGED", "");
         }
         var journal = input.start().atCheckpoint(value.path("checkpoint").textValue());
-        var snapshot = input.snapshot(journal);
+        var snapshot = input.snapshot(input.start());
         var plan = snapshot.prepareSustained(compiler, input.sustained());
         var timing = plan.timing();
         var due = timing.windowCloseDueAt(replay.endExclusive());
         if (store.databaseTime().isBefore(due)) return java.util.Optional.empty();
         UUID proofId = captures.findCoverage(active.account(), active.epoch(), plan.binding(), plan.schemaRevision(),
-                generation, replay.startInclusive(), due);
+                generation, replay.startInclusive(), due,
+                VclObservationReadiness.checkpoint(journal.capturedHeadCheckpoint()));
         var proof = proofId == null ? null : journal.coverage(proofId, replay.startInclusive(), due, true);
         if (proof == null || !proof.qualifiesEventTime()) {
             return idleSustained(store, journal, timing, window, plan.binding(), plan.schemaRevision(), retraction);
@@ -662,7 +741,7 @@ public final class WorkerRuleCompilationSnapshots {
             return idleSustained(store, journal, timing, window, plan.binding(), plan.schemaRevision(), retraction);
         }
         var finalCut = journal.forFinalization(proof);
-        var preview = input.snapshot(finalCut).previewSustained(compiler, input.sustained(), key, replay,
+        var preview = snapshot.previewSustained(plan, finalCut, key, replay,
                 RuleCompilationSnapshot.MAX_RETAINED_WINDOW_BYTES);
         if (preview.result().value().isFailure()) throw new VclException(preview.result().value().reason(), "");
         boolean confirmed = retraction ? preview.result().unknownEvidence().isEmpty()
@@ -678,14 +757,14 @@ public final class WorkerRuleCompilationSnapshots {
         current(active);
         var intent = snapshot.sessionAlertIntent(input.sustained(), active.bundleDigest()).orElse(null);
         return java.util.Optional.of(new SustainedFinalization(window, proof, preview.inputDigest(), confirmed, retraction,
-                plan.binding(), plan.schemaRevision(), intent));
+                plan.binding(), plan.schemaRevision(), intent, finalCut));
     }
 
     private static java.util.Optional<SustainedFinalization> idleSustained(JdbcKeyedStateStore store,
             SourceCaptureSnapshot journal, com.voltcanary.analytics.vcl.VclTimingPlan timing,
             VclWindowPlan.Window window, UUID binding, long revision, boolean retraction) {
         return sourceIdle(store, journal, timing)
-                ? java.util.Optional.of(new SustainedFinalization(window, null, null, false, retraction, binding, revision, null))
+                ? java.util.Optional.of(new SustainedFinalization(window, null, null, false, retraction, binding, revision, null, null))
                 : java.util.Optional.empty();
     }
 
@@ -704,7 +783,7 @@ public final class WorkerRuleCompilationSnapshots {
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
         var parser = new VclParser();
-        var compiled = parser.readJson(bundle.payload().getBytes(StandardCharsets.UTF_8)).path("compilation");
+        var compiled = bundle.json().path("compilation");
         var document = parser.parse(compiled.path("canonicalDocument").textValue());
         var inputs = deployments.readStartRecipe(active.account(), active.epoch()).inputs();
         if (!active.start().checkpointDigest().equals(inputs.checkpointDigest()) || inputs.cuts().size() != 1
@@ -772,7 +851,7 @@ public final class WorkerRuleCompilationSnapshots {
         var bundle = bundles.find(active.account(), active.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var root = new VclParser().readJson(bundle.payload().getBytes(StandardCharsets.UTF_8));
+        var root = bundle.json();
         var compiled = root.path("compilation");
         var recipe = DurableJournalWindow.recipe(store.inspect(key, pins).state());
         VclDocument document = new VclParser().parse(recipe.document());
@@ -823,7 +902,8 @@ public final class WorkerRuleCompilationSnapshots {
                         targetKey, lease, transition, recipe.window().startInclusive(), active, watermark),
                 active.start() == null ? null : active.bundleDigest(),
                 () -> captures.findCoverage(active.account(), active.epoch(), recipe.binding(), recipe.schemaRevision(),
-                        journal.inputGeneration(), recipe.window().startInclusive(), batch.closeDueAt(recipe.window())));
+                        journal.inputGeneration(), recipe.window().startInclusive(), batch.closeDueAt(recipe.window()),
+                        VclObservationReadiness.checkpoint(journal.capturedHeadCheckpoint())));
         if (!key.equals(restored.key()) || !pins.equals(restored.pinsDigest())) throw new VclException("KEY_PINS_CHANGED", "");
         current(active);
         return restored;

@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_deployment_audit_events")
+@Getter
+@Setter
 public class MlDeploymentAuditEvent {
     @Id
     private UUID id;
@@ -27,20 +31,4 @@ public class MlDeploymentAuditEvent {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getModelVersionId() { return modelVersionId; }
-    public void setModelVersionId(UUID modelVersionId) { this.modelVersionId = modelVersionId; }
-    public UUID getPolicyId() { return policyId; }
-    public void setPolicyId(UUID policyId) { this.policyId = policyId; }
-    public String getAction() { return action; }
-    public void setAction(String action) { this.action = action; }
-    public String getDetailsJson() { return detailsJson; }
-    public void setDetailsJson(String detailsJson) { this.detailsJson = detailsJson; }
-    public UUID getActorId() { return actorId; }
-    public void setActorId(UUID actorId) { this.actorId = actorId; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

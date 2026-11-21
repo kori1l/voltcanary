@@ -7,6 +7,20 @@ import {exportAssistantTrace} from "./assistantTraceApi";
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();vi.useRealTimers();});
 const event={id:"event",schemaVersion:1,sequence:1,conversationId:"chat",messageId:"message",turnId:"turn",requestId:"request",attemptId:"attempt",stage:"SANITIZATION",status:"FAILED",code:"UNSUPPORTED_FIELDS",durationMs:4,details:{fieldPaths:["dataRefs"],candidate:{apiKey:"[redacted]"}},truncated:true,createdAt:"2026-10-25T00:00:00Z"};
 
+it("recovers the recorded consultation state from the turn trace",async()=>{
+  const consultation={...event,stage:"CONSULTATION",status:"OBSERVED",code:"WAITING_USER",
+    details:{taskId:"saved-task",taskRevision:2,exchanges:1}};
+  const fetch=vi.spyOn(globalThis,"fetch").mockImplementation(async()=>new Response(JSON.stringify({items:[consultation],nextCursor:null})));
+  const view=render(<AssistantTurnTrace conversationId="chat" turnId="turn"/>);
+  fireEvent.click(screen.getByText("Этапы запроса"));
+  expect(await screen.findByText("Консультация: Ожидает ответа")).toBeInTheDocument();
+  view.unmount();
+  render(<AssistantTurnTrace conversationId="chat" turnId="turn"/>);
+  fireEvent.click(screen.getByText("Этапы запроса"));
+  expect(await screen.findByText("Консультация: Ожидает ответа")).toBeInTheDocument();
+  expect(fetch.mock.calls.every(([,options])=>(options?.method??"GET")==="GET")).toBe(true);
+});
+
 it("loads only observed stages on demand and keeps rejected fields in expandable technical details",async()=>{
   const fetch=vi.spyOn(globalThis,"fetch").mockResolvedValue(new Response(JSON.stringify({items:[event],nextCursor:null})));
   render(<AssistantTurnTrace conversationId="chat" turnId="turn"/>);

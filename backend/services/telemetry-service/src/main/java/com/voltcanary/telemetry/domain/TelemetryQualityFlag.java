@@ -8,9 +8,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
 
 @Entity
 @Table(name = "telemetry_quality_flags")
+@Getter
 public class TelemetryQualityFlag {
 
     @Id
@@ -44,27 +46,4 @@ public class TelemetryQualityFlag {
         this.createdAt = createdAt;
     }
 
-    public UUID getId() {
-        return id;
-    }
-
-    public UUID getReadingId() {
-        return readingId;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public QualityFlag getFlag() {
-        return flag;
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
 }

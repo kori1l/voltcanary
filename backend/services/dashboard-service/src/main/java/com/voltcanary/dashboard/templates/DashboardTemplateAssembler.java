@@ -3,8 +3,8 @@ package com.voltcanary.dashboard.templates;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.voltcanary.dashboard.domain.DashboardDefinition;
 import com.voltcanary.dashboard.domain.DashboardDefinition.Widget;
+import com.voltcanary.dashboard.domain.DashboardDefinition;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.port.TemplateDeviceCatalogue;
 import java.security.MessageDigest;
@@ -14,11 +14,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.RequiredArgsConstructor;
 
 @org.springframework.stereotype.Component
+@RequiredArgsConstructor
 public class DashboardTemplateAssembler {
     private final ObjectMapper mapper;
-    public DashboardTemplateAssembler(ObjectMapper mapper) { this.mapper = mapper; }
+
     public DashboardDefinition assemble(DashboardTaskTemplates.Template template, String name, String period,
             List<TemplateDeviceCatalogue.Device> devices, Set<String> metricKeys) {
         return assemble(template, name, period, devices, metricKeys, null);

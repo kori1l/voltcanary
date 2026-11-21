@@ -21,8 +21,9 @@ class DashboardTemplatePreparationTest {
     private final DashboardTemplateAssembler assembler = new DashboardTemplateAssembler(mapper);
 
     private DashboardTemplatePreparation service() {
+        var reads = mock(DashboardEvidenceReads.class);
         var checks = new TemplateDefinitionChecks(new DefinitionValidation(mapper),
-                new DefinitionBindings(ownership, mapper, mock(DashboardEvidenceReads.class)), manifests, new WidgetQueryDecoder(mapper));
+                new DefinitionBindings(ownership, mapper, reads), manifests, new WidgetQueryDecoder(mapper));
         return new DashboardTemplatePreparation(new DashboardTaskTemplates(manifests), ownership, catalogue, checks, assembler);
     }
 

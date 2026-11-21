@@ -6,20 +6,16 @@ import com.voltcanary.telemetry.event.TelemetryTopics;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class TelemetryDeadLetterPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(TelemetryDeadLetterPublisher.class);
-
     private final TelemetryOutboxService outboxService;
-
-    public TelemetryDeadLetterPublisher(TelemetryOutboxService outboxService) {
-        this.outboxService = outboxService;
-    }
 
     public void publish(TelemetryReceivedEvent event, String reason, List<String> qualityFlags) {
         TelemetryDeadLetterEvent deadLetterEvent = new TelemetryDeadLetterEvent(

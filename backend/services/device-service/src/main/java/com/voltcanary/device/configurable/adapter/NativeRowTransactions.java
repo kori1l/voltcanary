@@ -22,15 +22,22 @@ final class NativeRowTransactions {
     }
 
     static NativeDataset head(Connection connection, UUID account, UUID datasetId, long revision) throws SQLException {
+        if (connection.getMetaData().getDatabaseProductName().equals("PostgreSQL")) {
+            return JdbcNativeDatasetCatalog.lockReadyDefinition(connection, account, datasetId, revision);
+        }
+        var dataset = lockThenRead(connection, account, datasetId, revision);
+        NativeCatalogReadiness.verify(connection, new NativeSqlLayout(dataset));
+        return dataset;
+    }
+
+    private static NativeDataset lockThenRead(Connection connection, UUID account, UUID datasetId, long revision) throws SQLException {
         try (var lock = connection.prepareStatement("SELECT id FROM cfg_dataset WHERE id=? AND account_id=? AND status='READY' FOR UPDATE")) {
             lock.setObject(1, datasetId);
             lock.setObject(2, account);
             try (var rows = lock.executeQuery()) { if (!rows.next()) throw new VclException("DATASET_UNAVAILABLE", ""); }
         }
-        var result = JdbcNativeDatasetCatalog.definition(connection, account, datasetId, revision, true)
+        return JdbcNativeDatasetCatalog.definition(connection, account, datasetId, revision, true)
                 .orElseThrow(() -> new VclException("SCHEMA_UNAVAILABLE", ""));
-        NativeCatalogReadiness.verify(connection, new NativeSqlLayout(result.schema()));
-        return result;
     }
 
     static VclException failure(SQLException error) {

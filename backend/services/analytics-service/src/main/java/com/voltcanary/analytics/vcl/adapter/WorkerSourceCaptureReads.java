@@ -5,7 +5,6 @@ import com.voltcanary.analytics.config.VclWorkerIdentityProperties;
 import com.voltcanary.common.security.VclWorkerAssertion;
 import com.voltcanary.common.web.ConfigurableOwnerReads;
 import com.voltcanary.vcl.VclException;
-import com.voltcanary.vcl.VclParser;
 import com.voltcanary.vcl.VclSourceCaptureDescription;
 import com.voltcanary.vcl.VclObservationRead;
 import com.voltcanary.vcl.VclObservationPage;
@@ -41,6 +40,7 @@ public final class WorkerSourceCaptureReads {
     public VclSourceCaptureDescription capture(UUID account, UUID epoch, UUID binding, long revision) {
         if (signer == null) throw new VclException("WORKER_IDENTITY_UNAVAILABLE", "");
         var active = active(account, epoch, binding, revision);
+        var generation = requirePinned(active, binding, revision);
         grants.read(account, epoch);
         var path = "/internal/vcl/source-bindings/" + binding + "/capture?schemaRevision=" + revision;
         var assertion = sign(active, binding, "SOURCE_CAPTURE", "GET", path, new byte[0]);
@@ -52,6 +52,9 @@ public final class WorkerSourceCaptureReads {
         if (!source.actorId().equals(active.actor()) || !source.accountId().equals(account)
                 || !source.id().equals(binding) || source.schemaRevision() != revision || !source.sourceActive()) {
             throw new VclException("OWNER_SNAPSHOT_INVALID", "");
+        }
+        if (!generation.equals(result.capture().inputGeneration())) {
+            throw new VclException("WORKER_INPUT_CHANGED", "");
         }
         recheck(active);
         grants.read(account, epoch);
@@ -137,13 +140,19 @@ public final class WorkerSourceCaptureReads {
 
     UUID findCoverage(UUID account, UUID epoch, UUID binding, long revision, UUID generation,
             java.time.Instant from, java.time.Instant until) {
+        return findCoverage(account, epoch, binding, revision, generation, from, until, 0);
+    }
+
+    UUID findCoverage(UUID account, UUID epoch, UUID binding, long revision, UUID generation,
+            java.time.Instant from, java.time.Instant until, long minimumCheckpoint) {
         var capture = capture(account, epoch, binding, revision);
         var active = active(account, epoch, binding, revision);
         if (!active.acceptsExistingWork() || !capture.capture().journalReady()
                 || !generation.equals(capture.capture().inputGeneration())) {
             throw new VclException("WORKER_INPUT_CHANGED", "");
         }
-        byte[] body = new com.voltcanary.vcl.VclCoverageSearch(capture.capture().pin(), generation, from, until).bytes();
+        byte[] body = new com.voltcanary.vcl.VclCoverageSearch(capture.capture().pin(), generation, from, until,
+                minimumCheckpoint).bytes();
         var path = "/internal/vcl/source-bindings/" + binding + "/coverage-search";
         var assertion = sign(active, binding, "SOURCE_COVERAGE_SEARCH", "POST", path, body);
         try {
@@ -159,7 +168,6 @@ public final class WorkerSourceCaptureReads {
         if (account == null || epoch == null || binding == null || revision < 1) throw new VclException("WORKER_TARGET_INVALID", "");
         var value = deployments.find(account, epoch).orElseThrow(() -> new VclException("DEPLOYMENT_UNAVAILABLE", ""));
         if (!value.permitsOwnerInspection()) throw new VclException("DEPLOYMENT_INACTIVE", "");
-        requirePinned(value, binding, revision);
         return value;
     }
 
@@ -177,17 +185,17 @@ public final class WorkerSourceCaptureReads {
         }
     }
 
-    private void requirePinned(JdbcRuleDeployments.Deployment active, UUID binding, long revision) {
+    private UUID requirePinned(JdbcRuleDeployments.Deployment active, UUID binding, long revision) {
         var bundle = bundles.find(active.account(), active.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var compiled = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        var compiled = bundle.json()
                 .path("compilation");
         for (var node : compiled.path("graph")) {
             var config = node.path("config");
             if ("read_stream".equals(node.path("method").textValue())
                     && binding.toString().equals(config.path("bindingId").textValue())
-                    && revision == config.path("schemaRevision").longValue()) return;
+                    && revision == config.path("schemaRevision").longValue()) return bundle.inputGeneration(binding);
         }
         throw new VclException("WORKER_SOURCE_NOT_PINNED", "");
     }
@@ -196,7 +204,7 @@ public final class WorkerSourceCaptureReads {
         var bundle = bundles.find(active.account(), active.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var compiled = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        var compiled = bundle.json()
                 .path("compilation");
         for (var node : compiled.path("graph")) {
             if (!"lookup_asof".equals(node.path("method").textValue())) continue;

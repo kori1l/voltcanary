@@ -19,12 +19,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationDeliveryOperationsService {
 
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {
@@ -45,21 +47,6 @@ public class NotificationDeliveryOperationsService {
     private final NotificationDeliveryWorker worker;
     private final NotificationProviderRegistry providerRegistry;
     private final ObjectMapper objectMapper;
-
-    public NotificationDeliveryOperationsService(
-            NotificationChannelService channelService,
-            NotificationAttemptService attemptService,
-            NotificationAttemptRepository attemptRepository,
-            NotificationDeliveryWorker worker,
-            NotificationProviderRegistry providerRegistry,
-            ObjectMapper objectMapper) {
-        this.channelService = channelService;
-        this.attemptService = attemptService;
-        this.attemptRepository = attemptRepository;
-        this.worker = worker;
-        this.providerRegistry = providerRegistry;
-        this.objectMapper = objectMapper;
-    }
 
     public NotificationAttemptResponse testDelivery(
             UUID channelId,

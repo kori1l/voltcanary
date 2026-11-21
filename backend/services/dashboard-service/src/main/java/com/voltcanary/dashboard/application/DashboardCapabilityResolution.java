@@ -15,22 +15,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Request-scoped capability resolution. The ordinary preparation remains the final authority. */
 @Service
+@RequiredArgsConstructor
 public class DashboardCapabilityResolution {
     public record Request(List<UUID> deviceIds, String period, String purpose) { }
     private static final Set<String> PERIODS = Set.of("LAST_1_HOUR", "LAST_6_HOURS", "LAST_24_HOURS", "LAST_7_DAYS", "LAST_30_DAYS");
     private final DashboardOwnership ownership;
     private final DashboardCapabilityEvidence evidence;
     private final WidgetManifests manifests;
-
-    public DashboardCapabilityResolution(DashboardOwnership ownership, DashboardCapabilityEvidence evidence, WidgetManifests manifests) {
-        this.ownership = ownership;
-        this.evidence = evidence;
-        this.manifests = manifests;
-    }
 
     public Resolution resolve(DashboardActor actor, String authorization, Request request) {
         if (request == null || request.deviceIds() == null || request.deviceIds().isEmpty() || request.deviceIds().size() > 20

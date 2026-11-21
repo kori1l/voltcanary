@@ -1,6 +1,7 @@
 package com.voltcanary.alert.configurable.application;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltcanary.alert.configurable.adapter.WorkerGrantScopeAuthority;
 import com.voltcanary.alert.configurable.domain.AutomationGrantScope;
 import com.voltcanary.alert.configurable.domain.GrantReview;
 import com.voltcanary.alert.configurable.domain.GrantRevocation;
@@ -8,7 +9,6 @@ import com.voltcanary.alert.configurable.port.GrantReviewStore;
 import com.voltcanary.alert.configurable.port.GrantRevocationStore;
 import com.voltcanary.alert.configurable.port.GrantScopeAuthority;
 import com.voltcanary.alert.configurable.port.RuleAccountAuthority;
-import com.voltcanary.alert.configurable.adapter.WorkerGrantScopeAuthority;
 import com.voltcanary.common.security.VclWorkerAssertion;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
@@ -17,10 +17,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** One owner lifecycle: preview, exact confirmation, durable receipt recovery and monotone revoke. */
 @Service
+@RequiredArgsConstructor
 public class AutomationGrantReviews {
     public record Created(UUID grantId, UUID ruleId, String createdEpoch) { }
     public record View(UUID reviewId, UUID grantId, UUID ruleId, UUID receiptId, long revision, String status,
@@ -34,15 +36,6 @@ public class AutomationGrantReviews {
     private final GrantRevocationStore revocations;
     private final WorkerGrantScopeAuthority workerScopes;
     private final VclParser parser = new VclParser();
-
-    public AutomationGrantReviews(RuleAccountAuthority accounts, GrantScopeAuthority scopes, GrantReviewStore reviews,
-            GrantRevocationStore revocations, WorkerGrantScopeAuthority workerScopes) {
-        this.accounts = accounts;
-        this.scopes = scopes;
-        this.reviews = reviews;
-        this.revocations = revocations;
-        this.workerScopes = workerScopes;
-    }
 
     public View reserve(UUID actor, byte[] body) {
         var request = AutomationGrantRequests.reserve(body);

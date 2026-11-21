@@ -10,6 +10,7 @@ Workspace resources and team publication: [ADR-012](ADR-012-workspace-resource-a
 
 | ADR | Decision |
 | --- | --- |
+| [ADR-016](ADR-016-netty-multiprotocol-ingestion.md) | Proposed Netty multiprotocol ingestion transport with bounded execution, protocol qualification and preserved canonical contracts |
 | [ADR-001](ADR-001-use-monorepo.md) | Use a monorepo |
 | [ADR-002](ADR-002-use-microservices.md) | Use microservices |
 | [ADR-003](ADR-003-use-redpanda-kafka.md) | Use Redpanda/Kafka |

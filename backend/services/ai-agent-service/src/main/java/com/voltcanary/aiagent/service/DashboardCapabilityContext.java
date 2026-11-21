@@ -36,7 +36,7 @@ final class DashboardCapabilityContext {
         }
         if (result == null || !(result.get("snapshotId") instanceof String snapshot) || !(result.get("choices") instanceof List<?> choices)
                 || choices.size() > 60) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Narrow the dashboard data selection; capability catalogue unavailable or exceeds 60 choices");
-        var selectedSources = sourceSelections(input, choices, deviceRefs);
+        var selectedSources = sourceSelections(input, choices, deviceRefs, refs);
         var ambiguous = new java.util.HashSet<String>();
         if (result.get("diagnostics") instanceof List<?> diagnostics) for (Object item : diagnostics) {
             if (item instanceof Map<?, ?> diagnostic && "AMBIGUOUS_SOURCE".equals(diagnostic.get("code")) && diagnostic.get("choiceIds") instanceof List<?> ids) {
@@ -110,7 +110,8 @@ final class DashboardCapabilityContext {
         return (hint.isEmpty() ? "data" : hint.substring(0, Math.min(12, hint.length()))) + "_" + kind;
     }
 
-    private Map<String, String> sourceSelections(Map<String, Object> input, List<?> choices, Map<String, String> devices) {
+    private Map<String, String> sourceSelections(Map<String, Object> input, List<?> choices,
+            Map<String, String> devices, List<ResourceRef> refs) {
         var preferences = new LinkedHashMap<String, String>();
         if (input.get("sourceSelections") instanceof Map<?, ?> sources) sources.forEach((device, source) -> {
             if (!(device instanceof String id) || !devices.containsKey(id) || !(source instanceof String value)) {
@@ -124,6 +125,12 @@ final class DashboardCapabilityContext {
         }
         var resolved = new LinkedHashMap<String, String>();
         preferences.forEach((device, source) -> {
+            // An enabled source can be owned by this device before it exposes any fields.
+            if (refs.stream().anyMatch(ref -> ref.kind().equals("source") && source.equals(ref.resourceId())
+                    && device.equals(ref.summary().get("deviceId")))) {
+                resolved.put(device, source);
+                return;
+            }
             var matches = choices.stream().filter(item -> item instanceof Map<?, ?> choice && device.equals(choice.get("deviceId"))
                     && choice.get("sourceId") != null && (source.equals(choice.get("sourceId")) || source.equals(choice.get("externalSourceId"))))
                     .map(item -> String.valueOf(((Map<?, ?>) item).get("sourceId"))).distinct().toList();

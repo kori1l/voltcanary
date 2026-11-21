@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,18 +23,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Owner-managed canonical meter revisions; raw measurements and maintenance policies are untouched. */
 @Service
+@RequiredArgsConstructor
 public class EnergyMeterRegistry {
     private final AccountService accounts;
     private final DeviceRepository devices;
     private final EnergyMeterRepository meters;
     private final DeviceAuditService audit;
-
-    public EnergyMeterRegistry(AccountService accounts,DeviceRepository devices,EnergyMeterRepository meters,DeviceAuditService audit) {
-        this.accounts = accounts;
-        this.devices = devices;
-        this.meters = meters;
-        this.audit = audit;
-    }
 
     @Transactional(readOnly=true)
     public List<EnergyMeterDefinition> read(AuthenticatedUser actor,UUID deviceId) {

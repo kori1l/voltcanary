@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,17 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Owns exact cutover consent. Analytics still owns execution and readiness. */
 @Service
+@RequiredArgsConstructor
 public class RuleCutoverReviews {
     private final JdbcTemplate jdbc;
     private final AutomationGrantReviews grants;
 
     public record Review(UUID id, UUID accountId, UUID actorId, long grantEpoch, VclRuleCutoverIntent intent,
             String reviewDigest, Instant expiresAt, Instant confirmedAt) { }
-
-    public RuleCutoverReviews(JdbcTemplate jdbc, AutomationGrantReviews grants) {
-        this.jdbc = jdbc;
-        this.grants = grants;
-    }
 
     @Transactional
     public Review prepare(UUID actor, String authorization, VclRuleCutoverIntent intent) {

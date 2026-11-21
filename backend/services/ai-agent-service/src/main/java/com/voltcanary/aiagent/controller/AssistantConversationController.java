@@ -7,6 +7,7 @@ import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,21 +20,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/ai-agent/conversations")
+@RequiredArgsConstructor
 public class AssistantConversationController {
     private final JwtIdentityService identity;
     private final ConversationStore store;
     private final AssistantConversations conversations;
     private final AuthorizedPlanningContext contexts;
     private final com.voltcanary.aiagent.service.PrimaryAssistant primary;
-
-    public AssistantConversationController(JwtIdentityService identity, ConversationStore store, AssistantConversations conversations, AuthorizedPlanningContext contexts,
-            com.voltcanary.aiagent.service.PrimaryAssistant primary) {
-        this.identity = identity;
-        this.store = store;
-        this.conversations = conversations;
-        this.contexts = contexts;
-        this.primary = primary;
-    }
 
     @PostMapping
     public ConversationContracts.Conversation create(@RequestHeader(value = "Authorization", required = false) String authorization,

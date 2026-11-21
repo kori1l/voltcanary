@@ -14,13 +14,14 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Durable reviewed permission creation. APPLYING is committed before the grant transaction. */
 @Component
+@RequiredArgsConstructor
 public class JdbcGrantReviews implements GrantReviewStore {
     private final GrantSql sql;
-    public JdbcGrantReviews(GrantSql sql) { this.sql = sql; }
 
     @Override
     public GrantReview reserve(UUID account, UUID actor, UUID ruleReviewId, String key) {

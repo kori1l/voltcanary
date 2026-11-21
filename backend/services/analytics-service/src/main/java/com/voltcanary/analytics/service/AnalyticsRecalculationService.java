@@ -2,33 +2,34 @@ package com.voltcanary.analytics.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.anomaly.AnomalyDetector;
 import com.voltcanary.analytics.anomaly.UserRuleAnomalyDetector;
-import com.voltcanary.analytics.domain.DeviceBaseline;
 import com.voltcanary.analytics.baseline.BaselineCalculator;
 import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.config.AnalyticsMetricProperties;
+import com.voltcanary.analytics.domain.Anomaly;
+import com.voltcanary.analytics.domain.DeviceBaseline;
+import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
-import com.voltcanary.analytics.dto.AnomalyResponse;
+import com.voltcanary.analytics.domain.MlDeploymentMode;
+import com.voltcanary.analytics.domain.MlModelFamily;
+import com.voltcanary.analytics.domain.PredictionResult;
+import com.voltcanary.analytics.domain.Recommendation;
+import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.analytics.dto.AlertRuleSnapshot;
+import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.BaselineResponse;
 import com.voltcanary.analytics.dto.FeatureSetResponse;
+import com.voltcanary.analytics.dto.MlModelVersionDto;
+import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
-import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
-import com.voltcanary.analytics.dto.MlModelVersionDto;
-import com.voltcanary.analytics.domain.MlDeploymentMode;
-import com.voltcanary.analytics.domain.MlModelFamily;
-import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
-import com.voltcanary.analytics.domain.PredictionResult;
 import com.voltcanary.analytics.producer.AnalyticsOutboxService;
-import com.voltcanary.analytics.domain.Recommendation;
 import com.voltcanary.analytics.recommendation.RecommendationGenerator;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
@@ -36,10 +37,11 @@ import com.voltcanary.analytics.repository.FeatureSetRepository;
 import com.voltcanary.analytics.repository.PredictionResultRepository;
 import com.voltcanary.analytics.repository.RecommendationRepository;
 import com.voltcanary.analytics.repository.RiskScoreRepository;
-import com.voltcanary.analytics.domain.RiskScore;
 import com.voltcanary.analytics.risk.RiskScoreCalculator;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -53,18 +55,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 public class AnalyticsRecalculationService {
     private final DeviceHistoryDeletion deletions;
 
-    private static final Logger log = LoggerFactory.getLogger(AnalyticsRecalculationService.class);
     private static final String BASELINE_ALGORITHM_VERSION = "baseline-basic-v1";
 
     private final TelemetryClient telemetryClient;

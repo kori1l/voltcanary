@@ -1,14 +1,15 @@
 package com.voltcanary.analytics.controller;
 
-import com.voltcanary.analytics.dto.MlTrainingRunDto;
-import com.voltcanary.analytics.dto.MlTrainingRunRequest;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
+import com.voltcanary.analytics.dto.MlTrainingRunDto;
+import com.voltcanary.analytics.dto.MlTrainingRunRequest;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlTrainingService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,15 +23,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/analytics/ml/training-runs")
+@RequiredArgsConstructor
 public class MlTrainingController {
 
     private final MlTrainingService service;
     private final AnalyticsAccessService accessService;
-
-    public MlTrainingController(MlTrainingService service, AnalyticsAccessService accessService) {
-        this.service = service;
-        this.accessService = accessService;
-    }
 
     @PostMapping
     public MlTrainingRunDto create(

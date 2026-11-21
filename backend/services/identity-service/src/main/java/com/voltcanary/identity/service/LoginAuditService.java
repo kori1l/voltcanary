@@ -5,18 +5,16 @@ import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.repository.LoginAuditRepository;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class LoginAuditService {
 
     private final LoginAuditRepository loginAuditRepository;
-
-    public LoginAuditService(LoginAuditRepository loginAuditRepository) {
-        this.loginAuditRepository = loginAuditRepository;
-    }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(

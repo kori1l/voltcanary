@@ -6,6 +6,11 @@ Applicable supported-scope evidence is labelled separately from full A6
 acceptance; neither graph fixtures nor library adoption close these tasks.
 No reverse dependency makes graph implementation wait for full A6 completion.
 
+2026-11-14: run A6 last, following functional delivery and G8 platform
+acceptance. Consume the owning changes' independent outcomes, including the
+G7/G8 end-to-end scenarios, and apply the model and rollout gates below to the
+full assistant-facing release scope.
+
 - [ ] 1.1 Freeze cross-skill tasks, held-out paraphrases excluded from skill examples, independently labelled expected effects and preservation predicates; include optional parameters, cross-plan device/dashboard identity, short answers/reload, two-device ambiguity and edits before/after creation. Grade first candidates independently of writer masks.
 - [ ] 1.2 Define offline parity/adversarial fixtures and provider contract replay for native tools, strict JSON and JSON-text without changing domain skills.
 - [ ] 1.3 Predeclare candidate/reference snapshots, first-pass no-repair/no-model-judge and recovery-enabled profiles, separate first-pass/final quality and false-acceptance gates, comparable pricing, latency and per-turn/plan/campaign call/token/monetary ceilings; retain existing critical/frozen gates.

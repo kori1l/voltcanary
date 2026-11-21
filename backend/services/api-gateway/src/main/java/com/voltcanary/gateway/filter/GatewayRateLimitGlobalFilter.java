@@ -7,8 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -19,9 +18,8 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
+@Slf4j
 public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
-
-    private static final Logger log = LoggerFactory.getLogger(GatewayRateLimitGlobalFilter.class);
 
     private final GatewayRateLimitProperties properties;
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();

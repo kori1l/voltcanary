@@ -1,7 +1,7 @@
 package com.voltcanary.device.business;
 
-import com.voltcanary.common.web.OperationalFact;
 import com.voltcanary.common.web.OperatingSchedule;
+import com.voltcanary.common.web.OperationalFact;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.security.AuthenticatedUser;
 import java.time.Duration;
@@ -9,21 +9,19 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class OperationalFacts {
     private final OperationalRepository repository;
     private final BusinessResourceAuthorization access;
     private final DeviceAuditService audit;
-    public OperationalFacts(OperationalRepository repository,BusinessResourceAuthorization access,DeviceAuditService audit) {
-        this.repository=repository;
-        this.access=access;
-        this.audit=audit;
-    }
+
     public List<OperationalFact> read(AuthenticatedUser actor,UUID account,UUID workspace,UUID device,Instant from,Instant to) {
         if (from==null || to==null || !from.isBefore(to) || Duration.between(from,to).compareTo(Duration.ofDays(31))>0) throw invalid();
         access.device(actor,account,workspace,"operational.read",device);

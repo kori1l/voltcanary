@@ -157,13 +157,19 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
             if (previous.get("name") instanceof String name) values.putIfAbsent("name", name);
             if (selected.isEmpty() && previous.get("deviceIds") instanceof List<?> ids) ids.forEach(id -> selected.add(id.toString()));
         }
-        if (selected.isEmpty()) selected.addAll(selectedDevices(input, session));
-        if (arguments.has("deviceIds")) {
+        if (input.resolvedInputs().containsKey("deviceIds")) {
+            selected.clear();
+            input.resolvedInputs().get("deviceIds").forEach(value -> selected.add(UUID.fromString(value.asText()).toString()));
+        } else if (input.resolvedInputs().containsKey("deviceId")) {
+            selected.clear();
+            selected.add(UUID.fromString(String.valueOf(values.get("deviceId"))).toString());
+        } else if (arguments.has("deviceIds")) {
             selected.clear();
             arguments.path("deviceIds").forEach(value -> selected.add(UUID.fromString(value.asText()).toString()));
+        } else if (selected.isEmpty()) {
+            selected.addAll(selectedDevices(input, session));
         }
         if (!selected.isEmpty()) values.put("deviceIds", selected.stream().distinct().toList());
-        if (!arguments.has("deviceIds") && values.get("deviceId") != null) values.put("deviceIds", List.of(String.valueOf(values.get("deviceId"))));
         if (DashboardSkillContract.supports(intent)) {
             boolean dashboardBase = dashboardBase(base);
             if (intent.equals(DashboardSkillContract.CREATE) && dashboardBase) throw IntentPlans.reject("DASHBOARD_BASE_REQUIRES_EDIT_SKILL");
@@ -176,6 +182,8 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
             var context = dashboards.enrich(new AuthorizedPlanningContext.Prepared(session.owner(), Map.copyOf(initial), List.of()), values, session.authorization());
             var compact = new LinkedHashMap<>(context.context());
             DashboardOperationContext.compact(compact);
+            String requestedName = DashboardTaskName.standaloneCommand(input.currentMessage().text());
+            if (requestedName != null) compact.put("requestedDashboardName", requestedName);
             compact.put("dashboardPlanningProtocol", DashboardOperationProtocol.VERSION);
             compact.put("dashboardTurnId", input.token().requestId().toString());
             if (target != null) compact.put("dashboardDraftTarget", target);
@@ -192,9 +200,39 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
     /** Same trusted context/schema is used for model output validation and domain preparation. */
     public void validateProposal(IntentPlans.ModelInput input, JsonNode response) {
         String intent = input.state().step(step(input)).intentId();
-        if (!DashboardSkillContract.supports(intent) || !response.path("outcome").asText().equals("PREPARED")) return;
+        String outcome = response.path("outcome").asText();
+        if (DashboardSkillContract.supports(intent) && outcome.equals("NO_CHANGE")
+                && DashboardTaskName.standaloneCommand(input.currentMessage().text()) != null) {
+            throw new com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected(response,
+                    "DASHBOARD_NAME_BINDING_CHANGED: prepare rename_dashboard using the exact name in the current user message.");
+        }
+        if (!outcome.equals("PREPARED")) return;
+        if (AgentTool.CREATE_DATA_SOURCE.name().equals(intent)) {
+            try {
+                sourceDevice(input.resolvedInputs().get("deviceId"), response.at("/command/payload/deviceId"));
+            } catch (IntentPlans.Rejected rejected) {
+                throw new com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected(response,
+                        rejected.getMessage() + ": use the deviceId supplied in contract.resolvedInputs.");
+            }
+            return;
+        }
+        if (!DashboardSkillContract.supports(intent)) return;
         var context = cached(input);
         if (context == null) throw new com.voltcanary.aiagent.orchestration.routing.ModelRouting.Stop("WORKFLOW_CONTEXT_MISSING");
+        var requestedName = context.context().get("requestedDashboardName");
+        if (requestedName != null || DashboardSkillContract.CREATE.equals(intent)) {
+            JsonNode name = requestedName != null ? mapper.valueToTree(requestedName) : input.resolvedInputs().get("name");
+            if (name != null && name.isTextual()) {
+                var operations = response.at("/command/payload/operations");
+                var names = java.util.stream.StreamSupport.stream(operations.spliterator(), false)
+                        .filter(operation -> "rename_dashboard".equals(operation.path("op").asText()))
+                        .map(operation -> operation.path("name")).toList();
+                if (!names.equals(List.of(name))) {
+                    throw new com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected(response,
+                            "DASHBOARD_NAME_BINDING_CHANGED: include exactly one rename_dashboard using the exact requested dashboard name.");
+                }
+            }
+        }
         try { DashboardSkillContract.validate(mapper, validator, intent, response.at("/command/payload"), context.context()); }
         catch (ProtocolValidator.RegisteredViolation invalid) {
             throw new com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected(response, "Dashboard context schema: " + invalid.locations());
@@ -234,25 +272,54 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
         if (context == null || !context.scope().equals(session.owner())) throw IntentPlans.reject("WORKFLOW_CONTEXT_MISSING");
         authority.revalidate(context.refs(), session.authorization());
         var tool = skill.intentId().equals(DashboardSkillContract.REFINE) ? AgentTool.CREATE_DASHBOARD : AgentTool.valueOf(skill.intentId());
-        var payload = mapper.convertValue(command.payload(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        Map<String, Object> payload = mapper.convertValue(command.payload(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
         new PlanningInputGuard().inspect(payload);
+        if (tool == AgentTool.CREATE_DEVICE) {
+            payload = new PrimaryDeviceProposal(payload, context.refs()).reviewPayload(
+                    (String) context.context().get("locationId"));
+        } else if (tool == AgentTool.CREATE_ALERT_RULE || tool == AgentTool.UPDATE_ALERT_RULE || tool == AgentTool.TEST_ALERT_RULE) {
+            var submitted = validator.parse(plans.request(session.owner(), input.state().planId(), input.token().requestId()));
+            requireLegacyRuleSourceCompatibility(submitted.path("selection"));
+            if (tool == AgentTool.UPDATE_ALERT_RULE) {
+                requireRuleBinding(input.resolvedInputs().get("ruleId"), command.payload().path("ruleId"));
+            }
+            payload = alertRulePayload(tool, payload);
+        } else if (tool == AgentTool.CREATE_SIMULATOR_CONFIG) {
+            String deviceId = sourceDevice(input.resolvedInputs().get("deviceId"), command.payload().path("deviceId"));
+            context = retainSimulatorSource(context, deviceId, input.resolvedInputs().get("dataSourceId"),
+                    command.payload().path("dataSourceId"));
+            var source = context.refs().getLast();
+            var actual = PlanningContextRead.read(devices,
+                    "/devices/" + deviceId + "/data-sources/" + source.resourceId(), session.authorization(), true);
+            if (!source.resourceId().equals(actual.path("id").asText())) throw IntentPlans.reject("SIMULATOR_SOURCE_UNAVAILABLE");
+            payload = simulatorPayload(payload, actual.path("externalId").asText());
+        }
         var action = new AgentAction(UUID.randomUUID(), tool, skill.intentId(), "Проверьте подготовленное действие", true, payload);
         var plan = new AgentPlan(UUID.randomUUID(), session.owner().userId(), input.currentMessage().text(), "Подготовлено через assistant-v2",
                 "Проверьте результат перед подтверждением.", List.of("assistant-v2"), List.of(action), Instant.now());
         if (selected != null) plan = new AgentPlan(plan.id(), plan.userId(), plan.userMessage(), plan.summary(), plan.explanation(), plan.safetyNotes(), plan.actions(), plan.createdAt(),
                 selected.provider().getProviderType().name(), selected.provider().getName(), selected.modelConfig().getModelId(), selected.provider().getId(), selected.modelConfig().getId(), false);
         var prior = skill.intentId().equals(DashboardSkillContract.CREATE) ? null : base(input, session);
+        Object pinnedDraftTarget = context.context().get("dashboardDraftTarget");
         if (tool == AgentTool.CREATE_DASHBOARD || tool == AgentTool.UPDATE_DASHBOARD_DRAFT) {
             DashboardSkillContract.validate(mapper, validator, skill.intentId(), command.payload(), context.context());
             var domainPayload = DashboardSkillContract.domainPayload(mapper, skill.intentId(), command.payload());
             var envelope = DashboardOperationProtocol.parse(domainPayload, mapper);
             var compiled = DashboardOperationCompiler.compile(envelope, context, input.token().requestId().toString());
             if (compiled.restoreSteps() != null) {
-                if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT) throw IntentPlans.reject("DRAFT_UNDO_REQUIRES_REVIEWED_UPDATE");
                 if (prior == null) throw IntentPlans.reject("UNDO_REVIEW_UNAVAILABLE");
                 Map<String, Object> restore = compiled.restoreSteps() == 0 ? Map.of("keepReview", true) : Map.of("restoreSteps", compiled.restoreSteps());
                 plan = replace(plan, new AgentAction(action.id(), tool, action.title(), action.description(), true, restore));
-                var restored = new DashboardReviewHistory(reviews, authority).restore(plan, prior, session.authorization(), "v2ParentReviewId");
+                var history = new DashboardReviewHistory(reviews, authority);
+                CreationTaskPlanning.PreparedTask restored;
+                if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT) {
+                    if (!(pinnedDraftTarget instanceof Map<?, ?> target) || !(target.get("dashboardId") instanceof String dashboardId)) {
+                        throw IntentPlans.reject("DASHBOARD_DRAFT_INVALID");
+                    }
+                    restored = history.restoreDraft(plan, prior, session.authorization(), draftTarget, dashboardId);
+                } else {
+                    restored = history.restore(plan, prior, session.authorization(), "v2ParentReviewId");
+                }
                 plan = restored.plan();
                 context = restored.context();
             } else {
@@ -269,32 +336,38 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
             }
             if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT) {
                 var target = draftTarget.load(prior, session.authorization());
-                if (!target.equals(context.context().get("dashboardDraftTarget"))) throw IntentPlans.conflict("DASHBOARD_DRAFT_VERSION_CHANGED");
+                if (!target.equals(pinnedDraftTarget)) throw IntentPlans.conflict("DASHBOARD_DRAFT_VERSION_CHANGED");
                 var prepared = plan.actions().getFirst();
                 var values = new LinkedHashMap<>(prepared.parameters());
                 values.putAll(target);
                 plan = replace(plan, new AgentAction(prepared.id(), AgentTool.UPDATE_DASHBOARD_DRAFT, "Обновить черновик дашборда",
                         "Будет обновлён этот дашборд после проверки его версии.", true, Map.copyOf(values)));
             }
-        } else if (tool == AgentTool.CREATE_DEVICE) {
-            if (context.refs().stream().noneMatch(ref -> ref.kind().equals("type") && ref.resourceId().equals(payload.get("type")))) throw IntentPlans.reject("DEVICE_TYPE_UNAVAILABLE");
-            if (payload.get("locationId") != null) authority.revalidate(List.of(new AuthorizedPlanningContext.ResourceRef("location", "location", String.valueOf(payload.get("locationId")), Map.of())), session.authorization());
         } else if (tool == AgentTool.CREATE_DATA_SOURCE) {
-            if (!(context.context().get("deviceSetupCapabilities") instanceof List<?> installed) || !installed.contains("HSL_HFP")
+            if (!authority.hslSourceAvailable() || !(context.context().get("deviceSetupCapabilities") instanceof List<?> installed) || !installed.contains("HSL_HFP")
                     || !"HSL_HFP".equals(payload.get("provider"))) throw IntentPlans.reject("SOURCE_INTEGRATION_UNAVAILABLE");
-            String deviceId = UUID.fromString(String.valueOf(payload.get("deviceId"))).toString();
+            String deviceId = sourceDevice(input.resolvedInputs().get("deviceId"), command.payload().path("deviceId"));
             var device = PlanningContextRead.read(devices, "/devices/" + deviceId, session.authorization(), true);
-            if (!"VEHICLE".equals(device.path("type").asText()) || !"ACTIVE".equals(device.path("status").asText()))
+            if (!deviceId.equals(device.path("id").asText()) || !"VEHICLE".equals(device.path("type").asText())
+                    || !"ACTIVE".equals(device.path("status").asText()))
                 throw IntentPlans.reject("SOURCE_DEVICE_INCOMPATIBLE");
-            authority.prepare(session.user(), session.authorization(), input.currentMessage().text(), payload);
-        } else {
-            authority.prepare(session.user(), session.authorization(), input.currentMessage().text(), payload);
+            context = retainSourceDevice(context, deviceId);
+        } else if (tool != AgentTool.CREATE_DEVICE) {
+            var validated = authority.prepare(session.user(), session.authorization(), input.currentMessage().text(), payload);
+            if (!context.scope().equals(validated.scope())) throw IntentPlans.reject("CONTEXT_SCOPE_CHANGED");
+            var refs = new ArrayList<>(context.refs());
+            validated.refs().stream().filter(ref -> List.of("device", "location", "alert", "rule").contains(ref.kind()))
+                    .filter(ref -> refs.stream().noneMatch(existing -> existing.kind().equals(ref.kind())
+                            && existing.resourceId().equals(ref.resourceId())))
+                    .forEach(refs::add);
+            context = new AuthorizedPlanningContext.Prepared(context.scope(), context.context(), List.copyOf(refs));
         }
         if (DashboardSkillContract.supports(skill.intentId())) candidateCheck.accept(plan, context);
         authority.revalidate(context.refs(), session.authorization());
-        if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT && !draftTarget.load(prior, session.authorization()).equals(context.context().get("dashboardDraftTarget")))
+        if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT && !draftTarget.load(prior, session.authorization()).equals(pinnedDraftTarget))
             throw IntentPlans.conflict("DASHBOARD_DRAFT_VERSION_CHANGED");
         var metadata = new LinkedHashMap<>(context.context());
+        if (tool == AgentTool.UPDATE_DASHBOARD_DRAFT) metadata.put("dashboardDraftTarget", pinnedDraftTarget);
         if (prior != null) metadata.put("v2ParentReviewId", prior.plan().id().toString());
         var saved = reviews.save(plan, new AuthorizedPlanningContext.Prepared(session.owner(), Map.copyOf(metadata), context.refs()));
         journal.bind(saved.plan().id(), input.state().planId(), step(input));
@@ -303,10 +376,78 @@ public final class PrimaryDomainPreparation implements PrimaryDomain, Orchestrat
                 output.type().equals("device-id") ? "device" : output.type().equals("dashboard-id") ? "dashboard" : output.type().equals("source-id") ? "source" : null)).toList();
         return new OrchestrationPorts.Prepared(review, outputs);
     }
+
+    static Map<String, Object> simulatorPayload(Map<String, Object> payload, String externalId) {
+        if (externalId.isBlank()) throw IntentPlans.reject("SIMULATOR_SOURCE_UNAVAILABLE");
+        Object proposed = payload.get("sourceId");
+        if (proposed != null && !externalId.equals(proposed)) throw IntentPlans.reject("SIMULATOR_EXTERNAL_ID_CHANGED");
+        var reviewed = new LinkedHashMap<>(payload);
+        reviewed.values().removeIf(java.util.Objects::isNull);
+        reviewed.put("sourceId", externalId);
+        return Map.copyOf(reviewed);
+    }
+
+    static void requireRuleBinding(JsonNode boundRule, JsonNode proposedRule) {
+        if (boundRule != null && !UUID.fromString(boundRule.asText()).equals(UUID.fromString(proposedRule.asText()))) {
+            throw IntentPlans.reject("RULE_BINDING_CHANGED");
+        }
+    }
+
+    static Map<String, Object> alertRulePayload(AgentTool tool, Map<String, Object> payload) {
+        var result = new LinkedHashMap<>(payload);
+        result.values().removeIf(java.util.Objects::isNull);
+        Object deviceId = payload.get("deviceId");
+        if (deviceId != null) {
+            result.put("scopeType", "DEVICE");
+            result.put("scopeId", deviceId);
+        } else if (tool != AgentTool.UPDATE_ALERT_RULE) {
+            result.put("scopeType", "FLEET");
+        }
+        return Map.copyOf(result);
+    }
+
+    static String sourceDevice(JsonNode boundDevice, JsonNode proposedDevice) {
+        String deviceId = UUID.fromString(proposedDevice.asText()).toString();
+        if (boundDevice != null && !deviceId.equals(UUID.fromString(boundDevice.asText()).toString())) {
+            throw IntentPlans.reject("SOURCE_DEVICE_BINDING_CHANGED");
+        }
+        return deviceId;
+    }
+
+    static AuthorizedPlanningContext.Prepared retainSourceDevice(AuthorizedPlanningContext.Prepared context, String deviceId) {
+        var refs = new ArrayList<>(context.refs());
+        if (refs.stream().noneMatch(ref -> "device".equals(ref.kind()) && deviceId.equals(ref.resourceId()))) {
+            refs.add(new AuthorizedPlanningContext.ResourceRef(UUID.randomUUID().toString(), "device", deviceId, Map.of()));
+        }
+        return new AuthorizedPlanningContext.Prepared(context.scope(), context.context(), List.copyOf(refs));
+    }
+
+    static AuthorizedPlanningContext.Prepared retainSimulatorSource(AuthorizedPlanningContext.Prepared context,
+            String deviceId, JsonNode boundSource, JsonNode proposedSource) {
+        String sourceId = UUID.fromString(proposedSource.asText()).toString();
+        if (boundSource != null && !sourceId.equals(UUID.fromString(boundSource.asText()).toString())) {
+            throw IntentPlans.reject("SIMULATOR_SOURCE_BINDING_CHANGED");
+        }
+        var refs = new ArrayList<>(context.refs());
+        refs.add(new AuthorizedPlanningContext.ResourceRef(UUID.randomUUID().toString(), "source", sourceId,
+                Map.of("deviceId", deviceId)));
+        return new AuthorizedPlanningContext.Prepared(context.scope(), context.context(), List.copyOf(refs));
+    }
     private AgentPlan replace(AgentPlan plan, AgentAction action) {
         return new AgentPlan(plan.id(), plan.userId(), plan.userMessage(), plan.summary(), plan.explanation(), plan.safetyNotes(), List.of(action), plan.createdAt(),
                 plan.providerType(), plan.providerName(), plan.modelId(), plan.providerId(), plan.modelConfigId(), plan.fallbackUsed());
     }
+    static void requireLegacyRuleSourceCompatibility(JsonNode selection) {
+        for (var selected : selection) {
+            if ("sourceBinding".equals(selected.path("field").asText())) {
+                throw new com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure(
+                        new AssistantProtocol.Diagnostic("RESOURCE", "VCL_SOURCE_RULE_EXECUTION_UNAVAILABLE",
+                                "Для выбранной привязки VCL выполнение правил недоступно. Подготовка правила для этого источника остановлена.",
+                                List.of(), false));
+            }
+        }
+    }
+
     private AuthorizedPlanningContext.Prepared cached(IntentPlans.ModelInput input) {
         var rows = jdbc.query("select context_json from ai_orchestration_contexts where plan_id=? and request_id=? and step_id=?", (row, index) -> row.getString(1),
                 input.state().planId(), input.token().requestId(), step(input));

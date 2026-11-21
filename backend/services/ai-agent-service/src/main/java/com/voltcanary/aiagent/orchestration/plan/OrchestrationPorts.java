@@ -23,6 +23,10 @@ public final class OrchestrationPorts {
             throw IntentPlans.reject("REPAIR_UNAVAILABLE");
         }
     }
+    @FunctionalInterface
+    public interface Consultation {
+        boolean run(IntentPlans.ModelInput input, String stepId, Session session, boolean nameRequested);
+    }
     public record Prepared(IntentPlans.Review review, List<IntentPlans.Output> outputs) {
         public Prepared { outputs = List.copyOf(outputs); }
     }

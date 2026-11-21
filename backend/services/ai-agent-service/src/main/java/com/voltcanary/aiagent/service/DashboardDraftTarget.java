@@ -25,9 +25,7 @@ final class DashboardDraftTarget {
         String id = null;
         if (action.tool() == AgentTool.UPDATE_DASHBOARD_DRAFT) id = String.valueOf(action.parameters().get("dashboardId"));
         if (base.status().equals("SUCCESS")) {
-            var result = reviews.actionResults(base.plan()).stream().filter(receipt -> receipt.actionId().equals(action.id()) && receipt.status().equals("SUCCESS"))
-                    .findFirst().orElseThrow(() -> IntentPlans.reject("DASHBOARD_RECEIPT_REQUIRED"));
-            id = String.valueOf(result.result().get("dashboardId"));
+            id = savedId(base);
         }
         if (id == null) throw IntentPlans.reject("EXECUTED_DASHBOARD_BASE_REQUIRED");
         id = UUID.fromString(id).toString();
@@ -41,5 +39,17 @@ final class DashboardDraftTarget {
             throw IntentPlans.conflict("DASHBOARD_DRAFT_VERSION_CHANGED");
         }
         return Map.of("dashboardId", id, "draftEtag", draft.path("etag").asText(), "baseRevision", draft.path("baseRevision").asInt());
+    }
+
+    String savedId(PlanStore.Stored review) {
+        if (!review.status().equals("SUCCESS") || review.plan().actions().size() != 1) return null;
+        var action = review.plan().actions().getFirst();
+        if (action.tool() != AgentTool.CREATE_DASHBOARD && action.tool() != AgentTool.UPDATE_DASHBOARD_DRAFT) return null;
+        return reviews.actionResults(review.plan()).stream()
+                .filter(receipt -> receipt.actionId().equals(action.id()) && receipt.status().equals("SUCCESS"))
+                .map(receipt -> receipt.result().get("dashboardId"))
+                .filter(id -> id instanceof String || id instanceof UUID)
+                .map(id -> UUID.fromString(id.toString()).toString())
+                .findFirst().orElseThrow(() -> IntentPlans.reject("DASHBOARD_RECEIPT_REQUIRED"));
     }
 }

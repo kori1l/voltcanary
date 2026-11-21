@@ -27,12 +27,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MaintenanceOperationService {
 
     private static final int DEFAULT_LIMIT = 100;
@@ -46,25 +48,6 @@ public class MaintenanceOperationService {
     private final LocationRepository locationRepository;
     private final DeviceAuditService auditService;
     private final MaintenanceWindowEventPublisher eventPublisher;
-
-    public MaintenanceOperationService(
-            AccountService accountService,
-            DeviceService deviceService,
-            MaintenanceOperationRepository operationRepository,
-            MaintenanceWindowRepository windowRepository,
-            DeviceTypeRepository deviceTypeRepository,
-            LocationRepository locationRepository,
-            DeviceAuditService auditService,
-            MaintenanceWindowEventPublisher eventPublisher) {
-        this.accountService = accountService;
-        this.deviceService = deviceService;
-        this.operationRepository = operationRepository;
-        this.windowRepository = windowRepository;
-        this.deviceTypeRepository = deviceTypeRepository;
-        this.locationRepository = locationRepository;
-        this.auditService = auditService;
-        this.eventPublisher = eventPublisher;
-    }
 
     @Transactional(readOnly = true)
     public List<MaintenanceOperationResponse> list(

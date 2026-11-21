@@ -55,6 +55,11 @@ describe("assistant review boundary", () => {
     expect(() => inspectAssistantContext("[]")).toThrow("JSON object");
     expect(redactAssistantDetails({ token: "secret", steps: [{ deviceId: "device", password: "secret" }] })).toEqual({ token: "[redacted]", steps: [{ deviceId: "device", password: "[redacted]" }] });
     expect(buildAssistantContext("/ai-agent", "?deviceId=device-1&workflow=dashboard&token=secret")).toMatchObject({ deviceId: "device-1", searchParams: { deviceId: "device-1", workflow: "dashboard" } });
+    const binding = "00000000-0000-4000-8000-000000000001";
+    expect(buildAssistantContext("/ai-agent", `?workflow=source-mapping&sourceBinding=${binding}%3A2&token=secret`).searchParams)
+      .toEqual({ workflow: "source-mapping", sourceBinding: `${binding}:2` });
+    expect(buildAssistantContext("/ai-agent", `?workflow=source-mapping&sourceBinding=${binding}:9007199254740992`).searchParams)
+      .toEqual({ workflow: "source-mapping" });
   });
   it("invalidates an open confirmation when the reviewed version changes", async () => {
     const fetch = vi.spyOn(globalThis, "fetch");

@@ -1,5 +1,5 @@
 const enumValues: Record<string, readonly string[]> = {
-  workflow: ["dashboard"],
+  workflow: ["dashboard", "source-mapping"],
   scopeMode:["ALL","DYNAMIC"],
   scope: ["account", "device"], family: ["ANOMALY_DETECTION", "FAILURE_PREDICTION"],
   sort: ["severity", "time"], severity: ["all", "INFO", "WARNING", "HIGH", "CRITICAL"],
@@ -16,7 +16,8 @@ export function consoleQuery(pathname: string, search: string, allowTransientRan
   const output = new URLSearchParams();
   const keys = new Set(pathname === "/settings/ml" ? ["tab", "scope", "deviceId", "family", "horizonDays", "datasetVersionId", "snapshotId", "runId", "modelId", "policyId", "from", "to", "timezone"] : pathname === "/devices" ? ["q", "locationId", "status", "view", "offset"] : pathname === "/alerts" ? ["view", "deviceId", "severity", "status", "ruleId", "alertId", "metric", "from", "to", "sort", "offset"] : pathname === "/maintenance" ? ["view", "q", "locationId", "deviceType", "status", "from", "to", "includeCancelled", "operationId", "timezone", "offset"] : pathname.startsWith("/devices/") ? ["tab", "metric", "from", "to", "alertId", "ruleId", "setup", "dataSourceId"] : []);
   const statuses = pathname === "/devices" ? ["all", "ACTIVE", "DISABLED", "OFFLINE", "DECOMMISSIONED"] : pathname === "/alerts" ? ["all", "active", "OPEN", "ACKNOWLEDGED", "RESOLVED"] : ["all", "SCHEDULED", "ACTIVE", "FINISHED", "CANCELLED"];
-  if (pathname === "/ai-agent") ["deviceId", "workflow"].forEach((key) => keys.add(key));
+  if (pathname === "/ai-agent") ["deviceId", "workflow", "sourceBinding"].forEach((key) => keys.add(key));
+  if (pathname === "/vehicles") ["deviceId","dataSourceId","section","reviewId","latitude","longitude"].forEach(key=>keys.add(key));
   if (pathname === "/data") ["datasetId", "reviewId"].forEach(key => keys.add(key));
   if(pathname.startsWith("/dashboards/") || pathname==="/dashboard") ["screenId","scopeMode","deviceId","locationId","period","from","to","timezone","kiosk","overview"].forEach((key)=>keys.add(key));
   for (const [key, value] of input) {
@@ -24,6 +25,10 @@ export function consoleQuery(pathname: string, search: string, allowTransientRan
     if (output.has(key)) continue;
     if (identifiers.has(key) && validId(value)) output.set(key, value);
     else if (key === "status" ? statuses.includes(value) : enumValues[key]?.includes(value)) output.set(key, value);
+    else if (key === "sourceBinding" && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}:[1-9]\d{0,15}$/.test(value)
+        && Number.isSafeInteger(Number(value.slice(37)))) output.set(key, value);
+    else if (["latitude","longitude"].includes(key) && /^-?\d+(?:[.]\d+)?$/.test(value) && Number.isFinite(Number(value)) && Math.abs(Number(value))<=(key==="latitude"?90:180)) output.set(key,value);
+    else if (key === "section" && ["LIVE","HISTORY","ZONES"].includes(value)) output.set(key,value);
     else if (key === "setup" && value === "activation") output.set(key, value);
     else if (key === "screenId" && /^[a-zA-Z0-9_-]{1,80}$/.test(value)) output.set(key,value);
     else if (["kiosk","overview"].includes(key) && value==="true") output.set(key,value);

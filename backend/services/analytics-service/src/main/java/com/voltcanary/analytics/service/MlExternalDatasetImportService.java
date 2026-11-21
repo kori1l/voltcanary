@@ -29,16 +29,16 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.HashSet;
-import java.util.Comparator;
 import java.util.Set;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,9 +46,9 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class MlExternalDatasetImportService {
-
-    private static final Logger log = LoggerFactory.getLogger(MlExternalDatasetImportService.class);
 
     private static final long MAX_CSV_BYTES = 10 * 1024 * 1024;
     private static final String DEFAULT_EXTERNAL_SPLIT_CONFIG = "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}";
@@ -61,25 +61,6 @@ public class MlExternalDatasetImportService {
     private final MlValidationReportRepository validationReportRepository;
     private final AnalyticsAccessService accessService;
     private final ObjectMapper objectMapper;
-
-    public MlExternalDatasetImportService(
-            MlDatasetRepository datasetRepository,
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlImportedFileRepository importedFileRepository,
-            MlImportedMetricRowRepository rowRepository,
-            MlExternalDeviceMappingRepository deviceMappingRepository,
-            MlValidationReportRepository validationReportRepository,
-            AnalyticsAccessService accessService,
-            ObjectMapper objectMapper) {
-        this.datasetRepository = datasetRepository;
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.importedFileRepository = importedFileRepository;
-        this.rowRepository = rowRepository;
-        this.deviceMappingRepository = deviceMappingRepository;
-        this.validationReportRepository = validationReportRepository;
-        this.accessService = accessService;
-        this.objectMapper = objectMapper;
-    }
 
     @Transactional
     public MlExternalImportResponse importCsv(

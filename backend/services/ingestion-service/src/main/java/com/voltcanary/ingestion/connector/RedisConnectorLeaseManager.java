@@ -3,8 +3,10 @@ package com.voltcanary.ingestion.connector;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+@RequiredArgsConstructor
 public class RedisConnectorLeaseManager implements ConnectorLeaseManager {
 
     private static final String KEY_PREFIX = "voltcanary:ingestion:connector-lease:";
@@ -12,11 +14,6 @@ public class RedisConnectorLeaseManager implements ConnectorLeaseManager {
 
     private final StringRedisTemplate redisTemplate;
     private final ConnectorRuntimeProperties properties;
-
-    public RedisConnectorLeaseManager(StringRedisTemplate redisTemplate, ConnectorRuntimeProperties properties) {
-        this.redisTemplate = redisTemplate;
-        this.properties = properties;
-    }
 
     @Override
     public Optional<ConnectorLease> acquire(UUID dataSourceId) {

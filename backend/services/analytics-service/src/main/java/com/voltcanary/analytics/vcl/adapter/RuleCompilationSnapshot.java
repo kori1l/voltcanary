@@ -161,6 +161,11 @@ public final class RuleCompilationSnapshot {
         }
     }
 
+    void verifyCompilationStart(RuleCompilationSnapshots.PreparedStart prepared) {
+        verifySourceStartCheckpoint(prepared.checkpoint().source());
+        if (prepared.lookups() != null) prepared.lookups().verifyManifests();
+    }
+
     public record LookupSelection(VclDocument query, UUID intervalField) { }
 
     public record ReferenceStartPin(String canonicalQuery, UUID intervalField, String manifestDigest) { }
@@ -172,15 +177,13 @@ public final class RuleCompilationSnapshot {
         private final Map<String, LookupPin> pins;
         private final NativeAsOfOwner owner;
         private final NativeAsOfOwner.Transport transport;
-        private final long deadline;
 
         private PreparedLookups(VclCompilation compilation, Map<String, LookupPin> pins, NativeAsOfOwner owner,
-                NativeAsOfOwner.Transport transport, long deadline) {
+                NativeAsOfOwner.Transport transport) {
             this.compilation = compilation;
             this.pins = Map.copyOf(pins);
             this.owner = owner;
             this.transport = transport;
-            this.deadline = deadline;
         }
 
         public VclCompilation compilation() { return compilation; }
@@ -199,7 +202,7 @@ public final class RuleCompilationSnapshot {
             var node = compilation.graph().stream().filter(candidate -> candidate.id().equals(nodeId)).findFirst().orElseThrow();
             reauthorize(true);
             var result = owner.lookup(transport, node, pin.selection().query(), pin.selection().intervalField(),
-                    event, eventTime, pin.manifest(), deadline);
+                    event, eventTime, pin.manifest(), referenceReadDeadline());
             reauthorize(true);
             return result;
         }
@@ -216,15 +219,11 @@ public final class RuleCompilationSnapshot {
         }
 
         WindowPreview previewWindowAggregate(String nodeId, ScalarValue subject, VclWindowPlan.Window window, long byteBudget) {
-            var batch = journalAggregate(nodeId);
-            batch.validateWindow("TEXT".equals(subject.literal().path("type").textValue())
-                    ? subject.literal().path("value").textValue() : "", window);
-            return batch.reduceWindow(batch.readRetainedInput(batch.journal, byteBudget, window), subject, window, false);
+            return journalAggregate(nodeId).preview(subject, window, byteBudget);
         }
 
         String sourceCutDigest() {
-            if (journals.size() != 1) throw new VclException("WINDOW_DIRECT_JOURNAL_REQUIRED", "");
-            return journals.values().iterator().next().cutDigest();
+            return RuleCompilationSnapshot.this.sourceCutDigest();
         }
 
         CorrectionCatchup correctionCatchup(String nodeId, SourceBindingSnapshots.Target target,
@@ -310,6 +309,7 @@ public final class RuleCompilationSnapshot {
         }
 
         private void verifyManifests() {
+            long deadline = referenceReadDeadline();
             for (var node : compilation.graph()) {
                 var pin = pins.get(node.id());
                 if (pin == null) continue;
@@ -324,6 +324,10 @@ public final class RuleCompilationSnapshot {
 
     record CorrectionCatchup(UUID generation, long scannedHead, long lastRelevant) { }
 
+    private static long referenceReadDeadline() {
+        return System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+    }
+
     /** Compile a bounded historical rule read with an owner-verified sealed query for each lookup node. */
     PreparedLookups prepareLookups(VclCompiler compiler, NativeAsOfOwner owner, String authorization,
             Map<String, LookupSelection> selections) {
@@ -334,7 +338,7 @@ public final class RuleCompilationSnapshot {
             Map<String, LookupSelection> selections) {
         var pins = new java.util.TreeMap<String, LookupPin>();
         var preparedDatasets = new HashSet<UUID>();
-        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+        long deadline = referenceReadDeadline();
         reauthorize();
         for (var declaration : document.spec().path("nodes")) {
             if (!"lookup_asof".equals(declaration.path("method").textValue())) continue;
@@ -372,7 +376,7 @@ public final class RuleCompilationSnapshot {
         String lookupScope = VclCanonical.sha256(scope + "\nRULE_ASOF/1\n" + VclCanonical.encode(manifestSet));
         var compiled = compiler.compile(document, new Metadata(preparedDatasets, lookupScope));
         reauthorize(true);
-        return new PreparedLookups(compiled, pins, owner, transport, deadline);
+        return new PreparedLookups(compiled, pins, owner, transport);
     }
 
     /** Verify static types and exact grants before checking the source owner's runtime readiness. */
@@ -423,32 +427,32 @@ public final class RuleCompilationSnapshot {
         public VclWindowAggregateKernel.Plan plan() { return plan; }
         public long maximumMemberships() { return maximumMemberships; }
 
-        record Opening(String subjectLiteral, VclWindowPlan.Window window) {
-            ScalarValue typedSubject() { return ScalarValue.known(PARSER, subjectLiteral); }
-            String subject() { return typedSubject().literal().path("value").textValue(); }
-            boolean textSubject() { return "TEXT".equals(typedSubject().literal().path("type").textValue()); }
-        }
+        record AggregateRoute(ScalarValue subject, List<VclWindowPlan.Window> windows) { }
 
-        List<Opening> openings(JsonNode observation) {
+        AggregateRoute route(JsonNode observation) {
             var eventTime = Instant.parse(observation.path("eventTime").textValue());
             var recordedAt = Instant.parse(observation.path("recordedAt").textValue());
-            if (timing.classify(eventTime, recordedAt) == VclTimingPlan.Admission.QUARANTINED_FUTURE) return List.of();
+            if (timing.classify(eventTime, recordedAt) == VclTimingPlan.Admission.QUARANTINED_FUTURE) {
+                return new AggregateRoute(null, List.of());
+            }
             ScalarValue subject;
             if (prepared != null) {
                 UUID id = UUID.fromString(observation.path("inputEventId").textValue());
                 var rows = expandIntervalInput(prepared, input.steps(), sustainedSample(observation, id, eventTime),
                         1, new StringBuilder(), filters);
-                if (rows.isEmpty()) return List.of();
+                if (rows.isEmpty()) return new AggregateRoute(null, List.of());
                 subject = rows.getFirst().fields().get(UUID.fromString(subjectField));
             } else {
                 var identity = observationField(observation, subjectField);
-                if (!"KNOWN".equals(identity.path("knowledge").textValue())) return List.of();
-                if (!filters.isEmpty() && filterWindowObservation(observation, eventTime).isEmpty()) return List.of();
+                if (!filters.isEmpty() && filterWindowObservation(observation, eventTime).isEmpty()) {
+                    return new AggregateRoute(null, List.of());
+                }
                 subject = observationValue(identity, UUID.fromString(observation.path("inputEventId").textValue()));
             }
-            if (subject == null || subject.status() != ScalarValue.Status.OK || subject.isNull()) return List.of();
-            String identity = VclCanonical.encode(subject.literal());
-            return plan.windows().assign(eventTime).stream().distinct().map(window -> new Opening(identity, window)).toList();
+            if (subject != null && subject.isFailure()) throw new VclException(subject.reason(), "");
+            var windows = plan.windows().assign(eventTime).stream().distinct().toList();
+            return new AggregateRoute(subject == null || subject.status() != ScalarValue.Status.OK || subject.isNull()
+                    ? null : subject, windows);
         }
 
         private List<VclIntervalUnionPlan.Row> filterWindowObservation(JsonNode observation, Instant eventTime) {
@@ -502,14 +506,13 @@ public final class RuleCompilationSnapshot {
         }
 
         void stageAggregateWindow(JdbcKeyedStateStore store, JdbcRuleDeployments.Deployment deployment,
-                Opening opening, long checkpoint, JsonNode event, UUID holder) {
-            var scalar = opening.typedSubject();
+                ScalarValue scalar, VclWindowPlan.Window window, long checkpoint, JsonNode event, UUID holder) {
             var key = new KeyedStateStore.Key(deployment.account(), deployment.rule(), deployment.epoch(),
-                    aggregateSubjectDigest(scalar), IntervalWindowSchedule.occurrence(opening.window()));
+                    aggregateSubjectDigest(scalar), IntervalWindowSchedule.occurrence(window));
             var recipe = new IntervalWindowSchedule.Recipe(aggregateNode.id(), evaluatorPlanDigest(), journal.inputGeneration(),
-                    opening.window(), closeDueAt(opening.window()), VclCanonical.encode(scalar.literal()),
+                    window, closeDueAt(window), VclCanonical.encode(scalar.literal()),
                     usesCountPrefixes() && java.time.temporal.ChronoUnit.MICROS.between(
-                            opening.window().startInclusive(), opening.window().endExclusive()) >= 16 ? 1 : 0, null, 0, null);
+                            window.startInclusive(), window.endExclusive()) >= 16 ? 1 : 0, null, 0, null);
             owner.reauthorizeInputs();
             var route = prepared == null ? null : IntervalWindowSchedule.Route.from(
                     UUID.fromString(input.source().config().path("bindingId").textValue()), event, owner::reauthorizeInputs);
@@ -678,6 +681,14 @@ public final class RuleCompilationSnapshot {
             return preview(subject, window, encodedByteBudget, false);
         }
 
+        WindowPreview preview(ScalarValue subject, VclWindowPlan.Window window, long byteBudget) {
+            validateWindow("TEXT".equals(subject.literal().path("type").textValue())
+                    ? subject.literal().path("value").textValue() : "", window);
+            var evaluation = reduceWindow(readRetainedInput(journal, byteBudget, window), subject, window, false);
+            owner.reauthorizeInputs();
+            return evaluation;
+        }
+
         private WindowPreview preview(String subject, VclWindowPlan.Window window, long encodedByteBudget, boolean ranged) {
             validateWindow(subject, window);
             var retained = readRetainedInput(journal, encodedByteBudget, ranged ? window : null);
@@ -819,6 +830,20 @@ public final class RuleCompilationSnapshot {
     }
 
     record SessionObservation<T>(KeyedStateStore.Key key, T value, boolean included) { }
+    record UnresolvedSessionInput(String subject, String occurrence, Instant at, long maximumAgeUs, VclTimingPlan timing) { }
+
+    private static Optional<UnresolvedSessionInput> unresolvedSessionInput(JsonNode event, UUID subjectField,
+            UUID occurrenceField, long maximumAgeUs, VclTimingPlan timing, VclJournalInputPlan input) {
+        UUID id = UUID.fromString(event.path("inputEventId").textValue());
+        var at = Instant.parse(event.path("eventTime").textValue());
+        var recorded = Instant.parse(event.path("recordedAt").textValue());
+        if (timing.classify(at, recorded) == VclTimingPlan.Admission.QUARANTINED_FUTURE) return Optional.empty();
+        var subject = identity(event, subjectField, id);
+        var occurrence = identity(event, occurrenceField, id);
+        if (subject != null && occurrence != null
+                || input.select(observationFields(event, id)) == VclJournalInputPlan.Selection.EXCLUDED) return Optional.empty();
+        return Optional.of(new UnresolvedSessionInput(subject, occurrence, at, maximumAgeUs, timing));
+    }
 
     final class SessionBatch {
         private final com.voltcanary.analytics.vcl.VclWindowSessionKernel.Plan plan;
@@ -853,9 +878,13 @@ public final class RuleCompilationSnapshot {
                     selection == VclJournalInputPlan.Selection.INCLUDED));
         }
 
+        Optional<UnresolvedSessionInput> unresolved(JsonNode event) {
+            return unresolvedSessionInput(event, plan.subjectField(), plan.occurrenceField(), plan.maxDurationUs(), timing, input);
+        }
+
         List<VclWindowSessionKernel.Observation> replayHistory(JdbcRuleDeployments.Deployment deployment,
-                KeyedStateStore.Key key, Instant from, Instant through) {
-            return sessionReplayRows(journal, deployment, from, through, event -> route(deployment.epoch(), event)
+                KeyedStateStore.Key key, String checkpoint, Instant from, Instant through) {
+            return sessionReplayRows(journal.atCheckpoint(checkpoint), deployment, from, through, event -> route(deployment.epoch(), event)
                     .filter(value -> value.included() && key.equals(value.key()))
                     .map(SessionObservation::value));
         }
@@ -935,9 +964,16 @@ public final class RuleCompilationSnapshot {
                     selection == VclJournalInputPlan.Selection.INCLUDED));
         }
 
+        Optional<UnresolvedSessionInput> unresolved(JsonNode event) {
+            var config = node.config();
+            return unresolvedSessionInput(event, UUID.fromString(config.path("subjectFieldId").textValue()),
+                    UUID.fromString(config.path("occurrenceFieldId").textValue()),
+                    Math.multiplyExact(2, Long.parseLong(config.path("maxDurationUs").textValue())), timing, input);
+        }
+
         List<VclZoneSessionKernel.Observation> replayHistory(JdbcRuleDeployments.Deployment deployment,
-                KeyedStateStore.Key key, Instant from, Instant through) {
-            return sessionReplayRows(journal, deployment, from, through, event -> route(deployment.epoch(), event)
+                KeyedStateStore.Key key, String checkpoint, Instant from, Instant through) {
+            return sessionReplayRows(journal.atCheckpoint(checkpoint), deployment, from, through, event -> route(deployment.epoch(), event)
                     .filter(value -> value.included() && key.equals(value.key())).map(SessionObservation::value));
         }
 
@@ -1019,6 +1055,23 @@ public final class RuleCompilationSnapshot {
 
     String sessionScope() { return scope; }
 
+    List<UUID> retainedWindowReferences(JsonNode result, Instant windowStart, Instant now) {
+        reauthorize();
+        if (!now.isBefore(windowStart.plus(policy.retentionDays(), java.time.temporal.ChronoUnit.DAYS))) return List.of();
+        var evidence = result.path("evidence");
+        if (!evidence.isArray()) throw new VclException("WINDOW_MEASURE_CHANGED", "");
+        var references = new java.util.LinkedHashSet<UUID>();
+        try {
+            for (var item : evidence) {
+                references.add(UUID.fromString(item.textValue()));
+                if (references.size() >= policy.observationReferenceLimit()) break;
+            }
+        } catch (IllegalArgumentException | NullPointerException invalid) {
+            throw new VclException("WINDOW_MEASURE_CHANGED", "");
+        }
+        return List.copyOf(references);
+    }
+
     public VclSustainedPlan prepareSustained(VclCompiler compiler, String nodeId) {
         return VclSustainedPlan.compile(compile(compiler), nodeId, new Metadata());
     }
@@ -1031,6 +1084,11 @@ public final class RuleCompilationSnapshot {
             VclWindowPlan.Window window, long byteBudget) {
         return previewJournalIntervalUnion(compile(compiler), new Metadata(), null, nodeId, subjectDigest, window,
                 byteBudget, null, null, window.endExclusive());
+    }
+
+    String sourceCutDigest() {
+        if (journals.size() != 1) throw new VclException("WINDOW_DIRECT_JOURNAL_REQUIRED", "");
+        return journals.values().iterator().next().cutDigest();
     }
 
     record IntervalFinalization(WindowPreview result, VclSourceCoverage proof, String cutDigest, String checkpoint,
@@ -1065,22 +1123,29 @@ public final class RuleCompilationSnapshot {
             throw new VclException("INTERVAL_SOURCE_COVERAGE_UNAVAILABLE", "");
         }
         var sample = sustainedSample(event, id, eventTime);
+        requireIntervalReport(new VclIntervalUnionPlan.Row(id, sample.fields()), contract, eventTime);
         var rows = expandIntervalInput(prepared, input.steps(), sample, VclIntervalUnionKernel.MAX_INPUTS, new StringBuilder(),
                 intervalFilters(compilation, input, owner));
         var generation = journal.inputGeneration();
         var route = prepared == null ? null : IntervalWindowSchedule.Route.from(target.id(), event, owner::reauthorizeInputs);
         var assignments = new LinkedHashMap<KeyedStateStore.Key, IntervalWindowSchedule.Recipe>();
+        var unresolvedWindows = new java.util.LinkedHashSet<String>();
         int memberships = 0;
         for (var row : rows) {
             var subjectValue = row.fields().get(plan.subjectField());
             var start = intervalBound(row, contract.start());
             var end = intervalBound(row, contract.end());
-            if (subjectValue == null || subjectValue.status() != ScalarValue.Status.OK || subjectValue.isNull()
-                    || start == null || end == null) continue;
-            String subject = VclWindowSessionKernel.identity(subjectValue);
+            if (subjectValue != null && subjectValue.isFailure()) throw new VclException(subjectValue.reason(), "");
+            boolean unresolved = subjectValue == null || subjectValue.status() != ScalarValue.Status.OK || subjectValue.isNull();
+            if (start == null || end == null) throw new VclException("INTERVAL_REPORT_BOUNDS_CHANGED", "");
             for (var window : plan.overlappingWindows(start, end)) {
                 if (!deployment.includesWindow(window.startInclusive())) continue;
                 if (++memberships > VclIntervalUnionKernel.MAX_INPUTS) throw new VclException("WINDOW_FANOUT_LIMIT", "");
+                if (unresolved) {
+                    unresolvedWindows.add(IntervalWindowSchedule.occurrence(window));
+                    continue;
+                }
+                String subject = VclWindowSessionKernel.identity(subjectValue);
                 var dueAt = timing.windowCloseDueAt(plan.reportingHorizon(window, definition));
                 var key = new KeyedStateStore.Key(deployment.account(), deployment.rule(), deployment.epoch(), subject,
                         IntervalWindowSchedule.occurrence(window));
@@ -1093,6 +1158,10 @@ public final class RuleCompilationSnapshot {
         for (var assignment : assignments.entrySet()) {
             owner.reauthorizeInputs();
             IntervalWindowSchedule.stage(store, deployment, assignment.getKey(), assignment.getValue(), checkpoint, holder, route);
+        }
+        for (var candidate : store.registeredWindows(deployment, List.copyOf(unresolvedWindows))) {
+            owner.reauthorizeInputs();
+            IntervalWindowSchedule.stageCorrected(store, deployment, candidate, checkpoint, holder);
         }
     }
 
@@ -1112,10 +1181,19 @@ public final class RuleCompilationSnapshot {
                 .orElseThrow(() -> new VclException("INTERVAL_REPORT_CONTRACT_REQUIRED", ""));
         UUID id = UUID.fromString(event.path("inputEventId").textValue());
         var row = new VclIntervalUnionPlan.Row(id, observationFields(event, id));
-        var from = intervalBound(row, contract.start());
-        var until = intervalBound(row, contract.end());
-        if (from == null || until == null) throw new VclException("INTERVAL_REPORT_BOUNDS_CHANGED", "");
-        return new VclWindowPlan.Window(from, until);
+        return requireIntervalReport(row, contract, at);
+    }
+
+    private static VclWindowPlan.Window requireIntervalReport(VclIntervalUnionPlan.Row row,
+            com.voltcanary.vcl.VclSourceBindingProfile.IntervalFields contract, Instant eventTime) {
+        var start = intervalBound(row, contract.start());
+        var end = intervalBound(row, contract.end());
+        if (start == null || end == null || !start.isBefore(end) || !end.equals(eventTime)
+                || java.time.Duration.between(start, end).compareTo(
+                        java.time.Duration.of(contract.maxSpanUs(), java.time.temporal.ChronoUnit.MICROS)) > 0) {
+            throw new VclException("INTERVAL_REPORT_BOUNDS_CHANGED", "");
+        }
+        return new VclWindowPlan.Window(start, end);
     }
 
     JournalWindowDecision intervalDecision(VclCompiler compiler, String nodeId, ScalarValue subject) {
@@ -1250,18 +1328,23 @@ public final class RuleCompilationSnapshot {
         if (journal == null) throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
         if (covered != null) journal = covered;
         var plan = VclIntervalUnionPlan.compile(compilation, nodeId, owner);
+        var horizon = reportingHorizon;
+        if (horizon == null) {
+            var definition = journal.binding(UUID.fromString(source.config().path("bindingId").textValue()),
+                    source.config().path("schemaRevision").longValue()).orElseThrow().definition();
+            horizon = plan.reportingHorizon(window, measuredThrough, definition);
+        }
         var timing = VclTimingPlan.compile(compilation);
         var fingerprints = new StringBuilder(String.join("\n", "RULE_INTERVAL_UNION_JOURNAL/1", journal.cutDigest(),
                 plan.digest(), subjectDigest, window.startInclusive().toString(), window.endExclusive().toString()));
         if (!measuredThrough.equals(window.endExclusive())) fingerprints.append("\nprefix\n").append(measuredThrough);
         var rows = new ArrayList<VclIntervalUnionPlan.Row>();
         UUID future = null;
-        // Interval overlap is independent of the timestamp of the journal event carrying it.
+        // A report can arrive after the measured window and still overlap it.
         String after = journal.generationStartCheckpoint();
         VclObservationPage page;
         do {
-            page = reportingHorizon == null ? journal.readPage(after, 128)
-                    : journal.readPage(after, 128, window.startInclusive(), reportingHorizon);
+            page = journal.readPage(after, 128, window.startInclusive(), horizon);
             byteBudget -= page.bytes().length;
             if (byteBudget < 0) throw new VclException("WINDOW_INPUT_BYTE_BUDGET_EXCEEDED", "");
             for (var event : page.observations()) {
@@ -1420,6 +1503,48 @@ public final class RuleCompilationSnapshot {
         return ScalarValue.known(PARSER, JsonNodeFactory.instance.objectNode().put("type", "INSTANT").put("value", value).toString());
     }
 
+    String evaluatorPlanDigest(VclCompiler compiler, RuleCompilationSnapshots.StartCheckpoint checkpoint,
+            PreparedLookups lookups,
+            java.util.function.Supplier<List<SpatialFeatureSnapshot>> circles, String bundleDigest) {
+        var intervalNodes = evaluatorNodes("interval_union_window");
+        var windowNodes = evaluatorNodes("window_aggregate");
+        var sustainedNodes = evaluatorNodes("sustained");
+        if ((!checkpoint.references().isEmpty() && intervalNodes.size() + windowNodes.size() != 1)
+                || checkpoint.source().sources().size() != 1
+                || !checkpoint.source().sources().getFirst().proof().qualifiesEventTime()) {
+            throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
+        }
+        String planDigest;
+        if (intervalNodes.size() == 1 && windowNodes.isEmpty() && sustainedNodes.isEmpty()) {
+            String node = intervalNodes.getFirst();
+            planDigest = lookups == null
+                    ? intervalEvaluatorPlanDigest(compiler, node, bundleDigest)
+                    : lookups.intervalEvaluatorPlanDigest(node, bundleDigest);
+        } else if (!intervalNodes.isEmpty()) {
+            throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
+        } else if (windowNodes.size() == 1 && sustainedNodes.isEmpty()) {
+            String node = windowNodes.getFirst();
+            var batch = lookups == null ? prepareJournalWindowBatch(compiler, node,
+                    64L * VclWindowAggregateKernel.MAX_INPUTS, true) : lookups.journalAggregate(node);
+            planDigest = batch.evaluatorPlanDigest();
+        } else if (windowNodes.isEmpty() && sustainedNodes.size() == 1) {
+            planDigest = sustainedEvaluatorPlanDigest(compiler, sustainedNodes.getFirst(), bundleDigest);
+        } else if (windowNodes.isEmpty() && sustainedNodes.isEmpty()) {
+            planDigest = sessionEvaluatorPlanDigest(compiler, circles, bundleDigest);
+        } else {
+            throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
+        }
+        return planDigest;
+    }
+
+    private List<String> evaluatorNodes(String method) {
+        var nodes = new ArrayList<String>();
+        for (var node : document.spec().path("nodes")) {
+            if (method.equals(node.path("method").textValue())) nodes.add(node.path("id").textValue());
+        }
+        return nodes;
+    }
+
     String sustainedEvaluatorPlanDigest(VclCompiler compiler, String nodeId, String bundleDigest) {
         var compilation = compile(compiler);
         var methods = compilation.graph().stream().map(VclCompilation.Node::method).filter(method -> !"filter".equals(method)).toList();
@@ -1438,11 +1563,10 @@ public final class RuleCompilationSnapshot {
                 plan.digest(), plan.timing().digest(), journal.cutDigest()));
     }
 
-    void observeSustained(VclCompiler compiler, String nodeId, JdbcRuleDeployments.Deployment deployment,
+    void observeSustained(VclSustainedPlan plan, String nodeId, JdbcRuleDeployments.Deployment deployment,
             JdbcKeyedStateStore store, JsonNode event, UUID holder, Runnable deploymentCheck) {
-        var plan = prepareSustained(compiler, nodeId);
-        var journal = journals.get(new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
-        if (journal == null || !journal.accountId().equals(deployment.account())) {
+        var start = journals.get(new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
+        if (start == null || !start.accountId().equals(deployment.account())) {
             throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
         }
         var at = Instant.parse(event.path("eventTime").textValue());
@@ -1452,8 +1576,8 @@ public final class RuleCompilationSnapshot {
         if (subject == null) return;
         var sample = sustainedSample(event, id, at);
         if (plan.excludes(sample)) return;
-        var key = new KeyedStateStore.Key(deployment.account(), deployment.rule(), deployment.epoch(), subject,
-                VclCanonical.sha256("VCL_SUSTAINED_CURSOR/1\n" + nodeId + "\n" + journal.inputGeneration()));
+        var journal = start.atCheckpoint(event.path("checkpoint").textValue());
+        var key = sustainedKey(journal, deployment.epoch(), nodeId, subject);
         var durable = new DurableSustained(store, plan, key, deployment.bundleDigest(), () -> {
             reauthorize();
             deploymentCheck.run();
@@ -1501,13 +1625,25 @@ public final class RuleCompilationSnapshot {
     }
 
     /** Evaluates the immutable journal range for one subject without granting effect authority. */
-    public SustainedPreview previewSustained(VclCompiler compiler, String nodeId, KeyedStateStore.Key key,
+    SustainedPreview previewDirectSustained(VclCompiler compiler, String nodeId, UUID previewEpoch, ScalarValue subject,
+            VclWindowPlan.Window window, long byteBudget) {
+        var plan = prepareSustained(compiler, nodeId);
+        var journal = journals.get(new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
+        if (journal == null) throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
+        var key = sustainedKey(journal, previewEpoch, nodeId, VclWindowSessionKernel.identity(subject));
+        return previewSustained(plan, journal, key, window, byteBudget);
+    }
+
+    private KeyedStateStore.Key sustainedKey(SourceCaptureSnapshot journal, UUID epoch, String nodeId, String subject) {
+        return new KeyedStateStore.Key(journal.accountId(), UUID.fromString(document.spec().path("ruleId").textValue()),
+                epoch, subject, VclCanonical.sha256("VCL_SUSTAINED_CURSOR/1\n" + nodeId + "\n" + journal.inputGeneration()));
+    }
+
+    SustainedPreview previewSustained(VclSustainedPlan plan, SourceCaptureSnapshot journal, KeyedStateStore.Key key,
             VclWindowPlan.Window window, long byteBudget) {
         if (byteBudget <= 0 || byteBudget > MAX_RETAINED_WINDOW_BYTES) {
             throw new VclException("WINDOW_INPUT_BYTE_BUDGET_INVALID", "");
         }
-        var plan = prepareSustained(compiler, nodeId);
-        var journal = journals.get(new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
         if (journal == null || !journal.accountId().equals(key.accountId())) {
             throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
         }
@@ -1621,6 +1757,25 @@ public final class RuleCompilationSnapshot {
 
     record SessionAbsenceInput(VclSessionAbsenceKernel.InputCut cut, VclSourceCoverage proof, long lastRelevantCheckpoint) { }
 
+    SessionAbsenceInput sessionPreviewFacts(VclSessionAbsenceKernel.Plan plan, KeyedStateStore.Key key,
+            VclWindowPlan.Window window, UUID proofId) {
+        var source = plan.source();
+        var journal = journals.get(new SourceBindingSnapshots.Target(source.id(), source.revision()));
+        if (journal == null) throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
+        var facts = readSessionAbsenceInput(plan, key, window.endExclusive().minus(1, java.time.temporal.ChronoUnit.MICROS),
+                window.startInclusive(), window, journal.capturedHeadCheckpoint(), null, false);
+        var proof = sessionPreviewProof(plan, window, proofId);
+        return new SessionAbsenceInput(facts.cut(), proof, facts.lastRelevantCheckpoint());
+    }
+
+    VclSourceCoverage sessionPreviewProof(VclSessionAbsenceKernel.Plan plan, VclWindowPlan.Window window, UUID proofId) {
+        if (proofId == null) return null;
+        var source = plan.source();
+        var journal = journals.get(new SourceBindingSnapshots.Target(source.id(), source.revision()));
+        if (journal == null) throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
+        return journal.coverage(proofId, window.startInclusive(), plan.timing().windowCloseDueAt(window.endExclusive()));
+    }
+
     SessionAbsenceInput readSessionAbsenceInput(VclSessionAbsenceKernel.Plan plan, KeyedStateStore.Key key,
             Instant readEnd, Instant replayStart, VclWindowPlan.Window coverageWindow,
             String closingCheckpoint, UUID proofId, boolean speculative) {
@@ -1712,6 +1867,108 @@ public final class RuleCompilationSnapshot {
 
     public void reauthorize() {
         reauthorize(false);
+    }
+
+    void verifyBundleOwners(com.voltcanary.analytics.vcl.CompilationBundle bundle) {
+        reauthorize();
+        bundle.verifyReviewedOwnerPins(grantPin, policyPin);
+    }
+
+    com.voltcanary.analytics.vcl.CompilationOwnerValidation bundleValidation(
+            VclCompiler compiler, RuleCompilationSnapshots.PreparedStart prepared,
+            List<com.voltcanary.vcl.VclCircleRevision> circles) {
+        var compilation = prepared.compilation();
+        var checkpoint = prepared.checkpoint();
+        var sustained = evaluatorNodes("sustained");
+        var windows = evaluatorNodes("window_aggregate");
+        var intervals = evaluatorNodes("interval_union_window");
+        var sessions = evaluatorNodes("window_session");
+        var zones = evaluatorNodes("zone_session");
+        if (zones.isEmpty() != circles.isEmpty()) throw new VclException("SPATIAL_REVISION_UNAVAILABLE", "");
+        if (sustained.size() + windows.size() + intervals.size() + sessions.size() + zones.size() != 1
+                || checkpoint.source().sources().size() != 1
+                || (!sustained.isEmpty() || !sessions.isEmpty() || !zones.isEmpty()) && prepared.lookups() != null
+                || compilation.dependencies().stream().filter(dep -> dep.kind() == VclMetadata.Resource.BINDING).count() != 1) {
+            throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
+        }
+        String profile;
+        String subjectField;
+        long maxRows;
+        long fanout;
+        if (!sessions.isEmpty() || !zones.isEmpty()) {
+            sessionEvaluatorPlanDigest(compiler, () -> circles.stream().map(circle -> {
+                var shape = circle.geometry();
+                var geometry = new SpatialFeatureSnapshot.Circle(circle.id(), circle.revision(),
+                        new SpatialFeatureSnapshot.Point(shape.longitude(), shape.latitude()),
+                        new java.math.BigDecimal(shape.radiusMetres()));
+                return new SpatialFeatureSnapshot(sessionScope(), Map.of(circle.id(), geometry));
+            }).toList(), checkpoint.digest());
+            var sessionId = zones.isEmpty() ? sessions.getFirst() : zones.getFirst();
+            var session = compilation.graph().stream().filter(node -> node.id().equals(sessionId))
+                    .findFirst().orElseThrow().config();
+            subjectField = session.path("subjectFieldId").textValue() + "\n" + session.path("occurrenceFieldId").textValue();
+            profile = zones.isEmpty() ? com.voltcanary.analytics.vcl.DurableWindowSession.PROFILE
+                    : com.voltcanary.analytics.vcl.DurableZoneSession.PROFILE;
+            maxRows = VclDurationWitnessKernel.MAX_INPUTS;
+            fanout = 1;
+        } else if (!intervals.isEmpty()) {
+            var node = intervals.getFirst();
+            if (prepared.lookups() == null) {
+                intervalEvaluatorPlanDigest(compilation, new Metadata(), null, node, checkpoint.digest());
+            } else {
+                prepared.lookups().intervalEvaluatorPlanDigest(node, checkpoint.digest());
+            }
+            subjectField = intervalOperator(compilation, node).config().path("subjectFieldId").textValue();
+            profile = IntervalWindowSchedule.PROFILE;
+            maxRows = VclIntervalUnionKernel.MAX_INPUTS;
+            fanout = VclIntervalUnionPlan.MAX_WINDOW_FANOUT;
+        } else if (windows.isEmpty()) {
+            // The checkpoint digest is carried only in the validated alert intent.
+            sustainedEvaluatorPlanDigest(compiler, sustained.getFirst(), checkpoint.digest());
+            subjectField = prepareSustained(compiler, sustained.getFirst()).subjectField().toString();
+            profile = DurableSustained.PROFILE;
+            maxRows = VclDurationWitnessKernel.MAX_INPUTS;
+            fanout = 1;
+        } else {
+            var batch = prepared.lookups() == null
+                    ? prepareJournalWindowBatch(compilation, new Metadata(), null, windows.getFirst(),
+                            64L * VclWindowAggregateKernel.MAX_INPUTS, true)
+                    : prepared.lookups().journalAggregate(windows.getFirst());
+            batch.evaluatorPlanDigest();
+            subjectField = batch.subjectField;
+            profile = DurableJournalWindow.PROFILE;
+            maxRows = VclWindowAggregateKernel.MAX_INPUTS;
+            fanout = batch.plan().windows().maximumFanout();
+        }
+        var input = checkpoint.source().sources().getFirst();
+        var journal = journals.get(new SourceBindingSnapshots.Target(input.binding(), input.schemaRevision()));
+        long work = Math.multiplyExact(Math.addExact(journal.retainedObservationCount(), maxRows), compilation.graph().size());
+        work = Math.multiplyExact(work, fanout);
+        var versions = new LinkedHashMap<String, String>();
+        compilation.graph().forEach(node -> versions.put(node.method(), profile));
+        var startPin = new ResourcePin(com.voltcanary.analytics.vcl.CompilationOwnerValidation.ResourceKind.RULE_START_CHECKPOINT,
+                UUID.fromString(document.spec().path("ruleId").textValue()), 1, checkpoint.digest());
+        var resources = new ArrayList<>(List.of(grantPin, policyPin, startPin));
+        circles.forEach(circle -> resources.add(new ResourcePin(
+                com.voltcanary.analytics.vcl.CompilationOwnerValidation.ResourceKind.SPATIAL_FEATURE,
+                circle.id(), circle.revision(), circle.digest())));
+        var execution = new com.voltcanary.analytics.vcl.CompilationOwnerValidation.ExecutionPins(grantPin.id(),
+                Map.of(input.binding(), input.proof().inputGeneration()), checkpoint.source().boundary().toString(),
+                VclCanonical.sha256(subjectField), checkpoint.digest(), resources,
+                com.voltcanary.analytics.vcl.Wgs84ScalarKernel.VERSION, versions);
+        var checks = compilation.dependencies().stream().map(dependency -> {
+            boolean binding = dependency.kind() == VclMetadata.Resource.BINDING;
+            return new com.voltcanary.analytics.vcl.CompilationOwnerValidation.DependencyCheck(dependency, true, true,
+                    binding ? com.voltcanary.analytics.vcl.CompilationOwnerValidation.IndexReadiness.NOT_REQUIRED
+                            : com.voltcanary.analytics.vcl.CompilationOwnerValidation.IndexReadiness.READY,
+                    binding ? journal.cutDigest() : checkpoint.digest());
+        }).toList();
+        long workBudget = intervals.isEmpty() ? 64 * maxRows : 1024 * maxRows;
+        var cost = new com.voltcanary.analytics.vcl.CompilationOwnerValidation.Cost(
+                fanout * KeyedStateStore.MAX_STATE_BYTES, 64L * KeyedStateStore.MAX_STATE_BYTES, work, workBudget);
+        reauthorize(prepared.lookups() != null);
+        return new com.voltcanary.analytics.vcl.CompilationOwnerValidation(compilation.documentDigest(),
+                compilation.accessScopeDigest(), checks, execution, cost);
     }
 
     private void reauthorize(boolean sealedLookups) {

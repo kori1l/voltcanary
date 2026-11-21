@@ -7,12 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Keeps user replies separate from execution and reloads selections through current APIs. */
 @Component
+@RequiredArgsConstructor
 public class PlanClarifications {
     public record Continuation(PlanStore.Stored parent, String message, Map<String, Object> input, int round, List<String> answers) { }
     private static final String STATE = "_clarification";
@@ -22,12 +24,6 @@ public class PlanClarifications {
     private final PlanStore store;
     private final AuthorizedPlanningContext contexts;
     private final PlanningInputGuard guard;
-
-    public PlanClarifications(PlanStore store, AuthorizedPlanningContext contexts, PlanningInputGuard guard) {
-        this.store = store;
-        this.contexts = contexts;
-        this.guard = guard;
-    }
 
     public Continuation prepare(AuthenticatedUser user, UUID parentId, String answer, String authorization) {
         var scope = contexts.scope(user, authorization);

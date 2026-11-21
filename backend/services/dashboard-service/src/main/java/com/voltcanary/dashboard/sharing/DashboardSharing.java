@@ -12,22 +12,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardSharing {
     public static final Set<String> CAPABILITIES=Set.of("VIEW","EDIT","PUBLISH","MANAGE_SHARING","ARCHIVE","COPY","HISTORY","EXPORT");
     private final DashboardAudienceRepository audience;
     private final DashboardWorkspaceAuthority authority;
     private final DashboardStorage storage;
     private final ObjectMapper mapper;
-    public DashboardSharing(DashboardAudienceRepository audience,DashboardWorkspaceAuthority authority,DashboardStorage storage,ObjectMapper mapper) {
-        this.audience=audience;
-        this.authority=authority;
-        this.storage=storage;
-        this.mapper=mapper;
-    }
+
     public List<String> permissions(DashboardActor actor,Dashboard dashboard) {
         var collaboration=audience.collaboration(dashboard.id());
         if (collaboration==null) return actor.userId().equals(dashboard.ownerUserId()) && actor.accountId().equals(dashboard.accountId())?CAPABILITIES.stream().sorted().toList():List.of();
@@ -169,6 +166,9 @@ public class DashboardSharing {
                 widget.put("title",widget.path("type").asText());
                 widget.set("navigation",mapper.createObjectNode());
                 widget.set("payload",mapper.createObjectNode());
+                if (com.voltcanary.dashboard.query.WidgetManifests.configuredEvidence(widget.path("type").asText())) {
+                    widget.set("query", mapper.createObjectNode());
+                }
             }
             var query=widget.path("query").isObject()?(ObjectNode)widget.path("query"):widget.putObject("query");
             if (com.voltcanary.dashboard.query.PositionWidgets.contains(widget.path("type").asText()) && ids.isEmpty()) query.remove("sourceId");

@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.voltcanary.aiagent.adapter.springai.SpringAiCapabilityEmbeddings;
 import com.voltcanary.aiagent.config.WidgetEmbeddingProperties;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -34,12 +37,19 @@ class SpringAiCapabilityEmbeddingsTest {
         try {
             var properties = new WidgetEmbeddingProperties(true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1",
                     "embedding-fixture", "fixture-key", 1000);
-            var adapter = new SpringAiCapabilityEmbeddings(properties);
+            var observations = ObservationRegistry.create();
+            var observed = new AtomicInteger();
+            observations.observationConfig().observationHandler(new ObservationHandler<Observation.Context>() {
+                @Override public boolean supportsContext(Observation.Context context) { return true; }
+                @Override public void onStop(Observation.Context context) { observed.incrementAndGet(); }
+            });
+            var adapter = new SpringAiCapabilityEmbeddings(properties, observations);
             var result = adapter.embed(List.of("catalogue alpha", "catalogue beta"));
             assertArrayEquals(new float[]{1, 0}, result.get(0));
             assertArrayEquals(new float[]{0, 1}, result.get(1));
             assertThrows(RuntimeException.class, () -> adapter.embed(List.of("query")));
             assertEquals(2, calls.get());
+            assertEquals(2, observed.get());
             assertFalse(properties.toString().contains("fixture-key"));
         } finally {
             server.stop(0);

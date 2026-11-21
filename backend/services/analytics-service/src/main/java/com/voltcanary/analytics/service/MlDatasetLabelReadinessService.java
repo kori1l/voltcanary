@@ -15,23 +15,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlDatasetLabelReadinessService {
 
     private final MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository;
     private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
     private final MlDatasetSupportService support;
-
-    public MlDatasetLabelReadinessService(
-            MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository,
-            MaintenanceWindowReadModelRepository maintenanceWindowRepository,
-            MlDatasetSupportService support) {
-        this.maintenanceOutcomeRepository = maintenanceOutcomeRepository;
-        this.maintenanceWindowRepository = maintenanceWindowRepository;
-        this.support = support;
-    }
 
     public MlDatasetLabelReadinessDto labelReadiness(
             UUID accountId,

@@ -2,9 +2,7 @@ package com.voltcanary.analytics.vcl.adapter;
 
 import com.voltcanary.vcl.VclDatasetDescription;
 import com.voltcanary.vcl.VclException;
-import com.voltcanary.vcl.VclParser;
 import com.voltcanary.vcl.VclSourceCaptureDescription;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,7 +52,7 @@ public final class WorkerDeploymentAdmission {
         var bundle = bundles.find(active.account(), active.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var graph = new VclParser().readJson(bundle.payload().getBytes(StandardCharsets.UTF_8)).at("/compilation/graph");
+        var graph = bundle.json().at("/compilation/graph");
         if (!graph.isArray() || graph.isEmpty()) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
         grants.read(active.account(), active.epoch());
         var sources = new LinkedHashMap<UUID, VclSourceCaptureDescription>();

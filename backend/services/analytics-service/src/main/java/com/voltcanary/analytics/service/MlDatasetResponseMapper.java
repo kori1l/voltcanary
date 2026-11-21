@@ -11,16 +11,14 @@ import com.voltcanary.analytics.dto.MlLineageDto;
 import com.voltcanary.analytics.dto.MlValidationReportDto;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class MlDatasetResponseMapper {
 
     private final ObjectMapper objectMapper;
-
-    public MlDatasetResponseMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public MlDatasetSummaryDto summary(MlDataset dataset, MlDatasetVersion version) {
         return new MlDatasetSummaryDto(

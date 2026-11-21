@@ -20,15 +20,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class MlDatasetMaterializationService {
-
-    private static final Logger log = LoggerFactory.getLogger(MlDatasetMaterializationService.class);
 
     private final MlDatasetRepository datasetRepository;
     private final MlDatasetVersionRepository datasetVersionRepository;
@@ -39,27 +39,6 @@ public class MlDatasetMaterializationService {
     private final MlDatasetLabelReadinessService labelReadinessService;
     private final MlDatasetPreviewService previewService;
     private final MlDatasetSupportService support;
-
-    public MlDatasetMaterializationService(
-            MlDatasetRepository datasetRepository,
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlValidationReportRepository validationReportRepository,
-            MlDatasetLineageRepository lineageRepository,
-            MlCanonicalMetricRowRepository canonicalMetricRowRepository,
-            MlDatasetValidationService validationService,
-            MlDatasetLabelReadinessService labelReadinessService,
-            MlDatasetPreviewService previewService,
-            MlDatasetSupportService support) {
-        this.datasetRepository = datasetRepository;
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.validationReportRepository = validationReportRepository;
-        this.lineageRepository = lineageRepository;
-        this.canonicalMetricRowRepository = canonicalMetricRowRepository;
-        this.validationService = validationService;
-        this.labelReadinessService = labelReadinessService;
-        this.previewService = previewService;
-        this.support = support;
-    }
 
     @Transactional
     public MlInternalDatasetResponse createFromInternalTelemetry(

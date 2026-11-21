@@ -1,28 +1,29 @@
 package com.voltcanary.alert.controller;
 
-import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.domain.AlertStatus;
+import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.dto.AlertListFilters;
 import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.dto.AlertSummaryResponse;
-import com.voltcanary.alert.notification.dto.NotificationAttemptResponse;
 import com.voltcanary.alert.dto.ResolveAlertRequest;
 import com.voltcanary.alert.notification.application.NotificationAttemptService;
+import com.voltcanary.alert.notification.dto.NotificationAttemptResponse;
 import com.voltcanary.alert.service.AlertService;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -34,15 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
         @ApiResponse(responseCode = "404", description = "Alert was not found or is outside the caller scope"),
         @ApiResponse(responseCode = "503", description = "Device authorization service is unavailable")
 })
+@RequiredArgsConstructor
 public class AlertController {
 
     private final AlertService alertService;
     private final NotificationAttemptService notificationAttemptService;
-
-    public AlertController(AlertService alertService, NotificationAttemptService notificationAttemptService) {
-        this.alertService = alertService;
-        this.notificationAttemptService = notificationAttemptService;
-    }
 
     @GetMapping
     public List<AlertResponse> listAlerts(

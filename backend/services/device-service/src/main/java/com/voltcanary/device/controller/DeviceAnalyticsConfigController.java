@@ -7,6 +7,7 @@ import com.voltcanary.device.security.AuthenticatedUserResolver;
 import com.voltcanary.device.service.DeviceAnalyticsPolicyService;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -16,18 +17,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/devices/{deviceId}/analytics-config")
+@RequiredArgsConstructor
 public class DeviceAnalyticsConfigController {
 
     private final DeviceAnalyticsPolicyService service;
     private final AuthenticatedUserResolver userResolver;
-
-    public DeviceAnalyticsConfigController(DeviceAnalyticsPolicyService service, AuthenticatedUserResolver userResolver) {
-        this.service = service;
-        this.userResolver = userResolver;
-    }
 
     @GetMapping
     public DeviceAnalyticsConfigResponse get(

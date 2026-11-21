@@ -177,7 +177,7 @@ public final class SourceCaptureSnapshot implements VclMetadata {
     /** Pin an actual owner-attested interval ending at the requested start boundary. */
     CoveredCheckpoint coveredCheckpoint(UUID proof, Instant from, Instant boundary) {
         var covered = coverage(proof, from, boundary);
-        if (!"COVERED".equals(covered.coverage())
+        if (!covered.qualifiesEventTime()
                 || VclObservationReadiness.checkpoint(covered.requiredCheckpoint())
                         <= VclObservationReadiness.checkpoint(generationStartCheckpoint())) {
             throw new VclException("SOURCE_START_CHECKPOINT_UNAVAILABLE", "");

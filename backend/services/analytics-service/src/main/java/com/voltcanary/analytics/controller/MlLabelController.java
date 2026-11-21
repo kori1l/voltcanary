@@ -10,6 +10,7 @@ import com.voltcanary.analytics.service.MlLabelService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,15 +25,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/analytics/ml/labels")
+@RequiredArgsConstructor
 public class MlLabelController {
 
     private final MlLabelService service;
     private final AnalyticsAccessService accessService;
-
-    public MlLabelController(MlLabelService service, AnalyticsAccessService accessService) {
-        this.service = service;
-        this.accessService = accessService;
-    }
 
     @GetMapping
     public List<MlLabelDto> list(

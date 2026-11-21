@@ -7,12 +7,12 @@ import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 
 /** Insert-only adapter; duplicate identity can replay identical bytes but cannot overwrite them. */
+@RequiredArgsConstructor
 public final class JdbcCompilationBundleStore implements CompilationBundleStore {
     private final DataSource dataSource;
-
-    public JdbcCompilationBundleStore(DataSource dataSource) { this.dataSource = dataSource; }
 
     @Override
     public CompilationBundle put(CompilationBundle bundle) {

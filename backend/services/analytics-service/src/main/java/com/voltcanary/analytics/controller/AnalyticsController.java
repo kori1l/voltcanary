@@ -1,12 +1,12 @@
 package com.voltcanary.analytics.controller;
 
-import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.AnalyticsJobResponse;
+import com.voltcanary.analytics.dto.AnomalyResponse;
 import com.voltcanary.analytics.dto.BaselineResponse;
 import com.voltcanary.analytics.dto.FeatureSetResponse;
 import com.voltcanary.analytics.dto.PredictionResponse;
-import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RecalculateResponse;
+import com.voltcanary.analytics.dto.RecommendationResponse;
 import com.voltcanary.analytics.dto.RiskResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.AnalyticsJobService;
@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,20 +28,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/analytics/devices/{deviceId}")
 @Tag(name = "Analytics", description = "User-facing analytics results and recalculation jobs.")
+@RequiredArgsConstructor
 public class AnalyticsController {
 
     private final AnalyticsRecalculationService recalculationService;
     private final AnalyticsJobService jobService;
     private final AnalyticsAccessService accessService;
-
-    public AnalyticsController(
-            AnalyticsRecalculationService recalculationService,
-            AnalyticsJobService jobService,
-            AnalyticsAccessService accessService) {
-        this.recalculationService = recalculationService;
-        this.jobService = jobService;
-        this.accessService = accessService;
-    }
 
     @GetMapping("/baseline")
     @Operation(summary = "Get latest baseline", description = "Returns the latest calculated baseline for a device metric.")

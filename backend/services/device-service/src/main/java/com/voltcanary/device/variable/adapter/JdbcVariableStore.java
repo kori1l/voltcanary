@@ -13,22 +13,18 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class JdbcVariableStore implements VariableStore {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final jakarta.persistence.EntityManager entities;
-
-    public JdbcVariableStore(JdbcTemplate jdbc, ObjectMapper mapper, jakarta.persistence.EntityManager entities) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.entities = entities;
-    }
 
     public void lockAccount(UUID accountId) {
         entities.flush();

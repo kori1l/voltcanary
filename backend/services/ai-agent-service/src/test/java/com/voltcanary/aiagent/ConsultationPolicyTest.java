@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.aiagent.orchestration.collaboration.ConsultationContracts;
 import com.voltcanary.aiagent.orchestration.collaboration.ConsultationPolicy;
+import com.voltcanary.aiagent.orchestration.collaboration.ConsultationPrompt;
 import com.voltcanary.aiagent.orchestration.collaboration.Consultations;
 import com.voltcanary.aiagent.orchestration.collaboration.Consultations.Request;
 import com.voltcanary.aiagent.orchestration.collaboration.Consultations.Role;
@@ -83,6 +84,30 @@ class ConsultationPolicyTest {
     }
 
     @Test
+    void waitingTaskResumesOnlyAfterItsQuestionSlotsAreConfirmed() {
+        var requirements = requirements();
+        var queued = admit(tree(), request(plan, "one", "schema", requirements.revision()), requirements);
+        var running = claim(queued, byKey(queued, "one"), requirements);
+        var task = byKey(running, "one");
+        var response = response(task, "NEED_USER");
+        response.putArray("questions").addObject().putArray("slotIds").add(zone.toString());
+        var waitingTask = task.transition(Status.WAITING_USER, task.assignment(), List.of(), response, requirements.revision());
+        var waiting = running.replace(waitingTask);
+        var unrelated = changes.amend(requirements, requirements.revision(), UUID.randomUUID(), source, Map.of(label, text("label")));
+        assertThat(policy.wakeAfterAnswer(waiting, task.id(), waitingTask.revision(), unrelated)).isSameAs(waiting);
+        var answered = changes.amend(unrelated, unrelated.revision(), UUID.randomUUID(), source, Map.of(zone, text("UTC")));
+        var resumed = policy.wakeAfterAnswer(waiting, task.id(), waitingTask.revision(), answered);
+        var resumedTask = resumed.tasks().get(task.id());
+        assertThat(resumedTask.status()).isEqualTo(Status.QUEUED);
+        assertThat(resumedTask.continuationEpoch()).isEqualTo(1);
+        assertThat(resumedTask.exchanges()).isEqualTo(1);
+        var next = claim(resumed, resumedTask, answered).tasks().get(task.id());
+        assertThat(next.exchanges()).isEqualTo(2);
+        assertThat(next.assignment().attemptId()).isNotEqualTo(task.assignment().attemptId());
+        assertThat(next.assignment().requirementsRevision()).isEqualTo(answered.revision());
+    }
+
+    @Test
     void admissionIsIdempotentAndRejectsConflictingKeysAndForeignScopeBeforeIo() {
         var requirements = requirements();
         var request = request(plan, "one", "schema", requirements.revision());
@@ -136,8 +161,26 @@ class ConsultationPolicyTest {
         assertThatThrownBy(() -> finish(running, task, forged, requirements)).hasMessage("CONSULTATION_ASSIGNMENT_MISMATCH");
         assertThatThrownBy(() -> policy.complete(running, task.id(), task.assignment().attemptId(), answer(task), requirements,
                 Map.of(artifact, "v1"), "authority-1", Set.of(), now.plusSeconds(1))).hasMessage("CONSULTATION_EVIDENCE_UNAVAILABLE");
+        var outsideAssignment = UUID.randomUUID();
+        var unassignedCitation = answer(task);
+        unassignedCitation.putArray("evidenceRefs").add(outsideAssignment.toString());
+        var responseSchema = ConsultationPrompt.responseSchema(validator, role("schema", Set.of("metrics")),
+                task, requirements, Set.of(artifact, outsideAssignment));
+        validator.validateRegistered(responseSchema, answer(task));
+        assertThatThrownBy(() -> validator.validateRegistered(responseSchema, unassignedCitation))
+                .isInstanceOf(ProtocolValidator.RegisteredViolation.class);
+        assertThatThrownBy(() -> policy.complete(running, task.id(), task.assignment().attemptId(), unassignedCitation, requirements,
+                Map.of(artifact, "v1"), "authority-1", Set.of(artifact, outsideAssignment), now.plusSeconds(1)))
+                .hasMessage("CONSULTATION_EVIDENCE_UNAVAILABLE");
         assertThatThrownBy(() -> policy.complete(running, task.id(), task.assignment().attemptId(), answer(task), requirements,
                 Map.of(artifact, "v1"), "authority-1", Set.of(artifact), now.plusSeconds(60))).hasMessage("CONSULTATION_LEASE_OR_DEADLINE_EXPIRED");
+        var expired = policy.expireAssignments(running, task.assignment().leaseUntil());
+        var expiredTask = expired.tasks().get(task.id());
+        assertThat(expiredTask.status()).isEqualTo(Status.EXPIRED);
+        assertThat(expiredTask.assignment()).isEqualTo(task.assignment());
+        assertThat(expiredTask.exchanges()).isEqualTo(1);
+        assertThat(expiredTask.result().path("retryClass").asText()).isEqualTo("UNKNOWN_OUTCOME");
+        assertThatThrownBy(() -> claim(expired, expiredTask, requirements)).hasMessage("CONSULTATION_NOT_QUEUED_OR_STALE");
         assertThat(policy.complete(running, task.id(), task.assignment().attemptId(), answer(task), requirements,
                 Map.of(), "authority-1", Set.of(), now.plusSeconds(1)).tasks().get(task.id()).status()).isEqualTo(Status.STALE);
         var cancelled = policy.cancel(running, task.id(), task.revision());
@@ -166,7 +209,7 @@ class ConsultationPolicyTest {
     }
 
     @Test
-    void declaredDelegationUsesDepthThreeAndCancellationPropagates() {
+    void declaredDelegationUsesDepthThreeAndCancellationPropagates() throws Exception {
         var requirements = requirements();
         var queued = admit(tree(), request(plan, "parent", "schema", requirements.revision()), requirements);
         var running = claim(queued, byKey(queued, "parent"), requirements);
@@ -174,8 +217,10 @@ class ConsultationPolicyTest {
         var childRequest = request(parent.id(), "child", "metrics", requirements.revision());
         var response = response(parent, "DELEGATE");
         response.putArray("requests").add(mapper.valueToTree(childRequest));
-        var waiting = finish(running, parent, response, requirements);
-        var admitted = admit(waiting, childRequest, requirements);
+        var waiting = finish(running, parent, mapper.readTree(response.toString()), requirements);
+        var admitted = policy.admitDelegatedChildren(waiting, parent.id(), requirements, Set.of(artifact), "authority-1");
+        assertThat(admitted).isEqualTo(admit(waiting, childRequest, requirements));
+        assertThat(policy.admitDelegatedChildren(admitted, parent.id(), requirements, Set.of(artifact), "authority-1")).isEqualTo(admitted);
         assertThat(byKey(admitted, "child").depth()).isEqualTo(3);
         assertThatThrownBy(() -> admit(waiting, request(parent.id(), "undeclared", "metrics", requirements.revision()), requirements))
                 .hasMessage("UNDECLARED_CHILD_CONSULTATION");
@@ -183,6 +228,16 @@ class ConsultationPolicyTest {
                 .hasMessage("CONSULTATION_CHILDREN_NOT_COMPLETE");
         var cancelled = policy.cancel(admitted, parent.id(), byKey(admitted, "parent").revision());
         assertThat(cancelled.tasks().values()).allMatch(task -> task.status() == Status.CANCELLED);
+        var childRunning = claim(admitted, byKey(admitted, "child"), requirements);
+        var child = byKey(childRunning, "child");
+        var complete = finish(childRunning, child, answer(child), requirements);
+        var waitingParent = byKey(complete, "parent");
+        assertThat(byKey(policy.wake(complete, parent.id(), waitingParent.revision()), "parent").status()).isEqualTo(Status.QUEUED);
+        assertThat(policy.childResults(complete, waitingParent, requirements, Map.of(artifact, "v1"), "authority-1")
+                .getFirst().has("payload")).isTrue();
+        var stale = policy.childResults(complete, waitingParent, requirements, Map.of(artifact, "v2"), "authority-1").getFirst();
+        assertThat(stale.path("status").asText()).isEqualTo("STALE");
+        assertThat(stale.has("payload")).isFalse();
     }
 
     @Test

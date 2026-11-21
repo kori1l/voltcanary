@@ -5,11 +5,13 @@ import com.voltcanary.aiagent.model.AgentTool;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class CreationTaskPlanning {
     public record PreparedTask(AgentPlan plan, AuthorizedPlanningContext.Prepared context) { }
     private final ActionPlanner planner;
@@ -18,16 +20,6 @@ public class CreationTaskPlanning {
     private final DeviceCreationCompiler devices;
     private final DashboardCreationCompiler dashboards;
     private final PlanningInputGuard guard;
-
-    public CreationTaskPlanning(ActionPlanner planner, AuthorizedPlanningContext contexts, DashboardPlanningContext dashboardContext,
-            DeviceCreationCompiler devices, DashboardCreationCompiler dashboards, PlanningInputGuard guard) {
-        this.planner = planner;
-        this.contexts = contexts;
-        this.dashboardContext = dashboardContext;
-        this.devices = devices;
-        this.dashboards = dashboards;
-        this.guard = guard;
-    }
 
     public PreparedTask prepare(AuthenticatedUser user, String message, Map<String, Object> input,
             UUID providerId, UUID modelId, String authorization) {

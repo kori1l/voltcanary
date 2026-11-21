@@ -6,9 +6,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
 
 @Entity
 @Table(name = "telemetry_readings")
+@Getter
 public class TelemetryReading {
 
     @Id
@@ -41,27 +43,4 @@ public class TelemetryReading {
         this.metricsJson = metricsJson;
     }
 
-    public UUID getId() {
-        return id;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public String getSourceId() {
-        return sourceId;
-    }
-
-    public Instant getRecordedAt() {
-        return recordedAt;
-    }
-
-    public Instant getReceivedAt() {
-        return receivedAt;
-    }
-
-    public String getMetricsJson() {
-        return metricsJson;
-    }
 }

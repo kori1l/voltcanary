@@ -72,7 +72,7 @@ class WorkerSourceCaptureReadsTest {
                 snapshot, definition, digest, "a".repeat(64), "a".repeat(64), true, false,
                 VclSourceBindingProfile.capabilities());
         var pin = new VclObservationReadiness.Pin(binding, account, device, "source", revision, snapshot, digest);
-        var readiness = new VclObservationReadiness(pin, VclObservationProfile.VERSION, "READY", UUID.randomUUID(),
+        var readiness = new VclObservationReadiness(pin, VclObservationProfile.VERSION, "READY", bundle.inputGeneration(binding),
                 "0", "1", Instant.now().minusSeconds(60).truncatedTo(java.time.temporal.ChronoUnit.MICROS),
                 true, false, false, "UNKNOWN", "UNKNOWN", "UNQUALIFIED", null);
         var body = new ObjectMapper().findAndRegisterModules()
@@ -104,6 +104,7 @@ class WorkerSourceCaptureReadsTest {
         var verifier = new VclWorkerAssertion(key, "worker-1", "device-service", java.time.Clock.systemUTC());
         var revokeDuringRead = new java.util.concurrent.atomic.AtomicBoolean();
         var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var captureBody = new java.util.concurrent.atomic.AtomicReference<>(body);
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             calls.incrementAndGet();
@@ -121,7 +122,7 @@ class WorkerSourceCaptureReadsTest {
             assertEquals(active.epoch(), scope.epoch());
             assertEquals(active.grant(), scope.grant());
             if (revokeDuringRead.get() && operation.equals("SOURCE_OBSERVATIONS")) registry.revoke(account, active.epoch());
-            byte[] response = operation.equals("DATASET_DESCRIPTION") ? datasetBody : body;
+            byte[] response = operation.equals("DATASET_DESCRIPTION") ? datasetBody : captureBody.get();
             if (operation.equals("SOURCE_OBSERVATIONS")) {
                 var request = VclObservationRead.parse(requestBody);
                 var row = new ObjectMapper().createObjectNode().put("profile", VclObservationProfile.VERSION)
@@ -169,6 +170,12 @@ class WorkerSourceCaptureReadsTest {
                     () -> worker.datasetDescription(account, active.epoch(), dataset, datasetRevision)).code());
             assertEquals("WORKER_SOURCE_NOT_PINNED", assertThrows(VclException.class,
                     () -> worker.capture(account, active.epoch(), UUID.randomUUID(), revision)).code());
+            var changedGeneration = new String(body, StandardCharsets.UTF_8)
+                    .replace(readiness.inputGeneration().toString(), UUID.randomUUID().toString());
+            captureBody.set(changedGeneration.getBytes(StandardCharsets.UTF_8));
+            assertEquals("WORKER_INPUT_CHANGED", assertThrows(VclException.class,
+                    () -> worker.capture(account, active.epoch(), binding, revision)).code());
+            captureBody.set(body);
             revokeDuringRead.set(true);
             assertEquals("DEPLOYMENT_CHANGED", assertThrows(VclException.class,
                     () -> worker.observations(account, active.epoch(), binding, revision, request)).code());

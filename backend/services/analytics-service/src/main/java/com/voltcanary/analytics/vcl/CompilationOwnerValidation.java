@@ -13,7 +13,7 @@ import java.util.UUID;
 public record CompilationOwnerValidation(String documentDigest, String accessScopeDigest,
         List<DependencyCheck> dependencies, ExecutionPins execution, Cost cost) {
     public enum IndexReadiness { NOT_REQUIRED, READY, MISSING }
-    public enum ResourceKind { EXECUTION_GRANT, EVIDENCE_POLICY, SPATIAL_FEATURE, SOURCE_MAPPING, QUALITY_POLICY, REFERENCE_CHECKPOINT }
+    public enum ResourceKind { EXECUTION_GRANT, EVIDENCE_POLICY, SPATIAL_FEATURE, SOURCE_MAPPING, QUALITY_POLICY, REFERENCE_CHECKPOINT, RULE_START_CHECKPOINT }
 
     public record ResourcePin(ResourceKind kind, UUID id, long revision, String snapshotDigest) {
         public ResourcePin {
@@ -87,6 +87,14 @@ public record CompilationOwnerValidation(String documentDigest, String accessSco
         for (var pin : execution.resourceRevisions()) require(resources.add(pin.kind() + ":" + pin.id()), "RESOURCE_PIN_DUPLICATE");
         require(execution.resourceRevisions().stream().filter(pin -> pin.kind() == ResourceKind.EXECUTION_GRANT).count() == 1
                 && resources.contains(ResourceKind.EXECUTION_GRANT + ":" + grantId), "GRANT_REVISION_REQUIRED");
+        var startPins = execution.resourceRevisions().stream()
+                .filter(pin -> pin.kind() == ResourceKind.RULE_START_CHECKPOINT).toList();
+        if (!startPins.isEmpty()) {
+            var start = startPins.getFirst();
+            var ruleId = new com.voltcanary.vcl.VclParser().parse(compilation.canonicalDocument()).spec().path("ruleId").textValue();
+            require(startPins.size() == 1 && start.revision() == 1 && start.id().toString().equals(ruleId)
+                    && start.snapshotDigest().equals(execution.snapshotSetDigest()), "BUNDLE_START_INPUTS_CHANGED");
+        }
         require(Wgs84ScalarKernel.VERSION.equals(execution.spatialKernelVersion()), "SPATIAL_KERNEL_UNAVAILABLE");
         require(cost.stateBytes() <= cost.stateBudgetBytes() && cost.workUnits() <= cost.workBudgetUnits(), "EXECUTION_BUDGET_EXCEEDED");
         var found = new HashSet<VclCompilation.Dependency>();
@@ -107,9 +115,12 @@ public record CompilationOwnerValidation(String documentDigest, String accessSco
             spatialPins(node.config(), resources);
             if (node.method().equals("read_stream")) bindings.add(UUID.fromString(node.config().path("bindingId").asText()));
             if (node.method().equals("lookup_asof")) {
-                var id = UUID.fromString(node.config().at("/target/datasetId").asText());
+                var target = node.config().path("target");
+                var id = UUID.fromString(target.path("datasetId").asText());
+                long revision = target.path("schemaRevision").longValue();
                 require(dependencies.stream().anyMatch(check -> check.dependency().id().equals(id)
                         && check.dependency().kind() == com.voltcanary.vcl.VclMetadata.Resource.DATASET
+                        && check.dependency().revision() == revision
                         && check.indexReadiness() == IndexReadiness.READY), "INDEX_REQUIRED");
             }
         }

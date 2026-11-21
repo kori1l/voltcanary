@@ -7,20 +7,17 @@ import com.voltcanary.device.variable.domain.VariableBinding;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class VariableBindingRows {
     public record Source(UUID accountId, UUID deviceId, UUID sourceId, String externalId,
             String deviceType, String sourceType, String mappingJson, boolean active) { }
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public VariableBindingRows(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     public Source source(UUID account, UUID device, UUID source, boolean lock) {
         if (lock) {

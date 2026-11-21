@@ -41,6 +41,8 @@ class DashboardSkillRoutingScenarioTest {
                 if (n == 3) throw new IllegalArgumentException("FIXTURE_INVALID_MOVE");
                 var payload = f.mapper.createObjectNode().put("protocol", "dashboard-operations-v1");
                 payload.putArray("operations").addObject().put("op", "rename_dashboard").put("id", "name").put("name", n == 1 ? "Предложенный обзор" : "Точное имя");
+                if (n == 1) payload.withArray("operations").addObject().put("op", "add_note").put("id", "note")
+                        .put("title", "Обзор").put("text", "Обзор");
                 return new AssistantProtocol.StepResponsePrepared("assistant-v2", "step.response", "PREPARED", "Review",
                         new AssistantProtocol.Command(step.intentId() + ":command:2", "2", payload));
             }
@@ -49,7 +51,7 @@ class DashboardSkillRoutingScenarioTest {
                 new IntentOrchestration.Runtime(f.mapper, f.validator, f.clock, Duration.ofMinutes(30), f.traces,
                         new com.voltcanary.aiagent.adapter.langgraph4j.LangGraphAgentRunner()));
         var first = runtime.submit(f.session, f.conversation, null, f.submit("Дашборд на твоё усмотрение", 0, null), "policy", "1", skills);
-        assertEquals("WAITING_CONFIRMATION", first.status());
+        assertEquals("WAITING_CONFIRMATION", first.status(), () -> f.mapper.valueToTree(first).toString());
         var second = runtime.submit(f.session, f.conversation, first.planId(), f.submit("Теперь назови Точное имя", first.revision(), null), "policy", "1", skills);
         assertEquals("WAITING_CONFIRMATION", second.status());
         assertEquals("SUPERSEDED", second.step("d1").status());

@@ -7,20 +7,17 @@ import com.voltcanary.analytics.repository.MlDeploymentAuditEventRepository;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class MlDeploymentAuditWriter {
 
     private final MlDeploymentAuditEventRepository auditRepository;
     private final ObjectMapper objectMapper;
-
-    public MlDeploymentAuditWriter(MlDeploymentAuditEventRepository auditRepository, ObjectMapper objectMapper) {
-        this.auditRepository = auditRepository;
-        this.objectMapper = objectMapper;
-    }
 
     public void audit(UUID accountId, UUID actorId, UUID modelVersionId, UUID policyId, String action, Map<String, Object> details) {
         MlDeploymentAuditEvent event = new MlDeploymentAuditEvent();

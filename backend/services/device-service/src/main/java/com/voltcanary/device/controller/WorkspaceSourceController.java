@@ -7,6 +7,7 @@ import com.voltcanary.device.service.DashboardScopeReadService;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,12 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequiredArgsConstructor
 public class WorkspaceSourceController {
     public record Source(UUID id,UUID deviceId,String sourceType,String protocol,String externalId) { }
     private final AuthenticatedUserResolver users;
     private final DashboardScopeReadService scopes;
     private final DataSourceRepository sources;
-    public WorkspaceSourceController(AuthenticatedUserResolver users,DashboardScopeReadService scopes,DataSourceRepository sources) {this.users=users;this.scopes=scopes;this.sources=sources;}
+
     @GetMapping("/workspaces/{workspace}/devices/{device}/data-sources")
     public List<Source> list(@RequestHeader("Authorization") String authorization,@PathVariable("workspace") UUID workspace,@PathVariable("device") UUID device,@RequestParam("accountId") UUID account) {
         var headers=new HttpHeaders();headers.set(HttpHeaders.AUTHORIZATION,authorization);

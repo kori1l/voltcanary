@@ -8,17 +8,18 @@ import com.voltcanary.identity.scheduling.SchedulerLockService;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class IdentityLifecycleReconciliationJob {
 
-    private static final Logger log = LoggerFactory.getLogger(IdentityLifecycleReconciliationJob.class);
     private static final String LOCK_NAME = "identity-device-lifecycle-reconciliation";
     private static final Duration LOCK_TTL = Duration.ofMinutes(10);
 
@@ -27,19 +28,6 @@ public class IdentityLifecycleReconciliationJob {
     private final DeviceAccountLifecycleClient deviceAccountLifecycleClient;
     private final IdentityLifecycleOutboxService identityLifecycleOutboxService;
     private final SchedulerLockService schedulerLockService;
-
-    public IdentityLifecycleReconciliationJob(
-            IdentityDownstreamProperties properties,
-            UserRepository userRepository,
-            DeviceAccountLifecycleClient deviceAccountLifecycleClient,
-            IdentityLifecycleOutboxService identityLifecycleOutboxService,
-            SchedulerLockService schedulerLockService) {
-        this.properties = properties;
-        this.userRepository = userRepository;
-        this.deviceAccountLifecycleClient = deviceAccountLifecycleClient;
-        this.identityLifecycleOutboxService = identityLifecycleOutboxService;
-        this.schedulerLockService = schedulerLockService;
-    }
 
     @Scheduled(fixedDelayString = "${app.identity.lifecycle-reconciliation.delay:5m}")
     public void reconcileDeviceLifecycle() {

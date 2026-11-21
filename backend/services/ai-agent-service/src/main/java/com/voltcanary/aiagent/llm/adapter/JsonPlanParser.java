@@ -8,18 +8,16 @@ import com.voltcanary.aiagent.llm.LlmPlanDraft;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class JsonPlanParser {
     private static final TypeReference<Map<String, Object>> PARAMETERS_TYPE = new TypeReference<>() {
     };
 
     private final ObjectMapper objectMapper;
-
-    public JsonPlanParser(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public LlmPlanDraft parse(String provider, String model, String text) throws Exception {
         try (var parsing = com.voltcanary.aiagent.trace.AssistantTrace.start("PARSING", Map.of("provider", provider, "model", model))) {

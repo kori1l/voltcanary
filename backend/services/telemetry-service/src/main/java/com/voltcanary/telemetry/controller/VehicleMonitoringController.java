@@ -7,25 +7,23 @@ import com.voltcanary.telemetry.service.TelemetryAccessService;
 import com.voltcanary.telemetry.vehicle.VehicleMonitoringRepository;
 import com.voltcanary.telemetry.vehicle.VehicleMonitoringSettings;
 import java.util.UUID;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.RequestMapping;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/telemetry/devices/{deviceId}/vehicle-monitoring")
+@RequiredArgsConstructor
 public class VehicleMonitoringController {
     private final TelemetryAccessService access;
     private final VehicleMonitoringRepository repository;
     private final ObjectMapper mapper;
-    public VehicleMonitoringController(TelemetryAccessService access, VehicleMonitoringRepository repository, ObjectMapper mapper) {
-        this.access = access;
-        this.repository = repository;
-        this.mapper = mapper;
-    }
+
     @GetMapping
     public VehicleMonitoringSettings get(@PathVariable("deviceId") UUID device, @RequestHeader("X-User-Id") String user) {
         access.requireReadAccess(device, user, null, null);
@@ -43,6 +41,7 @@ public class VehicleMonitoringController {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.BAD_REQUEST, "Expected typed monitoring settings with an integer idleMinutes", invalid);
         }
-        return repository.save(UUID.fromString(user), device, settings);
+        throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "Prepare and confirm a monitoring review before saving");
     }
 }

@@ -3,18 +3,16 @@ package com.voltcanary.alert.service;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class ProcessedEventService {
 
     private final JdbcTemplate jdbcTemplate;
-
-    public ProcessedEventService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
 
     public boolean markIfNew(String sourceName, UUID eventId) {
         if (eventId == null) {

@@ -7,23 +7,16 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class MaintenanceOutcomeProjectionService {
-    private final DeviceHistoryDeletion deletions;
-
     private final MaintenanceOutcomeReadModelRepository repository;
     private final MeterRegistry meterRegistry;
-
-    public MaintenanceOutcomeProjectionService(
-            MaintenanceOutcomeReadModelRepository repository,
-            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
-        this.deletions = deletions;
-        this.repository = repository;
-        this.meterRegistry = meterRegistry;
-    }
+    private final DeviceHistoryDeletion deletions;
 
     @Transactional
     public boolean upsertSnapshot(MaintenanceOutcomeSnapshot snapshot) {

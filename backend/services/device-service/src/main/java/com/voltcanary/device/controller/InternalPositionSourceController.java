@@ -1,37 +1,31 @@
 package com.voltcanary.device.controller;
 
+import com.voltcanary.common.web.VehiclePositionTargets;
 import com.voltcanary.device.config.InternalServiceAuth;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.DeviceTypeRepository;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.List;
-import com.voltcanary.common.web.VehiclePositionTargets;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequiredArgsConstructor
 public class InternalPositionSourceController {
     private final InternalServiceAuth auth;
     private final DataSourceRepository sources;
     private final DeviceRepository devices;
     private final DeviceTypeRepository types;
-
-    public InternalPositionSourceController(InternalServiceAuth auth, DataSourceRepository sources,
-            DeviceRepository devices, DeviceTypeRepository types) {
-        this.auth = auth;
-        this.sources = sources;
-        this.devices = devices;
-        this.types = types;
-    }
 
     @GetMapping("/internal/devices/{deviceId}/position-source")
     public Map<String, String> source(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,

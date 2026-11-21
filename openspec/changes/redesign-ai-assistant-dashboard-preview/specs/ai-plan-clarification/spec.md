@@ -11,6 +11,8 @@ The assistant route and global launcher SHALL open the same application-level co
 - **WHEN** a reply succeeds
 - **THEN** the new task is recoverable and any write still requires explicit review and confirmation
 
+## ADDED Requirements
+
 ### Requirement: Configurable review and clarification compatibility
 
 Pending configured-resource UI work SHALL preserve exact questions, authorized schema/source choices and owner review versions under the VCL, strict import and adapter contracts, without exposing secrets or asking users to repair technical schemas.

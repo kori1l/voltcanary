@@ -31,6 +31,9 @@ app:
   internal:
     service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
     service-name: ${INTERNAL_SERVICE_NAME:analytics-service}
+  vcl:
+    worker:
+      alert-effects-enabled: ${APP_VCL_WORKER_ALERT_EFFECTS_ENABLED:false}
   analytics:
     jobs:
       async: ${ANALYTICS_JOBS_ASYNC:true}

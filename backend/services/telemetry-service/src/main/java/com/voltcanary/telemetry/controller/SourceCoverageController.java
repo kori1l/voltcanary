@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,15 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/internal/observations/source-coverage")
+@RequiredArgsConstructor
 public class SourceCoverageController {
     private final SourceCoverageAttestations coverage;
     private final ObservationOwnerProperties properties;
     private final VclParser parser = new VclParser();
-
-    public SourceCoverageController(SourceCoverageAttestations coverage, ObservationOwnerProperties properties) {
-        this.coverage = coverage;
-        this.properties = properties;
-    }
 
     @PostMapping
     public SourceCoverageAttestations.Result attest(

@@ -3,22 +3,17 @@ package com.voltcanary.analytics.service;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlFeatureGenerationService {
 
     private final MlInternalTelemetryFeatureBuilder internalTelemetryFeatureBuilder;
     private final MlImportedDatasetFeatureBuilder importedDatasetFeatureBuilder;
-
-    public MlFeatureGenerationService(
-            MlInternalTelemetryFeatureBuilder internalTelemetryFeatureBuilder,
-            MlImportedDatasetFeatureBuilder importedDatasetFeatureBuilder) {
-        this.internalTelemetryFeatureBuilder = internalTelemetryFeatureBuilder;
-        this.importedDatasetFeatureBuilder = importedDatasetFeatureBuilder;
-    }
 
     public MlFeatureGeneration generateFeatures(MlDatasetVersion datasetVersion, MlFeatureConfig config) {
         FeatureVectorContract contract = FeatureVectorContract.forConfig(

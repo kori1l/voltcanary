@@ -62,7 +62,8 @@ class DashboardCompositionPreparationTest {
 
     private DashboardCompositionPreparation service() {
         var manifests = new WidgetManifests();
-        var checks = new TemplateDefinitionChecks(new DefinitionValidation(mapper), new DefinitionBindings(ownership, mapper, mock(DashboardEvidenceReads.class)), manifests, new WidgetQueryDecoder(mapper));
+        var reads = mock(DashboardEvidenceReads.class);
+        var checks = new TemplateDefinitionChecks(new DefinitionValidation(mapper), new DefinitionBindings(ownership, mapper, reads), manifests, new WidgetQueryDecoder(mapper));
         return new DashboardCompositionPreparation(ownership, catalogue, manifests, checks, digests, mapper,
                 mock(com.voltcanary.dashboard.application.DashboardCapabilityResolution.class));
     }

@@ -9,6 +9,7 @@ import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,18 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Read-only recovery. No generation, reconciliation, expiry writes or domain mutations. */
 @RestController
+@RequiredArgsConstructor
 public class IntentPlanRecoveryController {
     public record Recovery(UUID planId, UUID conversationId, long revision, String status, PlanState plan,
             PendingQuestion pendingQuestion, Focus focus) { }
     private final IntentPlanStore store;
     private final JwtIdentityService identity;
     private final AuthorizedPlanningContext contexts;
-
-    public IntentPlanRecoveryController(IntentPlanStore store, JwtIdentityService identity, AuthorizedPlanningContext contexts) {
-        this.store = store;
-        this.identity = identity;
-        this.contexts = contexts;
-    }
 
     @GetMapping("/ai-agent/orchestrations/{id}")
     public PlanState get(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") UUID id) {

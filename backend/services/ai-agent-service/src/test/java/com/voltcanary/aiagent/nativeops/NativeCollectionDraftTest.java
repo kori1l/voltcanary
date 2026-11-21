@@ -23,12 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NativeCollectionDraftTest {
     private static final ProtocolValidator VALIDATOR = new ProtocolValidator(JSON);
 
-    @Test void allSevenTypesProduceTheSameCanonicalDocumentAsTheManualUiFixture() {
+    @Test void allElevenTypesProduceTheSameCanonicalDocumentAsTheManualUiFixture() {
         var draft = draft();
         var fields = new LinkedHashMap<String, UUID>();
         FIXTURE.at("/reservation/fieldIdsByKey").fields().forEachRemaining(entry -> fields.put(entry.getKey(), UUID.fromString(entry.getValue().asText())));
         assertEquals(FIXTURE.path("document"), draft.document(NativeAuthoringFixtures.id("resourceId"), fields, JSON).json());
-        assertEquals(7, draft.fieldKeys().size());
+        assertEquals(11, draft.fieldKeys().size());
     }
 
     @ParameterizedTest @ValueSource(strings = {"sql", "accountId", "actorId", "approved", "ownerReviewId", "reservationId", "document"})
@@ -38,7 +38,7 @@ class NativeCollectionDraftTest {
         assertThrows(IllegalArgumentException.class, () -> new NativeCollectionDraft(value, VALIDATOR, JSON));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"REF", "POINT", "INTERVAL", "ENUM", "SQL", "CUSTOM"})
+    @ParameterizedTest @ValueSource(strings = {"SQL", "CUSTOM"})
     void unimplementedAuthoringTypesCannotReachTheOwner(String type) {
         var value = (ObjectNode) FIXTURE.path("draft").deepCopy();
         ((ObjectNode) value.path("fields").get(0)).put("type", type);
@@ -74,7 +74,8 @@ class NativeCollectionDraftTest {
 
     @Test void disabledNativePackageLeavesLegacyPolicyFingerprintAndCatalogueUnchanged() {
         var all = PrimarySkillPackages.build(JSON, VALIDATOR, List.of());
-        var previous = all.stream().filter(pkg -> !pkg.manifest().path("intentId").asText().equals(NativeTableSkill.INTENT)).toList();
+        var previous = all.stream().filter(pkg -> !Set.of(NativeTableSkill.INTENT, NativeMappingSkill.INTENT)
+                .contains(pkg.manifest().path("intentId").asText())).toList();
         var registry = new SkillRegistry(VALIDATOR, all);
         var legacy = new SkillRegistry(VALIDATOR, previous);
         var names = new java.util.HashSet<String>();

@@ -24,11 +24,12 @@ def ensure(condition, code):
         raise ApiError(0, code)
 
 
-def wait_for_services(gateway, timeout):
+def wait_for_services(gateway, timeout, extra_services=()):
     deadline = time.monotonic() + timeout
     pending = {"gateway": gateway + "/actuator/health", **{
         name: f"http://127.0.0.1:{port}/actuator/health"
-        for name, port in (("identity", 8081), ("device", 8082), ("telemetry", 8084), ("analytics", 8085), ("alert", 8086))}}
+        for name, port in (("identity", 8081), ("device", 8082), ("telemetry", 8084),
+                           ("analytics", 8085), ("alert", 8086), *extra_services)}}
     while pending and time.monotonic() < deadline:
         for name, url in list(pending.items()):
             try:
@@ -53,6 +54,41 @@ def apply_review(client, base, prepared, key):
             time.sleep(1)
     ensure(result["status"] == "SUCCEEDED", "OWNER_REVIEW_NOT_SUCCEEDED")
     return result
+
+
+def reference_dataset(client, run_id, start="2026-11-03T00:00:00Z", end="2026-11-04T00:00:00Z", subject_key="cabinet-A"):
+    key = run_id + "-table"
+    reservation = client.call("POST", "/data/review-reservations", {"kind": "COLLECTION", "fieldKeys": ["subject", "flag", "effective"], "idempotencyKey": key})
+    native = reservation["fieldIdsByKey"]
+    collection = {"language": "VCL/1", "kind": "COLLECTION", "spec": {
+        "id": reservation["resourceId"], "revision": 1, "label": "Synthetic cabinet reference",
+        "fields": [{"id": native["subject"], "label": "Cabinet", "type": "TEXT", "maxLength": 120, "nullable": False},
+                   {"id": native["flag"], "label": "Requires inspection", "type": "BOOLEAN", "nullable": True},
+                   {"id": native["effective"], "label": "Effective interval", "type": "INTERVAL", "nullable": False}],
+        "keyFieldIds": [native["subject"]], "storage": {"mode": "NATIVE", "indexedFieldIds": [native["subject"]], "history": "NONE"}}}
+    prepared = client.call("POST", "/data/dataset-reviews", {"reservationId": reservation["reviewId"], "document": collection})
+    apply_review(client, "/data/reviews", prepared, key)
+    dataset_id = reservation["resourceId"]
+    dataset = client.call("GET", f"/data/datasets/{dataset_id}?schemaRevision=1")
+    for i, (subject, flag) in enumerate(((subject_key, True), ("cabinet-B", False))):
+        row_key = run_id + "-row-" + str(i)
+        target = {"datasetId": dataset_id, "schemaRevision": 1}
+        reserved = client.call("POST", "/data/review-reservations", {"kind": "MUTATION", "target": target, "idempotencyKey": row_key})
+        mutation = {"language": "VCL/1", "kind": "MUTATION", "spec": {
+            "mutationId": reserved["mutationId"], "reviewId": reserved["reviewId"], "idempotencyKey": row_key,
+            "target": target, "operation": "INSERT", "key": [{"fieldId": native["subject"], "literal": {"type": "TEXT", "value": subject}}],
+            "values": [{"fieldId": native["flag"], "literal": {"type": "BOOLEAN", "value": flag}},
+                       {"fieldId": native["effective"], "literal": {"type": "INTERVAL", "value": {
+                           "start": start, "end": end}}}], "expectedRowVersion": None,
+            "targetPrecondition": {"mode": "NATIVE", "generation": dataset["generation"], "dataVersion": dataset["dataVersion"]}}}
+        preview = client.call("POST", f"/data/datasets/{dataset_id}/mutation-reviews", {"reservationId": reserved["reviewId"], "document": mutation})
+        apply_review(client, "/data/reviews", preview, row_key)
+        dataset = client.call("GET", f"/data/datasets/{dataset_id}?schemaRevision=1")
+    query = {"language": "VCL/1", "kind": "QUERY", "spec": {"target": {"datasetId": dataset_id, "schemaRevision": 1},
+        "select": [native["subject"], native["flag"], native["effective"]], "where": {"op": "CONST", "literal": {"type": "BOOLEAN", "value": True}},
+        "order": [{"fieldId": dataset["definition"]["systemFields"]["recordIdFieldId"], "direction": "ASC"}],
+        "limit": 10, "cursor": None, "read": {"mode": "LIVE"}}}
+    return dataset_id, native, query
 
 
 def rule(rule_id, grant_id, policy_id, binding_id, subject, flag):
@@ -135,37 +171,7 @@ def run(args):
         "mapping": {"telemetryPolicy": {"fields": fields}}, "adapterConfig": {}, "credentialReferences": {}})
     binding = client.call("GET", f"/data/source-bindings/{source['id']}?schemaRevision=1")
     source_fields = {item["sourceKey"]: item["fieldId"] for item in binding["definition"]["fieldMappings"]}
-    key = run_id + "-table"
-    reservation = client.call("POST", "/data/review-reservations", {"kind": "COLLECTION", "fieldKeys": ["subject", "flag", "effective"], "idempotencyKey": key})
-    native = reservation["fieldIdsByKey"]
-    collection = {"language": "VCL/1", "kind": "COLLECTION", "spec": {
-        "id": reservation["resourceId"], "revision": 1, "label": "Synthetic cabinet reference",
-        "fields": [{"id": native["subject"], "label": "Cabinet", "type": "TEXT", "maxLength": 120, "nullable": False},
-                   {"id": native["flag"], "label": "Requires inspection", "type": "BOOLEAN", "nullable": True},
-                   {"id": native["effective"], "label": "Effective interval", "type": "INTERVAL", "nullable": False}],
-        "keyFieldIds": [native["subject"]], "storage": {"mode": "NATIVE", "indexedFieldIds": [native["subject"]], "history": "NONE"}}}
-    prepared = client.call("POST", "/data/dataset-reviews", {"reservationId": reservation["reviewId"], "document": collection})
-    apply_review(client, "/data/reviews", prepared, key)
-    dataset_id = reservation["resourceId"]
-    dataset = client.call("GET", f"/data/datasets/{dataset_id}?schemaRevision=1")
-    for i, (subject, flag) in enumerate((("cabinet-A", True), ("cabinet-B", False))):
-        row_key = run_id + "-row-" + str(i)
-        target = {"datasetId": dataset_id, "schemaRevision": 1}
-        reserved = client.call("POST", "/data/review-reservations", {"kind": "MUTATION", "target": target, "idempotencyKey": row_key})
-        mutation = {"language": "VCL/1", "kind": "MUTATION", "spec": {
-            "mutationId": reserved["mutationId"], "reviewId": reserved["reviewId"], "idempotencyKey": row_key,
-            "target": target, "operation": "INSERT", "key": [{"fieldId": native["subject"], "literal": {"type": "TEXT", "value": subject}}],
-            "values": [{"fieldId": native["flag"], "literal": {"type": "BOOLEAN", "value": flag}},
-                       {"fieldId": native["effective"], "literal": {"type": "INTERVAL", "value": {
-                           "start": "2026-11-03T00:00:00Z", "end": "2026-11-04T00:00:00Z"}}}], "expectedRowVersion": None,
-            "targetPrecondition": {"mode": "NATIVE", "generation": dataset["generation"], "dataVersion": dataset["dataVersion"]}}}
-        preview = client.call("POST", f"/data/datasets/{dataset_id}/mutation-reviews", {"reservationId": reserved["reviewId"], "document": mutation})
-        apply_review(client, "/data/reviews", preview, row_key)
-        dataset = client.call("GET", f"/data/datasets/{dataset_id}?schemaRevision=1")
-    query = {"language": "VCL/1", "kind": "QUERY", "spec": {"target": {"datasetId": dataset_id, "schemaRevision": 1},
-        "select": [native["subject"], native["flag"], native["effective"]], "where": {"op": "CONST", "literal": {"type": "BOOLEAN", "value": True}},
-        "order": [{"fieldId": dataset["definition"]["systemFields"]["recordIdFieldId"], "direction": "ASC"}],
-        "limit": 10, "cursor": None, "read": {"mode": "LIVE"}}}
+    dataset_id, native, query = reference_dataset(client, run_id)
     rows = client.call("POST", f"/data/datasets/{dataset_id}/query", {"document": query})
     ensure(len(rows["rows"]) == 2 and rows["completeness"] == "COMPLETE", "NATIVE_ROWS_NOT_VERIFIED")
     actual_rows = {row["values"][native["subject"]]["value"]: row["values"][native["flag"]]["value"] for row in rows["rows"]}
@@ -230,6 +236,13 @@ def run(args):
         assert machine_get(worker_key, actor, account, rule_reservation["ruleId"], deployment_epoch,
                            grant_id, grant_id, "GRANT_DESCRIPTION", grant_path + "&changed=1")[0] == 401
     document = rule(rule_reservation["ruleId"], grant_id, policy_review["policyId"], source["id"], source_fields["subject"], source_fields["doorOpen"])
+    try:
+        client.call("POST", "/analytics/configurable-rules/compilations", {"document": document, "readSet": {}})
+    except ApiError as failure:
+        ensure(failure.status == 400 and failure.code == "RULE_COMPILATION_REQUEST_INVALID",
+               "RULE_COMPILATION_ROUTE_REJECTED_UNEXPECTEDLY")
+    else:
+        raise ApiError(0, "RULE_COMPILATION_ACCEPTED_EMPTY_READ_SET")
     lookup_document = copy.deepcopy(document)
     lookup_document["spec"]["nodes"][1]["inputs"]["events"] = "reference"
     lookup_document["spec"]["nodes"].append({"id": "reference", "method": "lookup_asof", "inputs": {"events": "source"}, "config": {
@@ -250,6 +263,7 @@ def run(args):
                            grant_id, grant_id, "GRANT_DESCRIPTION", grant_path)[0] == 409,
                "REVOKED_MACHINE_GRANT_VISIBLE")
     return {**result, "fixtureRunId": run_id, "nativeRowsVerified": 2, "inputData": "SYNTHETIC", "liveModelCalls": 0,
+            "compilationRejectsEmptyReadSetThroughGateway": True,
             "ruleActivated": False, "machineGrantVerified": bool(worker_key),
             "machinePolicyVerified": bool(worker_key), "machineRevocationVerified": bool(worker_key),
             "machineAsOfVerified": bool(worker_key),

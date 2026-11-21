@@ -4,18 +4,16 @@ import com.voltcanary.simulator.service.SimulationUserAccess;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration(proxyBeanMethods = false)
+@RequiredArgsConstructor
 public class SimulationUserBoundary implements WebMvcConfigurer {
     private final SimulationUserAccess access;
-
-    public SimulationUserBoundary(SimulationUserAccess access) {
-        this.access = access;
-    }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {

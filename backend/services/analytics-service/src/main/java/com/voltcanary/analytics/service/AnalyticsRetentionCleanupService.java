@@ -5,11 +5,13 @@ import com.voltcanary.analytics.scheduling.SchedulerLockService;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsRetentionCleanupService {
 
     private static final String LOCK_NAME = "analytics.retention-cleanup";
@@ -18,15 +20,6 @@ public class AnalyticsRetentionCleanupService {
     private final JdbcTemplate jdbcTemplate;
     private final AnalyticsRetentionProperties properties;
     private final SchedulerLockService schedulerLockService;
-
-    public AnalyticsRetentionCleanupService(
-            JdbcTemplate jdbcTemplate,
-            AnalyticsRetentionProperties properties,
-            SchedulerLockService schedulerLockService) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.properties = properties;
-        this.schedulerLockService = schedulerLockService;
-    }
 
     @Scheduled(cron = "${app.analytics.retention.cleanup-cron:0 20 3 * * *}")
     public void cleanup() {

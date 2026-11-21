@@ -86,7 +86,7 @@ public final class WorkerDatasetAsOfReads {
             throw new VclException("ASOF_SNAPSHOT_REQUIRED", "");
         }
         long revision = query.spec().at("/target/schemaRevision").longValue();
-        var compiled = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        var compiled = bundle.json()
                 .path("compilation");
         if (!declared(compiled, dataset, revision, request, query, route)) {
             throw new VclException("WORKER_DATASET_NOT_PINNED", "");

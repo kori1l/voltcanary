@@ -17,6 +17,7 @@ public final class RoutedIntentModels implements OrchestrationPorts.Models {
     public interface Requests {
         JsonNode planner(IntentPlans.ModelInput input, OrchestrationPorts.Session session);
         JsonNode step(IntentPlans.ModelInput input, OrchestrationPorts.Session session, UUID callId);
+        default void verifyForDispatch(IntentPlans.ModelInput input, OrchestrationPorts.Session session, JsonNode request) { }
         default JsonNode repair(IntentPlans.ModelInput input, OrchestrationPorts.Session session, UUID callId,
                 com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Diagnostic diagnostic,
                 com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Command rejected) { throw IntentPlans.reject("REPAIR_UNAVAILABLE"); }
@@ -162,14 +163,18 @@ public final class RoutedIntentModels implements OrchestrationPorts.Models {
         var token = input.token();
         var turn = new AttemptLedger.Turn(session.owner(), token.conversationId(), token.planId(), token.requestId());
         var correlation = new AssistantTraceRecorder.Correlation(session.owner(), token.conversationId(), token.messageId(), token.requestId(), token.requestId());
+        requests.verifyForDispatch(input, session, request);
         try {
-            return calls.call(turn, callId, route.policy(), request, route.selection(), route.authorized(), route.capabilities(), route.availability(), correlation, route.adapter(), null, route.proposalCheck());
+            return calls.call(turn, callId, route.policy(), request, route.selection(), route.authorized(), route.capabilities(), route.availability(), correlation, route.adapter(), null, route.proposalCheck(),
+                    prepared -> requests.verifyForDispatch(input, session, prepared));
         } catch (com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected rejected) {
             if (!automaticCorrections || Set.of("REPAIR", "VERIFY").contains(phase)) throw rejected;
             var latest = store.read(session.owner(), input.state().planId());
             if (latest.revision() != input.token().revision() || latest.status().equals("CANCELLED")) throw IntentPlans.conflict("MODEL_TURN_NO_LONGER_OWNED");
+            requests.verifyForDispatch(input, session, request);
             UUID correctionId = UUID.nameUUIDFromBytes((callId + ":format-correction").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return calls.call(turn, correctionId, route.policy(), request, route.selection(), route.authorized(), route.capabilities(), route.availability(), correlation, route.adapter(), rejected, route.proposalCheck());
+            return calls.call(turn, correctionId, route.policy(), request, route.selection(), route.authorized(), route.capabilities(), route.availability(), correlation, route.adapter(), rejected, route.proposalCheck(),
+                    prepared -> requests.verifyForDispatch(input, session, prepared));
         }
     }
 }

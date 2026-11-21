@@ -3,7 +3,6 @@ package com.voltcanary.aiagent.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.aiagent.model.AgentPlan;
-import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -23,7 +22,16 @@ final class PrimaryDashboardVerification {
             fail("DASHBOARD_PERIOD_POSTCONDITION");
         var widgets = indexed(actual.path("widgets"), "key");
         var defined = indexed(definition.path("widgets"), "id");
-        if (!widgets.keySet().equals(defined.keySet()) || widgets.size() != ((List<?>) expected.intent().get("widgets")).size()) fail("WIDGET_IDENTITY_POSTCONDITION");
+        JsonNode compiled = mapper.valueToTree(expected.intent());
+        var expectedOrder = widgetOrder(compiled.path("widgets"), "key");
+        if (!expectedOrder.equals(widgetOrder(actual.path("widgets"), "key"))
+                || !widgets.keySet().equals(defined.keySet())) fail("WIDGET_IDENTITY_POSTCONDITION");
+        for (var panel : compiled.path("widgets")) {
+            var widget = widgets.get(panel.path("key").asText());
+            for (String field : List.of("width", "height")) {
+                if (!panel.path(field).equals(widget.path(field))) fail("WIDGET_SIZE_POSTCONDITION");
+            }
+        }
         widgets.forEach((id, widget) -> {
             if (!widget.path("type").equals(defined.get(id).path("type"))) fail("WIDGET_TYPE_POSTCONDITION");
             if (widget.has("title") && !widget.path("title").equals(defined.get(id).path("title"))) fail("WIDGET_TITLE_POSTCONDITION");
@@ -73,19 +81,52 @@ final class PrimaryDashboardVerification {
                 else if (op.equals("resize_widgets") && operation.hasNonNull("width") && !operation.path("width").equals(widget.path("width"))) fail("WIDTH_POSTCONDITION");
             }
         }
-        var layouts = definition.path("layouts");
+        verifyLayoutGeometry(definition.path("layouts"), defined.keySet());
+        if (!widgets.isEmpty()) verifyCompositionLayout(definition.path("layouts"), expectedOrder, widgets);
+    }
+    static void verifyCompositionLayout(JsonNode layouts, List<String> expectedOrder, Map<String, JsonNode> widgets) {
+        Map<String, Integer> columns = Map.of("desktop", 12, "tablet", 6, "mobile", 1);
+        for (var breakpoint : columns.entrySet()) {
+            var placements = layouts.path(breakpoint.getKey());
+            if (!placements.isArray() || !expectedOrder.equals(ordered(placements))) fail("LAYOUT_ORDER_POSTCONDITION");
+            for (var placement : placements) {
+                var widget = widgets.get(placement.path("widgetId").asText());
+                int divisor = switch (widget.path("width").asText()) {
+                    case "HALF" -> 2;
+                    case "THIRD" -> 3;
+                    default -> 1;
+                };
+                if (placement.path("w").intValue() != Math.max(1, breakpoint.getValue() / divisor)
+                        || placement.path("h").intValue() != widget.path("height").asInt(4)) fail("LAYOUT_SIZE_POSTCONDITION");
+            }
+        }
+    }
+    static void verifyLayoutGeometry(JsonNode layouts, Set<String> widgetIds) {
+        if (!layouts.isObject()) fail("LAYOUTS_REQUIRED");
         layouts.fields().forEachRemaining(entry -> {
-            if (!entry.getValue().isArray()) return;
+            if (!entry.getValue().isArray()) fail("INVALID_LAYOUT_BREAKPOINT");
             var rectangles = new java.util.ArrayList<JsonNode>();
+            var placed = new HashSet<String>();
             for (var rectangle : entry.getValue()) {
-                if (rectangle.path("w").asInt() <= 0 || rectangle.path("h").asInt() <= 0) fail("INVALID_LAYOUT_GEOMETRY");
-                for (var other : rectangles) if (rectangle.path("x").asInt() < other.path("x").asInt() + other.path("w").asInt()
-                        && other.path("x").asInt() < rectangle.path("x").asInt() + rectangle.path("w").asInt()
-                        && rectangle.path("y").asInt() < other.path("y").asInt() + other.path("h").asInt()
-                        && other.path("y").asInt() < rectangle.path("y").asInt() + rectangle.path("h").asInt()) fail("OVERLAPPING_LAYOUT");
+                String widgetId = rectangle.path("widgetId").asText();
+                if (!widgetIds.contains(widgetId) || !placed.add(widgetId)) fail("LAYOUT_WIDGET_IDENTITY_POSTCONDITION");
+                for (String coordinate : List.of("x", "y", "w", "h")) {
+                    var value = rectangle.path(coordinate);
+                    if (!value.isIntegralNumber() || !value.canConvertToInt()) fail("INVALID_LAYOUT_GEOMETRY");
+                }
+                if (rectangle.path("x").intValue() < 0 || rectangle.path("y").intValue() < 0
+                        || rectangle.path("w").intValue() <= 0 || rectangle.path("h").intValue() <= 0) fail("INVALID_LAYOUT_GEOMETRY");
+                for (var other : rectangles) if (overlaps(rectangle, other, "x", "w")
+                        && overlaps(rectangle, other, "y", "h")) fail("OVERLAPPING_LAYOUT");
                 rectangles.add(rectangle);
             }
         });
+    }
+    private static boolean overlaps(JsonNode first, JsonNode second, String offset, String size) {
+        long firstStart = first.path(offset).intValue();
+        long secondStart = second.path(offset).intValue();
+        return firstStart < secondStart + second.path(size).intValue()
+                && secondStart < firstStart + first.path(size).intValue();
     }
     static void verifyLayouts(JsonNode previous, JsonNode current, Set<String> geometricTargets) {
         if (geometricTargets.isEmpty() && !previous.path("layouts").equals(current.path("layouts"))) fail("UNTARGETED_LAYOUT_CHANGED");
@@ -102,6 +143,11 @@ final class PrimaryDashboardVerification {
         layout.forEach(items::add);
         items.sort(java.util.Comparator.comparingInt((JsonNode item) -> item.path("y").asInt()).thenComparingInt(item -> item.path("x").asInt()));
         return items.stream().map(item -> item.path("widgetId").asText()).toList();
+    }
+    private static List<String> widgetOrder(JsonNode widgets, String key) {
+        if (!widgets.isArray()) fail("WIDGETS_REQUIRED");
+        return java.util.stream.StreamSupport.stream(widgets.spliterator(), false)
+                .map(widget -> widget.path(key).asText()).toList();
     }
     private static Map<String, JsonNode> indexed(JsonNode array, String field) {
         var result = new HashMap<String, JsonNode>();

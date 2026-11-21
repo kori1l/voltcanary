@@ -3,9 +3,9 @@ package com.voltcanary.device.repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.dto.DashboardScopeRequest;
-import com.voltcanary.device.dto.DashboardScopeResponse;
 import com.voltcanary.device.dto.DashboardScopeResponse.DeviceEntry;
 import com.voltcanary.device.dto.DashboardScopeResponse.LocationEntry;
+import com.voltcanary.device.dto.DashboardScopeResponse;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Repository
+@RequiredArgsConstructor
 public class DashboardScopeRepository {
     private record SourceCadence(Long seconds, String policy) {
     }
@@ -29,12 +31,6 @@ public class DashboardScopeRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final EnergyMeterRepository meters;
-
-    public DashboardScopeRepository(JdbcTemplate jdbc, ObjectMapper mapper, EnergyMeterRepository meters) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.meters = meters;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public DashboardScopeResponse resolve(UUID userId, UUID accountId, DashboardScopeRequest request) {

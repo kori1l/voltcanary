@@ -4,6 +4,7 @@ import {executeAgentPlan, getAgentPlan, getDashboardTask, type AgentPlan, type E
 import {lastAssistantTask, rememberAssistantTask, lastDashboardTask, rememberDashboardTask, forgetDashboardTask} from "./assistantTaskRecovery";
 import {controlOrchestration,conversationMessages, createConversation, getConversation, listConversations, selectConversation, submitConversationMessage, type ConversationDetail, type OrchestrationProgress, type SavedConversation, type SubmittedMessage} from "./conversationApi";
 import {readConversationDraft, saveConversationDraft} from "./conversationDrafts";
+import {answerRequirement, getRequirements, type RequirementSnapshot} from "./conversationApi";
 import {planMutates} from "./PlanReview";
 import type {AssistantPhase} from "./AssistantProgress";
 
@@ -27,6 +28,7 @@ export function useServerConversation() {
   const current=useRef(conversation);current.current=conversation;
   const generation=useRef(0),pending=useRef(false),mounted=useRef(true);
   const retry=useRef<{fingerprint:string;body:SubmittedMessage}|null>(null);
+  const requirementRetry=useRef<{planId:string; questionId:string; text:string; snapshot:RequirementSnapshot; requestId:string}|null>(null);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
   function active(version:number,actor:number){return mounted.current&&version===generation.current&&actor===sessionIdentityRevision();}
   async function hydrate(detail:ConversationDetail,previous?:Conversation):Promise<Conversation> {
@@ -54,7 +56,7 @@ export function useServerConversation() {
     return result;
   }
   useEffect(()=>{
-    const version=++generation.current,actor=sessionIdentityRevision();pending.current=false;retry.current=null;
+    const version=++generation.current,actor=sessionIdentityRevision();pending.current=false;retry.current=null;requirementRetry.current=null;
     setConversation(fresh());setHistory([]);setHistoryCursor(null);setError(null);setDraftSaved(true);setActiveTurnId(null);
     if(!isAuthenticated()){setBusy(false);return;}
     pending.current=true;setBusy(true);setPhase("recovering");
@@ -109,11 +111,38 @@ export function useServerConversation() {
     if(conversation.pendingStatus!=="PENDING")return;
     const timer=window.setInterval(()=>void reload(),3000);return()=>window.clearInterval(timer);
   },[conversation.id,conversation.pendingStatus]);
-  async function send(override?:string,automatic=false,displayText?:string){
+  async function answerTypedName(previous:Conversation,text:string,version:number,actor:number) {
+    const plan=previous.orchestration;
+    const question=plan?.pendingQuestion;
+    if(!plan||!question||previous.plan?.clarification?.missingFields.join(",")!=="name")return false;
+    let attempt=requirementRetry.current;
+    if(attempt?.planId!==plan.planId||attempt.questionId!==question.questionId||attempt.text!==text){
+      const snapshot=await getRequirements(plan.planId);
+      if(!active(version,actor))return true;
+      if(!snapshot.question)return false;
+      if(snapshot.question.id!==question.questionId)throw new Error("Уточнение изменилось. Обновите разговор.");
+      const [slot]=snapshot.question.slots;
+      if(snapshot.question.slots.length!==1||snapshot.question.choices.length||snapshot.slots[slot]?.schemaId!=="text-v1")return false;
+      attempt={planId:plan.planId,questionId:question.questionId,text,snapshot,requestId:crypto.randomUUID()};
+      requirementRetry.current=attempt;
+    }
+    await answerRequirement(plan.planId,attempt.snapshot,attempt.requestId,text);
+    if(!active(version,actor))return true;
+    const detail=await getConversation(previous.id);
+    const restored=await hydrate(detail,previous);
+    if(active(version,actor)){
+      requirementRetry.current=null;
+      saveConversationDraft(previous.id,"");
+      setConversation({...restored,draft:""});
+    }
+    return true;
+  }
+  async function send(override?:string,automatic=false,displayText?:string,continueStepId?:string){
     let previous=current.current;
     const text=(override??previous.draft).trim();if(!text||text.length>2000||pending.current||previous.pendingStatus==="PENDING")return;
     const version=++generation.current,actor=sessionIdentityRevision();pending.current=true;setPhase("planning");setBusy(true);setError(null);
     try {
+      if(!automatic&&!continueStepId&&await answerTypedName(previous,text,version,actor))return;
       if(!previous.saved){
         const saved=await createConversation(previous.id);if(!active(version,actor))return;
         saveConversationDraft(saved.id,previous.draft);previous={...previous,saved:true,revision:saved.revision};setConversation(previous);
@@ -121,12 +150,12 @@ export function useServerConversation() {
       const status=previous.plan?.execution?.status??previous.plan?.executionStatus;
       // A failed preparation still owns the user's pending intent; a short reply must keep that task.
       const continuation=previous.plan&&previous.resourceStatus!=="UNAVAILABLE"&&!["SUCCESS","FAILED","PARTIAL_SUCCESS","RUNNING","UNKNOWN","EXPIRED"].includes(status??"");
-      const fingerprint=JSON.stringify([previous.id,previous.plan?.planId,text,previous.context,automatic]);
+      const fingerprint=JSON.stringify([previous.id,previous.plan?.planId,text,previous.context,automatic,continueStepId]);
       if(retry.current?.fingerprint!==fingerprint){
         const task=!previous.plan||continuation?previous.task??previous.plan?.task:undefined;
         const taskId=task?.taskId??crypto.randomUUID(),requestId=crypto.randomUUID();
         retry.current={fingerprint,body:{requestId,expectedRevision:previous.revision,text,context:previous.context,
-          ...(continuation?{parentPlanId:previous.plan!.planId}:{}),automatic,displayText,
+          ...(continuation&&!continueStepId?{parentPlanId:previous.plan!.planId}:{}),automatic,displayText,continueStepId,
           metadata:{requestId,taskId,branchId:task?.branchId??taskId,expectedTaskRevision:task?.revision??0,acceptedSuggestion:automatic}}};
       }
       setActiveTurnId(retry.current.body.requestId);
@@ -149,6 +178,7 @@ export function useServerConversation() {
       setError(failure instanceof Error?failure.message:"Не удалось получить ответ. Повторите сообщение с тем же запросом.");
       if(failure instanceof ApiError&&failure.status===409){
         retry.current=null;
+        requirementRetry.current=null;
         try{const restored=await hydrate(await getConversation(previous.id),previous);if(active(version,actor))setConversation(restored);}catch{/* Keep original error. */}
       }
     }}finally{if(active(version,actor)){pending.current=false;setBusy(false);setActiveTurnId(null);}}
@@ -181,13 +211,32 @@ export function useServerConversation() {
     setConversation(value=>value.plan?.planId===execution.planId?{...value,plan:{...value.plan,execution,executionStatus:execution.status}}:value);void reload();
   }
   async function control(action:"CANCEL"|"RETRY"|"RESUME",stepId:string|null=null){
-    const previous=current.current,version=++generation.current,actor=sessionIdentityRevision();
+    const previous=current.current,plan=previous.orchestration;
+    if(!plan||(pending.current&&action!=="CANCEL"))return;
+    const version=++generation.current,actor=sessionIdentityRevision();
     pending.current=true;setBusy(true);setError(null);retry.current=null;
     try{
-      await controlOrchestration(previous.id,action,stepId);
+      await controlOrchestration(plan,action,stepId);
+      if(!active(version,actor))return;
       const restored=await hydrate(await getConversation(previous.id),previous);
       if(active(version,actor))setConversation(restored);
-    }catch(failure){if(active(version,actor))setError(failure instanceof Error?failure.message:"Не удалось изменить состояние плана.");}
+    }catch(failure){
+      if(!active(version,actor))return;
+      if(failure instanceof ApiError&&[0,409].includes(failure.status)){
+        try{
+          const restored=await hydrate(await getConversation(previous.id),previous);
+          if(!active(version,actor))return;
+          setConversation(restored);
+          setError(failure.status===409
+            ?"Состояние плана обновлено. Проверьте его перед следующим действием."
+            :"Ответ на команду не получен. Проверьте обновлённое состояние плана.");
+          return;
+        }catch{
+          // Keep the original command error if current state is also unavailable.
+        }
+      }
+      if(active(version,actor))setError(failure instanceof Error?failure.message:"Не удалось изменить состояние плана.");
+    }
     finally{if(active(version,actor)){pending.current=false;setBusy(false);setActiveTurnId(null);}}
   }
   async function moreHistory(){const version=generation.current,actor=sessionIdentityRevision();if(historyCursor&&!pending.current)try{await refreshHistory(version,actor,historyCursor);}catch(failure){if(active(version,actor))setError(failure instanceof Error?failure.message:"История недоступна.");}}

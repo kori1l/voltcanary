@@ -8,8 +8,12 @@ import java.util.UUID;
 
 /** Owner-only provisioning port; publication requires the resource owner's reviewed command. */
 public interface NativeDatasetCatalog {
+    record ArchivedTable(UUID id, long schemaRevision, String label) { }
+
     void register(UUID accountId, UUID actorId, UUID generation, UUID recordIdFieldId, NativeSchema schema);
     NativeDataset provision(UUID accountId, UUID datasetId);
     Optional<NativeDataset> ready(UUID accountId, UUID datasetId, long schemaRevision);
+    Optional<NativeDataset> current(UUID accountId, UUID datasetId);
     List<NativeDataset> list(UUID accountId, int limit);
+    List<ArchivedTable> archived(UUID accountId, UUID actorId);
 }

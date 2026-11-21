@@ -10,16 +10,14 @@ import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.TelemetryIngressDispatcher;
 import com.voltcanary.ingestion.adapter.api.TransportType;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class RegistryBackedTelemetryIngressDispatcher implements TelemetryIngressDispatcher {
 
     private final IngestionAdapterRegistry registry;
-
-    public RegistryBackedTelemetryIngressDispatcher(IngestionAdapterRegistry registry) {
-        this.registry = registry;
-    }
 
     @Override
     public <T> IncomingTelemetryMessage dispatch(

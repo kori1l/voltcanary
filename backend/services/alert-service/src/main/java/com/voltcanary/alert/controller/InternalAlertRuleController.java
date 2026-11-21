@@ -5,6 +5,7 @@ import com.voltcanary.alert.dto.AlertRuleSnapshotResponse;
 import com.voltcanary.alert.service.AlertRuleService;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,15 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal/alert-rules")
+@RequiredArgsConstructor
 public class InternalAlertRuleController {
 
     private final AlertRuleService service;
     private final AlertInternalServiceAuth internalServiceAuth;
-
-    public InternalAlertRuleController(AlertRuleService service, AlertInternalServiceAuth internalServiceAuth) {
-        this.service = service;
-        this.internalServiceAuth = internalServiceAuth;
-    }
 
     @GetMapping("/effective")
     public List<AlertRuleSnapshotResponse> effective(

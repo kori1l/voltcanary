@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_label_audit")
+@Getter
+@Setter
 public class MlLabelAudit {
     @Id
     private UUID id;
@@ -29,18 +33,4 @@ public class MlLabelAudit {
     @Column(name = "reason", columnDefinition = "text")
     private String reason;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getLabelId() { return labelId; }
-    public void setLabelId(UUID labelId) { this.labelId = labelId; }
-    public MlLabelType getPreviousLabel() { return previousLabel; }
-    public void setPreviousLabel(MlLabelType previousLabel) { this.previousLabel = previousLabel; }
-    public MlLabelType getNewLabel() { return newLabel; }
-    public void setNewLabel(MlLabelType newLabel) { this.newLabel = newLabel; }
-    public UUID getEditedBy() { return editedBy; }
-    public void setEditedBy(UUID editedBy) { this.editedBy = editedBy; }
-    public Instant getEditedAt() { return editedAt; }
-    public void setEditedAt(Instant editedAt) { this.editedAt = editedAt; }
-    public String getReason() { return reason; }
-    public void setReason(String reason) { this.reason = reason; }
 }

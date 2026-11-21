@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "anomalies")
+@Getter
+@Setter
 public class Anomaly {
 
     @Id
@@ -56,123 +60,4 @@ public class Anomaly {
     @Column(name = "superseded_at")
     private Instant supersededAt;
 
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(UUID deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public UUID getAccountId() {
-        return accountId;
-    }
-
-    public void setAccountId(UUID accountId) {
-        this.accountId = accountId;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getSeverity() {
-        return severity;
-    }
-
-    public void setSeverity(String severity) {
-        this.severity = severity;
-    }
-
-    public double getScore() {
-        return score;
-    }
-
-    public void setScore(double score) {
-        this.score = score;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public String getRuleId() {
-        return ruleId;
-    }
-
-    public void setRuleId(String ruleId) {
-        this.ruleId = ruleId;
-    }
-
-    public String getRuleVersion() {
-        return ruleVersion;
-    }
-
-    public void setRuleVersion(String ruleVersion) {
-        this.ruleVersion = ruleVersion;
-    }
-
-    public Instant getWindowStart() {
-        return windowStart;
-    }
-
-    public void setWindowStart(Instant windowStart) {
-        this.windowStart = windowStart;
-    }
-
-    public Instant getWindowEnd() {
-        return windowEnd;
-    }
-
-    public void setWindowEnd(Instant windowEnd) {
-        this.windowEnd = windowEnd;
-    }
-
-    public String getInputHash() {
-        return inputHash;
-    }
-
-    public void setInputHash(String inputHash) {
-        this.inputHash = inputHash;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public Instant getDetectedAt() {
-        return detectedAt;
-    }
-
-    public void setDetectedAt(Instant detectedAt) {
-        this.detectedAt = detectedAt;
-    }
-
-    public Instant getSupersededAt() {
-        return supersededAt;
-    }
-
-    public void setSupersededAt(Instant supersededAt) {
-        this.supersededAt = supersededAt;
-    }
 }

@@ -6,18 +6,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.UUID;
 import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class PositionReads {
     private final PositionRepository repository;
-    public PositionReads(PositionRepository repository) {
-        this.repository = repository;
-    }
 
     public PositionEvidence.Latest latest(UUID device, String source, Instant asOf) {
         var point = repository.latest(device, source, asOf);

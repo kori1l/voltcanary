@@ -3,6 +3,7 @@ package com.voltcanary.alert.controller;
 import com.voltcanary.alert.configurable.adapter.RulePauseReviews;
 import com.voltcanary.vcl.VclRulePauseIntent;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,12 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/alert-rules/configurable/pause-reviews")
+@RequiredArgsConstructor
 public class RulePauseReviewsController {
     private final RulePauseReviews reviews;
-
-    public RulePauseReviewsController(RulePauseReviews reviews) {
-        this.reviews = reviews;
-    }
 
     @PostMapping
     public RulePauseReviews.Review prepare(@RequestHeader("X-User-Id") UUID actor, @RequestBody VclRulePauseIntent intent) {

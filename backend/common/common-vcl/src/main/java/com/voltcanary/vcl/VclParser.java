@@ -22,6 +22,7 @@ public final class VclParser {
     private final JsonSchema validator;
     private final JsonSchema expressionValidator;
     private final JsonSchema literalValidator;
+    private final JsonSchema importColumnValidator;
 
     public VclParser() {
         var factory = JsonFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
@@ -35,6 +36,7 @@ public final class VclParser {
             validator = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7).getSchema(grammar);
             expressionValidator = fragment("Expression");
             literalValidator = fragment("Literal");
+            importColumnValidator = fragment("Import/properties/columns/items");
         } catch (IOException error) {
             throw new IllegalStateException("VCL grammar resource unreadable", error);
         }
@@ -62,6 +64,13 @@ public final class VclParser {
         VclException.require(json != null && json.length() <= MAX_BYTES, "PAYLOAD_SIZE", "");
         validUnicode(json, "");
         return VclValues.normalized(read(json.getBytes(StandardCharsets.UTF_8), literalValidator));
+    }
+
+    /** Shared closed mapping grammar for import and reviewed schema-migration columns. */
+    public JsonNode importColumn(String json) {
+        VclException.require(json != null && json.length() <= MAX_BYTES, "PAYLOAD_SIZE", "");
+        validUnicode(json, "");
+        return read(json.getBytes(StandardCharsets.UTF_8), importColumnValidator);
     }
 
     private JsonSchema fragment(String name) {

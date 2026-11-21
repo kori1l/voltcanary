@@ -31,18 +31,24 @@ final class VclImportChecks {
             VclException.require(spec.at("/limits/maxRows").asLong() <= 500, "ATOMIC_ROW_LIMIT", "/spec/limits/maxRows");
         }
         for (var column : spec.path("columns")) {
-            String path = "/spec/columns";
-            var target = VclExpressionTypes.field(fields, column.path("targetFieldId").asText(), path);
-            if (spec.at("/format/kind").asText().equals("CSV")) VclException.require(column.path("sourceType").asText().equals("TEXT"), "SOURCE_TYPE_MISMATCH", path);
-            VclType current = new VclType(VclType.Kind.valueOf(column.path("sourceType").asText()), false,
-                    column.path("sourceUnit").isNull() ? "1" : column.path("sourceUnit").asText(), null);
-            for (var conversion : column.path("conversions")) current = conversion(current, conversion, path);
-            target.compatible(current, path);
-            VclException.require(!column.path("emptyValue").asText().equals("AS_NULL") || target.nullable(), "NULL_NOT_ALLOWED", path);
+            if (spec.at("/format/kind").asText().equals("CSV")) VclException.require(column.path("sourceType").asText().equals("TEXT"), "SOURCE_TYPE_MISMATCH", "/spec/columns");
+            var target = VclExpressionTypes.field(fields, column.path("targetFieldId").asText(), "/spec/columns");
+            column(column, new VclType(VclType.Kind.valueOf(column.path("sourceType").asText()), false,
+                    column.path("sourceUnit").isNull() ? "1" : column.path("sourceUnit").asText(), null), target);
         }
         fields.forEach((id, type) -> VclException.require(type.nullable() || mapped.contains(id), "REQUIRED_FIELD_MISSING", "/spec/columns"));
         var hash = owner.metadata.artifactSha256(UUID.fromString(spec.path("artifactId").asText()));
         VclException.require(hash.isPresent() && hash.get().equals(spec.path("artifactSha256").asText()), "ARTIFACT_HASH_MISMATCH", "/spec/artifactSha256");
+    }
+
+    void column(JsonNode column, VclType source, VclType target) {
+        String path = "/spec/columns";
+        VclException.require(source.kind().name().equals(column.path("sourceType").asText()), "SOURCE_TYPE_MISMATCH", path);
+        VclException.require(source.unit().equals(column.path("sourceUnit").isNull() ? "1" : column.path("sourceUnit").asText()), "UNIT_MISMATCH", path);
+        VclType current = source;
+        for (var conversion : column.path("conversions")) current = conversion(current, conversion, path);
+        target.compatible(current, path);
+        VclException.require(!column.path("emptyValue").asText().equals("AS_NULL") || target.nullable(), "NULL_NOT_ALLOWED", path);
     }
 
     private VclType conversion(VclType input, JsonNode config, String path) {
@@ -52,7 +58,7 @@ final class VclImportChecks {
             if (method.equals("parse_boolean")) {
                 VclBooleanTokens.parse(config, path);
             }
-            if (method.equals("parse_instant")) {
+            if (method.equals("parse_instant") && "YYYY-MM-DD HH:mm:ss".equals(config.path("format").asText())) {
                 try { java.time.ZoneId.of(config.path("timezone").asText()); }
                 catch (java.time.DateTimeException invalid) { throw new VclException("TIMEZONE_INVALID", path); }
             }

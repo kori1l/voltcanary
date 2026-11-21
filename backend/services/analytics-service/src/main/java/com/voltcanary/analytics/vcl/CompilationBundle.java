@@ -23,13 +23,16 @@ public final class CompilationBundle {
     private final String payload;
     private final String digest;
     private final CompilationOwnerValidation ownerValidation;
+    private final VclCompilation compilation;
 
-    private CompilationBundle(UUID accountId, UUID id, String payload, String digest, CompilationOwnerValidation ownerValidation) {
+    private CompilationBundle(UUID accountId, UUID id, String payload, String digest, CompilationOwnerValidation ownerValidation,
+            VclCompilation compilation) {
         this.accountId = java.util.Objects.requireNonNull(accountId);
         this.id = java.util.Objects.requireNonNull(id);
         this.payload = payload;
         this.digest = digest;
         this.ownerValidation = ownerValidation;
+        this.compilation = compilation;
     }
 
     public static CompilationBundle seal(UUID accountId, UUID id, VclCompilation compilation, CompilationOwnerValidation validation) {
@@ -59,7 +62,7 @@ public final class CompilationBundle {
         root.set("ownerValidation", MAPPER.valueToTree(validation));
         String payload = VclCanonical.encode(root);
         if (payload.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) throw new VclException("BUNDLE_SIZE", "");
-        return new CompilationBundle(accountId, id, payload, VclCanonical.sha256(payload), validation);
+        return new CompilationBundle(accountId, id, payload, VclCanonical.sha256(payload), validation, compilation);
     }
 
     private static void verifyGraph(JsonNode spec, VclCompilation compilation) {
@@ -133,7 +136,65 @@ public final class CompilationBundle {
     public String payload() { return payload; }
     public String digest() { return digest; }
 
+    public java.util.List<VclCompilation.Dependency> dependencies() {
+        return java.util.List.copyOf(compilation.dependencies());
+    }
+
+    /** Return a detached view of the verified bundle envelope. */
+    public JsonNode json() {
+        try {
+            return MAPPER.readTree(payload);
+        } catch (IOException invalid) {
+            throw new VclException("BUNDLE_INTEGRITY", "");
+        }
+    }
+
+    /** A reviewed start must use the boundary and input generations sealed at compilation. */
+    public void verifyStartInputs(java.time.Instant boundary, java.util.Map<UUID, UUID> bindingGenerations) {
+        var execution = ownerValidation.execution();
+        if (!java.time.Instant.parse(execution.startBoundary()).equals(boundary)
+                || !execution.bindingGenerations().equals(bindingGenerations)) {
+            throw new VclException("BUNDLE_START_INPUTS_CHANGED", "");
+        }
+    }
+
+    public UUID inputGeneration(UUID binding) {
+        var generation = ownerValidation.execution().bindingGenerations().get(binding);
+        if (generation == null) throw new VclException("WORKER_SOURCE_NOT_PINNED", "");
+        return generation;
+    }
+
+    public void verifyStartCheckpoint(String checkpointDigest) {
+        var execution = ownerValidation.execution();
+        if (execution.resourceRevisions().stream().anyMatch(pin ->
+                pin.kind() == CompilationOwnerValidation.ResourceKind.RULE_START_CHECKPOINT)
+                && !execution.snapshotSetDigest().equals(checkpointDigest)) {
+            throw new VclException("BUNDLE_START_INPUTS_CHANGED", "");
+        }
+    }
+
+    public void verifyCompiledDependencies(VclCompilation fresh) {
+        if (!compilation.compilerVersion().equals(fresh.compilerVersion())
+                || !compilation.registryVersion().equals(fresh.registryVersion())
+                || !compilation.registryDigest().equals(fresh.registryDigest())
+                || !compilation.unitRegistryDigest().equals(fresh.unitRegistryDigest())) {
+            throw new VclException("BUNDLE_COMPILER_PROFILE_CHANGED", "");
+        }
+        if (!compilation.documentDigest().equals(fresh.documentDigest())
+                || !new HashSet<>(compilation.dependencies()).equals(new HashSet<>(fresh.dependencies()))) {
+            throw new VclException("BUNDLE_DEPENDENCIES_CHANGED", "");
+        }
+    }
+
     CompilationOwnerValidation ownerValidation() { return ownerValidation; }
+
+    public void verifyReviewedOwnerPins(CompilationOwnerValidation.ResourcePin grant,
+            CompilationOwnerValidation.ResourcePin policy) {
+        var pins = ownerValidation.execution().resourceRevisions();
+        if (!pins.contains(grant) || !pins.contains(policy)) {
+            throw new VclException("BUNDLE_OWNER_PINS_CHANGED", "");
+        }
+    }
 
     @Override public String toString() { return "CompilationBundle[id=" + id + ", digest=" + digest + "]"; }
 }

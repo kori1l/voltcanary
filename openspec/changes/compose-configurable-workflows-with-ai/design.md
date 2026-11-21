@@ -5,7 +5,7 @@ The [shared configurable architecture](../../../docs/target/configurable-operati
 ## Native table authoring slice
 
 Execution amendment 2026-11-11: [AI-first](../README.md#ai-first-execution-priority)
-and [LangGraph4j adoption](../adopt-langgraph4j-agent-orchestration/design.md)
+and [LangGraph4j adoption](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md)
 own traversal/checkpoint mechanics. G7 owns requirements/consultation semantics
 and uses that one graph; Spring executors/leases are infrastructure, not another
 graph scheduler. Existing-capability agent slices need only their real owner

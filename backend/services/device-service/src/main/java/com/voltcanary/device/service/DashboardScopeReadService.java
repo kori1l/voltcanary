@@ -1,26 +1,22 @@
 package com.voltcanary.device.service;
 
+import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.dto.DashboardScopeRequest;
 import com.voltcanary.device.dto.DashboardScopeResponse;
 import com.voltcanary.device.repository.DashboardScopeRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.domain.AccountStatus;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardScopeReadService {
     private final AccountService accounts;
     private final DashboardScopeRepository repository;
     private final com.voltcanary.device.workspace.WorkspaceResourceAccess workspace;
-
-    public DashboardScopeReadService(AccountService accounts, DashboardScopeRepository repository,com.voltcanary.device.workspace.WorkspaceResourceAccess workspace) {
-        this.accounts = accounts;
-        this.repository = repository;
-        this.workspace=workspace;
-    }
 
     public DashboardScopeResponse read(AuthenticatedUser actor, DashboardScopeRequest request) {
         if (request == null || !List.of("ALL", "DYNAMIC", "FIXED", "UNBOUND").contains(request.mode())

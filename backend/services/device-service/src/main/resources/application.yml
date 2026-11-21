@@ -40,6 +40,16 @@ app:
     internal-service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token}
     timeout: ${SOURCE_CAPTURE_OWNER_TIMEOUT:2s}
   native-data:
+    retention-enabled: ${NATIVE_GENERATION_RETENTION_ENABLED:false}
+    retention-grace: ${NATIVE_GENERATION_RETENTION_GRACE:30d}
+    retention-delay-ms: ${NATIVE_GENERATION_RETENTION_DELAY_MS:60000}
+    dependencies:
+      analytics: ${ANALYTICS_SERVICE_URI:http://localhost:8085}
+      alerts: ${ALERT_SERVICE_URI:http://localhost:8086}
+      dashboards: ${DASHBOARD_SERVICE_URI:http://localhost:8089}
+      timeout: ${NATIVE_DEPENDENCY_TIMEOUT:2s}
+    import-worker-enabled: ${NATIVE_IMPORT_WORKER_ENABLED:true}
+    import-worker-delay-ms: ${NATIVE_IMPORT_WORKER_DELAY_MS:1000}
     cursor-key: ${NATIVE_DATA_CURSOR_KEY:}
   jwt:
     key-id: ${JWT_KEY_ID:dev-rsa}

@@ -10,7 +10,11 @@
       {"key":"voltage","label":"Voltage","type":"DECIMAL","nullable":false,"unit":"V","indexed":true,"businessKey":false},
       {"key":"day","label":"Service day","type":"DATE","nullable":false,"unit":"1","indexed":false,"businessKey":false},
       {"key":"observed","label":"Observed at","type":"INSTANT","nullable":false,"unit":"1","indexed":false,"businessKey":false},
-      {"key":"elapsed","label":"Elapsed","type":"DURATION","nullable":true,"unit":"1","indexed":false,"businessKey":false}
+      {"key":"elapsed","label":"Elapsed","type":"DURATION","nullable":true,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"status","label":"Status","type":"ENUM","nullable":true,"unit":"1","indexed":false,"businessKey":false,"choices":"Queued\nIn progress"},
+      {"key":"position","label":"Position","type":"POINT","nullable":true,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"period","label":"Period","type":"INTERVAL","nullable":true,"unit":"1","indexed":false,"businessKey":false},
+      {"key":"previous","label":"Previous visit","type":"REF","nullable":true,"unit":"1","indexed":false,"businessKey":false,"reference":{"kind":"SELF"}}
     ]
   },
   "reservation": {
@@ -21,7 +25,9 @@
       "code":"80000000-0000-4000-8000-000000000101","open":"80000000-0000-4000-8000-000000000102",
       "count":"80000000-0000-4000-8000-000000000103","voltage":"80000000-0000-4000-8000-000000000104",
       "day":"80000000-0000-4000-8000-000000000105","observed":"80000000-0000-4000-8000-000000000106",
-      "elapsed":"80000000-0000-4000-8000-000000000107"
+      "elapsed":"80000000-0000-4000-8000-000000000107",
+      "status":"80000000-0000-4000-8000-000000000108","position":"80000000-0000-4000-8000-000000000109",
+      "period":"80000000-0000-4000-8000-000000000110","previous":"80000000-0000-4000-8000-000000000111"
     }
   },
   "document": {
@@ -34,7 +40,11 @@
         {"id":"80000000-0000-4000-8000-000000000104","label":"Voltage","type":"DECIMAL","nullable":false,"unit":"V","precision":18,"scale":3},
         {"id":"80000000-0000-4000-8000-000000000105","label":"Service day","type":"DATE","nullable":false},
         {"id":"80000000-0000-4000-8000-000000000106","label":"Observed at","type":"INSTANT","nullable":false},
-        {"id":"80000000-0000-4000-8000-000000000107","label":"Elapsed","type":"DURATION","nullable":true}
+        {"id":"80000000-0000-4000-8000-000000000107","label":"Elapsed","type":"DURATION","nullable":true},
+        {"id":"80000000-0000-4000-8000-000000000108","label":"Status","type":"ENUM","nullable":true,"values":["Queued","In progress"]},
+        {"id":"80000000-0000-4000-8000-000000000109","label":"Position","type":"POINT","nullable":true},
+        {"id":"80000000-0000-4000-8000-000000000110","label":"Period","type":"INTERVAL","nullable":true},
+        {"id":"80000000-0000-4000-8000-000000000111","label":"Previous visit","type":"REF","nullable":true,"target":{"kind":"DATASET","datasetId":"80000000-0000-4000-8000-000000000001"}}
       ],
       "keyFieldIds":["80000000-0000-4000-8000-000000000101"],
       "storage":{"mode":"NATIVE","history":"REVISIONS","indexedFieldIds":["80000000-0000-4000-8000-000000000103","80000000-0000-4000-8000-000000000104"]}

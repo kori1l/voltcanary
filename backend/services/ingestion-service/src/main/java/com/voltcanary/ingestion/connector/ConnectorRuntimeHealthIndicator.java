@@ -1,18 +1,16 @@
 package com.voltcanary.ingestion.connector;
 
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
 @Component("connectorRuntimeHealth")
+@RequiredArgsConstructor
 public class ConnectorRuntimeHealthIndicator implements HealthIndicator {
 
     private final ConnectorHealthManager healthManager;
-
-    public ConnectorRuntimeHealthIndicator(ConnectorHealthManager healthManager) {
-        this.healthManager = healthManager;
-    }
 
     @Override
     public Health health() {

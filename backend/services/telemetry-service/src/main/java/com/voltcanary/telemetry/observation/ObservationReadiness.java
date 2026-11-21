@@ -3,6 +3,7 @@ package com.voltcanary.telemetry.observation;
 import com.voltcanary.common.events.telemetry.SourceBindingSchemaPin;
 import com.voltcanary.vcl.VclObservationProfile;
 import com.voltcanary.vcl.VclObservationReadiness;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -10,17 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** A consistent owner SQL read: no generation minting, repair or upstream/runtime attestation. */
 @Service
+@RequiredArgsConstructor
 public class ObservationReadiness {
     private final JdbcTemplate jdbc;
     private final ObservationSchemas schemas;
     private final ObservationGenerations generations;
     private final ObservationCaptureProperties properties;
-    public ObservationReadiness(JdbcTemplate jdbc, ObservationSchemas schemas, ObservationGenerations generations, ObservationCaptureProperties properties) {
-        this.jdbc = jdbc;
-        this.schemas = schemas;
-        this.generations = generations;
-        this.properties = properties;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public VclObservationReadiness read(VclObservationReadiness.Pin pin) {

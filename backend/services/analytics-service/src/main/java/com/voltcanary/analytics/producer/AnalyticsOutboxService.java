@@ -2,19 +2,21 @@ package com.voltcanary.analytics.producer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.AnalyticsEventOutbox;
-import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
+import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.RiskScore;
+import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsOutboxService {
 
     public static final String ANOMALY_TOPIC = "anomaly.detected.v1";
@@ -23,15 +25,6 @@ public class AnalyticsOutboxService {
     private final AnalyticsEventOutboxRepository repository;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
-
-    public AnalyticsOutboxService(
-            AnalyticsEventOutboxRepository repository,
-            ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
-        this.repository = repository;
-        this.objectMapper = objectMapper;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Transactional
     public void enqueueAnomaly(Anomaly anomaly) {

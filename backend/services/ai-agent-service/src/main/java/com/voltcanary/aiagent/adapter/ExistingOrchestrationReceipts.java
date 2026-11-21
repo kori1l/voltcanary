@@ -10,22 +10,17 @@ import com.voltcanary.aiagent.service.PlanStore;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Reuses exact reviewed execution and action receipts, including its existing UNKNOWN reconciler. */
 @Component
+@RequiredArgsConstructor
 public class ExistingOrchestrationReceipts implements OrchestrationPorts.Receipts {
     private final PlanStore plans;
     private final AiAgentOrchestrator execution;
     private final AuthorizedPlanningContext contexts;
     private final ObjectMapper mapper;
-
-    public ExistingOrchestrationReceipts(PlanStore plans, AiAgentOrchestrator execution, AuthorizedPlanningContext contexts, ObjectMapper mapper) {
-        this.plans = plans;
-        this.execution = execution;
-        this.contexts = contexts;
-        this.mapper = mapper;
-    }
 
     @Override
     public IntentPlans.Receipt inspect(IntentPlans.Review review, OrchestrationPorts.Session session) {

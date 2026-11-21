@@ -8,20 +8,15 @@ import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 
 /** Real native owner metadata: current account authority and verified physical catalog, never request fixtures. */
+@RequiredArgsConstructor
 public final class NativeDatasetMetadata implements VclMetadata {
     private final DataSource source;
     private final NativeDatasetCatalog catalog;
     private final UUID account;
     private final UUID actor;
-
-    public NativeDatasetMetadata(DataSource source, NativeDatasetCatalog catalog, UUID account, UUID actor) {
-        this.source = source;
-        this.catalog = catalog;
-        this.account = account;
-        this.actor = actor;
-    }
 
     @Override
     public String accessScopeDigest() {

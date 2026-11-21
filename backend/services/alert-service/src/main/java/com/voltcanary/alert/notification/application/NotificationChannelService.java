@@ -14,12 +14,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationChannelService {
 
     private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {
@@ -31,16 +33,6 @@ public class NotificationChannelService {
     private final ObjectMapper objectMapper;
     private final NotificationProviderRegistry providerRegistry;
     private final AlertAccessService access;
-
-    public NotificationChannelService(
-            NotificationChannelRepository repository,
-            ObjectMapper objectMapper,
-            NotificationProviderRegistry providerRegistry, AlertAccessService access) {
-        this.repository = repository;
-        this.objectMapper = objectMapper;
-        this.providerRegistry = providerRegistry;
-        this.access = access;
-    }
 
     @Transactional(readOnly = true)
     public java.util.List<NotificationChannelResponse> list(String userId, String accountId) {
@@ -98,6 +90,8 @@ public class NotificationChannelService {
         } else if (create) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
         }
+        String originalType = channel.getChannelType();
+        String originalCredentials = channel.getCredentialsRef();
         if (request.channelType() != null) {
             String type = nonBlank(request.channelType(), "channelType", 100).toUpperCase(Locale.ROOT);
             if (!SUPPORTED_TYPES.contains(type)) {
@@ -115,6 +109,12 @@ public class NotificationChannelService {
         }
         if (request.credentialsRef() != null) {
             channel.setCredentialsRef(optionalRef(request.credentialsRef()));
+        }
+        if (!create && request.config() == null
+                && (!java.util.Objects.equals(originalType, channel.getChannelType())
+                || !java.util.Objects.equals(originalCredentials, channel.getCredentialsRef()))) {
+            var config = new java.util.LinkedHashMap<>(readConfig(channel.getConfigJson()));
+            if (config.remove("configurableRuleIds") != null) channel.setConfigJson(writeConfig(config));
         }
         if (request.enabled() != null) {
             channel.setEnabled(request.enabled());
@@ -151,7 +151,21 @@ public class NotificationChannelService {
 
     private void validateConfig(String channelType, Map<String, Object> config) {
         validateConfigObject(config);
+        if (config.containsKey("configurableRuleIds")
+                && (!(config.get("configurableRuleIds") instanceof java.util.List<?> rules)
+                || rules.size() > 100 || rules.stream().anyMatch(value -> !isRuleId(value)))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "configurableRuleIds must contain canonical rule UUIDs");
+        }
         providerRegistry.find(channelType).ifPresent(adapter -> adapter.validateConfig(config));
+    }
+
+    private static boolean isRuleId(Object value) {
+        if (!(value instanceof String id)) return false;
+        try {
+            return UUID.fromString(id).toString().equals(id);
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
     private void validateConfigObject(Map<String, Object> config) {

@@ -1,6 +1,7 @@
 package com.voltcanary.dashboard.controller;
 
 import com.voltcanary.dashboard.sharing.DashboardSharing;
+import lombok.RequiredArgsConstructor;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.dashboard.domain.DashboardDefinition;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardSharingController {
     public record Attach(UUID workspaceId,boolean reviewed) {
     }
@@ -33,12 +35,7 @@ public class DashboardSharingController {
     private final DashboardOwnership ownership;
     private final DashboardStorage storage;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
-    public DashboardSharingController(DashboardSharing sharing,DashboardOwnership ownership,DashboardStorage storage,com.fasterxml.jackson.databind.ObjectMapper mapper) {
-        this.sharing=sharing;
-        this.ownership=ownership;
-        this.storage=storage;
-        this.mapper=mapper;
-    }
+
     @GetMapping("/dashboards/team")
     public List<Dashboard> list(@RequestHeader("Authorization") String authorization) {
         return sharing.list(ownership.resolveReadOnly(authorization));

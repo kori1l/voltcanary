@@ -6,19 +6,16 @@ import com.voltcanary.dashboard.domain.DashboardDefinition;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.port.DashboardStorage;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Resolve only an owned immutable revision or the matching current author draft. */
 @Component
+@RequiredArgsConstructor
 public class QueryDefinitionReader {
     public record Resolved(DashboardDefinition definition, int revision) { }
     private final DashboardAccess access;
     private final DashboardStorage storage;
-
-    public QueryDefinitionReader(DashboardAccess access, DashboardStorage storage) {
-        this.access = access;
-        this.storage = storage;
-    }
 
     public Resolved read(DashboardActor actor, UUID id, DashboardWidgetQueries.Request request) {
         var dashboard = access.owned(actor, id);

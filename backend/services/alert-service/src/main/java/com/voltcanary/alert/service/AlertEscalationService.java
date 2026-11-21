@@ -19,8 +19,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -28,9 +28,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class AlertEscalationService {
 
-    private static final Logger log = LoggerFactory.getLogger(AlertEscalationService.class);
     private static final String ESCALATED = "ESCALATED";
     private static final String LOCK_NAME = "alert.escalation-scan";
     private static final Duration LOCK_LEASE = Duration.ofMinutes(5);
@@ -42,23 +43,6 @@ public class AlertEscalationService {
     private final MeterRegistry meterRegistry;
     private final ObjectMapper objectMapper;
     private final SchedulerLockService schedulerLockService;
-
-    public AlertEscalationService(
-            AlertRepository alertRepository,
-            AlertEventRepository alertEventRepository,
-            AlertEscalationProperties properties,
-            AlertNotificationPort alertNotificationPort,
-            MeterRegistry meterRegistry,
-            ObjectMapper objectMapper,
-            SchedulerLockService schedulerLockService) {
-        this.alertRepository = alertRepository;
-        this.alertEventRepository = alertEventRepository;
-        this.properties = properties;
-        this.alertNotificationPort = alertNotificationPort;
-        this.meterRegistry = meterRegistry;
-        this.objectMapper = objectMapper;
-        this.schedulerLockService = schedulerLockService;
-    }
 
     @Scheduled(
             initialDelayString = "${app.alert.escalation.initial-delay-ms:60000}",

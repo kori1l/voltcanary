@@ -14,9 +14,10 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/dashboards")
+@RequiredArgsConstructor
 public class DashboardCatalogController {
     public record CatalogPage(List<Dashboard> items, boolean hasNext, String nextCursor) {
     }
@@ -35,25 +37,13 @@ public class DashboardCatalogController {
             List<String> permissions, UUID draftEtag, List<String> unsupportedWidgetIds) {
     }
 
-    private final com.voltcanary.dashboard.sharing.DashboardSharing sharing;
     private final DashboardOwnership ownership;
     private final DashboardCatalog catalog;
     private final DashboardDrafts drafts;
     private final DashboardLifecycle lifecycle;
     private final DashboardRequestDecoder decoder;
     private final com.voltcanary.dashboard.query.WidgetManifests manifests;
-
-    public DashboardCatalogController(DashboardOwnership ownership, DashboardCatalog catalog,
-            DashboardDrafts drafts, DashboardLifecycle lifecycle, DashboardRequestDecoder decoder,
-            com.voltcanary.dashboard.query.WidgetManifests manifests,com.voltcanary.dashboard.sharing.DashboardSharing sharing) {
-        this.ownership = ownership;
-        this.catalog = catalog;
-        this.drafts = drafts;
-        this.lifecycle = lifecycle;
-        this.decoder = decoder;
-        this.manifests = manifests;
-        this.sharing=sharing;
-    }
+    private final com.voltcanary.dashboard.sharing.DashboardSharing sharing;
 
     @GetMapping
     public CatalogPage list(@RequestHeader(value = "Authorization", required = false) String authorization,

@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_feature_snapshots")
+@Getter
+@Setter
 public class MlFeatureSnapshot {
     @Id
     private UUID id;
@@ -55,48 +59,4 @@ public class MlFeatureSnapshot {
     @Column(name = "lifecycle_at")
     private Instant lifecycleAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public String getFeatureSetVersion() { return featureSetVersion; }
-    public void setFeatureSetVersion(String featureSetVersion) { this.featureSetVersion = featureSetVersion; }
-    public String getCodeConfigVersion() { return codeConfigVersion; }
-    public void setCodeConfigVersion(String codeConfigVersion) { this.codeConfigVersion = codeConfigVersion; }
-    public String getFeatureConfigJson() { return featureConfigJson; }
-    public void setFeatureConfigJson(String featureConfigJson) { this.featureConfigJson = featureConfigJson; }
-    public String getFeatureSchemaHash() { return featureSchemaHash; }
-    public void setFeatureSchemaHash(String featureSchemaHash) { this.featureSchemaHash = featureSchemaHash; }
-    public String getFeatureDataHash() { return featureDataHash; }
-    public void setFeatureDataHash(String featureDataHash) { this.featureDataHash = featureDataHash; }
-    public String getFeatureConfigHash() { return featureConfigHash; }
-    public void setFeatureConfigHash(String featureConfigHash) { this.featureConfigHash = featureConfigHash; }
-    public long getRowCount() { return rowCount; }
-    public void setRowCount(long rowCount) { this.rowCount = rowCount; }
-    public long getRejectedRowCount() { return rejectedRowCount; }
-    public void setRejectedRowCount(long rejectedRowCount) { this.rejectedRowCount = rejectedRowCount; }
-    public String getArtifactUri() { return artifactUri; }
-    public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
-    public String getImmutableRowReference() { return immutableRowReference; }
-    public void setImmutableRowReference(String immutableRowReference) { this.immutableRowReference = immutableRowReference; }
-    public String getModelFamily() { return modelFamily; }
-    public void setModelFamily(String modelFamily) { this.modelFamily = modelFamily; }
-    public Integer getHorizonDays() { return horizonDays; }
-    public void setHorizonDays(Integer horizonDays) { this.horizonDays = horizonDays; }
-    public String getFeatureTemplateId() { return featureTemplateId; }
-    public void setFeatureTemplateId(String featureTemplateId) { this.featureTemplateId = featureTemplateId; }
-    public String getFeatureTemplateVersion() { return featureTemplateVersion; }
-    public void setFeatureTemplateVersion(String featureTemplateVersion) { this.featureTemplateVersion = featureTemplateVersion; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public String getLifecycleStatus() { return lifecycleStatus; }
-    public void setLifecycleStatus(String lifecycleStatus) { this.lifecycleStatus = lifecycleStatus; }
-    public String getLifecycleReason() { return lifecycleReason; }
-    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
-    public UUID getLifecycleActorId() { return lifecycleActorId; }
-    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
-    public Instant getLifecycleAt() { return lifecycleAt; }
-    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

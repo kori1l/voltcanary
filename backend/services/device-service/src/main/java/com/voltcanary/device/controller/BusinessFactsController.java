@@ -1,8 +1,9 @@
 package com.voltcanary.device.controller;
 
+import com.voltcanary.device.business.BusinessResourceAuthorization;
 import com.voltcanary.device.business.EnergyTariffPolicy;
 import com.voltcanary.device.business.OperationalFacts;
-import com.voltcanary.device.business.BusinessResourceAuthorization;
+import lombok.RequiredArgsConstructor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequiredArgsConstructor
 public class BusinessFactsController {
     public record TariffCommand(EnergyTariff tariff,boolean reviewed) {
     }
@@ -43,15 +45,7 @@ public class BusinessFactsController {
     private final AuthenticatedUserResolver users;
     private final InternalServiceAuth internal;
     private final ObjectMapper mapper;
-    public BusinessFactsController(EnergyTariffPolicy tariffs,OperationalFacts operations,BusinessResourceAuthorization access,
-            AuthenticatedUserResolver users,InternalServiceAuth internal,ObjectMapper mapper) {
-        this.tariffs=tariffs;
-        this.operations=operations;
-        this.access=access;
-        this.users=users;
-        this.internal=internal;
-        this.mapper=mapper;
-    }
+
     @GetMapping("/energy-tariffs")
     public List<EnergyTariff> tariffs(@RequestHeader("Authorization") String authorization,
             @RequestParam(value="accountId", required=false) UUID accountId,@RequestParam(value="workspaceId", required=false) UUID workspaceId) {

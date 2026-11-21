@@ -9,15 +9,17 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 
 /** Isolated owner transactions. No Spring bean, activation, external effects or authority is provided. */
+@RequiredArgsConstructor
 public final class JdbcKeyedStateStore implements KeyedStateStore {
     private static final int MAX_CORRECTED_WINDOWS = 128;
     private static final com.voltcanary.vcl.VclParser ALERT_PARSER = new com.voltcanary.vcl.VclParser();
     private final DataSource source;
-    public JdbcKeyedStateStore(DataSource source) { this.source = source; }
 
     @Override public Snapshot register(Key key, String pinsDigest, State initial) {
         // Validate the immutable pin using the same public value contract as worker leases.
@@ -262,6 +264,32 @@ public final class JdbcKeyedStateStore implements KeyedStateStore {
     record PendingAlert(Key key, UUID outputId) { }
 
     record HistoricalWindow(Key key, String pins, State schedule, Output output) { }
+    record HistoricalMeasureCandidate(UUID id, State state) { }
+
+    List<HistoricalMeasureCandidate> finalizedIntervalMeasures(JdbcRuleDeployments.Deployment deployment, UUID after) {
+        try (var connection = connection(); var query = prepare(connection, """
+                SELECT o.output_id,o.payload,o.payload_digest
+                FROM vcl_keyed_state s JOIN vcl_keyed_outbox o ON o.account_id=s.account_id AND o.key_digest=s.key_digest
+                WHERE s.account_id=? AND s.rule_id=? AND s.deployment_epoch=? AND o.output_kind='MEASURE'
+                    AND o.payload LIKE '%"profile":"vcl-interval-final-measure-1"%'
+                    AND o.payload LIKE '%"finalized":true%'
+                """ + (after == null ? "" : " AND o.output_id>?") + " ORDER BY o.output_id FETCH FIRST 26 ROWS ONLY")) {
+            query.setObject(1, deployment.account());
+            query.setObject(2, deployment.rule());
+            query.setObject(3, deployment.epoch());
+            if (after != null) query.setObject(4, after);
+            try (var rows = query.executeQuery()) {
+                var results = new java.util.ArrayList<HistoricalMeasureCandidate>();
+                while (rows.next()) {
+                    results.add(new HistoricalMeasureCandidate(rows.getObject(1, UUID.class),
+                            State.restore(rows.getString(2), rows.getString(3))));
+                }
+                return List.copyOf(results);
+            }
+        } catch (SQLException failure) {
+            throw unavailable();
+        }
+    }
     record CorrectedWindow(Key key, String pins) { }
 
     UUID appendWindowCorrection(JdbcRuleDeployments.Deployment deployment, HistoricalWindow historical, UUID correction,
@@ -397,6 +425,73 @@ public final class JdbcKeyedStateStore implements KeyedStateStore {
                     var key = new Key(deployment.account(), deployment.rule(), deployment.epoch(), rows.getString(1), rows.getString(2));
                     require(key.digest().equals(rows.getString(3)) && result.size() < MAX_CORRECTED_WINDOWS, "WINDOW_CORRECTION_LIMIT");
                     result.add(new CorrectedWindow(key, rows.getString(4)));
+                }
+                return java.util.List.copyOf(result);
+            }
+        } catch (SQLException error) { throw unavailable(); }
+    }
+
+    java.util.List<CorrectedWindow> registeredWindows(JdbcRuleDeployments.Deployment deployment,
+            java.util.List<String> occurrences) {
+        if (occurrences.isEmpty()) return java.util.List.of();
+        require(occurrences.size() <= 64, "WINDOW_CORRECTION_LIMIT");
+        var parameters = String.join(",", java.util.Collections.nCopies(occurrences.size(), "?"));
+        try (var connection = connection(); var query = prepare(connection, """
+                SELECT subject_digest,occurrence_digest,key_digest,pins_digest
+                FROM vcl_keyed_state
+                WHERE account_id=? AND rule_id=? AND deployment_epoch=? AND state_revision>0
+                  AND occurrence_digest IN (%s)
+                ORDER BY occurrence_digest,key_digest LIMIT ?
+                """.formatted(parameters))) {
+            query.setObject(1, deployment.account());
+            query.setObject(2, deployment.rule());
+            query.setObject(3, deployment.epoch());
+            int parameter = 4;
+            for (String occurrence : occurrences) query.setString(parameter++, occurrence);
+            query.setInt(parameter, MAX_CORRECTED_WINDOWS + 1);
+            try (var rows = query.executeQuery()) {
+                var result = new java.util.ArrayList<CorrectedWindow>();
+                while (rows.next()) {
+                    var key = new Key(deployment.account(), deployment.rule(), deployment.epoch(),
+                            rows.getString("subject_digest"), rows.getString("occurrence_digest"));
+                    require(result.size() < MAX_CORRECTED_WINDOWS && key.digest().equals(rows.getString("key_digest")),
+                            "WINDOW_CORRECTION_LIMIT");
+                    result.add(new CorrectedWindow(key, rows.getString("pins_digest")));
+                }
+                return java.util.List.copyOf(result);
+            }
+        } catch (SQLException error) { throw unavailable(); }
+    }
+
+    record SessionCandidate(Key key, String pins, Instant openedAt) { }
+
+    java.util.List<SessionCandidate> sessionCandidates(JdbcRuleDeployments.Deployment deployment,
+            RuleCompilationSnapshot.UnresolvedSessionInput input) {
+        var earliest = input.at().minus(input.maximumAgeUs(), java.time.temporal.ChronoUnit.MICROS);
+        try (var connection = connection(); var query = prepare(connection, """
+                SELECT subject_digest,occurrence_digest,key_digest,pins_digest,journal_opened_at
+                FROM vcl_keyed_state
+                WHERE account_id=? AND rule_id=? AND deployment_epoch=? AND state_revision>0
+                  AND journal_opened_at>=? AND journal_opened_at<=?
+                  AND subject_digest=COALESCE(?,subject_digest) AND occurrence_digest=COALESCE(?,occurrence_digest)
+                ORDER BY journal_opened_at,key_digest LIMIT ?
+                """)) {
+            query.setObject(1, deployment.account());
+            query.setObject(2, deployment.rule());
+            query.setObject(3, deployment.epoch());
+            query.setObject(4, earliest.atOffset(ZoneOffset.UTC));
+            query.setObject(5, input.at().atOffset(ZoneOffset.UTC));
+            query.setString(6, input.subject());
+            query.setString(7, input.occurrence());
+            query.setInt(8, MAX_CORRECTED_WINDOWS + 1);
+            try (var rows = query.executeQuery()) {
+                var result = new java.util.ArrayList<SessionCandidate>();
+                while (rows.next()) {
+                    var key = new Key(deployment.account(), deployment.rule(), deployment.epoch(),
+                            rows.getString(1), rows.getString(2));
+                    require(result.size() < MAX_CORRECTED_WINDOWS && key.digest().equals(rows.getString(3)),
+                            "SESSION_CORRECTION_LIMIT");
+                    result.add(new SessionCandidate(key, rows.getString(4), rows.getObject(5, OffsetDateTime.class).toInstant()));
                 }
                 return java.util.List.copyOf(result);
             }
@@ -626,19 +721,6 @@ public final class JdbcKeyedStateStore implements KeyedStateStore {
     private static UUID pauseId(Key key, String purpose) {
         return UUID.nameUUIDFromBytes(("VCL_PAUSE/1\n" + key.digest() + "\n" + purpose)
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
-    boolean hasStagedWindow(Key key, String subject, com.voltcanary.analytics.vcl.VclWindowPlan.Window window) {
-        try (var connection = connection()) {
-            var row = load(connection, key, false);
-            if (row.snapshot().revision() == 0) return false;
-            var recipe = DurableJournalWindow.recipe(row.snapshot().state());
-            require(subject.equals(recipe.subject()) && window.equals(recipe.window()), "WINDOW_RECIPE_INVALID");
-            return true;
-        } catch (VclException missing) {
-            if ("KEY_UNAVAILABLE".equals(missing.code())) return false;
-            throw missing;
-        } catch (SQLException error) { throw unavailable(); }
     }
 
     java.util.Optional<com.voltcanary.analytics.vcl.DurableZoneSession.GeometryPin> zonePin(Key key) {

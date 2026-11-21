@@ -8,11 +8,12 @@ import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Fact;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import static com.voltcanary.aiagent.orchestration.plan.IntentPlans.reject;
 
+@RequiredArgsConstructor
 public final class ConfirmedInputs {
     private final OrchestrationPorts.Receipts receipts;
-    public ConfirmedInputs(OrchestrationPorts.Receipts receipts) { this.receipts = receipts; }
 
     public Map<String, JsonNode> resolve(IntentPlans.State state, String stepId, OrchestrationPorts.Session session) {
         var step = state.step(stepId);

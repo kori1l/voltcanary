@@ -1,28 +1,31 @@
 package com.voltcanary.device.workspace;
 
-import com.voltcanary.common.security.WorkspaceAuthorization;
 import com.voltcanary.common.security.WorkspaceAuthorization.Membership;
+import com.voltcanary.common.security.WorkspaceAuthorization;
 import com.voltcanary.device.workspace.ResourceGrantRepository.Association;
 import com.voltcanary.device.workspace.ResourceGrantRepository.Grant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class WorkspaceResourceAccess implements WorkspaceAuthorization {
+    public record Resolved(Membership membership, long associationVersion, Decision decision) { }
     private final CurrentWorkspaceMembership memberships;
     private final ResourceGrantRepository grants;
-    public WorkspaceResourceAccess(CurrentWorkspaceMembership memberships, ResourceGrantRepository grants) {
-        this.memberships=memberships;
-        this.grants=grants;
-    }
+
     @Override
     public Decision resolve(UUID workspace,UUID account,UUID user,String action) {
+        return resolvePinned(workspace,account,user,action).decision();
+    }
+    public Resolved resolvePinned(UUID workspace,UUID account,UUID user,String action) {
         require(ACTIONS.contains(action),HttpStatus.UNPROCESSABLE_CONTENT);
         Membership member=memberships.require(workspace,user);
         Long version=grants.version(workspace,account,false);
@@ -34,7 +37,7 @@ public class WorkspaceResourceAccess implements WorkspaceAuthorization {
         require(devices.size()<=500,HttpStatus.UNPROCESSABLE_CONTENT);
         // Includes the action and exact current authorized subset; never caches an old decision.
         String fingerprint=workspace+":"+member.version()+":"+version+":"+action+":"+devices.stream().sorted().toList();
-        return new Decision(workspace,account,user,action,devices,fingerprint);
+        return new Resolved(member,version,new Decision(workspace,account,user,action,devices,fingerprint));
     }
     public List<Association> associations(UUID actor,UUID workspace) {
         memberships.manager(workspace,actor);

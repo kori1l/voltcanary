@@ -52,16 +52,20 @@ from registration status and retain a full timestamp for the last measurement.
 - **WHEN** the telemetry owner marks the last recorded position STALE
 - **THEN** the position can remain visible, current speed is unavailable, and its old numeric speed is not presented as a current reading
 
-### Requirement: Visible model waiting without response deadline
-Assistant planning SHALL wait without an application response deadline, retaining
-bounded connection establishment. The overlay SHALL show a visible pending-model
-status and elapsed time, including after 60 and 90 seconds. Minimize and reopen
-SHALL preserve the same in-flight request. Status SHALL NOT invent server stages
-or expose internal reasoning.
+### Requirement: Visible model waiting within server execution limits
+The overlay SHALL show pending-model status and elapsed time while the server
+reports the turn pending, including after 60 and 90 seconds if still pending.
+Minimize and reopen SHALL preserve the same in-flight request. The server SHALL
+enforce the turn and plan deadlines from the graph runtime. Status SHALL NOT
+invent server stages or expose internal reasoning.
 
 #### Scenario: A slow model prepares a dashboard
-- **WHEN** a provider takes longer than one minute to return a plan
+- **WHEN** a provider takes longer than one minute and the turn is still within its deadline
 - **THEN** the request continues with a visible elapsed wait and the previous review remains unavailable for confirmation until refinement finishes
+
+#### Scenario: The server deadline expires
+- **WHEN** the server reports a terminal timeout or an uncertain outcome
+- **THEN** the overlay shows the server-reported outcome, preserves the conversation and offers only the recovery actions allowed by that outcome
 
 ### Requirement: Configurable review and clarification compatibility
 

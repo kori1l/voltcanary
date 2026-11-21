@@ -22,6 +22,82 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CompilationBundleValidationTest {
     @Test
+    void explicitStartPinBindsCheckpointAcrossRestore() {
+        var compilation = BundleFixtures.compilation("test");
+        var validation = BundleFixtures.validation(compilation);
+        var execution = validation.execution();
+        var rule = UUID.fromString(BundleFixtures.document("test").spec().path("ruleId").textValue());
+        var resources = new ArrayList<>(execution.resourceRevisions());
+        var start = new CompilationOwnerValidation.ResourcePin(
+                CompilationOwnerValidation.ResourceKind.RULE_START_CHECKPOINT, rule, 1, execution.snapshotSetDigest());
+        resources.add(start);
+        var sealed = CompilationBundle.seal(UUID.randomUUID(), UUID.randomUUID(), compilation, withResources(validation, resources));
+        var restored = CompilationBundle.restore(sealed.accountId(), sealed.id(), sealed.payload(), sealed.digest());
+        restored.verifyStartCheckpoint(start.snapshotDigest());
+        assertEquals("BUNDLE_START_INPUTS_CHANGED", assertThrows(VclException.class,
+                () -> restored.verifyStartCheckpoint("0".repeat(64))).code());
+        resources.set(resources.size() - 1,
+                new CompilationOwnerValidation.ResourcePin(start.kind(), start.id(), 1, "0".repeat(64)));
+        assertEquals("BUNDLE_START_INPUTS_CHANGED", assertThrows(VclException.class,
+                () -> CompilationBundle.seal(sealed.accountId(), sealed.id(), compilation, withResources(validation, resources))).code());
+    }
+
+    @Test
+    void bundleRejectsRecompilationWithDifferentUnitRegistry() {
+        var bundle = BundleFixtures.bundle(UUID.randomUUID(), UUID.randomUUID(), "test");
+        var fresh = BundleFixtures.compilation("test");
+        var changed = new com.voltcanary.vcl.VclCompilation(fresh.kind(), fresh.canonicalDocument(), fresh.documentDigest(),
+                fresh.semanticDigest(), fresh.registryVersion(), fresh.compilerVersion(), fresh.registryDigest(),
+                "0".repeat(64), fresh.accessScopeDigest(), fresh.dependencies(), fresh.graph());
+        assertEquals("BUNDLE_COMPILER_PROFILE_CHANGED", assertThrows(VclException.class,
+                () -> bundle.verifyCompiledDependencies(changed)).code());
+    }
+
+    @Test
+    void restoredBundleRejectsDriftInAnOwnerDependencyDigest() {
+        var original = BundleFixtures.bundle(UUID.randomUUID(), UUID.randomUUID(), "test");
+        var bundle = CompilationBundle.restore(original.accountId(), original.id(), original.payload(), original.digest());
+        var fresh = BundleFixtures.compilation("test");
+        bundle.verifyCompiledDependencies(fresh);
+        var dependencies = new ArrayList<>(fresh.dependencies());
+        var old = dependencies.getFirst();
+        dependencies.set(0, new com.voltcanary.vcl.VclCompilation.Dependency(old.kind(), old.id(), old.revision(), "0".repeat(64)));
+        var changed = new com.voltcanary.vcl.VclCompilation(fresh.kind(), fresh.canonicalDocument(), fresh.documentDigest(),
+                fresh.semanticDigest(), fresh.registryVersion(), fresh.compilerVersion(), fresh.registryDigest(),
+                fresh.unitRegistryDigest(), fresh.accessScopeDigest(), dependencies, fresh.graph());
+        assertEquals("BUNDLE_DEPENDENCIES_CHANGED", assertThrows(VclException.class,
+                () -> bundle.verifyCompiledDependencies(changed)).code());
+    }
+
+    @Test
+    void bundleRequiresTheExactReviewedGrantAndPolicyPins() {
+        var bundle = BundleFixtures.bundle(UUID.randomUUID(), UUID.randomUUID(), "test");
+        var pins = bundle.ownerValidation().execution().resourceRevisions();
+        var grant = pins.stream().filter(pin -> pin.kind() == CompilationOwnerValidation.ResourceKind.EXECUTION_GRANT)
+                .findFirst().orElseThrow();
+        var policy = pins.stream().filter(pin -> pin.kind() == CompilationOwnerValidation.ResourceKind.EVIDENCE_POLICY)
+                .findFirst().orElseThrow();
+        bundle.verifyReviewedOwnerPins(grant, policy);
+        var changed = new CompilationOwnerValidation.ResourcePin(policy.kind(), policy.id(), policy.revision(), "0".repeat(64));
+        assertEquals("BUNDLE_OWNER_PINS_CHANGED", assertThrows(VclException.class,
+                () -> bundle.verifyReviewedOwnerPins(grant, changed)).code());
+    }
+
+    @Test
+    void restoredBundleRequiresOriginalStartBoundaryAndGenerations() {
+        var original = BundleFixtures.bundle(UUID.randomUUID(), UUID.randomUUID(), "test");
+        var bundle = CompilationBundle.restore(original.accountId(), original.id(), original.payload(), original.digest());
+        var pins = bundle.ownerValidation().execution();
+        var boundary = java.time.Instant.parse(pins.startBoundary());
+        bundle.verifyStartInputs(boundary, pins.bindingGenerations());
+        assertEquals("BUNDLE_START_INPUTS_CHANGED", assertThrows(VclException.class,
+                () -> bundle.verifyStartInputs(boundary.plusSeconds(1), pins.bindingGenerations())).code());
+        var binding = pins.bindingGenerations().keySet().iterator().next();
+        assertEquals("BUNDLE_START_INPUTS_CHANGED", assertThrows(VclException.class,
+                () -> bundle.verifyStartInputs(boundary, Map.of(binding, UUID.randomUUID()))).code());
+    }
+
+    @Test
     void sealedBundleIsStableAndRoundTripsItsPinnedManifest() {
         var compilation = BundleFixtures.compilation("private-label");
         var validation = BundleFixtures.validation(compilation);
@@ -31,6 +107,8 @@ class CompilationBundleValidationTest {
         var b = CompilationBundle.seal(account, id, compilation, validation);
         assertEquals(a.payload(), b.payload());
         assertEquals(validation, a.ownerValidation());
+        ((ObjectNode) a.json()).remove("ownerValidation");
+        assertEquals(validation.documentDigest(), a.json().at("/ownerValidation/documentDigest").textValue());
         assertEquals(a.payload(), CompilationBundle.restore(account, id, a.payload(), a.digest()).payload());
         assertFalse(a.toString().contains("private-label"));
         assertEquals("BUNDLE_INTEGRITY", assertThrows(VclException.class,
@@ -149,6 +227,28 @@ class CompilationBundleValidationTest {
         repeatedPins.add(repeatedPins.getFirst());
         tests.add(reject("RESOURCE_PIN_DUPLICATE", compilation, withResources(good, repeatedPins)));
         return tests;
+    }
+
+    @Test
+    void asOfIndexReadinessMustMatchTheExactSchemaRevision() {
+        var original = BundleFixtures.compilation("test");
+        var dataset = original.dependencies().stream()
+                .filter(dependency -> dependency.kind() == VclMetadata.Resource.DATASET).findFirst().orElseThrow();
+        var otherRevision = new com.voltcanary.vcl.VclCompilation.Dependency(dataset.kind(), dataset.id(),
+                dataset.revision() + 1, dataset.snapshotDigest());
+        var dependencies = new ArrayList<>(original.dependencies());
+        dependencies.add(otherRevision);
+        var compilation = new com.voltcanary.vcl.VclCompilation(original.kind(), original.canonicalDocument(),
+                original.documentDigest(), original.semanticDigest(), original.registryVersion(), original.compilerVersion(),
+                original.registryDigest(), original.unitRegistryDigest(), original.accessScopeDigest(), dependencies, original.graph());
+        var ready = BundleFixtures.validation(compilation);
+        ready.verify(compilation, BundleFixtures.GRANT);
+        var checks = ready.dependencies().stream().map(check -> check.dependency().equals(dataset)
+                ? new CompilationOwnerValidation.DependencyCheck(dataset, true, true,
+                        CompilationOwnerValidation.IndexReadiness.NOT_REQUIRED, check.capabilityDigest())
+                : check).toList();
+        assertEquals("INDEX_REQUIRED", assertThrows(VclException.class,
+                () -> withChecks(ready, checks).verify(compilation, BundleFixtures.GRANT)).code());
     }
 
     @Test

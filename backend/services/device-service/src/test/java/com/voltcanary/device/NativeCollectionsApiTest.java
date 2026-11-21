@@ -46,6 +46,138 @@ class NativeCollectionsApiTest extends SignedUserTest {
     @MockitoSpyBean com.voltcanary.device.configurable.port.NativeRowMutations rowMutations;
 
     @Test
+    void signedImportUploadReviewApplyAndReplayKeepExactRowsAndDenyForeignAccounts() {
+        var actor = actor();
+        var reservation = reserve(actor);
+        var creation = preparation(reservation, "Imports");
+        String field = reservation.at("/fieldIdsByKey/name").asText();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) creation.at("/document/spec/keyFieldIds")).add(field);
+        var preparedSchema = call(actor, HttpMethod.POST, "/data/dataset-reviews", creation.toString()).getBody();
+        assertEquals(HttpStatus.OK, call(actor, HttpMethod.POST, "/data/reviews/" + preparedSchema.path("reviewId").asText() + "/apply", application(preparedSchema, UUID.randomUUID().toString())).getStatusCode());
+        UUID dataset = UUID.fromString(reservation.path("resourceId").asText());
+        var headers = new HttpHeaders();
+        headers.setBearerAuth(SignedUserTokens.create(actor.id(), actor.email(), actor.role()));
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        headers.set("Idempotency-Key", UUID.randomUUID().toString());
+        var upload = rest.exchange("/data/import-artifacts", HttpMethod.POST,
+                new HttpEntity<>("name\none\ntwo\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), headers), JsonNode.class);
+        assertEquals(HttpStatus.OK, upload.getStatusCode(), upload.getBody().toString());
+        var artifact = upload.getBody();
+        String key = UUID.randomUUID().toString();
+        var request = mapper.createObjectNode().put("idempotencyKey", key);
+        var spec = request.putObject("document").put("language", "VCL/1").put("kind", "IMPORT").putObject("spec")
+                .put("contractVersion", "IMPORT/1").put("artifactId", artifact.path("id").asText()).put("artifactSha256", artifact.path("sha256").asText())
+                .put("mappingRevision", 1).put("mode", "ATOMIC_INSERT").put("nullPolicy", "SCHEMA_EXPLICIT").put("conflictPolicy", "REJECT_STALE");
+        spec.putObject("target").put("datasetId", dataset.toString()).put("schemaRevision", 1);
+        spec.putObject("format").put("kind", "CSV").put("encoding", "UTF-8").put("delimiter", ",").putArray("header").add("name");
+        spec.putArray("keyFields").add(field);
+        spec.putArray("columns").addObject().put("sourceColumn", "name").put("targetFieldId", field).put("sourceType", "TEXT")
+                .putNull("sourceUnit").put("emptyValue", "PRESERVE_EMPTY").putArray("conversions").addObject().put("method", "identity");
+        spec.putObject("limits").put("maxRows", 500).put("maxBytes", 1_048_576).put("maxRowBytes", 1000);
+        spec.putObject("provenance").put("sourceId", UUID.randomUUID().toString()).put("description", "Signed HTTP fixture");
+        var definition = call(actor, HttpMethod.GET, "/data/datasets/" + dataset, null).getBody().path("definition");
+        spec.putObject("targetPrecondition").put("mode", "NATIVE").set("generation", definition.path("generation"));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) spec.path("targetPrecondition")).set("dataVersion", definition.path("dataVersion"));
+        String path = "/data/datasets/" + dataset + "/import-reviews";
+        String stoppedKey = UUID.randomUUID().toString();
+        var limited = request.deepCopy().put("idempotencyKey", stoppedKey);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) limited.at("/document/spec/limits")).put("maxRows", 1);
+        var stoppedResponse = call(actor, HttpMethod.POST, path, limited.toString());
+        assertEquals(HttpStatus.OK, stoppedResponse.getStatusCode());
+        var stopped = stoppedResponse.getBody();
+        assertEquals("REJECTED", stopped.path("status").asText());
+        assertFalse(stopped.path("validationComplete").asBoolean(true));
+        assertEquals(1, stopped.path("processedRows").asInt(-1));
+        assertEquals(1, stopped.path("validRows").asInt(-1));
+        assertEquals(0, stopped.path("invalidRows").asInt(-1));
+        assertTrue(stopped.path("totalRows").isNull());
+        assertTrue(stopped.path("unprocessedRows").isNull());
+        assertEquals("ROW_LIMIT_REACHED", stopped.path("outcomeCode").asText());
+        String stoppedPath = path + "/" + stopped.path("id").asText();
+        assertEquals(stopped, call(actor, HttpMethod.GET, stoppedPath, null).getBody());
+        var stoppedApplication = mapper.createObjectNode().put("reviewRevision", 1)
+                .put("reviewDigest", stopped.path("reviewDigest").asText()).put("idempotencyKey", stoppedKey);
+        assertEquals(HttpStatus.CONFLICT, call(actor, HttpMethod.POST, stoppedPath + "/apply", stoppedApplication.toString()).getStatusCode());
+
+        var reviewResponse = call(actor, HttpMethod.POST, path, request.toString());
+        assertEquals(HttpStatus.OK, reviewResponse.getStatusCode(), reviewResponse.getBody().toString());
+        var review = reviewResponse.getBody();
+        assertEquals("PREPARED", review.path("status").asText(), review.toString());
+        assertEquals(spec.path("format"), review.at("/typedDiff/mapping/format"));
+        assertEquals(spec.path("columns"), review.at("/typedDiff/mapping/columns"));
+        assertEquals(review, call(actor, HttpMethod.POST, path, request.toString()).getBody());
+        String reviewPath = path + "/" + review.path("id").asText();
+        assertEquals(HttpStatus.NOT_FOUND, call(actor(), HttpMethod.GET, reviewPath, null).getStatusCode());
+        var confirmation = mapper.createObjectNode().put("reviewRevision", 1)
+                .put("reviewDigest", review.path("reviewDigest").asText()).put("idempotencyKey", key);
+        var injected = confirmation.deepCopy();
+        injected.set("document", limited.path("document"));
+        var rejectedBody = call(actor, HttpMethod.POST, reviewPath + "/apply", injected.toString());
+        assertEquals(HttpStatus.BAD_REQUEST, rejectedBody.getStatusCode());
+        assertEquals("REQUEST_FIELDS_INVALID", rejectedBody.getBody().path("code").asText());
+        var rejectedDigest = call(actor, HttpMethod.POST, reviewPath + "/apply",
+                confirmation.deepCopy().put("reviewDigest", "0".repeat(64)).toString());
+        assertEquals(HttpStatus.CONFLICT, rejectedDigest.getStatusCode());
+        assertEquals("REVIEW_CONFLICT", rejectedDigest.getBody().path("code").asText());
+        var rejectedRevision = call(actor, HttpMethod.POST, reviewPath + "/apply",
+                confirmation.deepCopy().put("reviewRevision", 2).toString());
+        assertEquals(HttpStatus.CONFLICT, rejectedRevision.getStatusCode());
+        assertEquals(review, call(actor, HttpMethod.GET, reviewPath, null).getBody());
+        assertEquals(definition.path("dataVersion"), call(actor, HttpMethod.GET, "/data/datasets/" + dataset, null)
+                .getBody().at("/definition/dataVersion"));
+        var application = confirmation.toString();
+        var applied = call(actor, HttpMethod.POST, reviewPath + "/apply", application);
+        assertEquals(HttpStatus.OK, applied.getStatusCode(), applied.getBody().toString());
+        assertEquals("SUCCEEDED", applied.getBody().path("status").asText());
+        assertEquals(2, applied.getBody().at("/result/rows").size());
+        assertEquals(applied.getBody(), call(actor, HttpMethod.POST, reviewPath + "/apply", application).getBody());
+        assertEquals(HttpStatus.BAD_REQUEST, call(actor, HttpMethod.POST, path, "{\"idempotencyKey\":\"a\",\"idempotencyKey\":\"b\",\"document\":{}}").getStatusCode());
+        var unsigned = new HttpHeaders();
+        unsigned.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        unsigned.set("Idempotency-Key", UUID.randomUUID().toString());
+        assertEquals(HttpStatus.UNAUTHORIZED, rest.exchange("/data/import-artifacts", HttpMethod.POST, new HttpEntity<>(new byte[]{1}, unsigned), JsonNode.class).getStatusCode());
+        var beforeReplacement = call(actor, HttpMethod.GET, "/data/datasets/" + dataset, null).getBody().path("definition");
+        String stageKey = UUID.randomUUID().toString();
+        request.put("idempotencyKey", stageKey);
+        spec.put("mode", "STAGED_REPLACE");
+        var stageHead = spec.putObject("targetPrecondition").put("mode", "NATIVE");
+        stageHead.set("generation", beforeReplacement.path("generation"));
+        stageHead.set("dataVersion", beforeReplacement.path("dataVersion"));
+        var replacement = call(actor, HttpMethod.POST, path, request.toString());
+        assertEquals(HttpStatus.OK, replacement.getStatusCode(), replacement.getBody().toString());
+        assertEquals("native-generation-replace-1", replacement.getBody().at("/typedDiff/profile").asText());
+        assertEquals(2, replacement.getBody().at("/typedDiff/updates").asInt());
+        var stageApplication = mapper.createObjectNode().put("reviewRevision", 1).put("reviewDigest", replacement.getBody().path("reviewDigest").asText()).put("idempotencyKey", stageKey);
+        var swapped = call(actor, HttpMethod.POST, path + "/" + replacement.getBody().path("id").asText() + "/apply", stageApplication.toString());
+        assertEquals(HttpStatus.OK, swapped.getStatusCode(), swapped.getBody().toString());
+        assertNotEquals(beforeReplacement.path("generation"), swapped.getBody().at("/result/generation"));
+        assertEquals(swapped.getBody().at("/result/generation"), call(actor, HttpMethod.GET, "/data/datasets/" + dataset, null).getBody().at("/definition/generation"));
+        var originalIds = new java.util.HashSet<String>();
+        applied.getBody().at("/result/rows").forEach(row -> originalIds.add(row.path("recordId").asText()));
+        swapped.getBody().at("/result/rows").forEach(row -> {
+            assertTrue(originalIds.contains(row.path("recordId").asText()));
+            assertEquals("2", row.path("recordVersion").asText());
+        });
+        var current = call(actor, HttpMethod.GET, "/data/datasets/" + dataset, null).getBody().path("definition");
+        String upsertKey = UUID.randomUUID().toString();
+        request.put("idempotencyKey", upsertKey);
+        spec.put("mode", "ATOMIC_UPSERT");
+        var upsertHead = spec.putObject("targetPrecondition").put("mode", "NATIVE");
+        upsertHead.set("generation", current.path("generation"));
+        upsertHead.set("dataVersion", current.path("dataVersion"));
+        var upsert = call(actor, HttpMethod.POST, path, request.toString()).getBody();
+        assertEquals("PREPARED", upsert.path("status").asText(), upsert.toString());
+        var upsertApplication = mapper.createObjectNode().put("reviewRevision", 1).put("reviewDigest", upsert.path("reviewDigest").asText()).put("idempotencyKey", upsertKey);
+        var touched = call(actor, HttpMethod.POST, path + "/" + upsert.path("id").asText() + "/apply", upsertApplication.toString());
+        assertEquals(HttpStatus.OK, touched.getStatusCode(), touched.getBody().toString());
+        assertEquals(current.path("generation"), touched.getBody().at("/result/generation"));
+        touched.getBody().at("/result/rows").forEach(row -> {
+            assertTrue(originalIds.contains(row.path("recordId").asText()));
+            assertEquals("3", row.path("recordVersion").asText());
+        });
+    }
+
+    @Test
     void reviewedSystemKeyRowsAreQueryableAndReplayKeepsTheSameReceipt() {
         var actor = actor();
         var dataset = createDataset(actor);
@@ -84,6 +216,25 @@ class NativeCollectionsApiTest extends SignedUserTest {
         assertEquals("SNAPSHOT", snapshot.getBody().at("/readManifest/consistency").textValue());
         assertEquals(sealed.getBody().path("snapshotId"), snapshot.getBody().at("/readManifest/snapshotId"));
         assertEquals(HttpStatus.NOT_FOUND, call(actor(), HttpMethod.POST, datasetPath + "/query", request.toString()).getStatusCode());
+
+        String updateKey = UUID.randomUUID().toString();
+        var update = rowReservation(actor, dataset, updateKey);
+        var mutation = mapper.createObjectNode().put("reservationId", update.path("reviewId").asText());
+        var updateSpec = mutation.putObject("document").put("language", "VCL/1").put("kind", "MUTATION").putObject("spec");
+        updateSpec.put("operation", "UPDATE").put("mutationId", update.path("mutationId").asText())
+                .put("reviewId", update.path("reviewId").asText()).put("idempotencyKey", updateKey).put("expectedRowVersion", "1");
+        updateSpec.set("target", query.path("target"));
+        updateSpec.putObject("targetPrecondition").put("mode", "NATIVE")
+                .put("generation", description.path("generation").asText()).put("dataVersion", description.path("dataVersion").asLong());
+        updateSpec.putArray("key").addObject().put("fieldId", description.at("/definition/systemFields/recordIdFieldId").asText())
+                .putObject("literal").put("type", "REF").put("value", reserved.path("createdRecordId").asText());
+        updateSpec.putArray("values").addObject().put("fieldId", dataset.at("/typedDiff/fields/0/id").asText())
+                .putObject("literal").put("type", "NULL").putNull("value");
+        var rejectedNull = call(actor, HttpMethod.POST, datasetPath + "/mutation-reviews", mutation.toString());
+        assertEquals(HttpStatus.UNPROCESSABLE_CONTENT, rejectedNull.getStatusCode());
+        assertEquals("NULL_NOT_ALLOWED", rejectedNull.getBody().path("code").asText());
+        query.putObject("read").put("mode", "LIVE");
+        assertEquals(page.getBody().path("rows"), call(actor, HttpMethod.POST, datasetPath + "/query", request.toString()).getBody().path("rows"));
     }
 
     @Test
@@ -171,6 +322,18 @@ class NativeCollectionsApiTest extends SignedUserTest {
         assertEquals(prepared.path("resourceId").asText(), decoded.id().toString());
         assertEquals(dataset.getBody().path("schemaDigest").asText(), decoded.schemaDigest());
         assertTrue(dataset.getBody().path("liveQueryReady").asBoolean());
+        var capabilities = call(actor, HttpMethod.GET, "/data/datasets/" + prepared.path("resourceId").asText() + "/capabilities", null);
+        assertEquals(HttpStatus.OK, capabilities.getStatusCode());
+        assertEquals("dataset-actions-1", capabilities.getBody().path("profile").asText());
+        assertEquals("NATIVE", capabilities.getBody().path("sourceMode").asText());
+        assertEquals(dataset.getBody().path("generation"), capabilities.getBody().path("generation"));
+        assertTrue(capabilities.getBody().path("actions").toString().contains("\"UPDATE\""));
+        assertFalse(capabilities.getBody().path("actions").toString().contains("\"IMPORT\""));
+        assertFalse(capabilities.getBody().path("actions").toString().contains("\"HISTORY\""));
+        assertTrue(capabilities.getBody().at("/unavailableReasons/IMPORT").isTextual());
+        assertEquals("no-store", capabilities.getHeaders().getFirst("Cache-Control"));
+        assertEquals(HttpStatus.NOT_FOUND, call(actor(), HttpMethod.GET,
+                "/data/datasets/" + prepared.path("resourceId").asText() + "/capabilities", null).getStatusCode());
         assertEquals("Customer table", dataset.getBody().at("/definition/label").asText());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM cfg_mutation_receipt WHERE review_id=? AND status='SUCCEEDED'", Integer.class,
                 UUID.fromString(prepared.path("reviewId").asText())));

@@ -20,6 +20,7 @@ import java.util.UUID;
 
 /** Checked calendar and predicate projection for interval_union_window. */
 public final class VclIntervalUnionPlan {
+    public static final int MAX_WINDOW_FANOUT = 64;
     private static final VclParser PARSER = new VclParser();
     private static final VclRegistry REGISTRY = new VclRegistry(PARSER);
     private static final VclUnits UNITS = VclUnits.standard();
@@ -78,7 +79,7 @@ public final class VclIntervalUnionPlan {
         if (!start.isBefore(end)) throw new VclException("INTERVAL_REVERSED", "");
         var result = new ArrayList<VclWindowPlan.Window>();
         for (var window = windowAt(start); window.startInclusive().isBefore(end); window = windowAt(window.endExclusive())) {
-            if (result.size() == 64) throw new VclException("WINDOW_FANOUT_LIMIT", "");
+            if (result.size() == MAX_WINDOW_FANOUT) throw new VclException("WINDOW_FANOUT_LIMIT", "");
             result.add(window);
         }
         return List.copyOf(result);
@@ -130,9 +131,10 @@ public final class VclIntervalUnionPlan {
             if (subject.isFailure()) return subject;
             boolean unresolved = subject.status() == ScalarValue.Status.UNKNOWN || subject.isNull();
             if (!unresolved && !subjectDigest.equals(VclWindowSessionKernel.identity(subject))) continue;
+            var interval = interval(row);
+            if (interval.status() == ScalarValue.Status.OK && disjoint(interval, clipped)) continue;
             var included = evaluator.evaluate(include, row.fields(), decimal, authorizedScope);
             var excluded = evaluator.evaluate(exclude, row.fields(), decimal, authorizedScope);
-            var interval = interval(row);
             if (row.eligibility() != null) {
                 if (row.eligibility().isFailure()) return row.eligibility();
                 if (!interval.isFailure()) interval = row.eligibility();
@@ -144,6 +146,13 @@ public final class VclIntervalUnionPlan {
         }
         return new VclIntervalUnionKernel().evaluate(new VclIntervalUnionKernel.Context(VclIntervalUnionKernel.VERSION,
                 scope, clipped), inputs, authorizedScope);
+    }
+
+    private static boolean disjoint(ScalarValue interval, VclWindowPlan.Window window) {
+        var bounds = interval.literal().path("value");
+        var start = Instant.parse(bounds.path("start").textValue());
+        var end = Instant.parse(bounds.path("end").textValue());
+        return start.isBefore(end) && (!start.isBefore(window.endExclusive()) || !end.isAfter(window.startInclusive()));
     }
 
     private static VclWindowPlan.Window prefix(VclWindowPlan.Window window, Instant through) {

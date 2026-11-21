@@ -1,18 +1,15 @@
 package com.voltcanary.simulator.generator;
 
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class GenericApplianceGenerator implements TelemetryGenerator {
 
     private final MetricValueGenerator metricValueGenerator;
     private final AnomalyInjector anomalyInjector;
-
-    public GenericApplianceGenerator(MetricValueGenerator metricValueGenerator, AnomalyInjector anomalyInjector) {
-        this.metricValueGenerator = metricValueGenerator;
-        this.anomalyInjector = anomalyInjector;
-    }
 
     @Override
     public Optional<GeneratedTelemetryPoint> next(SimulationContext context) {

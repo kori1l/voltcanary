@@ -3,19 +3,21 @@ import { nativeDataApi, type Dataset, type Literal, type Review } from "./native
 import { displayLiteral } from "./nativeDocuments";
 import { NativeCollectionPreview, readNativeCollectionDefinition } from "./NativeCollectionPreview";
 
-export function NativeReviewPanel({ review, busy, uncertain, onApply, onInspect, onClose }: {
+export function NativeReviewPanel({ review, busy, uncertain, onApply, onInspect, onClose, scopedDataset }: {
   review: Review; busy: boolean; uncertain: boolean; onApply: () => void; onInspect: () => void; onClose: () => void;
+  scopedDataset?: Dataset;
 }) {
-  const [dataset, setDataset] = useState<Dataset | null>(null);
+  const [loadedDataset, setDataset] = useState<Dataset | null>(null);
+  const dataset = scopedDataset ?? loadedDataset;
   const [clock, setClock] = useState(Date.now());
   const operation = review.typedDiff?.operation as string | undefined;
   useEffect(() => {
     setDataset(null);
-    if (!operation) return;
+    if (!operation || scopedDataset) return;
     const controller = new AbortController();
     void nativeDataApi.describe(review.resourceId, controller.signal).then(setDataset).catch(() => {});
     return () => controller.abort();
-  }, [review.resourceId, operation]);
+  }, [review.resourceId, operation, scopedDataset]);
   useEffect(() => { const timer = window.setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const dispatched = uncertain || ["APPLYING", "UNKNOWN"].includes(review.status);
   const expired = clock >= Date.parse(review.expiresAt);

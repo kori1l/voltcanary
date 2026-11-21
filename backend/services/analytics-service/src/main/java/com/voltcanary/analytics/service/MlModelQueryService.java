@@ -8,29 +8,20 @@ import com.voltcanary.analytics.repository.MlModelVersionRepository;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlModelQueryService {
 
     private final MlModelVersionRepository modelVersionRepository;
     private final MlRegistryProperties registryProperties;
     private final MlDemoModelSeeder demoModelSeeder;
     private final MlModelRegistryResponseMapper mapper;
-
-    public MlModelQueryService(
-            MlModelVersionRepository modelVersionRepository,
-            MlRegistryProperties registryProperties,
-            MlDemoModelSeeder demoModelSeeder,
-            MlModelRegistryResponseMapper mapper) {
-        this.modelVersionRepository = modelVersionRepository;
-        this.registryProperties = registryProperties;
-        this.demoModelSeeder = demoModelSeeder;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public List<MlModelVersionDto> listModels(UUID accountId) {

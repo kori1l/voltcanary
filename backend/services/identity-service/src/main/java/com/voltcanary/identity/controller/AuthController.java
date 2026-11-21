@@ -1,5 +1,10 @@
 package com.voltcanary.identity.controller;
 
+import com.voltcanary.identity.dto.AdminRefreshSessionResponse;
+import com.voltcanary.identity.dto.AdminRevokeSessionsResponse;
+import com.voltcanary.identity.dto.AdminUpdateUserRoleRequest;
+import com.voltcanary.identity.dto.AdminUpdateUserStatusRequest;
+import com.voltcanary.identity.dto.AdminUserResponse;
 import com.voltcanary.identity.dto.AuthMessageResponse;
 import com.voltcanary.identity.dto.AuthTokenResponse;
 import com.voltcanary.identity.dto.ChangePasswordRequest;
@@ -17,13 +22,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
-import com.voltcanary.identity.dto.AdminRefreshSessionResponse;
-import com.voltcanary.identity.dto.AdminRevokeSessionsResponse;
-import com.voltcanary.identity.dto.AdminUpdateUserRoleRequest;
-import com.voltcanary.identity.dto.AdminUpdateUserStatusRequest;
-import com.voltcanary.identity.dto.AdminUserResponse;
-import org.springframework.web.bind.annotation.GetMapping;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,13 +35,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
     private final AuthService authService;
-
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
 
     @PostMapping("/register")
     public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {

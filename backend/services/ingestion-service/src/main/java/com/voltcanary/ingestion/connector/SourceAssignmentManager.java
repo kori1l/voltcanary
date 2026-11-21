@@ -5,18 +5,15 @@ import com.voltcanary.ingestion.adapter.api.IngestionAdapterResolver;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigStore;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SourceAssignmentManager {
 
     private final SourceRuntimeConfigStore configStore;
     private final IngestionAdapterResolver adapterResolver;
-
-    public SourceAssignmentManager(SourceRuntimeConfigStore configStore, IngestionAdapterResolver adapterResolver) {
-        this.configStore = configStore;
-        this.adapterResolver = adapterResolver;
-    }
 
     public List<SourceRuntimeConfig> assignedSources() {
         return configStore.snapshot().stream()

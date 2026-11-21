@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,17 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Records owner consent for a stop operation without requiring a still-active execution grant. */
 @Service
+@RequiredArgsConstructor
 public class RulePauseReviews {
     private final JdbcTemplate jdbc;
     private final RuleAccountAuthority accounts;
 
     public record Review(UUID id, UUID accountId, UUID actorId, VclRulePauseIntent intent, String reviewDigest,
             Instant expiresAt, Instant confirmedAt) { }
-
-    public RulePauseReviews(JdbcTemplate jdbc, RuleAccountAuthority accounts) {
-        this.jdbc = jdbc;
-        this.accounts = accounts;
-    }
 
     @Transactional
     public Review prepare(UUID actor, VclRulePauseIntent intent) {

@@ -18,14 +18,15 @@ import com.voltcanary.aiagent.repository.AiModelConfigRepository;
 import com.voltcanary.aiagent.repository.AiModelProviderRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.security.JwtIdentityService;
-import com.voltcanary.aiagent.service.DashboardTaskConversation;
-import com.voltcanary.aiagent.service.AiModelSelectionService;
 import com.voltcanary.aiagent.service.AiModelProviderCapabilityRegistry;
 import com.voltcanary.aiagent.service.AiModelProviderService;
+import com.voltcanary.aiagent.service.AiModelSelectionService;
+import com.voltcanary.aiagent.service.DashboardTaskConversation;
 import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,9 +38,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/ai-agent")
+@RequiredArgsConstructor
 public class AiAgentController {
 
     private final JwtIdentityService jwtIdentityService;
@@ -51,26 +52,6 @@ public class AiAgentController {
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelConfigRepository;
     private final com.voltcanary.aiagent.service.PrimaryAssistant primary;
-
-    public AiAgentController(
-            JwtIdentityService jwtIdentityService,
-            DashboardTaskConversation dashboardTasks,
-            AiAgentProperties aiAgentProperties,
-            AiModelProviderCapabilityRegistry capabilityRegistry,
-            AiModelProviderService providerService,
-            AiModelSelectionService modelSelectionService,
-            AiModelProviderRepository providerRepository,
-            AiModelConfigRepository modelConfigRepository, com.voltcanary.aiagent.service.PrimaryAssistant primary) {
-        this.jwtIdentityService = jwtIdentityService;
-        this.dashboardTasks = dashboardTasks;
-        this.aiAgentProperties = aiAgentProperties;
-        this.capabilityRegistry = capabilityRegistry;
-        this.providerService = providerService;
-        this.modelSelectionService = modelSelectionService;
-        this.providerRepository = providerRepository;
-        this.modelConfigRepository = modelConfigRepository;
-        this.primary = primary;
-    }
 
     @PostMapping("/plans")
     public PlanResponse plan(

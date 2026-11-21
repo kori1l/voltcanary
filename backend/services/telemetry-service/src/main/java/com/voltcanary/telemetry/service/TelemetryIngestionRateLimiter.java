@@ -7,15 +7,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class TelemetryIngestionRateLimiter {
 
-    private static final Logger log = LoggerFactory.getLogger(TelemetryIngestionRateLimiter.class);
     private static final Duration REDIS_KEY_TTL = Duration.ofMinutes(2);
 
     private final TelemetryValidationProperties properties;

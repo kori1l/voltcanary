@@ -1,7 +1,8 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.workspace.WorkspaceResourceAccess;
 import com.voltcanary.device.workspace.CurrentWorkspaceMembership;
+import com.voltcanary.device.workspace.WorkspaceResourceAccess;
+import lombok.RequiredArgsConstructor;
 
 import com.voltcanary.common.security.WorkspaceAuthorization.Decision;
 import com.voltcanary.device.config.InternalServiceAuth;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class WorkspaceResourceController {
     public record Consent(UUID accountId,boolean reviewed,boolean active) {
     }
@@ -32,13 +34,7 @@ public class WorkspaceResourceController {
     private final InternalServiceAuth internal;
     private final CurrentWorkspaceMembership membership;
     private final com.voltcanary.device.service.DashboardScopeReadService scopes;
-    public WorkspaceResourceController(WorkspaceResourceAccess access,AuthenticatedUserResolver users,InternalServiceAuth internal,CurrentWorkspaceMembership membership,com.voltcanary.device.service.DashboardScopeReadService scopes) {
-        this.access=access;
-        this.users=users;
-        this.internal=internal;
-        this.membership=membership;
-        this.scopes=scopes;
-    }
+
     @GetMapping("/workspaces/{workspaceId}/resource-accounts")
     public List<Association> accounts(@RequestHeader HttpHeaders headers,@PathVariable("workspaceId") UUID workspaceId) {
         return access.associations(actor(headers),workspaceId);

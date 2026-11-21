@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_dataset_lineage")
+@Getter
+@Setter
 public class MlDatasetLineage {
     @Id
     private UUID id;
@@ -36,26 +40,4 @@ public class MlDatasetLineage {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public MlDatasetSourceType getSourceType() { return sourceType; }
-    public void setSourceType(MlDatasetSourceType sourceType) { this.sourceType = sourceType; }
-    public String getSourceReference() { return sourceReference; }
-    public void setSourceReference(String sourceReference) { this.sourceReference = sourceReference; }
-    public String getFilterJson() { return filterJson; }
-    public void setFilterJson(String filterJson) { this.filterJson = filterJson; }
-    public String getSelectedDevicesJson() { return selectedDevicesJson; }
-    public void setSelectedDevicesJson(String selectedDevicesJson) { this.selectedDevicesJson = selectedDevicesJson; }
-    public String getSelectedMetricsJson() { return selectedMetricsJson; }
-    public void setSelectedMetricsJson(String selectedMetricsJson) { this.selectedMetricsJson = selectedMetricsJson; }
-    public Instant getSourceWindowStart() { return sourceWindowStart; }
-    public void setSourceWindowStart(Instant sourceWindowStart) { this.sourceWindowStart = sourceWindowStart; }
-    public Instant getSourceWindowEnd() { return sourceWindowEnd; }
-    public void setSourceWindowEnd(Instant sourceWindowEnd) { this.sourceWindowEnd = sourceWindowEnd; }
-    public String getContentHash() { return contentHash; }
-    public void setContentHash(String contentHash) { this.contentHash = contentHash; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

@@ -9,25 +9,18 @@ import com.voltcanary.dashboard.domain.DashboardRecords.Revision;
 import com.voltcanary.dashboard.port.DashboardStorage;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardPublication {
     private final DashboardStorage storage;
     private final DashboardAccess access;
     private final DefinitionValidation validation;
     private final DefinitionBindings bindings;
     private final DashboardIdempotency idempotency;
-
-    public DashboardPublication(DashboardStorage storage, DashboardAccess access, DefinitionValidation validation,
-            DefinitionBindings bindings, DashboardIdempotency idempotency) {
-        this.storage = storage;
-        this.access = access;
-        this.validation = validation;
-        this.bindings = bindings;
-        this.idempotency = idempotency;
-    }
 
     @Transactional
     public Revision publish(DashboardActor actor, String authorization, UUID id, String ifMatch,

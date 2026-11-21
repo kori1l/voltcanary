@@ -1,27 +1,25 @@
 package com.voltcanary.analytics.ml;
 
-import com.voltcanary.analytics.config.AnalyticsDownstreamProperties;
-import com.voltcanary.analytics.config.AnalyticsInternalProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.config.AnalyticsDownstreamProperties;
+import com.voltcanary.analytics.config.AnalyticsInternalProperties;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 @Component
+@Slf4j
 public class MlClient {
-
-    private static final Logger log = LoggerFactory.getLogger(MlClient.class);
 
     private final RestClient restClient;
     private final MeterRegistry meterRegistry;

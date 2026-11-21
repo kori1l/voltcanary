@@ -48,7 +48,9 @@ try {
     $settingsPath="/telemetry/devices/$id/vehicle-monitoring"
     $zone=@{id=[guid]::NewGuid().ToString();name='Acceptance depot';latitude=44.8125;longitude=20.4612;radiusMetres=10}
     $settings=@{speedLimitKmh=20;idleMinutes=1;zones=@($zone)}
-    $null=Api PUT $settingsPath $settings $owner
+    $baseSettings=Api GET "$settingsPath/snapshot" $null $owner
+    $monitoringReview=Api POST "$settingsPath/reviews" @{expectedRevision=$baseSettings.revision;idempotencyKey=[guid]::NewGuid().ToString();settings=$settings} $owner
+    $null=Api POST "$settingsPath/reviews/$($monitoringReview.id)/confirm" @{digest=$monitoringReview.digest;idempotencyKey=$monitoringReview.idempotencyKey} $owner
     $saved=Api GET $settingsPath $null $owner
     Check 'owner zone and monitoring settings persist' ($saved.speedLimitKmh -eq 20 -and $saved.idleMinutes -eq 1 -and $saved.zones[0].id -eq $zone.id)
     Reject 'foreign owner settings read denied' GET $settingsPath $null $foreign @(403)

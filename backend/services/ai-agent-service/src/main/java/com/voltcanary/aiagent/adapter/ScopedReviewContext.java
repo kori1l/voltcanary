@@ -10,21 +10,17 @@ import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import com.voltcanary.aiagent.service.PlanStore;
 import com.voltcanary.aiagent.service.PlanningInputGuard;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Immutable reviewed commands are mandatory context for refinement, including a just-superseded review. */
+@RequiredArgsConstructor
 public final class ScopedReviewContext implements ContextSources.Reviews {
     private final PlanStore reviews;
     private final IntentPlanStore plans;
     private final AuthorizedPlanningContext authority;
     private final ProtocolValidator validator;
     private final ObjectMapper mapper;
-    public ScopedReviewContext(PlanStore reviews, IntentPlanStore plans, AuthorizedPlanningContext authority, ProtocolValidator validator, ObjectMapper mapper) {
-        this.reviews = reviews;
-        this.plans = plans;
-        this.authority = authority;
-        this.validator = validator;
-        this.mapper = mapper;
-    }
+
     @Override
     public ContextSources.BaseReview read(IntentPlans.ModelInput input, Session session) {
         var submitted = validator.parse(plans.request(session.owner(), input.state().planId(), input.token().requestId()));

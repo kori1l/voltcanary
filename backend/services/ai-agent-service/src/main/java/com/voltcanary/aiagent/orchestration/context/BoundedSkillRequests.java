@@ -43,6 +43,8 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
     private final ContextSources.Initial initial;
     private final Clock clock;
     private final int maxRequestBytes;
+    private final com.voltcanary.aiagent.orchestration.routing.AttemptLedger ledger;
+    private final AssistantProtocol.RoutingPolicy policy;
 
     public BoundedSkillRequests(ObjectMapper mapper, ProtocolValidator validator, SkillRegistry skills, IntentPlanStore plans,
             ContextSources.History history, ContextLoading loading, ContextSources.Access access, OrchestrationPorts.Receipts receipts,
@@ -52,8 +54,17 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
     public BoundedSkillRequests(ObjectMapper mapper, ProtocolValidator validator, SkillRegistry skills, IntentPlanStore plans,
             ContextSources.History history, ContextLoading loading, ContextSources.Access access, OrchestrationPorts.Receipts receipts,
             ContextSources.Reviews reviews, ContextSources.Initial initial, Clock clock, int maxRequestBytes) {
+        this(mapper, validator, skills, plans, history, loading, access, receipts, reviews, initial, clock, maxRequestBytes, null, null);
+    }
+
+    public BoundedSkillRequests(ObjectMapper mapper, ProtocolValidator validator, SkillRegistry skills, IntentPlanStore plans,
+            ContextSources.History history, ContextLoading loading, ContextSources.Access access, OrchestrationPorts.Receipts receipts,
+            ContextSources.Reviews reviews, ContextSources.Initial initial, Clock clock, int maxRequestBytes,
+            com.voltcanary.aiagent.orchestration.routing.AttemptLedger ledger, AssistantProtocol.RoutingPolicy policy) {
         if (maxRequestBytes < 256 || maxRequestBytes > ProtocolValidator.MAX_BYTES) throw new IllegalArgumentException("CONTEXT_LIMIT_INVALID");
         this.mapper = mapper;
+        this.ledger = ledger;
+        this.policy = policy;
         this.validator = validator;
         this.skills = skills;
         this.plans = plans;
@@ -95,9 +106,10 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
         var base = includesBase ? reviews.read(input, session) : null;
         if (includesBase && base == null && state.focus().reviewId() != null) throw IntentPlans.reject("MANDATORY_BASE_REVIEW_UNAVAILABLE");
         var dialogue = dialogue(input, session, step.stepId());
+        var stepGoals = state.goals().stream().filter(goal -> step.goalIds().contains(goal.goalId())).toList();
         var context = new AssistantProtocol.Context("assistant-v2", "skill.context", UUID.randomUUID().toString(), clock.instant().toString(), "bounded-context-v1",
                 dialogue.omittedMessageCount() == 0 ? "COMPLETE" : "PARTIAL", dialogue.omittedMessageCount() == 0 ? List.of() : List.of("dialogue.history"),
-                facts(input, session), List.of(), state.goals(), base == null ? null : base.reviewId(), base == null ? null : base.digest(),
+                facts(input, session), List.of(), stepGoals, base == null ? null : base.reviewId(), base == null ? null : base.digest(),
                 List.of(), new AssistantProtocol.ContextSize(0L, 0L, "ESTIMATED"), dialogue);
         var contract = mapper.createObjectNode().put("trustPolicy", TRUST_POLICY);
         contract.set("parameterRules", mapper.valueToTree(skill.parameterRules()));
@@ -120,6 +132,11 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
                         new AssistantProtocol.LoadedContext("review.base", base.digest(), clock.instant().toString(), "COMPLETE", null, base.data()))));
         var loaded = initial.read(input, session);
         if (loaded != null) request.withArray("loadResults").add(mapper.valueToTree(loaded));
+        for (String id : skill.loaderIds()) {
+            var scoped = loading.initial(id, input, session,
+                    () -> validator.parse(plans.request(session.owner(), state.planId(), input.token().requestId())));
+            if (scoped != null) request.withArray("loadResults").add(mapper.valueToTree(scoped));
+        }
         size(request);
         fit(request, input, session, step.stepId(), (int) Math.min(maxRequestBytes, skill.maxContextBytes()));
         skills.validateStepRequest(request, authority.authorized(), authority.capabilities());
@@ -150,11 +167,13 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
         String stepId = previous.path("stepId").asText();
         var result = previous.<ObjectNode>deepCopy().put("callId", callId.toString());
         var results = result.withArray("loadResults");
+        var previousResults = results.deepCopy();
         if (requests.isEmpty() || requests.size() > 16 || results.size() + requests.size() > 16) throw IntentPlans.reject("CONTEXT_LOAD_LIMIT_REACHED");
         for (var request : requests) {
             var current = plans.read(session.owner(), input.state().planId());
             if (current.revision() != input.token().revision() || current.status().equals("CANCELLED")) throw IntentPlans.conflict("MODEL_TURN_NO_LONGER_OWNED");
-            results.add(mapper.valueToTree(loading.load(input, session, authority, stepId, request)));
+            var budget = ledger == null ? null : new ContextSources.ModelBudget(ledger, policy, stepId, callId);
+            results.add(mapper.valueToTree(loading.load(input, session, authority, stepId, request, previousResults, budget)));
         }
         result.withObject("/context").set("contextRequests", mapper.valueToTree(requests));
         for (var loaded : results) if (loaded.path("completeness").asText().equals("PARTIAL")) {
@@ -178,6 +197,11 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
         }
         return input.state().facts().stream().map(IntentPlans.Confirmed::fact).toList();
     }
+    @Override
+    public void verifyForDispatch(IntentPlans.ModelInput input, OrchestrationPorts.Session session, JsonNode request) {
+        loading.verifyForDispatch(input, session, request.path("loadResults"));
+    }
+
     private AssistantProtocol.Dialogue dialogue(IntentPlans.ModelInput input, OrchestrationPorts.Session session, String stepId) {
         var state = input.state();
         long through = history.through(session, state.conversationId());
@@ -194,6 +218,11 @@ public final class BoundedSkillRequests implements RoutedIntentModels.Requests {
         required.remove(input.currentMessage().messageId().toString());
         var messages = new LinkedHashMap<String, AssistantProtocol.DialogueMessagesItem>();
         history.required(session, state.conversationId(), through, required).forEach(message -> messages.put(message.messageId(), message));
+        for (var goal : state.goals()) {
+            if (!"PENDING".equals(goal.disposition()) || input.currentMessage().messageId().toString().equals(goal.sourceMessageId())) continue;
+            var source = messages.get(goal.sourceMessageId());
+            if (source == null || !"USER".equals(source.role())) throw IntentPlans.reject("PENDING_GOAL_SOURCE_UNAVAILABLE");
+        }
         if (messages.size() > 12) throw IntentPlans.reject("MANDATORY_DIALOGUE_REQUIRES_NARROWING");
         for (var message : history.recent(session, state.conversationId(), through, 6)) {
             if (messages.size() < 12 && !message.messageId().equals(input.currentMessage().messageId().toString())) messages.putIfAbsent(message.messageId(), message);

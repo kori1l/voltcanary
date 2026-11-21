@@ -2,26 +2,35 @@ package com.voltcanary.dashboard.query;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.dashboard.domain.DashboardActor;
-import com.voltcanary.dashboard.port.DashboardEvidenceReads;
 import com.voltcanary.dashboard.port.DashboardEvidenceReads.ReadRequest;
+import com.voltcanary.dashboard.port.DashboardEvidenceReads;
 import jakarta.annotation.PreDestroy;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Six owner reads at most, shared by every query in this JVM; request-local single flight. */
 @Component
+@RequiredArgsConstructor
 public class QueryReadScheduler {
     public record Key(String owner, ReadRequest request) { }
     private final DashboardEvidenceReads reads;
     private final ExecutorService pool = new java.util.concurrent.ThreadPoolExecutor(6, 6, 0, TimeUnit.MILLISECONDS,
             new java.util.concurrent.ArrayBlockingQueue<>(144), new java.util.concurrent.ThreadPoolExecutor.AbortPolicy());
-    public QueryReadScheduler(DashboardEvidenceReads reads) { this.reads = reads; }
+
     public JsonNode businessVersion(String authorization, DashboardActor actor, ReadRequest request, String owner) {
         return reads.businessVersion(authorization, actor, request, owner);
+    }
+    public CompletableFuture<JsonNode> configuredEvidence(String authorization, DashboardActor actor,
+            com.voltcanary.dashboard.domain.DashboardDefinition.Widget widget) {
+        return CompletableFuture.supplyAsync(() -> switch (widget.type()) {
+            case NativeDashboardRows.TYPE -> reads.nativeRows(authorization, widget.query());
+            default -> reads.ruleMeasure(authorization, actor, widget.query());
+        }, pool);
     }
     public CompletableFuture<JsonNode> read(String owner, ReadRequest request, String authorization,
             DashboardActor actor, Map<Key, CompletableFuture<JsonNode>> memo) {

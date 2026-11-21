@@ -17,9 +17,11 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
@@ -35,12 +37,6 @@ public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
     private final OpcUaValueMapper mapper;
     private final Clock clock;
     private final Map<String, OpcUaSubscriptionHandle> subscriptions = new ConcurrentHashMap<>();
-
-    public OpcUaTelemetryAdapter(OpcUaClientOperations client, OpcUaValueMapper mapper, Clock clock) {
-        this.client = client;
-        this.mapper = mapper;
-        this.clock = clock;
-    }
 
     @Override
     public AdapterManifest manifest() {

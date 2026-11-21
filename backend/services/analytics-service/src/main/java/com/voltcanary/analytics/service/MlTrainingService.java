@@ -9,10 +9,10 @@ import com.voltcanary.analytics.domain.MlFeatureSnapshot;
 import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
-import com.voltcanary.analytics.dto.MlTrainingRunDto;
-import com.voltcanary.analytics.dto.MlTrainingRunRequest;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
+import com.voltcanary.analytics.dto.MlTrainingRunDto;
+import com.voltcanary.analytics.dto.MlTrainingRunRequest;
 import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import com.voltcanary.analytics.repository.MlModelVersionRepository;
@@ -23,12 +23,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlTrainingService {
 
     private static final String DEFAULT_ANOMALY_ALGORITHM = "sklearn-isolation-forest-v1";
@@ -39,17 +41,6 @@ public class MlTrainingService {
     private final MlTrainingRunRepository trainingRunRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-
-    public MlTrainingService(
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlTrainingRunRepository trainingRunRepository,
-            MlModelVersionRepository modelVersionRepository) {
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.trainingRunRepository = trainingRunRepository;
-        this.modelVersionRepository = modelVersionRepository;
-    }
 
     @Transactional
     public MlTrainingRunDto create(UUID accountId, UUID userId, MlTrainingRunRequest request) {

@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationAttemptService {
 
     private final NotificationAttemptRepository attemptRepository;
@@ -33,21 +35,6 @@ public class NotificationAttemptService {
     private final MeterRegistry meterRegistry;
     private final AlertNotificationProperties properties;
     private final ObjectMapper objectMapper;
-
-    public NotificationAttemptService(
-            NotificationAttemptRepository attemptRepository,
-            AlertRepository alertRepository,
-            AlertAccessService alertAccessService,
-            MeterRegistry meterRegistry,
-            AlertNotificationProperties properties,
-            ObjectMapper objectMapper) {
-        this.attemptRepository = attemptRepository;
-        this.alertRepository = alertRepository;
-        this.alertAccessService = alertAccessService;
-        this.meterRegistry = meterRegistry;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-    }
 
     @Transactional(readOnly = true)
     public List<NotificationAttemptResponse> listForAlert(

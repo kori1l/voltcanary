@@ -1,7 +1,5 @@
 package com.voltcanary.device.service;
 
-
-
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.DataSource;
@@ -17,11 +15,11 @@ import com.voltcanary.device.dto.InternalDataSourceResponse;
 import com.voltcanary.device.dto.SourceTokenResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.event.SourceRuntimeConfigEventPublisher;
+import com.voltcanary.device.exception.NotFoundException;
 import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.exception.NotFoundException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -33,11 +31,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class DataSourceService {
 
     private final DeviceService deviceService;
@@ -49,27 +48,6 @@ public class DataSourceService {
     private final DeviceAuditService auditService;
     private final com.voltcanary.device.telemetry.SourceRuntimeMappings runtimeMappings;
     private final SecureRandom secureRandom = new SecureRandom();
-
-
-    public DataSourceService(
-            DeviceService deviceService,
-            AccountRepository accountRepository,
-            DeviceRepository deviceRepository,
-            DataSourceRepository dataSourceRepository,
-            DeviceRegistryEventPublisher eventPublisher,
-            SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher,
-            DeviceAuditService auditService,
-            com.voltcanary.device.telemetry.SourceRuntimeMappings runtimeMappings) {
-        this.deviceService = deviceService;
-        this.accountRepository = accountRepository;
-        this.deviceRepository = deviceRepository;
-        this.dataSourceRepository = dataSourceRepository;
-        this.eventPublisher = eventPublisher;
-        this.runtimeConfigEventPublisher = runtimeConfigEventPublisher;
-        this.auditService = auditService;
-        this.runtimeMappings = runtimeMappings;
-
-    }
 
     @Transactional(readOnly = true)
     public List<DataSourceResponse> list(AuthenticatedUser user, UUID deviceId) {

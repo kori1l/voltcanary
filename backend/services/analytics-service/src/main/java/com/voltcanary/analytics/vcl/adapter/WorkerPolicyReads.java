@@ -7,7 +7,6 @@ import com.voltcanary.common.web.ConfigurableOwnerReads;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclEvidencePolicyDescription;
 import com.voltcanary.vcl.VclException;
-import com.voltcanary.vcl.VclParser;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -43,7 +42,7 @@ public final class WorkerPolicyReads {
         var bundle = bundles.find(account, active.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(active.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var root = new VclParser().readJson(bundle.payload().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var root = bundle.json();
         boolean declared = false;
         for (var node : root.at("/compilation/graph")) {
             if ("emit_alert".equals(node.path("method").textValue())

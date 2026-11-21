@@ -3,28 +3,22 @@ package com.voltcanary.device.service;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.dto.AccountResponse;
+import com.voltcanary.device.exception.AccountInactiveException;
 import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.exception.AccountInactiveException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class AccountService {
 
     private final AccountRepository accountRepository;
     private final AccountDeletionCleanupService accountDeletionCleanupService;
-
-    public AccountService(
-            AccountRepository accountRepository,
-            AccountDeletionCleanupService accountDeletionCleanupService) {
-        this.accountRepository = accountRepository;
-        this.accountDeletionCleanupService = accountDeletionCleanupService;
-    }
 
     @Transactional
     public Account currentAccount(AuthenticatedUser user) {

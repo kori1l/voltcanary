@@ -56,8 +56,18 @@ final class DashboardOperationCompiler {
             return new Result(Map.of(), Map.of(), List.of(), false, restore.restoreSteps());
         }
         for (var operation : envelope.operations()) compiler.apply(operation);
-        if (compiler.widgets().isEmpty() || compiler.widgets().size() > 12) throw invalid("Choose 1–12 widgets");
-        if (!(compiler.intent.get("deviceRefs") instanceof List<?> devices) || devices.isEmpty() || devices.size() > 20) throw invalid("Choose 1–20 devices");
+        int widgetCount = compiler.widgets().size();
+        if (widgetCount == 0) {
+            throw new DashboardPreparationRejected("INVALID_PLAN", "DASHBOARD_WIDGETS_EMPTY",
+                    "Include at least one widget in the resulting dashboard.", true);
+        }
+        if (widgetCount > 12) {
+            throw new DashboardPreparationRejected("INVALID_PLAN", "DASHBOARD_WIDGET_LIMIT_EXCEEDED",
+                    "The resulting dashboard has " + widgetCount + " widgets; the limit is 12. Preserve the requested content when resolving the limit.", true);
+        }
+        if (!(compiler.intent.get("deviceRefs") instanceof List<?> devices) || devices.size() > 20 || devices.isEmpty()) {
+            throw invalid("Choose 1–20 devices");
+        }
         var frozenMask = new LinkedHashMap<String, Set<String>>();
         compiler.mask.forEach((key, fields) -> frozenMask.put(key, Set.copyOf(fields)));
         compiler.outcomes.addAll(DashboardOperationExpectations.derive(compiler.intent, compiler.mask, context));
@@ -145,7 +155,9 @@ final class DashboardOperationCompiler {
                 .findFirst().orElseThrow(() -> invalid("Expired or unavailable dataRef"));
         if (Boolean.TRUE.equals(choice.summary().get("requiresSourceChoice"))) throw new DashboardSourceChoiceRequired(choice.summary(), context);
         if (!(choice.summary().get("views") instanceof List<?> views)) throw invalid("No supported data view");
+        Map<String, Object> existing = requestedKey == null ? null : widget(target(requestedKey));
         var compatible = views.stream().filter(item -> item instanceof Map<?, ?> candidate && role(candidate, role)
+                && (existing == null || Objects.equals(existing.get("type"), candidate.get("widgetType")))
                 && (view == null || candidate.get("visualizations") instanceof List<?> modes && modes.contains(view)))
                 .map(item -> (Map<?, ?>) item).toList();
         if (compatible.isEmpty()) throw invalid("Requested role/view is unavailable; use an offered compatible view");
@@ -162,14 +174,14 @@ final class DashboardOperationCompiler {
         var matches = widgets().stream().filter(panel -> type.equals(panel.get("type")) && sameData(panel, data)
                 && Objects.equals(panel.getOrDefault("period", intent.get("period")), selectedPeriod)
                 && (requestedView == null || requestedView.equals(panel.getOrDefault("visualization", type.equals("vehicle-timeline") ? "list" : "line")))).toList();
-        Map<String, Object> existing = requestedKey == null ? null : widget(target(requestedKey));
-        if (existing != null && (!type.equals(existing.get("type")) || !sameData(existing, data))) throw invalid("Explicit target has a different role/data; use set_data for replacement");
-        if (existing == null) {
+        var selected = existing;
+        if (selected != null && !sameData(selected, data)) throw invalid("Explicit target has different data; use set_data for replacement");
+        if (selected == null) {
             if (matches.size() > 1) throw invalid("Multiple matching widgets; choose an existing widgetKey");
-            if (matches.size() == 1) existing = matches.getFirst();
+            if (matches.size() == 1) selected = matches.getFirst();
         }
         String key;
-        if (existing == null) {
+        if (selected == null) {
             key = newKey(id);
             var panel = new LinkedHashMap<>(data);
             panel.remove("_resolvedDataChoiceId");
@@ -181,18 +193,19 @@ final class DashboardOperationCompiler {
             if (period != null) panel.put("period", period);
             add(panel);
         } else {
-            key = String.valueOf(existing.get("key"));
-            if (selectedView != null && !selectedView.equals(existing.get("visualization"))) {
+            key = String.valueOf(selected.get("key"));
+            if (view != null && !view.equals(selected.get("visualization"))) {
                 write(key, "visualization");
-                patch(key, Map.of("visualization", selectedView));
+                patch(key, Map.of("visualization", view));
             }
-            if (period != null && !Objects.equals(existing.getOrDefault("period", intent.get("period")), period)) {
+            if (period != null && !Objects.equals(selected.getOrDefault("period", intent.get("period")), period)) {
                 write(key, "period");
                 patch(key, Map.of("period", period));
             }
         }
         references.put(id, key);
-        outcomes.add(Map.of("role", role, "widgetKey", key, "dataChoiceId", choice.resourceId(), "period", selectedPeriod));
+        Object effectivePeriod = selected != null && period == null ? selected.getOrDefault("period", selectedPeriod) : selectedPeriod;
+        outcomes.add(Map.of("role", role, "widgetKey", key, "dataChoiceId", choice.resourceId(), "period", effectivePeriod));
     }
 
     private boolean role(Map<?, ?> view, String role) {

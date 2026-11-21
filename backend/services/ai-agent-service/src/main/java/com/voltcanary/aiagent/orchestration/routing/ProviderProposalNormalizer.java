@@ -3,12 +3,12 @@ package com.voltcanary.aiagent.orchestration.routing;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Usage;
 import com.voltcanary.aiagent.orchestration.contract.ProtocolValidator;
+import lombok.RequiredArgsConstructor;
 
 /** Provider envelopes are transport data. All paths still enter canonical + registered validation. */
+@RequiredArgsConstructor
 public final class ProviderProposalNormalizer {
     private final ProtocolValidator validator;
-
-    public ProviderProposalNormalizer(ProtocolValidator validator) { this.validator = validator; }
 
     public BudgetedModelCalls.Reply openAi(JsonNode envelope, String mode, Usage usage) {
         var choices = envelope.path("choices");

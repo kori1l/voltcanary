@@ -5,6 +5,7 @@ import com.voltcanary.device.configurable.adapter.JdbcNativeRowQueries;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
 import com.voltcanary.vcl.VclParser;
 import com.voltcanary.vcl.VclRegistry;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -12,13 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Shared grammar publication is separate from the owner's implemented execution profile. */
 @RestController
+@RequiredArgsConstructor
 public class DataLanguageController {
     private final AuthenticatedUserResolver users;
     private final VclRegistry registry = new VclRegistry(new VclParser());
-
-    public DataLanguageController(AuthenticatedUserResolver users) {
-        this.users = users;
-    }
 
     @GetMapping("/data/language")
     public JsonNode language(@RequestHeader HttpHeaders headers) {

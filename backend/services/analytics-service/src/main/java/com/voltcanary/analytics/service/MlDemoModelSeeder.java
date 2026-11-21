@@ -8,18 +8,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class MlDemoModelSeeder {
 
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDeploymentAuditWriter auditWriter;
-
-    public MlDemoModelSeeder(MlModelVersionRepository modelVersionRepository, MlDeploymentAuditWriter auditWriter) {
-        this.modelVersionRepository = modelVersionRepository;
-        this.auditWriter = auditWriter;
-    }
 
     public void ensureDemoModels(UUID accountId) {
         if (!modelVersionRepository.findByAccountIdOrderByCreatedAtDesc(accountId).isEmpty()) {

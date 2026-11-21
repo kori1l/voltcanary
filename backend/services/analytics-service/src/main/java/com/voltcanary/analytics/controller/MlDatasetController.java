@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.dto.MlCsvSchemaMapping;
 import com.voltcanary.analytics.dto.MlDatasetDetailDto;
 import com.voltcanary.analytics.dto.MlDatasetSummaryDto;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
+import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewResponse;
 import com.voltcanary.analytics.dto.MlExternalImportResponse;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotRequest;
 import com.voltcanary.analytics.dto.MlFeatureSnapshotResponse;
@@ -13,8 +15,6 @@ import com.voltcanary.analytics.dto.MlInternalDatasetRequest;
 import com.voltcanary.analytics.dto.MlInternalDatasetResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
-import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
-import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewResponse;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlDatasetService;
 import com.voltcanary.analytics.service.MlExternalDatasetImportService;
@@ -24,11 +24,12 @@ import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -40,6 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/analytics/ml/datasets")
+@RequiredArgsConstructor
 public class MlDatasetController {
 
     private final MlDatasetService service;
@@ -48,21 +50,6 @@ public class MlDatasetController {
     private final MlHorizonLabelGenerationService horizonLabelGenerationService;
     private final AnalyticsAccessService accessService;
     private final ObjectMapper objectMapper;
-
-    public MlDatasetController(
-            MlDatasetService service,
-            MlExternalDatasetImportService importService,
-            MlFeaturePipelineService featurePipelineService,
-            MlHorizonLabelGenerationService horizonLabelGenerationService,
-            AnalyticsAccessService accessService,
-            ObjectMapper objectMapper) {
-        this.service = service;
-        this.importService = importService;
-        this.featurePipelineService = featurePipelineService;
-        this.horizonLabelGenerationService = horizonLabelGenerationService;
-        this.accessService = accessService;
-        this.objectMapper = objectMapper;
-    }
 
     @GetMapping
     public List<MlDatasetSummaryDto> listDatasets(

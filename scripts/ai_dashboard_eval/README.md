@@ -85,3 +85,9 @@ stays unknown. `--previous-campaign` links immutable reports and consumes the
 same remaining aggregate limits, including elapsed wall time. Such a linked
 source-version reevaluation is explicitly non-independent and never replaces
 its prior failed score. This is an A5 development checkpoint, not A6 qualification.
+
+Generate the case list, corpus fingerprint and budget manifest offline with
+`python scripts/ai-first-pass-checkpoint.py --preflight-only --output artifacts/a5-preflight`.
+Use a fresh directory for the authenticated run and provide the scoped account
+file through `--account` and the generated `predeclared.json` through
+`--preflight-manifest`. The comparison runs before authentication or provider calls.

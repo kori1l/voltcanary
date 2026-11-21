@@ -44,6 +44,42 @@ class DashboardOperationCompilerTest {
         assertThatThrownBy(() -> PrimaryDashboardVerification.verifyLayouts(before, validMove, java.util.Set.of()))
                 .isInstanceOf(com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure.class);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource(delimiter = '|', textBlock = """
+            {"desktop":{}} | INVALID_LAYOUT_BREAKPOINT
+            {"desktop":[{"widgetId":"other","x":0,"y":0,"w":1,"h":1}]} | LAYOUT_WIDGET_IDENTITY_POSTCONDITION
+            {"desktop":[{"widgetId":"card","x":0,"y":0,"w":1,"h":1},{"widgetId":"card","x":1,"y":0,"w":1,"h":1}]} | LAYOUT_WIDGET_IDENTITY_POSTCONDITION
+            {"desktop":[{"widgetId":"card","y":0,"w":1,"h":1}]} | INVALID_LAYOUT_GEOMETRY
+            {"desktop":[{"widgetId":"card","x":-1,"y":0,"w":1,"h":1}]} | INVALID_LAYOUT_GEOMETRY
+            {"desktop":[{"widgetId":"card","x":0,"y":0,"w":1.5,"h":1}]} | INVALID_LAYOUT_GEOMETRY
+            {"desktop":[{"widgetId":"card","x":0,"y":0,"w":2,"h":1},{"widgetId":"history","x":1,"y":0,"w":1,"h":1}]} | OVERLAPPING_LAYOUT
+            """)
+    void preparedLayoutsRejectInvalidPlacements(String layouts, String code) throws Exception {
+        var layout = mapper.readTree(layouts);
+        var failure = org.junit.jupiter.api.Assertions.assertThrows(com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure.class,
+                () -> PrimaryDashboardVerification.verifyLayoutGeometry(layout, java.util.Set.of("card", "history")));
+        assertThat(failure.diagnostic().code()).isEqualTo(code);
+    }
+
+    @Test void preparedResponsiveLayoutsMustApplyCompiledOrderAndSize() throws Exception {
+        var layouts = mapper.readTree("""
+                {"desktop":[{"widgetId":"card","x":0,"y":0,"w":6,"h":3},{"widgetId":"note","x":6,"y":0,"w":6,"h":4}],
+                 "tablet":[{"widgetId":"card","x":0,"y":0,"w":3,"h":3},{"widgetId":"note","x":3,"y":0,"w":3,"h":4}],
+                 "mobile":[{"widgetId":"card","x":0,"y":0,"w":1,"h":3},{"widgetId":"note","x":0,"y":3,"w":1,"h":4}]}
+                """);
+        var widgets = Map.of("card", mapper.readTree("{\"width\":\"HALF\",\"height\":3}"),
+                "note", mapper.readTree("{\"width\":\"HALF\"}"));
+        PrimaryDashboardVerification.verifyCompositionLayout(layouts, List.of("card", "note"), widgets);
+        var wrongOrder = org.junit.jupiter.api.Assertions.assertThrows(com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure.class,
+                () -> PrimaryDashboardVerification.verifyCompositionLayout(layouts, List.of("note", "card"), widgets));
+        assertThat(wrongOrder.diagnostic().code()).isEqualTo("LAYOUT_ORDER_POSTCONDITION");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) layouts.at("/mobile/0")).put("h", 2);
+        var wrongSize = org.junit.jupiter.api.Assertions.assertThrows(com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure.class,
+                () -> PrimaryDashboardVerification.verifyCompositionLayout(layouts, List.of("card", "note"), widgets));
+        assertThat(wrongSize.diagnostic().code()).isEqualTo("LAYOUT_SIZE_POSTCONDITION");
+    }
+
     @Test void newWidgetTitleResolvesOnlyAnEarlierOperationWithoutChangingItsDataOrGeometry() {
         var created = compile(false, new DashboardOperation.ShowCurrent("speed", "data_speedKmh", null));
         var renamed = compile(false, new DashboardOperation.ShowCurrent("speed", "data_speedKmh", null),
@@ -143,6 +179,29 @@ class DashboardOperationCompilerTest {
                 List.of(new DashboardOperation.ShowHistory("line", "data_doors", null, "line", null))), context, "turn");
         assertThat((List<?>) line.intent().get("widgets")).hasSize(6);
         assertThat(((List<?>) line.intent().get("widgets")).get(2)).isEqualTo(legacy);
+    }
+
+    @Test void explicitHistoryTargetPreservesOmittedViewAndPeriod() {
+        var result = compile(true,
+                new DashboardOperation.ShowHistory("list", "data_doors", "door_history", "list", "LAST_6_HOURS"),
+                new DashboardOperation.ShowHistory("reuse", "data_doors", "door_history", null, null));
+        var chart = (Map<?, ?>) ((List<?>) result.intent().get("widgets")).get(2);
+        assertThat(chart.get("visualization")).isEqualTo("list");
+        assertThat(chart.get("period")).isEqualTo("LAST_6_HOURS");
+    }
+
+    @Test void explicitCurrentTargetKeepsItsTypeWhenAnotherCompatibleTypeIsPreferred() {
+        var original = context(true);
+        var refs = new ArrayList<>(original.refs());
+        var choice = refs.stream().filter(ref -> ref.ref().equals("data_speedKmh")).findFirst().orElseThrow();
+        var summary = new LinkedHashMap<>(choice.summary());
+        summary.put("views", List.of(Map.of("widgetType", "latest-value", "visualizations", List.of("number")),
+                Map.of("widgetType", "vehicle-value", "visualizations", List.of("number"))));
+        refs.set(refs.indexOf(choice), new AuthorizedPlanningContext.ResourceRef(choice.ref(), choice.kind(), choice.resourceId(), summary));
+        var context = new AuthorizedPlanningContext.Prepared(original.scope(), original.context(), refs);
+        var result = DashboardOperationCompiler.compile(new DashboardOperationProtocol.Envelope(DashboardOperationProtocol.VERSION,
+                List.of(new DashboardOperation.ShowCurrent("current", "data_speedKmh", "speed"))), context, "turn");
+        assertThat(result.intent().get("widgets")).isEqualTo(List.of(map, speed, doorHistory, speedHistory, stop));
     }
 
     @Test void replacementAddsOnlyItsAuthorizedDeviceToDashboardScope() {
@@ -257,6 +316,20 @@ class DashboardOperationCompilerTest {
 
     private DashboardOperationCompiler.Result compile(boolean previous, DashboardOperation... operations) {
         return DashboardOperationCompiler.compile(new DashboardOperationProtocol.Envelope(DashboardOperationProtocol.VERSION, List.of(operations)), context(previous), "persisted-turn");
+    }
+
+    @Test void widgetCountDiagnosticsDistinguishAnEmptyDashboardFromOverflow() {
+        assertThatThrownBy(() -> compile(false, new DashboardOperation.RenameDashboard("name", "Example")))
+                .isInstanceOfSatisfying(DashboardPreparationRejected.class,
+                        failure -> assertThat(failure.code()).isEqualTo("DASHBOARD_WIDGETS_EMPTY"));
+        var notes = java.util.stream.IntStream.rangeClosed(1, 13)
+                .mapToObj(index -> new DashboardOperation.AddNote("note" + index, "Title " + index, "Text " + index))
+                .toArray(DashboardOperation[]::new);
+        assertThatThrownBy(() -> compile(false, notes))
+                .isInstanceOfSatisfying(DashboardPreparationRejected.class, failure -> {
+                    assertThat(failure.code()).isEqualTo("DASHBOARD_WIDGET_LIMIT_EXCEEDED");
+                    assertThat(failure.getMessage()).contains("13 widgets");
+                });
     }
 
     @Test void compoundEditReusesRolesAndMovesOnlyCurrentCardsAboveMapAndHistories() {

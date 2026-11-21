@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.common.web.EnergyTariff;
-import com.voltcanary.common.web.OperationalFact;
 import com.voltcanary.common.web.OperatingSchedule;
+import com.voltcanary.common.web.OperationalFact;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.domain.OperationalWindows;
 import com.voltcanary.dashboard.port.DashboardEvidenceReads.ReadRequest;
@@ -16,15 +16,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DashboardBusinessReads {
     private final ObjectMapper mapper;
     private final OperationalWindows windows=new OperationalWindows();
-    public DashboardBusinessReads(ObjectMapper mapper) {
-        this.mapper=mapper;
-    }
+
     public ObjectNode batched(Function<Function<ReadRequest,JsonNode>,ObjectNode> calculation,
             Function<List<ReadRequest>,List<JsonNode>> batch) {
         var intervals = new java.util.LinkedHashSet<ReadRequest>();

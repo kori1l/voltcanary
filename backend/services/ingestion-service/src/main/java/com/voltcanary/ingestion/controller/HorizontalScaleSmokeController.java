@@ -3,8 +3,8 @@ package com.voltcanary.ingestion.controller;
 import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
 import com.voltcanary.ingestion.connector.ConnectorLeaseManager;
 import com.voltcanary.ingestion.connector.ConnectorRuntimeProperties;
-import com.voltcanary.ingestion.connector.ConnectorSupervisor;
 import com.voltcanary.ingestion.connector.ConnectorRuntimeState;
+import com.voltcanary.ingestion.connector.ConnectorSupervisor;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigConsumer;
 import com.voltcanary.ingestion.source.SourceRuntimeConfigStore;
@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -29,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
         prefix = "app.ingestion.horizontal-scale-smoke",
         name = "enabled",
         havingValue = "true")
+@RequiredArgsConstructor
 public class HorizontalScaleSmokeController {
 
     private final KafkaTemplate<String, SourceRuntimeConfigEvent> kafkaTemplate;
@@ -37,21 +39,6 @@ public class HorizontalScaleSmokeController {
     private final ConnectorSupervisor supervisor;
     private final ConnectorLeaseManager leaseManager;
     private final ConnectorRuntimeProperties properties;
-
-    public HorizontalScaleSmokeController(
-            KafkaTemplate<String, SourceRuntimeConfigEvent> kafkaTemplate,
-            SourceRegistryCache cache,
-            SourceRuntimeConfigStore configStore,
-            ConnectorSupervisor supervisor,
-            ConnectorLeaseManager leaseManager,
-            ConnectorRuntimeProperties properties) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.cache = cache;
-        this.configStore = configStore;
-        this.supervisor = supervisor;
-        this.leaseManager = leaseManager;
-        this.properties = properties;
-    }
 
     @PostMapping("/source-runtime-configs")
     public Map<String, Object> publishSourceRuntimeConfig(@RequestBody SmokeSourceRuntimeConfigRequest request) {

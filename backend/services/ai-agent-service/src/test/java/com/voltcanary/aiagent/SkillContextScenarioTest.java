@@ -65,13 +65,21 @@ class SkillContextScenarioTest {
         var primaryRegistry = new SkillRegistry(f.validator, com.voltcanary.aiagent.service.PrimarySkillPackages.build(f.mapper, f.validator, domain));
         var allTools = java.util.Arrays.stream(com.voltcanary.aiagent.model.AgentTool.values()).map(Enum::name).collect(java.util.stream.Collectors.toSet());
         allTools.add("REFINE_DASHBOARD_REVIEW");
-        assertEquals(allTools.size() - 1, primaryRegistry.catalogue(allTools, Set.of()).size());
+        assertEquals(allTools.size() - 2, primaryRegistry.catalogue(allTools, Set.of()).size());
+        assertTrue(primaryRegistry.catalogue(allTools, Set.of()).stream().noneMatch(intent ->
+                Set.of("CREATE_NATIVE_TABLE", "APPLY_SOURCE_MAPPING").contains(intent.intentId())));
         assertEquals(allTools.size(), primaryRegistry.catalogue(allTools,
                 Set.of(com.voltcanary.aiagent.nativeops.NativeTableSkill.CAPABILITY)).size());
         assertEquals(Set.of("device.catalogue", "workflow.context", "conversation.history"),
                 Set.copyOf(primaryRegistry.manifest("CREATE_DASHBOARD", allTools, Set.of()).loaderIds()));
         var dashboardCommand = f.mapper.readTree("{\"schemaId\":\"CREATE_DASHBOARD:command:2\",\"schemaVersion\":\"2\",\"payload\":{\"protocol\":\"dashboard-operations-v1\",\"operations\":[{\"op\":\"rename_dashboard\",\"id\":\"name\",\"name\":\"Vehicle\"},{\"op\":\"show_map\",\"id\":\"map\",\"dataRef\":\"owned-ref\"}]}}");
         assertDoesNotThrow(() -> primaryRegistry.validateCommand("CREATE_DASHBOARD", dashboardCommand, allTools, Set.of()));
+        var invalidOperation = dashboardCommand.deepCopy();
+        ((ObjectNode) invalidOperation.at("/payload/operations/0")).put("extra", "private fixture content");
+        var operationFailure = assertThrows(com.voltcanary.aiagent.orchestration.contract.ProtocolValidator.RegisteredViolation.class,
+                () -> primaryRegistry.validateCommand("CREATE_DASHBOARD", invalidOperation, allTools, Set.of()));
+        assertTrue(operationFailure.locations().startsWith("operations[0].rename_dashboard: additionalProperties:"));
+        assertFalse(operationFailure.locations().contains("private fixture content"));
         var legacyWrapper = dashboardCommand.deepCopy();
         ((ObjectNode) legacyWrapper).set("payload", f.mapper.createObjectNode().put("summary", "legacy wrapper"));
         assertThrows(IllegalArgumentException.class, () -> primaryRegistry.validateCommand("CREATE_DASHBOARD", legacyWrapper, allTools, Set.of()));

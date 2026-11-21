@@ -6,6 +6,8 @@ import {widgetManifestVisualizations} from "../model/widgetManifestCapabilities"
 
 export const widgetDragMime="application/x-voltcanary-widget";
 const descriptions:Record<string,{name:string;detail:string;kind:"chart"|"number"|"table"|"note"}>={
+  "configured-records":{name:"Table records",detail:"Selected columns from a table in your account",kind:"table"},
+  "rule-window-result":{name:"Saved rule result",detail:"A finalized interval measure and its available observation references",kind:"number"},
   "vehicle-value":{name:"Vehicle field",detail:"Current speed, door state, next stop or another recorded field",kind:"number"},
   "vehicle-timeline":{name:"Vehicle state history",detail:"Timestamped door and journey observations",kind:"table"},
   "vehicle-map":{name:"Vehicle map",detail:"GPS position and movement trail of one automobile",kind:"chart"},

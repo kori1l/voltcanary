@@ -4,44 +4,49 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.aiagent.adapter.PrimaryOrchestrationJournal;
 import com.voltcanary.aiagent.config.PrimaryAssistantProperties;
 import com.voltcanary.aiagent.conversation.ConversationContracts;
-import com.voltcanary.aiagent.conversation.ConversationStore;
 import com.voltcanary.aiagent.conversation.ConversationRedaction;
+import com.voltcanary.aiagent.conversation.ConversationStore;
 import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.dto.PlanResponse;
 import com.voltcanary.aiagent.llm.adapter.AiModelResolver;
 import com.voltcanary.aiagent.llm.adapter.AiResolvedModel;
 import com.voltcanary.aiagent.model.PlanningQuestion;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol;
-import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.IntentPlanStore;
+import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts;
 import com.voltcanary.aiagent.repository.AiModelConfigRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
+import com.voltcanary.aiagent.trace.AssistantBoundary;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Primary HTTP/application bridge. Legacy generation is never a fallback for a v2 error. */
-public final class PrimaryAssistant {
+@RequiredArgsConstructor
+public class PrimaryAssistant {
     public Map<String, Object> profile(AuthenticatedUser user, String authorization) {
         session(user, authorization);
         var profile = ports.properties().getProfile();
         return Map.of("engine", "spring-ai-2", "enabled", enabled(), "profile", profile.name(), "automaticCorrections", profile.automaticCorrections(),
                 "modelJudge", profile.modelJudge(), "projectionVersion", com.voltcanary.aiagent.orchestration.routing.StrictOutputProjection.VERSION,
-                "graphEngine", ports.runtime().graphEngine(), "graphDefinition", ports.runtime().graphDefinition());
+                "graphEngine", ports.runtime().graphEngine(), "graphDefinition", ports.runtime().graphDefinition(),
+                "sourceMappingEnabled", enabled() && ports.properties().isNativeDataEnabled());
     }
     public record Ports(PrimaryRuntime runtime, PrimaryOrchestrationJournal journal, IntentPlanStore plans, ConversationStore conversations,
             AiAgentOrchestrator reviews, AiModelResolver models, AiModelConfigRepository configs, AuthorizedPlanningContext authority,
             ObjectMapper mapper, PrimaryAssistantProperties properties, LegacyAssistantContinuation legacy) { }
     private final Ports ports;
-    public PrimaryAssistant(Ports ports) { this.ports = ports; }
+
     public boolean enabled() { return ports.properties().isEnabled(); }
     private void requireEnabled() {
         if (!enabled()) throw new IntentPlans.Rejected(503, "ASSISTANT_GENERATION_DISABLED");
     }
+    @AssistantBoundary(operation = AssistantBoundary.Operation.PREPARE)
     public PlanResponse create(AuthenticatedUser user, com.voltcanary.aiagent.dto.PlanRequest request, String authorization) {
         requireEnabled();
         var session = session(user, authorization);
@@ -51,6 +56,7 @@ public final class PrimaryAssistant {
         return submit(user, conversation, new ConversationContracts.Submit(requestId, 0, request.message(), request.context(), request.baseReviewId(),
                 request.providerId(), request.modelConfigId(), request.metadata(), false, null), authorization).plan();
     }
+    @AssistantBoundary(operation = AssistantBoundary.Operation.PREPARE)
     public PlanResponse clarify(AuthenticatedUser user, UUID parent, String message, com.voltcanary.aiagent.dto.DashboardTurnMetadata metadata, String authorization) {
         var session = session(user, authorization);
         var binding = ports.journal().review(session.owner(), parent);
@@ -88,6 +94,7 @@ public final class PrimaryAssistant {
     public boolean hasConversation(AuthenticatedUser user, UUID conversation, String authorization) {
         return ports.journal().current(session(user, authorization).owner(), conversation).isPresent();
     }
+    @AssistantBoundary(operation = AssistantBoundary.Operation.SUBMIT)
     public ConversationContracts.Detail submit(AuthenticatedUser user, UUID conversation, ConversationContracts.Submit unsafe, String authorization) {
         requireEnabled();
         var session = session(user, authorization);
@@ -115,14 +122,37 @@ public final class PrimaryAssistant {
         var engine = ports.runtime().engine(session, selected);
         var selection = new ArrayList<AssistantProtocol.TurnSubmitSelectionItem>();
         var supplied = request.context() == null ? Map.<String, Object>of() : request.context();
+        if (supplied.containsKey("vehiclePoint")) selection.add(new AssistantProtocol.TurnSubmitSelectionItem("vehiclePoint",
+                com.voltcanary.aiagent.vehicle.VehicleMonitoringPoint.selection(supplied.get("vehiclePoint"))));
+        if (supplied.containsKey("sourceBinding")) {
+            if (!(supplied.get("sourceBinding") instanceof String binding)
+                    || !binding.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[1-9][0-9]{0,15}")
+                    || Long.parseLong(binding.substring(37)) > 9_007_199_254_740_991L) {
+                throw IntentPlans.reject("SOURCE_CAPTURE_SELECTION_INVALID");
+            }
+            selection.add(new AssistantProtocol.TurnSubmitSelectionItem("sourceBinding", binding));
+        }
         if (supplied.get("deviceId") instanceof String id) selection.add(new AssistantProtocol.TurnSubmitSelectionItem("deviceId", UUID.fromString(id).toString()));
         if (supplied.get("deviceIds") instanceof List<?> ids) for (var id : ids) selection.add(new AssistantProtocol.TurnSubmitSelectionItem("deviceId", UUID.fromString(id.toString()).toString()));
+        if (supplied.containsKey("knowledgeCorpusRefs")) {
+            if (!(supplied.get("knowledgeCorpusRefs") instanceof List<?> refs) || refs.size() > 32) {
+                throw IntentPlans.reject("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+            }
+            try {
+                if (refs.isEmpty()) selection.add(new AssistantProtocol.TurnSubmitSelectionItem("knowledgeCorpusScope", "CLEAR"));
+                refs.stream().map(ref -> UUID.fromString(String.valueOf(ref)).toString()).distinct()
+                        .forEach(ref -> selection.add(new AssistantProtocol.TurnSubmitSelectionItem("knowledgeCorpusRef", ref)));
+            } catch (IllegalArgumentException invalid) {
+                throw IntentPlans.reject("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+            }
+        }
         for (String field : List.of("locationId", "sourceId", "name")) if (supplied.get(field) instanceof String value) selection.add(new AssistantProtocol.TurnSubmitSelectionItem(field, value));
         selection.sort(Comparator.comparing(AssistantProtocol.TurnSubmitSelectionItem::field).thenComparing(AssistantProtocol.TurnSubmitSelectionItem::ref));
         var canonical = new AssistantProtocol.TurnSubmit("assistant-v2", "turn.submit", request.requestId().toString(),
                 old.isPresent() ? old.get().request().expectedRevision() : state == null ? 0L : state.revision(), request.text(), selectedReview == null ? null : selectedReview.toString(),
                 selection, new AssistantProtocol.RoutingPreference("PINNED", engine.policyId(), selected.modelConfig().getId().toString()),
-                old.isPresent() ? old.get().request().replyToQuestionId() : state == null || state.pendingQuestion() == null ? null : state.pendingQuestion().questionId());
+                old.isPresent() ? old.get().request().replyToQuestionId() : state == null || state.pendingQuestion() == null ? null : state.pendingQuestion().questionId(),
+                request.continueStepId());
         if (old.isPresent() && old.get().clientRevision() != null && old.get().clientRevision() != request.expectedRevision()) throw IntentPlans.conflict("REQUEST_ID_CONVERSATION_REVISION_CHANGED");
         engine.turns().submit(session, conversation, state == null ? null : state.planId(), canonical, engine.policyId(), engine.policyVersion(), engine.skills(), request.expectedRevision());
         return detail(user, conversation, authorization);
@@ -169,6 +199,7 @@ public final class PrimaryAssistant {
     public boolean mapped(AuthenticatedUser user, UUID review, String authorization) {
         return ports.journal().review(session(user, authorization).owner(), review).isPresent();
     }
+    @AssistantBoundary(operation = AssistantBoundary.Operation.EXECUTE)
     public ExecutePlanResponse execute(AuthenticatedUser user, UUID review, boolean confirmed, Integer version, String digest, String authorization) {
         if (!confirmed) throw IntentPlans.conflict("CONFIRMATION_REQUIRED");
         var session = session(user, authorization);
@@ -184,6 +215,7 @@ public final class PrimaryAssistant {
         var actual = ports.reviews().getPlan(user, review, authorization);
         return actual.execution() == null ? new ExecutePlanResponse(review, actual.executionStatus(), List.of()) : actual.execution();
     }
+    @AssistantBoundary(operation = AssistantBoundary.Operation.CONTROL)
     public IntentPlans.State control(AuthenticatedUser user, UUID plan, AssistantProtocol.ControlRequest request, String authorization) {
         var session = session(user, authorization);
         return ports.runtime().actions().control(session, plan, request);

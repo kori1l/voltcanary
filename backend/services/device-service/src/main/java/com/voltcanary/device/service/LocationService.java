@@ -9,17 +9,18 @@ import com.voltcanary.device.domain.Location;
 import com.voltcanary.device.dto.LocationRequest;
 import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.exception.NotFoundException;
 import com.voltcanary.device.repository.LocationRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class LocationService {
 
     private final AccountService accountService;
@@ -27,19 +28,6 @@ public class LocationService {
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
     private final ObjectMapper objectMapper;
-
-    public LocationService(
-            AccountService accountService,
-            LocationRepository locationRepository,
-            DeviceRegistryEventPublisher eventPublisher,
-            DeviceAuditService auditService,
-            ObjectMapper objectMapper) {
-        this.accountService = accountService;
-        this.locationRepository = locationRepository;
-        this.eventPublisher = eventPublisher;
-        this.auditService = auditService;
-        this.objectMapper = objectMapper;
-    }
 
     @Transactional
     public LocationResponse create(AuthenticatedUser user, LocationRequest request) {

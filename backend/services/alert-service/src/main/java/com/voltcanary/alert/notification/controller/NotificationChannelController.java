@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,17 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
         @ApiResponse(responseCode = "401", description = "Missing authenticated user context"),
         @ApiResponse(responseCode = "404", description = "Notification channel was not found in the caller account scope")
 })
+@RequiredArgsConstructor
 public class NotificationChannelController {
 
     private final NotificationChannelService service;
     private final NotificationDeliveryOperationsService operationsService;
-
-    public NotificationChannelController(
-            NotificationChannelService service,
-            NotificationDeliveryOperationsService operationsService) {
-        this.service = service;
-        this.operationsService = operationsService;
-    }
 
     @GetMapping
     public List<NotificationChannelResponse> list(

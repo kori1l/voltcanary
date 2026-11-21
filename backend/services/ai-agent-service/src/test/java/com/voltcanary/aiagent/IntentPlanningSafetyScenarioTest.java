@@ -268,6 +268,16 @@ class IntentPlanningSafetyScenarioTest {
         var checked = f.graph.apply(seed, forward, Set.of(source), source, true, f.skills.authorized(), Set.of());
         assertEquals("BLOCKED", checked.step("connect").status());
         assertEquals("READY", checked.step("create").status());
+        var missingDependency = new AssistantProtocol.PlannerResponse("assistant-v2", "planner.response", "PLAN", "Missing dependency",
+                null, List.of(), null, List.of(
+                        proposal("connect", "CONNECT_SOURCE", List.of(), forward.steps().getFirst().inputs(), "x"),
+                        forward.steps().get(1)), goals, List.of());
+        assertEquals("OUTPUT_WITHOUT_DEPENDENCY", assertThrows(IntentPlans.Rejected.class, () ->
+                f.graph.apply(seed, missingDependency, Set.of(source), source, true, f.skills.authorized(), Set.of())).getMessage());
+        String newerMessage = UUID.randomUUID().toString();
+        var staleSource = assertThrows(IntentPlans.Rejected.class, () -> f.graph.apply(seed, forward,
+                Set.of(source, newerMessage), newerMessage, true, f.skills.authorized(), Set.of()));
+        assertEquals("GOAL_PROVENANCE_OR_ID", staleSource.getMessage());
         var cycle = new AssistantProtocol.PlannerResponse("assistant-v2", "planner.response", "PLAN", "cycle", null, List.of(), null,
                 List.of(proposal("a", "CREATE_DEVICE", List.of("b"), List.of(), "x"), proposal("b", "CREATE_DEVICE", List.of("a"), List.of(), "y")), goals, List.of());
         assertThrows(IntentPlans.Rejected.class, () -> f.graph.apply(seed, cycle, Set.of(source), source, true, f.skills.authorized(), Set.of()));

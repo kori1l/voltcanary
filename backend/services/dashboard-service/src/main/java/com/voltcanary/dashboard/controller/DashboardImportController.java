@@ -6,19 +6,19 @@ import com.voltcanary.dashboard.application.DashboardCatalog;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.domain.DashboardRecords.Dashboard;
 import com.voltcanary.dashboard.port.DashboardOwnership;
-import org.springframework.web.bind.annotation.RestController;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardImportController {
     private final DashboardCatalog catalog;
     private final DashboardOwnership ownership;
     private final DashboardRequestDecoder decoder;
-    public DashboardImportController(DashboardCatalog catalog,DashboardOwnership ownership,DashboardRequestDecoder decoder) {
-        this.catalog=catalog;this.ownership=ownership;this.decoder=decoder;
-    }
+
     @PostMapping("/dashboards/import")
     public Dashboard importTemplate(@RequestHeader("Authorization") String authorization,@RequestHeader("Idempotency-Key") String key,@RequestBody JsonNode body) {
         if(!body.path("reviewed").asBoolean() || !body.path("definition").isObject()) throw new DashboardFailure("VALIDATION_ERROR","Review the template before importing");

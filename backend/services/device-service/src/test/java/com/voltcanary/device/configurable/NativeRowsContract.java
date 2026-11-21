@@ -80,6 +80,25 @@ abstract class NativeRowsContract {
         return apply(f, prepare(f, review, mutation(f, review, "INSERT", key, null)));
     }
 
+    @Test void historicalCutRetainsPreDeleteRowAndDetectsMissingCheckpoint() {
+        var f = fixture(true);
+        insert(f, "archived row");
+        var captured = head(f);
+        var query = parser.parse(query(f, 10, null).toString());
+        var history = new com.voltcanary.device.configurable.adapter.JdbcNativeHistoryRows(
+                source(), new com.voltcanary.device.configurable.adapter.NativeQueryCursor(new byte[32], clock), null);
+        var removed = reserve(f);
+        apply(f, prepare(f, removed, mutation(f, removed, "DELETE", "archived row", "1")));
+        var old = history.query(f.account(), f.actor(), captured.generation(), captured.dataVersion(), query);
+        assertEquals("HISTORY", old.readManifest().consistency());
+        assertEquals("archived row", old.rows().getFirst().values().get(NativeFixtures.TEXT).path("value").asText());
+        assertTrue(history.query(f.account(), f.actor(), captured.generation(), head(f).dataVersion(), query).rows().isEmpty());
+        sql().update("DELETE FROM cfg_native_history_checkpoint WHERE dataset_id=? AND generation=? AND data_version=?",
+                captured.schema().id(), captured.generation(), captured.dataVersion());
+        assertEquals("HISTORY_INTEGRITY", assertThrows(VclException.class, () ->
+                history.query(f.account(), f.actor(), captured.generation(), captured.dataVersion(), query)).code());
+    }
+
     ObjectNode query(Fixture f, int limit, String cursor) {
         var root = NativeFixtures.MAPPER.createObjectNode().put("language", "VCL/1").put("kind", "QUERY");
         var spec = root.putObject("spec").put("limit", limit);
@@ -97,6 +116,59 @@ abstract class NativeRowsContract {
         var document = query(f, limit, cursor);
         ((ObjectNode) document.path("spec")).putObject("read").put("mode", "SNAPSHOT").put("snapshotId", snapshotId.toString());
         return parser.parse(document.toString());
+    }
+
+    @Test void reviewedSchemaChangePreservesIdentityAndPinnedSnapshotSchema() {
+        var f = fixture(true);
+        insert(f, "retained");
+        var before = head(f);
+        var query = parser.parse(query(f, 10, null).toString());
+        var snapshot = queries(clock).seal(f.account(), f.actor(), query);
+        var pinnedQuery = snapshotQuery(f, 10, snapshot.snapshotId(), null);
+        var original = queries(clock).query(f.account(), f.actor(), pinnedQuery);
+
+        var migrations = new com.voltcanary.device.configurable.adapter.JdbcNativeSchemaMigrations(
+                source(), clock, NativeRowsContract::emptyDependencyCuts);
+        UUID dataset = before.schema().id();
+        String key = UUID.randomUUID().toString();
+        var reserved = migrations.reserve(f.account(), f.actor(), dataset, key, List.of());
+        UUID review = UUID.fromString(reserved.path("id").asText());
+        var schema = NativeFixtures.document(dataset, true);
+        var spec = (ObjectNode) schema.path("spec");
+        spec.put("revision", 2).put("label", "Renamed collection");
+        ((ObjectNode) spec.path("storage")).putArray("indexedFieldIds").add(NativeFixtures.TEXT.toString());
+        var request = NativeFixtures.MAPPER.createObjectNode().put("dataMode", "PRESERVE");
+        request.set("schema", schema);
+        request.putArray("mappings");
+        var prepared = migrations.prepare(f.account(), f.actor(), dataset, review, request);
+        assertEquals("PREPARED", prepared.path("status").asText(), prepared.toString());
+        assertTrue(prepared.at("/impact/indexesChanged").booleanValue());
+        long revision = prepared.path("reviewRevision").longValue();
+        String digest = prepared.path("reviewDigest").asText();
+        var applied = migrations.apply(f.account(), f.actor(), dataset, review, revision, digest, key);
+        assertEquals("SUCCEEDED", applied.path("status").asText(), applied.toString());
+        assertEquals(applied, migrations.apply(f.account(), f.actor(), dataset, review, revision, digest, key));
+        assertEquals(original, queries(clock).query(f.account(), f.actor(), pinnedQuery));
+
+        var current = new JdbcNativeDatasetCatalog(source()).current(f.account(), dataset).orElseThrow();
+        assertEquals(2, current.schema().revision());
+        assertNotEquals(before.generation(), current.generation());
+        var live = query(f, 10, null);
+        ((ObjectNode) live.at("/spec/target")).put("schemaRevision", 2);
+        var row = queries(clock).query(f.account(), f.actor(), parser.parse(live.toString())).rows().getFirst();
+        assertEquals(original.rows().getFirst().recordId(), row.recordId());
+        assertEquals("2", row.recordVersion());
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode emptyDependencyCuts(UUID account, UUID actor, UUID dataset, long revision) {
+        var cuts = NativeFixtures.MAPPER.createArrayNode();
+        for (String owner : List.of("analytics", "alerts", "dashboards")) {
+            var empty = cuts.addObject().put("owner", owner).put("accountId", account.toString())
+                    .put("datasetId", dataset.toString()).put("schemaRevision", revision).put("complete", true)
+                    .put("cutDigest", com.voltcanary.vcl.VclCanonical.sha256("[]"));
+            empty.putArray("dependencies");
+        }
+        return cuts;
     }
 
     @Test void sealedSnapshotPaginatesOriginalRowsAfterWritesAndRejectsCrossSnapshotCursor() {
@@ -332,11 +404,16 @@ abstract class NativeRowsContract {
         ((ObjectNode) query.at("/spec/order/0")).put("fieldId", NativeFixtures.TEXT.toString());
         assertEquals("QUERY_ORDER_UNSUPPORTED", assertThrows(VclException.class, () -> queries(clock).query(f.account(), f.actor(), parser.parse(query.toString()))).code());
         ((ObjectNode) query.at("/spec/order/0")).put("fieldId", f.dataset().recordIdFieldId().toString());
-        var where = ((ObjectNode) query.path("spec")).putObject("where").put("op", "CALL").put("method", "eq");
+        var where = ((ObjectNode) query.path("spec")).putObject("where").put("op", "CALL").put("method", "text_prefix");
         var args = where.putArray("args");
         args.addObject().put("op", "FIELD").put("fieldId", NativeFixtures.TEXT.toString());
         args.addObject().put("op", "CONST").putObject("literal").put("type", "TEXT").put("value", "key");
         assertEquals("QUERY_PUSHDOWN_UNSUPPORTED", assertThrows(VclException.class, () -> queries(clock).query(f.account(), f.actor(), parser.parse(query.toString()))).code());
+        insert(f, "key");
+        insert(f, "KEY");
+        where.put("method", "eq");
+        var matched = queries(clock).query(f.account(), f.actor(), parser.parse(query.toString()));
+        assertEquals(List.of("key"), matched.rows().stream().map(row -> row.values().get(NativeFixtures.TEXT).path("value").asText()).toList());
     }
 
     @Test void indexedNumericFilterPreservesNullAndExactDecimalSemantics() {
@@ -376,7 +453,7 @@ abstract class NativeRowsContract {
         assertEquals("ROW_CONFLICT", assertThrows(VclException.class, () -> apply(f, wrongVersion)).code());
         var fenced = reserve(f);
         var prepared = prepare(f, fenced, mutation(f, fenced, "INSERT", "new generation", null));
-        sql().update("UPDATE cfg_dataset SET generation=? WHERE id=?", UUID.randomUUID(), f.dataset().schema().id());
+        changeGeneration(f);
         assertEquals("TARGET_CONFLICT", assertThrows(VclException.class, () -> apply(f, prepared)).code());
         assertEquals(2L, head(f).dataVersion());
         assertEquals(1, sql().queryForObject("SELECT COUNT(*) FROM cfg_row_receipt WHERE account_id=?", Integer.class, f.account()));
@@ -432,7 +509,7 @@ abstract class NativeRowsContract {
         assertNotNull(second.nextCursor());
         assertEquals("CURSOR_EXPIRED", assertThrows(VclException.class, () -> queries(Clock.offset(clock, Duration.ofMinutes(11)))
                 .query(f.account(), f.actor(), parser.parse(query(f, 1, second.nextCursor()).toString()))).code());
-        sql().update("UPDATE cfg_dataset SET generation=? WHERE id=?", UUID.randomUUID(), f.dataset().schema().id());
+        changeGeneration(f);
         assertEquals("CURSOR_CONFLICT", assertThrows(VclException.class, () -> queries(clock).query(f.account(), f.actor(), parser.parse(query(f, 1, first.nextCursor()).toString()))).code());
         sql().update("UPDATE accounts SET updated_at=? WHERE id=?", java.time.LocalDateTime.of(2030, 1, 1, 0, 0), f.account());
         assertEquals("CURSOR_SCOPE_CHANGED", assertThrows(VclException.class, () -> queries(clock).query(f.account(), f.actor(), parser.parse(query(f, 1, first.nextCursor()).toString()))).code());
@@ -453,6 +530,12 @@ abstract class NativeRowsContract {
             if (cursor == null) assertEquals("COMPLETE", page.completeness());
         } while (cursor != null);
         assertEquals(ascending.rows().reversed().stream().map(com.voltcanary.device.configurable.domain.NativeRow::recordId).toList(), actual);
+    }
+
+    private void changeGeneration(Fixture f) {
+        UUID generation = UUID.randomUUID();
+        sql().update("UPDATE cfg_native_generation SET generation=? WHERE dataset_id=? AND status='ACTIVE'", generation, f.dataset().schema().id());
+        sql().update("UPDATE cfg_dataset SET generation=? WHERE id=?", generation, f.dataset().schema().id());
     }
 
     @Test void serverAssignedSystemRecordKeySupportsUpdateAndDelete() {

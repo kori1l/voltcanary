@@ -5,6 +5,7 @@ import com.voltcanary.device.variable.application.VariableDefinitions;
 import com.voltcanary.device.variable.domain.VariableDefinition;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,15 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/device-types/{code}/variables")
+@RequiredArgsConstructor
 public class DeviceVariablesController {
     public record ExpectedVersion(int expectedVersion) { }
     private final VariableDefinitions definitions;
     private final AuthenticatedUserResolver users;
-
-    public DeviceVariablesController(VariableDefinitions definitions, AuthenticatedUserResolver users) {
-        this.definitions = definitions;
-        this.users = users;
-    }
 
     @GetMapping
     public List<VariableDefinition> list(@RequestHeader HttpHeaders headers, @PathVariable("code") String code) {

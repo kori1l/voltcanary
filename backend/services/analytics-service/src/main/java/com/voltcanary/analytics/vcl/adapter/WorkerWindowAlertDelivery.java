@@ -13,14 +13,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.client.RestClient;
 
 /** Delivers immutable alert proposals and records the alert owner's exact receipt. */
+@Slf4j
 final class WorkerWindowAlertDelivery {
-    private static final Logger LOG = LoggerFactory.getLogger(WorkerWindowAlertDelivery.class);
     private static final int PAGE_SIZE = 16;
     private final JdbcKeyedStateStore store;
     private final JdbcRuleDeployments deployments;
@@ -50,7 +49,7 @@ final class WorkerWindowAlertDelivery {
                         .orElseThrow(() -> new VclException("DEPLOYMENT_UNAVAILABLE", ""));
                 store.deliverAlert(pending, deployment, (proposal, measure) -> send(key, deployment, proposal, measure));
             } catch (RuntimeException unavailable) {
-                LOG.warn("VCL alert proposal remains pending: {}",
+                log.warn("VCL alert proposal remains pending: {}",
                         unavailable instanceof VclException vcl ? vcl.code() : unavailable.getClass().getSimpleName());
             }
         }
@@ -111,6 +110,7 @@ final class WorkerWindowAlertDelivery {
                 || decision.at("/literal/value").booleanValue() == retraction
                 || ((retraction || correction) && !result.path(sustained ? "correction" : "supersedes").isTextual())
                 || (retraction && session && !result.path("firstWitness").isTextual())
+                || (payload.has("observationReferences") && (!session || !matchesObservationReferences(payload, result)))
                 || !payload.path("coverageDigest").equals(occurrenceBased || interval ? result.path("coverageDigest") : result.at("/coveragePin/digest"))
                 || (proofPin && (!payload.path("coverageProofDigest").isTextual()
                         || !payload.path("coverageProofDigest").equals(result.at("/coveragePin/eventTimeDigest"))))
@@ -144,6 +144,17 @@ final class WorkerWindowAlertDelivery {
         } catch (ConfigurableOwnerReads.Failure failure) {
             throw new VclException(failure.code(), "");
         }
+    }
+
+    private static boolean matchesObservationReferences(com.fasterxml.jackson.databind.JsonNode proposal,
+            com.fasterxml.jackson.databind.JsonNode measure) {
+        var references = proposal.path("observationReferences");
+        var available = SessionAlertProposal.observationReferences(measure);
+        if (!references.isArray() || references.isEmpty() || references.size() > available.size()) return false;
+        for (int i = 0; i < references.size(); i++) {
+            if (!available.get(i).equals(references.get(i).textValue())) return false;
+        }
+        return true;
     }
 
     private byte[] reconcile(KeyedStateStore.Key key, JdbcRuleDeployments.Deployment deployment, UUID id, byte[] body) {

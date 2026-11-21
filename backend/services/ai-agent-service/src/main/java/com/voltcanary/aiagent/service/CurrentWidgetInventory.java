@@ -28,6 +28,10 @@ public final class CurrentWidgetInventory {
                 case "vehicle-map" -> "MAP";
                 default -> "OTHER";
             });
+            // Preserve the effective field beside the role after the wire projection removes the full query.
+            var fieldKey = widget.at("/presentation/vehicleField");
+            if (!fieldKey.isTextual()) fieldKey = widget.at("/query/metric");
+            if (fieldKey.isTextual()) entry.put("fieldKey", fieldKey.textValue());
             for (var panel : intent.path("widgets")) if (panel.path("key").asText().equals(key)) {
                 for (String field : List.of("metric", "vehicleField", "dataRef", "sourceId", "deviceIds", "width", "height", "period"))
                     if (panel.has(field)) entry.set(field, panel.get(field).deepCopy());

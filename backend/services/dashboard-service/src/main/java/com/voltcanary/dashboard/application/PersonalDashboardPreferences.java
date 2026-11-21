@@ -10,10 +10,12 @@ import com.voltcanary.dashboard.port.DashboardStorage;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class PersonalDashboardPreferences {
     private static final UUID EMPTY_ETAG = new UUID(0, 0);
     private final DashboardStorage storage;
@@ -21,15 +23,6 @@ public class PersonalDashboardPreferences {
     private final DefinitionValidation validation;
     private final DefinitionBindings bindings;
     private final ObjectMapper mapper;
-
-    public PersonalDashboardPreferences(DashboardStorage storage, DashboardAccess access,
-            DefinitionValidation validation, DefinitionBindings bindings, ObjectMapper mapper) {
-        this.storage = storage;
-        this.access = access;
-        this.validation = validation;
-        this.bindings = bindings;
-        this.mapper = mapper;
-    }
 
     @Transactional(readOnly = true)
     public Preferences get(DashboardActor actor) {

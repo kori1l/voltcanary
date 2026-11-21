@@ -27,7 +27,7 @@ public record VclSourceCoverage(UUID proofId, UUID inputGeneration, UUID snapsho
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
             java.util.List<UUID> parts) {
         public Evidence {
-            parts = java.util.List.copyOf(parts);
+            parts = parts == null ? java.util.List.of() : java.util.List.copyOf(parts);
         }
         public Evidence(UUID proofId, UUID inputGeneration, Position position, Instant from, Instant until) {
             this(proofId, inputGeneration, position, from, until, null, java.util.List.of());

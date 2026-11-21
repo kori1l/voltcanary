@@ -16,9 +16,11 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
@@ -33,12 +35,6 @@ public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
     private final ModbusTcpClientOperations client;
     private final ModbusRegisterValueMapper mapper;
     private final Clock clock;
-
-    public ModbusTcpTelemetryAdapter(ModbusTcpClientOperations client, ModbusRegisterValueMapper mapper, Clock clock) {
-        this.client = client;
-        this.mapper = mapper;
-        this.clock = clock;
-    }
 
     @Override
     public AdapterManifest manifest() {

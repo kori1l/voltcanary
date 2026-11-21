@@ -17,14 +17,12 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipeline {
-
-    private static final Logger log = LoggerFactory.getLogger(DefaultTelemetryIngestionPipeline.class);
 
     private final IngestionValidator ingestionValidator;
     private final PayloadNormalizer payloadNormalizer;

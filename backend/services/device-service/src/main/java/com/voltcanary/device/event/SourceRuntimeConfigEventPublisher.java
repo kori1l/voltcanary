@@ -9,16 +9,15 @@ import com.voltcanary.device.domain.DataSourceProtocol;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Component
+@Slf4j
 public class SourceRuntimeConfigEventPublisher {
 
     public static final String TOPIC = "source.runtime-config.v1";
     public static final String BINDING_SCHEMA_TOPIC = "source.binding-schema.v1";
-    private static final Logger log = LoggerFactory.getLogger(SourceRuntimeConfigEventPublisher.class);
     private static final String VERSION = "v1";
     private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
     };

@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Read-only fixed-generation journal prefixes; never supplies upstream completeness or execution authority. */
 @Service
+@RequiredArgsConstructor
 public class ObservationReads {
     private static final int ROW_BYTES = 131072;
     private static final int PAGE_ROW_BYTES = 240000;
@@ -27,12 +29,6 @@ public class ObservationReads {
     private final ObservationReadiness readiness;
     private final ObservationSchemas schemas;
     private final VclParser parser = new VclParser();
-
-    public ObservationReads(JdbcTemplate jdbc, ObservationReadiness readiness, ObservationSchemas schemas) {
-        this.jdbc = jdbc;
-        this.readiness = readiness;
-        this.schemas = schemas;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public VclObservationPage read(VclObservationRead request) {

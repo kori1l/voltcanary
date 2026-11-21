@@ -55,6 +55,50 @@ class NativeTableWorkflowTest {
         verifyNoInteractions(owner, reviews, journal);
     }
 
+    @Test void mappingPreparationSavesOnlyTheSelectedOwnerPreview() {
+        properties.setNativeDataEnabled(true);
+        when(authority.scope(session.user(), AUTH)).thenReturn(scope);
+        var binding = UUID.randomUUID();
+        var field = UUID.randomUUID();
+        var snapshot = UUID.randomUUID();
+        var device = UUID.randomUUID();
+        var definition = JSON.createObjectNode().put("id", binding.toString()).put("schemaRevision", 1)
+                .put("profile", com.voltcanary.vcl.VclSourceBindingProfile.VERSION).put("configurationDigest", DIGEST);
+        definition.putArray("fields").addObject().put("id", field.toString()).put("type", "TEXT")
+                .put("label", "Switch").put("nullable", true);
+        var digest = VclCanonical.sha256(VclCanonical.encode(definition));
+        var source = new com.voltcanary.vcl.VclSourceBindingDescription(binding, scope.accountId(), scope.userId(), device, 1, 1,
+                snapshot, definition, digest, DIGEST, DIGEST, true, false, com.voltcanary.vcl.VclSourceBindingProfile.capabilities());
+        var pin = new com.voltcanary.vcl.VclObservationReadiness.Pin(binding, scope.accountId(), device, "source", 1, snapshot, digest);
+        when(owner.sourceCapture(AUTH, scope, binding, 1)).thenReturn(new com.voltcanary.vcl.VclSourceCaptureDescription(
+                source, com.voltcanary.vcl.VclObservationReadiness.absent(pin, "AWAITING_INPUT")));
+        var payload = JSON.createObjectNode().put("fieldId", field.toString()).put("sample", "off");
+        var conversion = payload.putObject("conversion").put("method", "parse_boolean");
+        conversion.putArray("trueTokens").add("on");
+        conversion.putArray("falseTokens").add("off");
+        var preview = JSON.createObjectNode().put("schemaSnapshotId", snapshot.toString()).put("mappingDigest", DIGEST);
+        preview.putObject("literal").put("type", "BOOLEAN").put("value", false);
+        when(owner.previewMapping(AUTH, scope, binding, 1, field, conversion, payload.path("sample"))).thenReturn(preview);
+        when(reviews.save(any(), any())).thenAnswer(call -> new PlanStore.Stored(call.getArgument(0), scope.accountId(),
+                1, DIGEST, Instant.now().plusSeconds(60), "READY", null, List.of()));
+        var submitted = JSON.createObjectNode();
+        submitted.putArray("selection").addObject().put("field", "sourceBinding").put("ref", binding + ":1");
+        var input = input();
+        var command = new AssistantProtocol.Command(NativeMappingSkill.COMMAND, "1", payload);
+        var result = workflow.prepareMapping(input, command, session, submitted.toString());
+
+        assertThat(result.review().requiresConfirmation()).isTrue();
+        var plan = ArgumentCaptor.forClass(AgentPlan.class);
+        verify(reviews).save(plan.capture(), any());
+        var saved = JSON.valueToTree(plan.getValue().actions().getFirst().parameters());
+        assertThat(saved.path("bindingId").asText()).isEqualTo(binding.toString());
+        assertThat(saved.at("/mappingExample/literal")).isEqualTo(preview.path("literal"));
+        verify(owner).sourceCapture(AUTH, scope, binding, 1);
+        verify(owner).previewMapping(AUTH, scope, binding, 1, field, conversion, payload.path("sample"));
+        verifyNoMoreInteractions(owner);
+        verify(journal).bind(result.review().reviewId(), input.state().planId(), "native");
+    }
+
     @Test void preparationPinsReservedDocumentAndOwnerExpiryWithoutApplying() {
         configure();
         var input = input();
@@ -85,6 +129,21 @@ class NativeTableWorkflowTest {
                 good.status(), good.expiresAt(), good.datasetId(), good.fieldIds(), good.semanticDigest(), good.digest(), good.diff(), good.receiptId()));
         assertThatThrownBy(() -> prepare(input())).hasMessage("NATIVE_PREPARATION_CHANGED");
         verifyNoInteractions(reviews, journal);
+    }
+
+    @Test void terminalReservationReplayCannotRequestPreparationOrPersistAuthority() {
+        configure();
+        when(owner.reserve(eq(AUTH), anyString(), anyList())).thenReturn(review("SUCCEEDED"));
+        assertThatThrownBy(() -> prepare(input())).hasMessage("NATIVE_RESERVATION_NOT_PREPARABLE");
+        verify(owner, never()).prepare(anyString(), any(), any());
+        verifyNoInteractions(reviews, journal);
+    }
+
+    @Test void preparedReservationReplayCanRecoverTheSameReview() {
+        configure();
+        when(owner.reserve(eq(AUTH), anyString(), anyList())).thenReturn(review("PREPARED"));
+        assertThat(prepare(input()).review().requiresConfirmation()).isTrue();
+        verify(owner).prepare(AUTH, id("reviewId"), DOCUMENT.json());
     }
 
     private void configure() {

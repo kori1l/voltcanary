@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class TelemetryTemplates {
     public record Template(UUID id, String name, String deviceType, int version, TelemetryFieldPolicy policy) { }
     public record Edit(String name, String deviceType, Integer version, TelemetryFieldPolicy policy) { }
@@ -28,12 +30,6 @@ public class TelemetryTemplates {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final DataSourceService sources;
-
-    public TelemetryTemplates(JdbcTemplate jdbc, ObjectMapper mapper, DataSourceService sources) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.sources = sources;
-    }
 
     public List<Template> list(AuthenticatedUser user) {
         return jdbc.query("select * from telemetry_field_templates where owner_id=? order by name,id", (row, index) ->

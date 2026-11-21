@@ -14,14 +14,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** One root question for the nearest unresolved slot group; duplicates are not independent evidence. */
+@RequiredArgsConstructor
 public final class QuestionArbiter {
     public record Decision(Snapshot requirements, Set<UUID> taskIds) {
         public Decision { taskIds = Set.copyOf(taskIds); }
     }
     private final RequirementChanges changes;
-    public QuestionArbiter(RequirementChanges changes) { this.changes = changes; }
 
     public Decision decide(Snapshot before, List<Task> waiting, Set<UUID> currentEvidence,
             UUID questionId, UUID requestId, Instant now, Instant expiresAt) {

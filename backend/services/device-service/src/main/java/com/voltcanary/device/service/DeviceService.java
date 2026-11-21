@@ -11,21 +11,22 @@ import com.voltcanary.device.dto.DeviceImportResponse;
 import com.voltcanary.device.dto.DeviceRequest;
 import com.voltcanary.device.dto.DeviceResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.exception.NotFoundException;
 import com.voltcanary.device.metrics.DeviceOperationalMetrics;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.DeviceTypeRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class DeviceService {
 
     private final AccountService accountService;
@@ -36,25 +37,6 @@ public class DeviceService {
     private final DeviceAuditService auditService;
     private final ObjectMapper objectMapper;
     private final DeviceOperationalMetrics metrics;
-
-    public DeviceService(
-            AccountService accountService,
-            LocationService locationService,
-            DeviceRepository deviceRepository,
-            DeviceTypeRepository deviceTypeRepository,
-            DeviceRegistryEventPublisher eventPublisher,
-            DeviceAuditService auditService,
-            ObjectMapper objectMapper,
-            DeviceOperationalMetrics metrics) {
-        this.accountService = accountService;
-        this.locationService = locationService;
-        this.deviceRepository = deviceRepository;
-        this.deviceTypeRepository = deviceTypeRepository;
-        this.eventPublisher = eventPublisher;
-        this.auditService = auditService;
-        this.objectMapper = objectMapper;
-        this.metrics = metrics;
-    }
 
     @Transactional
     public DeviceResponse create(AuthenticatedUser user, DeviceRequest request) {

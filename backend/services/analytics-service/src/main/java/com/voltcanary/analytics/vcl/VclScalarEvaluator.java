@@ -13,17 +13,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Pure bounded scalar execution. No Spring beans, owner I/O or temporal state. */
+@RequiredArgsConstructor
 public final class VclScalarEvaluator {
     private static final String SUPPORTED_REGISTRY_DIGEST = new com.voltcanary.vcl.VclRegistry(new com.voltcanary.vcl.VclParser()).digest();
     private final VclUnits units;
     private final String registryDigest;
-
-    public VclScalarEvaluator(VclUnits units, String registryDigest) {
-        this.units = units;
-        this.registryDigest = registryDigest;
-    }
 
     public ScalarValue evaluate(VclScalarProgram program, Map<UUID, ScalarValue> record,
             ScalarDecimalPolicy policy, String authorizedScopeDigest) {

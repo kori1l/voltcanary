@@ -18,6 +18,39 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PrimaryWorkflowContextTest {
+    @Test void dashboardUsesTheTwoDevicesBoundByThePlanner() throws Exception {
+        var f = new IntentScenarioSupport();
+        new ResourceDatabasePopulator(new ClassPathResource("db/migration/V010__assistant_primary_bindings.sql")).execute(f.jdbc.getDataSource());
+        var dashboards = mock(DashboardPlanningContext.class);
+        var domain = new PrimaryDomainPreparation(f.mapper, f.validator, f.store, f.reviews, f.contexts, dashboards,
+                new AiAgentProperties(), com.voltcanary.common.web.JacksonRestClients.builder(), mock(PrimaryOrchestrationJournal.class), f.jdbc);
+        var deviceIds = List.of(UUID.randomUUID().toString(), UUID.randomUUID().toString());
+        when(dashboards.enrich(any(), any(), eq(f.session.authorization()))).thenAnswer(call -> {
+            java.util.Map<?, ?> values = call.getArgument(1);
+            assertEquals(deviceIds, values.get("deviceIds"));
+            return call.getArgument(0);
+        });
+        var models = new OrchestrationPorts.Models() {
+            public AssistantProtocol.PlannerResponse plan(IntentPlans.ModelInput input, OrchestrationPorts.Session session, UUID id) {
+                var devices = new AssistantProtocol.Input("deviceIds",
+                        new AssistantProtocol.BindingLiteral("literal", f.mapper.valueToTree(deviceIds)));
+                return f.plan(input, List.of(new AssistantProtocol.StepProposal(
+                        "dashboard", "CREATE_DASHBOARD", List.of(), List.of(devices), List.of("g"))));
+            }
+
+            public AssistantProtocol.StepResponse step(IntentPlans.ModelInput input, OrchestrationPorts.Session session, UUID id) {
+                var args = f.mapper.createObjectNode();
+                args.putArray("deviceIds").add(UUID.randomUUID().toString());
+                domain.load(input, session, args, null);
+                assertNotNull(domain.read(input, session));
+                return f.prepared("CREATE_DASHBOARD", f.mapper.createObjectNode()
+                        .put("name", "Overview").put("deviceId", deviceIds.getFirst()));
+            }
+        };
+        assertEquals("WAITING_CONFIRMATION", f.send(f.orchestration(models), null, "Create a dashboard for both devices").status());
+        verify(dashboards).enrich(any(), any(), eq(f.session.authorization()));
+    }
+
     @Test void creationIgnoresAmbientDashboardReviewAndRefinementRequiresAnActualBase() throws Exception {
         var f = new IntentScenarioSupport();
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V010__assistant_primary_bindings.sql")).execute(f.jdbc.getDataSource());
@@ -91,6 +124,11 @@ class PrimaryWorkflowContextTest {
                         .putArray("operations").addObject().put("op", "show_current").put("id", "speed")
                         .put("dataRef", "unavailable").put("widgetKey", "CURRENT_SPEED");
                 assertThrows(com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected.class, () -> domain.validateProposal(input, invalid));
+                invalid.withObject("/command/payload").putArray("operations").addObject()
+                        .put("op", "rename_dashboard").put("id", "name").put("name", "Different name");
+                var rejected = assertThrows(com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected.class,
+                        () -> domain.validateProposal(input, invalid));
+                assertTrue(rejected.diagnostic().contains("DASHBOARD_NAME_BINDING_CHANGED"));
                 return f.prepared("CREATE_DASHBOARD", f.mapper.createObjectNode().put("name", "Мой трамвай").put("deviceId", device));
             }
         };

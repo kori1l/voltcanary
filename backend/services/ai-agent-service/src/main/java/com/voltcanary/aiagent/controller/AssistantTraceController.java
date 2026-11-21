@@ -1,12 +1,13 @@
 package com.voltcanary.aiagent.controller;
 
-import com.voltcanary.aiagent.port.AssistantTraces;
 import com.voltcanary.aiagent.conversation.ConversationContracts.Page;
 import com.voltcanary.aiagent.port.AssistantTraceRecorder.Event;
+import com.voltcanary.aiagent.port.AssistantTraces;
 import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import java.util.ArrayList;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,16 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/ai-agent/conversations/{conversationId}/turns/{turnId}/trace")
+@RequiredArgsConstructor
 public class AssistantTraceController {
     private final JwtIdentityService identity;
     private final AuthorizedPlanningContext contexts;
     private final AssistantTraces traces;
-
-    public AssistantTraceController(JwtIdentityService identity, AuthorizedPlanningContext contexts, AssistantTraces traces) {
-        this.identity = identity;
-        this.contexts = contexts;
-        this.traces = traces;
-    }
 
     @GetMapping
     public Page<Event> read(@RequestHeader(value = "Authorization", required = false) String authorization,

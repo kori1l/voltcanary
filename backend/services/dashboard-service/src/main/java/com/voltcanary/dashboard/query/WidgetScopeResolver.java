@@ -2,8 +2,8 @@ package com.voltcanary.dashboard.query;
 
 import com.voltcanary.dashboard.domain.DashboardActor;
 import com.voltcanary.dashboard.domain.DashboardFailure;
-import com.voltcanary.dashboard.port.DashboardEvidenceReads;
 import com.voltcanary.dashboard.port.DashboardEvidenceReads.ScopeSnapshot;
+import com.voltcanary.dashboard.port.DashboardEvidenceReads;
 import com.voltcanary.dashboard.query.QueryTypes.Scope;
 import com.voltcanary.dashboard.query.QueryTypes.ScopeMode;
 import java.util.HashMap;
@@ -11,12 +11,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class WidgetScopeResolver {
     private final DashboardEvidenceReads reads;
-    public WidgetScopeResolver(DashboardEvidenceReads reads) { this.reads = reads; }
 
     public ScopeSnapshot resolve(String authorization, DashboardActor actor, Scope dashboard, Scope runtime,
             Scope widget, Map<Scope, ScopeSnapshot> memo) {

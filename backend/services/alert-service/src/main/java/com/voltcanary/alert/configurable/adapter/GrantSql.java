@@ -10,13 +10,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Owner-local transaction/locking helpers; callers still obtain authority from actual owners. */
 @Component
+@RequiredArgsConstructor
 public class GrantSql {
     private final DataSource source;
-    public GrantSql(DataSource source) { this.source = source; }
 
     <T> T transaction(UUID account, Work<T> work) {
         try (var connection = source.getConnection()) {

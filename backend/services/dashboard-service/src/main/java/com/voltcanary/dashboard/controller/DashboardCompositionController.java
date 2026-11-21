@@ -7,28 +7,21 @@ import com.voltcanary.dashboard.application.DefinitionValidation;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.port.DashboardOwnership;
 import com.voltcanary.dashboard.templates.DashboardCompositionPreparation;
-import org.springframework.web.bind.annotation.PostMapping;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardCompositionController {
     private final DashboardOwnership ownership;
     private final DefinitionValidation validation;
     private final DashboardCompositionPreparation preparation;
     private final ObjectMapper mapper;
     private final com.voltcanary.dashboard.query.WidgetManifests manifests;
-
-    public DashboardCompositionController(DashboardOwnership ownership, DefinitionValidation validation,
-            DashboardCompositionPreparation preparation, ObjectMapper mapper, com.voltcanary.dashboard.query.WidgetManifests manifests) {
-        this.ownership = ownership;
-        this.validation = validation;
-        this.preparation = preparation;
-        this.mapper = mapper;
-        this.manifests = manifests;
-    }
 
     @GetMapping("/dashboards/composition/widget-types")
     public java.util.List<java.util.Map<String, Object>> types(@RequestHeader(value = "Authorization", required = false) String authorization) {

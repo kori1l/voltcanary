@@ -125,8 +125,11 @@ class DashboardPostgresIntegrationTest {
         widgets.addObject().put("id", "future").put("type", "fleet-count").put("typeVersion", 99).put("title", "Future");
         String id = request(post("/dashboards"), owner, body, "query-create", null, 201).path("id").asText();
         var catalog = request(get("/dashboard-widget-types"), owner, null, null, null, 200);
-        assertThat(catalog.size()).isEqualTo(18);
-        assertThat(java.util.stream.StreamSupport.stream(catalog.spliterator(), false).filter(node -> node.path("supported").asBoolean()).count()).isEqualTo(18);
+        var supportedTypes = java.util.stream.StreamSupport.stream(catalog.spliterator(), false)
+                .filter(node -> node.path("supported").asBoolean())
+                .map(node -> node.path("type").asText()).toList();
+        assertThat(catalog.size()).isEqualTo(20);
+        assertThat(supportedTypes).hasSize(20).contains("configured-records", "rule-window-result");
         var draft = request(get("/dashboards/" + id + "/draft"), owner, null, null, null, 200);
         var preview = request(post("/dashboards/" + id + "/query-validation"), owner,
                 mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 200);
@@ -141,6 +144,34 @@ class DashboardPostgresIntegrationTest {
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("revision", 99), null, null, 404);
         request(post("/dashboards/" + id + "/query"), owner, mapper.createObjectNode().put("draftEtag", draft.path("etag").asText()), null, null, 409);
         assertThat(jdbc.queryForObject("select count(*) from dashboard_revisions where dashboard_id=?", Long.class, UUID.fromString(id))).isEqualTo(1);
+    }
+
+    @Test
+    void savedRuleMeasureUsesTheSameExactOwnerReadForDraftAndPublishedDashboard() throws Exception {
+        String owner = actor(), foreign = actor();
+        String epoch = UUID.randomUUID().toString(), measure = UUID.randomUUID().toString();
+        ObjectNode input = body("Saved rule result");
+        var widgets = (com.fasterxml.jackson.databind.node.ArrayNode) input.path("definition").path("widgets");
+        widgets.removeAll();
+        widgets.addObject().put("id", "rule-result").put("type", "rule-window-result").put("typeVersion", 1)
+                .put("title", "Interval duration").putObject("query").put("epoch", epoch).put("measure", measure);
+        var result = mapper.createObjectNode().put("epoch", epoch).put("measure", measure).put("status", "OK")
+                .put("from", "2026-11-16T00:00:00Z").put("until", "2026-11-17T00:00:00Z");
+        result.putObject("literal").put("type", "DURATION").put("value", "9007199254740993");
+        result.putArray("evidence").add(UUID.randomUUID().toString());
+        when(evidenceReads.ruleMeasure(eq(owner), any(), any())).thenReturn(result);
+        String id = request(post("/dashboards"), owner, input, "measure-create", null, 201).path("id").asText();
+        String path = "/dashboards/" + id;
+        var draft = request(get(path + "/draft"), owner, null, null, null, 200);
+        var selection = mapper.createObjectNode().put("draftEtag", draft.path("etag").asText());
+        var approval = request(post(path + "/query-validation"), owner, selection, null, null, 200);
+        assertThat(approval.at("/panels/0/status").asText()).isEqualTo("valid");
+        var preview = request(post(path + "/query"), owner, selection, null, null, 200);
+        assertThat(preview.at("/panels/0/data/ruleWindowResult")).isEqualTo(result);
+        publish(owner, id, draft, "measure-publish", 200);
+        var published = request(post(path + "/query"), owner, mapper.createObjectNode(), null, null, 200);
+        assertThat(published.at("/panels/0/data/ruleWindowResult")).isEqualTo(result);
+        request(post(path + "/query"), foreign, mapper.createObjectNode(), null, null, 404);
     }
 
     @Test

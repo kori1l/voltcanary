@@ -3,8 +3,7 @@ package com.voltcanary.alert.service;
 import com.voltcanary.alert.config.AlertAuthorizationProperties;
 import com.voltcanary.alert.config.AlertInternalProperties;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -12,9 +11,8 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@Slf4j
 public class AlertAccessService {
-
-    private static final Logger log = LoggerFactory.getLogger(AlertAccessService.class);
 
     private final AlertAuthorizationProperties properties;
     private final RestClient restClient;

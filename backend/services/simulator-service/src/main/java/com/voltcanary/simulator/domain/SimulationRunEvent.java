@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "simulation_run_events")
+@Getter
+@Setter
 public class SimulationRunEvent {
     @Id
     private UUID id;
@@ -21,14 +25,4 @@ public class SimulationRunEvent {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getRunId() { return runId; }
-    public void setRunId(UUID runId) { this.runId = runId; }
-    public String getEventType() { return eventType; }
-    public void setEventType(String eventType) { this.eventType = eventType; }
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

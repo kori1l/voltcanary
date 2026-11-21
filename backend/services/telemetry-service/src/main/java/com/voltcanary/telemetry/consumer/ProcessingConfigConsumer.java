@@ -4,18 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.common.events.device.SourceProcessingConfigEvent;
 import com.voltcanary.telemetry.variable.ProcessingBundles;
+import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ProcessingConfigConsumer {
     private final ProcessingBundles bundles;
     private final ObjectMapper mapper;
-
-    public ProcessingConfigConsumer(ProcessingBundles bundles, ObjectMapper mapper) {
-        this.bundles = bundles;
-        this.mapper = mapper;
-    }
 
     @KafkaListener(topics = "source.processing-config.v1", groupId = "${spring.kafka.consumer.group-id}-processing",
             containerFactory = "processingKafkaListenerContainerFactory", autoStartup = "${app.variables.consume-enabled:false}")

@@ -13,17 +13,17 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class MlFeatureSnapshotGenerationService {
-
-    private static final Logger log = LoggerFactory.getLogger(MlFeatureSnapshotGenerationService.class);
 
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
@@ -32,23 +32,6 @@ public class MlFeatureSnapshotGenerationService {
     private final MlFeatureHashService hashService;
     private final MlFeatureSnapshotResponseMapper mapper;
     private final MeterRegistry meterRegistry;
-
-    public MlFeatureSnapshotGenerationService(
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlFeatureRowRepository featureRowRepository,
-            MlFeatureGenerationService featureGenerationService,
-            MlFeatureHashService hashService,
-            MlFeatureSnapshotResponseMapper mapper,
-            MeterRegistry meterRegistry) {
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.featureRowRepository = featureRowRepository;
-        this.featureGenerationService = featureGenerationService;
-        this.hashService = hashService;
-        this.mapper = mapper;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Transactional
     public MlFeatureSnapshotResponse generate(UUID accountId, MlFeatureSnapshotRequest request) {

@@ -11,4 +11,4 @@ is completed; no runtime deletion, tests, typecheck or browser checks were run.
 
 ## 99. Configurable-platform contract alignment
 
-- [ ] 99.1 Apply the added generic-resource requirement to pending implementation/integration; verify exact VCL/schema/source/receipt contracts and preserve original checked-task evidence and quality gates.
+- [ ] 99.1 Verify deletion of an authorized dashboard with native/external bindings and rule evidence. Assert that only the dashboard is hidden and that independently owned datasets, connections, spatial features, rules and evidence retain their prior state.

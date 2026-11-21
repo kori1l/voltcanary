@@ -1,28 +1,30 @@
 package com.voltcanary.telemetry.service;
 
+import com.voltcanary.telemetry.domain.TelemetryMeasurement;
 import com.voltcanary.telemetry.dto.TelemetryChartPointResponse;
 import com.voltcanary.telemetry.dto.TelemetryChartResponse;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import com.voltcanary.telemetry.dto.TelemetryExportResponse;
 import com.voltcanary.telemetry.dto.TelemetryLatestResponse;
 import com.voltcanary.telemetry.dto.TelemetryMetricResponse;
 import com.voltcanary.telemetry.dto.TelemetryQualityResponse;
 import com.voltcanary.telemetry.dto.TelemetryReadingResponse;
-import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import com.voltcanary.telemetry.repository.TelemetryEnvelopeRepository;
-import com.voltcanary.telemetry.domain.TelemetryMeasurement;
+import com.voltcanary.telemetry.repository.TelemetryMeasurementRepository;
 import com.voltcanary.telemetry.repository.TelemetryQualityFlagRepository;
 import com.voltcanary.telemetry.repository.TelemetryReadingRepository;
-import com.voltcanary.telemetry.repository.TelemetryMeasurementRepository;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class TelemetryQueryService {
 
     private final TelemetryMeasurementRepository measurementRepository;
@@ -30,18 +32,6 @@ public class TelemetryQueryService {
     private final TelemetryQualityFlagRepository qualityFlagRepository;
     private final MetricCatalog metricCatalog;
     private final TelemetryEnvelopeRepository envelopes;
-
-    public TelemetryQueryService(
-            TelemetryMeasurementRepository measurementRepository,
-            TelemetryReadingRepository readingRepository,
-            TelemetryQualityFlagRepository qualityFlagRepository,
-            MetricCatalog metricCatalog, TelemetryEnvelopeRepository envelopes) {
-        this.measurementRepository = measurementRepository;
-        this.readingRepository = readingRepository;
-        this.qualityFlagRepository = qualityFlagRepository;
-        this.metricCatalog = metricCatalog;
-        this.envelopes = envelopes;
-    }
 
     public List<TelemetryReadingResponse> getReadings(UUID deviceId) {
         return readingRepository.findTop100ByDeviceIdOrderByRecordedAtDesc(deviceId).stream()

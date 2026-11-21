@@ -9,6 +9,7 @@ import com.voltcanary.device.service.LocationService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,18 +22,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/locations")
+@RequiredArgsConstructor
 public class LocationController {
 
     private final LocationService locationService;
     private final AuthenticatedUserResolver userResolver;
-
-    public LocationController(LocationService locationService, AuthenticatedUserResolver userResolver) {
-        this.locationService = locationService;
-        this.userResolver = userResolver;
-    }
 
     @PostMapping
     public LocationResponse create(

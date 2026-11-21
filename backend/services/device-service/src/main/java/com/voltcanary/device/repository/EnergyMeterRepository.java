@@ -2,8 +2,8 @@ package com.voltcanary.device.repository;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.common.web.EnergyMeterDefinition;
 import com.voltcanary.common.web.EnergyMeterDefinition.CounterEvent;
+import com.voltcanary.common.web.EnergyMeterDefinition;
 import com.voltcanary.device.dto.EnergyMeterRequest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,18 +16,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class EnergyMeterRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public EnergyMeterRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     public boolean lockAccount(UUID accountId) {
         return !jdbc.query("SELECT id FROM accounts WHERE id=? AND status='ACTIVE' FOR UPDATE",(row,index)->row.getObject("id",UUID.class),accountId).isEmpty();

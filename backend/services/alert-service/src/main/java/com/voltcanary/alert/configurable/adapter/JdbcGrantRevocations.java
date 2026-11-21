@@ -8,13 +8,14 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Monotone revoke receipts survive uncertain commit acknowledgement and never renew permission. */
 @Component
+@RequiredArgsConstructor
 public class JdbcGrantRevocations implements GrantRevocationStore {
     private final GrantSql sql;
-    public JdbcGrantRevocations(GrantSql sql) { this.sql = sql; }
 
     @Override
     public GrantRevocation reserve(UUID actor, UUID grantId, long expectedEpoch, String key) {

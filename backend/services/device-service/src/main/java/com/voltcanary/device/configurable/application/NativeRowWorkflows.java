@@ -13,9 +13,11 @@ import com.voltcanary.vcl.VclParser;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class NativeRowWorkflows {
     public record View(UUID reviewId, long revision, String status, Instant expiresAt, UUID resourceId,
             UUID mutationId, UUID createdRecordId, UUID receiptId, String semanticDigest, String reviewDigest,
@@ -25,12 +27,6 @@ public class NativeRowWorkflows {
     private final AccountService accounts;
     private final NativeRowReviews reviews;
     private final NativeRowMutations mutations;
-
-    public NativeRowWorkflows(AccountService accounts, NativeRowReviews reviews, NativeRowMutations mutations) {
-        this.accounts = accounts;
-        this.reviews = reviews;
-        this.mutations = mutations;
-    }
 
     public View reserve(AuthenticatedUser actor, byte[] body) {
         var json = NativeReviewRequests.closed(body, Set.of("kind", "target", "idempotencyKey"));
@@ -77,7 +73,7 @@ public class NativeRowWorkflows {
         return account.getId();
     }
 
-    private static View view(NativeRowReview review) {
+    static View view(NativeRowReview review) {
         JsonNode result = null;
         if (review.resultJson() != null) {
             try { result = MAPPER.readTree(review.resultJson()); }

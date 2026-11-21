@@ -5,20 +5,18 @@ import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.domain.SimulationProtocol;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Set;
 import java.util.List;
+import java.util.Set;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SimulationYamlValidator {
 
     private final SimulationYamlParser parser;
     private static final Set<String> METRIC_TYPES = Set.of("constant", "cycle", "derived", "accumulator");
     private static final Set<String> ANOMALY_TYPES = Set.of("POWER_SPIKE", "CONSUMPTION_GROWTH", "OFFLINE");
-
-    public SimulationYamlValidator(SimulationYamlParser parser) {
-        this.parser = parser;
-    }
 
     public List<ValidationError> validate(String yaml) {
         List<ValidationError> errors = new ArrayList<>();

@@ -9,19 +9,19 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 /** Explicit envelope on the new topic. A schema arrival cannot assert current ACL or capture completeness. */
 @Component
+@RequiredArgsConstructor
 public class ObservationSchemaConsumer {
     private final ObservationSchemas schemas;
     private final ObservationCaptureProperties properties;
     private final ObjectMapper mapper;
     private final VclParser parser = new VclParser();
-    public ObservationSchemaConsumer(ObservationSchemas schemas, ObservationCaptureProperties properties, ObjectMapper mapper) {
-        this.schemas = schemas; this.properties = properties; this.mapper = mapper;
-    }
+
     @KafkaListener(topics = "source.binding-schema.v1",
             groupId = "${spring.kafka.consumer.group-id}-#{@observationCaptureProperties.schemaGroup()}",
             containerFactory = "observationSchemaKafkaListenerContainerFactory", autoStartup = "${app.observations.consume-enabled:false}")

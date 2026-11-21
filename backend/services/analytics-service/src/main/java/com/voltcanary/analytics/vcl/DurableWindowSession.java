@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /** Commits typed session transitions and timer receipts together in the keyed store. */
 public final class DurableWindowSession {
-    private static final String PROFILE = "vcl-durable-window-session-1";
+    public static final String PROFILE = "vcl-durable-window-session-1";
     private static final VclParser PARSER = new VclParser();
     private final VclWindowSessionKernel kernel = new VclWindowSessionKernel();
     private final VclWindowSessionKernel.Plan plan;

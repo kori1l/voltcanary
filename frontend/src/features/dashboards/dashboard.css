@@ -8,6 +8,10 @@
 .dashboard-widget { padding:16px; overflow-wrap:anywhere; }
 .dashboard-widget h3 { margin-top:0; }
 .dashboard-widget-content { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.dashboard-configured-records { overflow:auto; max-height:18rem; }
+.dashboard-configured-records table { width:100%; border-collapse:collapse; }
+.dashboard-configured-records th, .dashboard-configured-records td { padding:6px 8px; text-align:start; }
+.dashboard-record-map { min-height:14rem; width:100%; }
 .dashboard-evidence { display:flex; flex-wrap:wrap; gap:12px; margin:0; }
 .dashboard-evidence > div { min-width:0; max-width:100%; }
 .dashboard-evidence dt { font-size:.85em; color:var(--muted); text-transform:capitalize; }

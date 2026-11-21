@@ -5,6 +5,7 @@ import com.voltcanary.device.dto.MaintenanceOutcomeResponse;
 import com.voltcanary.device.service.MaintenanceOutcomeService;
 import java.time.Instant;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,15 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal")
+@RequiredArgsConstructor
 public class InternalMaintenanceOutcomeController {
 
     private final MaintenanceOutcomeService service;
     private final InternalServiceAuth internalServiceAuth;
-
-    public InternalMaintenanceOutcomeController(MaintenanceOutcomeService service, InternalServiceAuth internalServiceAuth) {
-        this.service = service;
-        this.internalServiceAuth = internalServiceAuth;
-    }
 
     @GetMapping("/maintenance-outcomes/changes")
     public List<MaintenanceOutcomeResponse> changes(

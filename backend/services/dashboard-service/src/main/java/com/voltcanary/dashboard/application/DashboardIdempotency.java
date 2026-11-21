@@ -13,17 +13,14 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DashboardIdempotency {
     private final DashboardStorage storage;
     private final ObjectMapper mapper;
-
-    public DashboardIdempotency(DashboardStorage storage, ObjectMapper mapper) {
-        this.storage = storage;
-        this.mapper = mapper;
-    }
 
     /** Call within the use case transaction, after current actor authorization. */
     public <T> T execute(DashboardActor actor, String route, String key, JsonNode body,

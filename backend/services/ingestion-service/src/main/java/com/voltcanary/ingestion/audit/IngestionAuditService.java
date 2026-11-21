@@ -6,21 +6,17 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class IngestionAuditService {
-
-    private static final Logger log = LoggerFactory.getLogger(IngestionAuditService.class);
 
     private final IngestionProperties properties;
     private final ArrayDeque<IngestionAuditEvent> recentEvents = new ArrayDeque<>();
-
-    public IngestionAuditService(IngestionProperties properties) {
-        this.properties = properties;
-    }
 
     public synchronized void record(
             String outcome,

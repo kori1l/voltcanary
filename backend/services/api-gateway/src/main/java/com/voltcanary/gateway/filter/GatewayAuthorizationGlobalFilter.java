@@ -1,8 +1,7 @@
 package com.voltcanary.gateway.filter;
 
 import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -12,9 +11,8 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
+@Slf4j
 public class GatewayAuthorizationGlobalFilter implements GlobalFilter, Ordered {
-
-    private static final Logger log = LoggerFactory.getLogger(GatewayAuthorizationGlobalFilter.class);
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {

@@ -23,7 +23,9 @@ class VclSourceBindingProfileTest {
         for (String contract : new String[] {
                 "{\"version\":\"direct-occurrence-1\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"asset\"}",
                 "{\"version\":\"direct-occurrence-2\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"trip\"}",
-                "{\"version\":\"direct-occurrence-1\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"trip\",\"fallback\":true}" }) {
+                "{\"version\":\"direct-occurrence-1\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"trip\",\"fallback\":true}",
+                "{\"version\":\"direct-occurrence-1\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"trip\",\"fanOut\":2}",
+                "{\"version\":\"expectation-deadline-1\",\"subjectKey\":\"asset\",\"occurrenceKey\":\"trip\"}" }) {
             var definition = definition();
             definition.set("occurrenceRouting", JSON.readTree(contract));
             assertThrows(IllegalArgumentException.class, () -> VclSourceBindingProfile.occurrenceFields(definition));

@@ -2,23 +2,19 @@ package com.voltcanary.alert.consumer;
 
 import com.voltcanary.alert.service.MaintenanceWindowProjectionService;
 import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "app.kafka", name = "consume-enabled", havingValue = "true")
+@RequiredArgsConstructor
+@Slf4j
 public class MaintenanceWindowChangedConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(MaintenanceWindowChangedConsumer.class);
-
     private final MaintenanceWindowProjectionService projectionService;
-
-    public MaintenanceWindowChangedConsumer(MaintenanceWindowProjectionService projectionService) {
-        this.projectionService = projectionService;
-    }
 
     @KafkaListener(
             topics = "maintenance-window.changed.v1",

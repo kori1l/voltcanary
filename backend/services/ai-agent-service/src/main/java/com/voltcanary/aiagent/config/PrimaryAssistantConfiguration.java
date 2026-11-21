@@ -64,8 +64,9 @@ public class PrimaryAssistantConfiguration {
         return new PrimaryDomainPreparation(mapper, validator, plans, reviews, authority, dashboards, properties, builder, journal, jdbc);
     }
     @Bean
-    PrimaryDomain primaryDomainExtensions(PrimaryDomainPreparation existing, NativeTableWorkflow nativeTables) {
-        return new NativePrimaryDomain(existing, nativeTables);
+    PrimaryDomain primaryDomainExtensions(PrimaryDomainPreparation existing, NativeTableWorkflow nativeTables, IntentPlanStore plans, com.voltcanary.aiagent.vehicle.VehicleMonitoringOwner vehicleOwner,
+            ObjectMapper mapper, ProtocolValidator validator, PlanStore reviews, AuthorizedPlanningContext authority, PrimaryOrchestrationJournal journal) {
+        return new com.voltcanary.aiagent.vehicle.VehiclePrimaryDomain(new NativePrimaryDomain(existing, nativeTables, plans), vehicleOwner, mapper, validator, plans, reviews, authority, journal);
     }
     @Bean
     PrimaryRuntime primaryRuntime(ObjectMapper mapper, ProtocolValidator validator, IntentPlanStore plans, AttemptLedger ledger,
@@ -74,15 +75,33 @@ public class PrimaryAssistantConfiguration {
             AiAgentOrchestrator executor, AuthorizedPlanningContext authority, PlanStore reviewStore,
             AssistantTraces traces, AiModelResolver resolver, AiAgentModelRunRecorder runs, PrimaryAssistantProperties properties,
             com.voltcanary.aiagent.service.WidgetCatalogueSearch catalogueSearch,
-            com.voltcanary.aiagent.orchestration.plan.AgentGraphRunner graphRunner) {
-        var definitions = scoped.definitions();
+            com.voltcanary.aiagent.orchestration.plan.AgentGraphRunner graphRunner,
+            com.voltcanary.aiagent.orchestration.collaboration.CollaborationStore collaboration,
+            io.micrometer.observation.ObservationRegistry observations, Clock clock,
+            org.springframework.beans.factory.ObjectProvider<com.voltcanary.aiagent.orchestration.collaboration.PrivateKnowledge> knowledge,
+            WidgetEmbeddingProperties embeddings, com.voltcanary.aiagent.nativeops.NativeOwnerClient nativeOwner,
+            @org.springframework.beans.factory.annotation.Value("${app.ai.knowledge.vector-generation:}") String vectorGeneration) {
+        var definitions = new ArrayList<>(scoped.definitions());
+        if (properties.isNativeDataEnabled()) {
+            definitions.add(new com.voltcanary.aiagent.nativeops.NativeSourceCaptureLoader(nativeOwner, mapper, clock).definition());
+        }
+        knowledge.ifAvailable(index -> {
+            if (!vectorGeneration.isBlank() && !embeddings.enabled()) {
+                throw new IllegalStateException("Private knowledge vector search requires configured embeddings");
+            }
+            var generation = vectorGeneration.isBlank() ? null : java.util.UUID.fromString(vectorGeneration);
+            var embedder = generation == null ? null : new com.voltcanary.aiagent.adapter.springai.SpringAiCapabilityEmbeddings(embeddings, observations);
+            definitions.add(com.voltcanary.aiagent.adapter.PrivateKnowledgeSearchLoader.definition(mapper, clock, collaboration,
+                    index, generation, embedder));
+            definitions.add(com.voltcanary.aiagent.adapter.PrivateKnowledgeSearchLoader.resolveDefinition(mapper, clock, collaboration, index));
+        });
         var registry = new SkillRegistry(validator, PrimarySkillPackages.build(mapper, validator, definitions));
         var loaders = new ArrayList<ContextSources.Loader>();
         definitions.forEach(def -> loaders.add(def.loader()));
         loaders.add(domain);
-        loaders.add(new ConversationHistoryLoader(history, mapper, validator, Clock.systemUTC()));
-        var loading = new ContextLoading(registry, validator, cursors, loaders, Clock.systemUTC());
+        loaders.add(new ConversationHistoryLoader(history, mapper, validator, clock));
+        var loading = new ContextLoading(registry, validator, cursors, loaders, clock);
         var receipts = new ExistingOrchestrationReceipts(reviewStore, executor, authority, mapper);
-        return new PrimaryRuntime(new PrimaryRuntime.Infrastructure(mapper, validator, plans, ledger, history, reviews, loading, receipts, traces, resolver, runs, graphRunner), registry, domain, properties.getProfile(), catalogueSearch);
+        return new PrimaryRuntime(new PrimaryRuntime.Infrastructure(mapper, validator, plans, ledger, history, reviews, loading, receipts, traces, resolver, runs, graphRunner, collaboration, authority, observations, clock), registry, domain, properties.getProfile(), catalogueSearch);
     }
 }

@@ -6,12 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.dashboard.application.DefinitionValidation;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.port.DashboardOwnership;
-import com.voltcanary.dashboard.query.DashboardWidgetQueries;
 import com.voltcanary.dashboard.query.CompactDashboardEvidence;
+import com.voltcanary.dashboard.query.DashboardWidgetQueries;
 import com.voltcanary.dashboard.query.QueryTypes;
 import com.voltcanary.dashboard.query.WidgetManifests;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardQueryController {
     private final DashboardOwnership ownership;
     private final DashboardWidgetQueries queries;
@@ -31,12 +33,7 @@ public class DashboardQueryController {
     public void privateEvidenceHeaders(jakarta.servlet.http.HttpServletResponse response) {
         response.setHeader("Cache-Control","no-store");
     }
-    public DashboardQueryController(DashboardOwnership ownership, DashboardWidgetQueries queries,
-            WidgetManifests manifests, DefinitionValidation validation, ObjectMapper mapper, CompactDashboardEvidence compact) {
-        this.ownership = ownership; this.queries = queries; this.manifests = manifests;
-        this.validation = validation; this.mapper = mapper;
-        this.compact = compact;
-    }
+
     @GetMapping("/dashboard-widget-types")
     public List<QueryTypes.Manifest> catalog(@RequestHeader(value = "Authorization", required = false) String authorization) {
         ownership.resolveReadOnly(authorization);

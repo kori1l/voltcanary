@@ -133,12 +133,12 @@
     },
     {
       "changeId": "define-vcl-language-contracts",
-      "action": "IMPLEMENTATION_IN_PROGRESS",
-      "note": "G0/M0 common-vcl parser/registry/static compiler verified by63 Java tests; scalar runtime and owner/UI/AI integration remain open.",
-      "checkedTasks": 3,
-      "openTasks": 3,
+      "action": "ARCHIVED",
+      "note": "G0 completed 2026-11-17 with owner bundle preparation, scalar kernels and shared native UI/AI contracts. Generic workflow authoring remains with G6/G7.",
+      "checkedTasks": 25,
+      "openTasks": 0,
       "specFiles": [
-        "openspec/changes/define-vcl-language-contracts/specs/vcl-language/spec.md"
+        "openspec/specs/vcl-language/spec.md"
       ]
     },
     {

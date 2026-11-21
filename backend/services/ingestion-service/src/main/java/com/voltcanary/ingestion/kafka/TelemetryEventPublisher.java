@@ -6,30 +6,21 @@ import com.voltcanary.ingestion.event.TelemetryTopics;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.concurrent.TimeUnit;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@Slf4j
+@RequiredArgsConstructor
 public class TelemetryEventPublisher {
-
-    private static final Logger log = LoggerFactory.getLogger(TelemetryEventPublisher.class);
 
     private final KafkaTemplate<String, TelemetryReceivedEvent> kafkaTemplate;
     private final IngestionProperties properties;
     private final MeterRegistry meterRegistry;
-
-    public TelemetryEventPublisher(
-            KafkaTemplate<String, TelemetryReceivedEvent> kafkaTemplate,
-            IngestionProperties properties,
-            MeterRegistry meterRegistry) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.properties = properties;
-        this.meterRegistry = meterRegistry;
-    }
 
     public void publish(TelemetryReceivedEvent event) {
         log.info(

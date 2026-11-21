@@ -13,6 +13,7 @@ import org.springframework.web.client.RestClient;
 public class ToolExecutor {
 
     private final RestClient deviceClient;
+    private final com.voltcanary.aiagent.vehicle.VehicleMonitoringExecutor vehicles;
     private final LegacyAlertOperations legacyAlerts;
     private final com.voltcanary.aiagent.nativeops.NativeTableExecutor nativeTables;
     private final RestClient simulatorClient;
@@ -28,6 +29,7 @@ public class ToolExecutor {
     @org.springframework.beans.factory.annotation.Autowired
     public ToolExecutor(RestClient.Builder restClientBuilder, AiAgentProperties properties, DashboardCreationExecutor dashboardCreation,
             ActionExecutionBoundary boundary, DeviceSetupExecutor deviceSetup, com.voltcanary.aiagent.nativeops.NativeTableExecutor nativeTables) {
+        this.vehicles = new com.voltcanary.aiagent.vehicle.VehicleMonitoringExecutor(new com.voltcanary.aiagent.vehicle.VehicleMonitoringOwner(restClientBuilder, properties), new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
         this.deviceClient = restClientBuilder.clone().baseUrl(properties.getServices().getDeviceBaseUrl()).build();
         this.legacyAlerts = new LegacyAlertOperations(restClientBuilder.clone().baseUrl(properties.getServices().getAlertBaseUrl()).build());
         this.simulatorClient = restClientBuilder.clone().baseUrl(properties.getServices().getSimulatorBaseUrl()).build();
@@ -40,8 +42,10 @@ public class ToolExecutor {
     public ActionExecutionResponse execute(AgentAction action, String authorization, UUID userId, Map<String, Object> outputs,
             String idempotencyKey) {
         return boundary.run(action, outputs, () -> switch (action.tool()) {
+                case UPDATE_VEHICLE_MONITORING -> vehicles.execute(action, authorization, userId, false);
                 case CREATE_DEVICE -> deviceSetup.execute(action, authorization, idempotencyKey);
                 case CREATE_NATIVE_TABLE -> nativeTables.execute(action, authorization);
+                case APPLY_SOURCE_MAPPING -> nativeTables.executeMapping(action, authorization, false);
                 case CREATE_DASHBOARD, UPDATE_DASHBOARD_DRAFT -> dashboardCreation.execute(action, authorization, idempotencyKey);
                 case CREATE_DATA_SOURCE -> action.parameters().containsKey("provider")
                         ? deviceSetup.connectExisting(action, authorization, idempotencyKey) : createDataSource(action, authorization, outputs);
@@ -59,6 +63,10 @@ public class ToolExecutor {
     }
 
     public ActionExecutionResponse reconcile(AgentAction action, String authorization, Map<String, Object> outputs, String key) {
+        if (action.tool() == com.voltcanary.aiagent.model.AgentTool.UPDATE_VEHICLE_MONITORING)
+            return boundary.run(action, outputs, () -> vehicles.execute(action, authorization, UUID.fromString(action.parameters().get("userId").toString()), true));
+        if (action.tool() == com.voltcanary.aiagent.model.AgentTool.APPLY_SOURCE_MAPPING)
+            return boundary.run(action, outputs, () -> nativeTables.executeMapping(action, authorization, true));
         return boundary.run(action, outputs, () -> action.tool() == com.voltcanary.aiagent.model.AgentTool.CREATE_NATIVE_TABLE
                 ? nativeTables.reconcile(action, authorization) : dashboardCreation.reconcile(action, authorization, key));
     }

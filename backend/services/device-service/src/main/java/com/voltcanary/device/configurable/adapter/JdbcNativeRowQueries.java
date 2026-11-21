@@ -24,23 +24,30 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.springframework.util.ConcurrentLruCache;
 
 public final class JdbcNativeRowQueries implements NativeRowQueries {
-    private final DataSource source;
+    private final NativeDataTransactions transactions;
     private final NativeQueryCursor cursors;
     private final VclParser parser = new VclParser();
     private final VclCompiler compiler = new VclCompiler(new VclRegistry(parser), VclUnits.standard());
+    private final ConcurrentLruCache<CompileRequest, CompiledQuery> compiled = new ConcurrentLruCache<>(128, this::compile);
 
     public JdbcNativeRowQueries(DataSource source, NativeQueryCursor cursors) {
-        this.source = source;
+        this(cursors, NativeDataTransactions.owner(source));
+    }
+
+    JdbcNativeRowQueries(NativeQueryCursor cursors, NativeDataTransactions transactions) {
+        this.transactions = transactions;
         this.cursors = cursors;
     }
 
     @Override
     public NativeQueryPage query(UUID account, UUID actor, VclDocument document) {
         if (document.kind() != VclDocument.Kind.QUERY) throw new VclException("QUERY_REQUIRED", "");
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
-            var query = prepare(connection, account, scope, document);
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            var query = prepare(connection, account, actor, access, document);
             var spec = query.spec();
             var dataset = query.dataset();
             String digest = query.digest();
@@ -73,8 +80,9 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
         if (!document.spec().at("/read/mode").asText().equals("LIVE") || !document.spec().path("cursor").isNull()) {
             throw new VclException("SNAPSHOT_TEMPLATE_REQUIRED", "");
         }
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
-            var query = prepare(connection, account, scope, document);
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            var query = prepare(connection, account, actor, access, document);
             String projectionDigest = projection == null ? null
                     : NativeSnapshotAsOf.projectionDigest(query.dataset(), query.spec().path("select"), projection);
             var rows = select(connection, query, null, NativeQuerySnapshots.MAX_ROWS + 1);
@@ -121,8 +129,9 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
                 || !document.spec().path("cursor").isNull()) {
             throw new VclException("ASOF_SNAPSHOT_REQUIRED", "");
         }
-        return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) -> {
-            var query = prepare(connection, account, scope, document);
+        return transactions.run(account, actor, (connection, access) -> {
+            String scope = access.digest();
+            var query = prepare(connection, account, actor, access, document);
             var current = query.dataset();
             UUID id = UUID.fromString(query.spec().at("/read/snapshotId").textValue());
             var stored = NativeQuerySnapshots.read(connection, current, actor, scope, query.digest(), id, cursors.now());
@@ -133,19 +142,39 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
         });
     }
 
-    private record Prepared(NativeDataset dataset, JsonNode spec, String digest) { }
+    private record Prepared(NativeDataset dataset, JsonNode spec, String digest, NativeReadScope access) { }
+    private record CompileRequest(String document, NativeDataset dataset, NativeReadScope access) { }
+    private record CompiledQuery(JsonNode spec, String digest) { }
 
-    private Prepared prepare(Connection connection, UUID account, String scope, VclDocument document) throws SQLException {
-        var normalized = parser.parse(VclCanonical.json(document));
-        var spec = normalized.spec();
+    private Prepared prepare(Connection connection, UUID account, UUID actor, NativeReadScope access, VclDocument document) throws SQLException {
+        String scope = access.digest();
+        var spec = document.spec();
         UUID id = UUID.fromString(spec.at("/target/datasetId").asText());
+        access.target(id);
         long revision = spec.at("/target/schemaRevision").asLong();
-        var dataset = NativeRowTransactions.head(connection, account, id, revision);
+        var dataset = spec.at("/read/mode").asText().equals("SNAPSHOT")
+                ? NativeQuerySnapshots.pinnedDataset(connection, account, actor, id, revision,
+                        UUID.fromString(spec.at("/read/snapshotId").asText()), scope, cursors.now())
+                : NativeRowTransactions.head(connection, account, id, revision);
+        // Reuse semantic validation only after the fresh transaction has established the
+        // complete input, physical head and exact access scope.
+        var request = new CompileRequest(document.json().toString(), dataset, access);
+        var selection = request.document().length() <= 16_384 ? compiled.get(request) : compile(request);
+        return new Prepared(dataset, selection.spec(), selection.digest(), access);
+    }
+
+    private CompiledQuery compile(CompileRequest request) {
+        var dataset = request.dataset();
+        var access = request.access();
+        var normalized = parser.parse(VclCanonical.json(parser.parse(request.document())));
+        var spec = normalized.spec();
+        UUID datasetId = dataset.schema().id();
+        long revision = spec.at("/target/schemaRevision").asLong();
         var metadata = new VclMetadata() {
-            public String accessScopeDigest() { return scope; }
+            public String accessScopeDigest() { return access.digest(); }
             public Optional<Snapshot> dataset(UUID requested, long version) {
-                return requested.equals(id) && version == revision
-                        ? Optional.of(new Snapshot(id, revision, dataset.metadata())) : Optional.empty();
+                return requested.equals(datasetId) && version == revision
+                        ? Optional.of(new Snapshot(datasetId, revision, access.metadata(dataset))) : Optional.empty();
             }
             public Optional<Snapshot> binding(UUID requested, long version) { return Optional.empty(); }
             public boolean permits(Resource kind, UUID requested) { return false; }
@@ -158,7 +187,7 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
         var digestSpec = (ObjectNode) digestDocument.path("spec");
         digestSpec.putNull("cursor");
         digestSpec.putObject("read").put("mode", "LIVE");
-        return new Prepared(dataset, spec, VclCanonical.documentDigest(parser.parse(digestDocument.toString())));
+        return new CompiledQuery(spec, VclCanonical.documentDigest(parser.parse(digestDocument.toString())));
     }
 
     private NativeQueryPage snapshotPage(Connection connection, UUID actor, String scope, Prepared query) throws SQLException {
@@ -194,13 +223,14 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
         var dataset = prepared.dataset();
         var builder = new NativeQuerySql(dataset);
         String where = builder.predicate(spec.path("where"));
+        String authorizedRows = prepared.access().rowPredicate(builder.parameters());
         boolean ascending = spec.at("/order/0/direction").asText().equals("ASC");
         var fields = new ArrayList<UUID>();
         spec.path("select").forEach(value -> fields.add(UUID.fromString(value.asText())));
         var columns = new LinkedHashSet<>(List.of("record_id", "record_version"));
         fields.forEach(field -> columns.addAll(NativeRowCodec.columns(dataset, field)));
         String sql = "SELECT " + columns.stream().map(NativeSqlLayout::identifier).collect(java.util.stream.Collectors.joining(","))
-                + " FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset.schema()).table()) + " WHERE " + where
+                + " FROM " + NativeSqlLayout.identifier(new NativeSqlLayout(dataset).table()) + " WHERE (" + where + ") AND (" + authorizedRows + ")"
                 + (after == null ? "" : ascending ? " AND record_id>?" : " AND record_id<?")
                 + " ORDER BY record_id " + (ascending ? "ASC" : "DESC") + " LIMIT ?";
         var rows = new ArrayList<NativeRow>();
@@ -228,6 +258,8 @@ public final class JdbcNativeRowQueries implements NativeRowQueries {
         java.util.stream.Stream.of("eq", "ne", "lt", "le", "gt", "ge", "and", "or", "not", "is_null", "is_known").forEach(methods::add);
         var types = result.putArray("predicateFieldTypes");
         java.util.stream.Stream.of("BOOLEAN", "INT64", "DECIMAL", "DATE", "INSTANT", "DURATION").forEach(types::add);
+        result.putArray("equalityOnlyFieldTypes").add("TEXT").add("ENUM").add("REF");
+        result.put("referenceConstants", false);
         return result;
     }
 }

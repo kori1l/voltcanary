@@ -7,9 +7,7 @@ import com.voltcanary.common.security.VclWorkerAssertion;
 import com.voltcanary.common.web.ConfigurableOwnerReads;
 import com.voltcanary.vcl.VclCircleRevision;
 import com.voltcanary.vcl.VclException;
-import com.voltcanary.vcl.VclParser;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -25,7 +23,6 @@ final class WorkerCircleReads {
     private final WorkerGrantReads grants;
     private final ConfigurableOwnerReads owner;
     private final VclWorkerAssertion signer;
-    private final VclParser parser = new VclParser();
 
     WorkerCircleReads(DataSource source, WorkerGrantReads grants, RestClient.Builder builder,
             AnalyticsDownstreamProperties properties, VclWorkerIdentityProperties identity) {
@@ -59,7 +56,7 @@ final class WorkerCircleReads {
         var bundle = bundles.find(deployment.account(), deployment.bundle())
                 .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
         if (!bundle.digest().equals(deployment.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var pins = parser.readJson(bundle.payload().getBytes(StandardCharsets.UTF_8))
+        var pins = bundle.json()
                 .at("/ownerValidation/execution/resourceRevisions");
         String expected = null;
         long selected = 0;

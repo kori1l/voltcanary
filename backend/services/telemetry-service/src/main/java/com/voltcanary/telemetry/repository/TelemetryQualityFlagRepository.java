@@ -8,17 +8,15 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class TelemetryQualityFlagRepository {
 
     private final JdbcTemplate jdbcTemplate;
-
-    public TelemetryQualityFlagRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
 
     public void save(TelemetryQualityFlag flag) {
         jdbcTemplate.update("""

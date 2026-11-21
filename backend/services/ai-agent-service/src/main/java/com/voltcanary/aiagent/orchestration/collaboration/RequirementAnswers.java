@@ -7,16 +7,13 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Applies the collaboration wire contract under a verified root input turn. */
+@RequiredArgsConstructor
 public final class RequirementAnswers {
     private final ProtocolValidator validator;
     private final RequirementChanges changes;
-
-    public RequirementAnswers(ProtocolValidator validator, RequirementChanges changes) {
-        this.validator = validator;
-        this.changes = changes;
-    }
 
     public Requirements.Snapshot apply(Requirements.Snapshot before, JsonNode body, IntentPlans.Token turn, Instant now) {
         validator.validate("collab.RequirementsAnswer", body);

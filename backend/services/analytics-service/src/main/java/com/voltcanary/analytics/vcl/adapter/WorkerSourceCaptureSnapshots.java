@@ -2,14 +2,14 @@ package com.voltcanary.analytics.vcl.adapter;
 
 import com.voltcanary.vcl.VclException;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Restores a retained journal cut through scoped machine owner reads. */
 @Component
+@RequiredArgsConstructor
 public final class WorkerSourceCaptureSnapshots {
     private final WorkerSourceCaptureReads reads;
-
-    public WorkerSourceCaptureSnapshots(WorkerSourceCaptureReads reads) { this.reads = reads; }
 
     public SourceCaptureSnapshot capture(UUID account, UUID epoch, UUID binding, long revision,
             SourceCaptureSnapshot.Cut cut) {
@@ -27,5 +27,10 @@ public final class WorkerSourceCaptureSnapshots {
     UUID findCoverage(UUID account, UUID epoch, UUID binding, long revision, UUID generation,
             java.time.Instant from, java.time.Instant until) {
         return reads.findCoverage(account, epoch, binding, revision, generation, from, until);
+    }
+
+    UUID findCoverage(UUID account, UUID epoch, UUID binding, long revision, UUID generation,
+            java.time.Instant from, java.time.Instant until, long minimumCheckpoint) {
+        return reads.findCoverage(account, epoch, binding, revision, generation, from, until, minimumCheckpoint);
     }
 }

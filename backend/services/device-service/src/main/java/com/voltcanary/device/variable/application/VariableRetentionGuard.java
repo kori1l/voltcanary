@@ -6,20 +6,17 @@ import com.voltcanary.common.events.telemetry.TelemetryFieldPolicy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class VariableRetentionGuard {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public VariableRetentionGuard(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     public void check(UUID sourceId, Map<String, Object> mapping) {
         if (sourceId == null) return;

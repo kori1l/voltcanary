@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const plan: AgentPlan = {
   planId: "native-plan", version: 1, payloadDigest: "reviewed-native", summary: "Create service visits", explanation: "Review the fields",
   confirmationRequired: true, safetyNotes: [], planningStatus: "READY", executionStatus: "READY",
-  actions: [{ id: "native-action", tool: "CREATE_NATIVE_TABLE", title: "Create service visits", description: "Seven typed fields",
+  actions: [{ id: "native-action", tool: "CREATE_NATIVE_TABLE", title: "Create service visits", description: "Eleven typed fields",
     requiresConfirmation: true, parameters: { protocol: "native-table-review-1", document: nativeAuthoring.document } }],
 };
 const success = { planId: plan.planId, status: "SUCCESS", actions: [{ actionId: "native-action", tool: "CREATE_NATIVE_TABLE", status: "SUCCESS",
@@ -22,6 +22,8 @@ it("renders the same concrete schema preview and executes only the explicitly co
   const schema = screen.getByRole("region", { name: "Table schema preview" });
   expect(within(schema).getByRole("heading", { name: "Service visits" })).toBeInTheDocument();
   expect(within(schema).getByText(/Voltage: Decimal \(V\).*Precision 18, scale 3/)).toBeInTheDocument();
+  expect(within(schema).getByText(/Status: Choice.*Queued, In progress/)).toBeInTheDocument();
+  expect(within(schema).getByText(/Previous visit: Reference/)).toBeInTheDocument();
   expect(within(schema).getByText("Unique key: Visit code")).toBeInTheDocument();
   expect(within(schema).getByText("Indexed columns: Count, Voltage")).toBeInTheDocument();
   expect(within(schema).getByText("Keep row revisions: Yes")).toBeInTheDocument();

@@ -20,9 +20,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class ActionPlanner {
     private static final String SYSTEM_PROMPT = """
             You are the VoltCanary AI Agent planner.
@@ -167,19 +169,6 @@ public class ActionPlanner {
     private final AiModelResolver aiModelResolver;
     private final AiModelAdapterRegistry adapterRegistry;
     private final AiAgentModelRunRecorder runRecorder;
-
-    public ActionPlanner(
-            List<LlmPlanProvider> llmPlanProviders,
-            LlmPlanSanitizer llmPlanSanitizer,
-            AiModelResolver aiModelResolver,
-            AiModelAdapterRegistry adapterRegistry,
-            AiAgentModelRunRecorder runRecorder) {
-        this.llmPlanProviders = llmPlanProviders;
-        this.llmPlanSanitizer = llmPlanSanitizer;
-        this.aiModelResolver = aiModelResolver;
-        this.adapterRegistry = adapterRegistry;
-        this.runRecorder = runRecorder;
-    }
 
     public AgentPlan plan(AuthenticatedUser user, String message, Map<String, Object> context, UUID providerId, UUID modelConfigId) {
         AgentPlan fallback = ruleBasedPlan(user, message, context);

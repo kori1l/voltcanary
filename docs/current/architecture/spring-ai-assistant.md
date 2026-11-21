@@ -1,5 +1,8 @@
 # Spring AI assistant
 
+For a detailed Russian source walkthrough of the UI-to-action chain and project
+architecture, see [AI Agent request walkthrough](ai-agent-request-walkthrough.ru.md).
+
 The Java backend uses Spring Boot 4.0.9, Spring Cloud 2025.1.4 and Spring AI
 2.0.2. Java source/bytecode remains Java 21. Boot manages the compatible
 Framework, Kafka and Micrometer versions. Springdoc uses its Boot 4 line.
@@ -51,18 +54,17 @@ Continuing generation on a pre-graph active plan returns409
 `GRAPH_ENGINE_MIGRATION_REQUIRED`; an incompatible engine/definition returns409
 `GRAPH_ENGINE_VERSION_CHANGED`. There is no silent generator fallback or implicit
 migration. Existing history, cancellation and original saved-review confirmation
-remain available. To continue new generation, start a new conversation/plan and
-explicitly select an authorized prior review when needed. In-place reviewed
-migration remains pending. Rollback must keep a version2-capable reader/receipt
-service; an older binary cannot read or generate on version2 plans. Do not strip
-the pin/checkpoint to force a downgrade.
+remain available.
+
+New conversations and plans retain their history and graph checkpoints across
+service restarts. Pre-release test plans require no in-place migration.
 
 The existing `AI_ASSISTANT_V2_ENABLED` default-off generation gate is retained;
 no provider settings, model campaign or deployment defaults change here.
 The ordinary-API dashboard lifecycle passes13 deterministic Docker checks on
 2026-11-12, including two restarts and exact same-ID update readback; see the
 [verification runbook](../flows/ai-creation-verification.md#langgraph-ordinary-api-docker-lifecycle--2026-11-12).
-Requirements/specialist semantics, browser acceptance, in-place migration and
+Requirements/specialist semantics, browser acceptance and
 A5/A6 model-quality gates remain separate unfinished work.
 
 ### Internal specialist integration checkpoint — 2026-11-12
@@ -85,8 +87,42 @@ The internal requirements transition uses the same transaction for the
 collaboration journal, root plan revision, question or reply, and revocation
 of affected READY reviews. The answer adapter checks the question and
 requirements revisions and binds CHOICE, TEXT and VALUES to the claimed input
-digest and journaled message ID. Public requirements endpoints and runtime
-registration are pending.
+digest and journaled message ID. The authenticated
+`GET /ai-agent/plans/{planId}/requirements` reads the scoped snapshot.
+`POST /ai-agent/plans/{planId}/requirements/answers` uses the assistant
+enablement gate and atomically claims, journals and commits an answer for the
+registered text slot profile. Consultation inspection at
+`GET /ai-agent/plans/{planId}/consultations/{taskId}` returns task status,
+revision, exchange count and children. The corresponding `POST .../cancel`
+accepts `expectedTaskRevision` and `requestKey`, fences the selected task
+and its descendants, and replays the journaled result for the same request.
+The graph publishes single-field name questions without choices for device and
+dashboard creation in the same terminal commit. A typed answer updates the
+step's name input and marks the step READY for the next turn. The next step
+can be selected explicitly by passing `continueStepId` to the conversation
+message endpoint. The assistant's plan view uses this path to continue
+preparation. The server checks the current conversation revision, step
+readiness and successful dependencies before entering the step directly.
+The next step
+can dispatch the registered name assessment in a LangGraph4j subgraph. It
+reads only the step's confirmed name slot and uses the same pinned provider,
+root budget and attempt ledger. Task summaries are discoverable through
+`GET /ai-agent/plans/{planId}/consultations`.
+When a dashboard step requests an unresolved name, the same role can ask for
+that slot. The coordinator commits the specialist question with the root
+pause. A typed answer followed by explicit step continuation reuses the
+existing consultation task and reserves its second exchange.
+On its first exchange with an already confirmed name, the assessment role
+can request the registered workflow context or delegate readability to
+the depth-three name role. Workflow context supplies only the selected
+device labels and snapshot ID. A parent continues after its declared child
+tasks finish and receives only child payloads whose read dependencies are
+still current.
+The assistant drawer reads the task summaries when it opens a saved plan or
+receives a new plan revision. This read does not initiate an exchange.
+For a saved single text name question, the chat composer sends the typed
+answer with both revisions and reloads the conversation. The operator can
+then continue the ready step from the plan view.
 
 `ConsultationPolicy` bounds logical depth at3, children at3 per parent, lifetime
 nodes at12, simultaneous RUNNING tasks at2 and exchanges at2 per obligation.

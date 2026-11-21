@@ -1,11 +1,11 @@
 package com.voltcanary.aiagent.conversation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.config.ConversationProperties;
 import com.voltcanary.aiagent.conversation.ConversationContracts.Conversation;
 import com.voltcanary.aiagent.conversation.ConversationContracts.Message;
 import com.voltcanary.aiagent.conversation.ConversationContracts.Page;
+import com.voltcanary.aiagent.dto.ExecutePlanResponse;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -13,6 +13,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,19 +24,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Short serialized writes; provider and domain calls always happen outside these transactions. */
 @Repository
+@RequiredArgsConstructor
 public class ConversationStore {
     public record Attempt(String status, UUID planId, boolean claimed) { }
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final ConversationProperties properties;
     private final ObjectMapper mapper;
-
-    public ConversationStore(JdbcTemplate jdbc, TransactionTemplate transactions, ConversationProperties properties, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.transactions = transactions;
-        this.properties = properties;
-        this.mapper = mapper;
-    }
 
     public Conversation create(Scope user, UUID id) {
         Instant now = Instant.now();

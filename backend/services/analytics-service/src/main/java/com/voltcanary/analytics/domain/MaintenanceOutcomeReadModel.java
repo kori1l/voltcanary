@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "maintenance_outcomes_read_model")
+@Getter
+@Setter
 public class MaintenanceOutcomeReadModel {
 
     @Id
@@ -60,36 +64,4 @@ public class MaintenanceOutcomeReadModel {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public UUID getMaintenanceOutcomeId() { return maintenanceOutcomeId; }
-    public void setMaintenanceOutcomeId(UUID maintenanceOutcomeId) { this.maintenanceOutcomeId = maintenanceOutcomeId; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public UUID getOperationId() { return operationId; }
-    public void setOperationId(UUID operationId) { this.operationId = operationId; }
-    public UUID getMaintenanceWindowId() { return maintenanceWindowId; }
-    public void setMaintenanceWindowId(UUID maintenanceWindowId) { this.maintenanceWindowId = maintenanceWindowId; }
-    public Instant getObservedAt() { return observedAt; }
-    public void setObservedAt(Instant observedAt) { this.observedAt = observedAt; }
-    public Instant getResolvedAt() { return resolvedAt; }
-    public void setResolvedAt(Instant resolvedAt) { this.resolvedAt = resolvedAt; }
-    public String getOutcomeType() { return outcomeType; }
-    public void setOutcomeType(String outcomeType) { this.outcomeType = outcomeType; }
-    public String getFailureMode() { return failureMode; }
-    public void setFailureMode(String failureMode) { this.failureMode = failureMode; }
-    public String getComponent() { return component; }
-    public void setComponent(String component) { this.component = component; }
-    public String getSeverity() { return severity; }
-    public void setSeverity(String severity) { this.severity = severity; }
-    public Integer getDowntimeMinutes() { return downtimeMinutes; }
-    public void setDowntimeMinutes(Integer downtimeMinutes) { this.downtimeMinutes = downtimeMinutes; }
-    public String getSource() { return source; }
-    public void setSource(String source) { this.source = source; }
-    public double getConfidence() { return confidence; }
-    public void setConfidence(double confidence) { this.confidence = confidence; }
-    public long getVersion() { return version; }
-    public void setVersion(long version) { this.version = version; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

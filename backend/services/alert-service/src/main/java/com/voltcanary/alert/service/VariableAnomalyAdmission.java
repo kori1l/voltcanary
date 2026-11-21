@@ -6,22 +6,18 @@ import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.telemetry.VariableRuleSelector;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 /** Recheck revocation and age when a queued anomaly finally reaches alerts. */
 @Component
+@RequiredArgsConstructor
 public class VariableAnomalyAdmission {
     private final AlertRuleRepository rules;
     private final VariableRuleValidation validation;
     private final ObjectMapper mapper;
-
-    public VariableAnomalyAdmission(AlertRuleRepository rules, VariableRuleValidation validation, ObjectMapper mapper) {
-        this.rules = rules;
-        this.validation = validation;
-        this.mapper = mapper;
-    }
 
     public boolean accepts(AnomalyDetectedEvent event) {
         var evidence = event.variableEvidence();

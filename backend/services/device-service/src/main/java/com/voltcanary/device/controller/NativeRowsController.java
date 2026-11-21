@@ -1,5 +1,6 @@
 package com.voltcanary.device.controller;
 
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.voltcanary.device.configurable.application.NativeReviewRequests;
 import com.voltcanary.device.configurable.application.NativeRowWorkflows;
 import com.voltcanary.device.configurable.domain.NativeQueryPage;
@@ -7,11 +8,11 @@ import com.voltcanary.device.configurable.port.NativeRowQueries;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
 import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclParser;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,16 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/data/datasets/{id}")
+@RequiredArgsConstructor
 public class NativeRowsController {
     private final AuthenticatedUserResolver users;
     private final NativeRowWorkflows rows;
     private final NativeRowQueries queries;
     private final VclParser parser = new VclParser();
-    public NativeRowsController(AuthenticatedUserResolver users, NativeRowWorkflows rows, NativeRowQueries queries) {
-        this.users = users;
-        this.rows = rows;
-        this.queries = queries;
-    }
 
     @PostMapping("/mutation-reviews")
     public NativeRowWorkflows.View prepare(@RequestHeader HttpHeaders headers, @PathVariable UUID id, @RequestBody byte[] body) {

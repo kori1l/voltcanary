@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_dataset_versions")
+@Getter
+@Setter
 public class MlDatasetVersion {
     @Id
     private UUID id;
@@ -60,48 +64,4 @@ public class MlDatasetVersion {
     @Column(name = "lifecycle_at")
     private Instant lifecycleAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getDatasetId() { return datasetId; }
-    public void setDatasetId(UUID datasetId) { this.datasetId = datasetId; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public int getVersion() { return version; }
-    public void setVersion(int version) { this.version = version; }
-    public MlDatasetSourceType getSourceType() { return sourceType; }
-    public void setSourceType(MlDatasetSourceType sourceType) { this.sourceType = sourceType; }
-    public MlDatasetStatus getStatus() { return status; }
-    public void setStatus(MlDatasetStatus status) { this.status = status; }
-    public MlTrainingSplitStrategy getSplitStrategy() { return splitStrategy; }
-    public void setSplitStrategy(MlTrainingSplitStrategy splitStrategy) { this.splitStrategy = splitStrategy; }
-    public String getSplitConfigJson() { return splitConfigJson; }
-    public void setSplitConfigJson(String splitConfigJson) { this.splitConfigJson = splitConfigJson; }
-    public String getFeatureConfigVersion() { return featureConfigVersion; }
-    public void setFeatureConfigVersion(String featureConfigVersion) { this.featureConfigVersion = featureConfigVersion; }
-    public Instant getSourceWindowStart() { return sourceWindowStart; }
-    public void setSourceWindowStart(Instant sourceWindowStart) { this.sourceWindowStart = sourceWindowStart; }
-    public Instant getSourceWindowEnd() { return sourceWindowEnd; }
-    public void setSourceWindowEnd(Instant sourceWindowEnd) { this.sourceWindowEnd = sourceWindowEnd; }
-    public UUID getCreatedBy() { return createdBy; }
-    public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getReadyAt() { return readyAt; }
-    public void setReadyAt(Instant readyAt) { this.readyAt = readyAt; }
-    public String getFailureReason() { return failureReason; }
-    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
-    public String getArtifactUri() { return artifactUri; }
-    public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
-    public String getArtifactHash() { return artifactHash; }
-    public void setArtifactHash(String artifactHash) { this.artifactHash = artifactHash; }
-    public String getImmutableRowReference() { return immutableRowReference; }
-    public void setImmutableRowReference(String immutableRowReference) { this.immutableRowReference = immutableRowReference; }
-    public String getDataHash() { return dataHash; }
-    public void setDataHash(String dataHash) { this.dataHash = dataHash; }
-    public String getLifecycleReason() { return lifecycleReason; }
-    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
-    public UUID getLifecycleActorId() { return lifecycleActorId; }
-    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
-    public Instant getLifecycleAt() { return lifecycleAt; }
-    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

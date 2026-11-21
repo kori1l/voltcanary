@@ -228,6 +228,10 @@ export function listAgentTools() {
   return apiRequest<string[]>("/ai-agent/tools");
 }
 
+export function getAssistantProfile() {
+  return apiRequest<{ sourceMappingEnabled?: boolean }>("/ai-agent/orchestration/profile");
+}
+
 export function getAgentProviderStatus() {
   return apiRequest<AgentProviderStatus>("/ai-agent/provider");
 }

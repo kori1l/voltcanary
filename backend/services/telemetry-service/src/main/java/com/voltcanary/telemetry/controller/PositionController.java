@@ -6,6 +6,7 @@ import com.voltcanary.telemetry.service.PositionReads;
 import com.voltcanary.telemetry.service.TelemetryAccessService;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -15,15 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/telemetry/devices/{deviceId}/positions")
+@RequiredArgsConstructor
 public class PositionController {
     private final PositionReads reads;
     private final TelemetryAccessService access;
     private final PositionSourceAccess sources;
-    public PositionController(PositionReads reads, TelemetryAccessService access, PositionSourceAccess sources) {
-        this.reads = reads;
-        this.access = access;
-        this.sources = sources;
-    }
 
     @GetMapping("/latest")
     public PositionEvidence.Latest latest(@PathVariable("deviceId") UUID deviceId, @RequestParam("sourceId") String sourceId,

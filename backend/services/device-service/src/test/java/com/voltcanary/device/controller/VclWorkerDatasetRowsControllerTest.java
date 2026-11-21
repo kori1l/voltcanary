@@ -46,7 +46,7 @@ class VclWorkerDatasetRowsControllerTest {
         when(description.schemaDigest()).thenReturn("a".repeat(64));
         when(description.accessScopeDigest()).thenReturn("b".repeat(64));
         when(description.generation()).thenReturn(UUID.randomUUID());
-        when(descriptions.describeForAccount(actor, account, dataset, 1)).thenReturn(description);
+        when(descriptions.describeForAccount(actor, account, dataset, 0)).thenReturn(description);
         var result = mock(NativeQueryPage.ReadManifest.class);
         when(queries.inspectAsOf(eq(account), eq(actor), eq(document), any())).thenReturn(result);
         var controller = new VclWorkerDatasetRowsController(
@@ -57,7 +57,7 @@ class VclWorkerDatasetRowsControllerTest {
                 UUID.randomUUID(), dataset, "DATASET_ASOF_MANIFEST",
                 VclWorkerAssertion.requestDigest("POST", path, body)), 30);
         assertSame(result, controller.manifest(token, dataset, body));
-        verify(descriptions, times(2)).describeForAccount(actor, account, dataset, 1);
+        verify(descriptions, times(2)).describeForAccount(actor, account, dataset, 0);
         assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> controller.manifest(token, dataset, new byte[]{'{', '}'}));
         assertThrows(org.springframework.web.server.ResponseStatusException.class,
@@ -73,7 +73,7 @@ class VclWorkerDatasetRowsControllerTest {
         when(changed.schemaDigest()).thenReturn("a".repeat(64));
         when(changed.accessScopeDigest()).thenReturn("b".repeat(64));
         when(changed.generation()).thenReturn(UUID.randomUUID());
-        when(descriptions.describeForAccount(actor, account, dataset, 1)).thenReturn(description, changed);
+        when(descriptions.describeForAccount(actor, account, dataset, 0)).thenReturn(description, changed);
         assertEquals("METADATA_SNAPSHOT_CHANGED", assertThrows(com.voltcanary.vcl.VclException.class,
                 () -> controller.manifest(token, dataset, body)).code());
     }

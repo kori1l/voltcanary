@@ -24,5 +24,11 @@ public final class EvidencePolicySnapshot {
                 + ":" + original.expiresAt() + ":" + original.definitionDigest());
         return new CompilationOwnerValidation.ResourcePin(CompilationOwnerValidation.ResourceKind.EVIDENCE_POLICY, original.id(), 1, digest);
     }
+    int observationReferenceLimit() {
+        return original.definition().path("maxObservationReferences").intValue();
+    }
+    int retentionDays() {
+        return original.definition().path("retentionDays").intValue();
+    }
     @Override public String toString() { return "EvidencePolicySnapshot[id=" + original.id() + "]"; }
 }

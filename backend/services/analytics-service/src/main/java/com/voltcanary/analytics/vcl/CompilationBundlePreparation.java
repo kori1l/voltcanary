@@ -4,8 +4,10 @@ import com.voltcanary.vcl.VclCompiler;
 import com.voltcanary.vcl.VclDocument;
 import com.voltcanary.vcl.VclMetadata;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 
 /** Application boundary. The owner adapter supplies metadata, readiness and fresh authorization. */
+@RequiredArgsConstructor
 public final class CompilationBundlePreparation {
     /** Adapter is scoped to the verified actor/account/workspace; an account UUID alone grants no access. */
     public interface Owners {
@@ -17,12 +19,6 @@ public final class CompilationBundlePreparation {
     private final VclCompiler compiler;
     private final Owners owners;
     private final CompilationBundleStore store;
-
-    public CompilationBundlePreparation(VclCompiler compiler, Owners owners, CompilationBundleStore store) {
-        this.compiler = compiler;
-        this.owners = owners;
-        this.store = store;
-    }
 
     public CompilationBundle prepare(UUID accountId, UUID bundleId, VclDocument document) {
         if (document.kind() != VclDocument.Kind.RULE) throw new com.voltcanary.vcl.VclException("RULE_REQUIRED", "");

@@ -2,13 +2,12 @@ package com.voltcanary.analytics.vcl.adapter;
 
 import com.voltcanary.vcl.VclException;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /** Bounded local close of unfinished temporal work after a durable rule pause. */
+@Slf4j
 final class WorkerPausedWindows {
-    private static final Logger LOG = LoggerFactory.getLogger(WorkerPausedWindows.class);
     private static final int PAGE_SIZE = 16;
     private final JdbcKeyedStateStore store;
     private final JdbcRuleDeployments deployments;
@@ -31,7 +30,7 @@ final class WorkerPausedWindows {
                         .orElseThrow(() -> new VclException("DEPLOYMENT_UNAVAILABLE", ""));
                 store.closePausedWindow(pending, deployment);
             } catch (RuntimeException unavailable) {
-                LOG.warn("VCL paused window remains pending: {}",
+                log.warn("VCL paused window remains pending: {}",
                         unavailable instanceof VclException vcl ? vcl.code() : unavailable.getClass().getSimpleName());
             }
         }
@@ -45,7 +44,7 @@ final class WorkerPausedWindows {
                         .orElseThrow(() -> new VclException("DEPLOYMENT_UNAVAILABLE", ""));
                 store.closePausedSustained(pending, deployment);
             } catch (RuntimeException unavailable) {
-                LOG.warn("VCL paused sustained episode remains pending: {}",
+                log.warn("VCL paused sustained episode remains pending: {}",
                         unavailable instanceof VclException vcl ? vcl.code() : unavailable.getClass().getSimpleName());
             }
         }

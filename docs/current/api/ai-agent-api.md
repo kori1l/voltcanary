@@ -22,6 +22,14 @@ confirmation pauses, request deduplication and uncertain execution retain their
 existing user-facing semantics. Persisted schema2 is internal and does not
 change the canonical `assistant-v2` wire version.
 
+For a registered single-text name clarification, `GET /ai-agent/plans/{planId}/requirements`
+returns the active question and requirements revision. Submit the name with
+`POST /ai-agent/plans/{planId}/requirements/answers`, including the question ID,
+both revisions, a request ID and a `TEXT` answer. The answer commits the name
+and makes the step ready. A subsequent conversation message with `continueStepId`
+prepares that step on the same plan. `GET /ai-agent/plans/{planId}/consultations`
+returns the statuses shown in the assistant drawer.
+
 [Runtime and recovery boundaries](../architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11)
 describe atomic checkpoint storage, version fencing and remaining acceptance.
 
@@ -687,6 +695,20 @@ GET /ai-agent/device-setups/{deviceId}
 
 ### Reviewed real-device setup
 
+For assistant-v2 device creation, the proposal uses an installed device type
+code and may reference a location from the authorized catalogue. Preparation
+stores the actual location ID in the immutable review and enforces the
+device owner's name and optional manufacturer/model length limits. Location,
+manufacturer and model may be omitted.
+An explicit location selection stays bound to that location during preparation.
+For a dependent HSL connection, the review target must match the device ID
+resolved from the plan, including a prior device creation receipt.
+The planner offers a new HSL connection only when device integration setup
+is enabled and the HSL adapter is registered. Preparation checks availability
+again before saving the review.
+The review retains the owner device reference for fresh access checks on
+confirmation, including when the skill chose the device from its context.
+
 Device tasks preserve the original device request and explicit name/type choices
 through the existing durable clarification context. Plain name answers and
 `Название: ...` do not require quotation marks. Device task routing and memory
@@ -1262,6 +1284,31 @@ credential scanning remain authoritative; input limits are not raised. Legacy
 generation retains its existing catalogue projection. An absent visualization in
 a legacy vehicle-timeline means list; time-series defaults to line.
 
+## Optional private knowledge for alert-rule preparation
+
+With `app.ai.knowledge.enabled=true`, a conversation message can specify
+`context.knowledgeCorpusRefs` as an array of up to 32 collection UUIDs within
+the existing turn selection limit. The server checks the authenticated user's
+current collection grants and records the selected scope in the plan's
+requirements journal. The alert-rule skill receives the collection IDs and
+requirements revision in `knowledge.search.scope`.
+Omitting `knowledgeCorpusRefs` on a continuation reuses the plan's selection
+after checking current grants. An explicit empty array clears the selection
+and advances the requirements revision when the scope changes.
+
+The skill can request `knowledge.search` for that scope, then request
+`knowledge.resolve` in a subsequent exchange using the returned snapshot and
+up to eight chunk IDs. Search returns IDs and source versions. Resolve checks
+current grants, versions and requirements before loading text. The runtime
+rechecks access before model calls that carry the text.
+
+Search is lexical by default. Deployments that provision the optional pgvector
+SQL and set `app.ai.knowledge.vector-generation` use hybrid search with the
+configured deployment embedding model and the existing per-turn budget.
+The feature is disabled by default and requires a PostgreSQL role subject to
+row-level security. Retrieved text is evidence for preparation. Existing review
+and confirmation govern rule execution.
+
 ## A5 skill/context/output stabilization — 2026-10-28
 
 The primary runtime now selects output mode from the selected configuration:
@@ -1401,6 +1448,21 @@ actual prerequisites and goals and must not depend on the superseded failure.
 Replacing a step retains its accepted review reference for context and preview,
 while invalidating the replaced executable review binding.
 
+For dashboard workflow context, an explicit plan binding of `deviceIds` or
+`deviceId` determines which device capabilities are loaded. A context request
+can narrow the selection when the plan leaves it unbound. The owner reads still
+check access and supply the actual device, source and field capabilities.
+For a newly connected source, the dashboard step can bind `sourceId` to the
+connection receipt's `dataSourceId`. An enabled source listed for the selected
+device remains selected while its field catalogue is empty. The assistant only
+offers widgets supported by the available capabilities.
+
+For a saved draft, `restore_review` selects a previous successfully saved
+version of that same dashboard from the assistant review history. Preparation
+copies the stored definition into a new review and checks its resource access.
+Confirmation uses the current draft revision and ETag to save to the same
+dashboard.
+
 Dashboard skills advertise only device.catalogue, workflow.context and
 conversation.history. The provider request includes the selected dynamic
 operation schema once rather than repeating static/dynamic command schemas.
@@ -1469,6 +1531,18 @@ All28 calls are in A2:246,885 input tokens (24,960 cached),96,996 output tokens 
 
 
 ## A5 compact model context (2026-10-28)
+
+Alert rule proposals use the owning service's `ruleType` and
+`conditionType` values. A device selected for a rule is stored as the owner
+scope. Updates that omit a device preserve the current scope. The selected
+rule and device references are checked again at execution.
+
+Optional widget catalogue embeddings run during context preparation, before
+prompt serialization. Index and query exchanges each reserve their own attempt
+in the current plan/turn ledger. The deployment embedding adapter exposes no
+token or monetary usage, so accounting retains the reserved bound. If an
+embedding reservation is denied, lexical ranking remains available and the
+complete owner catalogue stays in context.
 
 The wire-only `primary-prompt-v1` projection is pinned in the routing policy
 fingerprint. Canonical request/schema validation and stored reviewed payloads

@@ -27,7 +27,7 @@ class PrimaryResponsibilityTest {
             assertTrue(entry.description().contains("set_presentation"));
             assertFalse(entry.inputKeys().contains("name"));
             assertFalse(entry.inputKeys().contains("widgetKeys"));
-            assertEquals(entry.intentId().equals(DashboardSkillContract.REFINE), entry.description().contains("restore_review"));
+            assertEquals(!entry.intentId().equals(DashboardSkillContract.CREATE), entry.description().contains("restore_review"));
         }
     }
 
@@ -67,6 +67,21 @@ class PrimaryResponsibilityTest {
         assertDoesNotThrow(() -> com.voltcanary.aiagent.service.PrimaryPlannerChecks.validate(input, question));
         var amended = mapper.createObjectNode().put("decision", "AMEND");
         assertDoesNotThrow(() -> com.voltcanary.aiagent.service.PrimaryPlannerChecks.validate(input, amended));
+        amended.putArray("proposedGoals").addObject().put("goalId", "new-goal");
+        var proposed = amended.putArray("steps").addObject().put("stepId", "replacement");
+        proposed.putArray("goalIds").add("unknown-goal");
+        var original = amended.deepCopy();
+        var missing = assertThrows(com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected.class,
+                () -> com.voltcanary.aiagent.service.PrimaryPlannerChecks.validate(input, amended));
+        assertTrue(missing.diagnostic().contains("replacement"));
+        assertTrue(missing.diagnostic().contains("unknown-goal"));
+        assertTrue(missing.diagnostic().contains("new-goal"));
+        assertEquals(original, amended);
+        proposed.putArray("goalIds").add(state.goals().getFirst().goalId()).add("new-goal");
+        assertDoesNotThrow(() -> com.voltcanary.aiagent.service.PrimaryPlannerChecks.validate(input, amended));
+        amended.putArray("supersedesGoalIds").add(state.goals().getFirst().goalId());
+        assertThrows(com.voltcanary.aiagent.orchestration.routing.ModelProposalRejected.class,
+                () -> com.voltcanary.aiagent.service.PrimaryPlannerChecks.validate(input, amended));
         assertEquals("READY", f.reviews.find(state.reviews().get("d1").reviewId(), f.session.owner()).status());
         assertTrue(f.mutations.isEmpty());
     }
@@ -75,8 +90,10 @@ class PrimaryResponsibilityTest {
         var config = new AiModelConfig(); config.setModelId("pinned-fixture");
         var transport = new PrimaryModelTransport(mapper, new AiResolvedModel(null, config, "secret"), null, null);
         var request = mapper.createObjectNode().put("kind", "step.request").put("intentId", DashboardSkillContract.REFINE).put("message", "Exact user words");
+        request.put("messageId", "current-source");
         request.putObject("instructions").put("text", "WRITER_INSTRUCTIONS");
-        request.putObject("context").putArray("goals").add("WRITER_GOAL");
+        request.putObject("context").putArray("goals").addObject().put("text", "WRITER_GOAL")
+                .put("disposition", "PENDING").put("sourceMessageId", "prior-source");
         request.withObject("/context").putObject("dialogue").putArray("messages").addObject().put("role", "USER").put("text", "Original request");
         var review = request.putArray("loadResults").addObject().put("loaderId", "review.base").putObject("data");
         var parameters = review.putArray("actions").addObject().putObject("parameters");
@@ -88,6 +105,8 @@ class PrimaryResponsibilityTest {
             assertFalse(body.toString().contains("WRITER_"));
             assertTrue(body.toString().contains("Original request"));
             assertTrue(body.toString().contains("Actual candidate"));
+            assertEquals(mapper.createArrayNode().add("current-source").add("prior-source"),
+                    mapper.readTree(body.path("input").asText()).path("requiredSourceMessageIds"));
             assertTrue(request.at("/context/goals").size() > 0);
         }
     }
@@ -164,10 +183,18 @@ class PrimaryResponsibilityTest {
         var state = f.send(runtime, null, "Создай дашборд");
         var oldReview = state.focus().reviewId();
         assertNotNull(oldReview);
+        var sources = f.store.sourceMessages(f.session.owner(), f.conversation);
+        var source = sources.iterator().next();
+        var dropsOriginalGoal = new AssistantProtocol.PlannerResponse("assistant-v2", "planner.response", "AMEND",
+                "Replace pending dashboard", null, List.of("dashboard"), null,
+                List.of(new AssistantProtocol.StepProposal("replacement", "CREATE_DASHBOARD", List.of(),
+                        List.of(), List.of("rename"))),
+                List.of(new AssistantProtocol.GoalProposal("rename", source, "Rename dashboard")), List.of());
+        assertEquals("UNCOVERED_RETAINED_GOAL", assertThrows(com.voltcanary.aiagent.orchestration.plan.IntentPlans.Rejected.class,
+                () -> f.graph.apply(state, dropsOriginalGoal, sources, source, true, f.skills.authorized(), Set.of())).getMessage());
         for (var dependencies : List.of(List.of("dashboard"), List.<String>of())) {
             var decision = new AssistantProtocol.PlannerResponse("assistant-v2", "planner.response", "AMEND", "Replace pending dashboard", null,
                     List.of("dashboard"), null, List.of(new AssistantProtocol.StepProposal("replacement", "CREATE_DASHBOARD", dependencies, List.of(), List.of("g"))), List.of(), List.of());
-            var sources = f.store.sourceMessages(f.session.owner(), f.conversation);
             if (!dependencies.isEmpty()) {
                 assertEquals("DEPENDENCY_UNAVAILABLE", assertThrows(com.voltcanary.aiagent.orchestration.plan.IntentPlans.Rejected.class,
                         () -> f.graph.apply(state, decision, sources, sources.iterator().next(), true, f.skills.authorized(), Set.of())).getMessage());

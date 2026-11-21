@@ -11,25 +11,18 @@ import com.voltcanary.dashboard.port.DashboardStorage;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class DashboardCatalog {
     private final DashboardStorage storage;
     private final DashboardAccess access;
     private final DefinitionValidation validation;
     private final DefinitionBindings bindings;
     private final DashboardIdempotency idempotency;
-
-    public DashboardCatalog(DashboardStorage storage, DashboardAccess access, DefinitionValidation validation,
-            DefinitionBindings bindings, DashboardIdempotency idempotency) {
-        this.storage = storage;
-        this.access = access;
-        this.validation = validation;
-        this.bindings = bindings;
-        this.idempotency = idempotency;
-    }
 
     @Transactional
     public Dashboard create(DashboardActor actor, String authorization, String key, JsonNode body,

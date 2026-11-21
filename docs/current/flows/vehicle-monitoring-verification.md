@@ -20,14 +20,71 @@ configurable vehicle simulation. The dashboard vehicle-map stays compatible.
   positive range <=31days, ascending exclusive timestamp cursor, immutable to,
   limit1–2000/default1000. `{points,nextCursor,hasMore}`; null cursor when complete.
   Browser loads at most20000 samples and displays truncation.
-- GET/PUT /telemetry/devices/{id}/vehicle-monitoring: authenticated current owner,
-  `{speedLimitKmh,idleMinutes,zones}`. Limit1–300km/h, idle1–60min, <=50 unique UUID
-  circles, name1–100chars, radius10–50000m and finite geographic bounds. idleMinutes
-  must be an integer; fractional values and unknown JSON fields return400 without
-  changing saved settings. Settings
-  are keyed by owner/device and replaced atomically. Dashboard grants do not
-  authorize writes. Portable V011 adds nullable ignition/fuel_percent/odometer_km
-  to accepted positions and a settings table; position retention stays180days.
+- GET /telemetry/devices/{id}/vehicle-monitoring retains the current settings
+  read for history. `/snapshot` returns `{revision,digest,settings}`. An absent
+  settings row has revision 0; migrated existing rows start at revision 1.
+  Settings remain personal to `(authenticated user, authorized device)`.
+- POST `/telemetry/devices/{id}/vehicle-monitoring/reviews` accepts exactly
+  `{expectedRevision,idempotencyKey,settings}`. Settings have speedLimitKmh 1–300,
+  integer idleMinutes 1–60, and at most 50 unique UUID circles with nonempty names
+  up to 100 characters, WGS84 coordinates and radius 10–50,000 m. Numeric strings,
+  fractional idle values and unknown fields return 400. Preparation stores an
+  immutable before/after review, without changing active settings. The key is
+  1–100 ASCII letters/digits/underscore/hyphen; reuse with different content is 409.
+- GET `.../reviews/{reviewId}` reads that user's review for that device. It
+  returns id, deviceId, baseRevision, before, after, digest, idempotencyKey,
+  expiresAt, status (PREPARED/SUCCEEDED/EXPIRED), appliedRevision (nullable).
+- POST `.../reviews/{reviewId}/confirm` accepts exactly `{digest,idempotencyKey}`.
+  It renews device access, serializes per user/device and checks the original
+  base revision. Settings, next revision and the review's appliedRevision commit
+  atomically. Stale bases or changed confirmation are 409; uncommitted expired
+  reviews are 410. Reviews expire after 30 minutes, measured by the owner clock.
+  Confirmed reviews retain their original result even after later manual edits.
+  GET inspection never writes, renews the lease or dispatches a replacement.
+- Unconditional PUT is retired and returns 400. Both manual and AI settings writes
+  use the review boundary. Device read authorization is reused for these personal
+  settings; dashboard grants do not confer device access. Unsigned identity headers
+  are rejected. Foreign/unavailable review scope returns 403/404. V027 adds versions,
+  per-user/device fences and durable reviews; position retention stays 180 days.
+
+## Shared Vehicles and AI workflow — 2026-11-18
+
+Vehicles retains its original fleet map/list, GPS source selection and history.
+`/vehicles?deviceId=<uuid>&dataSourceId=<registered-source-uuid>&section=ZONES&reviewId=<uuid>`
+restores the selected context and reads the original review; navigation never
+confirms. The manual Zones & settings editor reads a base snapshot, shows the
+shared MonitoringReviewPreview, then confirms. Conflict reload is explicit;
+unknown saves offer inspection first. Dirty drafts warn before vehicle/source/
+section changes or unload. Zone editing initializes the existing VehicleMap
+without GPS, with no fabricated vehicle marker; numeric fields work if tiles fail.
+
+The **AI monitoring** button opens the existing application assistant overlay
+with the exact vehicle and selected registered GPS source. In Zones & settings,
+**Choose a point for AI** lets the user click the same map and opens the overlay
+with that explicit bounded centre, without changing settings. The point is passed
+as user context, never as a vehicle observation. The registered
+`UPDATE_VEHICLE_MONITORING` skill uses the same planner/ledger/PlanStore and
+telemetry preparation. Commands carry the exact expectedRevision, optional
+threshold changes and bounded ADD/UPDATE/REMOVE zone edits. Omitted fields and
+zones are preserved; new zone UUIDs are server assigned. Vehicle/source IDs are
+renewed against current owners. Multiple sources without an explicit UI selection
+require selecting a source in Vehicles. Unknown/ambiguous zones or coordinates
+require clarification, not invented geography. Commands cannot replace the entire
+zone list or create a dashboard. The assistant and manual editor render the same
+before/after settings/map component. Confirmation stores the selected vehicle's
+settings and returns a Vehicles link. Recovery of UNKNOWN/expired AI plans only
+inspects the original owner review and cannot confirm again. Successful confirmation
+replay does not overwrite later manual edits.
+
+These settings drive the existing client-derived history views. They do not create
+persisted operational events, activate RULEs or enable notification delivery.
+
+Run `python scripts/ai-vehicle-monitoring-smoke.py` against the app profile for
+an isolated deterministic-provider scenario through ordinary authenticated APIs.
+`--live` uses VOLTCANARY_DEMO_EMAIL/PASSWORD and the account's configured model;
+it does not alter provider settings. Both modes use a disposable vehicle and remove
+it afterward. Reports under ignored artifacts contain no credentials/provider bodies.
+Live model quality and browser visual verification must be reported separately.
 
 ## Simulation extension
 

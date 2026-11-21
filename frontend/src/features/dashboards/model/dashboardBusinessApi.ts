@@ -9,7 +9,7 @@ export const saveOperatingSchedule=(schedule:OperatingSchedule,accountId?:string
 export const listOperatingSchedules=(deviceId:string,signal?:AbortSignal,accountId?:string,workspaceId?:string)=>apiRequest<OperatingSchedule[]>(`/operating-schedules?${new URLSearchParams({deviceId,...accountId?{accountId}:{},...workspaceId?{workspaceId}:{}})}`,{signal});
 
 export const archiveEnergyTariff=(id:string,accountId?:string,workspaceId?:string)=>apiRequest<void>(`/energy-tariffs/${id}/archive?${new URLSearchParams({...accountId?{accountId}:{},...workspaceId?{workspaceId}:{}})}`,{method:"POST"});
-export const listOperationalFacts=(deviceId:string,from:string,to:string,accountId?:string,workspaceId?:string)=>apiRequest<OperationalFact[]>(`/operational-events?${new URLSearchParams({deviceId,from,to,...accountId?{accountId}:{},...workspaceId?{workspaceId}:{}})}`);
+export const listOperationalFacts=(deviceId:string,from:string,to:string,accountId?:string,workspaceId?:string,signal?:AbortSignal)=>apiRequest<OperationalFact[]>(`/operational-events?${new URLSearchParams({deviceId,from,to,...accountId?{accountId}:{},...workspaceId?{workspaceId}:{}})}`,{signal});
 
 export const listWorkspaceSources=(workspaceId:string,accountId:string,deviceId:string)=>apiRequest<import("../../../devices/devicesApi").DataSource[]>(`/workspaces/${workspaceId}/devices/${deviceId}/data-sources?${new URLSearchParams({accountId})}`);
 

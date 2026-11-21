@@ -13,12 +13,14 @@ import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Confirms an exact preview under the source lock and publishes its immutable schema revision. */
 @Service
+@RequiredArgsConstructor
 public class SourceMappingConfirmations {
     private final SourceBindingCatalog bindings;
     private final DataSourceRepository sources;
@@ -28,20 +30,26 @@ public class SourceMappingConfirmations {
     private final VariableRetentionGuard retention;
     private final SourceMappingHistory history;
 
-    public SourceMappingConfirmations(SourceBindingCatalog bindings, DataSourceRepository sources,
-            SourceRuntimeConfigEventPublisher publisher, JdbcTemplate jdbc, ObjectMapper mapper, VariableRetentionGuard retention,
-            SourceMappingHistory history) {
-        this.bindings = bindings;
-        this.sources = sources;
-        this.publisher = publisher;
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.retention = retention;
-        this.history = history;
-    }
-
     public record Receipt(UUID bindingId, UUID deviceId, UUID fieldId, String mappingDigest, long schemaRevision,
             UUID schemaSnapshotId, String definitionDigest) { }
+
+    @Transactional(readOnly = true)
+    public Receipt receipt(AuthenticatedUser actor, UUID id, long revision, String digest) {
+        var base = bindings.describe(actor.id(), id, revision);
+        var receipt = findReceipt(base, digest);
+        if (receipt == null) throw new VclException("MAPPING_RECEIPT_UNAVAILABLE", "");
+        return receipt;
+    }
+
+    private Receipt findReceipt(com.voltcanary.vcl.VclSourceBindingDescription base, String digest) {
+        var matches = jdbc.query("""
+                SELECT device_id,field_id,applied_revision,snapshot_id,definition_digest FROM cfg_source_mapping_receipt
+                WHERE source_id=? AND account_id=? AND review_digest=? AND base_revision=? AND review_scope_digest=?
+                """, (row, index) -> new Receipt(base.id(), row.getObject(1, UUID.class), row.getObject(2, UUID.class), digest,
+                row.getLong(3), row.getObject(4, UUID.class), row.getString(5)), base.id(), base.accountId(), digest,
+                base.schemaRevision(), base.accessScopeDigest());
+        return matches.isEmpty() ? null : matches.getFirst();
+    }
 
     @Transactional
     public Receipt confirm(AuthenticatedUser actor, UUID id, long revision, UUID fieldId, JsonNode conversion, String digest) {
@@ -59,12 +67,8 @@ public class SourceMappingConfirmations {
         if (!SourceMappingPreviews.digest(base, fieldId, conversion).equals(digest)) {
             throw new VclException("MAPPING_REVIEW_CONFLICT", "");
         }
-        var existing = jdbc.query("""
-                SELECT device_id,field_id,applied_revision,snapshot_id,definition_digest FROM cfg_source_mapping_receipt
-                WHERE source_id=? AND account_id=? AND review_digest=?
-                """, (row, index) -> new Receipt(id, row.getObject(1, UUID.class), row.getObject(2, UUID.class), digest,
-                row.getLong(3), row.getObject(4, UUID.class), row.getString(5)), id, base.accountId(), digest);
-        if (!existing.isEmpty()) return existing.getFirst();
+        var existing = findReceipt(base, digest);
+        if (existing != null) return existing;
         if (base.currentSchemaRevision() != revision) throw new VclException("BINDING_REVISION_CHANGED", "");
         String key = fieldKey(base.definition(), fieldId);
         var source = sources.findById(id).orElseThrow(() -> new VclException("SOURCE_BINDING_UNAVAILABLE", ""));

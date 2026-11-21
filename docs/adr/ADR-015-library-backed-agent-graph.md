@@ -1,7 +1,7 @@
 # ADR-015: Library-backed execution of the assistant graph
 
 - Date: 2026-11-11
-- Status: Accepted for core integration; specialist orchestration and in-place migration pending
+- Status: Accepted for core integration and registered name consultations
 - Owner: adopt-langgraph4j-agent-orchestration
 
 ## Context
@@ -28,8 +28,9 @@ automatic replay of uncertain inference/owner effects.
 
 Sequential execution stays on the request thread to preserve current trace
 context. Bounded in-turn context graphs keep attempt authority in A2 and cannot
-resume independently. Persisted specialist subgraph namespaces and async work
-require their remaining G7 contracts and tests before exposure.
+resume independently. The registered name workflow persists consultation state
+and resumes on an explicit turn through a bounded subgraph. Independent worker
+wakeup remains under G7 qualification.
 
 ## Consequences
 
@@ -42,11 +43,12 @@ to original application errors without retrying the node.
 No second checkpoint database, budget ledger or in-memory conversation store is
 introduced. New generation on an incompatible/legacy active plan cannot silently
 switch engines. Legacy history and saved reviews remain usable; new generation
-uses an explicitly new plan until reviewed in-place migration is implemented.
+uses an explicitly new plan. Pre-release test conversations and plans are outside
+the migration scope.
 Rollback must retain a schema2-compatible reader/receipt service.
 
 See [current implementation](../current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11),
-[change design and evidence](../../openspec/changes/adopt-langgraph4j-agent-orchestration/design.md)
+[change design and evidence](../../openspec/changes/archive/2026-11-13-adopt-langgraph4j-agent-orchestration/design.md)
 and [Spring extension requirements](../target/ai-assistant-spring-implementation.md).
-Core integration does not qualify A5/A6 model quality or complete all specialist,
-dashboard lifecycle, migration or rollout requirements.
+The originating A5, A6 and G7 changes track broader skill quality, cross-model
+qualification and specialist rollout.

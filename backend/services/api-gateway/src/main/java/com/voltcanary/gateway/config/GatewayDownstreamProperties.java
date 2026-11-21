@@ -3,11 +3,15 @@ package com.voltcanary.gateway.config;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app.gateway.downstream-health")
+@Getter
+@Setter
 public class GatewayDownstreamProperties {
     private Duration timeout = Duration.ofSeconds(2);
     private Map<String, String> services = new LinkedHashMap<>(Map.of(
@@ -20,8 +24,4 @@ public class GatewayDownstreamProperties {
             "simulator-service", "http://localhost:8087",
             "ai-agent-service", "http://localhost:8088"));
 
-    public Duration getTimeout() { return timeout; }
-    public void setTimeout(Duration timeout) { this.timeout = timeout; }
-    public Map<String, String> getServices() { return services; }
-    public void setServices(Map<String, String> services) { this.services = services; }
 }

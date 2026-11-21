@@ -2,23 +2,19 @@ package com.voltcanary.alert.consumer;
 
 import com.voltcanary.alert.service.AnalyticsAlertEventHandler;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "app.kafka", name = "consume-enabled", havingValue = "true")
+@RequiredArgsConstructor
+@Slf4j
 public class RiskScoreChangedConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(RiskScoreChangedConsumer.class);
-
     private final AnalyticsAlertEventHandler eventHandler;
-
-    public RiskScoreChangedConsumer(AnalyticsAlertEventHandler eventHandler) {
-        this.eventHandler = eventHandler;
-    }
 
     @KafkaListener(
             topics = "risk-score.changed.v1",

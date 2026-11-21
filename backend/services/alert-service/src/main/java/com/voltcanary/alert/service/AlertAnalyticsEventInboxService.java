@@ -11,31 +11,20 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class AlertAnalyticsEventInboxService {
-    private final DeviceHistoryDeletion deletions;
-
     private final AlertAnalyticsEventInboxRepository repository;
     private final AlertReconciliationProperties properties;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
-
-    public AlertAnalyticsEventInboxService(
-            AlertAnalyticsEventInboxRepository repository,
-            AlertReconciliationProperties properties,
-            ObjectMapper objectMapper,
-            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
-        this.deletions = deletions;
-        this.repository = repository;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-        this.meterRegistry = meterRegistry;
-    }
+    private final DeviceHistoryDeletion deletions;
 
     @Transactional
     public AlertAnalyticsEventInboxEntry recordReceived(String sourceName, UUID eventId, String eventType, Object event) {

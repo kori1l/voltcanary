@@ -13,23 +13,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlInternalTelemetryFeatureBuilder {
 
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository;
     private final MlLabelRepository labelRepository;
     private final MlFeatureTemplateAppender templateAppender;
-
-    public MlInternalTelemetryFeatureBuilder(
-            MlCanonicalMetricRowRepository canonicalMetricRowRepository,
-            MlLabelRepository labelRepository,
-            MlFeatureTemplateAppender templateAppender) {
-        this.canonicalMetricRowRepository = canonicalMetricRowRepository;
-        this.labelRepository = labelRepository;
-        this.templateAppender = templateAppender;
-    }
 
     public MlFeatureGeneration generate(
             MlDatasetVersion datasetVersion,

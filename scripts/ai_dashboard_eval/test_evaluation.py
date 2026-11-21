@@ -8,6 +8,7 @@ import tempfile
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from . import api, runner as runner_module
 from .api import ApiError, Client, ROOT, authenticate
 from urllib.error import HTTPError
 from .account_lock import AccountLease
@@ -111,6 +112,19 @@ class OutcomeTests(unittest.TestCase):
         new["layouts"]["desktop"][0]["y"] = 4
         self.assertIn("unchanged_geometry", failed(grade(plan(new), {"preserve": {}}, old)))
 
+    def test_requested_history_visualization_change_preserves_other_fields(self):
+        old = doc()
+        history = old["widgets"][2]
+        history["type"] = "vehicle-timeline"
+        history["presentation"]["visualization"] = "list"
+        new = deepcopy(old)
+        new["widgets"][2]["presentation"]["visualization"] = "line"
+        expected = {"views": {"history:doors": "line"},
+                    "preserve": {"history:doors": ["/presentation/visualization"]}}
+        self.assertFalse(failed(grade(plan(new), expected, old)))
+        new["widgets"][2]["title"] = "Changed"
+        self.assertIn("untargeted_widget_fields", failed(grade(plan(new), expected, old)))
+
     def test_allowed_reflow_preserves_relative_order(self):
         old, new = doc(), doc()
         for positions in new["layouts"].values():
@@ -119,7 +133,10 @@ class OutcomeTests(unittest.TestCase):
         expected = {"top": ["current:speed"], "preserve": {}, "allowReflow": True}
         self.assertFalse(failed(grade(plan(new), expected, old)))
         new["layouts"]["mobile"][0]["y"] = 9
-        self.assertIn("untouched_order:mobile", failed(grade(plan(new), expected, old)))
+        changes = grade(plan(new), expected, old)
+        self.assertIn("untouched_order:mobile", failed(changes))
+        mismatch = next(check for check in changes if check["id"] == "untouched_order:mobile")
+        self.assertEqual({"before": ["map", "doors"], "after": ["doors", "map"]}, mismatch["detail"])
 
     def test_restore_must_be_exact(self):
         value = doc()
@@ -166,7 +183,7 @@ class ReportingTests(unittest.TestCase):
         case = {"id": "no-model", "critical": False, "split": "development", "profile": "normal",
                 "turns": [{"id": "one", "action": "message", "message": "fixture", "expect": {"name": "Мой трамвай"}}]}
         with tempfile.TemporaryDirectory() as output:
-            with patch("scripts.ai_dashboard_eval.runner.VehicleFixture", FakeFixture):
+            with patch.object(runner_module, "VehicleFixture", FakeFixture):
                 runner = Runner(fake_api, {"modelId": "model", "modelConfigId": "cfg", "providerId": "provider"}, output, observer)
                 result = runner.run_case(case, 1)
         self.assertFalse(result["passed"])
@@ -211,7 +228,7 @@ class ReportingTests(unittest.TestCase):
                    "expectedModelSettings": {"maxOutputTokens": 32000}}
         responses = [{"id": "owner"}, {"models": [{"id": "m", "enabled": True, "modelId": "nano", "maxOutputTokens": 4096}]}]
         with patch.dict("os.environ", {"VOLT_EVAL_ACCESS_TOKEN": "fixture"}, clear=True):
-            with patch("scripts.ai_dashboard_eval.api.Client.call", side_effect=responses):
+            with patch.object(Client, "call", side_effect=responses):
                 with self.assertRaisesRegex(ApiError, "MODEL_SETTINGS_MISMATCH"):
                     authenticate("http://unused", account)
 
@@ -326,7 +343,7 @@ class NormalSessionRefreshTests(unittest.TestCase):
             def __exit__(self, *_): pass
             def read(self): return json.dumps(self.payload).encode()
         renewed = jwt(900)
-        with patch("scripts.ai_dashboard_eval.api.urlopen", side_effect=[Response({"accessToken": renewed, "refreshToken": "rotated"}), Response({"id": "result"})]) as request:
+        with patch.object(api, "urlopen", side_effect=[Response({"accessToken": renewed, "refreshToken": "rotated"}), Response({"id": "result"})]) as request:
             client = Client("http://local", jwt(120), refresh_token="refresh")
             self.assertEqual(client.call("POST", "/ai-agent/conversations/id/messages", {"requestId": "same"}), {"id": "result"})
             self.assertEqual(request.call_args_list[0].args[0].full_url, "http://local/auth/refresh")
@@ -344,7 +361,7 @@ class NormalSessionRefreshTests(unittest.TestCase):
                 return json.dumps(self.payload).encode()
         expired = HTTPError("http://local/devices", 401, "expired", {}, io.BytesIO(b'{}'))
         replies = [expired, Response({"accessToken": "renewed", "refreshToken": "rotated"}), Response({"id": "owned"})]
-        with patch("scripts.ai_dashboard_eval.api.urlopen", side_effect=replies) as request:
+        with patch.object(api, "urlopen", side_effect=replies) as request:
             client = Client("http://local", "expired", refresh_token="initial-refresh")
             self.assertEqual(client.call("POST", "/devices", {"name": "fixture"}), {"id": "owned"})
             self.assertEqual(client.refresh_token, "rotated")
@@ -355,7 +372,7 @@ class NormalSessionRefreshTests(unittest.TestCase):
 
     def test_foreign_explicit_token_never_refreshes_using_the_primary_identity(self):
         expired = HTTPError("http://local/device", 401, "expired", {}, io.BytesIO(b'{}'))
-        with patch("scripts.ai_dashboard_eval.api.urlopen", side_effect=expired) as request:
+        with patch.object(api, "urlopen", side_effect=expired) as request:
             client = Client("http://local", "primary", refresh_token="primary-refresh")
             with self.assertRaises(ApiError):
                 client.call("GET", "/device", token="foreign")

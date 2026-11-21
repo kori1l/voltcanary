@@ -25,7 +25,7 @@ public class DashboardErrorHandler {
             case "NOT_FOUND" -> 404;
             case "UNAUTHENTICATED" -> 401;
             case "ACTOR_INACTIVE", "NO_ACCESS" -> 403;
-            case "OWNERSHIP_UNAVAILABLE", "DEPENDENCY_UNAVAILABLE", "READ_TIMEOUT", "INVALID_READ_RESPONSE" -> 503;
+            case "OWNERSHIP_UNAVAILABLE", "DEPENDENCY_UNAVAILABLE", "DEPENDENCY_OWNER_UNAVAILABLE", "READ_TIMEOUT", "INVALID_READ_RESPONSE" -> 503;
             case "CONFLICT" -> 409;
             case "SNAPSHOT_EXPIRED" -> 410;
             case "PRECONDITION_REQUIRED" -> 428;

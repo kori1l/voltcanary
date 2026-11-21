@@ -10,19 +10,15 @@ import com.voltcanary.dashboard.port.DashboardOwnership;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DefinitionBindings {
     private final DashboardOwnership ownership;
     private final ObjectMapper mapper;
     private final com.voltcanary.dashboard.port.DashboardEvidenceReads reads;
-
-    public DefinitionBindings(DashboardOwnership ownership, ObjectMapper mapper,com.voltcanary.dashboard.port.DashboardEvidenceReads reads) {
-        this.ownership = ownership;
-        this.mapper = mapper;
-        this.reads=reads;
-    }
 
     public DashboardDefinition template(DashboardDefinition definition) {
         ObjectNode tree=mapper.valueToTree(definition);

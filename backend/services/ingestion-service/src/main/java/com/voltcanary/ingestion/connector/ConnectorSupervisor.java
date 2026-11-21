@@ -18,9 +18,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class ConnectorSupervisor {
 
     private final Map<UUID, ConnectorWorker> workers = new ConcurrentHashMap<>();
@@ -31,23 +33,6 @@ public class ConnectorSupervisor {
     private final ConnectorHealthManager healthManager;
     private final TelemetryIngestionPipeline pipeline;
     private final Clock clock;
-
-    public ConnectorSupervisor(
-            ConnectorLeaseManager leaseManager,
-            IngestionAdapterResolver adapterResolver,
-            ConnectorScheduler scheduler,
-            ConnectorBackoffPolicy backoffPolicy,
-            ConnectorHealthManager healthManager,
-            TelemetryIngestionPipeline pipeline,
-            Clock clock) {
-        this.leaseManager = leaseManager;
-        this.adapterResolver = adapterResolver;
-        this.scheduler = scheduler;
-        this.backoffPolicy = backoffPolicy;
-        this.healthManager = healthManager;
-        this.pipeline = pipeline;
-        this.clock = clock;
-    }
 
     public void reconcile(List<SourceRuntimeConfig> desiredSources) {
         Set<UUID> desiredIds = new HashSet<>();

@@ -7,18 +7,16 @@ import com.voltcanary.analytics.domain.MlModelVersion;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class MlModelApprovalGateVerifier {
 
     private final ObjectMapper objectMapper;
-
-    public MlModelApprovalGateVerifier(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public void verify(MlModelVersion model) {
         verifyArtifactMetadata(model);

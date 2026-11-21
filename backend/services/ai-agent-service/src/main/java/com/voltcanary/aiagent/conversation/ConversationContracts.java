@@ -35,5 +35,10 @@ public final class ConversationContracts {
     public record Submit(@NotNull UUID requestId, @PositiveOrZero long expectedRevision,
             @NotBlank @Size(max = 2000) String text, Map<String, Object> context, UUID parentPlanId,
             UUID providerId, UUID modelConfigId, DashboardTurnMetadata metadata, boolean automatic,
-            @Size(max = 2000) String displayText) { }
+            @Size(max = 2000) String displayText, @Size(min = 1, max = 200) String continueStepId) {
+        public Submit(UUID requestId, long expectedRevision, String text, Map<String, Object> context, UUID parentPlanId,
+                UUID providerId, UUID modelConfigId, DashboardTurnMetadata metadata, boolean automatic, String displayText) {
+            this(requestId, expectedRevision, text, context, parentPlanId, providerId, modelConfigId, metadata, automatic, displayText, null);
+        }
+    }
 }

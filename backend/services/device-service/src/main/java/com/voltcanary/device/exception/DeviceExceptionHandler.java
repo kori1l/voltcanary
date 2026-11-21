@@ -1,21 +1,18 @@
 package com.voltcanary.device.exception;
 
 import com.voltcanary.device.metrics.DeviceOperationalMetrics;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-
 
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class DeviceExceptionHandler {
 
     private final DeviceOperationalMetrics metrics;
-
-    public DeviceExceptionHandler(DeviceOperationalMetrics metrics) {
-        this.metrics = metrics;
-    }
 
     @ExceptionHandler(AuthenticationFailedException.class)
     ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationFailedException exception) {

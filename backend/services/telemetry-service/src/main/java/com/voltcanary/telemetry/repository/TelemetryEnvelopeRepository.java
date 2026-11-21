@@ -1,9 +1,9 @@
 package com.voltcanary.telemetry.repository;
 
-import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
+import com.voltcanary.telemetry.dto.TelemetryChartPointResponse;
 import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse.Bucket;
 import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse.Summary;
-import com.voltcanary.telemetry.dto.TelemetryChartPointResponse;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Isolation;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Bounded display evidence and full-range reducers, without reading all rows into Java. */
 @Repository
+@RequiredArgsConstructor
 public class TelemetryEnvelopeRepository {
     private final JdbcTemplate jdbc;
     private static final String SERIES = """
@@ -38,7 +40,6 @@ public class TelemetryEnvelopeRepository {
               from raw cross join cadence
             )
             """;
-    public TelemetryEnvelopeRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public TelemetryEnvelopeResponse read(UUID deviceId, String metric, Instant from, Instant to, int bucketCount) {

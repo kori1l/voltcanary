@@ -11,26 +11,16 @@ import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.service.AiSecretEncryptionService;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-
 @Component
+@RequiredArgsConstructor
 public class AiModelResolver {
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelRepository;
     private final AiModelProviderSecretRepository secretRepository;
     private final AiSecretEncryptionService encryptionService;
-
-    public AiModelResolver(
-            AiModelProviderRepository providerRepository,
-            AiModelConfigRepository modelRepository,
-            AiModelProviderSecretRepository secretRepository,
-            AiSecretEncryptionService encryptionService) {
-        this.providerRepository = providerRepository;
-        this.modelRepository = modelRepository;
-        this.secretRepository = secretRepository;
-        this.encryptionService = encryptionService;
-    }
 
     public Optional<AiResolvedModel> resolve(AuthenticatedUser user, UUID providerId, UUID modelConfigId) {
         Optional<AiModelProvider> providerOptional = providerId == null

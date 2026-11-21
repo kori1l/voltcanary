@@ -13,9 +13,9 @@ Expose general schema/query/import/relation/map/derivation/rule/test/review/appl
 ## Dependencies
 
 Priority amendment 2026-11-11: follow [AI-first](../README.md#ai-first-execution-priority)
-and [LangGraph4j qualification/migration](../adopt-langgraph4j-agent-orchestration/proposal.md).
-Requirements/consultations over existing capabilities may proceed before full
-G1–G4 completion. Exact missing configurable operations still require their
+and [LangGraph4j qualification/migration](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/proposal.md).
+During A5, take only requirements or consultation work needed by the selected
+workflow. Broader G7 authoring follows the configurable platform milestones. Exact missing configurable operations still require their
 actual owner slice. Graph scheduling consumes the qualified library runtime;
 this change retains product semantics and does not implement another scheduler.
 
@@ -36,7 +36,7 @@ No paid/live campaigns, arbitrary executable SQL/scripts, silent source/identity
 
 ## Requirements and retrieval amendment (2026-11-03)
 
-The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. This extends existing G7/A5/A6/G8 ownership; runtime and live trials remain stopped. Existing frozen acceptance/checked-task evidence is retained.
+The [AI collaboration/retrieval specification](../../../docs/target/ai-assistant-collaboration-and-retrieval.md) is normative for these pending extensions: typed requirements, bounded consultations, exact metric evidence, optional ACL-aware pgvector retrieval and all-call budgets. Implementation follows the [AI-first order](../README.md#ai-first-execution-priority). Live evaluation follows the owning change’s authorization and evidence gates. Existing frozen acceptance/checked-task evidence is retained.
 
 ## Second implementer audit
 

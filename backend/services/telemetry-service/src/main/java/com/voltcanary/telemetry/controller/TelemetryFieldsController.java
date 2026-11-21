@@ -4,6 +4,7 @@ import com.voltcanary.telemetry.service.TelemetryAccessService;
 import com.voltcanary.telemetry.service.TelemetryFieldReads;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -11,13 +12,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class TelemetryFieldsController {
     private final TelemetryAccessService access;
     private final TelemetryFieldReads reads;
-    public TelemetryFieldsController(TelemetryAccessService access, TelemetryFieldReads reads) {
-        this.access = access;
-        this.reads = reads;
-    }
+
     @GetMapping("/telemetry/devices/{deviceId}/fields")
     public List<TelemetryFieldReads.Field> latest(@PathVariable("deviceId") UUID deviceId,
             @RequestParam(value="sourceId", required=false) String sourceId,

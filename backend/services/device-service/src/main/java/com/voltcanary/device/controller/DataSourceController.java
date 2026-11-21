@@ -10,6 +10,7 @@ import com.voltcanary.device.service.DataSourceService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -22,18 +23,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/devices/{deviceId}/data-sources")
+@RequiredArgsConstructor
 public class DataSourceController {
 
     private final DataSourceService dataSourceService;
     private final AuthenticatedUserResolver userResolver;
-
-    public DataSourceController(DataSourceService dataSourceService, AuthenticatedUserResolver userResolver) {
-        this.dataSourceService = dataSourceService;
-        this.userResolver = userResolver;
-    }
 
     @GetMapping
     public List<DataSourceResponse> list(

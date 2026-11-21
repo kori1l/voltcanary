@@ -6,6 +6,7 @@ import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.MlPolicyService;
 import jakarta.validation.Valid;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,10 +21,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/analytics/ml-settings")
+@RequiredArgsConstructor
 public class MlSettingsController {
     private final MlPolicyService service;
     private final AnalyticsAccessService access;
-    public MlSettingsController(MlPolicyService service, AnalyticsAccessService access) { this.service = service; this.access = access; }
 
     @GetMapping public MlSettingsResponse account(
             @RequestHeader(value="X-Account-Id", required=false) UUID accountId,

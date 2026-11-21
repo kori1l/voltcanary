@@ -34,6 +34,12 @@ public class CircleFeaturesController {
         verifier = identity.forAudience("device-service");
     }
 
+    @GetMapping("/data/spatial-features/circles")
+    public CircleFeatures.Page list(@RequestHeader HttpHeaders headers, @RequestParam(required = false) UUID after,
+            @RequestParam(defaultValue = "25") int limit) {
+        return circles.list(users.resolve(headers).id(), after, limit);
+    }
+
     @PutMapping("/data/spatial-features/{id}/circle")
     public VclCircleRevision revise(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
             @RequestBody RevisionRequest request) {

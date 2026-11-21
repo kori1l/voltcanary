@@ -8,6 +8,7 @@ import com.voltcanary.dashboard.domain.DashboardRecords.Preferences;
 import com.voltcanary.dashboard.port.DashboardOwnership;
 import java.util.ArrayList;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -18,19 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/dashboard-preferences/me")
+@RequiredArgsConstructor
 public class DashboardPreferencesController {
     private final DashboardOwnership ownership;
     private final PersonalDashboardPreferences preferences;
     private final DefinitionValidation validation;
     private final DashboardRequestDecoder decoder;
-
-    public DashboardPreferencesController(DashboardOwnership ownership, PersonalDashboardPreferences preferences,
-            DefinitionValidation validation, DashboardRequestDecoder decoder) {
-        this.ownership = ownership;
-        this.preferences = preferences;
-        this.validation = validation;
-        this.decoder = decoder;
-    }
 
     @GetMapping
     public ResponseEntity<Preferences> get(@RequestHeader(value = "Authorization", required = false) String authorization) {

@@ -33,18 +33,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Component
 @ConditionalOnProperty(name = "app.ml.training.worker-enabled", havingValue = "true")
+@RequiredArgsConstructor
+@Slf4j
 public class MlTrainingWorker {
 
-    private static final Logger log = LoggerFactory.getLogger(MlTrainingWorker.class);
     private static final Duration LEASE_DURATION = Duration.ofMinutes(15);
 
     private final MlTrainingRunRepository trainingRunRepository;
@@ -56,25 +57,6 @@ public class MlTrainingWorker {
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final String workerId = ManagementFactory.getRuntimeMXBean().getName() + "-" + UUID.randomUUID();
-
-    public MlTrainingWorker(
-            MlTrainingRunRepository trainingRunRepository,
-            MlDatasetVersionRepository datasetVersionRepository,
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlFeatureRowRepository featureRowRepository,
-            MlModelVersionRepository modelVersionRepository,
-            MlClient mlClient,
-            ObjectMapper objectMapper,
-            MeterRegistry meterRegistry) {
-        this.trainingRunRepository = trainingRunRepository;
-        this.datasetVersionRepository = datasetVersionRepository;
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.featureRowRepository = featureRowRepository;
-        this.modelVersionRepository = modelVersionRepository;
-        this.mlClient = mlClient;
-        this.objectMapper = objectMapper;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Scheduled(fixedDelayString = "${app.ml.training.worker-delay:5000}")
     public void scheduledExecuteNextQueuedRun() {

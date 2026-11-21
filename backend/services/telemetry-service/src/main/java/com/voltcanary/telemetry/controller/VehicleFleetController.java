@@ -1,5 +1,6 @@
 package com.voltcanary.telemetry.controller;
 
+import com.voltcanary.common.web.VehiclePositionTargets;
 import com.voltcanary.telemetry.adapter.PositionSourceAccess;
 import com.voltcanary.telemetry.dto.PositionEvidence;
 import com.voltcanary.telemetry.service.PositionReads;
@@ -7,22 +8,20 @@ import com.voltcanary.telemetry.service.TelemetryAccessService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import com.voltcanary.common.web.VehiclePositionTargets;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequiredArgsConstructor
 public class VehicleFleetController {
     private final PositionReads reads;
     private final PositionSourceAccess sources;
-    public VehicleFleetController(PositionReads reads, PositionSourceAccess sources) {
-        this.reads = reads;
-        this.sources = sources;
-    }
+
     public record Request(List<VehiclePositionTargets.Target> targets, Instant asOf) { }
 
     @PostMapping("/telemetry/vehicles/positions")

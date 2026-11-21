@@ -8,18 +8,16 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class MlFeatureHashService {
 
     private final ObjectMapper objectMapper;
-
-    public MlFeatureHashService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public String writeJson(Object value) {
         try {

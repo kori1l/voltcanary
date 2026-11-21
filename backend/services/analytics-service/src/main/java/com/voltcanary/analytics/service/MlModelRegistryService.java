@@ -10,26 +10,17 @@ import com.voltcanary.analytics.dto.MlModelVersionDto;
 import com.voltcanary.analytics.dto.MlResolvedDeploymentPolicyResponse;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlModelRegistryService {
 
     private final MlModelQueryService modelQueryService;
     private final MlModelLifecycleService modelLifecycleService;
     private final MlDeploymentPolicyService deploymentPolicyService;
     private final MlDeploymentPolicyResolver deploymentPolicyResolver;
-
-    public MlModelRegistryService(
-            MlModelQueryService modelQueryService,
-            MlModelLifecycleService modelLifecycleService,
-            MlDeploymentPolicyService deploymentPolicyService,
-            MlDeploymentPolicyResolver deploymentPolicyResolver) {
-        this.modelQueryService = modelQueryService;
-        this.modelLifecycleService = modelLifecycleService;
-        this.deploymentPolicyService = deploymentPolicyService;
-        this.deploymentPolicyResolver = deploymentPolicyResolver;
-    }
 
     public List<MlModelVersionDto> listModels(UUID accountId) {
         return modelQueryService.listModels(accountId);

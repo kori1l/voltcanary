@@ -168,8 +168,14 @@ public final class AssistantProtocol {
             String selectedReviewId,
             List<TurnSubmitSelectionItem> selection,
             RoutingPreference routing,
-            String replyToQuestionId
-    ) { }
+            String replyToQuestionId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String continueStepId
+    ) {
+        public TurnSubmit(String version, String kind, String requestId, Long expectedRevision, String message, String selectedReviewId,
+                List<TurnSubmitSelectionItem> selection, RoutingPreference routing, String replyToQuestionId) {
+            this(version, kind, requestId, expectedRevision, message, selectedReviewId, selection, routing, replyToQuestionId, null);
+        }
+    }
 
     public record PlannerRequest(
             String version,

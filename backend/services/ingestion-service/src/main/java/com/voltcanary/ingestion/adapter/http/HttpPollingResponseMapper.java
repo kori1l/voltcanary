@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
-import com.voltcanary.ingestion.canonical.IngestionContext;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.canonical.IngestionContext;
 import com.voltcanary.ingestion.canonical.TelemetryOrigin;
 import java.net.URI;
 import java.time.Clock;
@@ -13,18 +13,15 @@ import java.time.Instant;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class HttpPollingResponseMapper {
 
     private final ObjectMapper objectMapper;
     private final Clock clock;
-
-    public HttpPollingResponseMapper(ObjectMapper objectMapper, Clock clock) {
-        this.objectMapper = objectMapper;
-        this.clock = clock;
-    }
 
     IncomingTelemetryMessage map(
             SourceRuntimeConfig sourceRuntimeConfig,

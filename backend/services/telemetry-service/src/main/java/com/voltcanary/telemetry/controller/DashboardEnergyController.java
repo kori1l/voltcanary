@@ -1,24 +1,21 @@
 package com.voltcanary.telemetry.controller;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.voltcanary.common.web.DashboardEnergyReadRequest;
 import com.voltcanary.common.web.DashboardEnergyBatchReadRequest;
+import com.voltcanary.common.web.DashboardEnergyReadRequest;
 import com.voltcanary.telemetry.adapter.DashboardReadAuthorization;
 import com.voltcanary.telemetry.service.EnergyPeriodReadService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequiredArgsConstructor
 public class DashboardEnergyController {
     private final DashboardReadAuthorization access;
     private final EnergyPeriodReadService energy;
-
-    public DashboardEnergyController(DashboardReadAuthorization access,EnergyPeriodReadService energy) {
-        this.access = access;
-        this.energy = energy;
-    }
 
     @PostMapping("/internal/dashboard/energy")
     public ObjectNode read(@RequestHeader(value="X-Internal-Service-Token",required=false) String token,

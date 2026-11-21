@@ -1,7 +1,7 @@
 # Implementation and verification
 
 2026-11-11: task1.9 is checked against the
-[library-backed slice](../adopt-langgraph4j-agent-orchestration/tasks.md) under
+[library-backed slice](../archive/2026-11-13-adopt-langgraph4j-agent-orchestration/tasks.md) under
 [AI-first priority](../README.md#ai-first-execution-priority). Existing checked
 tasks remain historical baseline; no second handwritten graph traversal is
 required or authorized by them. Full G0–G4 is not a prerequisite for1.9.

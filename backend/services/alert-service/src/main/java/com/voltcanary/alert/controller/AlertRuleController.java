@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,13 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
         @ApiResponse(responseCode = "401", description = "Missing authenticated user context"),
         @ApiResponse(responseCode = "404", description = "Alert rule was not found in the caller account scope")
 })
+@RequiredArgsConstructor
 public class AlertRuleController {
 
     private final AlertRuleService service;
-
-    public AlertRuleController(AlertRuleService service) {
-        this.service = service;
-    }
 
     @GetMapping
     public List<AlertRuleResponse> list(

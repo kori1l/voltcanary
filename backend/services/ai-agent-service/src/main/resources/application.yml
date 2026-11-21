@@ -27,7 +27,7 @@ app:
       timeout-ms: ${AI_WIDGET_EMBEDDINGS_TIMEOUT_MS:3000}
     orchestration:
       enabled: ${AI_ASSISTANT_V2_ENABLED:false}
-      native-data-enabled: false
+      native-data-enabled: ${AI_NATIVE_DATA_ENABLED:false}
     device-setup-enabled: ${AI_DEVICE_SETUP_ENABLED:false}
     dashboard-operations-enabled: ${AI_DASHBOARD_OPERATIONS_ENABLED:false}
     provider: ${AI_PROVIDER:rules}

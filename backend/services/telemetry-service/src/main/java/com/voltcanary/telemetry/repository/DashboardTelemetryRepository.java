@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,19 +22,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Full qualified reducers and bounded display bins, all within the telemetry owner. */
 @Repository
+@RequiredArgsConstructor
 public class DashboardTelemetryRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final MetricCatalog catalog;
     private final com.voltcanary.telemetry.variable.VariableDashboardSeries variables;
-
-    public DashboardTelemetryRepository(JdbcTemplate jdbc, ObjectMapper mapper, MetricCatalog catalog,
-            com.voltcanary.telemetry.variable.VariableDashboardSeries variables) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.catalog = catalog;
-        this.variables = variables;
-    }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ObjectNode read(DashboardOwnerReadRequest request, List<UUID> allowed) {

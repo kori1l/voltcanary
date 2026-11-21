@@ -20,18 +20,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class JdbcDashboardStorage implements DashboardStorage {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
-
-    public JdbcDashboardStorage(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-    }
 
     @Override
     public void lockActor(DashboardActor actor) {

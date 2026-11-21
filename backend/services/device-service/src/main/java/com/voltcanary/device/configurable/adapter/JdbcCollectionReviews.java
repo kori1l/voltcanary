@@ -20,14 +20,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
+import lombok.RequiredArgsConstructor;
 
 /** Owns short local review transactions; DDL dispatch is a separate durable phase. */
+@RequiredArgsConstructor
 public final class JdbcCollectionReviews implements NativeCollectionReviewStore {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final DataSource source;
     private final Clock clock;
-
-    public JdbcCollectionReviews(DataSource source, Clock clock) { this.source = source; this.clock = clock; }
 
     @Override
     public NativeCollectionReview reserve(UUID account, UUID actor, List<String> keys, String key) {

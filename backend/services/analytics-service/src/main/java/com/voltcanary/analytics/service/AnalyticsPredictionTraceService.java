@@ -17,16 +17,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsPredictionTraceService {
 
     private final ObjectMapper objectMapper;
-
-    public AnalyticsPredictionTraceService(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public PredictionResult buildPredictionResult(
             UUID deviceId,

@@ -73,7 +73,24 @@ Connection apply использует data/reviews; rule pause — отдель�
 QUERY/IMPORT/COLLECTION/CONNECTION передаются как `{document:<VCL>}`. Query
 cursor передаётся только в document.spec.cursor; новый query требует null.
 Path datasetId обязан совпадать с document.spec.target.datasetId.
-RULE compile принимает `{document:<RULE>,readSet:<owner-issued manifest>}`;
+RULE compile принимает `{document:<RULE>,readSet:<owner-issued manifest>}`.
+Для профилей `sustained`, `window_aggregate`, `interval_union_window` и
+`window_session` и `zone_session` с одним источником readSet содержит
+`{account,binding,schemaRevision,proofId,from,boundary}`. Сервис заново
+получает авторизованный срез источника и подтверждение покрытия по proofId,
+проверяет пригодность плана и лимит повторной обработки и сохраняет
+неизменяемый пакет. Ответ содержит `bundleId`, `bundleDigest` и `checkpoint`
+для последующего подтверждения переключения правила.
+Повторная компиляция с тем же каноническим документом, срезами, версиями
+контрактов и проверенным манифестом владельцев возвращает тот же bundleId.
+Insert-only хранилище допускает только побайтовое повторение пакета.
+Оконные профили с `lookup_asof` дополнительно передают `lookups` с одной
+или двумя записями по ID узла. Каждая запись содержит `query` (VCL QUERY)
+и `intervalField`. Analytics проверяет манифесты у владельца до и после
+сохранения пакета.
+Для `zone_session` требуется `circles`, массив из 1–16 пар
+`{id,revision}`. Analytics читает эти ревизии геозон у владельца и сверяет
+их контрольные суммы при сохранении, предпросмотре и переключении.
 dry_run — `{bundleId:UUID,inputSnapshotId:UUID,effects:false}`. Произвольный
 переданный клиентом readSet не доказывает доступ или snapshot consistency.
 

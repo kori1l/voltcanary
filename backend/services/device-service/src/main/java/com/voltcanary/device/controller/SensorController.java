@@ -8,6 +8,7 @@ import com.voltcanary.device.service.SensorService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,18 +20,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-
 @RestController
 @RequestMapping("/devices/{deviceId}/sensors")
+@RequiredArgsConstructor
 public class SensorController {
 
     private final SensorService sensorService;
     private final AuthenticatedUserResolver userResolver;
-
-    public SensorController(SensorService sensorService, AuthenticatedUserResolver userResolver) {
-        this.sensorService = sensorService;
-        this.userResolver = userResolver;
-    }
 
     @GetMapping
     public List<SensorResponse> list(

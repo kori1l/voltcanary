@@ -6,6 +6,7 @@ import com.google.genai.types.HttpRetryOptions;
 import org.springframework.ai.openai.http.okhttp.SpringAiOpenAiHttpClient;
 import com.voltcanary.aiagent.llm.adapter.AiResolvedModel;
 import java.time.Duration;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.anthropic.AnthropicChatModel;
 import org.springframework.ai.anthropic.AnthropicChatOptions;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,6 +19,12 @@ import org.springframework.core.retry.RetryTemplate;
 
 /** Per-exchange SDK ownership: credentials, connection lifecycle and options never cross accounts. */
 public final class SpringAiModels {
+    private final ObservationRegistry observations;
+
+    SpringAiModels(ObservationRegistry observations) {
+        this.observations = observations;
+    }
+
     public record Lease(ChatModel model, AutoCloseable client) implements AutoCloseable {
         @Override
         public void close() {
@@ -46,7 +53,7 @@ public final class SpringAiModels {
                 if (schema != null && !tools) options.outputSchema(schema);
                 if (tools) options.toolChoice(com.anthropic.models.messages.ToolChoice.ofAny(
                         com.anthropic.models.messages.ToolChoiceAny.builder().disableParallelToolUse(true).build()));
-                yield new Lease(AnthropicChatModel.builder().anthropicClient(client).anthropicClientAsync(client.async()).options(options.build()).build(), client::close);
+                yield new Lease(AnthropicChatModel.builder().anthropicClient(client).anthropicClientAsync(client.async()).options(options.build()).observationRegistry(observations).build(), client::close);
             }
             case GEMINI -> {
                 var http = HttpOptions.builder().baseUrl(base).timeout(Math.toIntExact(timeout.toMillis()))
@@ -57,7 +64,7 @@ public final class SpringAiModels {
                 if (schema != null && !tools) options.responseMimeType("application/json").responseSchema(schema);
                 if (tools) options.toolChoice(new GoogleGenAiChatOptions.ToolChoice(
                         GoogleGenAiChatOptions.ToolChoice.Mode.ANY, java.util.List.of()));
-                yield new Lease(GoogleGenAiChatModel.builder().genAiClient(client).options(options.build())
+                yield new Lease(GoogleGenAiChatModel.builder().genAiClient(client).options(options.build()).observationRegistry(observations)
                         .retryTemplate(new RetryTemplate(RetryPolicy.builder().maxRetries(0).build())).build(), client);
             }
             case OPENAI, OPENAI_COMPATIBLE, DEEPSEEK, MISTRAL, XAI, GROQ, OPENROUTER, OLLAMA_LOCAL -> {
@@ -72,7 +79,7 @@ public final class SpringAiModels {
                 else options.maxTokens(output);
                 if (schema != null && !tools) options.outputSchema(schema);
                 if (tools) options.toolChoice("required").parallelToolCalls(false).strict(true);
-                yield new Lease(OpenAiChatModel.builder().openAiClient(client).openAiClientAsync(client.async()).options(options.build()).build(), client::close);
+                yield new Lease(OpenAiChatModel.builder().openAiClient(client).openAiClientAsync(client.async()).options(options.build()).observationRegistry(observations).build(), client::close);
             }
         };
     }

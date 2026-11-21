@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class DeviceDeletionService {
     public record Receipt(UUID deviceId, String name, String deviceType, boolean deleteHistory, String status,
             String completedSteps, String lastError, Instant createdAt) { }
@@ -29,20 +31,8 @@ public class DeviceDeletionService {
     private final DataSourceRepository sources;
     private final AccountService accounts;
     private final DeviceRegistryEventPublisher events;
-    private final com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtimeEvents;
     private final ObjectMapper mapper;
-
-    public DeviceDeletionService(JdbcTemplate jdbc, DeviceService devices, DeviceRepository registry,
-            DataSourceRepository sources, AccountService accounts, DeviceRegistryEventPublisher events, ObjectMapper mapper, com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtimeEvents) {
-        this.runtimeEvents = runtimeEvents;
-        this.jdbc = jdbc;
-        this.devices = devices;
-        this.registry = registry;
-        this.sources = sources;
-        this.accounts = accounts;
-        this.events = events;
-        this.mapper = mapper;
-    }
+    private final com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtimeEvents;
 
     @Transactional
     public Receipt begin(AuthenticatedUser user, UUID id, boolean deleteHistory) {

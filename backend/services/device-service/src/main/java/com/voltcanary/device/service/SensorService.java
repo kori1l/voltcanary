@@ -8,18 +8,19 @@ import com.voltcanary.device.domain.Sensor;
 import com.voltcanary.device.dto.SensorRequest;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
+import com.voltcanary.device.exception.NotFoundException;
 import com.voltcanary.device.repository.SensorRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import com.voltcanary.device.exception.NotFoundException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-
 @Service
+@RequiredArgsConstructor
 public class SensorService {
 
     private final DeviceService deviceService;
@@ -27,19 +28,6 @@ public class SensorService {
     private final ObjectMapper objectMapper;
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
-
-    public SensorService(
-            DeviceService deviceService,
-            SensorRepository sensorRepository,
-            ObjectMapper objectMapper,
-            DeviceRegistryEventPublisher eventPublisher,
-            DeviceAuditService auditService) {
-        this.deviceService = deviceService;
-        this.sensorRepository = sensorRepository;
-        this.objectMapper = objectMapper;
-        this.eventPublisher = eventPublisher;
-        this.auditService = auditService;
-    }
 
     @Transactional(readOnly = true)
     public List<SensorResponse> list(AuthenticatedUser user, UUID deviceId) {

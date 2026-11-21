@@ -10,26 +10,17 @@ import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlLifecycleImpactResponse;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlDatasetService {
 
     private final MlDatasetPreviewService previewService;
     private final MlDatasetMaterializationService materializationService;
     private final MlDatasetQueryService queryService;
     private final MlDatasetLifecycleService lifecycleService;
-
-    public MlDatasetService(
-            MlDatasetPreviewService previewService,
-            MlDatasetMaterializationService materializationService,
-            MlDatasetQueryService queryService,
-            MlDatasetLifecycleService lifecycleService) {
-        this.previewService = previewService;
-        this.materializationService = materializationService;
-        this.queryService = queryService;
-        this.lifecycleService = lifecycleService;
-    }
 
     public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
             UUID accountId,

@@ -1,7 +1,7 @@
 package com.voltcanary.dashboard.templates;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.dashboard.domain.DashboardActor;
 import com.voltcanary.dashboard.domain.DashboardDefinition;
@@ -15,10 +15,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Compiles bounded widget choices through the same contracts as the ordinary editor. */
 @Service
+@RequiredArgsConstructor
 public class DashboardCompositionPreparation {
     public record Panel(String key, String type, String title, List<UUID> deviceIds, String metric,
             String unit, UUID sourceId, String visualization, String reducer, String text,
@@ -67,18 +69,6 @@ public class DashboardCompositionPreparation {
     private final DashboardTemplateAssembler digests;
     private final ObjectMapper mapper;
     private final com.voltcanary.dashboard.application.DashboardCapabilityResolution capabilities;
-
-    public DashboardCompositionPreparation(DashboardOwnership ownership, TemplateDeviceCatalogue catalogue,
-            WidgetManifests manifests, TemplateDefinitionChecks checks, DashboardTemplateAssembler digests, ObjectMapper mapper,
-            com.voltcanary.dashboard.application.DashboardCapabilityResolution capabilities) {
-        this.ownership = ownership;
-        this.catalogue = catalogue;
-        this.manifests = manifests;
-        this.checks = checks;
-        this.digests = digests;
-        this.mapper = mapper;
-        this.capabilities = capabilities;
-    }
 
     public Prepared prepare(DashboardActor actor, String authorization, Request request) {
         if (request == null || request.name() == null || request.name().isBlank() || request.name().length() > 80

@@ -43,7 +43,7 @@ Detailed backend architecture requirements live in `openspec/specs/backend-archi
 
 ## Implementation Expectations
 
-- Keep ML-service backward-compatible with existing `/inference`, `/models`, and `/train` routes unless the change explicitly introduces a versioned replacement.
+- Preserve supported ML inference/model/training functionality. Under the pre-production policy in AGENTS.md, obsolete API/data contracts may be replaced and scoped local data rebuilt instead of maintaining legacy compatibility paths.
 - Keep analytics-service resilient when ML-service is unavailable; telemetry ingestion and rule-based analytics must continue.
 - Preserve maintenance exclusion semantics: `excludeFromAnalytics` affects analytics input, and `excludeFromMl` is sent to ML as `excludedIntervals`.
 - Make model outputs explainable enough for UI, alerting, and interview/demo flows.

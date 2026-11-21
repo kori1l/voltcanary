@@ -2,29 +2,27 @@ package com.voltcanary.telemetry.repository;
 
 import com.voltcanary.telemetry.domain.QualityFlag;
 import com.voltcanary.telemetry.domain.TelemetryMeasurement;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@RequiredArgsConstructor
 public class TelemetryMeasurementRepository {
 
     private final JdbcTemplate jdbcTemplate;
-
-    public TelemetryMeasurementRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
 
     public String findUnit(UUID deviceId, String metric) {
         return jdbcTemplate.query("select unit from telemetry.measurements where device_id=? and metric_name=? order by recorded_at desc limit 1",

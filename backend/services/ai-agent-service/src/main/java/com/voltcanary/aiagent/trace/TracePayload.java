@@ -10,14 +10,14 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 public final class TracePayload {
     public record Bounded(String json, int bytes, boolean truncated) { }
     private static final Pattern PRIVATE = Pattern.compile("(?i)reasoning|chain.?of.?thought|scratchpad|analysis|thoughts?|system.?prompt|raw.?body|headers?");
     private static final Pattern SECRET = Pattern.compile("(?i)password|secret|api.?key|token$|authorization|credential");
     private final ObjectMapper mapper;
-
-    public TracePayload(ObjectMapper mapper) { this.mapper = mapper; }
 
     public Bounded encode(Map<String, Object> details, int maximum) {
         try {

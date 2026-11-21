@@ -7,16 +7,15 @@ import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclObservationReadiness;
 import com.voltcanary.vcl.VclSourceCaptureDescription;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class SourceCaptureDescriptions {
     private final SourceBindingCatalog sources;
     private final SourceCaptureJournal journals;
-    public SourceCaptureDescriptions(SourceBindingCatalog sources, SourceCaptureJournal journals) {
-        this.sources = sources;
-        this.journals = journals;
-    }
+
     public VclSourceCaptureDescription describe(AuthenticatedUser actor, UUID id, long revision) {
         var source = sources.describe(actor.id(), id, revision);
         if (source.schemaRevision() != source.currentSchemaRevision()) throw new VclException("BINDING_REVISION_CHANGED", "");

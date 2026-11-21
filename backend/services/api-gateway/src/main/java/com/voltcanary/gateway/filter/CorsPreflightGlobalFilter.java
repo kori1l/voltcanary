@@ -2,6 +2,7 @@ package com.voltcanary.gateway.filter;
 
 import com.voltcanary.gateway.config.GatewayCorsProperties;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -14,13 +15,10 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
+@RequiredArgsConstructor
 public class CorsPreflightGlobalFilter implements GlobalFilter, Ordered {
 
     private final GatewayCorsProperties properties;
-
-    public CorsPreflightGlobalFilter(GatewayCorsProperties properties) {
-        this.properties = properties;
-    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {

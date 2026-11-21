@@ -6,16 +6,14 @@ import com.voltcanary.device.domain.DeviceAnalyticsConfig;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigResponse;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DeviceAnalyticsPolicyMapper {
 
     private final ObjectMapper objectMapper;
-
-    public DeviceAnalyticsPolicyMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public DeviceAnalyticsConfigResponse defaults(UUID deviceId) {
         return new DeviceAnalyticsConfigResponse(deviceId, true, Map.of(), null);

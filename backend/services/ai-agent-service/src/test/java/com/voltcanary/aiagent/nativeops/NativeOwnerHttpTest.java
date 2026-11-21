@@ -32,6 +32,10 @@ class NativeOwnerHttpTest {
     private final List<Request> requests = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile String status;
     private volatile String mode;
+    private volatile JsonNode sourceCapture;
+    private volatile JsonNode mappingPreview;
+    private volatile JsonNode mappingReceipt;
+    private volatile JsonNode mappingReadback;
     private NativeOwnerClient owner;
     private NativeTableExecutor executor;
     private final ActionExecutionBoundary boundary = new ActionExecutionBoundary();
@@ -49,7 +53,17 @@ class NativeOwnerHttpTest {
             if (path.equals("/data/language")) {
                 var language = NativeAuthoringFixtures.language();
                 if (mode.equals("REGISTRY_CHANGED")) ((ObjectNode) language.path("registry")).put("registryDigest", "f".repeat(64));
+                if (mode.equals("REGISTRY_BODY_CHANGED")) ((ObjectNode) language.path("registry")).putArray("operators");
                 response = language;
+            } else if (path.endsWith("/capture")) {
+                response = sourceCapture;
+            } else if (path.endsWith("/mapping-preview")) {
+                response = mappingPreview;
+            } else if (path.endsWith("/mapping-confirmation") || path.contains("/mapping-receipts/")) {
+                response = mappingReceipt;
+            } else if (path.startsWith("/data/source-bindings/")) {
+                response = exchange.getRequestURI().getQuery().equals("schemaRevision=3")
+                        ? mappingReadback : sourceCapture.path("source");
             } else if (path.endsWith("/apply")) {
                 status = "SUCCEEDED";
                 if (mode.equals("LOST_APPLY_ACK")) { exchange.close(); return; }
@@ -64,11 +78,17 @@ class NativeOwnerHttpTest {
                     var view = NativeAuthoringFixtures.view(status);
                     if (mode.equals("RETARGET")) view.put("resourceId", UUID.randomUUID().toString());
                     if (mode.equals("REVIEW_CHANGED")) view.put("reviewDigest", "f".repeat(64));
+                    if (mode.equals("CONTRADICTORY_RECEIPT")) view.put("outcomeCode", "OUTCOME_UNKNOWN");
+                    if (mode.equals("FIELD_RESERVATION_CHANGED")) {
+                        var fields = (ObjectNode) view.path("fieldIdsByKey");
+                        fields.put(fields.fieldNames().next(), UUID.randomUUID().toString());
+                    }
                     response = view;
                 }
             } else if (path.startsWith("/data/datasets/")) {
                 var dataset = NativeAuthoringFixtures.dataset();
                 if (mode.equals("DATASET_CHANGED")) ((ObjectNode) dataset.path("definition")).put("label", "Substituted table");
+                if (mode.equals("INDEX_METADATA_CHANGED")) dataset.putArray("readyIndexedFields").add(UUID.randomUUID().toString());
                 response = dataset;
             } else { code = 500; response = JSON.createObjectNode().put("error", "Unexpected native call"); }
             byte[] bytes = JSON.writeValueAsBytes(response);
@@ -86,6 +106,77 @@ class NativeOwnerHttpTest {
         executor = new NativeTableExecutor(owner, JSON);
     }
     @AfterEach void stop() { server.stop(0); }
+
+    @Test void sourceCaptureIsBoundToRequestedActorAccountAndRevision() {
+        var binding = UUID.randomUUID();
+        var account = UUID.randomUUID();
+        var actor = UUID.randomUUID();
+        var device = UUID.randomUUID();
+        var snapshot = UUID.randomUUID();
+        var definition = JSON.createObjectNode().put("id", binding.toString()).put("schemaRevision", 2)
+                .put("profile", com.voltcanary.vcl.VclSourceBindingProfile.VERSION).put("configurationDigest", "a".repeat(64));
+        definition.putArray("fields").addObject().put("id", UUID.randomUUID().toString())
+                .put("type", "BOOLEAN").put("label", "Switch").put("nullable", true);
+        String digest = com.voltcanary.vcl.VclCanonical.sha256(com.voltcanary.vcl.VclCanonical.encode(definition));
+        var source = new com.voltcanary.vcl.VclSourceBindingDescription(binding, account, actor, device, 2, 2,
+                snapshot, definition, digest, "a".repeat(64), "a".repeat(64), true, false,
+                com.voltcanary.vcl.VclSourceBindingProfile.capabilities());
+        var pin = new com.voltcanary.vcl.VclObservationReadiness.Pin(binding, account, device, "source", 2, snapshot, digest);
+        var readiness = com.voltcanary.vcl.VclObservationReadiness.absent(pin, "AWAITING_INPUT");
+        sourceCapture = JSON.valueToTree(new com.voltcanary.vcl.VclSourceCaptureDescription(source, readiness));
+        var scope = new com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope(actor, account);
+
+        assertEquals("AWAITING_INPUT", owner.sourceCapture(AUTH, scope, binding, 2).capture().state());
+        assertThrows(IllegalArgumentException.class, () -> owner.sourceCapture(AUTH, scope, binding, 1));
+        assertThrows(IllegalArgumentException.class, () -> owner.sourceCapture(AUTH,
+                new com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope(UUID.randomUUID(), account), binding, 2));
+        assertTrue(requests.stream().allMatch(request -> request.method().equals("GET") && AUTH.equals(request.authorization())));
+
+        var fieldId = UUID.fromString(definition.at("/fields/0/id").asText());
+        var conversion = JSON.createObjectNode().put("method", "identity");
+        var sample = JSON.getNodeFactory().booleanNode(true);
+        var preview = JSON.createObjectNode().put("bindingId", binding.toString()).put("schemaRevision", 2)
+                .put("schemaSnapshotId", snapshot.toString())
+                .put("mappingDigest", com.voltcanary.vcl.VclSourceMappingReview.digest(digest, source.accessScopeDigest(), fieldId, conversion));
+        preview.putObject("literal").put("type", "BOOLEAN").set("value", sample);
+        mappingPreview = preview;
+        assertEquals(preview, owner.previewMapping(AUTH, scope, binding, 2, fieldId, conversion, sample));
+        assertEquals(fieldId.toString(), requests.getLast().body().path("fieldId").asText());
+        mappingPreview = preview.deepCopy().put("mappingDigest", "f".repeat(64));
+        assertThrows(IllegalArgumentException.class, () -> owner.previewMapping(AUTH, scope, binding, 2, fieldId, conversion, sample));
+        var alteredLiteral = preview.deepCopy();
+        ((ObjectNode) alteredLiteral.path("literal")).put("value", false);
+        mappingPreview = alteredLiteral;
+        assertThrows(IllegalArgumentException.class, () -> owner.previewMapping(AUTH, scope, binding, 2, fieldId, conversion, sample));
+        assertTrue(requests.stream().noneMatch(request -> request.path().endsWith("/mapping-confirmation")));
+
+        var booleanConversion = JSON.createObjectNode().put("method", "parse_boolean");
+        booleanConversion.putArray("trueTokens").add("on");
+        booleanConversion.putArray("falseTokens").add("off");
+        String reviewed = com.voltcanary.vcl.VclSourceMappingReview.digest(digest, source.accessScopeDigest(), fieldId, booleanConversion);
+        var appliedDefinition = definition.deepCopy().put("schemaRevision", 3);
+        var applied = new com.voltcanary.vcl.VclSourceBindingDescription(binding, account, actor, device, 3, 3,
+                UUID.randomUUID(), appliedDefinition,
+                com.voltcanary.vcl.VclCanonical.sha256(com.voltcanary.vcl.VclCanonical.encode(appliedDefinition)),
+                source.accessScopeDigest(), source.sourceStateDigest(), true, false, source.captureCapabilities());
+        mappingReadback = JSON.valueToTree(applied);
+        var receipt = JSON.createObjectNode().put("bindingId", binding.toString()).put("deviceId", device.toString())
+                .put("fieldId", fieldId.toString()).put("mappingDigest", reviewed).put("schemaRevision", 3)
+                .put("schemaSnapshotId", applied.snapshotId().toString()).put("definitionDigest", applied.definitionDigest());
+        mappingReceipt = receipt;
+        var reviewedMapping = new ReviewedSourceMapping(binding, 2, fieldId, booleanConversion, reviewed);
+        booleanConversion.putArray("trueTokens").add("changed after review");
+        assertEquals(receipt, reviewedMapping.confirm(owner, AUTH, scope));
+        int beforeInspection = requests.size();
+        assertEquals(receipt, reviewedMapping.inspect(owner, AUTH, scope));
+        assertEquals(List.of("/data/source-bindings/" + binding,
+                "/data/source-bindings/" + binding + "/mapping-receipts/" + reviewed,
+                "/data/source-bindings/" + binding), requests.subList(beforeInspection, requests.size()).stream().map(Request::path).toList());
+        assertTrue(requests.subList(beforeInspection, requests.size()).stream().allMatch(request -> request.method().equals("GET")));
+        mappingReceipt = receipt.deepCopy().put("definitionDigest", "f".repeat(64));
+        assertThrows(NativeOwnerClient.Uncertain.class,
+                () -> reviewedMapping.confirm(owner, AUTH, scope));
+    }
 
     @Test void exactOwnerReviewIsAppliedOnceAndReadBackThroughTheOrdinaryDatasetApi() {
         var action = NativeAuthoringFixtures.action();
@@ -126,7 +217,7 @@ class NativeOwnerHttpTest {
         assertEquals(JSON.createObjectNode(), recovered.getFirst().body());
     }
 
-    @ParameterizedTest @ValueSource(strings = {"RETARGET", "REVIEW_CHANGED"})
+    @ParameterizedTest @ValueSource(strings = {"RETARGET", "REVIEW_CHANGED", "FIELD_RESERVATION_CHANGED"})
     void changedReviewedIdentityCannotDispatch(String failure) {
         mode = failure;
         var action = NativeAuthoringFixtures.action();
@@ -145,8 +236,9 @@ class NativeOwnerHttpTest {
         assertFalse(result.toString().contains("upstream-secret"));
     }
 
-    @Test void succeededReceiptWithoutTheExactActualSchemaRemainsUnknown() {
-        mode = "DATASET_CHANGED";
+    @ParameterizedTest @ValueSource(strings = {"DATASET_CHANGED", "INDEX_METADATA_CHANGED", "CONTRADICTORY_RECEIPT"})
+    void succeededReceiptWithoutValidDatasetReadbackRemainsUnknown(String failure) {
+        mode = failure;
         status = "SUCCEEDED";
         var action = NativeAuthoringFixtures.action();
         assertEquals("UNKNOWN", boundary.run(action, new LinkedHashMap<>(), () -> executor.execute(action, AUTH)).status());
@@ -170,9 +262,25 @@ class NativeOwnerHttpTest {
         assertTrue(requests.isEmpty());
     }
 
+    @Test void malformedVclCannotReachOwnerPreparationOrExecution() {
+        var action = NativeAuthoringFixtures.action();
+        var parameters = new LinkedHashMap<>(action.parameters());
+        var document = new com.fasterxml.jackson.databind.ObjectMapper()
+                .<ObjectNode>valueToTree(parameters.get("document"));
+        ((ObjectNode) document.path("spec")).put("unknownField", true);
+        assertThrows(com.voltcanary.vcl.VclException.class,
+                () -> owner.prepare(AUTH, UUID.randomUUID(), document));
+        parameters.put("document", document);
+        var invalid = new AgentAction(action.id(), action.tool(), action.title(), action.description(), true, parameters);
+        assertEquals("FAILED", boundary.run(invalid, new LinkedHashMap<>(), () -> executor.execute(invalid, AUTH)).status());
+        assertTrue(requests.isEmpty());
+    }
+
     @Test void registryVersionAndAuthenticationAreCheckedWithoutServiceFallback() {
         assertEquals(NativeAuthoringFixtures.language(), owner.language(AUTH));
         mode = "REGISTRY_CHANGED";
+        assertThrows(IllegalArgumentException.class, () -> owner.language(AUTH));
+        mode = "REGISTRY_BODY_CHANGED";
         assertThrows(IllegalArgumentException.class, () -> owner.language(AUTH));
         int count = requests.size();
         assertThrows(IllegalArgumentException.class, () -> owner.language("Basic unsupported"));

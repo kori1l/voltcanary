@@ -9,7 +9,8 @@ behavior.
 
 | Topic | Document |
 | --- | --- |
-| AI-first Java agent and LangGraph4j integration | [Execution priority](../../openspec/changes/README.md#ai-first-execution-priority), [migration proposal](../../openspec/changes/adopt-langgraph4j-agent-orchestration/proposal.md), [implemented core and ordinary-API lifecycle](../current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11); specialists, browser acceptance and in-place migration remain pending |
+| Proposed Netty multiprotocol ingestion transport | [Layers, protocol migration, admission/ACK, rollout and ET01–ET12](ingestion-event-transport.md); documentation only, no capacity qualification |
+| AI-first Java agent and LangGraph4j integration | [Execution priority](../../openspec/changes/README.md#ai-first-execution-priority), [current runtime and registered consultations](../current/architecture/spring-ai-assistant.md#langgraph4j-core-integration--2026-11-11), [graph decision and evidence](../adr/ADR-015-library-backed-agent-graph.md) |
 | Platform target architecture, current baseline, and target gaps | [architecture.md](architecture.md) |
 | AI Spring/Spring AI implementation architecture | [Components, Advisors, AOP, transaction/worker boundaries and SPR01–SPR15](ai-assistant-spring-implementation.md); [proposed ADR-014](../adr/ADR-014-ai-spring-extension-boundaries.md) |
 | Bus scenario expressibility and readiness | [End-to-end gap audit and BUS01–BUS10](configurable-operations-bus-readiness.md): capture, occurrence binding, exact door predicate and non-arrival distinction |

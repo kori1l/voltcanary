@@ -8,20 +8,18 @@ import com.voltcanary.device.service.AccountService;
 import com.voltcanary.device.workspace.WorkspaceResourceAccess;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class BusinessResourceAuthorization {
     private final AccountService accounts;
     private final DeviceRepository devices;
     private final WorkspaceResourceAccess workspace;
-    public BusinessResourceAuthorization(AccountService accounts,DeviceRepository devices,WorkspaceResourceAccess workspace) {
-        this.accounts=accounts;
-        this.devices=devices;
-        this.workspace=workspace;
-    }
+
     public UUID account(AuthenticatedUser actor,UUID accountId,UUID workspaceId,String action) {
         Account own=accounts.findByUserId(actor.id()).filter(a->a.getStatus()==AccountStatus.ACTIVE)
                 .orElseThrow(()->new ResponseStatusException(HttpStatus.FORBIDDEN,"Active account required"));

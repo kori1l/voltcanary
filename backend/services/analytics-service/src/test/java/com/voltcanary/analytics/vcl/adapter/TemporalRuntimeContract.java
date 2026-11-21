@@ -84,6 +84,71 @@ abstract class TemporalRuntimeContract {
     }
 
     @Test
+    void intervalPrefixScheduleRetainsItsCutAndDueTimeAcrossRestart() {
+        var fixture = fixture();
+        var base = fixture.recipe();
+        var recipe = new IntervalWindowSchedule.Recipe(base.node(), base.planDigest(), base.generation(),
+                base.window(), base.dueAt().plusSeconds(11), base.subjectLiteral(), 1, null, 0, null);
+        IntervalWindowSchedule.stage(fixture.store(), fixture.deployment(), fixture.key(), recipe, 2, fixture.holder(), null);
+        var pins = IntervalWindowSchedule.pins(fixture.key(), fixture.deployment(), recipe);
+        var restored = new JdbcKeyedStateStore(source());
+        var lease = restored.acquire(fixture.key(), pins, fixture.holder());
+        var scheduled = IntervalWindowSchedule.recipe(lease.snapshot().state());
+        assertEquals(recipe.advance(2, null), scheduled);
+        assertEquals(recipe.window().startInclusive().plusMillis(625), scheduled.measuredThrough());
+        var timer = lease.timers().getFirst().timer();
+        assertEquals(scheduled.measuredThrough().plusSeconds(11), timer.dueAt());
+        assertEquals(scheduled.state(), timer.payload());
+        assertEquals(2, scheduled.next(null).prefixIndex());
+    }
+
+    @Test
+    void pausedOpenVisitClosesOnceAcrossWorkerRestartWithoutEffects() {
+        var fixture = fixture();
+        var active = fixture.deployment();
+        var store = fixture.store();
+        var key = fixture.key();
+        UUID zone = UUID.randomUUID();
+        String scope = "e".repeat(64);
+        var centre = new com.voltcanary.analytics.vcl.SpatialFeatureSnapshot.Point(24, 60);
+        var circle = new com.voltcanary.analytics.vcl.SpatialFeatureSnapshot.Circle(zone, 1, centre,
+                java.math.BigDecimal.valueOf(30));
+        var geometry = new com.voltcanary.analytics.vcl.SpatialFeatureSnapshot(scope, java.util.Map.of(zone, circle));
+        var plan = new com.voltcanary.analytics.vcl.VclZoneSessionKernel.Plan("f".repeat(64), scope, active.rule(),
+                circle, java.math.BigDecimal.ONE, true, 10_000_000, 2_000_000, 1_000_000, 2);
+        var session = new com.voltcanary.analytics.vcl.DurableZoneSession(store, plan, key, active.bundleDigest(),
+                () -> { }, (target, lease, transition, openedAt) -> store.commitSession(target, lease, transition, openedAt, active),
+                java.util.function.UnaryOperator.identity(), () -> geometry);
+        var at = fixture.recipe().window().startInclusive();
+        session.observe(new com.voltcanary.analytics.vcl.VclZoneSessionKernel.Observation(UUID.randomUUID(), at, key, zone,
+                new com.voltcanary.analytics.vcl.SpatialFeatureSnapshot.Point(24.01, 60), java.math.BigDecimal.ONE), fixture.holder());
+        session.observe(new com.voltcanary.analytics.vcl.VclZoneSessionKernel.Observation(UUID.randomUUID(), at.plusSeconds(1), key, zone,
+                centre, java.math.BigDecimal.ONE), fixture.holder());
+        var open = com.voltcanary.analytics.vcl.DurableZoneSession.sessionState(key, store.inspect(key, session.pinsDigest()).state());
+        assertEquals(com.voltcanary.analytics.vcl.VclZoneSessionKernel.Phase.OPEN, open.phase());
+
+        new JdbcTemplate(source()).update("""
+                UPDATE vcl_rule_deployments SET state='REVOKED',active_slot=NULL,paused_at=CURRENT_TIMESTAMP,revision=1
+                WHERE account_id=? AND deployment_epoch=?
+                """, active.account(), active.epoch());
+        var paused = new JdbcRuleDeployments.Deployment(active.actor(), active.account(), active.rule(), active.epoch(), active.bundle(),
+                active.bundleDigest(), active.grant(), JdbcRuleDeployments.State.PAUSED, 1, null, active.start(), null);
+        var restarted = new JdbcKeyedStateStore(source());
+        var pending = restarted.pausedWindows(16, 0).stream().filter(value -> value.key().equals(key)).findFirst().orElseThrow();
+        restarted.closePausedWindow(pending, paused);
+        new JdbcKeyedStateStore(source()).closePausedWindow(pending, paused);
+        var saved = restarted.inspect(key, session.pinsDigest());
+        var outcome = com.voltcanary.analytics.vcl.DurableZoneSession.sessionState(key, saved.state());
+        assertEquals(com.voltcanary.analytics.vcl.VclZoneSessionKernel.Phase.UNKNOWN, outcome.phase());
+        assertEquals("PAUSED", outcome.reason());
+        assertNull(outcome.exitWitness());
+        var outputs = restarted.pendingOutputs(key, session.pinsDigest(), 16);
+        assertEquals(1, outputs.size());
+        assertEquals(KeyedStateStore.OutputKind.MEASURE, outputs.getFirst().output().kind());
+        assertTrue(restarted.pausedWindows(16, 0).stream().noneMatch(value -> value.key().equals(key)));
+    }
+
+    @Test
     void reviewedCorrectionAndCatchupAreAtomicAndFenceTheOpeningCursor() {
         var fixture = fixture();
         var store = fixture.store();

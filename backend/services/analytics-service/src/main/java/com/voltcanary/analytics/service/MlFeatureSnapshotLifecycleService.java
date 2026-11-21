@@ -12,29 +12,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MlFeatureSnapshotLifecycleService {
 
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlTrainingRunRepository trainingRunRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlFeatureSnapshotResponseMapper mapper;
-
-    public MlFeatureSnapshotLifecycleService(
-            MlFeatureSnapshotRepository featureSnapshotRepository,
-            MlTrainingRunRepository trainingRunRepository,
-            MlModelVersionRepository modelVersionRepository,
-            MlFeatureSnapshotResponseMapper mapper) {
-        this.featureSnapshotRepository = featureSnapshotRepository;
-        this.trainingRunRepository = trainingRunRepository;
-        this.modelVersionRepository = modelVersionRepository;
-        this.mapper = mapper;
-    }
 
     @Transactional
     public MlFeatureSnapshotResponse archive(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {

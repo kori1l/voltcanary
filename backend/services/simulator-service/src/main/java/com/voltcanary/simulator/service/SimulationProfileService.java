@@ -15,12 +15,14 @@ import com.voltcanary.simulator.yaml.ValidationError;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 @Service
+@RequiredArgsConstructor
 public class SimulationProfileService {
 
     private final SimulationConfigRepository configRepository;
@@ -30,21 +32,6 @@ public class SimulationProfileService {
     private final SimulationTemplates templates;
     private final VehicleSimulationTarget target;
     private final com.voltcanary.simulator.yaml.SimulationYamlParser parser;
-
-    public SimulationProfileService(
-            SimulationConfigRepository configRepository,
-            SimulationProfileVersionWriter versionWriter,
-            SimulationProfileMapper mapper,
-            SimulationYamlValidator validator,
-            SimulationTemplates templates, VehicleSimulationTarget target, com.voltcanary.simulator.yaml.SimulationYamlParser parser) {
-        this.configRepository = configRepository;
-        this.versionWriter = versionWriter;
-        this.mapper = mapper;
-        this.validator = validator;
-        this.templates = templates;
-        this.target = target;
-        this.parser = parser;
-    }
 
     @Transactional(readOnly = true)
     public SimulationConfigResponse get(UUID deviceId) {
@@ -73,6 +60,9 @@ public class SimulationProfileService {
             created.setYamlVersion(0);
             return created;
         });
+        if (!request.dataSourceId().equals(config.getDataSourceId())) {
+            config.setSourceToken(null);
+        }
         config.setDataSourceId(request.dataSourceId());
         config.setName(request.name());
         config.setProfile(request.profile());

@@ -117,6 +117,21 @@ advertised. Session entry/exit/debounce and quality floors remain G4.
 
 ## Bundle persistence boundary
 
+POST /analytics/configurable-rules/compilations supports one-source sustained,
+window aggregate, interval union, window session and circle zone session
+profiles. Window aggregate and interval union can use up to two sealed ASOF
+queries. The readSet selects owner resources. Analytics re-reads their authority
+and coverage proofs, compiles the graph and validates the implemented execution
+profile before storage. State estimates use the enforced keyed-state ceiling
+and window fan-out. Work estimates bound the retained prefix and replay inputs
+times graph size and fan-out. Budget excess rejects preparation.
+
+The response contains the stored bundle ID, digest and exact start checkpoint.
+Identical canonical packages reuse one ID across retries. The identity is
+derived from the sealed canonical bytes with a zero placeholder ID, including
+owner manifest and account. Normal storage still checks exact bytes on conflict.
+Compiler and registry changes require a newly qualified package.
+
 CompilationBundlePreparation compiles a RULE, asks trusted actor-scoped Owners
 ports for readiness and reauthorization, and seals a versioned OWNER_VALIDATED_IR
 envelope. Owner manifest checks exact document/scope/dependency pins, access and
@@ -124,7 +139,9 @@ readiness, lookup indexes, state/work estimates against owner budgets, grant and
 evidence-policy revisions, constant spatial references, binding generations,
 operator versions, key-definition digest, snapshot-set digest and start boundary.
 These are owner attestations; the parser does not measure database index plans,
-source completeness or cost. The bundle Owners adapters remain unwired. The first
+source completeness or cost. Public preparation now composes the signed owner
+snapshots through ReviewedRuleCutovers and stores the verified manifest.
+The first
 real native dataset metadata adapter now exists in device-service: it reads
 account authority and verified SQL catalog state for common compilation. Its
 [review/provision/describe API](../api/configurable-native-data.md) is a G1/M1
@@ -140,6 +157,51 @@ application method exists; administrative SQL is outside this API and corruption
 tests deliberately use it to prove detection. This is not a DB-admin tamper seal.
 
 The application inspect method reauthorizes before returning private bundle data.
+Cutover preview repeats compilation with current owner reads and compares the
+dependency digests, grant and evidence policy pins before returning a checkpoint.
+Preview, cutover and worker checkpoint recovery reject a changed compiler
+version, operator registry or unit registry with `BUNDLE_COMPILER_PROFILE_CHANGED`.
+
+`POST /analytics/configurable/rule-cutovers/historical-measure` accepts
+`{account, epoch, measure}` to read a finalized stored interval measure by exact
+ID. Analytics verifies current owner pins and deployment authority before
+returning the original typed status, value, window and superseded measure ID.
+The evidence policy caps returned observation IDs. The reference retention
+check uses the window start as its earliest possible observation time.
+The dashboard editor lists these measures with
+`POST /analytics/configurable/rule-cutovers/historical-measure-list` and
+`{account, epoch, after}`. Each page returns up to 25 measure IDs with node,
+window and status, plus an optional `nextAfter` cursor. Reading the selected
+measure still requires a fresh owner authorization.
+
+For the end-to-end dashboard check, run
+`python scripts/source-coverage-docker-smoke.py --execute-interval --verify-workbench`
+against a Compose project with isolated data and VCL workers enabled. Set
+`COMPOSE_PROJECT_NAME` to that project's name and
+`VOLT_WORKBENCH_SMOKE_PORT_OFFSET` to the common offset used for its published
+service ports. The script uses that project for capture configuration and
+the database assertions.
+
+The activation form reads the selected predecessor through
+`POST /analytics/configurable/rule-cutovers/deployed-checkpoint` with
+`{account, epoch}`. It compares the re-authorized deployed checkpoint with
+the prepared checkpoint, including definition, compilation, source and
+reference digests. This read changes no deployment state.
+Reviewed rule cutover preview and apply require the verified start checkpoint
+to match the start boundary and source input generations sealed in the bundle.
+They return `BUNDLE_START_INPUTS_CHANGED` on mismatch. The worker repeats
+the same check on the reconstructed checkpoint before acknowledging evaluator
+readiness.
+Bundles with a `RULE_START_CHECKPOINT` pin require the exact reviewed
+checkpoint digest, including its source cuts, proof and reference manifests.
+Previously stored bundles with no such pin still check boundary and input
+generations.
+Machine source reads also compare the current source input generation against
+the sealed bundle. A replacement generation returns `WORKER_INPUT_CHANGED`
+before observations or coverage are requested.
+The start checkpoint requires an owner coverage proof qualified for source
+event time. A covered interval without that qualification returns
+`SOURCE_START_CHECKPOINT_UNAVAILABLE` before the rule can be staged.
 There is no HTTP route/Spring bean, active-rule worker or activation token for this
 boundary yet. Hydrated payload is data; execution must resolve the stored compiler,
 operator and resource versions explicitly, never compile against latest metadata.
@@ -181,7 +243,8 @@ are checked before use. Each permission check and resource pin refreshes the own
 changed scope or epoch invalidates the captured snapshot. The resource digest binds
 identity and epoch as well as authored scope. The20-second snapshot lifetime is a
 compile fence, not an autonomous effect permit; it does not store a user token as
-execution identity. Public RULE bundle composition remains pending.
+execution identity. Public RULE preparation uses this adapter alongside source
+coverage, reference manifests and evidence policy reads.
 
 EvidencePolicySnapshots now obtains the real alert owner's reviewed private-reference
 policy over the ordinary signed GET contract. Closed profile decoding checks exact
@@ -602,7 +665,8 @@ manifest and returns its original bundle without fetching current metadata; a
 changed document under the same ID is rejected. Logs remain ignored in artifacts.
 
 The separate `npm run vcl:check` remains a documentation consistency guard, not
-the implementation of this Java compiler. G0 owner/UI/AI integration remains open;
+the implementation of this Java compiler. G0 owner and shared registry integration is verified;
 [the target language](../../target/configurable-operations-language.md) and
-[active change](../../../openspec/changes/define-vcl-language-contracts/tasks.md)
-remain authoritative for required completion.
+[completed change](../../../openspec/changes/archive/2026-11-17-define-vcl-language-contracts/tasks.md)
+record the required contracts and completion evidence. G6/G7 own generic rule
+editing and AI authoring and G8/A6 own their release qualification.

@@ -8,20 +8,16 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class VariableDashboardSeries {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final VariableSeriesQueries queries;
-
-    public VariableDashboardSeries(JdbcTemplate jdbc, ObjectMapper mapper, VariableSeriesQueries queries) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
-        this.queries = queries;
-    }
 
     public List<ObjectNode> read(DashboardOwnerReadRequest request, DashboardOwnerReadRequest.Series selection) {
         if (selection.variableId() == null || selection.dataSourceId() == null) throw new IllegalArgumentException("Explicit variable source required");

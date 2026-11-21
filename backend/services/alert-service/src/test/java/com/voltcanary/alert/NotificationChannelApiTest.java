@@ -470,8 +470,9 @@ class NotificationChannelApiTest extends SignedUserTest {
                 .isEqualTo("worker-b");
     }
 
-    @Test
-    void webhookNotificationDeliveryCreatesSentAttempt() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void webhookNotificationDeliveryCreatesSentAttempt(boolean configurable) throws Exception {
         AtomicInteger requests = new AtomicInteger();
         AtomicReference<String> requestBody = new AtomicReference<>("");
         AtomicReference<String> idempotencyKey = new AtomicReference<>("");
@@ -489,6 +490,17 @@ class NotificationChannelApiTest extends SignedUserTest {
         });
         webhookServer.start();
         String webhookUrl = "http://localhost:" + webhookServer.getAddress().getPort() + "/alerts";
+        String ruleId = UUID.randomUUID().toString();
+        if (configurable) {
+            var preference = restTemplate.exchange("/alerts/notification-preferences", HttpMethod.PUT,
+                    entity(ACCOUNT_ID, Map.of("enabled", true, "configurableRuleAlertsEnabled", true)), String.class);
+            assertThat(preference.getStatusCode()).isEqualTo(HttpStatus.OK);
+            var unapproved = restTemplate.exchange("/alerts/notification-channels", HttpMethod.POST,
+                    entity(ACCOUNT_ID, Map.of("name", "Unapproved for this rule", "channelType", "WEBHOOK",
+                            "config", Map.of("url", webhookUrl, "configurableRuleIds", List.of(UUID.randomUUID().toString())))),
+                    NotificationChannelResponse.class);
+            assertThat(unapproved.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        }
 
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
                 "/alerts/notification-channels",
@@ -496,10 +508,16 @@ class NotificationChannelApiTest extends SignedUserTest {
                 entity(ACCOUNT_ID, Map.of(
                         "name", "Delivery webhook",
                         "channelType", "WEBHOOK",
-                        "config", Map.of("url", webhookUrl),
+                        "config", configurable ? Map.of("url", webhookUrl, "configurableRuleIds", List.of(ruleId))
+                                : Map.of("url", webhookUrl),
                         "enabled", true)),
                 NotificationChannelResponse.class);
         Alert alert = saveAlertWithAccount();
+        if (configurable) {
+            alert.setAlertType("CONFIGURABLE_RULE");
+            alert.setRuleId(ruleId);
+            alert = alertRepository.saveAndFlush(alert);
+        }
 
         UUID alertEventId = UUID.randomUUID();
         alertNotificationPort.alertCreated(notificationRequest(alert, alertEventId, "ALERT_CREATED"));

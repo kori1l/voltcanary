@@ -5,8 +5,8 @@
 - [ ] 1.1 Freeze three-domain and held-out schema/event/dialogue corpora with independent effect oracles.
 - [ ] 1.2 Implement domain/API/UI/AI equivalence, migration and adversarial access checks.
 - [ ] 1.3 Prove state/receipt/timer replay, interval union, late corrections and missingness semantics.
-- [ ] 1.4 Measure compiler/query/fan-out/state budgets and complete-task model cost/latency.
-- [ ] 1.5 Run only explicitly authorized capped real-source/model trials and preserve historical gates/reports.
+- [ ] 1.4 Measure compiler/query/fan-out/state budgets and record workflow latency and model-call traces from the controlled provider profiles. Pass the workflow fixtures and trace inputs to A6 for final complete-task model cost and latency measurement.
+- [ ] 1.5 Run explicitly authorized capped real-source trials where required and preserve historical gates and reports. Use deterministic provider profiles for G8 runtime acceptance and hand real-model qualification to A6.
 - [ ] 1.6 Update docs/traceability and validate focused checks, structure and strict OpenSpec before release.
 
 

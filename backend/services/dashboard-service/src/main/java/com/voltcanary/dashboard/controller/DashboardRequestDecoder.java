@@ -6,17 +6,14 @@ import com.voltcanary.dashboard.application.DefinitionValidation;
 import com.voltcanary.dashboard.domain.DashboardDefinition;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DashboardRequestDecoder {
     private final ObjectMapper mapper;
     private final DefinitionValidation validation;
-
-    public DashboardRequestDecoder(ObjectMapper mapper, DefinitionValidation validation) {
-        this.mapper = mapper;
-        this.validation = validation;
-    }
 
     public DashboardDefinition definition(JsonNode body) {
         validation.validatePayload(body);

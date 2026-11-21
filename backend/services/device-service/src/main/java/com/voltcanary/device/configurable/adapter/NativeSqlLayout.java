@@ -2,6 +2,7 @@ package com.voltcanary.device.configurable.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.device.configurable.domain.NativeSchema;
+import com.voltcanary.device.configurable.domain.NativeDataset;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclType;
@@ -14,11 +15,21 @@ public final class NativeSqlLayout {
     public record Column(UUID fieldId, String name, String sqlType, boolean nullable) { }
     public record Index(UUID fieldId, String name, String column) { }
     private final NativeSchema schema;
+    private final UUID physicalId;
     private final List<Column> columns;
     private final List<Index> indexes;
 
     public NativeSqlLayout(NativeSchema schema) {
+        this(schema, schema.id());
+    }
+
+    public NativeSqlLayout(NativeDataset dataset) {
+        this(dataset.schema(), dataset.physicalId());
+    }
+
+    private NativeSqlLayout(NativeSchema schema, UUID physicalId) {
         this.schema = schema;
+        this.physicalId = physicalId;
         var result = new ArrayList<Column>();
         for (var field : schema.fields()) add(field, result);
         columns = List.copyOf(result);
@@ -30,13 +41,13 @@ public final class NativeSqlLayout {
                     || kind == VclType.Kind.TEXT && field.path("maxLength").asInt() > 512) {
                 throw new VclException("INDEX_TYPE_UNSUPPORTED", "");
             }
-            selected.add(new Index(id, "cfg_ix_" + VclCanonical.sha256(schema.id() + ":" + id).substring(0, 32), column(id)));
+            selected.add(new Index(id, "cfg_ix_" + VclCanonical.sha256(physicalId + ":" + id).substring(0, 32), column(id)));
         }
         indexes = List.copyOf(selected);
     }
 
-    public String table() { return "cfg_data_" + token(schema.id()); }
-    public String historyTable() { return "cfg_hist_" + token(schema.id()); }
+    public String table() { return "cfg_data_" + token(physicalId); }
+    public String historyTable() { return "cfg_hist_" + token(physicalId); }
     public List<Column> columns() { return columns; }
     public List<Index> indexes() { return indexes; }
     public static String column(UUID id) { return "f_" + token(id); }

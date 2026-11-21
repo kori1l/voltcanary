@@ -12,13 +12,14 @@ import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Uses the existing account/grant fence, including monotone revocation and fresh database clocks. */
 @Component
+@RequiredArgsConstructor
 public class EvidencePolicySql {
     private final GrantSql grants;
-    public EvidencePolicySql(GrantSql grants) { this.grants = grants; }
 
     <T> T transaction(UUID account, GrantSql.Work<T> work) {
         return grants.transaction(account, connection -> {

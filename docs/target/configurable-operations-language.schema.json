@@ -905,6 +905,10 @@
                             "enum": [
                               "DEVICE",
                               "SOURCE",
+                              "LOCATION",
+                              "VARIABLE",
+                              "SCHEDULE",
+                              "OPERATIONAL_FACT",
                               "SPATIAL_FEATURE"
                             ]
                           }

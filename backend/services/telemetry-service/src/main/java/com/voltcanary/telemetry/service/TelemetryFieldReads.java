@@ -9,17 +9,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class TelemetryFieldReads {
     public record Field(String key, String label, String type, String unit, Object value, boolean display, String sourceId, Instant recordedAt) { }
     private final TelemetryReadingRepository readings;
     private final ObjectMapper mapper;
-    public TelemetryFieldReads(TelemetryReadingRepository readings, ObjectMapper mapper) {
-        this.readings = readings;
-        this.mapper = mapper;
-    }
+
     public List<Field> latest(UUID device, String sourceId) {
         List<Field> result = new ArrayList<>();
         var seen = new java.util.HashSet<String>();

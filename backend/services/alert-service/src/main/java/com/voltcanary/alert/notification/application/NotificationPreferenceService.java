@@ -1,12 +1,12 @@
 package com.voltcanary.alert.notification.application;
 
 import com.voltcanary.alert.domain.AlertSeverity;
-import com.voltcanary.alert.service.AlertAccessService;
 import com.voltcanary.alert.notification.domain.NotificationPreference;
 import com.voltcanary.alert.notification.dto.NotificationPreferenceRequest;
 import com.voltcanary.alert.notification.dto.NotificationPreferenceResponse;
 import com.voltcanary.alert.notification.port.AlertNotificationRequest;
 import com.voltcanary.alert.notification.repository.NotificationPreferenceRepository;
+import com.voltcanary.alert.service.AlertAccessService;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -17,22 +17,19 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationPreferenceService {
 
     private static final String ALL = "*";
     private final NotificationPreferenceRepository repository;
     private final AlertAccessService access;
-
-    public NotificationPreferenceService(NotificationPreferenceRepository repository, AlertAccessService access) {
-        this.repository = repository;
-        this.access = access;
-    }
 
     @Transactional(readOnly = true)
     public NotificationPreferenceResponse getDefault(String userId, String accountId) {

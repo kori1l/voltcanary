@@ -2,28 +2,19 @@ package com.voltcanary.ingestion.source;
 
 import com.voltcanary.ingestion.config.SourceRegistryReconciliationProperties;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class SourceRegistryReconciliationService {
-
-    private static final Logger log = LoggerFactory.getLogger(SourceRegistryReconciliationService.class);
 
     private final SourceRegistryCache cache;
     private final SourceRegistryReconciliationProperties properties;
     private final MeterRegistry meterRegistry;
-
-    public SourceRegistryReconciliationService(
-            SourceRegistryCache cache,
-            SourceRegistryReconciliationProperties properties,
-            MeterRegistry meterRegistry) {
-        this.cache = cache;
-        this.properties = properties;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Scheduled(fixedDelayString = "#{@sourceRegistryReconciliationProperties.interval.toMillis()}")
     public void reconcile() {

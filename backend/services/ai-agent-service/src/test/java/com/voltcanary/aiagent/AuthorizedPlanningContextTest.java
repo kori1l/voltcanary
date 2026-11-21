@@ -22,6 +22,19 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 class AuthorizedPlanningContextTest {
+    @Test void hslCapabilityRequiresBothTheEnabledFlagAndAnInstalledAdapter() {
+        var properties = new AiAgentProperties();
+        var connector = org.mockito.Mockito.mock(com.voltcanary.aiagent.port.DeviceIntegration.class);
+        org.mockito.Mockito.when(connector.provider()).thenReturn("HSL_HFP");
+        var installed = new AuthorizedPlanningContext(properties, builder.clone(), guard, List.of(connector));
+        var absent = new AuthorizedPlanningContext(properties, builder.clone(), guard, List.of());
+        properties.setDeviceSetupEnabled(false);
+        assertThat(installed.hslSourceAvailable()).isFalse();
+        properties.setDeviceSetupEnabled(true);
+        assertThat(absent.hslSourceAvailable()).isFalse();
+        assertThat(installed.hslSourceAvailable()).isTrue();
+    }
+
     @Test void widgetDescriptorsRenewThroughTheirOwningCatalogueAndRejectChangedSettings() {
         var ref = new AuthorizedPlanningContext.ResourceRef("widget-value", "widget-descriptor", "value", Map.of("settings", List.of()));
         server.expect(requestTo("http://dashboards/dashboards/composition/widget-types"))
@@ -135,6 +148,6 @@ class AuthorizedPlanningContextTest {
         properties.getServices().setDeviceBaseUrl("http://devices");
         properties.getServices().setAlertBaseUrl("http://alerts");
         properties.getServices().setDashboardBaseUrl("http://dashboards");
-        return new AuthorizedPlanningContext(properties, builder, guard);
+        return new AuthorizedPlanningContext(properties, builder, guard, List.of());
     }
 }

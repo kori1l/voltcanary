@@ -53,7 +53,7 @@ final class NativeAuthoringFixtures {
         return value;
     }
     static AgentAction action() {
-        return new AgentAction(UUID.randomUUID(), AgentTool.CREATE_NATIVE_TABLE, "Create visits", "Review seven fields", true,
+        return new AgentAction(UUID.randomUUID(), AgentTool.CREATE_NATIVE_TABLE, "Create visits", "Review eleven fields", true,
                 Map.of("protocol", NativeTableSkill.PROTOCOL, "ownerReviewId", id("reviewId").toString(), "ownerReviewRevision", 1,
                         "ownerReviewDigest", DIGEST, "ownerReceiptId", id("receiptId").toString(), "datasetId", id("resourceId").toString(),
                         "ownerIdempotencyKey", KEY, "semanticDigest", VclCanonical.semanticDigest(DOCUMENT), "document", JSON.convertValue(DOCUMENT.json(), Map.class)));

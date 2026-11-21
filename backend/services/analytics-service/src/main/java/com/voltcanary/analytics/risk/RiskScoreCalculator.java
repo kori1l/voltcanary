@@ -1,5 +1,7 @@
 package com.voltcanary.analytics.risk;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.Anomaly;
 import com.voltcanary.analytics.domain.RiskScore;
 import java.nio.charset.StandardCharsets;
@@ -8,18 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class RiskScoreCalculator {
 
     private final ObjectMapper objectMapper;
-
-    public RiskScoreCalculator(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
 
     public RiskScore calculate(
             UUID deviceId,

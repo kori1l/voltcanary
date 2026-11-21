@@ -10,10 +10,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /** Authoritative bounded materialization; shared template data and normal validators own semantics. */
 @Service
+@RequiredArgsConstructor
 public class DashboardTemplatePreparation {
     public record Request(int version, String name, List<UUID> deviceIds, String period,
             List<String> metricKeys, List<UUID> sourceIds, List<DashboardTemplateLayout.Panel> panelLayout) {
@@ -28,15 +30,6 @@ public class DashboardTemplatePreparation {
     private final TemplateDeviceCatalogue catalogue;
     private final TemplateDefinitionChecks checks;
     private final DashboardTemplateAssembler assembler;
-
-    public DashboardTemplatePreparation(DashboardTaskTemplates templates, DashboardOwnership ownership,
-            TemplateDeviceCatalogue catalogue, TemplateDefinitionChecks checks, DashboardTemplateAssembler assembler) {
-        this.templates = templates;
-        this.ownership = ownership;
-        this.catalogue = catalogue;
-        this.checks = checks;
-        this.assembler = assembler;
-    }
 
     public Prepared prepare(DashboardActor actor, String authorization, String templateId, Request request) {
         var template = templates.catalog().stream().filter(item -> item.id().equals(templateId)).findFirst()

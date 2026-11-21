@@ -33,8 +33,42 @@ public final class ContextLoading {
         this.loaders = Map.copyOf(registered);
     }
     public JsonNode resultSchema(String id) { return loader(id).resultSchema().deepCopy(); }
+    public LoadedContext initial(String id, IntentPlans.ModelInput input, Session session,
+            java.util.function.Supplier<JsonNode> submitted) {
+        var registered = loader(id);
+        var page = registered.initial(input, session, submitted);
+        if (page == null) return null;
+        var schema = registered.initialSchema();
+        if (schema == null || page.next() != null || page.asOf().isAfter(clock.instant().plusSeconds(5))) {
+            throw IntentPlans.reject("CONTEXT_SNAPSHOT_INVALID");
+        }
+        validator.validateRegistered(schema, page.data());
+        var loaded = new LoadedContext(id + ".scope", page.snapshotId(), page.asOf().toString(),
+                "COMPLETE", null, page.data().deepCopy());
+        validator.validate("loadedContext", new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(loaded));
+        return loaded;
+    }
+    public void verifyForDispatch(IntentPlans.ModelInput input, Session session, JsonNode results) {
+        for (var result : results) {
+            String id = result.path("loaderId").asText();
+            var registered = loaders.get(id);
+            if (registered != null) registered.verifyForDispatch(input, session, result.path("data"));
+            else if (id.endsWith(".scope")) {
+                loader(id.substring(0, id.length() - ".scope".length()))
+                        .verifyInitialForDispatch(input, session, result.path("data"));
+            }
+        }
+    }
     public LoadedContext load(IntentPlans.ModelInput input, Session session, IntentOrchestration.Skills access,
             String stepId, LoaderRequest request) {
+        return load(input, session, access, stepId, request, null);
+    }
+    public LoadedContext load(IntentPlans.ModelInput input, Session session, IntentOrchestration.Skills access,
+            String stepId, LoaderRequest request, JsonNode previousResults) {
+        return load(input, session, access, stepId, request, previousResults, null);
+    }
+    public LoadedContext load(IntentPlans.ModelInput input, Session session, IntentOrchestration.Skills access,
+            String stepId, LoaderRequest request, JsonNode previousResults, ContextSources.ModelBudget budget) {
         var step = input.state().step(stepId);
         var schema = skills.loaderSchema(step.intentId(), request.loaderId(), request.argumentsSchemaId(), access.authorized(), access.capabilities());
         validator.validateRegistered(schema, request.arguments());
@@ -42,7 +76,7 @@ public final class ContextLoading {
         var position = request.cursor() == null ? null : cursors.resolve(request.cursor(), binding, clock.instant());
         var loader = loader(request.loaderId());
         try (var trace = AssistantTrace.start("CONTEXT_LOAD", Map.of("loaderId", request.loaderId(), "stepId", stepId))) {
-            var page = loader.load(input, session, request.arguments().deepCopy(), position);
+            var page = loader.load(input, session, request.arguments().deepCopy(), position, previousResults, budget);
             validator.validateRegistered(loader.resultSchema(), page.data());
             var safe = com.voltcanary.aiagent.conversation.ConversationRedaction.value(page.data(), JsonNode.class, new com.fasterxml.jackson.databind.ObjectMapper());
             if (!safe.equals(page.data())) throw IntentPlans.reject("CONTEXT_CONTAINS_CREDENTIALS");

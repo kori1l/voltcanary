@@ -7,21 +7,19 @@ import java.time.ZoneId;
 import java.util.Currency;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class EnergyTariffPolicy {
     private final EnergyTariffRepository tariffs;
     private final BusinessResourceAuthorization access;
     private final DeviceAuditService audit;
-    public EnergyTariffPolicy(EnergyTariffRepository tariffs,BusinessResourceAuthorization access,DeviceAuditService audit) {
-        this.tariffs=tariffs;
-        this.access=access;
-        this.audit=audit;
-    }
+
     public List<EnergyTariff> list(AuthenticatedUser actor,UUID accountId,UUID workspaceId) {
         UUID account=access.account(actor,accountId,workspaceId,"tariff.read");
         return tariffs.list(account,workspaceId);

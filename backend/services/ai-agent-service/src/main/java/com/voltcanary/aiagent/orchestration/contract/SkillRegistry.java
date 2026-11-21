@@ -148,7 +148,10 @@ public final class SkillRegistry {
         var manifest = validateStepRequest(request, authorizedIntents, capabilities);
         validator.validate("stepResponse", response);
         var entry = entries.get(manifest.intentId());
-        validator.validateRegistered(entry.schemas().get(manifest.outputSchemaId()), response);
+        var operations = "PREPARED".equals(response.path("outcome").asText())
+                ? response.at("/command/payload/operations") : null;
+        validator.validateOperationDocument(entry.schemas().get(manifest.outputSchemaId()), response,
+                entry.schemas().get(manifest.commandSchemaId()), operations);
         if (response.path("outcome").asText().equals("QUESTION")) {
             for (var field : response.path("question").path("missingFields")) {
                 if (manifest.parameterRules().stream().noneMatch(rule -> rule.field().equals(field.asText()))) reject("UNKNOWN_QUESTION_FIELD");
@@ -230,7 +233,9 @@ public final class SkillRegistry {
         validator.validate("command", command);
         if (!command.path("schemaId").asText().equals(entry.manifest().commandSchemaId())
                 || !command.path("schemaVersion").asText().equals(entry.manifest().skillVersion())) reject("UNKNOWN_COMMAND_SCHEMA");
-        validator.validateRegistered(entry.schemas().get(entry.manifest().commandSchemaId()), command.path("payload"));
+        var payload = command.path("payload");
+        var commandSchema = entry.schemas().get(entry.manifest().commandSchemaId());
+        validator.validateOperationDocument(commandSchema, payload, commandSchema, payload.path("operations"));
     }
 
     private Entry entry(String intent, Set<String> authorized, Set<String> capabilities) {

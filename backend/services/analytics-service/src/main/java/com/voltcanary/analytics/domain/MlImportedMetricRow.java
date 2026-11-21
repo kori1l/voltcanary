@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_imported_metric_rows")
+@Getter
+@Setter
 public class MlImportedMetricRow {
     @Id
     private UUID id;
@@ -44,34 +48,4 @@ public class MlImportedMetricRow {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getImportedFileId() { return importedFileId; }
-    public void setImportedFileId(UUID importedFileId) { this.importedFileId = importedFileId; }
-    public String getExternalDeviceKey() { return externalDeviceKey; }
-    public void setExternalDeviceKey(String externalDeviceKey) { this.externalDeviceKey = externalDeviceKey; }
-    public UUID getMatchedDeviceId() { return matchedDeviceId; }
-    public void setMatchedDeviceId(UUID matchedDeviceId) { this.matchedDeviceId = matchedDeviceId; }
-    public String getVirtualDeviceKey() { return virtualDeviceKey; }
-    public void setVirtualDeviceKey(String virtualDeviceKey) { this.virtualDeviceKey = virtualDeviceKey; }
-    public String getDeviceType() { return deviceType; }
-    public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
-    public Instant getTimestamp() { return timestamp; }
-    public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
-    public String getMetricName() { return metricName; }
-    public void setMetricName(String metricName) { this.metricName = metricName; }
-    public double getNumericValue() { return numericValue; }
-    public void setNumericValue(double numericValue) { this.numericValue = numericValue; }
-    public String getUnit() { return unit; }
-    public void setUnit(String unit) { this.unit = unit; }
-    public MlLabelType getLabel() { return label; }
-    public void setLabel(MlLabelType label) { this.label = label; }
-    public String getMetadataJson() { return metadataJson; }
-    public void setMetadataJson(String metadataJson) { this.metadataJson = metadataJson; }
-    public long getSourceRowNumber() { return sourceRowNumber; }
-    public void setSourceRowNumber(long sourceRowNumber) { this.sourceRowNumber = sourceRowNumber; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

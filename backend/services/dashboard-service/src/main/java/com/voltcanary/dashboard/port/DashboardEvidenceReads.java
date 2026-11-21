@@ -13,6 +13,12 @@ import java.util.UUID;
 
 /** Explicit owner read ports; no arbitrary endpoint, SQL or write operation. */
 public interface DashboardEvidenceReads {
+    default JsonNode nativeRows(String authorization, JsonNode document) {
+        throw new com.voltcanary.dashboard.domain.DashboardFailure("DEPENDENCY_UNAVAILABLE", "Table owner is unavailable");
+    }
+    default JsonNode ruleMeasure(String authorization, DashboardActor actor, JsonNode selection) {
+        throw new com.voltcanary.dashboard.domain.DashboardFailure("DEPENDENCY_UNAVAILABLE", "Analytics owner is unavailable");
+    }
     DashboardActor activeActor(String authorization, UUID userId);
     record Device(UUID id, String name, String type, UUID locationId, String registrationStatus,
             Long cadenceSeconds, String cadenceSource, String sourcePolicy, Instant updatedAt,List<EnergyMeterDefinition> energyMeters) {

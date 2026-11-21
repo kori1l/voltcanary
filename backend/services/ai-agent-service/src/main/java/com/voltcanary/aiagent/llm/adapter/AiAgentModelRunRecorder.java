@@ -4,16 +4,13 @@ import com.voltcanary.aiagent.domain.AiAgentModelRun;
 import com.voltcanary.aiagent.repository.AiAgentModelRunRepository;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-
 @Component
+@RequiredArgsConstructor
 public class AiAgentModelRunRecorder {
     private final AiAgentModelRunRepository repository;
-
-    public AiAgentModelRunRecorder(AiAgentModelRunRepository repository) {
-        this.repository = repository;
-    }
 
     public void record(UUID accountId, UUID userId, AiResolvedModel model, String status, long latencyMs, String errorCode, String errorMessage, UUID planId) {
         AiAgentModelRun run = new AiAgentModelRun();

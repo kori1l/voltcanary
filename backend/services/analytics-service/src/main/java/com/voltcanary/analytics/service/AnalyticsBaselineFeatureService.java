@@ -12,9 +12,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsBaselineFeatureService {
 
     private static final String BASELINE_ALGORITHM_VERSION = "baseline-basic-v1";
@@ -22,15 +24,6 @@ public class AnalyticsBaselineFeatureService {
     private final DeviceBaselineRepository baselineRepository;
     private final FeatureSetRepository featureSetRepository;
     private final AnalyticsPredictionTraceService traceService;
-
-    public AnalyticsBaselineFeatureService(
-            DeviceBaselineRepository baselineRepository,
-            FeatureSetRepository featureSetRepository,
-            AnalyticsPredictionTraceService traceService) {
-        this.baselineRepository = baselineRepository;
-        this.featureSetRepository = featureSetRepository;
-        this.traceService = traceService;
-    }
 
     public DeviceBaseline saveBaseline(UUID deviceId, String metric, String period, BaselineStats baseline, Instant now) {
         DeviceBaseline entity = new DeviceBaseline();

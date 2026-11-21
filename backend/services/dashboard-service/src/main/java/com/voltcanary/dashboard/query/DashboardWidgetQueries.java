@@ -107,6 +107,28 @@ public class DashboardWidgetQueries {
                 continue;
             }
             try {
+                if (WidgetManifests.configuredEvidence(widget.type())) {
+                    if (NativeDashboardRows.TYPE.equals(widget.type())) NativeDashboardRows.validate(widget.query());
+                    else DashboardRuleMeasure.parse(widget.query());
+                    if (defaults.scope().workspaceId() != null || runtime.scope().workspaceId() != null
+                            || decoder.scope(widget.binding()).workspaceId() != null) {
+                        throw new DashboardFailure("NO_ACCESS", "Configured evidence requires a private dashboard");
+                    }
+                    if (validateOnly) {
+                        var ownerRead = scheduler.configuredEvidence(authorization, actor, widget);
+                        try {
+                            projectConfigured(widget, ownerRead.get(5, TimeUnit.SECONDS));
+                        } catch (java.util.concurrent.ExecutionException failure) {
+                            if (failure.getCause() instanceof DashboardFailure typed) throw typed;
+                            throw failure;
+                        } finally {
+                            if (!ownerRead.isDone()) ownerRead.cancel(true);
+                        }
+                    }
+                    var scope = new ScopeSnapshot(actor.userId(), actor.accountId(), 0, 0, 0, List.of(), List.of(), false, asOf);
+                    prepared.add(new Prepared(widget, null, scope, null, null));
+                    continue;
+                }
                 Config config = decoder.config(widget, manifest.get());
                 ScopeSnapshot scope = scopes.resolve(authorization, actor, defaults.scope(), runtime.scope(), decoder.scope(widget.binding()), scopeMemo, PositionWidgets.contains(widget.type()));
                 scope=scopes.capabilities(authorization,actor,scope,widget.type());
@@ -204,7 +226,8 @@ public class DashboardWidgetQueries {
         }
         String key = QueryHash.of(mapper, List.of(actor, id, revision, request.draftEtag() == null ? "published" : request.draftEtag(),
                 definition, runtime, fingerprint, request.widgetIds()==null ? List.of() : request.widgetIds()));
-        boolean safe = businessValid && prepared.stream().noneMatch(panel -> PositionWidgets.contains(panel.widget().type())) && prepared.stream().noneMatch(panel -> panel.failure() != null || panel.scope().workspaceId()!=null);
+        boolean safe = businessValid && prepared.stream().noneMatch(panel -> PositionWidgets.contains(panel.widget().type())
+                || WidgetManifests.configuredEvidence(panel.widget().type())) && prepared.stream().noneMatch(panel -> panel.failure() != null || panel.scope().workspaceId()!=null);
         synchronized (cache) {
             cache.entrySet().removeIf(entry -> entry.getValue().until().isBefore(asOf));
             if (safe && !request.forceRefresh()) {
@@ -224,7 +247,12 @@ public class DashboardWidgetQueries {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         for (Prepared panel : prepared) {
             Map<String, CompletableFuture<JsonNode>> owners = new LinkedHashMap<>();
-            if (panel.failure() == null) {
+            if (panel.failure() == null && WidgetManifests.configuredEvidence(panel.widget().type())) {
+                try { owners.put("configured", scheduler.configuredEvidence(authorization, actor, panel.widget())); }
+                catch (java.util.concurrent.RejectedExecutionException rejected) {
+                    owners.put("configured", CompletableFuture.failedFuture(new DashboardFailure("DEPENDENCY_UNAVAILABLE", "Read concurrency budget is busy")));
+                }
+            } else if (panel.failure() == null) {
                 ReadRequest read = readRequest(actor, panel);
                 for (String owner : projection.owners(panel.widget().type())) {
                     try { owners.put(owner, scheduler.read(owner, read, authorization, actor, reads)); }
@@ -260,7 +288,9 @@ public class DashboardWidgetQueries {
                             : source.getValue().get(Math.max(1, left), TimeUnit.NANOSECONDS);
                     evidence.put(source.getKey(), result);
                 }
-                ObjectNode data = projection.project(panel.widget(), panel.config(), panel.frame(), panel.scope(), evidence);
+                boolean configured = WidgetManifests.configuredEvidence(panel.widget().type());
+                ObjectNode data = configured ? projectConfigured(panel.widget(), evidence.get("configured"))
+                        : projection.project(panel.widget(), panel.config(), panel.frame(), panel.scope(), evidence);
                 ObjectNode provenance = mapper.createObjectNode().put("consistency", "OWNER_READ_SNAPSHOTS_SHARED_QUERY_ASOF")
                         .put("readOnly", true).put("cachedSnapshotMaxAgeSeconds", 30).put("scopeHash", scopeHash(panel));
                 evidence.forEach((owner, value) -> {
@@ -269,10 +299,14 @@ public class DashboardWidgetQueries {
                         if (value.has(field)) metadata.set(field, value.get(field));
                     provenance.set(owner, metadata);
                 });
-                String status = noData(panel, data, evidence) ? "no_data" : "ready";
+                if (configured) provenance.put("consistency", switch (panel.widget().type()) {
+                    case NativeDashboardRows.TYPE -> "NATIVE_TABLE_LIVE";
+                    default -> "STORED_RULE_MEASURE";
+                }).put("cachedSnapshotMaxAgeSeconds", 0);
+                String status = !configured && noData(panel, data, evidence) ? "no_data" : "ready";
                 panels.add(new Panel(panel.widget().id(), status, data, contextHash, panel.frame(),
                         Math.toIntExact(panel.scope().requestedCount()), Math.toIntExact(panel.scope().evaluatedCount()),
-                        Instant.now(), measuredAt(panel, data, evidence), provenance, null, null));
+                        Instant.now(), configured ? null : measuredAt(panel, data, evidence), provenance, null, null));
             } catch (Exception exception) {
                 Throwable cause = exception;
                 while (cause.getCause() != null && !(cause instanceof DashboardFailure)) cause = cause.getCause();
@@ -285,6 +319,7 @@ public class DashboardWidgetQueries {
         }
         } finally {
             reads.values().forEach(future -> { if (!future.isDone()) future.cancel(true); });
+            pending.forEach(owners -> owners.values().forEach(future -> { if (!future.isDone()) future.cancel(true); }));
         }
         var order = new HashMap<String,Integer>();
         for (int i=0;i<prepared.size();i++) order.put(prepared.get(i).widget().id(),i);
@@ -330,6 +365,13 @@ public class DashboardWidgetQueries {
                     default -> Set.of();
                 },config.sourceId(),config.vehicleSources());
     }
+    private ObjectNode projectConfigured(Widget widget, JsonNode evidence) {
+        var data = mapper.createObjectNode();
+        if (NativeDashboardRows.TYPE.equals(widget.type())) NativeDashboardRows.project(data, evidence, widget.query());
+        else DashboardRuleMeasure.parse(widget.query()).project(data, evidence);
+        return data;
+    }
+
     private String scopeHash(Prepared panel) {
         return QueryHash.of(mapper, List.of(panel.scope().devices(), panel.scope().locations(), String.valueOf(panel.scope().authorizationFingerprint())));
     }

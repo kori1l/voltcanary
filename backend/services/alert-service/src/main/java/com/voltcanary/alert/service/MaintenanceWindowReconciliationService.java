@@ -8,8 +8,8 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,9 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @ConditionalOnProperty(prefix = "app.maintenance.reconciliation", name = "enabled", havingValue = "true", matchIfMissing = true)
+@RequiredArgsConstructor
+@Slf4j
 public class MaintenanceWindowReconciliationService {
 
-    private static final Logger log = LoggerFactory.getLogger(MaintenanceWindowReconciliationService.class);
     private static final String LOCK_NAME = "alert-maintenance-reconciliation";
     private static final String CHECKPOINT_NAME = "device-service-maintenance";
 
@@ -31,21 +32,6 @@ public class MaintenanceWindowReconciliationService {
     private final MaintenanceWindowProjectionService projectionService;
     private final JdbcTemplate jdbcTemplate;
     private final MeterRegistry meterRegistry;
-
-    public MaintenanceWindowReconciliationService(
-            MaintenanceReconciliationProperties properties,
-            SchedulerLockService schedulerLockService,
-            MaintenanceWindowDeviceClient deviceClient,
-            MaintenanceWindowProjectionService projectionService,
-            JdbcTemplate jdbcTemplate,
-            MeterRegistry meterRegistry) {
-        this.properties = properties;
-        this.schedulerLockService = schedulerLockService;
-        this.deviceClient = deviceClient;
-        this.projectionService = projectionService;
-        this.jdbcTemplate = jdbcTemplate;
-        this.meterRegistry = meterRegistry;
-    }
 
     @Scheduled(fixedDelayString = "#{@maintenanceReconciliationProperties.interval.toMillis()}")
     public void reconcileScheduled() {

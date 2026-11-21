@@ -13,6 +13,7 @@ import com.voltcanary.analytics.service.MlModelRegistryService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,15 +27,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/analytics/ml")
+@RequiredArgsConstructor
 public class MlModelRegistryController {
 
     private final MlModelRegistryService service;
     private final AnalyticsAccessService accessService;
-
-    public MlModelRegistryController(MlModelRegistryService service, AnalyticsAccessService accessService) {
-        this.service = service;
-        this.accessService = accessService;
-    }
 
     @GetMapping("/models")
     public List<MlModelVersionDto> listModels(

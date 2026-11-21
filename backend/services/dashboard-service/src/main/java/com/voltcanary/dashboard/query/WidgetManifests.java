@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 public class WidgetManifests {
     private static final List<String> UNITS = List.of("W", "kW", "V", "A", "Wh", "kWh", "C", "°C", "F", "°F", "K", "", "%", "Hz", "dBm", "mm/s", "h", "ratio", "km/h", "deg", "s", "m/s²", "boolean");
     private final List<Manifest> catalog = List.of(
+            manifest(NativeDashboardRows.TYPE, "Configured table records", "CONFIGURED_RECORDS", List.of(), 0, 0, "LIVE"),
+            manifest(DashboardRuleMeasure.TYPE, "Saved rule window result", "RULE_WINDOW_RESULT", List.of(), 0, 0, "WINDOW"),
             manifest("vehicle-value", "Vehicle field value", "POSITIONS", List.of(), 0, 1, "SNAPSHOT"),
             manifest("vehicle-timeline", "Recorded vehicle state history", "POSITIONS", List.of(), 0, 20, "SNAPSHOT_AND_INTERVAL"),
             manifest("vehicle-map", "Vehicle movement map", "POSITIONS", List.of(), 0, 20, "SNAPSHOT_AND_INTERVAL"),
@@ -31,6 +33,10 @@ public class WidgetManifests {
 
     public List<Manifest> all() {
         return catalog;
+    }
+
+    public static boolean configuredEvidence(String type) {
+        return NativeDashboardRows.TYPE.equals(type) || DashboardRuleMeasure.TYPE.equals(type);
     }
 
     public Optional<Manifest> find(String type, int version) {

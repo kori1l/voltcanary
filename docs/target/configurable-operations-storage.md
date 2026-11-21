@@ -2,7 +2,9 @@
 
 Статус: **целевая спецификация**, 2026-11-03. Native owner реализует schema
 review/provision/describe, reviewed single-row CAS/history capture и ограниченный
-LIVE и sealed SNAPSHOT query profiles. Import/migration, внешние адаптеры и performance
+LIVE и sealed SNAPSHOT query profiles, bounded atomic CSV/JSONL imports и reviewed
+native STAGED_REPLACE с сохранением старого поколения. Полные chunked imports,
+migration/retention lifecycle, внешние адаптеры и performance
 acceptance ещё не завершены. Текущий срез описан в
 [owner API](../current/api/configurable-native-data.md).
 Общий язык: [VCL/1](configurable-operations-language.md).

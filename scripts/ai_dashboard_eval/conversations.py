@@ -42,7 +42,7 @@ class ConversationRunner(Runner):
     def turn_accounting(self, plan, turn):
         return getattr(self._turn_accounting, "value", None) if turn["action"] == "message" else None
 
-    def model(self, message, plan, devices, independent=False):
+    def model(self, message, plan, devices, independent=False, executed_base=False):
         independent = independent or getattr(self._turn_accounting, "independent", False)
         self._turn_accounting.value = None
         with self.lock:
@@ -53,7 +53,7 @@ class ConversationRunner(Runner):
         detail = self.api.call("GET", "/ai-agent/conversations/" + conversation)
         request = str(uuid.uuid4())
         terminal = {"SUCCESS", "FAILED", "PARTIAL_SUCCESS", "RUNNING", "UNKNOWN", "EXPIRED"}
-        continuation = plan and plan.get("executionStatus") not in terminal
+        continuation = plan and not executed_base and plan.get("executionStatus") not in terminal
         task = (plan.get("task") or {}) if continuation else {}
         task_id = task.get("taskId") or str(uuid.uuid4())
         body = {"requestId": request, "expectedRevision": detail["conversation"]["revision"], "text": message,
@@ -61,7 +61,7 @@ class ConversationRunner(Runner):
                 "modelConfigId": self.account["modelConfigId"], "metadata": {"requestId": request,
                     "taskId": task_id, "branchId": str(uuid.uuid4()) if independent else task.get("branchId") or task_id,
                     "expectedTaskRevision": task.get("revision", 0)}}
-        if continuation:
+        if continuation or executed_base:
             body["parentPlanId"] = plan["planId"]
         transport_error = None
         try:

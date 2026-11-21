@@ -10,6 +10,7 @@ import com.voltcanary.dashboard.port.DashboardOwnership;
 import com.voltcanary.dashboard.query.DashboardWidgetQueries;
 import com.voltcanary.dashboard.query.QueryTypes;
 import com.voltcanary.dashboard.templates.TemplateDefinitionChecks;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Read-only preview: no dashboard, revision, creation receipt or publication is written. */
 @RestController
+@RequiredArgsConstructor
 public class DashboardPreviewController {
     public record Request(DashboardDefinition definition) { }
     private final DashboardOwnership ownership;
@@ -24,15 +26,6 @@ public class DashboardPreviewController {
     private final TemplateDefinitionChecks checks;
     private final DashboardWidgetQueries queries;
     private final ObjectMapper mapper;
-
-    public DashboardPreviewController(DashboardOwnership ownership, DefinitionValidation validation,
-            TemplateDefinitionChecks checks, DashboardWidgetQueries queries, ObjectMapper mapper) {
-        this.ownership = ownership;
-        this.validation = validation;
-        this.checks = checks;
-        this.queries = queries;
-        this.mapper = mapper;
-    }
 
     @PostMapping("/dashboards/preview/query")
     public QueryTypes.Batch preview(@RequestHeader(value = "Authorization", required = false) String authorization,

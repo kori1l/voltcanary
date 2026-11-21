@@ -8,13 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class OpenAiPlanProvider implements LlmPlanProvider {
-    private static final Logger log = LoggerFactory.getLogger(OpenAiPlanProvider.class);
     private static final String SYSTEM_PROMPT = """
             You are the VoltCanary AI Agent planner.
             Return JSON only. Do not include markdown.
@@ -44,11 +45,6 @@ public class OpenAiPlanProvider implements LlmPlanProvider {
 
     private final AiAgentProperties properties;
     private final ObjectMapper objectMapper;
-
-    public OpenAiPlanProvider(AiAgentProperties properties, ObjectMapper objectMapper) {
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     public Optional<LlmPlanDraft> plan(String message, Map<String, Object> context) {

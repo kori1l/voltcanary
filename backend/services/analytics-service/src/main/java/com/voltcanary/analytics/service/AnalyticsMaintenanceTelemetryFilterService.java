@@ -5,16 +5,14 @@ import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AnalyticsMaintenanceTelemetryFilterService {
 
     private final MeterRegistry meterRegistry;
-
-    public AnalyticsMaintenanceTelemetryFilterService(MeterRegistry meterRegistry) {
-        this.meterRegistry = meterRegistry;
-    }
 
     public TelemetryChartResponse filterChart(
             TelemetryChartResponse chart,

@@ -7,6 +7,7 @@ import com.voltcanary.device.service.MaintenanceOutcomeService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,15 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping
+@RequiredArgsConstructor
 public class MaintenanceOutcomeController {
 
     private final MaintenanceOutcomeService service;
     private final AuthenticatedUserResolver userResolver;
-
-    public MaintenanceOutcomeController(MaintenanceOutcomeService service, AuthenticatedUserResolver userResolver) {
-        this.service = service;
-        this.userResolver = userResolver;
-    }
 
     @GetMapping("/maintenance-operations/{operationId}/outcomes")
     public List<MaintenanceOutcomeResponse> list(

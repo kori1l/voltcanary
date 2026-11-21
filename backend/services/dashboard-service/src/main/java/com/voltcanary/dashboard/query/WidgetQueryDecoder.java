@@ -12,15 +12,13 @@ import com.voltcanary.dashboard.query.QueryTypes.Scope;
 import com.voltcanary.dashboard.query.QueryTypes.ScopeMode;
 import com.voltcanary.dashboard.query.QueryTypes.Time;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class WidgetQueryDecoder {
     private final ObjectMapper mapper;
-
-    public WidgetQueryDecoder(ObjectMapper mapper) {
-        this.mapper = mapper;
-    }
 
     public Scope scope(JsonNode value) {
         if (value == null || value.isNull() || value.isMissingNode()) {

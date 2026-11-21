@@ -2,18 +2,44 @@ package com.voltcanary.device.configurable.application;
 
 import com.voltcanary.vcl.VclCircleRevision;
 import com.voltcanary.vcl.VclException;
+import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** Authoritative WGS84 circle revisions scoped to a current account owner. */
 @Service
+@RequiredArgsConstructor
 public class CircleFeatures {
+    public record Page(List<VclCircleRevision> items, UUID nextAfter) { }
     private final JdbcTemplate jdbc;
 
-    public CircleFeatures(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    @Transactional(readOnly = true)
+    public Page list(UUID actor, UUID after, int limit) {
+        if (limit < 1 || limit > 100) throw new VclException("SPATIAL_PAGE_INVALID", "");
+        UUID account = account(actor, false);
+        String sql = """
+                SELECT r.feature_id,r.revision,r.longitude,r.latitude,r.radius_metres,r.digest
+                FROM cfg_circle_feature f JOIN cfg_circle_feature_revision r
+                  ON f.id=r.feature_id AND f.head_revision=r.revision
+                WHERE f.account_id=?
+                """;
+        var parameters = new java.util.ArrayList<Object>();
+        parameters.add(account);
+        if (after != null) {
+            sql += " AND f.id>?";
+            parameters.add(after);
+        }
+        parameters.add(limit + 1);
+        var revisions = jdbc.query(sql + " ORDER BY f.id LIMIT ?", (row, index) ->
+                new VclCircleRevision(row.getObject("feature_id", UUID.class), account, row.getLong("revision"),
+                        new VclCircleRevision.Definition(row.getDouble("longitude"), row.getDouble("latitude"),
+                                row.getString("radius_metres")), row.getString("digest")), parameters.toArray());
+        if (!account.equals(account(actor, false))) throw new VclException("OWNER_ACCESS_REVOKED", "");
+        if (revisions.size() <= limit) return new Page(List.copyOf(revisions), null);
+        return new Page(List.copyOf(revisions.subList(0, limit)), revisions.get(limit - 1).id());
     }
 
     @Transactional

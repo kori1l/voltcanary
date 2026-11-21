@@ -9,9 +9,11 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class DefinitionValidation {
     private static final Set<String> FORBIDDEN_KEYS = Set.of(
             "password", "token", "accesstoken", "refreshtoken", "apikey", "secret",
@@ -21,10 +23,6 @@ public class DefinitionValidation {
             "(?is)(<\\s*/?\\s*[a-z]+(?:\\s|>)|javascript\\s*:|data\\s*:|https?\\s*:\\s*//|Bearer\\s+\\S+|-----BEGIN .*PRIVATE KEY-----)");
     private final ObjectMapper mapper;
     private final ScreenGridValidation grids = new ScreenGridValidation();
-
-    public DefinitionValidation(ObjectMapper mapper) {
-        this.mapper = mapper;
-    }
 
     public DashboardDefinition validate(DashboardDefinition definition) {
         require(definition != null, "definition", "Definition is required");

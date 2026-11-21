@@ -5,6 +5,7 @@ import com.voltcanary.device.variable.application.VariableBindings;
 import com.voltcanary.device.variable.domain.VariableBinding;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,14 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/devices/{deviceId}/data-sources/{sourceId}/variable-bindings")
+@RequiredArgsConstructor
 public class VariableBindingsController {
     private final VariableBindings bindings;
     private final AuthenticatedUserResolver users;
-
-    public VariableBindingsController(VariableBindings bindings, AuthenticatedUserResolver users) {
-        this.bindings = bindings;
-        this.users = users;
-    }
 
     @GetMapping
     public List<VariableBinding> list(@RequestHeader HttpHeaders headers,

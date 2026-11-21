@@ -4,15 +4,13 @@ import com.voltcanary.common.events.device.DeviceRegistryChangedEvent;
 import com.voltcanary.device.config.DeviceKafkaProperties;
 import java.time.Instant;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-
 @Component
+@Slf4j
 public class DeviceRegistryEventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(DeviceRegistryEventPublisher.class);
     private static final String TOPIC = "device-registry.changed.v1";
     private static final String VERSION = "v1";
 

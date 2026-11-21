@@ -7,20 +7,15 @@ import com.voltcanary.simulator.repository.SimulationConfigVersionRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SimulationProfileVersionWriter {
 
     private final SimulationConfigVersionRepository versionRepository;
     private final SimulationProfileMapper mapper;
-
-    public SimulationProfileVersionWriter(
-            SimulationConfigVersionRepository versionRepository,
-            SimulationProfileMapper mapper) {
-        this.versionRepository = versionRepository;
-        this.mapper = mapper;
-    }
 
     public void save(SimulationConfig config, UUID userId) {
         SimulationConfigVersion version = new SimulationConfigVersion();

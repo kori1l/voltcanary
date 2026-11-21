@@ -3,10 +3,12 @@ package com.voltcanary.dashboard.templates;
 import com.voltcanary.dashboard.query.WidgetManifests;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Immutable task defaults. Resource slots contain symbols, never tenant IDs. */
 @Component
+@RequiredArgsConstructor
 public class DashboardTaskTemplates {
     public record Panel(String key, String type, String title, String slot,
             String metric, String unit, Map<String, Object> query, String drillDown) { }
@@ -14,7 +16,6 @@ public class DashboardTaskTemplates {
             List<String> segments, boolean available, String explanation,
             String period, int seriesHours, List<String> slots, List<Panel> panels) { }
     private final WidgetManifests manifests;
-    public DashboardTaskTemplates(WidgetManifests manifests) { this.manifests = manifests; }
 
     public List<Template> catalog() {
         return List.of(

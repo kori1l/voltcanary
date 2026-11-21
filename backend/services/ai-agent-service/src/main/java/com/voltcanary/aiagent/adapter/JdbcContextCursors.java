@@ -5,12 +5,14 @@ import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Opaque restart-safe cursor. Binding is a digest of scope/conversation/plan/step/skill/loader/arguments. */
+@RequiredArgsConstructor
 public final class JdbcContextCursors implements ContextSources.Cursors {
     private final JdbcTemplate jdbc;
-    public JdbcContextCursors(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+
     @Override
     public String issue(String binding, ContextSources.Position position, Instant expiresAt) {
         String id = UUID.randomUUID().toString();

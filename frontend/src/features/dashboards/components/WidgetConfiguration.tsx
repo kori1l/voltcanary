@@ -15,6 +15,10 @@ import {EnergyTariffSetup} from "./EnergyTariffSetup";
 import {OperationalFactsSetup} from "./OperationalFactsSetup";
 import {WidgetPresentationSettings} from "./WidgetPresentationSettings";
 import {WidgetAppearanceSettings} from "./WidgetAppearanceSettings";
+import {ConfiguredRecordsSettings} from "./ConfiguredRecordsSettings";
+import {configuredRecordsSelection} from "../model/configuredRecordsQuery";
+import {RuleMeasurePicker} from "./RuleMeasurePicker";
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function WidgetConfiguration({widget,manifest,onSave,onCancel,layoutControls}:{layoutControls?:ReactNode;widget:DashboardWidget;manifest:WidgetManifest;onSave:(widget:DashboardWidget)=>void;onCancel:()=>void}) {
   const initialSeries=Array.isArray(widget.query?.series)?widget.query.series as {deviceId:string;metric:string}[]:[];
   const [draft,setDraft]=useState<DashboardWidget>({...widget,binding:widget.binding ?? {mode:"ALL"},query:{...widget.query,metric:widget.query?.metric ?? initialSeries[0]?.metric},presentation:widget.presentation ?? {},navigation:widget.navigation ?? {},payload:widget.payload ?? {}});const [metrics,setMetrics]=useState<TelemetryMetricMetadata[]>([]);const [metricError,setMetricError]=useState<string|null>(null);
@@ -23,7 +27,10 @@ export function WidgetConfiguration({widget,manifest,onSave,onCancel,layoutContr
   const deviceId=draft.binding.deviceIds?.[0] ?? "";
   const loadDevices=useMemo(()=>draft.binding.workspaceId && draft.binding.accountId?workspaceDeviceOptions(draft.binding.workspaceId,draft.binding.accountId):positionWidget?vehicleDeviceOptions:dashboardDeviceOptions,[draft.binding.workspaceId,draft.binding.accountId,positionWidget]);
   const needsMetric=manifest.capabilities?.binding.metricRequired ?? ["latest-value","time-series","metric-summary"].includes(widget.type);
-  const needsBinding=manifest.capabilities?.dataKind!=="OPERATOR_TEXT";
+  const configuredRecords=widget.type==="configured-records";
+  const ruleMeasure=widget.type==="rule-window-result";
+  const configuredEvidence=configuredRecords || ruleMeasure;
+  const needsBinding=!configuredEvidence && manifest.capabilities?.dataKind!=="OPERATOR_TEXT";
   const [variableOptions,setVariableOptions]=useState<VariableDescriptor[]>([]);
   const [variableError,setVariableError]=useState("");
   const [fieldCompatible,setFieldCompatible]=useState(true);
@@ -42,11 +49,13 @@ export function WidgetConfiguration({widget,manifest,onSave,onCancel,layoutContr
   const selected=selectedVariable?{name:selectedVariable.metricToken,unit:selectedVariable.unit,displayName:selectedVariable.label,type:"number",min:-1e12,max:1e12}:metrics.find((metric)=>metric.name===draft.query.metric && !metric.name.startsWith("var_"));
   const fleetSources=draft.query.vehicleSources as Record<string,string>|undefined;
   const fleetMap=positionWidget && !!fleetSources;
-  const invalid=!fieldCompatible || (["vehicle-value","vehicle-timeline"].includes(widget.type) && (!draft.presentation.vehicleField || (draft.binding.deviceIds?.length ?? 0)!==1)) || (positionWidget && (!deviceId || (fleetMap ? (draft.binding.deviceIds??[]).some(id=>!fleetSources?.[id]) : !draft.query.sourceId) || draft.binding.mode!=="FIXED")) || (needsMetric && (!selected || !deviceId)) || (draft.binding.mode==="FIXED" && ((draft.binding.deviceIds ?? []).some(id=>!id) || new Set(draft.binding.deviceIds).size!==(draft.binding.deviceIds?.length ?? 0)));
+  const invalidRecords = configuredRecords && (Boolean(draft.binding.workspaceId) || !configuredRecordsSelection(draft.query).columns.length);
+  const invalidMeasure = ruleMeasure && (Boolean(draft.binding.workspaceId) || !uuid.test(String(draft.query.epoch ?? "")) || !uuid.test(String(draft.query.measure ?? "")));
+  const invalid=invalidRecords || invalidMeasure || !fieldCompatible || (["vehicle-value","vehicle-timeline"].includes(widget.type) && (!draft.presentation.vehicleField || (draft.binding.deviceIds?.length ?? 0)!==1)) || (positionWidget && (!deviceId || (fleetMap ? (draft.binding.deviceIds??[]).some(id=>!fleetSources?.[id]) : !draft.query.sourceId) || draft.binding.mode!=="FIXED")) || (needsMetric && (!selected || !deviceId)) || (draft.binding.mode==="FIXED" && ((draft.binding.deviceIds ?? []).some(id=>!id) || new Set(draft.binding.deviceIds).size!==(draft.binding.deviceIds?.length ?? 0)));
   function query(patch:Record<string,unknown>){setDraft((prior)=>({...prior,query:{...prior.query,...patch}}));}
   const comparisonSeries=Array.isArray(draft.query.series)?(draft.query.series as {deviceId:string;metric:string}[]).slice(1):[];
   return <form className="dashboard-config" onSubmit={(event)=>{event.preventDefault();if(invalid)return;const series=selectedVariable?[{deviceId,metric:selectedVariable.metricToken,variableId:selectedVariable.variableId,dataSourceId:selectedVariable.dataSourceId}]:[{deviceId,metric:selected?.name ?? ""},...comparisonSeries.filter(s=>s.deviceId).map(s=>({...s,metric:selected!.name}))];onSave({...draft,binding:widget.type==="time-series"?{...draft.binding,deviceIds:[...new Set(series.map(s=>s.deviceId))]}:draft.binding,query:{...draft.query,...(selected?{metric:selected.name,unit:selected.unit}:{}),...(widget.type==="time-series"?{series}:{})}});}}>
-    <nav className="dashboard-config-sections" aria-label="Panel settings sections">{["General",...(manifest.supported?["Data",...(manifest.timeBasis!=="NONE"?["Calculation"]:[]),"Appearance","Navigation"]:[]),...(layoutControls?["Layout"]:[])].map((name)=><button type="button" key={name} className="ghost-button" aria-pressed={section===name} onClick={()=>setSection(name)}>{name}</button>)}</nav>
+    <nav className="dashboard-config-sections" aria-label="Panel settings sections">{["General",...(manifest.supported?["Data",...(manifest.timeBasis!=="NONE" && !configuredEvidence?["Calculation"]:[]),"Appearance","Navigation"]:[]),...(layoutControls?["Layout"]:[])].map((name)=><button type="button" key={name} className="ghost-button" aria-pressed={section===name} onClick={()=>setSection(name)}>{name}</button>)}</nav>
     {!fieldCompatible?<p role="alert">The selected field is incompatible with this visualization. Choose another visualization or a compatible field in Data.</p>:null}
     <fieldset hidden={section!=="General"}><legend>General</legend>
       <Field label="Widget title" required>{(props)=><input {...props} value={draft.title} maxLength={120} onChange={(event)=>setDraft({...draft,title:event.target.value})} />}</Field>
@@ -54,6 +63,17 @@ export function WidgetConfiguration({widget,manifest,onSave,onCancel,layoutContr
       <small>Hiding the title affects viewing and preview. The editor keeps the title and drag controls available.</small>
     </fieldset>
     <fieldset hidden={section!=="Data"}><legend>Data</legend>
+      {configuredRecords ? <ConfiguredRecordsSettings widget={draft} onChange={change=>setDraft(prior=>({...prior,...change}))}/> : null}
+      {ruleMeasure ? <>
+        {([{ key:"epoch", label:"Deployment ID" }, { key:"measure", label:"Stored measure ID" }] as const).map(({key,label}) => <label key={key}>{label}
+          <input value={String(draft.query[key] ?? "")} onChange={event => {
+            const value=event.target.value.trim().toLowerCase();
+            setDraft(prior=>({...prior,query:key==="epoch"?{epoch:value,measure:""}:{epoch:prior.query.epoch ?? "",measure:value}}));
+          }}/>
+        </label>)}
+        {!draft.binding.workspaceId && uuid.test(String(draft.query.epoch ?? "")) ? <RuleMeasurePicker key={String(draft.query.epoch)}
+          epoch={String(draft.query.epoch)} onSelect={measure=>setDraft(prior=>({...prior,query:{epoch:prior.query.epoch,measure}}))}/> : null}
+      </> : null}
       {widget.type==="time-series" && deviceId && !draft.binding.workspaceId?<label>Stored variable and source<select value={selectedVariable?selectedVariable.variableId+":"+selectedVariable.dataSourceId:""} onChange={event=>{const variable=variableOptions.find(item=>item.variableId+":"+item.dataSourceId===event.target.value);query(variable?{metric:variable.metricToken,unit:variable.unit,series:[{deviceId,metric:variable.metricToken,variableId:variable.variableId,dataSourceId:variable.dataSourceId}]}:{metric:undefined,series:[]});}}><option value="">Use a registered metric</option>{variableOptions.map(item=><option key={item.variableId+item.dataSourceId} value={item.variableId+":"+item.dataSourceId}>{item.label} · {item.sourceId} · {item.unit}</option>)}</select>{variableError?<small>{variableError}</small>:null}</label>:null}
       {widget.type==="context-note"?<label>Context note <textarea maxLength={1000} value={String(draft.payload.text ?? "")} onChange={event=>setDraft({...draft,payload:{...draft.payload,text:event.target.value}})}/></label>:null}
       <label hidden={positionWidget || !needsBinding}>Scope <select value={draft.binding.mode ?? "ALL"} onChange={(event)=>setDraft({...draft,binding:{...draft.binding,mode:event.target.value as DashboardWidget["binding"]["mode"]}})}><option value="ALL">All permitted resources</option><option value="DYNAMIC">Follow runtime filters</option><option value="FIXED">Selected equipment</option><option value="UNBOUND">Unbound</option></select></label>

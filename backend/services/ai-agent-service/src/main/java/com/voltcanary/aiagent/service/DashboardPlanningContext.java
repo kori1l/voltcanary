@@ -183,7 +183,9 @@ public class DashboardPlanningContext {
             }
             refs.stream().filter(ref -> ref.kind().equals("template") && ref.resourceId().equals(previous.get("templateId")))
                     .findFirst().ifPresent(ref -> hint.put("templateRef", ref.ref()));
-            hint.put("deviceRefs", choices.stream().map(choice -> choice.get("ref")).toList());
+            hint.put("deviceRefs", previous.get("deviceIds") instanceof List<?> ids
+                    ? ids.stream().map(String::valueOf).map(currentDeviceRefs::get).filter(java.util.Objects::nonNull).toList()
+                    : choices.stream().map(choice -> choice.get("ref")).toList());
             if (previous.get("widgets") instanceof List<?> widgets) {
                 List<Map<String, Object>> renewed = new ArrayList<>();
                 for (Object item : widgets) if (item instanceof Map<?, ?> widget) {
@@ -219,6 +221,7 @@ public class DashboardPlanningContext {
                         "widgetTypes", context.getOrDefault("dashboardWidgetTypes", List.of())));
         return new Prepared(base.scope(), Map.copyOf(context), List.copyOf(refs));
     }
+
 
     private Map<String, Object> entry(List<ResourceRef> refs, String kind, String id, Map<String, Object> summary) {
         var ref = new ResourceRef(UUID.randomUUID().toString(), kind, id, Map.copyOf(summary));

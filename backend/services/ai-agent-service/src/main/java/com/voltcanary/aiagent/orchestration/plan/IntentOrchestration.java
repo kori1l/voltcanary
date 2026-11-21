@@ -26,7 +26,12 @@ import static com.voltcanary.aiagent.orchestration.plan.IntentPlans.reject;
 /** Domain node handlers. The injected library runner owns traversal; generation stays opt-in. */
 public final class IntentOrchestration {
     public record Runtime(ObjectMapper mapper, ProtocolValidator validator, Clock clock, Duration expiry,
-            AssistantTraceRecorder traces, AgentGraphRunner runner) { }
+            AssistantTraceRecorder traces, AgentGraphRunner runner, OrchestrationPorts.Consultation consultation) {
+        public Runtime(ObjectMapper mapper, ProtocolValidator validator, Clock clock, Duration expiry,
+                AssistantTraceRecorder traces, AgentGraphRunner runner) {
+            this(mapper, validator, clock, expiry, traces, runner, (input, step, session, nameRequested) -> false);
+        }
+    }
     public record Skills(Set<String> authorized, Set<String> capabilities) {
         public Skills {
             authorized = Set.copyOf(authorized);
@@ -167,6 +172,12 @@ public final class IntentOrchestration {
             work.allowReplan = false;
             return "plan";
         } else if (response instanceof AssistantProtocol.StepResponseQuestion asked) {
+            if ("CREATE_DASHBOARD".equals(old.intentId()) && old.reviewId() == null
+                    && asked.question().missingFields().equals(List.of("name")) && asked.question().choices().isEmpty()
+                    && runtime.consultation().run(modelInput(work, work.resolved), stepId, work.session, true)) {
+                work.reply = asked.question().text();
+                return "finish";
+            }
             var pending = question(work, stepId, asked.question());
             work.state = IntentPlans.replace(work.state, IntentPlans.step(work.state.step(stepId), "WAITING_INPUT", old.reviewId(), old.receiptId(), null), "WAITING_INPUT", pending);
             work.reply = asked.question().text();
@@ -194,6 +205,16 @@ public final class IntentOrchestration {
                     importResources(work);
                     for (var fact : work.state.facts()) if (fact.output() != null) receipts.output(fact.output(), work.session);
                     for (var review : work.state.reviews().values()) receipts.inspect(review, work.session);
+                    if (request.continueStepId() != null) {
+                        var step = work.state.steps().stream().filter(item -> item.stepId().equals(request.continueStepId())).findFirst();
+                        if (request.selectedReviewId() != null || work.state.pendingQuestion() != null || step.isEmpty()
+                                || !step.get().status().equals("READY") || work.state.reviews().containsKey(request.continueStepId())
+                                || step.get().dependsOn().stream().anyMatch(id -> !work.state.step(id).status().equals("SUCCEEDED"))) {
+                            throw conflict("STEP_NOT_CONTINUABLE");
+                        }
+                        work.selectedStep = request.continueStepId();
+                        return "prepare";
+                    }
                     var answered = work.token.answeredQuestion();
                     if (request.replyToQuestionId() != null && answered != null && answered.stepId() != null
                             && work.state.step(answered.stepId()).status().equals("WAITING_INPUT")) {
@@ -205,14 +226,36 @@ public final class IntentOrchestration {
                 }, "prepare", "plan"),
                 node(work, "plan", () -> decide(work, models.plan(modelInput(work, Map.of()), work.session,
                         work.replanning ? work.token.replanCallId() : work.token.primaryCallId()), !work.replanning), "prepare", "finish"),
-                node(work, "prepare", () -> prepare(work), "step"),
+                node(work, "prepare", () -> {
+                    String route = prepare(work);
+                    var step = work.state.step(work.selectedStep);
+                    if (step.intentId().equals("CREATE_DASHBOARD") && !work.state.reviews().containsKey(step.stepId())) {
+                        var names = request.selection().stream().filter(item -> "name".equals(item.field())).toList();
+                        if (names.size() > 1) throw reject("AMBIGUOUS_DASHBOARD_NAME");
+                        if (!names.isEmpty()) {
+                            String name = names.getFirst().ref();
+                            if (name.isBlank() || name.length() > 80) throw reject("REQUIREMENT_NAME_INVALID");
+                            var resolved = new java.util.LinkedHashMap<>(work.resolved);
+                            var supplied = runtime.mapper().getNodeFactory().textNode(name);
+                            var bound = resolved.putIfAbsent("name", supplied);
+                            if (bound != null && !supplied.equals(bound)) throw conflict("DASHBOARD_NAME_BINDING_CHANGED");
+                            work.resolved = Map.copyOf(resolved);
+                        }
+                    }
+                    return route;
+                }, "step"),
                 node(work, "step", () -> {
+                    if (runtime.consultation().run(modelInput(work, work.resolved), work.selectedStep, work.session, false)) {
+                        work.reply = "Специалисту нужно уточнение.";
+                        return "finish";
+                    }
+                    ensureCurrent(work);
                     work.response = models.step(modelInput(work, work.resolved), work.session,
                             stable(work.token.requestId(), "step:" + work.selectedStep));
                     ensureCurrent(work);
                     graph.validateStepResponse(work.response);
                     return "accept";
-                }, "accept"),
+                }, "accept", "finish"),
                 node(work, "accept", () -> acceptStep(work), "plan", "compile", "finish"),
                 node(work, "compile", () -> compile(work), "repair", "finish"),
                 node(work, "repair", () -> {
@@ -261,6 +304,14 @@ public final class IntentOrchestration {
             review = compiler.prepare(modelInput(work, work.resolved), skill, prepared.command(), work.session);
         } catch (StepPreparationFailure failure) {
             if (work.repaired || !models.automaticCorrections() || !failure.diagnostic().retriable()) throw failure;
+            var diagnostic = failure.diagnostic();
+            try {
+                runtime.traces().append(correlation(work), stable(work.token.requestId(), "step:" + work.selectedStep),
+                        "PREPARATION", "FAILED", diagnostic.code(), null,
+                        Map.of("stepId", work.selectedStep, "category", diagnostic.category(), "recoveryScheduled", true));
+            } catch (RuntimeException traceFailure) {
+                // Trace availability does not authorize a replay or change the recovery decision.
+            }
             work.preparationFailure = failure;
             return "repair";
         }

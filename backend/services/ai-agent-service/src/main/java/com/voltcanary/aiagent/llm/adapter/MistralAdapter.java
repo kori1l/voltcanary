@@ -3,16 +3,13 @@ package com.voltcanary.aiagent.llm.adapter;
 import com.voltcanary.aiagent.domain.AiModelProviderType;
 import com.voltcanary.aiagent.dto.TestModelProviderResponse;
 import com.voltcanary.aiagent.llm.LlmPlanDraft;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-
 @Component
+@RequiredArgsConstructor
 public class MistralAdapter implements AiModelAdapter {
     private final OpenAiCompatibleAdapter delegate;
-
-    public MistralAdapter(OpenAiCompatibleAdapter delegate) {
-        this.delegate = delegate;
-    }
 
     @Override
     public AiModelProviderType providerType() {

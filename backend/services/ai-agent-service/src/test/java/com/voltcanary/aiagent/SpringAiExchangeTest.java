@@ -9,6 +9,9 @@ import com.voltcanary.aiagent.domain.AiModelConfig;
 import com.voltcanary.aiagent.domain.AiModelProvider;
 import com.voltcanary.aiagent.domain.AiModelProviderType;
 import com.voltcanary.aiagent.llm.adapter.AiResolvedModel;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -33,7 +36,13 @@ class SpringAiExchangeTest {
             respond(exchange, 200, completion("stop", "{\"answer\":\"ready\"}", null));
         });
         try {
-            var ai = new SpringAiExchange(mapper);
+            var observations = ObservationRegistry.create();
+            var names = new ArrayList<String>();
+            observations.observationConfig().observationHandler(new ObservationHandler<Observation.Context>() {
+                @Override public boolean supportsContext(Observation.Context context) { return true; }
+                @Override public void onStop(Observation.Context context) { names.add(context.getName()); }
+            });
+            var ai = new SpringAiExchange(mapper, observations);
             var first = ai.call(model(server, AiModelProviderType.OPENAI, "account-a", "a-secret"),
                     "server instructions", "{\"pendingQuestion\":\"Имя?\",\"answer\":\"Трамвай\"}", schema, false, 3000);
             var second = ai.call(model(server, AiModelProviderType.OPENAI_COMPATIBLE, "account-b", "b-secret"),
@@ -51,6 +60,8 @@ class SpringAiExchangeTest {
             assertEquals(7, first.usage().outputTokens());
             assertEquals(3, first.usage().cachedInputTokens());
             assertEquals(2, first.usage().reasoningTokens());
+            assertTrue(names.stream().anyMatch(name -> name.startsWith("spring.ai.chat.client")), names.toString());
+            assertTrue(names.stream().anyMatch(name -> name.startsWith("gen_ai.client")), names.toString());
         } finally { server.stop(0); }
     }
 

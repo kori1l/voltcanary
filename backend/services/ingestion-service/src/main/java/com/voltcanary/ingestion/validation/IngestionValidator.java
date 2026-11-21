@@ -1,22 +1,19 @@
 package com.voltcanary.ingestion.validation;
 
-import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.canonical.IncomingTelemetryMessage;
+import com.voltcanary.ingestion.config.IngestionProperties;
 import java.time.Instant;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class IngestionValidator {
 
     private final IngestionProperties properties;
     private final IngestionMetricCatalog metricCatalog;
-
-    public IngestionValidator(IngestionProperties properties, IngestionMetricCatalog metricCatalog) {
-        this.properties = properties;
-        this.metricCatalog = metricCatalog;
-    }
 
     public void validate(IncomingTelemetryMessage message) {
         validate(message, false);

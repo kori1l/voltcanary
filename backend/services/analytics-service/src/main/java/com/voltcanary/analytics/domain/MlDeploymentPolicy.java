@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_deployment_policies")
+@Getter
+@Setter
 public class MlDeploymentPolicy {
     @Id
     private UUID id;
@@ -43,32 +47,4 @@ public class MlDeploymentPolicy {
     @Column(name = "deletion_reason", columnDefinition = "text")
     private String deletionReason;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public MlDeploymentScope getScope() { return scope; }
-    public void setScope(MlDeploymentScope scope) { this.scope = scope; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public String getDeviceType() { return deviceType; }
-    public void setDeviceType(String deviceType) { this.deviceType = deviceType; }
-    public UUID getModelVersionId() { return modelVersionId; }
-    public void setModelVersionId(UUID modelVersionId) { this.modelVersionId = modelVersionId; }
-    public MlDeploymentMode getMode() { return mode; }
-    public void setMode(MlDeploymentMode mode) { this.mode = mode; }
-    public Integer getCanaryPercent() { return canaryPercent; }
-    public void setCanaryPercent(Integer canaryPercent) { this.canaryPercent = canaryPercent; }
-    public boolean isFallbackEnabled() { return fallbackEnabled; }
-    public void setFallbackEnabled(boolean fallbackEnabled) { this.fallbackEnabled = fallbackEnabled; }
-    public UUID getUpdatedBy() { return updatedBy; }
-    public void setUpdatedBy(UUID updatedBy) { this.updatedBy = updatedBy; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public Instant getDeletedAt() { return deletedAt; }
-    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
-    public UUID getDeletedBy() { return deletedBy; }
-    public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
-    public String getDeletionReason() { return deletionReason; }
-    public void setDeletionReason(String deletionReason) { this.deletionReason = deletionReason; }
 }

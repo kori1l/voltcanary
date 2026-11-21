@@ -21,7 +21,11 @@ final class DashboardTaskName {
         if (context.containsKey("previousDashboardIntent")) return null;
         var quoted = QUOTED_DASHBOARD.matcher(latest(message, context));
         if (quoted.find()) return quoted.group(1).trim().isBlank() ? null : quoted.group(1).trim();
-        var match = COMMAND.matcher(latest(message, context));
+        return standaloneCommand(latest(message, context));
+    }
+
+    static String standaloneCommand(String message) {
+        var match = COMMAND.matcher(message);
         if (!match.matches()) return null;
         String name = match.group(1).trim();
         if ((name.startsWith("«") && name.endsWith("»")) || (name.startsWith("\"") && name.endsWith("\""))) {

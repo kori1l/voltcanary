@@ -17,9 +17,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
@@ -34,15 +36,6 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
     private final HttpClient httpClient;
     private final CredentialProvider credentialProvider;
     private final HttpPollingResponseMapper responseMapper;
-
-    public HttpPollingTelemetryAdapter(
-            HttpClient httpClient,
-            CredentialProvider credentialProvider,
-            HttpPollingResponseMapper responseMapper) {
-        this.httpClient = httpClient;
-        this.credentialProvider = credentialProvider;
-        this.responseMapper = responseMapper;
-    }
 
     @Override
     public AdapterManifest manifest() {

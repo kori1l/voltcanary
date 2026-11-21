@@ -30,6 +30,10 @@ final class DashboardReviewHistory {
                 && value.plan().actions().getFirst().parameters().containsKey("definition");
     }
     private List<PlanStore.Stored> ancestors(PlanStore.Stored current, String parentKey) {
+        return ancestors(current, parentKey, value -> available(value, parentKey));
+    }
+    private List<PlanStore.Stored> ancestors(PlanStore.Stored current, String parentKey,
+            java.util.function.Predicate<PlanStore.Stored> eligible) {
         var result = new ArrayList<PlanStore.Stored>();
         var scope = new AuthorizedPlanningContext.Scope(current.plan().userId(), current.accountId());
         var seen = new java.util.HashSet<UUID>();
@@ -44,7 +48,7 @@ final class DashboardReviewHistory {
             if (!seen.add(id)) break;
             try { current = store.find(id, scope); }
             catch (ResponseStatusException absent) { if (absent.getStatusCode().value() == 404) break; throw absent; }
-            if (available(current, parentKey)) result.add(current);
+            if (eligible.test(current)) result.add(current);
         }
         return result;
     }
@@ -57,17 +61,30 @@ final class DashboardReviewHistory {
         return restore(requested, parent, authorization, null);
     }
     CreationTaskPlanning.PreparedTask restore(AgentPlan requested, PlanStore.Stored parent, String authorization, String parentKey) {
+        return restore(requested, parent, authorization, parentKey, value -> available(value, parentKey));
+    }
+
+    CreationTaskPlanning.PreparedTask restoreDraft(AgentPlan requested, PlanStore.Stored parent, String authorization,
+            DashboardDraftTarget drafts, String dashboardId) {
+        return restore(requested, parent, authorization, "v2ParentReviewId",
+                value -> value.plan().actions().size() == 1
+                        && value.plan().actions().getFirst().parameters().containsKey("definition")
+                        && dashboardId.equals(drafts.savedId(value)));
+    }
+
+    private CreationTaskPlanning.PreparedTask restore(AgentPlan requested, PlanStore.Stored parent, String authorization,
+            String parentKey, java.util.function.Predicate<PlanStore.Stored> eligible) {
         var parameters = requested.actions().getFirst().parameters();
         boolean keep = parameters.equals(Map.of("keepReview", true));
         Object raw = parameters.get("restoreSteps");
         PlanStore.Stored target;
         if (keep) {
-            if (!available(parent, parentKey)) throw invalid();
+            if (!eligible.test(parent)) throw invalid();
             target = parent;
         } else {
             if (parameters.size() != 1 || !(raw instanceof Number steps) || steps.doubleValue() != steps.intValue()
                     || steps.intValue() < 1 || steps.intValue() > 30) throw invalid();
-            var older = ancestors(parent, parentKey);
+            var older = ancestors(parent, parentKey, eligible);
             if (steps.intValue() > older.size()) throw invalid();
             target = older.get(steps.intValue() - 1);
         }

@@ -35,19 +35,41 @@ final class SessionAlertProposal {
     static KeyedStateStore.Output create(KeyedStateStore.Key key, String occurrence, UUID id, KeyedStateStore.Output measure,
             VclWindowPlan.Window window, DurableJournalWindow.AlertIntent intent, UUID binding, long revision,
             VclSourceCoverage proof, String coverageDigest, String profile) {
-        return create(key, occurrence, id, measure, window, intent, binding, revision, proof, coverageDigest, profile, null);
+        return create(key, occurrence, id, measure, window, intent, binding, revision, proof, coverageDigest, profile, null, java.util.List.of());
+    }
+
+    static KeyedStateStore.Output createSession(KeyedStateStore.Key key, UUID id, KeyedStateStore.Output measure,
+            VclWindowPlan.Window window, DurableJournalWindow.AlertIntent intent, UUID binding, long revision,
+            VclSourceCoverage proof, String coverageDigest, String profile, com.fasterxml.jackson.databind.JsonNode evidence, int limit) {
+        return create(key, key.occurrenceDigest(), id, measure, window, intent, binding, revision, proof, coverageDigest,
+                profile, null, observationReferences(evidence).stream().limit(limit).toList());
+    }
+
+    static java.util.List<String> observationReferences(com.fasterxml.jackson.databind.JsonNode measure) {
+        var references = new java.util.LinkedHashSet<String>();
+        for (String field : java.util.List.of("firstWitness", "lastWitness")) {
+            var value = measure.path(field);
+            if (value.isTextual()) references.add(value.textValue());
+        }
+        measure.path("positionWitnesses").forEach(value -> references.add(value.textValue()));
+        for (String field : java.util.List.of("entryObservation", "exitObservation")) {
+            var value = measure.path(field);
+            if (value.isTextual()) references.add(value.textValue());
+        }
+        return java.util.List.copyOf(references);
     }
 
     static KeyedStateStore.Output createIntervalPrefix(KeyedStateStore.Key key, UUID id, KeyedStateStore.Output measure,
             VclWindowPlan.Window window, DurableJournalWindow.AlertIntent intent, UUID binding, long revision,
             VclSourceCoverage proof, String coverageDigest, java.time.Instant measuredThrough, boolean count) {
         return create(key, key.occurrenceDigest(), id, measure, window, intent, binding, revision, proof, coverageDigest,
-                count ? COUNT_PREFIX : INTERVAL_PREFIX, measuredThrough);
+                count ? COUNT_PREFIX : INTERVAL_PREFIX, measuredThrough, java.util.List.of());
     }
 
     private static KeyedStateStore.Output create(KeyedStateStore.Key key, String occurrence, UUID id, KeyedStateStore.Output measure,
             VclWindowPlan.Window window, DurableJournalWindow.AlertIntent intent, UUID binding, long revision,
-            VclSourceCoverage proof, String coverageDigest, String profile, java.time.Instant measuredThrough) {
+            VclSourceCoverage proof, String coverageDigest, String profile, java.time.Instant measuredThrough,
+            java.util.List<String> references) {
         String dedup = VclCanonical.sha256(String.join("\n", "RULE_SUBJECT_OCCURRENCE/1", key.ruleId().toString(),
                 key.subjectDigest(), occurrence));
         var body = JsonNodeFactory.instance.objectNode().put("profile", profile)
@@ -63,6 +85,10 @@ final class SessionAlertProposal {
                 .put("measure", measure.id().toString()).put("measureDigest", measure.payload().digest())
                 .put("coverageProof", proof.proofId().toString()).put("coverageDigest", coverageDigest);
         if (measuredThrough != null) body.put("measuredThrough", measuredThrough.toString());
+        if (!references.isEmpty()) {
+            var array = body.putArray("observationReferences");
+            references.forEach(array::add);
+        }
         return new KeyedStateStore.Output(id, KeyedStateStore.OutputKind.ALERT_PROPOSAL, null,
                 KeyedStateStore.State.parse(VclCanonical.encode(body)));
     }

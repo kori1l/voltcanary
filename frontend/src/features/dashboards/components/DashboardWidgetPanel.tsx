@@ -8,6 +8,8 @@ import { useEvidenceClock } from "../../../components/useEvidenceClock";
 import {getDashboardPanelInformation} from "../../../dashboards/dashboardQueriesApi";
 import {DashboardEvidenceDetails as Evidence} from "./DashboardEvidenceDetails";
 import {DashboardBusinessEvidence} from "./DashboardBusinessEvidence";
+import {DashboardConfiguredRecords} from "./DashboardConfiguredRecords";
+import {DashboardRuleWindowResult} from "./DashboardRuleWindowResult";
 const StableEvidence=memo(DashboardBusinessEvidence);
 
 export function DashboardWidgetPanel({widget,panel,stale,onRetry}:{widget:DashboardWidget;panel:WidgetQueryPanel|undefined;stale:boolean;onRetry:()=>void}) {
@@ -26,7 +28,9 @@ export function DashboardWidgetPanel({widget,panel,stale,onRetry}:{widget:Dashbo
     {!ready && !emptyMaintenance?<span className="dashboard-state-badge" role="status">{status}</span>:null}
     {emptyMaintenance?<div><p role="status">No maintenance is scheduled for this period.</p><p className="muted-text">No operations overlap the selected period for available equipment.</p>{panel.time?<p className="muted-text">{new Date(panel.time.from).toLocaleString()} – {new Date(panel.time.to).toLocaleString()}</p>:null}<Link to="/maintenance">Open maintenance calendar</Link></div>:null}
     {quality && quality!=="OK"?<span className="dashboard-state-badge">Quality: {String(quality)}</span>:null}
-    {ready?<StableEvidence widget={widget} panel={panel}/>:null}
+    {ready?(widget.type==="configured-records"?<DashboardConfiguredRecords widget={widget} value={data?.configuredRecords}/>
+      :widget.type==="rule-window-result"?<DashboardRuleWindowResult value={data?.ruleWindowResult}/>
+      :<StableEvidence widget={widget} panel={panel}/>):null}
     {widget.presentation?.showDetails===true?<Information panel={panel}>{information}</Information>:null}
     {panel && !["ready","no_data","unsupported"].includes(panel.status)?<button className="ghost-button" type="button" onClick={onRetry}>Retry {widget.title}</button>:null}
     {infoOpen?<Dialog title={`Information for ${widget.title}`} side onClose={()=>setInfoOpen(false)}><Information panel={panel}>{information}</Information></Dialog>:null}

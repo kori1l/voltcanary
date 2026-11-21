@@ -6,18 +6,16 @@ import com.voltcanary.ingestion.config.VariableProcessingProperties;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 @Component
+@RequiredArgsConstructor
 public class SourceProcessingProjection {
     private final Map<UUID, SourceProcessingConfigEvent> snapshots = new ConcurrentHashMap<>();
     private final VariableProcessingProperties properties;
-
-    public SourceProcessingProjection(VariableProcessingProperties properties) {
-        this.properties = properties;
-    }
 
     public void apply(SourceProcessingConfigEvent event) {
         if (event == null || event.dataSourceId() == null || event.accountId() == null

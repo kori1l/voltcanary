@@ -7,17 +7,14 @@ import com.voltcanary.common.events.telemetry.VariableRuleSelector;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class VariableRuleDryRun {
     private final VariableRuleTelemetry telemetry;
     private final ObjectMapper mapper;
-
-    public VariableRuleDryRun(VariableRuleTelemetry telemetry, ObjectMapper mapper) {
-        this.telemetry = telemetry;
-        this.mapper = mapper;
-    }
 
     public RuleEvaluationResponse evaluate(RuleEvaluationRequest request) {
         var selector = mapper.convertValue(request.config().get("variable"), VariableRuleSelector.class);

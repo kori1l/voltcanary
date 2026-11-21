@@ -78,7 +78,7 @@ class WorkerRuleCompilationSnapshotsTest {
         var payload = JsonNodeFactory.instance.objectNode();
         var compiled = payload.putObject("compilation").put("canonicalDocument", canonical);
         compiled.putArray("graph").addObject().put("method", "lookup_asof");
-        when(bundle.payload()).thenReturn(payload.toString());
+        when(bundle.json()).thenReturn(payload);
         when(bundles.find(account, bundleId)).thenReturn(Optional.of(bundle));
         assertEquals("ASOF_SNAPSHOT_REQUIRED", assertThrows(VclException.class,
                 () -> worker.restoreWindow(active, store, key, digest, compiler)).code());

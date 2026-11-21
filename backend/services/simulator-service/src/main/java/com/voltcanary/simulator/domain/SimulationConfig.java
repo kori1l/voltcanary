@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "simulation_configs")
+@Getter
+@Setter
 public class SimulationConfig {
 
     @Id
@@ -47,34 +51,4 @@ public class SimulationConfig {
     @Column(name = "updated_by")
     private UUID updatedBy;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDeviceId() { return deviceId; }
-    public void setDeviceId(UUID deviceId) { this.deviceId = deviceId; }
-    public UUID getDataSourceId() { return dataSourceId; }
-    public void setDataSourceId(UUID dataSourceId) { this.dataSourceId = dataSourceId; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public SimulationProfile getProfile() { return profile; }
-    public void setProfile(SimulationProfile profile) { this.profile = profile; }
-    public SimulationProtocol getProtocol() { return protocol; }
-    public void setProtocol(SimulationProtocol protocol) { this.protocol = protocol; }
-    public String getYamlConfig() { return yamlConfig; }
-    public void setYamlConfig(String yamlConfig) { this.yamlConfig = yamlConfig; }
-    public int getYamlVersion() { return yamlVersion; }
-    public void setYamlVersion(int yamlVersion) { this.yamlVersion = yamlVersion; }
-    public SimulationConfigStatus getStatus() { return status; }
-    public void setStatus(SimulationConfigStatus status) { this.status = status; }
-    public String getSourceToken() { return sourceToken; }
-    public void setSourceToken(String sourceToken) { this.sourceToken = sourceToken; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public UUID getCreatedBy() { return createdBy; }
-    public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
-    public UUID getUpdatedBy() { return updatedBy; }
-    public void setUpdatedBy(UUID updatedBy) { this.updatedBy = updatedBy; }
 }

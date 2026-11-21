@@ -10,15 +10,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /** Wire projection and short-lived information snapshots; no public evidence cache. */
 @Component
+@RequiredArgsConstructor
 public class CompactDashboardEvidence {
     private record Snapshot(DashboardActor actor, DashboardWidgetQueries.Request request, QueryTypes.Batch batch, int bytes) { }
     private final ObjectMapper mapper;
     private final Map<String, Snapshot> snapshots = new LinkedHashMap<>();
-    public CompactDashboardEvidence(ObjectMapper mapper) { this.mapper = mapper; }
 
     public QueryTypes.Batch compact(DashboardActor actor, DashboardWidgetQueries.Request request, QueryTypes.Batch batch) {
         if (!batch.scopes().isEmpty()) return batch;

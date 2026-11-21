@@ -3,11 +3,11 @@ package com.voltcanary.alert.configurable.adapter;
 import com.voltcanary.alert.configurable.application.AutomationGrantReviews;
 import com.voltcanary.alert.configurable.application.EvidencePolicyReviews;
 import com.voltcanary.alert.configurable.domain.AutomationGrantScope;
-import com.voltcanary.alert.service.AlertMaintenanceSuppressionService;
-import com.voltcanary.alert.service.DeviceHistoryDeletion;
 import com.voltcanary.alert.notification.application.NotificationPreferenceService;
 import com.voltcanary.alert.notification.port.AlertNotificationPort;
 import com.voltcanary.alert.notification.port.AlertNotificationRequest;
+import com.voltcanary.alert.service.AlertMaintenanceSuppressionService;
+import com.voltcanary.alert.service.DeviceHistoryDeletion;
 import com.voltcanary.common.security.VclWorkerAssertion;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
@@ -16,6 +16,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Alert-owner admission with grant fencing and a durable receipt for each exact proposal. */
 @Service
+@RequiredArgsConstructor
 public class RuleWindowAlertEffects {
     public record Receipt(UUID proposalId, String proposalDigest,
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
@@ -36,20 +38,6 @@ public class RuleWindowAlertEffects {
     private final DeviceHistoryDeletion deviceHistory;
     private final NotificationPreferenceService notificationPreferences;
     private final AlertNotificationPort notifications;
-
-    public RuleWindowAlertEffects(JdbcTemplate jdbc, AutomationGrantReviews grants,
-            EvidencePolicyReviews policies, WorkerGrantScopeAuthority sources, AlertMaintenanceSuppressionService suppression,
-            DeviceHistoryDeletion deviceHistory, NotificationPreferenceService notificationPreferences,
-            AlertNotificationPort notifications) {
-        this.jdbc = jdbc;
-        this.grants = grants;
-        this.policies = policies;
-        this.sources = sources;
-        this.suppression = suppression;
-        this.deviceHistory = deviceHistory;
-        this.notificationPreferences = notificationPreferences;
-        this.notifications = notifications;
-    }
 
     @Transactional
     public Receipt apply(VclWorkerAssertion.Scope worker, UUID proposalId, byte[] bytes) {
@@ -65,6 +53,8 @@ public class RuleWindowAlertEffects {
         String policyDigest = policySnapshotDigest(worker, policy.id(), policy.grantEpoch(), policy.grantDefinitionDigest(),
                 policy.expiresAt(), policy.definitionDigest());
         require(policyDigest.equals(proposal.text("policyDigest")), "EVIDENCE_POLICY_CHANGED");
+        require(proposal.observationReferences().size() <= policy.definition().path("maxObservationReferences").intValue(),
+                "EVIDENCE_POLICY_LIMIT_INVALID");
         return jdbc.execute((ConnectionCallback<Receipt>) connection -> {
             lockAuthority(connection, worker, grant, policy);
             var existing = receipt(connection, worker.account(), proposalId);
@@ -117,6 +107,7 @@ public class RuleWindowAlertEffects {
             }
             RuleAlertEvidence.append(connection, worker.account(), device, proposalId, proposal,
                     policy.definition().path("retentionDays").intValue(), now);
+            require(device.equals(sources.verifyWindowSource(worker, proposal)), "ALERT_EVIDENCE_CHANGED");
             var committedAt = OwnerDatabaseClock.now(connection);
             require(committedAt.isBefore(grant.expiresAt()) && committedAt.isBefore(policy.expiresAt()),
                     "AUTOMATION_GRANT_INACTIVE");

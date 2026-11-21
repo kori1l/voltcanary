@@ -9,20 +9,18 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class RuleEvaluationService {
 
     private static final int MAX_EVIDENCE = 20;
 
     private final TelemetryClient telemetryClient;
-
-    public RuleEvaluationService(TelemetryClient telemetryClient) {
-        this.telemetryClient = telemetryClient;
-    }
 
     public RuleEvaluationResponse evaluate(RuleEvaluationRequest request) {
         validate(request);

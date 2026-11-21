@@ -11,14 +11,15 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import static com.voltcanary.alert.configurable.adapter.EvidencePolicySql.require;
 
 /** Durable reviewed metadata creation; no evidence, alert, retention job or delivery effects. */
 @Component
+@RequiredArgsConstructor
 public class JdbcEvidencePolicies implements EvidencePolicyStore {
     private final EvidencePolicySql sql;
-    public JdbcEvidencePolicies(EvidencePolicySql sql) { this.sql = sql; }
 
     @Override
     public java.util.Optional<EvidencePolicyReview> reservation(UUID account, UUID actor, UUID grantId, long epoch, String key) {

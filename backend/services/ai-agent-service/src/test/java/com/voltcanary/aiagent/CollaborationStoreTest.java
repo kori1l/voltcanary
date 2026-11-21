@@ -2,6 +2,7 @@ package com.voltcanary.aiagent;
 
 import com.voltcanary.aiagent.adapter.JdbcCollaborationStore;
 import com.voltcanary.aiagent.orchestration.collaboration.CollaborationStore;
+import com.voltcanary.aiagent.orchestration.collaboration.Consultations;
 import com.voltcanary.aiagent.orchestration.collaboration.RequirementAnswers;
 import com.voltcanary.aiagent.orchestration.collaboration.RequirementChanges;
 import com.voltcanary.aiagent.orchestration.collaboration.Requirements;
@@ -26,10 +27,14 @@ class CollaborationStoreTest {
     record Fixture(IntentScenarioSupport f, JdbcCollaborationStore store, IntentPlans.Token turn, UUID slot) { }
 
     static Fixture fixture(IntentScenarioSupport f) {
+        return fixture(f, "{}");
+    }
+
+    static Fixture fixture(IntentScenarioSupport f, String requestJson) {
         new ResourceDatabasePopulator(new ClassPathResource("db/migration/V011__assistant_collaboration.sql")).execute(f.jdbc.getDataSource());
         var seed = new IntentPlans.State(UUID.randomUUID(), f.conversation, 0, "PLANNING", List.of(), List.of(), List.of(), null,
                 null, Map.of(), Map.of(), Map.of(), "policy", "1", f.now.plusSeconds(1800), List.of());
-        var claim = f.store.begin(f.session.owner(), seed, UUID.randomUUID(), 0, "TURN", "{}", "Describe requirements", false);
+        var claim = f.store.begin(f.session.owner(), seed, UUID.randomUUID(), 0, "TURN", requestJson, "Describe requirements", false);
         f.jdbc.update("update ai_orchestration_requests set lease_until=? where plan_id=?", Timestamp.from(f.now.plusSeconds(120)), seed.planId());
         f.jdbc.update("update ai_conversation_requests set lease_until=? where plan_id=?", Timestamp.from(f.now.plusSeconds(120)), seed.planId());
         return new Fixture(f, new JdbcCollaborationStore(f.jdbc, f.transactions, f.mapper), claim.token(), UUID.randomUUID());
@@ -49,6 +54,110 @@ class CollaborationStoreTest {
         verifyAtomicRequirements(fixture(new IntentScenarioSupport()));
     }
 
+    @Test
+    void ownerCancelsWithoutClaimingAnotherRootTurn() throws Exception {
+        verifyCancellation(fixture(new IntentScenarioSupport()));
+    }
+
+    @Test
+    void graphQuestionBecomesAnAnswerableRequirement() throws Exception {
+        verifyQuestionPublication(fixture(new IntentScenarioSupport()));
+    }
+
+    @Test
+    void specialistQuestionAndRootPauseCommitTogether() throws Exception {
+        var fixture = fixture(new IntentScenarioSupport());
+        var f = fixture.f;
+        var turn = fixture.turn;
+        var store = new com.voltcanary.aiagent.adapter.JdbcIntentPlanStore(f.jdbc, f.transactions, f.mapper, f.validator,
+                f.clock, java.time.Duration.ofSeconds(30), fixture.store);
+        var slot = new Requirements.Slot(fixture.slot, "/steps/dashboard/questions/source/name", "text-v1", true,
+                Requirements.Status.UNKNOWN, null, Set.of(turn.messageId()), Set.of(), Set.of(), 0, Requirements.Origin.MODEL_PROPOSED);
+        var changes = new RequirementChanges((schema, value) -> f.validator.validate("collab.VclLiteral", value));
+        fixture.store.update(turn, 0, "wait", SkillRegistry.digest("wait"), (before, now) -> {
+            var requirements = changes.propose(before.requirements(), 0, turn.requestId(), List.of(slot), Set.of(turn.messageId()));
+            var response = f.mapper.createObjectNode().put("outcome", "NEED_USER");
+            response.putArray("questions").addObject().put("text", "Which name?").putArray("slotIds").add(slot.id().toString());
+            var reads = new Consultations.ReadSet(Map.of(slot.id(), 0L), Map.of(), "authority", "digest");
+            var assignment = new Consultations.Assignment(UUID.randomUUID(), turn.requestId(), requirements.revision(), 0, 0,
+                    reads, now.plusSeconds(120), now.plusSeconds(60));
+            var request = new Consultations.Request(turn.planId(), "name", "name-assessment", "1", List.of(UUID.randomUUID()),
+                    requirements.revision(), List.of(), "Assess name", "name-assessment-v1");
+            var task = new Consultations.Task(UUID.randomUUID(), request, Consultations.Reason.INDEPENDENT_ASSESSMENT,
+                    "request", "obligation", 2, Consultations.Status.WAITING_USER, 1, 2, 0, 0,
+                    assignment, List.of(), response, requirements.revision());
+            return new CollaborationStore.State(1, requirements, before.consultations().replace(task));
+        });
+        var current = store.read(turn.owner(), turn.planId());
+        var step = new AssistantProtocol.StepState("dashboard", "CREATE_DASHBOARD", "2", "1", 0L, List.of(), List.of(),
+                List.of("goal"), "PREPARING", null, null, null);
+        var goal = new AssistantProtocol.Goal("goal", turn.messageId().toString(), "Create dashboard", "PENDING", null);
+        var preparing = current.revise(current.revision(), "ACTIVE", List.of(step), List.of(goal), List.of(), null,
+                new AssistantProtocol.Focus(null, null, null, null, "NONE"), Map.of(), Map.of(), Map.of());
+        var saved = store.commit(turn, preparing, "Preparing", true);
+        var question = fixture.store.read(turn.owner(), turn.planId()).requirements().question();
+        assertThat(saved.pendingQuestion().questionId()).isEqualTo(question.id().toString());
+        assertThat(saved.step("dashboard").status()).isEqualTo("WAITING_INPUT");
+        assertThat(question.slots()).containsExactly(slot.id());
+    }
+
+    static void verifyQuestionPublication(Fixture fixture) {
+        var f = fixture.f;
+        var turn = fixture.turn;
+        var store = new com.voltcanary.aiagent.adapter.JdbcIntentPlanStore(f.jdbc, f.transactions, f.mapper, f.validator,
+                f.clock, java.time.Duration.ofSeconds(30), fixture.store);
+        var current = store.read(turn.owner(), turn.planId());
+        UUID id = UUID.randomUUID();
+        var question = new AssistantProtocol.PendingQuestion(id.toString(),
+                com.voltcanary.aiagent.adapter.JdbcIntentPlanStore.stable(turn.requestId(), "REPLY").toString(),
+                "dashboard", current.revision() + 1, new AssistantProtocol.Question("Which name?", List.of("name"), List.of()));
+        var step = new AssistantProtocol.StepState("dashboard", "CREATE_DASHBOARD", "1", "1", 0L,
+                List.of(), List.of(), List.of("goal"), "WAITING_INPUT", null, null, null);
+        var goal = new AssistantProtocol.Goal("goal", turn.messageId().toString(), "Create dashboard", "PENDING", null);
+        var waiting = current.revise(current.revision(), "WAITING_INPUT", List.of(step), List.of(goal), List.of(),
+                question, new AssistantProtocol.Focus(null, null, null, null, "NONE"), Map.of(), Map.of(), Map.of());
+        var saved = store.commit(turn, waiting, "Which name?", true);
+        assertThat(saved.pendingQuestion()).isEqualTo(question);
+        var snapshot = fixture.store.read(turn.owner(), turn.planId()).requirements();
+        assertThat(snapshot.question().id()).isEqualTo(id);
+        assertThat(snapshot.slots().get(id).sourceMessages()).containsExactly(turn.messageId());
+        var body = f.mapper.createObjectNode().put("planId", turn.planId().toString()).put("questionId", id.toString())
+                .put("requestId", UUID.randomUUID().toString()).put("expectedQuestionRevision", 0)
+                .put("expectedRequirementsRevision", snapshot.revision());
+        body.putObject("answer").put("kind", "TEXT").put("text", "New name");
+        var answers = new RequirementAnswers(f.validator,
+                new RequirementChanges((schema, value) -> f.validator.validate("collab.VclLiteral", value)));
+        var answered = store.submitRequirementAnswer(fixture.store, answers, turn.owner(), turn.planId(), body);
+        assertThat(answered.pendingQuestion()).isNull();
+        assertThat(answered.step("dashboard").status()).isEqualTo("READY");
+        assertThat(answered.step("dashboard").inputs()).containsExactly(new AssistantProtocol.Input("name",
+                new AssistantProtocol.BindingLiteral("literal", f.mapper.getNodeFactory().textNode("New name"))));
+        assertThat(fixture.store.read(turn.owner(), turn.planId()).requirements().slots().get(id).value().path("value").asText())
+                .isEqualTo("New name");
+    }
+
+    static void verifyCancellation(Fixture fixture) {
+        var f = fixture.f;
+        var turn = fixture.turn;
+        var id = UUID.randomUUID();
+        var request = new com.voltcanary.aiagent.orchestration.collaboration.Consultations.Request(turn.planId(),
+                "assess", "schema", "1", List.of(UUID.randomUUID()), 0, List.of(), "Assess", "result-v1");
+        var task = new com.voltcanary.aiagent.orchestration.collaboration.Consultations.Task(id, request,
+                com.voltcanary.aiagent.orchestration.collaboration.Consultations.Reason.SCHEMA_REASONING, "request", "obligation", 2,
+                com.voltcanary.aiagent.orchestration.collaboration.Consultations.Status.QUEUED, 0, 0, 0, 0, null, List.of(), null, null);
+        fixture.store.update(turn, 0, "seed", SkillRegistry.digest("seed"), (before, now) ->
+                new CollaborationStore.State(1, before.requirements(), before.consultations().replace(task)));
+        assertThatThrownBy(() -> fixture.store.cancel(new Scope(UUID.randomUUID(), turn.owner().accountId()), turn.planId(), id, 0, "stop"))
+                .hasMessage("PLAN_UNAVAILABLE");
+        var result = fixture.store.cancel(turn.owner(), turn.planId(), id, 0, "stop");
+        assertThat(result.status().name()).isEqualTo("CANCELLED");
+        assertThat(result.cancellationEpoch()).isEqualTo(1);
+        assertThat(fixture.store.cancel(turn.owner(), turn.planId(), id, 0, "stop")).isEqualTo(result);
+        assertThatThrownBy(() -> fixture.store.cancel(turn.owner(), turn.planId(), id, 1, "stop"))
+                .hasMessage("COLLABORATION_REQUEST_KEY_CONFLICT");
+        assertThat(f.store.read(turn.owner(), turn.planId()).revision()).isEqualTo(turn.revision());
+    }
+
     static void verifyAtomicRequirements(Fixture fixture) {
         var f = fixture.f;
         var initial = f.store.read(fixture.turn.owner(), fixture.turn.planId());
@@ -64,6 +173,7 @@ class CollaborationStoreTest {
         var ready = f.store.commit(fixture.turn, initial.revise(initial.revision(), "WAITING_CONFIRMATION", List.of(step),
                 List.of(goal), List.of(), null, new AssistantProtocol.Focus(null, null, null, null, "NONE"),
                 Map.of(), Map.of("device", review), Map.of()), "Review ready", true);
+        assertThat(f.reviews.find(review.reviewId(), f.session.owner()).status()).isEqualTo("READY");
         var claim = f.store.begin(f.session.owner(), ready, UUID.randomUUID(), ready.revision(),
                 "TURN", "{}", "Update requirements", false);
         var active = new Fixture(f, fixture.store, claim.token(), fixture.slot);
@@ -98,19 +208,22 @@ class CollaborationStoreTest {
         var body = f.mapper.createObjectNode().put("planId", ready.planId().toString()).put("questionId", questionId.toString())
                 .put("requestId", answerRequest.toString()).put("expectedQuestionRevision", 0).put("expectedRequirementsRevision", 1);
         body.putObject("answer").put("kind", "TEXT").put("text", "Exact new name");
-        var answer = f.store.begin(f.session.owner(), saved, answerRequest, saved.revision(), "REQUIREMENTS_ANSWER", body.toString(),
-                "Exact new name", false);
         var answers = new RequirementAnswers(f.validator,
                 new RequirementChanges((schema, value) -> f.validator.validate("collab.VclLiteral", value)));
-        var changedBody = body.deepCopy();
-        changedBody.withObject("/answer").put("text", "Changed after claim");
-        assertThatThrownBy(() -> f.store.commitRequirementAnswer(fixture.store, answers, answer.token(), 1, changedBody, Set.of()))
-                .hasMessage("REQUIREMENT_ANSWER_INPUT_CHANGED");
-        var answered = f.store.commitRequirementAnswer(fixture.store, answers, answer.token(), 1, body, Set.of());
+        var stale = body.deepCopy().put("expectedQuestionRevision", 42);
+        assertThatThrownBy(() -> f.store.submitRequirementAnswer(fixture.store, answers, f.session.owner(), ready.planId(), stale))
+                .hasMessage("QUESTION_CHANGED");
+        assertThat(f.store.read(f.session.owner(), ready.planId())).isEqualTo(saved);
+        assertThat(f.jdbc.queryForObject("select count(*) from ai_orchestration_requests where request_id=?", Long.class, answerRequest)).isZero();
+        var answered = f.store.submitRequirementAnswer(fixture.store, answers, f.session.owner(), ready.planId(), body);
+        assertThat(f.store.submitRequirementAnswer(fixture.store, answers, f.session.owner(), ready.planId(), body)).isEqualTo(answered);
+        assertThatThrownBy(() -> f.store.submitRequirementAnswer(fixture.store, answers, f.session.owner(), ready.planId(), stale))
+                .hasMessage("REQUEST_ID_CONFLICT");
         assertThat(answered.pendingQuestion()).isNull();
         var confirmed = fixture.store.read(f.session.owner(), ready.planId()).requirements().slots().get(fixture.slot);
         assertThat(confirmed.origin()).isEqualTo(Requirements.Origin.USER_TEXT);
-        assertThat(confirmed.sourceMessages()).containsExactly(answer.token().messageId());
+        assertThat(confirmed.sourceMessages()).containsExactly(
+                com.voltcanary.aiagent.adapter.JdbcIntentPlanStore.stable(answerRequest, "INPUT"));
         assertThat(confirmed.value().get("value").textValue()).isEqualTo("Exact new name");
     }
 

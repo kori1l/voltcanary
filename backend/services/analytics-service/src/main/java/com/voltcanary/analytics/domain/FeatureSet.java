@@ -6,9 +6,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "feature_sets")
+@Getter
+@Setter
 public class FeatureSet {
 
     @Id
@@ -26,43 +30,4 @@ public class FeatureSet {
     @Column(name = "features_json", nullable = false, columnDefinition = "text")
     private String featuresJson;
 
-    public UUID getId() {
-        return id;
-    }
-
-    public void setId(UUID id) {
-        this.id = id;
-    }
-
-    public UUID getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(UUID deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public Instant getWindowStart() {
-        return windowStart;
-    }
-
-    public void setWindowStart(Instant windowStart) {
-        this.windowStart = windowStart;
-    }
-
-    public Instant getWindowEnd() {
-        return windowEnd;
-    }
-
-    public void setWindowEnd(Instant windowEnd) {
-        this.windowEnd = windowEnd;
-    }
-
-    public String getFeaturesJson() {
-        return featuresJson;
-    }
-
-    public void setFeaturesJson(String featuresJson) {
-        this.featuresJson = featuresJson;
-    }
 }

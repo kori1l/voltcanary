@@ -14,26 +14,17 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class MlImportedDatasetFeatureBuilder {
 
     private final MlImportedFileRepository importedFileRepository;
     private final MlImportedMetricRowRepository importedMetricRowRepository;
     private final MlLabelRepository labelRepository;
     private final MlFeatureTemplateAppender templateAppender;
-
-    public MlImportedDatasetFeatureBuilder(
-            MlImportedFileRepository importedFileRepository,
-            MlImportedMetricRowRepository importedMetricRowRepository,
-            MlLabelRepository labelRepository,
-            MlFeatureTemplateAppender templateAppender) {
-        this.importedFileRepository = importedFileRepository;
-        this.importedMetricRowRepository = importedMetricRowRepository;
-        this.labelRepository = labelRepository;
-        this.templateAppender = templateAppender;
-    }
 
     public MlFeatureGeneration generate(
             MlDatasetVersion datasetVersion,

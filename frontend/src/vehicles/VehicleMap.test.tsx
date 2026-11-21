@@ -20,6 +20,13 @@ it("does not invent a position while waiting for its first sample",()=>{
   expect(screen.getByRole("status")).toHaveTextContent("Waiting for GPS");
   expect(screen.queryByLabelText("Follow vehicle")).not.toBeInTheDocument();
 });
+it("opens the existing map for zone editing without inventing a vehicle marker",async()=>{
+  render(<VehicleMap evidence={null} zoneEditing zones={[{id:"zone",name:"Depot",latitude:60,longitude:24,radiusMetres:200}]}/>);
+  expect(screen.getByText(/No GPS position/)).toBeVisible();
+  expect(screen.queryByLabelText("Follow vehicle")).not.toBeInTheDocument();
+  expect(screen.queryByText("Recorded position")).not.toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByRole("alert")).toHaveTextContent("Map unavailable"));
+});
 it("keeps dashboard journey details collapsed so the map retains room",()=>{
   const recorded:PositionEvidence={...evidence,latest:{...evidence.latest,position:{...evidence.latest.position!,fields:{speedKmh:{value:0,type:"NUMBER",label:"Recorded speed",unit:"km/h",display:true}}}}};
   render(<VehicleMap compact evidence={recorded}/>);

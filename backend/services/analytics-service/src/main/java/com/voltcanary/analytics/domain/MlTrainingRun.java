@@ -8,9 +8,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "ml_training_runs")
+@Getter
+@Setter
 public class MlTrainingRun {
     @Id
     private UUID id;
@@ -65,54 +69,4 @@ public class MlTrainingRun {
     @Column(name = "lifecycle_at")
     private Instant lifecycleAt;
 
-    public UUID getId() { return id; }
-    public void setId(UUID id) { this.id = id; }
-    public UUID getAccountId() { return accountId; }
-    public void setAccountId(UUID accountId) { this.accountId = accountId; }
-    public UUID getDatasetVersionId() { return datasetVersionId; }
-    public void setDatasetVersionId(UUID datasetVersionId) { this.datasetVersionId = datasetVersionId; }
-    public UUID getFeatureSnapshotId() { return featureSnapshotId; }
-    public void setFeatureSnapshotId(UUID featureSnapshotId) { this.featureSnapshotId = featureSnapshotId; }
-    public MlModelFamily getModelFamily() { return modelFamily; }
-    public void setModelFamily(MlModelFamily modelFamily) { this.modelFamily = modelFamily; }
-    public String getAlgorithm() { return algorithm; }
-    public void setAlgorithm(String algorithm) { this.algorithm = algorithm; }
-    public String getHyperparametersJson() { return hyperparametersJson; }
-    public void setHyperparametersJson(String hyperparametersJson) { this.hyperparametersJson = hyperparametersJson; }
-    public MlTrainingRunStatus getStatus() { return status; }
-    public void setStatus(MlTrainingRunStatus status) { this.status = status; }
-    public String getMetricsJson() { return metricsJson; }
-    public void setMetricsJson(String metricsJson) { this.metricsJson = metricsJson; }
-    public String getArtifactUri() { return artifactUri; }
-    public void setArtifactUri(String artifactUri) { this.artifactUri = artifactUri; }
-    public String getLogsSummary() { return logsSummary; }
-    public void setLogsSummary(String logsSummary) { this.logsSummary = logsSummary; }
-    public String getFailureReason() { return failureReason; }
-    public void setFailureReason(String failureReason) { this.failureReason = failureReason; }
-    public UUID getCreatedBy() { return createdBy; }
-    public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getStartedAt() { return startedAt; }
-    public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
-    public Instant getCompletedAt() { return completedAt; }
-    public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
-    public String getLeaseOwner() { return leaseOwner; }
-    public void setLeaseOwner(String leaseOwner) { this.leaseOwner = leaseOwner; }
-    public Instant getLeaseExpiresAt() { return leaseExpiresAt; }
-    public void setLeaseExpiresAt(Instant leaseExpiresAt) { this.leaseExpiresAt = leaseExpiresAt; }
-    public Instant getHeartbeatAt() { return heartbeatAt; }
-    public void setHeartbeatAt(Instant heartbeatAt) { this.heartbeatAt = heartbeatAt; }
-    public boolean isCancellationRequested() { return cancellationRequested; }
-    public void setCancellationRequested(boolean cancellationRequested) { this.cancellationRequested = cancellationRequested; }
-    public int getRetryCount() { return retryCount; }
-    public void setRetryCount(int retryCount) { this.retryCount = retryCount; }
-    public Instant getStaleRecoveredAt() { return staleRecoveredAt; }
-    public void setStaleRecoveredAt(Instant staleRecoveredAt) { this.staleRecoveredAt = staleRecoveredAt; }
-    public String getLifecycleReason() { return lifecycleReason; }
-    public void setLifecycleReason(String lifecycleReason) { this.lifecycleReason = lifecycleReason; }
-    public UUID getLifecycleActorId() { return lifecycleActorId; }
-    public void setLifecycleActorId(UUID lifecycleActorId) { this.lifecycleActorId = lifecycleActorId; }
-    public Instant getLifecycleAt() { return lifecycleAt; }
-    public void setLifecycleAt(Instant lifecycleAt) { this.lifecycleAt = lifecycleAt; }
 }

@@ -14,6 +14,7 @@ import com.voltcanary.vcl.VclSourceBindingDescription;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Source-owned append-only schema journal, committed in the source configuration transaction. */
 @Component
+@RequiredArgsConstructor
 public class JdbcSourceBindingCatalog implements SourceBindingCatalog {
     private record Account(UUID id, String scope) { }
     private record Current(DataSource source, String deviceStatus, String configurationDigest) { }
@@ -30,11 +32,6 @@ public class JdbcSourceBindingCatalog implements SourceBindingCatalog {
     private final JdbcTemplate jdbc;
     private final jakarta.persistence.EntityManager entities;
     private final VclParser parser = new VclParser();
-
-    public JdbcSourceBindingCatalog(JdbcTemplate jdbc, jakarta.persistence.EntityManager entities) {
-        this.jdbc = jdbc;
-        this.entities = entities;
-    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
