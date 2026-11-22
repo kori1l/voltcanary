@@ -1,8 +1,13 @@
 import { apiRequest, apiTextRequest } from "../api/client";
 
 export function describeSourceBinding(id: string) {
-  return apiRequest<{ id: string; deviceId: string; schemaRevision: number; currentSchemaRevision: number; sourceActive: boolean }>(
-    `/data/source-bindings/${encodeURIComponent(id)}`);
+  return apiRequest<{
+    id: string;
+    deviceId: string;
+    schemaRevision: number;
+    currentSchemaRevision: number;
+    sourceActive: boolean;
+  }>(`/data/source-bindings/${encodeURIComponent(id)}`);
 }
 
 export type DeviceStatus = "ACTIVE" | "ONLINE" | "DISABLED" | "OFFLINE" | "DECOMMISSIONED";
@@ -196,10 +201,14 @@ export function decommissionDevice(deviceId: string) {
   return apiRequest<Device>(`/devices/${deviceId}/decommission`, { method: "POST" });
 }
 
-export function requestDeviceDeletion(deviceId:string,deleteHistory:boolean){
-  return apiRequest<{deviceId:string;status:string}>(`/devices/${encodeURIComponent(deviceId)}/deletion`,{
-    method:"POST",body:JSON.stringify({deleteHistory}),
-  });
+export function requestDeviceDeletion(deviceId: string, deleteHistory: boolean) {
+  return apiRequest<{ deviceId: string; status: string }>(
+    `/devices/${encodeURIComponent(deviceId)}/deletion`,
+    {
+      method: "POST",
+      body: JSON.stringify({ deleteHistory }),
+    },
+  );
 }
 
 export function listLocations(params: LocationListParams = {}, signal?: AbortSignal) {
@@ -254,7 +263,11 @@ export function createDataSource(deviceId: string, request: CreateDataSourceRequ
   });
 }
 
-export function updateDataSource(deviceId: string, dataSourceId: string, request: CreateDataSourceRequest) {
+export function updateDataSource(
+  deviceId: string,
+  dataSourceId: string,
+  request: CreateDataSourceRequest,
+) {
   return apiRequest<DataSource>(`/devices/${deviceId}/data-sources/${dataSourceId}`, {
     method: "PATCH",
     body: JSON.stringify(request),
@@ -268,9 +281,12 @@ export function disableDataSource(deviceId: string, dataSourceId: string) {
 }
 
 export function createDataSourceToken(deviceId: string, dataSourceId: string) {
-  return apiRequest<SourceTokenResponse>(`/devices/${deviceId}/data-sources/${dataSourceId}/token`, {
-    method: "POST",
-  });
+  return apiRequest<SourceTokenResponse>(
+    `/devices/${deviceId}/data-sources/${dataSourceId}/token`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function revokeDataSourceToken(deviceId: string, dataSourceId: string) {
@@ -340,21 +356,33 @@ export function createMaintenanceWindow(deviceId: string, request: MaintenanceWi
 }
 
 export function cancelMaintenanceWindow(deviceId: string, windowId: string, reason: string) {
-  return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows/${windowId}/cancel`, {
-    method: "POST",
-    body: JSON.stringify({ reason }),
-  });
+  return apiRequest<MaintenanceWindow>(
+    `/devices/${deviceId}/maintenance-windows/${windowId}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
 }
 
 export function finishMaintenanceWindowNow(deviceId: string, windowId: string) {
-  return apiRequest<MaintenanceWindow>(`/devices/${deviceId}/maintenance-windows/${windowId}/finish-now`, {
-    method: "POST",
-  });
+  return apiRequest<MaintenanceWindow>(
+    `/devices/${deviceId}/maintenance-windows/${windowId}/finish-now`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export interface DeviceDeletionReceipt {
-  deviceId: string; name: string; deviceType: string; deleteHistory: boolean;
-  status: string; completedSteps: string; lastError: string | null; createdAt: string;
+  deviceId: string;
+  name: string;
+  deviceType: string;
+  deleteHistory: boolean;
+  status: string;
+  completedSteps: string;
+  lastError: string | null;
+  createdAt: string;
 }
 export function listDeviceDeletions(signal?: AbortSignal) {
   return apiRequest<DeviceDeletionReceipt[]>("/devices/deletions", { signal });

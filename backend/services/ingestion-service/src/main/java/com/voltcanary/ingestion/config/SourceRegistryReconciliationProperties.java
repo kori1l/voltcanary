@@ -15,5 +15,4 @@ public class SourceRegistryReconciliationProperties {
     private boolean enabled = true;
     private Duration interval = Duration.ofMinutes(1);
     private int batchSize = 100;
-
 }

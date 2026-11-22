@@ -17,43 +17,55 @@ public class DeviceExceptionHandler {
     @ExceptionHandler(AuthenticationFailedException.class)
     ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationFailedException exception) {
         metrics.operationRejected("authentication_failed");
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(new ApiErrorResponse("authentication_failed", exception.getMessage()));
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            new ApiErrorResponse("authentication_failed", exception.getMessage())
+        );
     }
 
     @ExceptionHandler(AccountInactiveException.class)
     ResponseEntity<ApiErrorResponse> handleAccountInactive(AccountInactiveException exception) {
         metrics.operationRejected("account_inactive");
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ApiErrorResponse("account_inactive", exception.getMessage()));
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            new ApiErrorResponse("account_inactive", exception.getMessage())
+        );
     }
 
     @ExceptionHandler(NotFoundException.class)
     ResponseEntity<ApiErrorResponse> handleNotFound(NotFoundException exception) {
         metrics.operationRejected("not_found");
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiErrorResponse("not_found", exception.getMessage()));
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            new ApiErrorResponse("not_found", exception.getMessage())
+        );
     }
 
     @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
-    ResponseEntity<ApiErrorResponse> handleConcurrentChange(org.springframework.dao.OptimisticLockingFailureException exception) {
+    ResponseEntity<ApiErrorResponse> handleConcurrentChange(
+        org.springframework.dao.OptimisticLockingFailureException exception
+    ) {
         metrics.operationRejected("concurrent_change");
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse("concurrent_change", "Record changed. Reload it before retrying."));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            new ApiErrorResponse("concurrent_change", "Record changed. Reload it before retrying.")
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException exception) {
         metrics.operationRejected("bad_request");
-        return ResponseEntity.badRequest().body(new ApiErrorResponse("bad_request", exception.getMessage()));
+        return ResponseEntity.badRequest().body(
+            new ApiErrorResponse("bad_request", exception.getMessage())
+        );
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         metrics.operationRejected("validation_failed");
-        String message = exception.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .orElse("request validation failed");
+        String message = exception
+            .getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .findFirst()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .orElse("request validation failed");
 
         return ResponseEntity.badRequest().body(new ApiErrorResponse("validation_failed", message));
     }

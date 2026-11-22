@@ -4,6 +4,7 @@ set -eu
 databases="${POSTGRES_ADDITIONAL_DATABASES:-voltcanary_identity voltcanary_device voltcanary_analytics voltcanary_alerts voltcanary_simulator voltcanary_ai_agent}"
 
 databases="$databases ${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}"
+databases="$databases ${ML_TRAINING_POSTGRES_DATABASE:-voltcanary_ml}"
 
 for database in $databases; do
   psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL

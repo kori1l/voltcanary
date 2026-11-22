@@ -12,5 +12,4 @@ import org.springframework.stereotype.Component;
 public class AnalyticsDlqProperties {
 
     private String topic = "analytics.telemetry.validated.dlq.v1";
-
 }

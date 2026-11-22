@@ -20,7 +20,11 @@ public class IdentityAccountLifecycleEventHandler {
         if (!processedEventService.markIfNew(SOURCE_NAME, event.eventId())) {
             return false;
         }
-        accountService.syncUser(event.userId(), event.email(), AccountStatus.valueOf(event.status()));
+        accountService.syncUser(
+            event.userId(),
+            event.email(),
+            AccountStatus.valueOf(event.status())
+        );
         return true;
     }
 }

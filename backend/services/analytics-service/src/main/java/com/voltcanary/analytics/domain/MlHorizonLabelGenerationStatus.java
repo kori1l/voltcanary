@@ -4,5 +4,5 @@ public enum MlHorizonLabelGenerationStatus {
     QUEUED,
     RUNNING,
     COMPLETED,
-    FAILED
+    FAILED,
 }

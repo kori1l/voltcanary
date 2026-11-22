@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class WidgetQueryDecoder {
+
     private final ObjectMapper mapper;
 
     public Scope scope(JsonNode value) {
@@ -25,21 +26,60 @@ public class WidgetQueryDecoder {
             return Scope.all();
         }
         Scope parsed = decode(value, Scope.class, "scope");
-        if (parsed.deviceIds() != null && parsed.deviceIds().contains(null)
-                || parsed.locationIds() != null && parsed.locationIds().contains(null)
-                || parsed.deviceTypes() != null && parsed.deviceTypes().stream().anyMatch(item -> item == null || !item.matches("[A-Za-z][A-Za-z0-9_]{0,99}"))
-                || parsed.locationTags() != null && parsed.locationTags().stream().anyMatch(item -> item == null || item.isBlank() || item.length() > 100)) {
-            throw failure("VALIDATION_ERROR", "Scope contains an invalid resource or metadata key", "scope");
+        if (
+            (parsed.deviceIds() != null && parsed.deviceIds().contains(null)) ||
+            (parsed.locationIds() != null && parsed.locationIds().contains(null)) ||
+            (parsed.deviceTypes() != null &&
+                parsed
+                    .deviceTypes()
+                    .stream()
+                    .anyMatch(
+                        item -> item == null || !item.matches("[A-Za-z][A-Za-z0-9_]{0,99}")
+                    )) ||
+            (parsed.locationTags() != null &&
+                parsed
+                    .locationTags()
+                    .stream()
+                    .anyMatch(item -> item == null || item.isBlank() || item.length() > 100))
+        ) {
+            throw failure(
+                "VALIDATION_ERROR",
+                "Scope contains an invalid resource or metadata key",
+                "scope"
+            );
         }
-        Scope normalized = new Scope(parsed.mode() == null ? ScopeMode.DYNAMIC : parsed.mode(),
-                parsed.deviceIds() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.deviceIds()),
-                parsed.locationIds() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.locationIds()), parsed.includeSubtree(),
-                parsed.deviceTypes() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.deviceTypes()),
-                parsed.locationTags() == null ? java.util.Set.of() : new java.util.TreeSet<>(parsed.locationTags()),parsed.workspaceId(),parsed.accountId());
-        if ((normalized.workspaceId()==null)!=(normalized.accountId()==null)) throw failure("VALIDATION_ERROR","Workspace binding requires an associated account","scope");
-        if (normalized.deviceIds().size() > 500 || normalized.locationIds().size() > 500
-                || normalized.deviceTypes().size() > 50 || normalized.locationTags().size() > 50
-                || (normalized.mode() == ScopeMode.FIXED && normalized.deviceIds().isEmpty() && normalized.locationIds().isEmpty())) {
+        Scope normalized = new Scope(
+            parsed.mode() == null ? ScopeMode.DYNAMIC : parsed.mode(),
+            parsed.deviceIds() == null
+                ? java.util.Set.of()
+                : new java.util.TreeSet<>(parsed.deviceIds()),
+            parsed.locationIds() == null
+                ? java.util.Set.of()
+                : new java.util.TreeSet<>(parsed.locationIds()),
+            parsed.includeSubtree(),
+            parsed.deviceTypes() == null
+                ? java.util.Set.of()
+                : new java.util.TreeSet<>(parsed.deviceTypes()),
+            parsed.locationTags() == null
+                ? java.util.Set.of()
+                : new java.util.TreeSet<>(parsed.locationTags()),
+            parsed.workspaceId(),
+            parsed.accountId()
+        );
+        if ((normalized.workspaceId() == null) != (normalized.accountId() == null)) throw failure(
+            "VALIDATION_ERROR",
+            "Workspace binding requires an associated account",
+            "scope"
+        );
+        if (
+            normalized.deviceIds().size() > 500 ||
+            normalized.locationIds().size() > 500 ||
+            normalized.deviceTypes().size() > 50 ||
+            normalized.locationTags().size() > 50 ||
+            (normalized.mode() == ScopeMode.FIXED &&
+                normalized.deviceIds().isEmpty() &&
+                normalized.locationIds().isEmpty())
+        ) {
             throw failure("LIMIT_EXCEEDED", "Invalid or oversized resource binding", "scope");
         }
         return normalized;
@@ -50,39 +90,105 @@ public class WidgetQueryDecoder {
             return new RuntimeContext(Scope.all(), Time.defaultTime());
         }
         RuntimeContext parsed = decode(value, RuntimeContext.class, "runtimeContext");
-        return new RuntimeContext(scope(value.get("scope")), parsed.time() == null ? Time.defaultTime() : parsed.time());
+        return new RuntimeContext(
+            scope(value.get("scope")),
+            parsed.time() == null ? Time.defaultTime() : parsed.time()
+        );
     }
 
     public Config config(Widget widget, Manifest manifest) {
-        if (widget.query()!=null && widget.query().has("independentMetersConfirmed") && !widget.query().path("independentMetersConfirmed").isBoolean()) {
-            throw failure("VALIDATION_ERROR","Meter independence must be an explicit boolean","independentMetersConfirmed");
+        if (
+            widget.query() != null &&
+            widget.query().has("independentMetersConfirmed") &&
+            !widget.query().path("independentMetersConfirmed").isBoolean()
+        ) {
+            throw failure(
+                "VALIDATION_ERROR",
+                "Meter independence must be an explicit boolean",
+                "independentMetersConfirmed"
+            );
         }
-        Config parsed = widget.query() == null || widget.query().isNull()
-                ? new Config(null, null, null, null, null, 20, 0, null, null, null, List.of(), List.of())
+        Config parsed =
+            widget.query() == null || widget.query().isNull()
+                ? new Config(
+                      null,
+                      null,
+                      null,
+                      null,
+                      null,
+                      20,
+                      0,
+                      null,
+                      null,
+                      null,
+                      List.of(),
+                      List.of()
+                  )
                 : decode(widget.query(), Config.class, "query");
         if (PositionWidgets.contains(widget.type())) {
             Scope binding = scope(widget.binding());
-            if (!"vehicle-map".equals(widget.type()) && (binding.deviceIds().size() != 1 || parsed.vehicleSources() != null
-                    || widget.presentation() == null || !widget.presentation().path("vehicleField").asText().matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))) {
-                throw failure("VALIDATION_ERROR", "Vehicle field widgets require one vehicle, one source and a field key", "query");
+            if (
+                !"vehicle-map".equals(widget.type()) &&
+                (binding.deviceIds().size() != 1 ||
+                    parsed.vehicleSources() != null ||
+                    widget.presentation() == null ||
+                    !widget
+                        .presentation()
+                        .path("vehicleField")
+                        .asText()
+                        .matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))
+            ) {
+                throw failure(
+                    "VALIDATION_ERROR",
+                    "Vehicle field widgets require one vehicle, one source and a field key",
+                    "query"
+                );
             }
             boolean fleet = parsed.vehicleSources() != null;
             boolean validSources = fleet
-                    ? parsed.sourceId() == null && parsed.vehicleSources().keySet().equals(binding.deviceIds())
-                        && parsed.vehicleSources().values().stream().allMatch(source -> source != null && !source.isBlank() && source.length() <= 255)
-                    : binding.deviceIds().size() == 1 && parsed.sourceId() != null && !parsed.sourceId().isBlank() && parsed.sourceId().length() <= 255;
-            if (binding.mode() != ScopeMode.FIXED || binding.deviceIds().isEmpty() || binding.deviceIds().size() > 20 || !binding.locationIds().isEmpty()
-                    || !validSources
-                    || parsed.metric() != null || parsed.reducer() != null || parsed.unit() != null
-                    || parsed.compare() != null || parsed.offset() != 0) {
-                throw failure("VALIDATION_ERROR", "Vehicle map requires fixed vehicles with explicit sources, without reducers or comparison", "query");
+                ? parsed.sourceId() == null &&
+                  parsed.vehicleSources().keySet().equals(binding.deviceIds()) &&
+                  parsed
+                      .vehicleSources()
+                      .values()
+                      .stream()
+                      .allMatch(
+                          source -> source != null && !source.isBlank() && source.length() <= 255
+                      )
+                : binding.deviceIds().size() == 1 &&
+                  parsed.sourceId() != null &&
+                  !parsed.sourceId().isBlank() &&
+                  parsed.sourceId().length() <= 255;
+            if (
+                binding.mode() != ScopeMode.FIXED ||
+                binding.deviceIds().isEmpty() ||
+                binding.deviceIds().size() > 20 ||
+                !binding.locationIds().isEmpty() ||
+                !validSources ||
+                parsed.metric() != null ||
+                parsed.reducer() != null ||
+                parsed.unit() != null ||
+                parsed.compare() != null ||
+                parsed.offset() != 0
+            ) {
+                throw failure(
+                    "VALIDATION_ERROR",
+                    "Vehicle map requires fixed vehicles with explicit sources, without reducers or comparison",
+                    "query"
+                );
             }
         }
         List<QueryTypes.Series> series = parsed.series() == null ? List.of() : parsed.series();
         int rows = parsed.rows() == 0 ? 20 : parsed.rows();
-        if (rows < 1 || rows > manifest.maxRows() || parsed.offset() < 0 || parsed.offset() > 1000000
-                || series.size() > manifest.maxSeries()
-                || (parsed.cadenceSeconds() != null && (parsed.cadenceSeconds() < 1 || parsed.cadenceSeconds() > 86400))) {
+        if (
+            rows < 1 ||
+            rows > manifest.maxRows() ||
+            parsed.offset() < 0 ||
+            parsed.offset() > 1000000 ||
+            series.size() > manifest.maxSeries() ||
+            (parsed.cadenceSeconds() != null &&
+                (parsed.cadenceSeconds() < 1 || parsed.cadenceSeconds() > 86400))
+        ) {
             throw failure("LIMIT_EXCEEDED", "Widget exceeds row/series/cadence bounds", "query");
         }
         if (parsed.reducer() != null && !manifest.reducers().contains(parsed.reducer())) {
@@ -94,29 +200,92 @@ public class WidgetQueryDecoder {
         if (parsed.metric() != null && !parsed.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}")) {
             throw failure("VALIDATION_ERROR", "Metric must be a registered key", "metric");
         }
-        if (series.stream().anyMatch(item -> item == null || item.deviceId() == null || item.metric() == null
-                || !item.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}"))) {
-            throw failure("VALIDATION_ERROR", "Series require an owned device and a metric key", "series");
+        if (
+            series
+                .stream()
+                .anyMatch(
+                    item ->
+                        item == null ||
+                        item.deviceId() == null ||
+                        item.metric() == null ||
+                        !item.metric().matches("[A-Za-z][A-Za-z0-9_.]{0,99}")
+                )
+        ) {
+            throw failure(
+                "VALIDATION_ERROR",
+                "Series require an owned device and a metric key",
+                "series"
+            );
         }
-        if (series.stream().anyMatch(item -> item.variableId() != null
-                && (item.dataSourceId() == null || !item.metric().equals("var_" + item.variableId().toString().replace("-", "")))
-                || item.variableId() == null && (item.dataSourceId() != null || item.metric().startsWith("var_")))) {
-            throw failure("VALIDATION_ERROR", "Variable series require an explicit variable and source", "series");
+        if (
+            series
+                .stream()
+                .anyMatch(
+                    item ->
+                        (item.variableId() != null &&
+                            (item.dataSourceId() == null ||
+                                !item
+                                    .metric()
+                                    .equals(
+                                        "var_" + item.variableId().toString().replace("-", "")
+                                    ))) ||
+                        (item.variableId() == null &&
+                            (item.dataSourceId() != null || item.metric().startsWith("var_")))
+                )
+        ) {
+            throw failure(
+                "VALIDATION_ERROR",
+                "Variable series require an explicit variable and source",
+                "series"
+            );
         }
-        if (parsed.columns() != null && (parsed.columns().size() > 8 || parsed.columns().stream().anyMatch(column ->
-                !List.of("registered", "freshness", "risk", "activeIncidents", "criticalIncidents", "energy").contains(column)))) {
+        if (
+            parsed.columns() != null &&
+            (parsed.columns().size() > 8 ||
+                parsed
+                    .columns()
+                    .stream()
+                    .anyMatch(
+                        column ->
+                            !List.of(
+                                "registered",
+                                "freshness",
+                                "risk",
+                                "activeIncidents",
+                                "criticalIncidents",
+                                "energy"
+                            ).contains(column)
+                    ))
+        ) {
             throw failure("VALIDATION_ERROR", "Unsupported matrix columns", "columns");
         }
-        return new Config(parsed.metric(), parsed.unit(), parsed.reducer(), parsed.time(), parsed.compare(), rows,
-                parsed.offset(), parsed.freshnessPolicy(), parsed.cadenceSeconds(), parsed.incidentMode(), series,
-                parsed.columns() == null ? List.of() : parsed.columns(),parsed.independentMetersConfirmed(),parsed.sourceId(),parsed.vehicleSources());
+        return new Config(
+            parsed.metric(),
+            parsed.unit(),
+            parsed.reducer(),
+            parsed.time(),
+            parsed.compare(),
+            rows,
+            parsed.offset(),
+            parsed.freshnessPolicy(),
+            parsed.cadenceSeconds(),
+            parsed.incidentMode(),
+            series,
+            parsed.columns() == null ? List.of() : parsed.columns(),
+            parsed.independentMetersConfirmed(),
+            parsed.sourceId(),
+            parsed.vehicleSources()
+        );
     }
 
     private <T> T decode(JsonNode value, Class<T> type, String field) {
         try {
-            return mapper.readerFor(type).with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                    .with(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
-                    .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT).readValue(value);
+            return mapper
+                .readerFor(type)
+                .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .with(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
+                .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .readValue(value);
         } catch (Exception exception) {
             throw failure("VALIDATION_ERROR", "Unsupported typed fields or values", field);
         }

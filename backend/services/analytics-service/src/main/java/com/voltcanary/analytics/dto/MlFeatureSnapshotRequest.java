@@ -6,14 +6,14 @@ import java.util.List;
 import java.util.UUID;
 
 public record MlFeatureSnapshotRequest(
-        @NotNull UUID datasetVersionId,
-        String featureSetVersion,
-        String codeConfigVersion,
-        @Positive Integer rollingWindowSize,
-        @Positive Long missingGapSeconds,
-        List<String> enabledFeatureFamilies,
-        String modelFamily,
-        @Positive Integer horizonDays,
-        String featureTemplateId,
-        String featureTemplateVersion) {
-}
+    @NotNull UUID datasetVersionId,
+    String featureSetVersion,
+    String codeConfigVersion,
+    @Positive Integer rollingWindowSize,
+    @Positive Long missingGapSeconds,
+    List<String> enabledFeatureFamilies,
+    String modelFamily,
+    @Positive Integer horizonDays,
+    String featureTemplateId,
+    String featureTemplateVersion
+) {}

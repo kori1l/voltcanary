@@ -27,11 +27,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/dashboards/{id}")
 @RequiredArgsConstructor
 public class DashboardDraftController {
-    public record RevisionMetadata(int revision, UUID publishedBy, Instant publishedAt) {
-    }
 
-    public record RevisionPage(List<RevisionMetadata> items, boolean hasNext, Integer nextBefore) {
-    }
+    public record RevisionMetadata(int revision, UUID publishedBy, Instant publishedAt) {}
+
+    public record RevisionPage(List<RevisionMetadata> items, boolean hasNext, Integer nextBefore) {}
 
     private final DashboardOwnership ownership;
     private final DashboardDrafts drafts;
@@ -40,57 +39,116 @@ public class DashboardDraftController {
     private final DefinitionValidation validation;
 
     @GetMapping("/draft")
-    public ResponseEntity<Draft> get(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id) {
+    public ResponseEntity<Draft> get(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id
+    ) {
         Draft draft = drafts.get(ownership.resolve(authorization), id);
         return ResponseEntity.ok().eTag(draft.etag().toString()).body(draft);
     }
 
     @PutMapping("/draft")
-    public ResponseEntity<Draft> save(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @RequestBody JsonNode body) {
+    public ResponseEntity<Draft> save(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key,
+        @RequestBody JsonNode body
+    ) {
         var actor = ownership.resolve(authorization);
         validation.validatePayload(body);
         int base = decoder.nonnegative(body, "baseRevision");
-        Integer source = body.hasNonNull("sourceRevision") ? decoder.nonnegative(body, "sourceRevision") : null;
+        Integer source = body.hasNonNull("sourceRevision")
+            ? decoder.nonnegative(body, "sourceRevision")
+            : null;
         if (source != null && body.hasNonNull("definition")) {
-            throw new DashboardFailure("VALIDATION_ERROR", "Choose definition or sourceRevision, not both", "sourceRevision");
+            throw new DashboardFailure(
+                "VALIDATION_ERROR",
+                "Choose definition or sourceRevision, not both",
+                "sourceRevision"
+            );
         }
-        Draft saved = key == null ? drafts.save(actor, authorization, id, ifMatch, base,
-                source == null ? decoder.definition(body) : null, source)
-                : drafts.saveReviewed(actor, authorization, id, ifMatch, base,
-                        source == null ? decoder.definition(body) : null, source, key, body);
+        Draft saved =
+            key == null
+                ? drafts.save(
+                      actor,
+                      authorization,
+                      id,
+                      ifMatch,
+                      base,
+                      source == null ? decoder.definition(body) : null,
+                      source
+                  )
+                : drafts.saveReviewed(
+                      actor,
+                      authorization,
+                      id,
+                      ifMatch,
+                      base,
+                      source == null ? decoder.definition(body) : null,
+                      source,
+                      key,
+                      body
+                  );
         return ResponseEntity.ok().eTag(saved.etag().toString()).body(saved);
     }
 
     @GetMapping("/draft/receipt")
-    public Draft receipt(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+    public Draft receipt(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key
+    ) {
         return drafts.receipt(ownership.resolve(authorization), authorization, id, key);
     }
 
     @PostMapping("/publish")
-    public ResponseEntity<Revision> publish(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody JsonNode body) {
+    public ResponseEntity<Revision> publish(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key,
+        @RequestBody JsonNode body
+    ) {
         var actor = ownership.resolve(authorization);
         validation.validatePayload(body);
-        Revision saved = publication.publish(actor, authorization, id, ifMatch, key, body,
-                decoder.uuid(body, "draftEtag", false));
-        return ResponseEntity.ok().eTag(id + "-r" + saved.revision()).body(saved);
+        Revision saved = publication.publish(
+            actor,
+            authorization,
+            id,
+            ifMatch,
+            key,
+            body,
+            decoder.uuid(body, "draftEtag", false)
+        );
+        return ResponseEntity.ok()
+            .eTag(id + "-r" + saved.revision())
+            .body(saved);
     }
 
     @GetMapping("/revisions")
-    public RevisionPage revisions(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestParam(value = "before", defaultValue = "2147483647") int before,
-            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+    public RevisionPage revisions(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestParam(value = "before", defaultValue = "2147483647") int before,
+        @RequestParam(value = "limit", defaultValue = "20") int limit
+    ) {
         var loaded = drafts.revisions(ownership.resolve(authorization), id, before, limit);
         boolean next = loaded.size() > limit;
         var visible = next ? loaded.subList(0, limit) : loaded;
-        return new RevisionPage(visible.stream().map(revision -> new RevisionMetadata(revision.revision(),
-                revision.publishedBy(), revision.publishedAt())).toList(), next,
-                next ? visible.getLast().revision() : null);
+        return new RevisionPage(
+            visible
+                .stream()
+                .map(revision ->
+                    new RevisionMetadata(
+                        revision.revision(),
+                        revision.publishedBy(),
+                        revision.publishedAt()
+                    )
+                )
+                .toList(),
+            next,
+            next ? visible.getLast().revision() : null
+        );
     }
 }

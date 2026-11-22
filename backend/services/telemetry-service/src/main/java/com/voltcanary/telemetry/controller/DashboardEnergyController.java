@@ -14,27 +14,51 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DashboardEnergyController {
+
     private final DashboardReadAuthorization access;
     private final EnergyPeriodReadService energy;
 
     @PostMapping("/internal/dashboard/energy")
-    public ObjectNode read(@RequestHeader(value="X-Internal-Service-Token",required=false) String token,
-            @RequestHeader(value="Authorization",required=false) String authorization,@RequestBody DashboardEnergyReadRequest request) {
-        if (request==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,"Energy scope is required");
-        return energy.read(request,access.renewedScope(token,authorization,request.scope()));
+    public ObjectNode read(
+        @RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardEnergyReadRequest request
+    ) {
+        if (request == null) throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+            "Energy scope is required"
+        );
+        return energy.read(request, access.renewedScope(token, authorization, request.scope()));
     }
 
     @PostMapping("/internal/dashboard/energy-validation")
-    public ObjectNode validate(@RequestHeader(value="X-Internal-Service-Token",required=false) String token,
-            @RequestHeader(value="Authorization",required=false) String authorization,@RequestBody DashboardEnergyReadRequest request) {
-        if (request==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,"Energy scope is required");
-        return energy.validate(request,access.renewedScope(token,authorization,request.scope()));
+    public ObjectNode validate(
+        @RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardEnergyReadRequest request
+    ) {
+        if (request == null) throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+            "Energy scope is required"
+        );
+        return energy.validate(request, access.renewedScope(token, authorization, request.scope()));
     }
 
     @PostMapping("/internal/dashboard/energy-batch")
-    public ObjectNode batch(@RequestHeader(value="X-Internal-Service-Token",required=false) String token,
-            @RequestHeader(value="Authorization",required=false) String authorization,@RequestBody DashboardEnergyBatchReadRequest request) {
-        if (request==null || request.scope()==null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,"Energy scope is required");
-        return energy.readBatch(request,access.renewedScope(token,authorization,request.scope()));
+    public ObjectNode batch(
+        @RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardEnergyBatchReadRequest request
+    ) {
+        if (
+            request == null || request.scope() == null
+        ) throw new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+            "Energy scope is required"
+        );
+        return energy.readBatch(
+            request,
+            access.renewedScope(token, authorization, request.scope())
+        );
     }
 }

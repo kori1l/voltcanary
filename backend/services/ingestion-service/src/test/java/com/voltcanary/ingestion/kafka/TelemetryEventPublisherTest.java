@@ -1,5 +1,9 @@
 package com.voltcanary.ingestion.kafka;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.ingestion.config.IngestionProperties;
 import com.voltcanary.ingestion.event.TelemetryTopics;
@@ -12,37 +16,40 @@ import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 class TelemetryEventPublisherTest {
 
     @Test
     void publishesTelemetryRawWithDeviceIdKey() {
         KafkaTemplate<String, TelemetryReceivedEvent> kafkaTemplate = mock(KafkaTemplate.class);
         TelemetryEventPublisher publisher = new TelemetryEventPublisher(
-                kafkaTemplate,
-                new IngestionProperties(),
-                new SimpleMeterRegistry());
+            kafkaTemplate,
+            new IngestionProperties(),
+            new SimpleMeterRegistry()
+        );
         TelemetryReceivedEvent event = event();
-        when(kafkaTemplate.send(TelemetryTopics.TELEMETRY_RAW_V1, event.deviceId().toString(), event))
-                .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
+        when(
+            kafkaTemplate.send(TelemetryTopics.TELEMETRY_RAW_V1, event.deviceId().toString(), event)
+        ).thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
 
         publisher.publish(event);
 
-        verify(kafkaTemplate).send(TelemetryTopics.TELEMETRY_RAW_V1, event.deviceId().toString(), event);
+        verify(kafkaTemplate).send(
+            TelemetryTopics.TELEMETRY_RAW_V1,
+            event.deviceId().toString(),
+            event
+        );
     }
 
     private TelemetryReceivedEvent event() {
         UUID deviceId = UUID.randomUUID();
         Instant timestamp = Instant.parse("2026-06-13T08:00:00Z");
         return new TelemetryReceivedEvent(
-                UUID.randomUUID(),
-                deviceId,
-                "plug-001",
-                timestamp,
-                Map.of("activePowerW", 840.2),
-                timestamp.plusMillis(100));
+            UUID.randomUUID(),
+            deviceId,
+            "plug-001",
+            timestamp,
+            Map.of("activePowerW", 840.2),
+            timestamp.plusMillis(100)
+        );
     }
 }

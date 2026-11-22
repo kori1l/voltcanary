@@ -7,7 +7,9 @@ import java.util.UUID;
 
 /** Immutable, bounded, statically checked scalar IR. Not an execution grant. */
 public final class VclScalarProgram {
+
     public static final class Node {
+
         private final String operation;
         private final VclType type;
         private final UUID fieldId;
@@ -22,11 +24,25 @@ public final class VclScalarProgram {
             this.arguments = List.copyOf(arguments);
         }
 
-        public String operation() { return operation; }
-        public VclType type() { return type; }
-        public UUID fieldId() { return fieldId; }
-        public JsonNode literal() { return literal == null ? null : literal.deepCopy(); }
-        public List<Node> arguments() { return arguments; }
+        public String operation() {
+            return operation;
+        }
+
+        public VclType type() {
+            return type;
+        }
+
+        public UUID fieldId() {
+            return fieldId;
+        }
+
+        public JsonNode literal() {
+            return literal == null ? null : literal.deepCopy();
+        }
+
+        public List<Node> arguments() {
+            return arguments;
+        }
     }
 
     private final Node root;
@@ -35,7 +51,13 @@ public final class VclScalarProgram {
     private final String unitDigest;
     private final String scopeDigest;
 
-    VclScalarProgram(Node root, Map<UUID, VclType> fields, String registryDigest, String unitDigest, String scopeDigest) {
+    VclScalarProgram(
+        Node root,
+        Map<UUID, VclType> fields,
+        String registryDigest,
+        String unitDigest,
+        String scopeDigest
+    ) {
         this.root = root;
         this.fields = Map.copyOf(fields);
         this.registryDigest = registryDigest;
@@ -43,9 +65,23 @@ public final class VclScalarProgram {
         this.scopeDigest = scopeDigest;
     }
 
-    public Node root() { return root; }
-    public Map<UUID, VclType> fields() { return fields; }
-    public String registryDigest() { return registryDigest; }
-    public String unitDigest() { return unitDigest; }
-    public String scopeDigest() { return scopeDigest; }
+    public Node root() {
+        return root;
+    }
+
+    public Map<UUID, VclType> fields() {
+        return fields;
+    }
+
+    public String registryDigest() {
+        return registryDigest;
+    }
+
+    public String unitDigest() {
+        return unitDigest;
+    }
+
+    public String scopeDigest() {
+        return scopeDigest;
+    }
 }

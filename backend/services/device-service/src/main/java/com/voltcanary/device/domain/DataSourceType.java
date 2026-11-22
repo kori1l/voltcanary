@@ -11,5 +11,5 @@ public enum DataSourceType {
     SHELLY,
     TASMOTA,
     TUYA,
-    CUSTOM
+    CUSTOM,
 }

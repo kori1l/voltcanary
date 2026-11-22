@@ -10,11 +10,16 @@ import java.util.HexFormat;
 import org.erdtman.jcs.JsonCanonicalizer;
 
 public final class VclCanonical {
-    private VclCanonical() { }
 
-    public static String json(VclDocument document) { return encode(VclValues.normalized(document.json())); }
+    private VclCanonical() {}
 
-    public static String documentDigest(VclDocument document) { return sha256(json(document)); }
+    public static String json(VclDocument document) {
+        return encode(VclValues.normalized(document.json()));
+    }
+
+    public static String documentDigest(VclDocument document) {
+        return sha256(json(document));
+    }
 
     /** Display labels are omitted only at documented resource/field presentation locations. */
     public static String semanticDigest(VclDocument document) {
@@ -30,13 +35,20 @@ public final class VclCanonical {
 
     /** JCS for trusted typed snapshots; this does not parse, authorize or validate a VCL document. */
     public static String encode(JsonNode value) {
-        try { return new JsonCanonicalizer(value.toString()).getEncodedString(); }
-        catch (IOException error) { throw new VclException("CANONICALIZATION_INVALID", ""); }
+        try {
+            return new JsonCanonicalizer(value.toString()).getEncodedString();
+        } catch (IOException error) {
+            throw new VclException("CANONICALIZATION_INVALID", "");
+        }
     }
 
     public static String sha256(String text) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8))
+            );
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 }

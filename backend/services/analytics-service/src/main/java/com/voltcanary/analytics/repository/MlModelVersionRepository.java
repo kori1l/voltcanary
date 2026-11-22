@@ -8,7 +8,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MlModelVersionRepository extends JpaRepository<MlModelVersion, UUID> {
     List<MlModelVersion> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
-    List<MlModelVersion> findByAccountIdAndStatusOrderByCreatedAtDesc(UUID accountId, MlModelStatus status);
+    List<MlModelVersion> findByAccountIdAndStatusOrderByCreatedAtDesc(
+        UUID accountId,
+        MlModelStatus status
+    );
     List<MlModelVersion> findByModelKeyOrderByVersionDesc(String modelKey);
     long countByTrainingRunId(UUID trainingRunId);
     long countByDatasetVersionId(UUID datasetVersionId);

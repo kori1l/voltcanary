@@ -2,9 +2,21 @@ import { ModelForm, ProviderModelForm } from "../aiAgent/ProviderModelForm";
 import { useActionConfirmation } from "../components/useActionConfirmation";
 import { ProviderConnectionForm, ProviderForm } from "../aiAgent/ProviderConnectionForm";
 import { ProviderSecretRotation } from "../aiAgent/ProviderSecretRotation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { createModelConfig, createModelProvider, deleteModelConfig, deleteModelProvider, listModelProviderCapabilities, listModelProviders, ModelProvider, ModelProviderCapability, setDefaultModelConfig, setDefaultModelProvider, testModelProvider } from "../aiAgent/aiAgentApi";
+import {
+  createModelConfig,
+  createModelProvider,
+  deleteModelConfig,
+  deleteModelProvider,
+  listModelProviderCapabilities,
+  listModelProviders,
+  ModelProvider,
+  ModelProviderCapability,
+  setDefaultModelConfig,
+  setDefaultModelProvider,
+  testModelProvider,
+} from "../aiAgent/aiAgentApi";
 
 const EMPTY_PROVIDER_FORM: ProviderForm = {
   name: "",
@@ -43,10 +55,11 @@ export function AiAgentSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
-  const selectedCapability = capabilities.find((item) => item.providerType === providerForm.providerType);
-  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId) ?? providers[0] ?? null;
-
-  const suggestedModels = useMemo(() => selectedCapability?.suggestedModels ?? [], [selectedCapability]);
+  const selectedCapability = capabilities.find(
+    (item) => item.providerType === providerForm.providerType,
+  );
+  const selectedProvider =
+    providers.find((provider) => provider.id === selectedProviderId) ?? providers[0] ?? null;
 
   useEffect(() => {
     void load();
@@ -72,7 +85,9 @@ export function AiAgentSettingsPage() {
         applyCapability(capabilityResponse[0], EMPTY_PROVIDER_FORM);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load model settings");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to load model settings",
+      );
     }
   }
 
@@ -137,8 +152,18 @@ export function AiAgentSettingsPage() {
         temperature: numberOrUndefined(modelForm.temperature),
         maxOutputTokens: integerOrUndefined(modelForm.maxOutputTokens),
         timeoutMs: integerOrUndefined(modelForm.timeoutMs),
-        supportsJson: modelForm.supportsJson && Boolean(capabilities.find((item) => item.providerType === selectedProvider.providerType)?.supportsJson),
-        supportsTools: modelForm.supportsTools && Boolean(capabilities.find((item) => item.providerType === selectedProvider.providerType)?.supportsTools),
+        supportsJson:
+          modelForm.supportsJson &&
+          Boolean(
+            capabilities.find((item) => item.providerType === selectedProvider.providerType)
+              ?.supportsJson,
+          ),
+        supportsTools:
+          modelForm.supportsTools &&
+          Boolean(
+            capabilities.find((item) => item.providerType === selectedProvider.providerType)
+              ?.supportsTools,
+          ),
       });
       setModelForm(EMPTY_MODEL_FORM);
       setMessage("Model added");
@@ -150,8 +175,20 @@ export function AiAgentSettingsPage() {
     }
   }
 
-  async function providerAction(action: () => Promise<unknown>, success: string, review?: { object: string; impact: string }) {
-    if (isBusy || (review && await confirmation.confirm({ title: success.replace(/ updated| deleted/, ""), ...review }) === null)) return;
+  async function providerAction(
+    action: () => Promise<unknown>,
+    success: string,
+    review?: { object: string; impact: string },
+  ) {
+    if (
+      isBusy ||
+      (review &&
+        (await confirmation.confirm({
+          title: success.replace(/ updated| deleted/, ""),
+          ...review,
+        })) === null)
+    )
+      return;
     setIsBusy(true);
     setError(null);
     setMessage(null);
@@ -205,14 +242,23 @@ export function AiAgentSettingsPage() {
             >
               <span>{provider.providerType}</span>
               <strong>{provider.name}</strong>
-              <em>{provider.models.find((model) => model.isDefault)?.modelId ?? "No default model"}</em>
+              <em>
+                {provider.models.find((model) => model.isDefault)?.modelId ?? "No default model"}
+              </em>
               {provider.isDefault ? <small>Default</small> : null}
             </button>
           ))}
         </aside>
 
         <div className="agent-settings-main">
-          <ProviderConnectionForm draft={providerForm} capabilities={capabilities} onChange={(update) => setProviderForm((current) => ({ ...current, ...update }))} onCapability={applyCapability} onSubmit={submitProvider} busy={isBusy} />
+          <ProviderConnectionForm
+            draft={providerForm}
+            capabilities={capabilities}
+            onChange={(update) => setProviderForm((current) => ({ ...current, ...update }))}
+            onCapability={applyCapability}
+            onSubmit={submitProvider}
+            busy={isBusy}
+          />
 
           {selectedProvider ? (
             <section className="panel agent-provider-detail">
@@ -224,23 +270,69 @@ export function AiAgentSettingsPage() {
                   </p>
                 </div>
                 <div className="action-row">
-                  <button className="ghost-button" type="button" onClick={() => void providerAction(() => testModelProvider(selectedProvider.id), "Provider test completed")} disabled={isBusy}>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() =>
+                      void providerAction(
+                        () => testModelProvider(selectedProvider.id),
+                        "Provider test completed",
+                      )
+                    }
+                    disabled={isBusy}
+                  >
                     Test
                   </button>
-                  <button className="ghost-button" type="button" onClick={() => void providerAction(() => setDefaultModelProvider(selectedProvider.id), "Default provider updated")} disabled={isBusy || selectedProvider.isDefault}>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() =>
+                      void providerAction(
+                        () => setDefaultModelProvider(selectedProvider.id),
+                        "Default provider updated",
+                      )
+                    }
+                    disabled={isBusy || selectedProvider.isDefault}
+                  >
                     Set default
                   </button>
-                  <button className="danger-button" type="button" onClick={() => void providerAction(() => deleteModelProvider(selectedProvider.id), "Provider deleted", { object: selectedProvider.name, impact: "Remove this provider and its model configurations from future plan selection. Existing plan authorization remains enforced by the server." })} disabled={isBusy}>
+                  <button
+                    className="danger-button"
+                    type="button"
+                    onClick={() =>
+                      void providerAction(
+                        () => deleteModelProvider(selectedProvider.id),
+                        "Provider deleted",
+                        {
+                          object: selectedProvider.name,
+                          impact:
+                            "Remove this provider and its model configurations from future plan selection. Existing plan authorization remains enforced by the server.",
+                        },
+                      )
+                    }
+                    disabled={isBusy}
+                  >
                     Delete
                   </button>
                 </div>
               </div>
               <div className="agent-test-result">
-                <span>Key: {selectedProvider.authType === "NONE" ? "Not required" : selectedProvider.maskedSecretHint ? "Configured" : "Missing"}</span>
+                <span>
+                  Key:{" "}
+                  {selectedProvider.authType === "NONE"
+                    ? "Not required"
+                    : selectedProvider.maskedSecretHint
+                      ? "Configured"
+                      : "Missing"}
+                </span>
                 <span>Last test: {selectedProvider.lastTestStatus ?? "not tested"}</span>
                 <span>{selectedProvider.lastTestMessage ?? "No test result yet"}</span>
               </div>
-              <ProviderSecretRotation key={selectedProvider.id} provider={selectedProvider} onChanged={load} />
+              <ProviderSecretRotation
+                key={selectedProvider.id}
+                provider={selectedProvider}
+                onChanged={load}
+              />
 
               <div className="agent-model-table">
                 <div className="agent-model-row agent-model-row-head">
@@ -256,12 +348,40 @@ export function AiAgentSettingsPage() {
                       <strong>{model.displayName}</strong>
                       <small>{model.modelId}</small>
                     </div>
-                    <span>{model.maxOutputTokens ?? 1800} tokens · Connection {model.timeoutMs ?? 30000} ms · Response without time limit</span>
+                    <span>
+                      {model.maxOutputTokens ?? 1800} tokens · Connection {model.timeoutMs ?? 30000}{" "}
+                      ms · Response without time limit
+                    </span>
                     <div className="action-row">
-                      <button className="ghost-button" type="button" onClick={() => void providerAction(() => setDefaultModelConfig(selectedProvider.id, model.id), "Default model updated")} disabled={model.isDefault || isBusy}>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() =>
+                          void providerAction(
+                            () => setDefaultModelConfig(selectedProvider.id, model.id),
+                            "Default model updated",
+                          )
+                        }
+                        disabled={model.isDefault || isBusy}
+                      >
                         Default
                       </button>
-                      <button className="danger-button" type="button" onClick={() => void providerAction(() => deleteModelConfig(selectedProvider.id, model.id), "Model deleted", { object: `${selectedProvider.name}: ${model.displayName}`, impact: "Remove this model configuration from future assistant requests." })} disabled={isBusy}>
+                      <button
+                        className="danger-button"
+                        type="button"
+                        onClick={() =>
+                          void providerAction(
+                            () => deleteModelConfig(selectedProvider.id, model.id),
+                            "Model deleted",
+                            {
+                              object: `${selectedProvider.name}: ${model.displayName}`,
+                              impact:
+                                "Remove this model configuration from future assistant requests.",
+                            },
+                          )
+                        }
+                        disabled={isBusy}
+                      >
                         Delete
                       </button>
                     </div>
@@ -269,7 +389,15 @@ export function AiAgentSettingsPage() {
                 ))}
               </div>
 
-              <ProviderModelForm draft={modelForm} capability={capabilities.find((item) => item.providerType === selectedProvider.providerType)} busy={isBusy} onChange={setModelForm} onSubmit={submitModel} />
+              <ProviderModelForm
+                draft={modelForm}
+                capability={capabilities.find(
+                  (item) => item.providerType === selectedProvider.providerType,
+                )}
+                busy={isBusy}
+                onChange={setModelForm}
+                onSubmit={submitModel}
+              />
             </section>
           ) : null}
         </div>

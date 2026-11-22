@@ -80,5 +80,4 @@ public class NotificationAttempt {
 
     @Column(name = "locked_by")
     private String lockedBy;
-
 }

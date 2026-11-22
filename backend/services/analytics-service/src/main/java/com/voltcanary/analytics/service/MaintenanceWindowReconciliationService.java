@@ -18,7 +18,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty(prefix = "app.maintenance.reconciliation", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+    prefix = "app.maintenance.reconciliation",
+    name = "enabled",
+    havingValue = "true",
+    matchIfMissing = true
+)
 @RequiredArgsConstructor
 @Slf4j
 public class MaintenanceWindowReconciliationService {
@@ -42,18 +47,25 @@ public class MaintenanceWindowReconciliationService {
                 return;
             }
         } catch (DataAccessException exception) {
-            meterRegistry.counter("analytics.maintenance.reconciliation.completed", "status", "lock_unavailable").increment();
+            meterRegistry
+                .counter(
+                    "analytics.maintenance.reconciliation.completed",
+                    "status",
+                    "lock_unavailable"
+                )
+                .increment();
             log.warn("analyticsMaintenanceReconciliationSkipped reason=lock_unavailable");
             return;
         }
         try {
             ReconciliationResult result = reconcile();
             log.info(
-                    "analyticsMaintenanceReconciliation windowsFetched={} windowsApplied={} outcomesFetched={} outcomesApplied={}",
-                    result.fetched(),
-                    result.applied(),
-                    result.outcomesFetched(),
-                    result.outcomesApplied());
+                "analyticsMaintenanceReconciliation windowsFetched={} windowsApplied={} outcomesFetched={} outcomesApplied={}",
+                result.fetched(),
+                result.applied(),
+                result.outcomesFetched(),
+                result.outcomesApplied()
+            );
         } finally {
             schedulerLockService.release(LOCK_NAME);
         }
@@ -61,7 +73,11 @@ public class MaintenanceWindowReconciliationService {
 
     public ReconciliationResult reconcile() {
         Cursor checkpoint = checkpoint(CHECKPOINT_NAME);
-        List<MaintenanceWindowSnapshot> changes = deviceClient.changes(checkpoint.at(), checkpoint.id(), properties.getBatchSize());
+        List<MaintenanceWindowSnapshot> changes = deviceClient.changes(
+            checkpoint.at(),
+            checkpoint.id(),
+            properties.getBatchSize()
+        );
         int applied = 0;
         for (MaintenanceWindowSnapshot snapshot : changes) {
             if (projectionService.upsertSnapshot(snapshot)) {
@@ -73,7 +89,11 @@ public class MaintenanceWindowReconciliationService {
             saveCheckpoint(CHECKPOINT_NAME, last.updatedAt(), last.id());
         }
         Cursor outcomeCheckpoint = checkpoint(OUTCOME_CHECKPOINT_NAME);
-        List<MaintenanceOutcomeSnapshot> outcomeChanges = deviceClient.outcomeChanges(outcomeCheckpoint.at(), outcomeCheckpoint.id(), properties.getBatchSize());
+        List<MaintenanceOutcomeSnapshot> outcomeChanges = deviceClient.outcomeChanges(
+            outcomeCheckpoint.at(),
+            outcomeCheckpoint.id(),
+            properties.getBatchSize()
+        );
         int outcomesApplied = 0;
         for (MaintenanceOutcomeSnapshot snapshot : outcomeChanges) {
             if (outcomeProjectionService.upsertSnapshot(snapshot)) {
@@ -84,27 +104,55 @@ public class MaintenanceWindowReconciliationService {
             var last = outcomeChanges.getLast();
             saveCheckpoint(OUTCOME_CHECKPOINT_NAME, last.updatedAt(), last.id());
         }
-        meterRegistry.counter("analytics.maintenance.reconciliation.completed", "status", "success").increment();
-        return new ReconciliationResult(changes.size(), applied, outcomeChanges.size(), outcomesApplied);
+        meterRegistry
+            .counter("analytics.maintenance.reconciliation.completed", "status", "success")
+            .increment();
+        return new ReconciliationResult(
+            changes.size(),
+            applied,
+            outcomeChanges.size(),
+            outcomesApplied
+        );
     }
 
-    private record Cursor(Instant at, UUID id) { }
+    private record Cursor(Instant at, UUID id) {}
 
     private Cursor checkpoint(String name) {
-        return jdbcTemplate.query("select checkpoint_at, checkpoint_id from maintenance_projection_checkpoints where source_name=?",
-                (rs, index) -> new Cursor(rs.getTimestamp(1).toInstant(), rs.getObject(2, UUID.class)), name)
-                .stream().findFirst().orElse(new Cursor(Instant.EPOCH, null));
+        return jdbcTemplate
+            .query(
+                "select checkpoint_at, checkpoint_id from maintenance_projection_checkpoints where source_name=?",
+                (rs, index) ->
+                    new Cursor(rs.getTimestamp(1).toInstant(), rs.getObject(2, UUID.class)),
+                name
+            )
+            .stream()
+            .findFirst()
+            .orElse(new Cursor(Instant.EPOCH, null));
     }
 
     private void saveCheckpoint(String name, Instant at, UUID id) {
-        int updated = jdbcTemplate.update("update maintenance_projection_checkpoints set checkpoint_at=?, checkpoint_id=?, updated_at=? where source_name=?",
-                Timestamp.from(at), id, Timestamp.from(Instant.now()), name);
+        int updated = jdbcTemplate.update(
+            "update maintenance_projection_checkpoints set checkpoint_at=?, checkpoint_id=?, updated_at=? where source_name=?",
+            Timestamp.from(at),
+            id,
+            Timestamp.from(Instant.now()),
+            name
+        );
         if (updated == 0) {
-            jdbcTemplate.update("insert into maintenance_projection_checkpoints(source_name, checkpoint_at, checkpoint_id, updated_at) values(?,?,?,?)",
-                    name, Timestamp.from(at), id, Timestamp.from(Instant.now()));
+            jdbcTemplate.update(
+                "insert into maintenance_projection_checkpoints(source_name, checkpoint_at, checkpoint_id, updated_at) values(?,?,?,?)",
+                name,
+                Timestamp.from(at),
+                id,
+                Timestamp.from(Instant.now())
+            );
         }
     }
 
-    public record ReconciliationResult(int fetched, int applied, int outcomesFetched, int outcomesApplied) {
-    }
+    public record ReconciliationResult(
+        int fetched,
+        int applied,
+        int outcomesFetched,
+        int outcomesApplied
+    ) {}
 }

@@ -25,13 +25,14 @@ import org.springframework.stereotype.Component;
 public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
-            "generic-http-polling",
-            AdapterType.GENERIC_HTTP_POLLING,
-            "Generic HTTP Polling",
-            TransportType.HTTP,
-            ProtocolType.HTTP,
-            AdapterCapabilities.of(AdapterCapability.POLLING),
-            "v1");
+        "generic-http-polling",
+        AdapterType.GENERIC_HTTP_POLLING,
+        "Generic HTTP Polling",
+        TransportType.HTTP,
+        ProtocolType.HTTP,
+        AdapterCapabilities.of(AdapterCapability.POLLING),
+        "v1"
+    );
 
     private final HttpClient httpClient;
     private final CredentialProvider credentialProvider;
@@ -47,16 +48,24 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
         HttpPollingAdapterConfig config = HttpPollingAdapterConfig.from(sourceRuntimeConfig);
         HttpRequest request = request(sourceRuntimeConfig, config);
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(
+                request,
+                HttpResponse.BodyHandlers.ofString()
+            );
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("HTTP polling endpoint returned status " + response.statusCode());
+                throw new IllegalStateException(
+                    "HTTP polling endpoint returned status " + response.statusCode()
+                );
             }
-            return List.of(responseMapper.map(
+            return List.of(
+                responseMapper.map(
                     sourceRuntimeConfig,
                     response.body(),
                     response.statusCode(),
                     config.endpoint(),
-                    origin(config.endpoint())));
+                    origin(config.endpoint())
+                )
+            );
         } catch (IOException exception) {
             throw new IllegalStateException("HTTP polling request failed", exception);
         } catch (InterruptedException exception) {
@@ -65,9 +74,13 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
         }
     }
 
-    private HttpRequest request(SourceRuntimeConfig sourceRuntimeConfig, HttpPollingAdapterConfig config) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(config.endpoint())
-                .timeout(config.timeout());
+    private HttpRequest request(
+        SourceRuntimeConfig sourceRuntimeConfig,
+        HttpPollingAdapterConfig config
+    ) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(config.endpoint()).timeout(
+            config.timeout()
+        );
         if ("POST".equals(config.method())) {
             builder.POST(HttpRequest.BodyPublishers.noBody());
         } else {
@@ -76,12 +89,21 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
         config.headers().forEach(builder::header);
         for (Map.Entry<String, String> entry : config.credentialHeaders().entrySet()) {
             String credentialName = entry.getValue();
-            String credentialReference = sourceRuntimeConfig.credentialReferences().get(credentialName);
+            String credentialReference = sourceRuntimeConfig
+                .credentialReferences()
+                .get(credentialName);
             if (credentialReference == null || credentialReference.isBlank()) {
-                throw new IllegalArgumentException("Missing credential reference " + credentialName);
+                throw new IllegalArgumentException(
+                    "Missing credential reference " + credentialName
+                );
             }
-            String credential = credentialProvider.resolve(credentialReference)
-                    .orElseThrow(() -> new IllegalArgumentException("Unable to resolve credential reference " + credentialName));
+            String credential = credentialProvider
+                .resolve(credentialReference)
+                .orElseThrow(() ->
+                    new IllegalArgumentException(
+                        "Unable to resolve credential reference " + credentialName
+                    )
+                );
             builder.header(entry.getKey(), credential);
         }
         return builder.build();
@@ -89,10 +111,11 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
 
     private TelemetryOrigin origin(URI endpoint) {
         return new TelemetryOrigin(
-                MANIFEST.adapterType(),
-                MANIFEST.protocol(),
-                MANIFEST.transport(),
-                MANIFEST.adapterId(),
-                Map.of("endpointHost", endpoint.getHost() == null ? "" : endpoint.getHost()));
+            MANIFEST.adapterType(),
+            MANIFEST.protocol(),
+            MANIFEST.transport(),
+            MANIFEST.adapterId(),
+            Map.of("endpointHost", endpoint.getHost() == null ? "" : endpoint.getHost())
+        );
     }
 }

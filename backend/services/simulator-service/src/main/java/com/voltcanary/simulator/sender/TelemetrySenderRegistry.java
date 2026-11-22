@@ -13,9 +13,15 @@ public class TelemetrySenderRegistry {
     private final List<TelemetrySender> senders;
 
     public TelemetrySender senderFor(String protocol) {
-        return senders.stream()
-                .filter(sender -> sender.supports(protocol))
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported simulation protocol: " + protocol));
+        return senders
+            .stream()
+            .filter(sender -> sender.supports(protocol))
+            .findFirst()
+            .orElseThrow(() ->
+                new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported simulation protocol: " + protocol
+                )
+            );
     }
 }

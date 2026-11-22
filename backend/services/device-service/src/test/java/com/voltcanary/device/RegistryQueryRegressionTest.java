@@ -1,5 +1,7 @@
 package com.voltcanary.device;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.Device;
@@ -20,22 +22,37 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
-import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(properties = {
-        "app.kafka.publish-enabled=false", "app.kafka.consume-enabled=false",
+@SpringBootTest(
+    properties = {
+        "app.kafka.publish-enabled=false",
+        "app.kafka.consume-enabled=false",
         "spring.datasource.url=jdbc:h2:mem:registry-query-boundaries;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
-        "spring.jpa.properties.hibernate.generate_statistics=true", "spring.jpa.open-in-view=false"
-})
+        "spring.jpa.properties.hibernate.generate_statistics=true",
+        "spring.jpa.open-in-view=false",
+    }
+)
 class RegistryQueryRegressionTest {
-    @Autowired private AccountRepository accounts;
-    @Autowired private DeviceRepository devices;
-    @Autowired private DeviceTypeRepository types;
-    @Autowired private MaintenanceWindowRepository windows;
-    @Autowired private DeviceService service;
-    @Autowired private EntityManagerFactory entityManagerFactory;
 
-    private record Owner(Account account, AuthenticatedUser user) { }
+    @Autowired
+    private AccountRepository accounts;
+
+    @Autowired
+    private DeviceRepository devices;
+
+    @Autowired
+    private DeviceTypeRepository types;
+
+    @Autowired
+    private MaintenanceWindowRepository windows;
+
+    @Autowired
+    private DeviceService service;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
+
+    private record Owner(Account account, AuthenticatedUser user) {}
 
     private Owner owner() {
         var account = new Account();
@@ -46,7 +63,10 @@ class RegistryQueryRegressionTest {
         account.setCreatedAt(Instant.now());
         account.setUpdatedAt(Instant.now());
         accounts.save(account);
-        return new Owner(account, new AuthenticatedUser(account.getUserId(), "query@example.test", "USER"));
+        return new Owner(
+            account,
+            new AuthenticatedUser(account.getUserId(), "query@example.test", "USER")
+        );
     }
 
     private Device device(Owner owner, String name) {
@@ -73,8 +93,10 @@ class RegistryQueryRegressionTest {
         assertThat(page).hasSize(10);
         assertThat(statistics.getEntityLoadCount()).isLessThanOrEqualTo(12);
         assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(2);
-        assertThat(service.list(owner.user(), null, null, null, "%", 10, 0)).singleElement()
-                .extracting(com.voltcanary.device.dto.DeviceResponse::name).isEqualTo("Literal % marker");
+        assertThat(service.list(owner.user(), null, null, null, "%", 10, 0))
+            .singleElement()
+            .extracting(com.voltcanary.device.dto.DeviceResponse::name)
+            .isEqualTo("Literal % marker");
     }
 
     @Test
@@ -85,14 +107,25 @@ class RegistryQueryRegressionTest {
         var expected = new ArrayList<UUID>();
         for (int index = 0; index < 3; index++) {
             var row = new MaintenanceWindow();
-            row.setId(UUID.randomUUID()); row.setAccountId(owner.account().getId()); row.setDeviceId(device.getId());
-            row.setTitle("Window"); row.setStartAt(time); row.setEndAt(time.plusSeconds(60));
-            row.setCreatedAt(time); row.setUpdatedAt(time); row.setVersion(1);
-            windows.save(row); expected.add(row.getId());
+            row.setId(UUID.randomUUID());
+            row.setAccountId(owner.account().getId());
+            row.setDeviceId(device.getId());
+            row.setTitle("Window");
+            row.setStartAt(time);
+            row.setEndAt(time.plusSeconds(60));
+            row.setCreatedAt(time);
+            row.setUpdatedAt(time);
+            row.setVersion(1);
+            windows.save(row);
+            expected.add(row.getId());
         }
         var first = windows.findChangesAfter(Instant.EPOCH, null, PageRequest.of(0, 2));
         var last = first.getLast();
-        var second = windows.findChangesAfter(last.getUpdatedAt(), last.getId(), PageRequest.of(0, 2));
+        var second = windows.findChangesAfter(
+            last.getUpdatedAt(),
+            last.getId(),
+            PageRequest.of(0, 2)
+        );
         var actual = new ArrayList<>(first.stream().map(MaintenanceWindow::getId).toList());
         actual.addAll(second.stream().map(MaintenanceWindow::getId).toList());
         assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);

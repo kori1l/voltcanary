@@ -1,5 +1,11 @@
 package com.voltcanary.vcl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,38 +19,44 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VclConformanceTest {
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final JsonNode examples = read("configurable-operations-language.examples.json");
     private final VclParser parser = new VclParser();
-    private final VclCompiler compiler = new VclCompiler(new VclRegistry(parser), VclUnits.standard());
+    private final VclCompiler compiler = new VclCompiler(
+        new VclRegistry(parser),
+        VclUnits.standard()
+    );
     private final VclMetadata metadata = new Fixtures();
 
     @TestFactory
     Stream<DynamicTest> positiveDocuments() {
-        return java.util.stream.IntStream.range(0, examples.path("documents").size()).mapToObj(i -> DynamicTest.dynamicTest(
-                "document " + i, () -> {
-                    var result = compiler.compile(parser.parse(examples.path("documents").get(i).toString()), metadata);
-                    assertEquals(64, result.documentDigest().length());
-                    assertEquals("a".repeat(64), result.accessScopeDigest());
-                }));
+        return java.util.stream.IntStream.range(0, examples.path("documents").size()).mapToObj(i ->
+            DynamicTest.dynamicTest("document " + i, () -> {
+                var result = compiler.compile(
+                    parser.parse(examples.path("documents").get(i).toString()),
+                    metadata
+                );
+                assertEquals(64, result.documentDigest().length());
+                assertEquals("a".repeat(64), result.accessScopeDigest());
+            })
+        );
     }
 
     @TestFactory
     Stream<DynamicTest> negativeDocuments() {
         var cases = read("configurable-operations-language.conformance.json").path("cases");
-        return java.util.stream.StreamSupport.stream(cases.spliterator(), false).map(test -> DynamicTest.dynamicTest(
-                test.path("id").asText(), () -> {
-                    var document = patch(test);
-                    var error = assertThrows(VclException.class, () -> compiler.compile(parser.parse(document.toString()), metadata));
-                    assertEquals(test.path("expected").asText(), error.code());
-                }));
+        return java.util.stream.StreamSupport.stream(cases.spliterator(), false).map(test ->
+            DynamicTest.dynamicTest(test.path("id").asText(), () -> {
+                var document = patch(test);
+                var error = assertThrows(VclException.class, () ->
+                    compiler.compile(parser.parse(document.toString()), metadata)
+                );
+                assertEquals(test.path("expected").asText(), error.code());
+            })
+        );
     }
 
     @Test
@@ -73,7 +85,10 @@ class VclConformanceTest {
         assertEquals(21, registry.scalars().size());
         assertEquals(12, registry.operators().size());
         assertEquals(3, registry.scalars().get("inside").arity());
-        assertEquals(Set.of("sessions", "witnesses"), registry.operators().get("absent_within").ports());
+        assertEquals(
+            Set.of("sessions", "witnesses"),
+            registry.operators().get("absent_within").ports()
+        );
         assertFalse(registry.scalars().containsKey("execute_sql"));
         assertEquals(12, registry.capabilities().path("operators").size());
     }
@@ -81,33 +96,67 @@ class VclConformanceTest {
     @Test
     void foreignDatasetAndGrantCannotCompile() {
         VclMetadata denied = new Fixtures() {
-            @Override public Optional<Snapshot> dataset(UUID id, long revision) { return Optional.empty(); }
-            @Override public boolean permits(Resource kind, UUID id) { return false; }
+            @Override
+            public Optional<Snapshot> dataset(UUID id, long revision) {
+                return Optional.empty();
+            }
+
+            @Override
+            public boolean permits(Resource kind, UUID id) {
+                return false;
+            }
         };
-        assertEquals("SCHEMA_UNAVAILABLE", assertThrows(VclException.class,
-                () -> compiler.compile(parser.parse(examples.at("/documents/2").toString()), denied)).code());
-        assertEquals("RESOURCE_UNAVAILABLE", assertThrows(VclException.class,
-                () -> compiler.compile(parser.parse(examples.at("/documents/4").toString()), denied)).code());
+        assertEquals(
+            "SCHEMA_UNAVAILABLE",
+            assertThrows(VclException.class, () ->
+                compiler.compile(parser.parse(examples.at("/documents/2").toString()), denied)
+            ).code()
+        );
+        assertEquals(
+            "RESOURCE_UNAVAILABLE",
+            assertThrows(VclException.class, () ->
+                compiler.compile(parser.parse(examples.at("/documents/4").toString()), denied)
+            ).code()
+        );
     }
 
     @Test
     void dataVersionAndScopeChangesInvalidateStaticCompilation() {
         var document = examples.at("/documents/9").deepCopy();
         ((ObjectNode) document.at("/spec/targetPrecondition")).put("dataVersion", 8);
-        assertEquals("TARGET_CONFLICT", assertThrows(VclException.class,
-                () -> compiler.compile(parser.parse(document.toString()), metadata)).code());
+        assertEquals(
+            "TARGET_CONFLICT",
+            assertThrows(VclException.class, () ->
+                compiler.compile(parser.parse(document.toString()), metadata)
+            ).code()
+        );
         var count = new java.util.concurrent.atomic.AtomicInteger();
         VclMetadata changing = new Fixtures() {
-            @Override public String accessScopeDigest() { return count.incrementAndGet() == 1 ? "a".repeat(64) : "b".repeat(64); }
+            @Override
+            public String accessScopeDigest() {
+                return count.incrementAndGet() == 1 ? "a".repeat(64) : "b".repeat(64);
+            }
         };
-        assertEquals("ACCESS_SCOPE_CHANGED", assertThrows(VclException.class,
-                () -> compiler.compile(parser.parse(examples.at("/documents/2").toString()), changing)).code());
+        assertEquals(
+            "ACCESS_SCOPE_CHANGED",
+            assertThrows(VclException.class, () ->
+                compiler.compile(parser.parse(examples.at("/documents/2").toString()), changing)
+            ).code()
+        );
     }
 
     @Test
     void compiledGraphKeepsCanonicalInputsButCannotBeMutatedThroughConfig() {
-        var result = compiler.compile(parser.parse(examples.at("/documents/4").toString()), metadata);
-        var visit = result.graph().stream().filter(n -> n.method().equals("zone_session")).findFirst().orElseThrow();
+        var result = compiler.compile(
+            parser.parse(examples.at("/documents/4").toString()),
+            metadata
+        );
+        var visit = result
+            .graph()
+            .stream()
+            .filter(n -> n.method().equals("zone_session"))
+            .findFirst()
+            .orElseThrow();
         assertEquals(Map.of("events", "eligible"), visit.inputs());
         ((ObjectNode) visit.config()).put("exitDebounceUs", "999");
         assertEquals("3000000", visit.config().path("exitDebounceUs").asText());
@@ -117,7 +166,9 @@ class VclConformanceTest {
         assertFalse(visit.toString().contains("exitDebounceUs"));
     }
 
-    private String registryDigest() { return new VclRegistry(parser).digest(); }
+    private String registryDigest() {
+        return new VclRegistry(parser).digest();
+    }
 
     @Test
     void booleanImportTokenSetsCannotOverlap() {
@@ -127,8 +178,12 @@ class VclConformanceTest {
         var conversion = column.putArray("conversions").addObject().put("method", "parse_boolean");
         conversion.putArray("trueTokens").add("same");
         conversion.putArray("falseTokens").add("same");
-        assertEquals("BOOLEAN_TOKEN_OVERLAP", assertThrows(VclException.class,
-                () -> compiler.compile(parser.parse(document.toString()), metadata)).code());
+        assertEquals(
+            "BOOLEAN_TOKEN_OVERLAP",
+            assertThrows(VclException.class, () ->
+                compiler.compile(parser.parse(document.toString()), metadata)
+            ).code()
+        );
     }
 
     @Test
@@ -136,9 +191,14 @@ class VclConformanceTest {
         var document = examples.at("/documents/3").deepCopy();
         var column = (ObjectNode) document.at("/spec/columns/1");
         column.put("sourceType", "TEXT");
-        column.putArray("conversions").addObject().put("method", "parse_instant").put("format", "RFC3339_OFFSET");
+        column
+            .putArray("conversions")
+            .addObject()
+            .put("method", "parse_instant")
+            .put("format", "RFC3339_OFFSET");
         VclMetadata timestampTarget = new Fixtures() {
-            @Override public Optional<Snapshot> dataset(UUID id, long revision) {
+            @Override
+            public Optional<Snapshot> dataset(UUID id, long revision) {
                 return super.dataset(id, revision).map(snapshot -> {
                     var definition = snapshot.definition().deepCopy();
                     ((ObjectNode) definition.at("/fields/1")).put("type", "INSTANT");
@@ -154,7 +214,8 @@ class VclConformanceTest {
         String datasetId = "00000000-0000-4000-8000-000000000005";
         String systemFieldId = "00000000-0000-4000-8000-000000000098";
         VclMetadata unkeyed = new Fixtures() {
-            @Override public Optional<Snapshot> dataset(UUID id, long revision) {
+            @Override
+            public Optional<Snapshot> dataset(UUID id, long revision) {
                 var prior = super.dataset(id, revision).orElseThrow();
                 var definition = (ObjectNode) prior.definition();
                 definition.putArray("keyFieldIds");
@@ -163,8 +224,13 @@ class VclConformanceTest {
             }
         };
         var document = examples.at("/documents/9").deepCopy();
-        var key = ((ObjectNode) document.path("spec")).putArray("key").addObject().put("fieldId", systemFieldId);
-        key.putObject("literal").put("type", "REF").put("value", "00000000-0000-4000-8000-000000000099");
+        var key = ((ObjectNode) document.path("spec"))
+            .putArray("key")
+            .addObject()
+            .put("fieldId", systemFieldId);
+        key.putObject("literal")
+            .put("type", "REF")
+            .put("value", "00000000-0000-4000-8000-000000000099");
         var result = compiler.compile(parser.parse(document.toString()), unkeyed);
         assertEquals(VclDocument.Kind.MUTATION, result.kind());
         assertTrue(result.canonicalDocument().contains(datasetId));
@@ -176,7 +242,10 @@ class VclConformanceTest {
             String pointer = edit.path("path").asText();
             int split = pointer.lastIndexOf('/');
             var parent = result.at(pointer.substring(0, split));
-            String key = pointer.substring(split + 1).replace("~1", "/").replace("~0", "~");
+            String key = pointer
+                .substring(split + 1)
+                .replace("~1", "/")
+                .replace("~0", "~");
             if (parent.isObject()) {
                 if (edit.path("op").asText().equals("remove")) ((ObjectNode) parent).remove(key);
                 else ((ObjectNode) parent).set(key, edit.path("value").deepCopy());
@@ -193,26 +262,66 @@ class VclConformanceTest {
     private JsonNode read(String name) {
         try (var input = getClass().getResourceAsStream("/vcl/" + name)) {
             return mapper.readTree(input);
-        } catch (IOException error) { throw new IllegalStateException(error); }
+        } catch (IOException error) {
+            throw new IllegalStateException(error);
+        }
     }
 
     private class Fixtures implements VclMetadata {
-        @Override public String accessScopeDigest() { return "a".repeat(64); }
-        @Override public Optional<Snapshot> dataset(UUID id, long revision) { return find("datasets", id, revision, "revision"); }
-        @Override public Optional<Snapshot> binding(UUID id, long revision) { return find("bindings", id, revision, "schemaRevision"); }
-        @Override public boolean permits(Resource kind, UUID id) {
-            return Set.of(99L, 100L, 105L, 106L, 300L, 302L, 501L).stream()
-                    .map(value -> UUID.fromString("00000000-0000-4000-8000-" + String.format("%012d", value))).anyMatch(id::equals);
+
+        @Override
+        public String accessScopeDigest() {
+            return "a".repeat(64);
         }
-        @Override public Optional<String> artifactSha256(UUID id) {
-            return java.util.stream.StreamSupport.stream(examples.path("fixtureArtifacts").spliterator(), false)
-                    .filter(a -> a.path("artifactId").asText().equals(id.toString()))
-                    .map(a -> VclCanonical.sha256(a.path("contentUtf8").asText())).findFirst();
+
+        @Override
+        public Optional<Snapshot> dataset(UUID id, long revision) {
+            return find("datasets", id, revision, "revision");
         }
-        private Optional<Snapshot> find(String group, UUID id, long revision, String revisionField) {
-            return java.util.stream.StreamSupport.stream(examples.at("/fixtureRegistry/" + group).spliterator(), false)
-                    .filter(d -> d.path("id").asText().equals(id.toString()) && d.path(revisionField).asLong() == revision)
-                    .map(d -> new Snapshot(id, revision, d)).findFirst();
+
+        @Override
+        public Optional<Snapshot> binding(UUID id, long revision) {
+            return find("bindings", id, revision, "schemaRevision");
+        }
+
+        @Override
+        public boolean permits(Resource kind, UUID id) {
+            return Set.of(99L, 100L, 105L, 106L, 300L, 302L, 501L)
+                .stream()
+                .map(value ->
+                    UUID.fromString("00000000-0000-4000-8000-" + String.format("%012d", value))
+                )
+                .anyMatch(id::equals);
+        }
+
+        @Override
+        public Optional<String> artifactSha256(UUID id) {
+            return java.util.stream.StreamSupport.stream(
+                examples.path("fixtureArtifacts").spliterator(),
+                false
+            )
+                .filter(a -> a.path("artifactId").asText().equals(id.toString()))
+                .map(a -> VclCanonical.sha256(a.path("contentUtf8").asText()))
+                .findFirst();
+        }
+
+        private Optional<Snapshot> find(
+            String group,
+            UUID id,
+            long revision,
+            String revisionField
+        ) {
+            return java.util.stream.StreamSupport.stream(
+                examples.at("/fixtureRegistry/" + group).spliterator(),
+                false
+            )
+                .filter(
+                    d ->
+                        d.path("id").asText().equals(id.toString()) &&
+                        d.path(revisionField).asLong() == revision
+                )
+                .map(d -> new Snapshot(id, revision, d))
+                .findFirst();
         }
     }
 }

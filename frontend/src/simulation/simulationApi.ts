@@ -33,7 +33,7 @@ export interface SimulationPreset {
   expectedAlerts: string[];
   defaultDuration: string;
   defaultInterval: string;
-  compatibleProfiles?:string[];
+  compatibleProfiles?: string[];
 }
 
 export function getSimulationConfig(deviceId: string) {
@@ -58,22 +58,35 @@ export function saveSimulationConfig(
 }
 
 export function validateSimulationConfig(deviceId: string, yamlConfig: string) {
-  return apiRequest<{ valid: boolean; errors: { path: string; message: string }[] }>(`/simulation/devices/${deviceId}/config/validate`, {
-    method: "POST",
-    body: JSON.stringify({ yamlConfig }),
-  });
+  return apiRequest<{ valid: boolean; errors: { path: string; message: string }[] }>(
+    `/simulation/devices/${deviceId}/config/validate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ yamlConfig }),
+    },
+  );
 }
 
 export function listSimulationPresets() {
   return apiRequest<SimulationPreset[]>("/simulation/presets");
 }
 
-export function getSimulationTemplate(profile = "FRIDGE", sourceId = "sim-fridge-001", preset = "NORMAL_OPERATION") {
+export function getSimulationTemplate(
+  profile = "FRIDGE",
+  sourceId = "sim-fridge-001",
+  preset = "NORMAL_OPERATION",
+) {
   const params = new URLSearchParams({ sourceId, preset });
-  return apiRequest<{ yamlConfig: string }>(`/simulation/templates/${profile}?${params.toString()}`);
+  return apiRequest<{ yamlConfig: string }>(
+    `/simulation/templates/${profile}?${params.toString()}`,
+  );
 }
 
-export function resetSimulationTemplate(deviceId: string, profile = "FRIDGE", sourceId = "sim-fridge-001") {
+export function resetSimulationTemplate(
+  deviceId: string,
+  profile = "FRIDGE",
+  sourceId = "sim-fridge-001",
+) {
   return apiRequest<{ yamlConfig: string }>(
     `/simulation/devices/${deviceId}/config/reset-template?profile=${encodeURIComponent(profile)}&sourceId=${encodeURIComponent(sourceId)}`,
     { method: "POST" },

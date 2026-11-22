@@ -34,10 +34,16 @@ public class TelemetryQualityFlag {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    protected TelemetryQualityFlag() {
-    }
+    protected TelemetryQualityFlag() {}
 
-    public TelemetryQualityFlag(UUID id, UUID readingId, UUID deviceId, QualityFlag flag, String message, Instant createdAt) {
+    public TelemetryQualityFlag(
+        UUID id,
+        UUID readingId,
+        UUID deviceId,
+        QualityFlag flag,
+        String message,
+        Instant createdAt
+    ) {
         this.id = id;
         this.readingId = readingId;
         this.deviceId = deviceId;
@@ -45,5 +51,4 @@ public class TelemetryQualityFlag {
         this.message = message;
         this.createdAt = createdAt;
     }
-
 }

@@ -8,16 +8,22 @@ import java.util.HashSet;
 
 /** Explicit model choice on the wire; existing reviewed operation payloads never change shape. */
 final class DashboardCreationPeriodProjection {
-    static final String GUIDANCE = "Creation PREPARED.command.payload.dashboardPeriod explicitly sets the WHOLE dashboard period. "
-            + "Use an explicitly requested global period, or " + com.voltcanary.aiagent.service.DashboardOperationProtocol.DEFAULT_PERIOD + " when none is specified. "
-            + "show_history.period overrides only that chart; it cannot set the dashboard default. "
-            + "The server converts dashboardPeriod to the canonical global set_period operation before creating widgets.";
+
+    static final String GUIDANCE =
+        "Creation PREPARED.command.payload.dashboardPeriod explicitly sets the WHOLE dashboard period. " +
+        "Use an explicitly requested global period, or " +
+        com.voltcanary.aiagent.service.DashboardOperationProtocol.DEFAULT_PERIOD +
+        " when none is specified. " +
+        "show_history.period overrides only that chart; it cannot set the dashboard default. " +
+        "The server converts dashboardPeriod to the canonical global set_period operation before creating widgets.";
     private final ObjectMapper mapper;
     private final JsonNode periods;
     private final JsonNode schema;
 
     static boolean supports(JsonNode schema) {
-        return schema.at("/$defs/command/properties/payload/properties/operations/items/anyOf").isArray();
+        return schema
+            .at("/$defs/command/properties/payload/properties/operations/items/anyOf")
+            .isArray();
     }
 
     DashboardCreationPeriodProjection(ObjectMapper mapper, JsonNode original) {
@@ -26,9 +32,11 @@ final class DashboardCreationPeriodProjection {
         var payload = (ObjectNode) projected.at("/$defs/command/properties/payload");
         JsonNode periodSchema = null;
         for (var operation : payload.at("/properties/operations/items/anyOf"))
-            if (operation.at("/properties/op/enum/0").asText().equals("set_period"))
-                periodSchema = operation.at("/properties/period").deepCopy();
-        if (periodSchema == null) throw new IllegalArgumentException("CREATION_PERIOD_SCHEMA_MISSING");
+            if (operation.at("/properties/op/enum/0").asText().equals("set_period")) periodSchema =
+                operation.at("/properties/period").deepCopy();
+        if (periodSchema == null) throw new IllegalArgumentException(
+            "CREATION_PERIOD_SCHEMA_MISSING"
+        );
         periods = periodSchema.path("enum").deepCopy();
         ((ObjectNode) periodSchema).put("description", GUIDANCE);
         ((ObjectNode) payload.path("properties")).set("dashboardPeriod", periodSchema);
@@ -37,12 +45,16 @@ final class DashboardCreationPeriodProjection {
         schema = projected;
     }
 
-    JsonNode schema() { return schema.deepCopy(); }
+    JsonNode schema() {
+        return schema.deepCopy();
+    }
 
     JsonNode correction(JsonNode rejected) {
-        if (!rejected.path("outcome").asText().equals("PREPARED")
-                || !rejected.at("/command/payload").isObject() || rejected.at("/command/payload").has("dashboardPeriod"))
-            return rejected.deepCopy();
+        if (
+            !rejected.path("outcome").asText().equals("PREPARED") ||
+            !rejected.at("/command/payload").isObject() ||
+            rejected.at("/command/payload").has("dashboardPeriod")
+        ) return rejected.deepCopy();
         var result = rejected.<ObjectNode>deepCopy();
         var payload = (ObjectNode) result.at("/command/payload");
         var operations = mapper.createArrayNode();
@@ -53,7 +65,9 @@ final class DashboardCreationPeriodProjection {
                 continue;
             }
             var period = operation.path("period");
-            if (!period.isTextual() || globalPeriod != null && !globalPeriod.equals(period)) return rejected.deepCopy();
+            if (
+                !period.isTextual() || (globalPeriod != null && !globalPeriod.equals(period))
+            ) return rejected.deepCopy();
             globalPeriod = period;
         }
         if (globalPeriod != null) payload.set("dashboardPeriod", globalPeriod.deepCopy());
@@ -66,7 +80,10 @@ final class DashboardCreationPeriodProjection {
         var period = proposal.at("/command/payload/dashboardPeriod");
         boolean allowed = false;
         for (var candidate : periods) allowed |= candidate.equals(period);
-        if (!allowed) throw new ModelProposalRejected(proposal, "Creation requires command.payload.dashboardPeriod from its enum; chart period is separate.");
+        if (!allowed) throw new ModelProposalRejected(
+            proposal,
+            "Creation requires command.payload.dashboardPeriod from its enum; chart period is separate."
+        );
         var result = proposal.<ObjectNode>deepCopy();
         var payload = (ObjectNode) result.at("/command/payload");
         var operations = mapper.createArrayNode();
@@ -74,11 +91,18 @@ final class DashboardCreationPeriodProjection {
         for (var operation : payload.path("operations")) ids.add(operation.path("id").asText());
         String id = "dashboard_period";
         for (int suffix = 1; ids.contains(id); suffix++) id = "dashboard_period_" + suffix;
-        operations.addObject().put("op", "set_period").put("id", id).putNull("targets").set("period", period.deepCopy());
+        operations
+            .addObject()
+            .put("op", "set_period")
+            .put("id", id)
+            .putNull("targets")
+            .set("period", period.deepCopy());
         for (var operation : payload.path("operations")) {
             boolean global = global(operation);
-            if (global && !operation.path("period").equals(period))
-                throw new ModelProposalRejected(proposal, "dashboardPeriod conflicts with a global set_period; choose one whole-dashboard period.");
+            if (global && !operation.path("period").equals(period)) throw new ModelProposalRejected(
+                proposal,
+                "dashboardPeriod conflicts with a global set_period; choose one whole-dashboard period."
+            );
             if (!global) operations.add(operation.deepCopy());
         }
         payload.remove("dashboardPeriod");
@@ -88,7 +112,11 @@ final class DashboardCreationPeriodProjection {
 
     private static boolean global(JsonNode operation) {
         var targets = operation.path("targets");
-        return operation.path("op").asText().equals("set_period")
-                && (targets.isMissingNode() || targets.isNull() || targets.isArray() && targets.isEmpty());
+        return (
+            operation.path("op").asText().equals("set_period") &&
+            (targets.isMissingNode() ||
+                targets.isNull() ||
+                (targets.isArray() && targets.isEmpty()))
+        );
     }
 }

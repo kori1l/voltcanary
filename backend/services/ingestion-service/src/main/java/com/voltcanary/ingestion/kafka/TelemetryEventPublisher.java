@@ -24,32 +24,50 @@ public class TelemetryEventPublisher {
 
     public void publish(TelemetryReceivedEvent event) {
         log.info(
-                "Publishing telemetry event topic={} eventId={} deviceId={}",
-                TelemetryTopics.TELEMETRY_RAW_V1,
-                event.eventId(),
-                event.deviceId());
+            "Publishing telemetry event topic={} eventId={} deviceId={}",
+            TelemetryTopics.TELEMETRY_RAW_V1,
+            event.eventId(),
+            event.deviceId()
+        );
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "published";
         try {
-            kafkaTemplate.send(TelemetryTopics.TELEMETRY_RAW_V1, event.deviceId().toString(), event)
-                    .get(properties.getKafkaAckTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            kafkaTemplate
+                .send(TelemetryTopics.TELEMETRY_RAW_V1, event.deviceId().toString(), event)
+                .get(properties.getKafkaAckTimeout().toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException exception) {
             outcome = "failed";
-            meterRegistry.counter("voltcanary.ingestion.kafka.publish", "outcome", outcome).increment();
+            meterRegistry
+                .counter("voltcanary.ingestion.kafka.publish", "outcome", outcome)
+                .increment();
             Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Telemetry broker publish interrupted", exception);
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Telemetry broker publish interrupted",
+                exception
+            );
         } catch (Exception exception) {
             outcome = "failed";
-            meterRegistry.counter("voltcanary.ingestion.kafka.publish", "outcome", outcome).increment();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Telemetry broker publish failed", exception);
+            meterRegistry
+                .counter("voltcanary.ingestion.kafka.publish", "outcome", outcome)
+                .increment();
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Telemetry broker publish failed",
+                exception
+            );
         } finally {
             if ("published".equals(outcome)) {
-                meterRegistry.counter("voltcanary.ingestion.kafka.publish", "outcome", outcome).increment();
+                meterRegistry
+                    .counter("voltcanary.ingestion.kafka.publish", "outcome", outcome)
+                    .increment();
             }
-            sample.stop(Timer.builder("voltcanary.ingestion.kafka.publish.latency")
+            sample.stop(
+                Timer.builder("voltcanary.ingestion.kafka.publish.latency")
                     .description("Kafka telemetry publish acknowledgement latency")
                     .tag("outcome", outcome)
-                    .register(meterRegistry));
+                    .register(meterRegistry)
+            );
         }
     }
 }

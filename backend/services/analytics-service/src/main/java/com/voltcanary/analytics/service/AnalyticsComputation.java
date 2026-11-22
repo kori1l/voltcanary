@@ -24,8 +24,17 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AnalyticsComputation {
-    public record Computed(List<DeviceBaseline> baselines, List<FeatureSet> features, List<Anomaly> anomalies,
-            RiskScore risk, BaselineStats primaryBaseline, TelemetryChartResponse primaryChart, boolean skipped) { }
+
+    public record Computed(
+        List<DeviceBaseline> baselines,
+        List<FeatureSet> features,
+        List<Anomaly> anomalies,
+        RiskScore risk,
+        BaselineStats primaryBaseline,
+        TelemetryChartResponse primaryChart,
+        boolean skipped
+    ) {}
+
     private final BaselineCalculator baselineCalculator;
     private final AnomalyDetector anomalyDetector;
     private final UserRuleAnomalyDetector userRuleAnomalyDetector;
@@ -57,28 +66,87 @@ public class AnalyticsComputation {
             String metric = input.metrics().get(index);
             var baseline = stats.get(index);
             var chart = input.charts().get(index);
-            baselines.add(features.baseline(input.device(), metric, input.period(), baseline, input.now()));
-            featureSets.add(features.featureSet(input.device(), metric, input.period(), input.from(), input.to(), baseline,
-                    chart, input.excludedSamples(), input.context().windows()));
-            anomalies.addAll(anomalyDetector.detect(input.device(), chart, baseline, input.from(), input.to(), input.inputHash(), input.now()));
+            baselines.add(
+                features.baseline(input.device(), metric, input.period(), baseline, input.now())
+            );
+            featureSets.add(
+                features.featureSet(
+                    input.device(),
+                    metric,
+                    input.period(),
+                    input.from(),
+                    input.to(),
+                    baseline,
+                    chart,
+                    input.excludedSamples(),
+                    input.context().windows()
+                )
+            );
+            anomalies.addAll(
+                anomalyDetector.detect(
+                    input.device(),
+                    chart,
+                    baseline,
+                    input.from(),
+                    input.to(),
+                    input.inputHash(),
+                    input.now()
+                )
+            );
         }
         for (var rule : input.rules()) {
             if (rule.metric() == null || rule.metric().isBlank()) continue;
             var chart = input.chartByMetric().get(rule.metric());
-            var baseline = statsByMetric.computeIfAbsent(rule.metric(), metric -> baselineCalculator.calculate(values(chart)));
-            anomalies.addAll(userRuleAnomalyDetector.detect(input.device(), rule, chart, baseline, input.from(), input.to(), input.inputHash(), input.now()));
+            var baseline = statsByMetric.computeIfAbsent(rule.metric(), metric ->
+                baselineCalculator.calculate(values(chart))
+            );
+            anomalies.addAll(
+                userRuleAnomalyDetector.detect(
+                    input.device(),
+                    rule,
+                    chart,
+                    baseline,
+                    input.from(),
+                    input.to(),
+                    input.inputHash(),
+                    input.now()
+                )
+            );
         }
-        var risk = riskScoreCalculator.calculate(input.device(), anomalies, allValues.size(), input.from(), input.to(), input.inputHash(), input.now());
-        return new Computed(List.copyOf(baselines), List.copyOf(featureSets), List.copyOf(anomalies), risk, primary, primaryChart, false);
+        var risk = riskScoreCalculator.calculate(
+            input.device(),
+            anomalies,
+            allValues.size(),
+            input.from(),
+            input.to(),
+            input.inputHash(),
+            input.now()
+        );
+        return new Computed(
+            List.copyOf(baselines),
+            List.copyOf(featureSets),
+            List.copyOf(anomalies),
+            risk,
+            primary,
+            primaryChart,
+            false
+        );
     }
 
-    public List<Recommendation> recommendations(UUID device, List<Anomaly> anomalies, PredictionResult prediction, Instant now) {
+    public List<Recommendation> recommendations(
+        UUID device,
+        List<Anomaly> anomalies,
+        PredictionResult prediction,
+        Instant now
+    ) {
         var result = new ArrayList<>(recommendationGenerator.generate(device, anomalies, now));
         result.addAll(mlRecommendations.mlRecommendations(device, prediction, now));
         return List.copyOf(result);
     }
 
     private List<Double> values(TelemetryChartResponse chart) {
-        return chart == null || chart.points() == null ? List.of() : chart.points().stream().map(TelemetryChartResponse.Point::value).sorted().toList();
+        return chart == null || chart.points() == null
+            ? List.of()
+            : chart.points().stream().map(TelemetryChartResponse.Point::value).sorted().toList();
     }
 }

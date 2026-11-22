@@ -11,6 +11,7 @@ public class AlertRetentionProperties {
 
     @Setter
     private boolean enabled = true;
+
     private long initialDelayMs = 300000;
     private long scanIntervalMs = 3600000;
     private Duration resolvedAlertTtl = Duration.ofDays(180);
@@ -34,6 +35,7 @@ public class AlertRetentionProperties {
     }
 
     public void setNotificationAttemptTtl(Duration notificationAttemptTtl) {
-        this.notificationAttemptTtl = notificationAttemptTtl == null ? Duration.ZERO : notificationAttemptTtl;
+        this.notificationAttemptTtl =
+            notificationAttemptTtl == null ? Duration.ZERO : notificationAttemptTtl;
     }
 }

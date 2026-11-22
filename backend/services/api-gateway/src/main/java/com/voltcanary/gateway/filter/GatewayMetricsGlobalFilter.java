@@ -22,12 +22,18 @@ public class GatewayMetricsGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         Timer.Sample sample = Timer.start(meterRegistry);
-        return chain.filter(exchange).doFinally(signalType -> sample.stop(Timer.builder("voltcanary.gateway.requests")
-                .description("Gateway requests by route, method, and status")
-                .tag("routeId", routeId(exchange))
-                .tag("method", String.valueOf(exchange.getRequest().getMethod()))
-                .tag("status", status(exchange))
-                .register(meterRegistry)));
+        return chain
+            .filter(exchange)
+            .doFinally(signalType ->
+                sample.stop(
+                    Timer.builder("voltcanary.gateway.requests")
+                        .description("Gateway requests by route, method, and status")
+                        .tag("routeId", routeId(exchange))
+                        .tag("method", String.valueOf(exchange.getRequest().getMethod()))
+                        .tag("status", status(exchange))
+                        .register(meterRegistry)
+                )
+            );
     }
 
     @Override

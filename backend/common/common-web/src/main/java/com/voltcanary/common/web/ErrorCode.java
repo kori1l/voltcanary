@@ -6,5 +6,5 @@ public enum ErrorCode {
     ACCESS_DENIED,
     RESOURCE_NOT_FOUND,
     CONFLICT,
-    INTERNAL_ERROR
+    INTERNAL_ERROR,
 }

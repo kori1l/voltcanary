@@ -20,42 +20,54 @@ public class AlertRuleClient {
     private final String internalServiceToken;
 
     public AlertRuleClient(
-            @Qualifier("alertRestClientBuilder") RestClient.Builder restClientBuilder,
-            AnalyticsDownstreamProperties downstreamProperties,
-            AnalyticsInternalProperties internalProperties) {
+        @Qualifier("alertRestClientBuilder") RestClient.Builder restClientBuilder,
+        AnalyticsDownstreamProperties downstreamProperties,
+        AnalyticsInternalProperties internalProperties
+    ) {
         this.restClient = restClientBuilder
-                .baseUrl(downstreamProperties.getAlertService().getBaseUrl())
-                .build();
+            .baseUrl(downstreamProperties.getAlertService().getBaseUrl())
+            .build();
         this.internalServiceToken = internalProperties.getServiceToken();
     }
 
     public List<AlertRuleSnapshot> effectiveRules(UUID deviceId, String correlationId) {
         try {
-            AlertRuleSnapshot[] response = restClient.get()
-                    .uri("/internal/alert-rules/effective?deviceId={deviceId}", deviceId)
-                    .headers(headers -> {
-                        headers.set("X-Correlation-Id", correlationId == null ? "" : correlationId);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .retrieve()
-                    .body(AlertRuleSnapshot[].class);
+            AlertRuleSnapshot[] response = restClient
+                .get()
+                .uri("/internal/alert-rules/effective?deviceId={deviceId}", deviceId)
+                .headers(headers -> {
+                    headers.set("X-Correlation-Id", correlationId == null ? "" : correlationId);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .retrieve()
+                .body(AlertRuleSnapshot[].class);
             if (response == null) throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Alert rule snapshot unavailable");
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                "Alert rule snapshot unavailable"
+            );
             return Arrays.asList(response);
         } catch (RestClientException exception) {
-            log.warn("analyticsAlertRulesUnavailable deviceId={} reason={}", deviceId, exception.getClass().getSimpleName());
+            log.warn(
+                "analyticsAlertRulesUnavailable deviceId={} reason={}",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
             throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Alert rule service unavailable");
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                "Alert rule service unavailable"
+            );
         }
     }
 
     public List<AlertRuleSnapshot> effectiveRulesStrict(UUID deviceId) {
-        AlertRuleSnapshot[] response = restClient.get()
-                .uri("/internal/alert-rules/effective?deviceId={deviceId}", deviceId)
-                .header("X-Internal-Service-Token", internalServiceToken)
-                .retrieve().body(AlertRuleSnapshot[].class);
+        AlertRuleSnapshot[] response = restClient
+            .get()
+            .uri("/internal/alert-rules/effective?deviceId={deviceId}", deviceId)
+            .header("X-Internal-Service-Token", internalServiceToken)
+            .retrieve()
+            .body(AlertRuleSnapshot[].class);
         if (response == null) throw new IllegalStateException("Rule snapshot unavailable");
         return Arrays.asList(response);
     }

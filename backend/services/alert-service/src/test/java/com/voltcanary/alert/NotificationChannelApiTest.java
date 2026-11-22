@@ -32,9 +32,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -44,24 +44,28 @@ import org.springframework.http.ResponseEntity;
 
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=false",
-                "spring.datasource.url=jdbc:h2:mem:notification-channel-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
-                "spring.jpa.hibernate.ddl-auto=none",
-                "spring.flyway.enabled=true",
-                "app.alert.notifications.worker-enabled=false",
-                "app.alert.reconciliation.enabled=false",
-                "app.alert.authorization.enabled=false"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=false",
+        "spring.datasource.url=jdbc:h2:mem:notification-channel-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.flyway.enabled=true",
+        "app.alert.notifications.worker-enabled=false",
+        "app.alert.reconciliation.enabled=false",
+        "app.alert.authorization.enabled=false",
+    }
+)
 class NotificationChannelApiTest extends SignedUserTest {
+
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
     private com.voltcanary.alert.service.AlertAccessService accountAccess;
 
     @org.junit.jupiter.api.BeforeEach
     void accountOwnership() {
         org.mockito.Mockito.doReturn(ACCOUNT_ID).when(accountAccess).ownAccount(USER_ID.toString());
-        org.mockito.Mockito.doReturn(OTHER_ACCOUNT_ID).when(accountAccess).ownAccount(OTHER_ACCOUNT_ID.toString());
+        org.mockito.Mockito.doReturn(OTHER_ACCOUNT_ID)
+            .when(accountAccess)
+            .ownAccount(OTHER_ACCOUNT_ID.toString());
     }
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -103,24 +107,35 @@ class NotificationChannelApiTest extends SignedUserTest {
 
     @Test
     void channelCrudIsScopedByAccountAndUsesCredentialsRef() {
-        ResponseEntity<List<NotificationChannelResponse>> initialListResponse = restTemplate.exchange(
+        ResponseEntity<List<NotificationChannelResponse>> initialListResponse =
+            restTemplate.exchange(
                 "/alerts/notification-channels",
                 HttpMethod.GET,
                 entity(ACCOUNT_ID, null),
-                new ParameterizedTypeReference<>() {
-                });
+                new ParameterizedTypeReference<>() {}
+            );
         assertThat(initialListResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         ResponseEntity<NotificationChannelResponse> createResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Ops webhook",
-                        "channelType", "webhook",
-                        "config", Map.of("urlRef", "ops-primary-webhook", "headers", Map.of("X-Team", "ops")),
-                        "credentialsRef", "vault://alerts/webhooks/ops",
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Ops webhook",
+                    "channelType",
+                    "webhook",
+                    "config",
+                    Map.of("urlRef", "ops-primary-webhook", "headers", Map.of("X-Team", "ops")),
+                    "credentialsRef",
+                    "vault://alerts/webhooks/ops",
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         NotificationChannelResponse created = createResponse.getBody();
@@ -131,61 +146,84 @@ class NotificationChannelApiTest extends SignedUserTest {
         assertThat(created.enabled()).isTrue();
 
         ResponseEntity<List<NotificationChannelResponse>> listResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.GET,
-                entity(ACCOUNT_ID, null),
-                new ParameterizedTypeReference<>() {
-                });
-        ResponseEntity<List<NotificationChannelResponse>> otherAccountListResponse = restTemplate.exchange(
+            "/alerts/notification-channels",
+            HttpMethod.GET,
+            entity(ACCOUNT_ID, null),
+            new ParameterizedTypeReference<>() {}
+        );
+        ResponseEntity<List<NotificationChannelResponse>> otherAccountListResponse =
+            restTemplate.exchange(
                 "/alerts/notification-channels",
                 HttpMethod.GET,
                 entity(OTHER_ACCOUNT_ID, null),
-                new ParameterizedTypeReference<>() {
-                });
+                new ParameterizedTypeReference<>() {}
+            );
 
-        assertThat(listResponse.getBody()).extracting(NotificationChannelResponse::id).contains(created.id());
+        assertThat(listResponse.getBody())
+            .extracting(NotificationChannelResponse::id)
+            .contains(created.id());
         assertThat(otherAccountListResponse.getBody()).isEmpty();
 
         ResponseEntity<NotificationChannelResponse> disableResponse = restTemplate.exchange(
-                "/alerts/notification-channels/{id}/disable",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, null),
-                NotificationChannelResponse.class,
-                created.id());
+            "/alerts/notification-channels/{id}/disable",
+            HttpMethod.POST,
+            entity(ACCOUNT_ID, null),
+            NotificationChannelResponse.class,
+            created.id()
+        );
         assertThat(disableResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(disableResponse.getBody().enabled()).isFalse();
 
         ResponseEntity<NotificationChannelResponse> updateResponse = restTemplate.exchange(
-                "/alerts/notification-channels/{id}",
-                HttpMethod.PUT,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Ops webhook updated",
-                        "config", Map.of("urlRef", "ops-secondary-webhook"))),
-                NotificationChannelResponse.class,
-                created.id());
+            "/alerts/notification-channels/{id}",
+            HttpMethod.PUT,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Ops webhook updated",
+                    "config",
+                    Map.of("urlRef", "ops-secondary-webhook")
+                )
+            ),
+            NotificationChannelResponse.class,
+            created.id()
+        );
         assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResponse.getBody().name()).isEqualTo("Ops webhook updated");
-        assertThat(updateResponse.getBody().config()).containsEntry("urlRef", "ops-secondary-webhook");
+        assertThat(updateResponse.getBody().config()).containsEntry(
+            "urlRef",
+            "ops-secondary-webhook"
+        );
 
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
-                "/alerts/notification-channels/{id}",
-                HttpMethod.DELETE,
-                entity(ACCOUNT_ID, null),
-                Void.class,
-                created.id());
+            "/alerts/notification-channels/{id}",
+            HttpMethod.DELETE,
+            entity(ACCOUNT_ID, null),
+            Void.class,
+            created.id()
+        );
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     @Test
     void configRejectsInlineSecrets() {
         ResponseEntity<String> response = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Unsafe webhook",
-                        "channelType", "WEBHOOK",
-                        "config", Map.of("headers", Map.of("AuthorizationToken", "secret-value")))),
-                String.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Unsafe webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    Map.of("headers", Map.of("AuthorizationToken", "secret-value"))
+                )
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
@@ -198,7 +236,9 @@ class NotificationChannelApiTest extends SignedUserTest {
         webhookServer = HttpServer.create(new InetSocketAddress(0), 0);
         webhookServer.createContext("/test", exchange -> {
             requests.incrementAndGet();
-            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            requestBody.set(
+                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)
+            );
             byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(202, response.length);
@@ -211,24 +251,44 @@ class NotificationChannelApiTest extends SignedUserTest {
         long alertCountBefore = alertRepository.count();
         long alertEventCountBefore = alertEventRepository.count();
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(accountId, Map.of(
-                        "name", "Test webhook",
-                        "channelType", "WEBHOOK",
-                        "config", Map.of("url", webhookUrl),
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                accountId,
+                Map.of(
+                    "name",
+                    "Test webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    Map.of("url", webhookUrl),
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
 
         ResponseEntity<NotificationAttemptResponse> response = restTemplate.exchange(
-                "/alerts/notification-channels/{id}/test",
-                HttpMethod.POST,
-                entity(accountId, Map.of("sample", Map.of(
-                        "title", "Ops delivery test",
-                        "severity", "INFO",
-                        "alertType", "NOTIFICATION_TEST"))),
-                NotificationAttemptResponse.class,
-                createChannelResponse.getBody().id());
+            "/alerts/notification-channels/{id}/test",
+            HttpMethod.POST,
+            entity(
+                accountId,
+                Map.of(
+                    "sample",
+                    Map.of(
+                        "title",
+                        "Ops delivery test",
+                        "severity",
+                        "INFO",
+                        "alertType",
+                        "NOTIFICATION_TEST"
+                    )
+                )
+            ),
+            NotificationAttemptResponse.class,
+            createChannelResponse.getBody().id()
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().alertId()).isNull();
@@ -247,22 +307,32 @@ class NotificationChannelApiTest extends SignedUserTest {
     void testDeliveryRejectsSecretLikePayloadKeysWithoutPersistingAttempt() {
         UUID accountId = UUID.randomUUID();
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(accountId, Map.of(
-                        "name", "Unsafe test webhook",
-                        "channelType", "WEBHOOK",
-                        "config", Map.of("urlRef", "safe-webhook"),
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                accountId,
+                Map.of(
+                    "name",
+                    "Unsafe test webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    Map.of("urlRef", "safe-webhook"),
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
         long attemptsBefore = notificationAttemptRepository.count();
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/alerts/notification-channels/{id}/test",
-                HttpMethod.POST,
-                entity(accountId, Map.of("sample", Map.of("botToken", "secret-value"))),
-                String.class,
-                createChannelResponse.getBody().id());
+            "/alerts/notification-channels/{id}/test",
+            HttpMethod.POST,
+            entity(accountId, Map.of("sample", Map.of("botToken", "secret-value"))),
+            String.class,
+            createChannelResponse.getBody().id()
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(notificationAttemptRepository.count()).isEqualTo(attemptsBefore);
@@ -272,34 +342,50 @@ class NotificationChannelApiTest extends SignedUserTest {
     void diagnosticsAreScopedAndRedactProviderSummaries() {
         UUID accountId = UUID.randomUUID();
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(accountId, Map.of(
-                        "name", "Slack placeholder",
-                        "channelType", "SLACK",
-                        "config", Map.of("routingKey", "ops"),
-                        "enabled", true)),
-                NotificationChannelResponse.class);
-        var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                accountId,
+                Map.of(
+                    "name",
+                    "Slack placeholder",
+                    "channelType",
+                    "SLACK",
+                    "config",
+                    Map.of("routingKey", "ops"),
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
+        var channel = notificationChannelRepository
+            .findById(createChannelResponse.getBody().id())
+            .orElseThrow();
         var attempt = notificationAttemptService.createTestAttempt(channel, Map.of());
         notificationAttemptService.markFailed(
-                notificationAttemptService.claimAttempt(attempt.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(),
-                "HTTP_401",
-                "provider rejected token=super-secret-value",
-                true);
+            notificationAttemptService
+                .claimAttempt(attempt.getId(), "test", java.time.Duration.ofMinutes(1))
+                .orElseThrow(),
+            "HTTP_401",
+            "provider rejected token=super-secret-value",
+            true
+        );
 
         ResponseEntity<NotificationChannelDiagnosticsResponse> response = restTemplate.exchange(
-                "/alerts/notification-channels/{id}/diagnostics",
-                HttpMethod.GET,
-                entity(accountId, null),
-                NotificationChannelDiagnosticsResponse.class,
-                channel.getId());
+            "/alerts/notification-channels/{id}/diagnostics",
+            HttpMethod.GET,
+            entity(accountId, null),
+            NotificationChannelDiagnosticsResponse.class,
+            channel.getId()
+        );
         ResponseEntity<String> otherAccountResponse = restTemplate.exchange(
-                "/alerts/notification-channels/{id}/diagnostics",
-                HttpMethod.GET,
-                entity(OTHER_ACCOUNT_ID, null),
-                String.class,
-                channel.getId());
+            "/alerts/notification-channels/{id}/diagnostics",
+            HttpMethod.GET,
+            entity(OTHER_ACCOUNT_ID, null),
+            String.class,
+            channel.getId()
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().adapterRegistered()).isFalse();
@@ -314,13 +400,21 @@ class NotificationChannelApiTest extends SignedUserTest {
     @Test
     void verifiedUserResolvesOwnedAccountWhenAccountHeaderIsMissing() {
         ResponseEntity<NotificationChannelResponse> response = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(null, Map.of(
-                        "name", "User scoped email",
-                        "channelType", "EMAIL",
-                        "config", Map.of("recipients", List.of("ops@example.com")))),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                null,
+                Map.of(
+                    "name",
+                    "User scoped email",
+                    "channelType",
+                    "EMAIL",
+                    "config",
+                    Map.of("recipients", List.of("ops@example.com"))
+                )
+            ),
+            NotificationChannelResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody().accountId()).isEqualTo(ACCOUNT_ID);
@@ -329,48 +423,93 @@ class NotificationChannelApiTest extends SignedUserTest {
     @Test
     void emailAndTelegramChannelConfigIsValidated() {
         ResponseEntity<NotificationChannelResponse> emailResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Ops email",
-                        "channelType", "EMAIL",
-                        "config", Map.of(
-                                "recipients", List.of("ops@example.com"),
-                                "cc", List.of("lead@example.com"),
-                                "fromAlias", "VoltCanary",
-                                "subjectPrefix", "[VoltCanary]"),
-                        "credentialsRef", "vault://alerts/email/ops",
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Ops email",
+                    "channelType",
+                    "EMAIL",
+                    "config",
+                    Map.of(
+                        "recipients",
+                        List.of("ops@example.com"),
+                        "cc",
+                        List.of("lead@example.com"),
+                        "fromAlias",
+                        "VoltCanary",
+                        "subjectPrefix",
+                        "[VoltCanary]"
+                    ),
+                    "credentialsRef",
+                    "vault://alerts/email/ops",
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
         ResponseEntity<String> invalidEmailResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Bad email",
-                        "channelType", "EMAIL",
-                        "config", Map.of("recipients", List.of("not-an-email")))),
-                String.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Bad email",
+                    "channelType",
+                    "EMAIL",
+                    "config",
+                    Map.of("recipients", List.of("not-an-email"))
+                )
+            ),
+            String.class
+        );
         ResponseEntity<NotificationChannelResponse> telegramResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Ops Telegram",
-                        "channelType", "TELEGRAM",
-                        "config", Map.of(
-                                "chatId", "-1001234567890",
-                                "parseMode", "MarkdownV2",
-                                "disableWebPagePreview", true),
-                        "credentialsRef", "vault://alerts/telegram/ops",
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Ops Telegram",
+                    "channelType",
+                    "TELEGRAM",
+                    "config",
+                    Map.of(
+                        "chatId",
+                        "-1001234567890",
+                        "parseMode",
+                        "MarkdownV2",
+                        "disableWebPagePreview",
+                        true
+                    ),
+                    "credentialsRef",
+                    "vault://alerts/telegram/ops",
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
         ResponseEntity<String> unsafeTelegramResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Unsafe Telegram",
-                        "channelType", "TELEGRAM",
-                        "config", Map.of("chatId", "-1001234567890", "botToken", "secret-value"))),
-                String.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Unsafe Telegram",
+                    "channelType",
+                    "TELEGRAM",
+                    "config",
+                    Map.of("chatId", "-1001234567890", "botToken", "secret-value")
+                )
+            ),
+            String.class
+        );
 
         assertThat(emailResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(emailResponse.getBody().config()).containsEntry("fromAlias", "VoltCanary");
@@ -382,7 +521,8 @@ class NotificationChannelApiTest extends SignedUserTest {
 
     @Test
     void notificationAttemptsTrackDeliveryStatusAndAreVisibleForAlert() {
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -390,31 +530,56 @@ class NotificationChannelApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Notification attempt status test.",
-                Instant.parse("2026-05-13T16:15:00Z")));
+                Instant.parse("2026-05-13T16:15:00Z")
+            )
+        );
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Attempt webhook",
-                        "channelType", "WEBHOOK",
-                        "config", Map.of("urlRef", "attempt-webhook"),
-                        "credentialsRef", "vault://alerts/webhooks/attempt")),
-                NotificationChannelResponse.class);
-        var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Attempt webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    Map.of("urlRef", "attempt-webhook"),
+                    "credentialsRef",
+                    "vault://alerts/webhooks/attempt"
+                )
+            ),
+            NotificationChannelResponse.class
+        );
+        var channel = notificationChannelRepository
+            .findById(createChannelResponse.getBody().id())
+            .orElseThrow();
 
         var pending = notificationAttemptService.createPendingAttempt(
-                notificationRequest(alert, UUID.randomUUID(), "MANUAL"),
-                channel);
-        var retrying = notificationAttemptService.markRetrying(notificationAttemptService.claimAttempt(pending.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(), "HTTP_503", "Provider unavailable");
-        var sent = notificationAttemptService.markSent(notificationAttemptService.claimAttempt(retrying.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(), "Accepted by provider");
+            notificationRequest(alert, UUID.randomUUID(), "MANUAL"),
+            channel
+        );
+        var retrying = notificationAttemptService.markRetrying(
+            notificationAttemptService
+                .claimAttempt(pending.getId(), "test", java.time.Duration.ofMinutes(1))
+                .orElseThrow(),
+            "HTTP_503",
+            "Provider unavailable"
+        );
+        var sent = notificationAttemptService.markSent(
+            notificationAttemptService
+                .claimAttempt(retrying.getId(), "test", java.time.Duration.ofMinutes(1))
+                .orElseThrow(),
+            "Accepted by provider"
+        );
 
         ResponseEntity<List<NotificationAttemptResponse>> response = restTemplate.exchange(
-                "/alerts/{id}/notification-attempts",
-                HttpMethod.GET,
-                entity(ACCOUNT_ID, null),
-                new ParameterizedTypeReference<>() {
-                },
-                alert.getId());
+            "/alerts/{id}/notification-attempts",
+            HttpMethod.GET,
+            entity(ACCOUNT_ID, null),
+            new ParameterizedTypeReference<>() {},
+            alert.getId()
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);
@@ -436,47 +601,74 @@ class NotificationChannelApiTest extends SignedUserTest {
         Alert alert = saveAlertWithAccount();
         UUID claimAccountId = UUID.randomUUID();
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(claimAccountId, Map.of(
-                        "name", "Claim webhook",
-                        "channelType", "WEBHOOK",
-                        "config", Map.of("urlRef", "claim-webhook"),
-                        "enabled", true)),
-                NotificationChannelResponse.class);
-        var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                claimAccountId,
+                Map.of(
+                    "name",
+                    "Claim webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    Map.of("urlRef", "claim-webhook"),
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
+        var channel = notificationChannelRepository
+            .findById(createChannelResponse.getBody().id())
+            .orElseThrow();
         var pending = notificationAttemptService.createPendingAttempt(
-                notificationRequest(alert, UUID.randomUUID(), "ALERT_CREATED"),
-                channel);
+            notificationRequest(alert, UUID.randomUUID(), "ALERT_CREATED"),
+            channel
+        );
 
-        var firstClaim = notificationAttemptService.claimNext("worker-a", Duration.ofMinutes(2), 10);
-        var secondClaim = notificationAttemptService.claimNext("worker-b", Duration.ofMinutes(2), 10);
+        var firstClaim = notificationAttemptService.claimNext(
+            "worker-a",
+            Duration.ofMinutes(2),
+            10
+        );
+        var secondClaim = notificationAttemptService.claimNext(
+            "worker-b",
+            Duration.ofMinutes(2),
+            10
+        );
 
         assertThat(firstClaim).isPresent();
         assertThat(firstClaim.get().getId()).isEqualTo(pending.getId());
-        assertThat(notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy())
-                .isEqualTo("worker-a");
+        assertThat(
+            notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy()
+        ).isEqualTo("worker-a");
         assertThat(secondClaim).isEmpty();
 
         var stale = notificationAttemptRepository.findById(pending.getId()).orElseThrow();
         stale.setLockedAt(Instant.now().minus(Duration.ofMinutes(5)));
         notificationAttemptRepository.saveAndFlush(stale);
 
-        var replayClaim = notificationAttemptService.claimNext("worker-b", Duration.ofMinutes(2), 10);
+        var replayClaim = notificationAttemptService.claimNext(
+            "worker-b",
+            Duration.ofMinutes(2),
+            10
+        );
 
         assertThat(replayClaim).isPresent();
         assertThat(replayClaim.get().getId()).isEqualTo(pending.getId());
-        assertThat(notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy())
-                .isEqualTo("worker-b");
-        assertThatThrownBy(() -> notificationAttemptService.markSent(firstClaim.orElseThrow(), "late acknowledgement"))
-                .isInstanceOf(NotificationAttemptService.LeaseLost.class);
+        assertThat(
+            notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy()
+        ).isEqualTo("worker-b");
+        assertThatThrownBy(() ->
+            notificationAttemptService.markSent(firstClaim.orElseThrow(), "late acknowledgement")
+        ).isInstanceOf(NotificationAttemptService.LeaseLost.class);
         var current = notificationAttemptRepository.findById(pending.getId()).orElseThrow();
         assertThat(current.getLockedBy()).isEqualTo("worker-b");
         assertThat(current.getStatus().name()).isEqualTo("PROCESSING");
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    @org.junit.jupiter.params.provider.ValueSource(booleans = { false, true })
     void webhookNotificationDeliveryCreatesSentAttempt(boolean configurable) throws Exception {
         AtomicInteger requests = new AtomicInteger();
         AtomicReference<String> requestBody = new AtomicReference<>("");
@@ -485,7 +677,9 @@ class NotificationChannelApiTest extends SignedUserTest {
         webhookServer.createContext("/alerts", exchange -> {
             requests.incrementAndGet();
             idempotencyKey.set(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
-            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            requestBody.set(
+                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)
+            );
             byte[] response = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(202, response.length);
@@ -497,26 +691,57 @@ class NotificationChannelApiTest extends SignedUserTest {
         String webhookUrl = "http://localhost:" + webhookServer.getAddress().getPort() + "/alerts";
         String ruleId = UUID.randomUUID().toString();
         if (configurable) {
-            var preference = restTemplate.exchange("/alerts/notification-preferences", HttpMethod.PUT,
-                    entity(ACCOUNT_ID, Map.of("enabled", true, "configurableRuleAlertsEnabled", true)), String.class);
+            var preference = restTemplate.exchange(
+                "/alerts/notification-preferences",
+                HttpMethod.PUT,
+                entity(ACCOUNT_ID, Map.of("enabled", true, "configurableRuleAlertsEnabled", true)),
+                String.class
+            );
             assertThat(preference.getStatusCode()).isEqualTo(HttpStatus.OK);
-            var unapproved = restTemplate.exchange("/alerts/notification-channels", HttpMethod.POST,
-                    entity(ACCOUNT_ID, Map.of("name", "Unapproved for this rule", "channelType", "WEBHOOK",
-                            "config", Map.of("url", webhookUrl, "configurableRuleIds", List.of(UUID.randomUUID().toString())))),
-                    NotificationChannelResponse.class);
+            var unapproved = restTemplate.exchange(
+                "/alerts/notification-channels",
+                HttpMethod.POST,
+                entity(
+                    ACCOUNT_ID,
+                    Map.of(
+                        "name",
+                        "Unapproved for this rule",
+                        "channelType",
+                        "WEBHOOK",
+                        "config",
+                        Map.of(
+                            "url",
+                            webhookUrl,
+                            "configurableRuleIds",
+                            List.of(UUID.randomUUID().toString())
+                        )
+                    )
+                ),
+                NotificationChannelResponse.class
+            );
             assertThat(unapproved.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         }
 
         ResponseEntity<NotificationChannelResponse> createChannelResponse = restTemplate.exchange(
-                "/alerts/notification-channels",
-                HttpMethod.POST,
-                entity(ACCOUNT_ID, Map.of(
-                        "name", "Delivery webhook",
-                        "channelType", "WEBHOOK",
-                        "config", configurable ? Map.of("url", webhookUrl, "configurableRuleIds", List.of(ruleId))
-                                : Map.of("url", webhookUrl),
-                        "enabled", true)),
-                NotificationChannelResponse.class);
+            "/alerts/notification-channels",
+            HttpMethod.POST,
+            entity(
+                ACCOUNT_ID,
+                Map.of(
+                    "name",
+                    "Delivery webhook",
+                    "channelType",
+                    "WEBHOOK",
+                    "config",
+                    configurable
+                        ? Map.of("url", webhookUrl, "configurableRuleIds", List.of(ruleId))
+                        : Map.of("url", webhookUrl),
+                    "enabled",
+                    true
+                )
+            ),
+            NotificationChannelResponse.class
+        );
         Alert alert = saveAlertWithAccount();
         if (configurable) {
             alert.setAlertType("CONFIGURABLE_RULE");
@@ -525,27 +750,45 @@ class NotificationChannelApiTest extends SignedUserTest {
         }
 
         UUID alertEventId = UUID.randomUUID();
-        alertNotificationPort.alertCreated(notificationRequest(alert, alertEventId, "ALERT_CREATED"));
+        alertNotificationPort.alertCreated(
+            notificationRequest(alert, alertEventId, "ALERT_CREATED")
+        );
 
         List<NotificationAttemptResponse> attempts = waitForAttempts(alert.getId(), "SENT");
-        alertNotificationPort.alertCreated(notificationRequest(alert, alertEventId, "ALERT_CREATED"));
+        alertNotificationPort.alertCreated(
+            notificationRequest(alert, alertEventId, "ALERT_CREATED")
+        );
         Thread.sleep(250);
 
         assertThat(requests.get()).isEqualTo(1);
         assertThat(requestBody.get()).contains("\"eventType\":\"ALERT_CREATED\"");
-        assertThat(requestBody.get()).contains("\"idempotencyKey\":\"" + idempotencyKey.get() + "\"");
+        assertThat(requestBody.get()).contains(
+            "\"idempotencyKey\":\"" + idempotencyKey.get() + "\""
+        );
         assertThat(requestBody.get()).contains("\"alertId\":\"" + alert.getId());
         assertThat(attempts).hasSize(1);
         assertThat(attempts.getFirst().channelId()).isEqualTo(createChannelResponse.getBody().id());
         assertThat(attempts.getFirst().status()).isEqualTo("SENT");
         assertThat(attempts.getFirst().providerResponseSummary()).isEqualTo("HTTP 202");
-        assertThat(idempotencyKey.get())
-                .isEqualTo(alertEventId + ":ALERT_CREATED:" + createChannelResponse.getBody().id());
-        assertThat(notificationAttemptRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())).hasSize(1);
+        assertThat(idempotencyKey.get()).isEqualTo(
+            alertEventId + ":ALERT_CREATED:" + createChannelResponse.getBody().id()
+        );
+        assertThat(
+            notificationAttemptRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())
+        ).hasSize(1);
     }
 
-    private AlertNotificationRequest notificationRequest(Alert alert, UUID alertEventId, String eventType) {
-        return AlertNotificationRequest.fromAlert(alert, alertEventId, eventType, alert.getCreatedAt());
+    private AlertNotificationRequest notificationRequest(
+        Alert alert,
+        UUID alertEventId,
+        String eventType
+    ) {
+        return AlertNotificationRequest.fromAlert(
+            alert,
+            alertEventId,
+            eventType,
+            alert.getCreatedAt()
+        );
     }
 
     private Alert saveAlertWithAccount() {
@@ -565,16 +808,25 @@ class NotificationChannelApiTest extends SignedUserTest {
         return alertRepository.saveAndFlush(alert);
     }
 
-    private List<NotificationAttemptResponse> waitForAttempts(UUID alertId, String status) throws InterruptedException {
+    private List<NotificationAttemptResponse> waitForAttempts(
+        UUID alertId,
+        String status
+    ) throws InterruptedException {
         for (int index = 0; index < 40; index++) {
             ResponseEntity<List<NotificationAttemptResponse>> response = restTemplate.exchange(
-                    "/alerts/{id}/notification-attempts",
-                    HttpMethod.GET,
-                    entity(ACCOUNT_ID, null),
-                    new ParameterizedTypeReference<>() {
-                    },
-                    alertId);
-            if (response.getBody() != null && response.getBody().stream().anyMatch(attempt -> status.equals(attempt.status()))) {
+                "/alerts/{id}/notification-attempts",
+                HttpMethod.GET,
+                entity(ACCOUNT_ID, null),
+                new ParameterizedTypeReference<>() {},
+                alertId
+            );
+            if (
+                response.getBody() != null &&
+                response
+                    .getBody()
+                    .stream()
+                    .anyMatch(attempt -> status.equals(attempt.status()))
+            ) {
                 return response.getBody();
             }
             Thread.sleep(100);
@@ -584,8 +836,13 @@ class NotificationChannelApiTest extends SignedUserTest {
 
     private HttpEntity<Object> entity(UUID accountId, Object body) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                OTHER_ACCOUNT_ID.equals(accountId) ? OTHER_ACCOUNT_ID : USER_ID, "actor@example.invalid", "USER"));
+        headers.setBearerAuth(
+            com.voltcanary.common.test.SignedUserTokens.create(
+                OTHER_ACCOUNT_ID.equals(accountId) ? OTHER_ACCOUNT_ID : USER_ID,
+                "actor@example.invalid",
+                "USER"
+            )
+        );
         if (accountId != null) {
             headers.set("X-Account-Id", accountId.toString());
         }

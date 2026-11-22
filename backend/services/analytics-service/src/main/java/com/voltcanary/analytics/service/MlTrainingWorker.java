@@ -14,6 +14,8 @@ import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlInferenceModelPreference;
+import com.voltcanary.analytics.ml.MlInferenceRecentWindow;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.ml.MlTrainingMetricRow;
 import com.voltcanary.analytics.ml.MlTrainingRequest;
@@ -59,7 +61,8 @@ public class MlTrainingWorker {
     private final MlClient mlClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
-    private final String workerId = ManagementFactory.getRuntimeMXBean().getName() + "-" + UUID.randomUUID();
+    private final String workerId =
+        ManagementFactory.getRuntimeMXBean().getName() + "-" + UUID.randomUUID();
 
     @Scheduled(fixedDelayString = "${app.ml.training.worker-delay:5000}")
     public void scheduledExecuteNextQueuedRun() {
@@ -75,24 +78,36 @@ public class MlTrainingWorker {
         UUID runId = run.getId();
         Timer.Sample sample = Timer.start(meterRegistry);
         Instant started = run.getStartedAt() == null ? Instant.now() : run.getStartedAt();
-        log.info("mlTrainingStarted runId={} accountId={} datasetVersionId={} featureSnapshotId={} modelFamily={} algorithm={}",
-                run.getId(), run.getAccountId(), run.getDatasetVersionId(), run.getFeatureSnapshotId(), run.getModelFamily(), run.getAlgorithm());
+        log.info(
+            "mlTrainingStarted runId={} accountId={} datasetVersionId={} featureSnapshotId={} modelFamily={} algorithm={}",
+            run.getId(),
+            run.getAccountId(),
+            run.getDatasetVersionId(),
+            run.getFeatureSnapshotId(),
+            run.getModelFamily(),
+            run.getAlgorithm()
+        );
 
         try {
             assertNotCanceled(run);
-            MlDatasetVersion datasetVersion = datasetVersionRepository.findById(run.getDatasetVersionId())
-                    .orElseThrow(() -> new IllegalStateException("Dataset version is missing"));
+            MlDatasetVersion datasetVersion = datasetVersionRepository
+                .findById(run.getDatasetVersionId())
+                .orElseThrow(() -> new IllegalStateException("Dataset version is missing"));
             if (datasetVersion.getStatus() != MlDatasetStatus.READY) {
                 throw new IllegalStateException("Dataset version is not READY");
             }
             heartbeat(run);
             assertNotCanceled(run);
-            MlFeatureSnapshot featureSnapshot = featureSnapshotRepository.findById(run.getFeatureSnapshotId())
-                    .orElseThrow(() -> new IllegalStateException("Feature snapshot is missing"));
+            MlFeatureSnapshot featureSnapshot = featureSnapshotRepository
+                .findById(run.getFeatureSnapshotId())
+                .orElseThrow(() -> new IllegalStateException("Feature snapshot is missing"));
             if (featureSnapshot.getRowCount() <= 0) {
                 throw new IllegalStateException("Feature snapshot has no rows");
             }
-            List<MlFeatureRow> featureRows = featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshot.getId());
+            List<MlFeatureRow> featureRows =
+                featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(
+                    featureSnapshot.getId()
+                );
             List<MlTrainingMetricRow> trainingRows = trainingRows(featureRows);
             if (trainingRows.isEmpty()) {
                 throw new IllegalStateException("Feature snapshot has no numeric feature rows");
@@ -100,7 +115,8 @@ public class MlTrainingWorker {
             heartbeat(run);
             assertNotCanceled(run);
 
-            MlTrainingResponse trainingResponse = mlClient.requestTraining(new MlTrainingRequest(
+            MlTrainingResponse trainingResponse = mlClient.requestTraining(
+                new MlTrainingRequest(
                     run.getId(),
                     idempotencyKey(run),
                     "model-" + run.getId(),
@@ -113,41 +129,69 @@ public class MlTrainingWorker {
                     integerOption(run.getHyperparametersJson(), "minimumPositiveLabels"),
                     doubleOption(run.getHyperparametersJson(), "minimumLabelCoverage"),
                     mapOption(run.getHyperparametersJson(), "approvalGateProfile"),
-                    trainingRows));
+                    trainingRows
+                )
+            );
             if (trainingResponse == null || !"SUCCEEDED".equals(trainingResponse.status())) {
-                throw new IllegalStateException("ML-service training did not produce a succeeded model artifact");
+                throw new IllegalStateException(
+                    "ML-service training did not produce a succeeded model artifact"
+                );
             }
             heartbeat(run);
             assertNotCanceled(run);
             UUID modelVersionId = UUID.fromString(trainingResponse.modelVersionId());
             Map<String, Object> smokeMetrics = smokeMetrics(featureRows);
             MlInferenceResponse smokeResponse = mlClient.requestPrediction(
-                    UUID.fromString(trainingRows.get(0).deviceId()),
-                    Instant.parse(trainingRows.get(0).timestamp()),
-                    smokeMetrics,
-                    List.of(),
-                    null,
-                    Map.of("sampleCount", trainingRows.size()),
-                    Map.of(
-                            "modelVersionId", modelVersionId.toString(),
-                            "artifactUri", trainingResponse.artifactUri() == null ? "" : trainingResponse.artifactUri(),
-                            "manifestUri", trainingResponse.manifestUri() == null ? "" : trainingResponse.manifestUri(),
-                            "artifactHash", trainingResponse.artifactHash() == null ? "" : trainingResponse.artifactHash(),
-                            "artifactSizeBytes", trainingResponse.artifactSizeBytes() == null ? 0L : trainingResponse.artifactSizeBytes(),
-                            "modelFamily", run.getModelFamily().name(),
-                            "modelVersion", trainingResponse.modelVersion() == null ? "" : trainingResponse.modelVersion(),
-                            "modelType", modelType(run),
-                            "modelStatus", "READY",
-                            "allowBaselineHeuristic", false));
-            if (smokeResponse == null
-                    || !"TRAINED_MODEL".equals(smokeResponse.predictionStatus())
-                    || !modelVersionId.toString().equals(smokeResponse.modelVersionId())) {
-                throw new IllegalStateException("ML-service model artifact failed load-test inference");
+                UUID.fromString(trainingRows.get(0).deviceId()),
+                Instant.parse(trainingRows.get(0).timestamp()),
+                smokeMetrics,
+                List.of(),
+                null,
+                MlInferenceRecentWindow.builder().sampleCount(trainingRows.size()).build(),
+                MlInferenceModelPreference.builder()
+                    .modelVersionId(modelVersionId.toString())
+                    .artifactUri(
+                        trainingResponse.artifactUri() == null ? "" : trainingResponse.artifactUri()
+                    )
+                    .manifestUri(
+                        trainingResponse.manifestUri() == null ? "" : trainingResponse.manifestUri()
+                    )
+                    .artifactHash(
+                        trainingResponse.artifactHash() == null
+                            ? ""
+                            : trainingResponse.artifactHash()
+                    )
+                    .artifactSizeBytes(
+                        trainingResponse.artifactSizeBytes() == null
+                            ? 0L
+                            : trainingResponse.artifactSizeBytes()
+                    )
+                    .modelFamily(run.getModelFamily().name())
+                    .modelVersion(
+                        trainingResponse.modelVersion() == null
+                            ? ""
+                            : trainingResponse.modelVersion()
+                    )
+                    .modelType(modelType(run))
+                    .modelStatus("READY")
+                    .allowBaselineHeuristic(false)
+                    .build()
+            );
+            if (
+                smokeResponse == null ||
+                !"TRAINED_MODEL".equals(smokeResponse.predictionStatus()) ||
+                !modelVersionId.toString().equals(smokeResponse.modelVersionId())
+            ) {
+                throw new IllegalStateException(
+                    "ML-service model artifact failed load-test inference"
+                );
             }
             heartbeat(run);
             assertNotCanceled(run);
 
-            Map<String, Object> metrics = new LinkedHashMap<>(trainingResponse.metrics() == null ? Map.of() : trainingResponse.metrics());
+            Map<String, Object> metrics = new LinkedHashMap<>(
+                trainingResponse.metrics() == null ? Map.of() : trainingResponse.metrics()
+            );
             metrics.put("modelFamily", run.getModelFamily().name());
             metrics.put("algorithm", run.getAlgorithm());
             metrics.put("featureSnapshotRows", featureSnapshot.getRowCount());
@@ -157,7 +201,10 @@ public class MlTrainingWorker {
             metrics.put("featureTemplateVersion", featureSnapshot.getFeatureTemplateVersion());
             metrics.put("featureSnapshotHorizonDays", featureSnapshot.getHorizonDays());
             metrics.put("requiredFeatureContractVersion", FeatureVectorContract.CONTRACT_VERSION);
-            metrics.put("requiredFeatureContractMetadataHash", featureContractMetadataHash(featureSnapshot));
+            metrics.put(
+                "requiredFeatureContractMetadataHash",
+                featureContractMetadataHash(featureSnapshot)
+            );
             metrics.put("requiredFeatureSchemaHash", featureSnapshot.getFeatureSchemaHash());
             metrics.put("requiredFeatureConfigHash", featureSnapshot.getFeatureConfigHash());
             metrics.put("trainingFeatureValues", trainingRows.size());
@@ -170,21 +217,59 @@ public class MlTrainingWorker {
             run.setLogsSummary("Training delegated to ML-service and load-test inference passed.");
             run.setStatus(MlTrainingRunStatus.SUCCEEDED);
             run.setCompletedAt(Instant.now());
-            run = leases.finish(run, () -> registerCandidateModel(runId, datasetVersion, featureSnapshot, metricsJson, trainingResponse, modelVersionId));
-            sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "succeeded", "algorithm", run.getAlgorithm()));
-            log.info("mlTrainingSucceeded runId={} accountId={} durationMs={} artifactUri={} trainingRows={}",
-                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis(), trainingResponse.artifactUri(), trainingRows.size());
+            run = leases.finish(run, () ->
+                registerCandidateModel(
+                    runId,
+                    datasetVersion,
+                    featureSnapshot,
+                    metricsJson,
+                    trainingResponse,
+                    modelVersionId
+                )
+            );
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.duration",
+                    "status",
+                    "succeeded",
+                    "algorithm",
+                    run.getAlgorithm()
+                )
+            );
+            log.info(
+                "mlTrainingSucceeded runId={} accountId={} durationMs={} artifactUri={} trainingRows={}",
+                run.getId(),
+                run.getAccountId(),
+                Duration.between(started, run.getCompletedAt()).toMillis(),
+                trainingResponse.artifactUri(),
+                trainingRows.size()
+            );
             return run;
         } catch (TrainingCanceledException exception) {
             run.setStatus(MlTrainingRunStatus.CANCELED);
             run.setFailureReason(null);
             run.setLogsSummary("Training canceled before candidate model registration.");
             run.setCompletedAt(Instant.now());
-            try { run = leases.finish(run, () -> { }); }
-            catch (MlTrainingLeases.Lost lost) { return trainingRunRepository.findById(run.getId()).orElse(run); }
-            sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "canceled", "algorithm", run.getAlgorithm()));
-            log.info("mlTrainingCanceled runId={} accountId={} durationMs={}",
-                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis());
+            try {
+                run = leases.finish(run, () -> {});
+            } catch (MlTrainingLeases.Lost lost) {
+                return trainingRunRepository.findById(run.getId()).orElse(run);
+            }
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.duration",
+                    "status",
+                    "canceled",
+                    "algorithm",
+                    run.getAlgorithm()
+                )
+            );
+            log.info(
+                "mlTrainingCanceled runId={} accountId={} durationMs={}",
+                run.getId(),
+                run.getAccountId(),
+                Duration.between(started, run.getCompletedAt()).toMillis()
+            );
             return run;
         } catch (MlTrainingLeases.Lost lost) {
             return trainingRunRepository.findById(run.getId()).orElse(run);
@@ -193,19 +278,43 @@ public class MlTrainingWorker {
             run.setFailureReason(publicReason(exception));
             run.setLogsSummary("Training failed before model artifact registration.");
             run.setCompletedAt(Instant.now());
-            try { run = leases.finish(run, () -> { }); }
-            catch (MlTrainingLeases.Lost lost) { return trainingRunRepository.findById(run.getId()).orElse(run); }
-            meterRegistry.counter("analytics.ml.training.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "failed", "algorithm", run.getAlgorithm()));
-            log.warn("mlTrainingFailed runId={} accountId={} durationMs={} reason={}",
-                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis(), run.getFailureReason());
+            try {
+                run = leases.finish(run, () -> {});
+            } catch (MlTrainingLeases.Lost lost) {
+                return trainingRunRepository.findById(run.getId()).orElse(run);
+            }
+            meterRegistry
+                .counter(
+                    "analytics.ml.training.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.duration",
+                    "status",
+                    "failed",
+                    "algorithm",
+                    run.getAlgorithm()
+                )
+            );
+            log.warn(
+                "mlTrainingFailed runId={} accountId={} durationMs={} reason={}",
+                run.getId(),
+                run.getAccountId(),
+                Duration.between(started, run.getCompletedAt()).toMillis(),
+                run.getFailureReason()
+            );
             return run;
         }
     }
 
     void recoverStaleRuns() {
         int recovered = leases.recover();
-        if (recovered > 0) meterRegistry.counter("analytics.ml.training.stale.recovered").increment(recovered);
+        if (recovered > 0) meterRegistry
+            .counter("analytics.ml.training.stale.recovered")
+            .increment(recovered);
     }
 
     private void heartbeat(MlTrainingRun run) {
@@ -214,29 +323,38 @@ public class MlTrainingWorker {
 
     private void assertNotCanceled(MlTrainingRun run) {
         MlTrainingRun latest = trainingRunRepository.findById(run.getId()).orElse(run);
-        if (latest.isCancellationRequested() || latest.getStatus() == MlTrainingRunStatus.CANCELED) {
+        if (
+            latest.isCancellationRequested() || latest.getStatus() == MlTrainingRunStatus.CANCELED
+        ) {
             run.setCancellationRequested(true);
             throw new TrainingCanceledException();
         }
     }
 
     private void registerCandidateModel(
-            UUID runId,
-            MlDatasetVersion datasetVersion,
-            MlFeatureSnapshot featureSnapshot,
-            String metricsJson,
-            MlTrainingResponse trainingResponse,
-            UUID modelVersionId) {
+        UUID runId,
+        MlDatasetVersion datasetVersion,
+        MlFeatureSnapshot featureSnapshot,
+        String metricsJson,
+        MlTrainingResponse trainingResponse,
+        UUID modelVersionId
+    ) {
         MlTrainingRun run = trainingRunRepository.findById(runId).orElseThrow();
         registryFence.account(run.getAccountId());
         MlModelVersion model = new MlModelVersion();
         model.setId(modelVersionId);
         model.setAccountId(run.getAccountId());
-        model.setModelKey("account-" + run.getAccountId() + "-" + run.getModelFamily().name().toLowerCase());
-        model.setVersion(modelVersionRepository.findByModelKeyOrderByVersionDesc(model.getModelKey()).stream()
+        model.setModelKey(
+            "account-" + run.getAccountId() + "-" + run.getModelFamily().name().toLowerCase()
+        );
+        model.setVersion(
+            modelVersionRepository
+                .findByModelKeyOrderByVersionDesc(model.getModelKey())
+                .stream()
                 .mapToInt(MlModelVersion::getVersion)
                 .max()
-                .orElse(0) + 1);
+                .orElse(0) + 1
+        );
         model.setFamily(run.getModelFamily());
         model.setAlgorithm(run.getAlgorithm());
         model.setStatus(MlModelStatus.CANDIDATE);
@@ -256,17 +374,27 @@ public class MlTrainingWorker {
     }
 
     private List<MlTrainingMetricRow> trainingRows(List<MlFeatureRow> featureRows) {
-        return featureRows.stream()
-                .flatMap(row -> numericFeatures(row).entrySet().stream()
-                        .map(entry -> new MlTrainingMetricRow(
-                                row.getPredictionAt() == null ? null : row.getPredictionAt().toString(),
-                                row.getDeviceId() == null ? stableVirtualDeviceId(row) : row.getDeviceId().toString(),
-                                entry.getKey(),
-                                entry.getValue(),
-                                null,
-                                labelFor(row),
-                                metadataFor(row))))
-                .toList();
+        return featureRows
+            .stream()
+            .flatMap(row ->
+                numericFeatures(row)
+                    .entrySet()
+                    .stream()
+                    .map(entry ->
+                        new MlTrainingMetricRow(
+                            row.getPredictionAt() == null ? null : row.getPredictionAt().toString(),
+                            row.getDeviceId() == null
+                                ? stableVirtualDeviceId(row)
+                                : row.getDeviceId().toString(),
+                            entry.getKey(),
+                            entry.getValue(),
+                            null,
+                            labelFor(row),
+                            metadataFor(row)
+                        )
+                    )
+            )
+            .toList();
     }
 
     private Map<String, Object> metadataFor(MlFeatureRow row) {
@@ -288,7 +416,10 @@ public class MlTrainingWorker {
 
     private Map<String, Double> numericFeatures(MlFeatureRow row) {
         try {
-            Map<String, Object> values = objectMapper.readValue(row.getFeatureValuesJson(), new TypeReference<>() {});
+            Map<String, Object> values = objectMapper.readValue(
+                row.getFeatureValuesJson(),
+                new TypeReference<>() {}
+            );
             Map<String, Double> numeric = new LinkedHashMap<>();
             values.forEach((key, value) -> {
                 if (value instanceof Number number) {
@@ -325,50 +456,74 @@ public class MlTrainingWorker {
     }
 
     private List<String> supportedMetrics(UUID featureSnapshotId) {
-        return featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId).stream()
-                .flatMap(row -> numericFeatures(row).keySet().stream())
-                .distinct()
-                .sorted()
-                .toList();
+        return featureRowRepository
+            .findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)
+            .stream()
+            .flatMap(row -> numericFeatures(row).keySet().stream())
+            .distinct()
+            .sorted()
+            .toList();
     }
 
     private String featureContractMetadataHash(MlFeatureSnapshot featureSnapshot) {
-        String modelFamily = featureSnapshot.getModelFamily() == null || featureSnapshot.getModelFamily().isBlank()
+        String modelFamily =
+            featureSnapshot.getModelFamily() == null || featureSnapshot.getModelFamily().isBlank()
                 ? "ANOMALY_DETECTION"
                 : featureSnapshot.getModelFamily();
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                modelFamily,
-                featureSnapshot.getHorizonDays(),
-                featureSnapshot.getFeatureTemplateId(),
-                featureSnapshot.getFeatureTemplateVersion(),
-                enabledFeatureFamilies(featureSnapshot));
+            modelFamily,
+            featureSnapshot.getHorizonDays(),
+            featureSnapshot.getFeatureTemplateId(),
+            featureSnapshot.getFeatureTemplateVersion(),
+            enabledFeatureFamilies(featureSnapshot)
+        );
         return FeatureVectorContract.contractMetadataHash(
-                featureSnapshot.getFeatureSetVersion(),
-                featureSnapshot.getCodeConfigVersion(),
-                contract.contractVersion(),
-                contract.modelFamily().name(),
-                contract.horizonDays(),
-                contract.featureTemplateId(),
-                contract.featureTemplateVersion(),
-                contract.requiredColumns());
+            featureSnapshot.getFeatureSetVersion(),
+            featureSnapshot.getCodeConfigVersion(),
+            contract.contractVersion(),
+            contract.modelFamily().name(),
+            contract.horizonDays(),
+            contract.featureTemplateId(),
+            contract.featureTemplateVersion(),
+            contract.requiredColumns()
+        );
     }
 
     private List<String> enabledFeatureFamilies(MlFeatureSnapshot featureSnapshot) {
-        if (featureSnapshot.getFeatureConfigJson() == null || featureSnapshot.getFeatureConfigJson().isBlank()) {
-            return List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context");
+        if (
+            featureSnapshot.getFeatureConfigJson() == null ||
+            featureSnapshot.getFeatureConfigJson().isBlank()
+        ) {
+            return List.of(
+                "rolling_stats",
+                "baseline_deviation",
+                "missing_data",
+                "time",
+                "device_context"
+            );
         }
         Map<String, Object> config = readJson(featureSnapshot.getFeatureConfigJson());
         Object families = config.get("enabledFeatureFamilies");
         if (!(families instanceof List<?> list) || list.isEmpty()) {
-            return List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context");
+            return List.of(
+                "rolling_stats",
+                "baseline_deviation",
+                "missing_data",
+                "time",
+                "device_context"
+            );
         }
-        return list.stream().map(Object::toString).filter(item -> !item.isBlank()).toList();
+        return list
+            .stream()
+            .map(Object::toString)
+            .filter(item -> !item.isBlank())
+            .toList();
     }
 
     private String modelType(MlTrainingRun run) {
         return run.getModelFamily() == MlModelFamily.FAILURE_PREDICTION
-                ? "trained_failure_prediction"
-                : "trained_tabular_anomaly";
+            ? "trained_failure_prediction"
+            : "trained_tabular_anomaly";
     }
 
     private Integer integerOption(String hyperparametersJson, String key) {
@@ -392,7 +547,10 @@ public class MlTrainingWorker {
             return null;
         }
         try {
-            Map<String, Object> values = objectMapper.readValue(hyperparametersJson, new TypeReference<>() {});
+            Map<String, Object> values = objectMapper.readValue(
+                hyperparametersJson,
+                new TypeReference<>() {}
+            );
             return values.get(key);
         } catch (JsonProcessingException exception) {
             return null;
@@ -400,12 +558,16 @@ public class MlTrainingWorker {
     }
 
     private String stableVirtualDeviceId(MlFeatureRow row) {
-        return UUID.nameUUIDFromBytes(row.getEntityId().getBytes(StandardCharsets.UTF_8)).toString();
+        return UUID.nameUUIDFromBytes(
+            row.getEntityId().getBytes(StandardCharsets.UTF_8)
+        ).toString();
     }
 
     private String publicReason(Exception exception) {
         String message = exception.getMessage();
-        if (exception instanceof IllegalStateException && Set.of(
+        if (
+            exception instanceof IllegalStateException &&
+            Set.of(
                 "Dataset version is not READY",
                 "Feature snapshot has no rows",
                 "Feature snapshot has no numeric feature rows",
@@ -413,7 +575,9 @@ public class MlTrainingWorker {
                 "ML-service model artifact failed load-test inference",
                 "Could not parse feature row values",
                 "Could not parse feature row label values",
-                "Could not serialize training metrics").contains(message == null ? "" : message)) return message;
+                "Could not serialize training metrics"
+            ).contains(message == null ? "" : message)
+        ) return message;
         return "Training failed before model artifact registration.";
     }
 
@@ -437,6 +601,5 @@ public class MlTrainingWorker {
         }
     }
 
-    private static class TrainingCanceledException extends RuntimeException {
-    }
+    private static class TrainingCanceledException extends RuntimeException {}
 }

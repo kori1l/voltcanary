@@ -40,13 +40,8 @@ export function MlModelsTab(props: {
   const visibleModels = props.selectedModelId
     ? props.models.filter((model) => model.id === props.selectedModelId)
     : props.models;
-  const [savedModels, setSavedModels] = useState<
-    Record<string, MlModelVersion>
-  >({});
-  async function modelCommand(
-    model: MlModelVersion,
-    action: "approve" | "reject" | "archive",
-  ) {
+  const [savedModels, setSavedModels] = useState<Record<string, MlModelVersion>>({});
+  async function modelCommand(model: MlModelVersion, action: "approve" | "reject" | "archive") {
     let reason = "";
     const label = `${action[0].toUpperCase()}${action.slice(1)} ${model.modelKey} v${model.version}`;
     await commands.run(`model:${model.id}:${action}`, {
@@ -82,10 +77,7 @@ export function MlModelsTab(props: {
   return (
     <section className="panel">
       {confirmation.dialog}
-      <CommandFeedback
-        outcomes={commands.outcomes}
-        onRetryRead={commands.retryRead}
-      />
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
       <div className="section-header">
         <div>
           <h2>Model registry</h2>
@@ -99,11 +91,7 @@ export function MlModelsTab(props: {
       {props.selectedModelId ? (
         <div className="action-row">
           <span>Selected prediction model</span>
-          <button
-            type="button"
-            className="ghost-button"
-            onClick={props.onClearSelection}
-          >
+          <button type="button" className="ghost-button" onClick={props.onClearSelection}>
             Show all models
           </button>
         </div>
@@ -119,10 +107,7 @@ export function MlModelsTab(props: {
       ) : (
         visibleModels.map((record) => {
           const model = savedModels[record.id] ?? record;
-          const gates =
-            model.family === "FAILURE_PREDICTION"
-              ? approvalGateSummary(model)
-              : null;
+          const gates = model.family === "FAILURE_PREDICTION" ? approvalGateSummary(model) : null;
           const approveBlocked = Boolean(gates && !gates.promotionEligible);
           const modelLabel = `${model.modelKey} v${model.version}`;
           return (
@@ -130,8 +115,8 @@ export function MlModelsTab(props: {
               <div className="ml-model-body">
                 <strong>{modelLabel}</strong>
                 <span>
-                  {model.family} / {humanizeAlgorithm(model.algorithm)} /{" "}
-                  {model.status} / {modelOriginLabel(model)}
+                  {model.family} / {humanizeAlgorithm(model.algorithm)} / {model.status} /{" "}
+                  {modelOriginLabel(model)}
                 </span>
                 {model.family === "FAILURE_PREDICTION" ? (
                   <FailureModelCard gates={gates} model={model} />
@@ -144,15 +129,10 @@ export function MlModelsTab(props: {
                   <button
                     aria-label={`Approve ${modelLabel}`}
                     className="ghost-button"
-                    disabled={
-                      approveBlocked ||
-                      commands.isPending(`model:${model.id}:approve`)
-                    }
+                    disabled={approveBlocked || commands.isPending(`model:${model.id}:approve`)}
                     onClick={() => void modelCommand(model, "approve")}
                     title={
-                      approveBlocked
-                        ? "Promotion gates must pass before approval."
-                        : undefined
+                      approveBlocked ? "Promotion gates must pass before approval." : undefined
                     }
                     type="button"
                   >
@@ -217,22 +197,17 @@ function FailureModelCard({
   const falseAlerts = metricNumber(metrics, "failureFalseAlertsPerDeviceMonth");
   const leadTime = metricNumber(metrics, "failureAverageLeadTimeDays");
   const labelCoverage =
-    metricNumber(metrics, "labelCoverage") ??
-    metricNumber(metrics, "failureLabelCoverage");
+    metricNumber(metrics, "labelCoverage") ?? metricNumber(metrics, "failureLabelCoverage");
   const positives = metricNumber(metrics, "failurePositiveLabels");
   const negatives = metricNumber(metrics, "failureNegativeLabels");
 
   return (
     <div className="ml-model-card-summary">
       <div>
-        <h3>
-          {horizonDays
-            ? `${horizonDays}-day failure horizon`
-            : "Failure model card"}
-        </h3>
+        <h3>{horizonDays ? `${horizonDays}-day failure horizon` : "Failure model card"}</h3>
         <p>
-          Predicts confirmed failure or corrective-maintenance risk for operator
-          review. Use alongside rule alerts and maintenance context.
+          Predicts confirmed failure or corrective-maintenance risk for operator review. Use
+          alongside rule alerts and maintenance context.
         </p>
       </div>
       <dl className="ml-model-metric-grid">
@@ -255,18 +230,12 @@ function FailureModelCard({
         <div>
           <dt>False alerts</dt>
           <dd>
-            {falseAlerts === null
-              ? "N/A"
-              : `${formatDecimalMetric(falseAlerts)} / device-month`}
+            {falseAlerts === null ? "N/A" : `${formatDecimalMetric(falseAlerts)} / device-month`}
           </dd>
         </div>
         <div>
           <dt>Lead time</dt>
-          <dd>
-            {leadTime === null
-              ? "N/A"
-              : `${formatDecimalMetric(leadTime)} days`}
-          </dd>
+          <dd>{leadTime === null ? "N/A" : `${formatDecimalMetric(leadTime)} days`}</dd>
         </div>
       </dl>
       <dl className="ml-model-lineage">
@@ -284,23 +253,16 @@ function FailureModelCard({
         </div>
         <div>
           <dt>Dataset</dt>
-          <dd className="mono-value">
-            {model.datasetVersionId ?? "Unavailable"}
-          </dd>
+          <dd className="mono-value">{model.datasetVersionId ?? "Unavailable"}</dd>
         </div>
         <div>
           <dt>Feature hash</dt>
-          <dd className="mono-value">
-            {model.featureSchemaHash ?? "Unavailable"}
-          </dd>
+          <dd className="mono-value">{model.featureSchemaHash ?? "Unavailable"}</dd>
         </div>
         <div>
           <dt>Artifact</dt>
           <dd className="mono-value">
-            {model.artifactHash ??
-              model.artifactManifestUri ??
-              model.artifactUri ??
-              "Unavailable"}
+            {model.artifactHash ?? model.artifactManifestUri ?? model.artifactUri ?? "Unavailable"}
           </dd>
         </div>
       </dl>
@@ -320,11 +282,7 @@ function ApprovalGatePanel({ gates }: { gates: ApprovalGateSummary }) {
       aria-label="Promotion gates"
     >
       <div>
-        <strong>
-          {gates.promotionEligible
-            ? "Promotion gates passed"
-            : "Promotion blocked"}
-        </strong>
+        <strong>{gates.promotionEligible ? "Promotion gates passed" : "Promotion blocked"}</strong>
         <span>
           {gates.profileId
             ? `${gates.profileId}${gates.profileVersion ? ` / ${gates.profileVersion}` : ""}`
@@ -339,8 +297,7 @@ function ApprovalGatePanel({ gates }: { gates: ApprovalGateSummary }) {
           {gates.criteria.map((gate) => (
             <div key={gate.name}>
               <dt>
-                {humanizeFeatureName(gate.name)} /{" "}
-                {gate.passed ? "Pass" : "Fail"}
+                {humanizeFeatureName(gate.name)} / {gate.passed ? "Pass" : "Fail"}
               </dt>
               <dd>
                 {gate.reason} Observed {formatGateValue(gate)} / required{" "}
@@ -394,9 +351,7 @@ function humanizeAlgorithm(value: string) {
     .replace(/-v\d+$/i, "")
     .split("-")
     .map((part) =>
-      part === "sklearn"
-        ? "sklearn"
-        : part.replace(/^./, (match) => match.toUpperCase()),
+      part === "sklearn" ? "sklearn" : part.replace(/^./, (match) => match.toUpperCase()),
     )
     .join(" ");
 }
@@ -414,8 +369,7 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
     metricNumber(metrics, "failureMinimumPositiveLabels") ??
     1;
   const labelCoverage =
-    metricNumber(metrics, "labelCoverage") ??
-    metricNumber(metrics, "failureLabelCoverage");
+    metricNumber(metrics, "labelCoverage") ?? metricNumber(metrics, "failureLabelCoverage");
   const minimumLabelCoverage =
     metricNumber(metrics, "minimumLabelCoverage") ??
     metricNumber(metrics, "failureMinimumLabelCoverage") ??
@@ -426,17 +380,14 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
       ? validationSamples > 0
       : metricNumber(metrics, "failurePrAuc") !== null;
   const falseAlerts = metricNumber(metrics, "failureFalseAlertsPerDeviceMonth");
-  const maxFalseAlerts =
-    metricNumber(metrics, "maximumFalseAlertsPerDeviceMonth") ?? 30;
+  const maxFalseAlerts = metricNumber(metrics, "maximumFalseAlertsPerDeviceMonth") ?? 30;
   const criteria: ApprovalGateCriterion[] = [
     {
       name: "minimum_positive_labels",
       observed: positiveLabels,
       threshold: minimumPositiveLabels,
-      passed:
-        positiveLabels !== null && positiveLabels >= minimumPositiveLabels,
-      reason:
-        "Requires enough confirmed failure or corrective maintenance labels.",
+      passed: positiveLabels !== null && positiveLabels >= minimumPositiveLabels,
+      reason: "Requires enough confirmed failure or corrective maintenance labels.",
     },
     {
       name: "minimum_label_coverage",
@@ -471,9 +422,9 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
       threshold: 1,
       passed: Boolean(
         model.artifactUri &&
-          model.artifactManifestUri &&
-          model.artifactHash &&
-          model.artifactSizeBytes,
+        model.artifactManifestUri &&
+        model.artifactHash &&
+        model.artifactSizeBytes,
       ),
       reason: "Requires a persisted, hashed, load-tested model bundle.",
     },
@@ -482,8 +433,7 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
       observed: model.featureSchemaHash ? 1 : 0,
       threshold: 1,
       passed: Boolean(model.featureSchemaHash),
-      reason:
-        "Requires a feature schema hash for runtime compatibility checks.",
+      reason: "Requires a feature schema hash for runtime compatibility checks.",
     },
   ];
   const failedCriteria = criteria.filter((gate) => !gate.passed);
@@ -498,17 +448,13 @@ function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary {
   };
 }
 
-function explicitApprovalGateSummary(
-  metrics: Record<string, unknown>,
-): ApprovalGateSummary | null {
+function explicitApprovalGateSummary(metrics: Record<string, unknown>): ApprovalGateSummary | null {
   const raw = metrics.approvalGates;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return null;
   }
   const gateObject = raw as Record<string, unknown>;
-  const criteria = Array.isArray(gateObject.criteria)
-    ? gateObject.criteria
-    : [];
+  const criteria = Array.isArray(gateObject.criteria) ? gateObject.criteria : [];
   const normalizedCriteria = criteria
     .filter(
       (item): item is Record<string, unknown> =>
@@ -527,12 +473,9 @@ function explicitApprovalGateSummary(
       ? gateObject.promotionEligible
       : failedCriteria.length === 0;
   return {
-    status:
-      stringMetric(gateObject, "status") ??
-      (promotionEligible ? "PASSED" : "NEEDS_REVIEW"),
+    status: stringMetric(gateObject, "status") ?? (promotionEligible ? "PASSED" : "NEEDS_REVIEW"),
     profileId:
-      stringMetric(gateObject, "profileId") ??
-      stringMetric(metrics, "approvalGateProfileId"),
+      stringMetric(gateObject, "profileId") ?? stringMetric(metrics, "approvalGateProfileId"),
     profileVersion:
       stringMetric(gateObject, "profileVersion") ??
       stringMetric(metrics, "approvalGateProfileVersion"),

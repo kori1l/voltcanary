@@ -1,8 +1,8 @@
 package com.voltcanary.alert.service;
 
-import jakarta.persistence.EntityManager;
 import com.voltcanary.alert.domain.AlertRule;
 import com.voltcanary.alert.repository.AlertRuleRepository;
+import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class AlertRuleWrites {
+
     private final AlertRuleRepository repository;
     private final EntityManager entityManager;
 
@@ -30,15 +31,25 @@ public class AlertRuleWrites {
 
     @Transactional
     public void delete(AlertRule validated) {
-        var actual = requireVersion(validated.getId(), validated.getAccountId(), validated.getVersion());
+        var actual = requireVersion(
+            validated.getId(),
+            validated.getAccountId(),
+            validated.getVersion()
+        );
         repository.delete(actual);
     }
 
     private AlertRule requireVersion(UUID id, UUID account, int version) {
-        var actual = repository.lockOwned(id, account)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found"));
+        var actual = repository
+            .lockOwned(id, account)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found")
+            );
         entityManager.refresh(actual);
-        if (actual.getVersion() != version) throw new ResponseStatusException(HttpStatus.CONFLICT, "Alert rule changed; reload");
+        if (actual.getVersion() != version) throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "Alert rule changed; reload"
+        );
         return actual;
     }
 }

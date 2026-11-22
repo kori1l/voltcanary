@@ -6,13 +6,18 @@ import java.util.Map;
 import java.util.Set;
 
 final class VclExpressionTypes {
+
     private final VclRegistry registry;
     private final VclUnits units;
     private final java.util.function.Function<java.util.UUID, VclType> references;
     private int count;
     private final Map<JsonNode, VclType> inferred = new java.util.IdentityHashMap<>();
 
-    VclExpressionTypes(VclRegistry registry, VclUnits units, java.util.function.Function<java.util.UUID, VclType> references) {
+    VclExpressionTypes(
+        VclRegistry registry,
+        VclUnits units,
+        java.util.function.Function<java.util.UUID, VclType> references
+    ) {
         this.registry = registry;
         this.units = units;
         this.references = references;
@@ -32,17 +37,31 @@ final class VclExpressionTypes {
     }
 
     VclType inferredType(JsonNode expression) {
-        return java.util.Objects.requireNonNull(inferred.get(expression), "Expression was not checked");
+        return java.util.Objects.requireNonNull(
+            inferred.get(expression),
+            "Expression was not checked"
+        );
     }
 
-    private VclType inferType(JsonNode expression, Map<String, VclType> fields, String path, int depth) {
+    private VclType inferType(
+        JsonNode expression,
+        Map<String, VclType> fields,
+        String path,
+        int depth
+    ) {
         String operation = expression.path("op").asText();
-        if (operation.equals("FIELD")) return field(fields, expression.path("fieldId").asText(), path);
+        if (operation.equals("FIELD")) return field(
+            fields,
+            expression.path("fieldId").asText(),
+            path
+        );
         if (operation.equals("CONST")) {
             var literal = expression.path("literal");
             VclValues.normalized(literal);
             var result = VclType.from(literal);
-            if (result.kind() == VclType.Kind.REF) result = references.apply(java.util.UUID.fromString(literal.path("value").asText()));
+            if (result.kind() == VclType.Kind.REF) result = references.apply(
+                java.util.UUID.fromString(literal.path("value").asText())
+            );
             if (result.numeric()) units.require(result.unit(), path);
             return result;
         }
@@ -52,11 +71,15 @@ final class VclExpressionTypes {
         var args = expression.path("args");
         VclException.require(args.size() == contract.arity(), "METHOD_ARITY", path);
         var types = new ArrayList<VclType>();
-        for (int i = 0; i < args.size(); i++) types.add(infer(args.get(i), fields, path + "/args/" + i, depth + 1));
+        for (int i = 0; i < args.size(); i++) types.add(
+            infer(args.get(i), fields, path + "/args/" + i, depth + 1)
+        );
         VclType a = types.getFirst();
         VclType b = types.size() > 1 ? types.get(1) : null;
         switch (method) {
-            case "is_known", "is_null" -> { return VclType.BOOLEAN; }
+            case "is_known", "is_null" -> {
+                return VclType.BOOLEAN;
+            }
             case "and", "or", "not" -> {
                 for (var type : types) require(type, VclType.Kind.BOOLEAN, path);
                 return VclType.BOOLEAN;
@@ -64,9 +87,19 @@ final class VclExpressionTypes {
             case "eq", "ne", "lt", "le", "gt", "ge" -> {
                 a.compatible(b, path);
                 if (!Set.of("eq", "ne").contains(method)) {
-                    VclException.require(Set.of(VclType.Kind.INT64, VclType.Kind.DECIMAL, VclType.Kind.TEXT,
-                            VclType.Kind.DATE, VclType.Kind.INSTANT, VclType.Kind.DURATION, VclType.Kind.NULL).contains(a.kind()),
-                            "TYPE_NOT_ORDERED", path);
+                    VclException.require(
+                        Set.of(
+                            VclType.Kind.INT64,
+                            VclType.Kind.DECIMAL,
+                            VclType.Kind.TEXT,
+                            VclType.Kind.DATE,
+                            VclType.Kind.INSTANT,
+                            VclType.Kind.DURATION,
+                            VclType.Kind.NULL
+                        ).contains(a.kind()),
+                        "TYPE_NOT_ORDERED",
+                        path
+                    );
                 }
                 return VclType.BOOLEAN;
             }
@@ -83,20 +116,32 @@ final class VclExpressionTypes {
             case "inside" -> {
                 require(a, VclType.Kind.POINT, path);
                 require(b, VclType.Kind.REF, path);
-                VclException.require("RESOURCE:SPATIAL_FEATURE".equals(b.referenceTarget()), "REF_TYPE_MISMATCH", path);
+                VclException.require(
+                    "RESOURCE:SPATIAL_FEATURE".equals(b.referenceTarget()),
+                    "REF_TYPE_MISMATCH",
+                    path
+                );
                 require(types.get(2), VclType.Kind.DECIMAL, path);
                 VclException.require(types.get(2).unit().equals("m"), "UNIT_MISMATCH", path);
                 return VclType.BOOLEAN;
             }
             case "convert_unit", "duration_from" -> {
                 VclException.require(a.numeric(), "TYPE_MISMATCH", path);
-                VclException.require(args.get(1).path("op").asText().equals("CONST") && b.kind() == VclType.Kind.TEXT,
-                        "CONSTANT_UNIT_REQUIRED", path);
+                VclException.require(
+                    args.get(1).path("op").asText().equals("CONST") &&
+                        b.kind() == VclType.Kind.TEXT,
+                    "CONSTANT_UNIT_REQUIRED",
+                    path
+                );
                 String target = args.get(1).at("/literal/value").asText();
                 if (method.equals("duration_from")) {
                     require(a, VclType.Kind.DECIMAL, path);
-                    VclException.require(a.unit().equals("1") && Set.of("us", "ms", "s", "min", "h").contains(target),
-                            "UNIT_MISMATCH", path);
+                    VclException.require(
+                        a.unit().equals("1") &&
+                            Set.of("us", "ms", "s", "min", "h").contains(target),
+                        "UNIT_MISMATCH",
+                        path
+                    );
                     return new VclType(VclType.Kind.DURATION, a.nullable(), "1", null);
                 }
                 units.compatible(a.unit(), target, path);
@@ -104,8 +149,12 @@ final class VclExpressionTypes {
             }
             case "add", "subtract", "multiply", "divide" -> {
                 VclException.require(a.numeric() && b.numeric(), "TYPE_MISMATCH", path);
-                VclException.require(!units.require(a.unit(), path).absolute() && !units.require(b.unit(), path).absolute(),
-                        "UNIT_ARITHMETIC_UNSUPPORTED", path);
+                VclException.require(
+                    !units.require(a.unit(), path).absolute() &&
+                        !units.require(b.unit(), path).absolute(),
+                    "UNIT_ARITHMETIC_UNSUPPORTED",
+                    path
+                );
                 if (Set.of("add", "subtract").contains(method)) {
                     a.compatible(b, path);
                     return new VclType(a.kind(), a.nullable() || b.nullable(), a.unit(), null);

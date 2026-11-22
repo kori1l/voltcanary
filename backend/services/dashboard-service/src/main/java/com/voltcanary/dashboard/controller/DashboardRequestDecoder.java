@@ -12,15 +12,22 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class DashboardRequestDecoder {
+
     private final ObjectMapper mapper;
     private final DefinitionValidation validation;
 
     public DashboardDefinition definition(JsonNode body) {
         validation.validatePayload(body);
         try {
-            return validation.validate(mapper.convertValue(body.path("definition"), DashboardDefinition.class));
+            return validation.validate(
+                mapper.convertValue(body.path("definition"), DashboardDefinition.class)
+            );
         } catch (IllegalArgumentException exception) {
-            throw new DashboardFailure("VALIDATION_ERROR", "Invalid definition structure", "definition");
+            throw new DashboardFailure(
+                "VALIDATION_ERROR",
+                "Invalid definition structure",
+                "definition"
+            );
         }
     }
 
@@ -45,7 +52,12 @@ public class DashboardRequestDecoder {
 
     public int nonnegative(JsonNode body, String field) {
         JsonNode value = body.get(field);
-        if (value == null || !value.isIntegralNumber() || !value.canConvertToInt() || value.asInt() < 0) {
+        if (
+            value == null ||
+            !value.isIntegralNumber() ||
+            !value.canConvertToInt() ||
+            value.asInt() < 0
+        ) {
             throw new DashboardFailure("VALIDATION_ERROR", "Expected a nonnegative integer", field);
         }
         return value.asInt();

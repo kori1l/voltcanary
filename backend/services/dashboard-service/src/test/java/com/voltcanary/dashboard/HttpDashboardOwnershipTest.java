@@ -1,5 +1,8 @@
 package com.voltcanary.dashboard;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import com.voltcanary.common.security.JwtAccessTokenService;
@@ -16,10 +19,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HttpDashboardOwnershipTest {
+
     private final UUID user = UUID.randomUUID();
     private final UUID account = UUID.randomUUID();
     private final AtomicInteger status = new AtomicInteger(200);
@@ -41,10 +43,22 @@ class HttpDashboardOwnershipTest {
             String body;
             if (path.equals("/auth/me")) {
                 identityReads.incrementAndGet();
-                body = "{\"id\":\"" + user + "\",\"role\":\"ADMIN\",\"status\":\"" + userStatus + "\"}";
+                body =
+                    "{\"id\":\"" +
+                    user +
+                    "\",\"role\":\"ADMIN\",\"status\":\"" +
+                    userStatus +
+                    "\"}";
             } else if (path.equals("/accounts/current")) {
                 accountBootstrapReads.incrementAndGet();
-                body = "{\"id\":\"" + account + "\",\"userId\":\"" + accountUser + "\",\"status\":\"" + accountStatus + "\"}";
+                body =
+                    "{\"id\":\"" +
+                    account +
+                    "\",\"userId\":\"" +
+                    accountUser +
+                    "\",\"status\":\"" +
+                    accountStatus +
+                    "\"}";
             } else {
                 body = "{}";
             }
@@ -55,10 +69,19 @@ class HttpDashboardOwnershipTest {
         });
         server.start();
         URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        ownership = new HttpDashboardOwnership(new DashboardHttpProperties(base, base, Duration.ofSeconds(1)),
-                new DashboardJwtProperties("dev-rsa", "", "voltcanary-identity", "voltcanary-api"), new ObjectMapper());
-        authorization = "Bearer " + new JwtAccessTokenService("test", "voltcanary-identity", "voltcanary-api")
-                .create(user.toString(), "fixture@example.invalid", "ADMIN", 60);
+        ownership = new HttpDashboardOwnership(
+            new DashboardHttpProperties(base, base, Duration.ofSeconds(1)),
+            new DashboardJwtProperties("dev-rsa", "", "voltcanary-identity", "voltcanary-api"),
+            new ObjectMapper()
+        );
+        authorization =
+            "Bearer " +
+            new JwtAccessTokenService("test", "voltcanary-identity", "voltcanary-api").create(
+                user.toString(),
+                "fixture@example.invalid",
+                "ADMIN",
+                60
+            );
     }
 
     @AfterEach
@@ -103,20 +126,31 @@ class HttpDashboardOwnershipTest {
     @Test
     void queryActorUsesReadOnlyActiveScopeAndNeverBootstrapsAccounts() {
         URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
-        var reads = org.mockito.Mockito.mock(com.voltcanary.dashboard.port.DashboardEvidenceReads.class);
-        org.mockito.Mockito.when(reads.activeActor(authorization, user))
-                .thenReturn(new com.voltcanary.dashboard.domain.DashboardActor(user, account));
-        var readOnly = new HttpDashboardOwnership(new DashboardHttpProperties(base, base, Duration.ofSeconds(1)),
-                new DashboardJwtProperties("dev-rsa", "", "voltcanary-identity", "voltcanary-api"), new ObjectMapper(), reads);
+        var reads = org.mockito.Mockito.mock(
+            com.voltcanary.dashboard.port.DashboardEvidenceReads.class
+        );
+        org.mockito.Mockito.when(reads.activeActor(authorization, user)).thenReturn(
+            new com.voltcanary.dashboard.domain.DashboardActor(user, account)
+        );
+        var readOnly = new HttpDashboardOwnership(
+            new DashboardHttpProperties(base, base, Duration.ofSeconds(1)),
+            new DashboardJwtProperties("dev-rsa", "", "voltcanary-identity", "voltcanary-api"),
+            new ObjectMapper(),
+            reads
+        );
         assertThat(readOnly.resolveReadOnly(authorization).accountId()).isEqualTo(account);
         assertThat(accountBootstrapReads.get()).isZero();
         userStatus = "DISABLED";
         assertFailure("ACTOR_INACTIVE", () -> readOnly.resolveReadOnly(authorization));
-        org.mockito.Mockito.verify(reads, org.mockito.Mockito.times(1)).activeActor(authorization, user);
+        org.mockito.Mockito.verify(reads, org.mockito.Mockito.times(1)).activeActor(
+            authorization,
+            user
+        );
     }
 
     private void assertFailure(String code, Runnable operation) {
-        assertThatThrownBy(operation::run).isInstanceOfSatisfying(DashboardFailure.class,
-                failure -> assertThat(failure.code()).isEqualTo(code));
+        assertThatThrownBy(operation::run).isInstanceOfSatisfying(DashboardFailure.class, failure ->
+            assertThat(failure.code()).isEqualTo(code)
+        );
     }
 }

@@ -1,7 +1,6 @@
 package com.voltcanary.analytics.vcl.adapter;
 
 import com.voltcanary.analytics.vcl.KeyedStateStore.Acknowledgement;
-
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -11,10 +10,10 @@ sealed interface KeyedCommit {
     record Isolated() implements KeyedCommit {}
 
     record JournalWindow(
-            Optional<JdbcRuleDeployments.Deployment> target,
-            Instant start,
-            Optional<JdbcJournalWatermarks.Candidate> progress)
-            implements KeyedCommit {
+        Optional<JdbcRuleDeployments.Deployment> target,
+        Instant start,
+        Optional<JdbcJournalWatermarks.Candidate> progress
+    ) implements KeyedCommit {
         public JournalWindow {
             Objects.requireNonNull(target);
             Objects.requireNonNull(start);
@@ -29,8 +28,10 @@ sealed interface KeyedCommit {
         }
     }
 
-    record ReviewedInput(JdbcRuleDeployments.Deployment target, Instant start)
-            implements KeyedCommit {
+    record ReviewedInput(
+        JdbcRuleDeployments.Deployment target,
+        Instant start
+    ) implements KeyedCommit {
         public ReviewedInput {
             Objects.requireNonNull(target);
             Objects.requireNonNull(start);
@@ -38,8 +39,10 @@ sealed interface KeyedCommit {
     }
 
     record SustainedFinalization(
-            JdbcRuleDeployments.Deployment target, Instant start, Acknowledgement measure)
-            implements KeyedCommit {
+        JdbcRuleDeployments.Deployment target,
+        Instant start,
+        Acknowledgement measure
+    ) implements KeyedCommit {
         public SustainedFinalization {
             Objects.requireNonNull(target);
             Objects.requireNonNull(start);
@@ -48,10 +51,10 @@ sealed interface KeyedCommit {
     }
 
     record CoveredAggregate(
-            JdbcRuleDeployments.Deployment target,
-            Optional<Instant> start,
-            JdbcJournalWatermarks.Candidate progress)
-            implements KeyedCommit {
+        JdbcRuleDeployments.Deployment target,
+        Optional<Instant> start,
+        JdbcJournalWatermarks.Candidate progress
+    ) implements KeyedCommit {
         public CoveredAggregate {
             Objects.requireNonNull(target);
             Objects.requireNonNull(start);
@@ -91,14 +94,16 @@ sealed interface KeyedCommit {
 
     default Optional<Acknowledgement> acknowledgement() {
         return this instanceof SustainedFinalization value
-                ? Optional.of(value.measure())
-                : Optional.empty();
+            ? Optional.of(value.measure())
+            : Optional.empty();
     }
 
     default boolean requiresSessionFence() {
-        return this instanceof Session
-                || this instanceof ReviewedInput
-                || this instanceof SustainedFinalization
-                || this instanceof CoveredAggregate;
+        return (
+            this instanceof Session ||
+            this instanceof ReviewedInput ||
+            this instanceof SustainedFinalization ||
+            this instanceof CoveredAggregate
+        );
     }
 }

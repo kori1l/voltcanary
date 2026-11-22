@@ -6,5 +6,5 @@ public enum NotificationAttemptStatus {
     SENT,
     FAILED,
     RETRYING,
-    DISABLED
+    DISABLED,
 }

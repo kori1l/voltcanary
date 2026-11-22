@@ -17,29 +17,47 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class VclJournalInputPlan {
-    public enum Selection { INCLUDED, EXCLUDED, UNKNOWN }
+
+    public enum Selection {
+        INCLUDED,
+        EXCLUDED,
+        UNKNOWN,
+    }
 
     private static final VclParser PARSER = new VclParser();
     private static final VclRegistry REGISTRY = new VclRegistry(PARSER);
     private static final VclUnits UNITS = VclUnits.standard();
-    private static final VclScalarEvaluator EVALUATOR = new VclScalarEvaluator(UNITS, REGISTRY.digest());
+    private static final VclScalarEvaluator EVALUATOR = new VclScalarEvaluator(
+        UNITS,
+        REGISTRY.digest()
+    );
 
     private final VclCompilation.Node source;
     private final List<VclScalarProgram> filters;
     private final ScalarDecimalPolicy decimal;
     private final String scope;
 
-    private VclJournalInputPlan(VclCompilation.Node source, List<VclScalarProgram> filters,
-            ScalarDecimalPolicy decimal, String scope) {
+    private VclJournalInputPlan(
+        VclCompilation.Node source,
+        List<VclScalarProgram> filters,
+        ScalarDecimalPolicy decimal,
+        String scope
+    ) {
         this.source = source;
         this.filters = List.copyOf(filters);
         this.decimal = decimal;
         this.scope = scope;
     }
 
-    public VclCompilation.Node source() { return source; }
+    public VclCompilation.Node source() {
+        return source;
+    }
 
-    public static VclJournalInputPlan compile(VclCompilation compilation, VclCompilation.Node operator, VclMetadata metadata) {
+    public static VclJournalInputPlan compile(
+        VclCompilation compilation,
+        VclCompilation.Node operator,
+        VclMetadata metadata
+    ) {
         var nodes = new HashMap<String, VclCompilation.Node>();
         compilation.graph().forEach(node -> nodes.put(node.id(), node));
         var source = nodes.get(operator.inputs().get("events"));
@@ -48,17 +66,26 @@ public final class VclJournalInputPlan {
         while (source != null && "filter".equals(source.method())) {
             var fields = new LinkedHashMap<UUID, VclType>();
             source.fields().forEach((id, type) -> fields.put(UUID.fromString(id), type));
-            filters.addFirst(compiler.compile(source.config().path("predicate").toString(), fields, metadata));
+            filters.addFirst(
+                compiler.compile(source.config().path("predicate").toString(), fields, metadata)
+            );
             source = nodes.get(source.inputs().get("events"));
         }
         if (source == null || !"read_stream".equals(source.method())) {
-            throw new VclException("sustained".equals(operator.method())
-                    ? "SUSTAINED_DIRECT_JOURNAL_REQUIRED" : "SESSION_DIRECT_JOURNAL_REQUIRED", "");
+            throw new VclException(
+                "sustained".equals(operator.method())
+                    ? "SUSTAINED_DIRECT_JOURNAL_REQUIRED"
+                    : "SESSION_DIRECT_JOURNAL_REQUIRED",
+                ""
+            );
         }
         var document = PARSER.parse(compilation.canonicalDocument());
         var policy = document.spec().path("decimalPolicy");
-        var decimal = new ScalarDecimalPolicy(policy.path("precision").intValue(), policy.path("scale").intValue(),
-                ScalarDecimalPolicy.Rounding.valueOf(policy.path("rounding").textValue()));
+        var decimal = new ScalarDecimalPolicy(
+            policy.path("precision").intValue(),
+            policy.path("scale").intValue(),
+            ScalarDecimalPolicy.Rounding.valueOf(policy.path("rounding").textValue())
+        );
         return new VclJournalInputPlan(source, filters, decimal, compilation.accessScopeDigest());
     }
 

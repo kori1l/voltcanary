@@ -29,17 +29,26 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class NotificationDeliveryOperationsService {
 
-    private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {
-    };
-    private static final Set<String> SECRET_KEY_PARTS = Set.of("secret", "token", "password", "credential", "api_key", "apikey");
+    private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {};
+    private static final Set<String> SECRET_KEY_PARTS = Set.of(
+        "secret",
+        "token",
+        "password",
+        "credential",
+        "api_key",
+        "apikey"
+    );
     private static final Pattern SECRET_VALUE_PATTERN = Pattern.compile(
-            "(?i)(secret|token|password|credential|api[_-]?key)(\\s*[:=]\\s*)\\S+");
+        "(?i)(secret|token|password|credential|api[_-]?key)(\\s*[:=]\\s*)\\S+"
+    );
     private static final Collection<NotificationAttemptStatus> FAILURE_STATUSES = Set.of(
-            NotificationAttemptStatus.FAILED,
-            NotificationAttemptStatus.RETRYING);
+        NotificationAttemptStatus.FAILED,
+        NotificationAttemptStatus.RETRYING
+    );
     private static final Collection<NotificationAttemptStatus> WAITING_STATUSES = Set.of(
-            NotificationAttemptStatus.PENDING,
-            NotificationAttemptStatus.RETRYING);
+        NotificationAttemptStatus.PENDING,
+        NotificationAttemptStatus.RETRYING
+    );
 
     private final NotificationChannelService channelService;
     private final NotificationAttemptService attemptService;
@@ -49,12 +58,14 @@ public class NotificationDeliveryOperationsService {
     private final ObjectMapper objectMapper;
 
     public NotificationAttemptResponse testDelivery(
-            UUID channelId,
-            String userId,
-            String accountId,
-            NotificationTestDeliveryRequest request) {
+        UUID channelId,
+        String userId,
+        String accountId,
+        NotificationTestDeliveryRequest request
+    ) {
         NotificationChannel channel = channelService.loadOwned(channelId, userId, accountId);
-        Map<String, Object> sample = request == null || request.sample() == null ? Map.of() : request.sample();
+        Map<String, Object> sample =
+            request == null || request.sample() == null ? Map.of() : request.sample();
         validateNoSecretKeys(sample);
         NotificationAttempt attempt = attemptService.createTestAttempt(channel, sample);
         if (!channel.isEnabled()) {
@@ -64,48 +75,73 @@ public class NotificationDeliveryOperationsService {
     }
 
     @Transactional(readOnly = true)
-    public NotificationChannelDiagnosticsResponse diagnostics(UUID channelId, String userId, String accountId) {
+    public NotificationChannelDiagnosticsResponse diagnostics(
+        UUID channelId,
+        String userId,
+        String accountId
+    ) {
         NotificationChannel channel = channelService.loadOwned(channelId, userId, accountId);
         UUID accountScope = channel.getAccountId();
         NotificationAttempt lastFailure = attemptRepository
-                .findFirstByChannelIdAndAccountIdAndStatusInOrderByUpdatedAtDesc(channelId, accountScope, FAILURE_STATUSES)
-                .orElse(null);
+            .findFirstByChannelIdAndAccountIdAndStatusInOrderByUpdatedAtDesc(
+                channelId,
+                accountScope,
+                FAILURE_STATUSES
+            )
+            .orElse(null);
         NotificationAttempt lastTest = attemptRepository
-                .findFirstByChannelIdAndAccountIdAndDeliveryEventTypeOrderByCreatedAtDesc(
-                        channelId,
-                        accountScope,
-                        "NOTIFICATION_TEST")
-                .orElse(null);
+            .findFirstByChannelIdAndAccountIdAndDeliveryEventTypeOrderByCreatedAtDesc(
+                channelId,
+                accountScope,
+                "NOTIFICATION_TEST"
+            )
+            .orElse(null);
         Instant oldestWaiting = attemptRepository
-                .findOldestCreatedAtByChannelAndStatus(channelId, accountScope, WAITING_STATUSES)
-                .orElse(null);
+            .findOldestCreatedAtByChannelAndStatus(channelId, accountScope, WAITING_STATUSES)
+            .orElse(null);
 
         return new NotificationChannelDiagnosticsResponse(
-                channel.getId(),
+            channel.getId(),
+            accountScope,
+            channel.getChannelType(),
+            channel.isEnabled(),
+            providerRegistry.hasAdapter(channel.getChannelType()),
+            attemptRepository
+                .findFirstByChannelIdAndAccountIdAndStatusOrderBySentAtDesc(
+                    channelId,
+                    accountScope,
+                    NotificationAttemptStatus.SENT
+                )
+                .map(NotificationAttempt::getSentAt)
+                .orElse(null),
+            lastFailure == null ? null : lastFailure.getUpdatedAt(),
+            lastFailure == null ? null : lastFailure.getLastErrorCode(),
+            lastFailure == null ? null : redactedSummary(lastFailure.getProviderResponseSummary()),
+            attemptRepository.countByChannelIdAndAccountIdAndStatus(
+                channelId,
                 accountScope,
-                channel.getChannelType(),
-                channel.isEnabled(),
-                providerRegistry.hasAdapter(channel.getChannelType()),
-                attemptRepository
-                        .findFirstByChannelIdAndAccountIdAndStatusOrderBySentAtDesc(
-                                channelId,
-                                accountScope,
-                                NotificationAttemptStatus.SENT)
-                        .map(NotificationAttempt::getSentAt)
-                        .orElse(null),
-                lastFailure == null ? null : lastFailure.getUpdatedAt(),
-                lastFailure == null ? null : lastFailure.getLastErrorCode(),
-                lastFailure == null ? null : redactedSummary(lastFailure.getProviderResponseSummary()),
-                attemptRepository.countByChannelIdAndAccountIdAndStatus(channelId, accountScope, NotificationAttemptStatus.RETRYING),
-                attemptRepository.countByChannelIdAndAccountIdAndStatus(channelId, accountScope, NotificationAttemptStatus.FAILED),
-                attemptRepository.countByChannelIdAndAccountIdAndStatus(channelId, accountScope, NotificationAttemptStatus.PENDING),
-                oldestWaiting == null ? null : Duration.between(oldestWaiting, Instant.now()).toSeconds(),
-                lastTest == null ? null : lastTest.getId(),
-                lastTest == null ? null : lastTest.getStatus().name(),
-                lastTest == null ? 0 : lastTest.getRetryCount(),
-                lastTest == null ? 0 : Math.max(1, lastTest.getMaxAttempts()),
-                lastTest == null ? null : lastTest.getNextAttemptAt(),
-                lastTest != null && lastTest.isRetryExhausted());
+                NotificationAttemptStatus.RETRYING
+            ),
+            attemptRepository.countByChannelIdAndAccountIdAndStatus(
+                channelId,
+                accountScope,
+                NotificationAttemptStatus.FAILED
+            ),
+            attemptRepository.countByChannelIdAndAccountIdAndStatus(
+                channelId,
+                accountScope,
+                NotificationAttemptStatus.PENDING
+            ),
+            oldestWaiting == null
+                ? null
+                : Duration.between(oldestWaiting, Instant.now()).toSeconds(),
+            lastTest == null ? null : lastTest.getId(),
+            lastTest == null ? null : lastTest.getStatus().name(),
+            lastTest == null ? 0 : lastTest.getRetryCount(),
+            lastTest == null ? 0 : Math.max(1, lastTest.getMaxAttempts()),
+            lastTest == null ? null : lastTest.getNextAttemptAt(),
+            lastTest != null && lastTest.isRetryExhausted()
+        );
     }
 
     private void validateNoSecretKeys(Map<String, Object> sample) {
@@ -128,7 +164,10 @@ public class NotificationDeliveryOperationsService {
         for (Map.Entry<String, Object> entry : sample.entrySet()) {
             String normalized = entry.getKey().toLowerCase(Locale.ROOT);
             if (SECRET_KEY_PARTS.stream().anyMatch(normalized::contains)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "notification test payload must not contain secrets");
+                throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "notification test payload must not contain secrets"
+                );
             }
             validateValue(entry.getValue());
         }
@@ -138,7 +177,11 @@ public class NotificationDeliveryOperationsService {
         try {
             objectMapper.readValue(objectMapper.writeValueAsString(sample), PAYLOAD_TYPE);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification test payload", exception);
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid notification test payload",
+                exception
+            );
         }
     }
 

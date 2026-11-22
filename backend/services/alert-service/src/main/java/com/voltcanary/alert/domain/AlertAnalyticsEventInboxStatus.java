@@ -5,5 +5,5 @@ public enum AlertAnalyticsEventInboxStatus {
     PROCESSING,
     PROCESSED,
     NO_ALERT,
-    FAILED
+    FAILED,
 }

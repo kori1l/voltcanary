@@ -4,7 +4,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ConnectorLeaseManager {
-
     Optional<ConnectorLease> acquire(UUID dataSourceId);
 
     Optional<ConnectorLease> renew(ConnectorLease lease);

@@ -9,9 +9,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration
 @EnableConfigurationProperties({
-        AlertNotificationProperties.class,
-        AlertEscalationProperties.class,
-        AlertRetentionProperties.class
+    AlertNotificationProperties.class,
+    AlertEscalationProperties.class,
+    AlertRetentionProperties.class,
 })
 public class NotificationAsyncConfig {
 

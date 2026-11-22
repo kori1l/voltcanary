@@ -3,14 +3,14 @@ package com.voltcanary.ingestion.adapter.api;
 import java.util.Objects;
 
 public record AdapterManifest(
-        String adapterId,
-        AdapterType adapterType,
-        String displayName,
-        TransportType transport,
-        ProtocolType protocol,
-        AdapterCapabilities capabilities,
-        String configSchemaVersion) {
-
+    String adapterId,
+    AdapterType adapterType,
+    String displayName,
+    TransportType transport,
+    ProtocolType protocol,
+    AdapterCapabilities capabilities,
+    String configSchemaVersion
+) {
     public AdapterManifest {
         adapterId = requireText(adapterId, "adapterId");
         displayName = requireText(displayName, "displayName");

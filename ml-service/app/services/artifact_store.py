@@ -5,7 +5,11 @@ from typing import Any
 from app.config.settings import Settings, settings
 from app.services.artifact_bundle import ArtifactBundleVerifier, BundleFilePayload, json_bytes
 from app.services.artifact_cleanup import ArtifactCleanupPlanner, ArtifactReferenceSet
-from app.services.artifact_providers import ArtifactStoreHealthError, LocalArtifactStoreProvider, S3ArtifactStoreProvider
+from app.services.artifact_providers import (
+    ArtifactStoreHealthError,
+    LocalArtifactStoreProvider,
+    S3ArtifactStoreProvider,
+)
 
 
 class ArtifactStore:
@@ -45,7 +49,9 @@ class ArtifactStore:
             supporting_files=supporting_files,
         )
 
-    def load_model_bundle(self, manifest_uri: str, expected_hash: str | None = None) -> dict[str, Any]:
+    def load_model_bundle(
+        self, manifest_uri: str, expected_hash: str | None = None
+    ) -> dict[str, Any]:
         provider = self._provider_for_uri(manifest_uri)
         return ArtifactBundleVerifier(provider).load_model_bundle(manifest_uri, expected_hash)
 
@@ -110,7 +116,9 @@ class ArtifactStore:
             from botocore.client import Config
 
             current_settings = self.settings_provider()
-            config = Config(s3={"addressing_style": "path" if current_settings.s3_force_path_style else "auto"})
+            config = Config(
+                s3={"addressing_style": "path" if current_settings.s3_force_path_style else "auto"}
+            )
             self._s3_client = boto3.client(
                 "s3",
                 endpoint_url=current_settings.minio_endpoint,

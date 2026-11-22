@@ -1,9 +1,8 @@
 package com.voltcanary.alert.notification.repository;
 
-import jakarta.persistence.LockModeType;
-import org.springframework.data.jpa.repository.Lock;
 import com.voltcanary.alert.notification.domain.NotificationAttempt;
 import com.voltcanary.alert.notification.domain.NotificationAttemptStatus;
+import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
@@ -11,6 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,88 +20,103 @@ public interface NotificationAttemptRepository extends JpaRepository<Notificatio
     @Query("select attempt from NotificationAttempt attempt where attempt.id=:id")
     Optional<NotificationAttempt> lockById(@Param("id") UUID id);
 
-
     List<NotificationAttempt> findByAlertIdOrderByCreatedAtDesc(UUID alertId);
 
     Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndStatusOrderBySentAtDesc(
-            UUID channelId,
-            UUID accountId,
-            NotificationAttemptStatus status);
+        UUID channelId,
+        UUID accountId,
+        NotificationAttemptStatus status
+    );
 
     Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndStatusInOrderByUpdatedAtDesc(
-            UUID channelId,
-            UUID accountId,
-            Collection<NotificationAttemptStatus> statuses);
+        UUID channelId,
+        UUID accountId,
+        Collection<NotificationAttemptStatus> statuses
+    );
 
     Optional<NotificationAttempt> findFirstByChannelIdAndAccountIdAndDeliveryEventTypeOrderByCreatedAtDesc(
-            UUID channelId,
-            UUID accountId,
-            String deliveryEventType);
+        UUID channelId,
+        UUID accountId,
+        String deliveryEventType
+    );
 
-    long countByChannelIdAndAccountIdAndStatus(UUID channelId, UUID accountId, NotificationAttemptStatus status);
+    long countByChannelIdAndAccountIdAndStatus(
+        UUID channelId,
+        UUID accountId,
+        NotificationAttemptStatus status
+    );
 
-    @Query("""
-            select min(attempt.createdAt)
-            from NotificationAttempt attempt
-            where attempt.channelId = :channelId
-              and attempt.accountId = :accountId
-              and attempt.status in :statuses
-            """)
+    @Query(
+        """
+        select min(attempt.createdAt)
+        from NotificationAttempt attempt
+        where attempt.channelId = :channelId
+          and attempt.accountId = :accountId
+          and attempt.status in :statuses
+        """
+    )
     Optional<Instant> findOldestCreatedAtByChannelAndStatus(
-            @Param("channelId") UUID channelId,
-            @Param("accountId") UUID accountId,
-            @Param("statuses") Collection<NotificationAttemptStatus> statuses);
+        @Param("channelId") UUID channelId,
+        @Param("accountId") UUID accountId,
+        @Param("statuses") Collection<NotificationAttemptStatus> statuses
+    );
 
     Optional<NotificationAttempt> findByIdempotencyKey(String idempotencyKey);
 
-    @Query("""
-            select attempt
-            from NotificationAttempt attempt
-            where (
-                    attempt.status in :readyStatuses
-                    and attempt.nextAttemptAt <= :now
-                    and (attempt.lockedAt is null or attempt.lockedAt <= :lockExpiredBefore)
-                  )
-               or (
-                    attempt.status = :processingStatus
-                    and attempt.lockedAt <= :lockExpiredBefore
-                  )
-            order by attempt.createdAt asc
-            """)
+    @Query(
+        """
+        select attempt
+        from NotificationAttempt attempt
+        where (
+                attempt.status in :readyStatuses
+                and attempt.nextAttemptAt <= :now
+                and (attempt.lockedAt is null or attempt.lockedAt <= :lockExpiredBefore)
+              )
+           or (
+                attempt.status = :processingStatus
+                and attempt.lockedAt <= :lockExpiredBefore
+              )
+        order by attempt.createdAt asc
+        """
+    )
     List<NotificationAttempt> findClaimCandidates(
-            @Param("readyStatuses") List<NotificationAttemptStatus> readyStatuses,
-            @Param("processingStatus") NotificationAttemptStatus processingStatus,
-            @Param("now") Instant now,
-            @Param("lockExpiredBefore") Instant lockExpiredBefore,
-            Pageable pageable);
+        @Param("readyStatuses") List<NotificationAttemptStatus> readyStatuses,
+        @Param("processingStatus") NotificationAttemptStatus processingStatus,
+        @Param("now") Instant now,
+        @Param("lockExpiredBefore") Instant lockExpiredBefore,
+        Pageable pageable
+    );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("""
-            update NotificationAttempt attempt
-            set attempt.status = :processingStatus,
-                attempt.lockedAt = :lockedAt,
-                attempt.lockedBy = :lockedBy,
-                attempt.updatedAt = :lockedAt
-            where attempt.id = :attemptId
-              and (
-                    (
-                        attempt.status in :readyStatuses
-                        and attempt.nextAttemptAt <= :lockedAt
-                        and (attempt.lockedAt is null or attempt.lockedAt <= :lockExpiredBefore)
-                    )
-                    or (
-                        attempt.status = :processingStatus
-                        and attempt.lockedAt <= :lockExpiredBefore
-                    )
-                  )
-            """)
+    @Query(
+        """
+        update NotificationAttempt attempt
+        set attempt.status = :processingStatus,
+            attempt.lockedAt = :lockedAt,
+            attempt.lockedBy = :lockedBy,
+            attempt.updatedAt = :lockedAt
+        where attempt.id = :attemptId
+          and (
+                (
+                    attempt.status in :readyStatuses
+                    and attempt.nextAttemptAt <= :lockedAt
+                    and (attempt.lockedAt is null or attempt.lockedAt <= :lockExpiredBefore)
+                )
+                or (
+                    attempt.status = :processingStatus
+                    and attempt.lockedAt <= :lockExpiredBefore
+                )
+              )
+        """
+    )
     int claim(
-            @Param("attemptId") UUID attemptId,
-            @Param("readyStatuses") List<NotificationAttemptStatus> readyStatuses,
-            @Param("processingStatus") NotificationAttemptStatus processingStatus,
-            @Param("lockedAt") Instant lockedAt,
-            @Param("lockedBy") String lockedBy,
-            @Param("lockExpiredBefore") Instant lockExpiredBefore);
+        @Param("attemptId") UUID attemptId,
+        @Param("readyStatuses") List<NotificationAttemptStatus> readyStatuses,
+        @Param("processingStatus") NotificationAttemptStatus processingStatus,
+        @Param("lockedAt") Instant lockedAt,
+        @Param("lockedBy") String lockedBy,
+        @Param("lockExpiredBefore") Instant lockExpiredBefore
+    );
 
     long countByStatus(NotificationAttemptStatus status);
 

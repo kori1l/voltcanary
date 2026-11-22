@@ -28,11 +28,19 @@ public class MlFeatureSnapshotLifecycleService {
     private final MlFeatureSnapshotResponseMapper mapper;
 
     @Transactional
-    public MlFeatureSnapshotResponse archive(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {
+    public MlFeatureSnapshotResponse archive(
+        UUID accountId,
+        UUID actorId,
+        UUID featureSnapshotId,
+        MlLifecycleActionRequest request
+    ) {
         MlFeatureSnapshot snapshot = findOwnedSnapshot(accountId, featureSnapshotId);
         String reason = requiredReason(request);
         if ("DELETED".equals(snapshot.getLifecycleStatus())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found");
+            throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "ML feature snapshot not found"
+            );
         }
         stampLifecycle(snapshot, "ARCHIVED", actorId, reason);
         featureSnapshotRepository.save(snapshot);
@@ -44,30 +52,54 @@ public class MlFeatureSnapshotLifecycleService {
         MlFeatureSnapshot snapshot = findOwnedSnapshot(accountId, featureSnapshotId);
         String normalizedAction = normalizedAction(action);
         Map<String, Long> dependencies = featureSnapshotDependencies(featureSnapshotId);
-        boolean blocked = "delete".equals(normalizedAction)
-                && dependencies.values().stream().anyMatch(count -> count > 0);
+        boolean blocked =
+            "delete".equals(normalizedAction) &&
+            dependencies
+                .values()
+                .stream()
+                .anyMatch(count -> count > 0);
         List<Map<String, Object>> dependencySummary = "delete".equals(normalizedAction)
-                ? List.of(dependency("featureSnapshot", featureSnapshotId, dependencies))
-                : List.of(dependency("featureSnapshot", featureSnapshotId, Map.of("status", snapshot.getLifecycleStatus())));
+            ? List.of(dependency("featureSnapshot", featureSnapshotId, dependencies))
+            : List.of(
+                  dependency(
+                      "featureSnapshot",
+                      featureSnapshotId,
+                      Map.of("status", snapshot.getLifecycleStatus())
+                  )
+              );
         String message = blocked
-                ? "Feature snapshot is referenced and should be archived instead of deleted"
-                : "Feature snapshot action is allowed when submitted with an audit reason";
+            ? "Feature snapshot is referenced and should be archived instead of deleted"
+            : "Feature snapshot action is allowed when submitted with an audit reason";
         return new MlLifecycleImpactResponse(normalizedAction, blocked, message, dependencySummary);
     }
 
     @Transactional
-    public MlFeatureSnapshotResponse delete(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {
+    public MlFeatureSnapshotResponse delete(
+        UUID accountId,
+        UUID actorId,
+        UUID featureSnapshotId,
+        MlLifecycleActionRequest request
+    ) {
         MlFeatureSnapshot snapshot = findOwnedSnapshot(accountId, featureSnapshotId);
         String reason = requiredReason(request);
         if ("DELETED".equals(snapshot.getLifecycleStatus())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found");
+            throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "ML feature snapshot not found"
+            );
         }
         Map<String, Long> dependencies = featureSnapshotDependencies(featureSnapshotId);
-        if (dependencies.values().stream().anyMatch(count -> count > 0)) {
+        if (
+            dependencies
+                .values()
+                .stream()
+                .anyMatch(count -> count > 0)
+        ) {
             throw new MlLifecycleConflictException(
-                    "FEATURE_SNAPSHOT_REFERENCED",
-                    "Feature snapshot is referenced by training or model lineage and must be archived instead of deleted",
-                    dependency("featureSnapshot", featureSnapshotId, dependencies));
+                "FEATURE_SNAPSHOT_REFERENCED",
+                "Feature snapshot is referenced by training or model lineage and must be archived instead of deleted",
+                dependency("featureSnapshot", featureSnapshotId, dependencies)
+            );
         }
         stampLifecycle(snapshot, "DELETED", actorId, reason);
         featureSnapshotRepository.save(snapshot);
@@ -76,16 +108,28 @@ public class MlFeatureSnapshotLifecycleService {
 
     private Map<String, Long> featureSnapshotDependencies(UUID featureSnapshotId) {
         Map<String, Long> dependencies = new LinkedHashMap<>();
-        dependencies.put("trainingRuns", trainingRunRepository.countByFeatureSnapshotId(featureSnapshotId));
-        dependencies.put("modelVersions", modelVersionRepository.countByFeatureSnapshotId(featureSnapshotId));
+        dependencies.put(
+            "trainingRuns",
+            trainingRunRepository.countByFeatureSnapshotId(featureSnapshotId)
+        );
+        dependencies.put(
+            "modelVersions",
+            modelVersionRepository.countByFeatureSnapshotId(featureSnapshotId)
+        );
         return dependencies;
     }
 
     private MlFeatureSnapshot findOwnedSnapshot(UUID accountId, UUID featureSnapshotId) {
-        MlFeatureSnapshot snapshot = featureSnapshotRepository.findById(featureSnapshotId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found"));
+        MlFeatureSnapshot snapshot = featureSnapshotRepository
+            .findById(featureSnapshotId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found")
+            );
         if (!accountId.equals(snapshot.getAccountId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML feature snapshot not found");
+            throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "ML feature snapshot not found"
+            );
         }
         return snapshot;
     }
@@ -93,12 +137,20 @@ public class MlFeatureSnapshotLifecycleService {
     private String requiredReason(MlLifecycleActionRequest request) {
         String value = request == null ? null : request.reason();
         if (value == null || value.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Lifecycle reason is required"
+            );
         }
         return value.trim();
     }
 
-    private void stampLifecycle(MlFeatureSnapshot snapshot, String status, UUID actorId, String reason) {
+    private void stampLifecycle(
+        MlFeatureSnapshot snapshot,
+        String status,
+        UUID actorId,
+        String reason
+    ) {
         snapshot.setLifecycleStatus(status);
         snapshot.setLifecycleActorId(actorId);
         snapshot.setLifecycleAt(Instant.now());

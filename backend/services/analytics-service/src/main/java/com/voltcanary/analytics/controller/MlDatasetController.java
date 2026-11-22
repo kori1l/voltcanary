@@ -53,70 +53,82 @@ public class MlDatasetController {
 
     @GetMapping
     public List<MlDatasetSummaryDto> listDatasets(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.list(resolvedAccountId, statusFilter);
     }
 
     @GetMapping("/versions/{datasetVersionId}")
     public MlDatasetDetailDto getDatasetVersion(
-            @PathVariable("datasetVersionId") UUID datasetVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @PathVariable("datasetVersionId") UUID datasetVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.detail(resolvedAccountId, datasetVersionId);
     }
 
     @PostMapping("/versions/{datasetVersionId}/archive")
     public MlDatasetSummaryDto archiveDatasetVersion(
-            @PathVariable("datasetVersionId") UUID datasetVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("datasetVersionId") UUID datasetVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.archive(resolvedAccountId, parseUserId(userId), datasetVersionId, request);
     }
 
     @GetMapping("/versions/{datasetVersionId}/lifecycle-impact")
     public MlLifecycleImpactResponse datasetLifecycleImpact(
-            @PathVariable("datasetVersionId") UUID datasetVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @PathVariable("datasetVersionId") UUID datasetVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.impact(resolvedAccountId, datasetVersionId, action);
     }
 
     @PostMapping("/versions/{datasetVersionId}/delete")
     public MlDatasetSummaryDto deleteDatasetVersion(
-            @PathVariable("datasetVersionId") UUID datasetVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("datasetVersionId") UUID datasetVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return service.delete(resolvedAccountId, parseUserId(userId), datasetVersionId, request);
     }
 
     @PostMapping("/internal-telemetry")
     public MlInternalDatasetResponse createInternalTelemetryDataset(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlInternalDatasetRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlInternalDatasetRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         for (UUID deviceId : request.deviceIds()) {
             accessService.requireReadAccess(deviceId, userId, role, correlationId);
         }
@@ -125,12 +137,14 @@ public class MlDatasetController {
 
     @PostMapping("/internal-telemetry/preview")
     public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlDatasetWorkbenchPreviewRequest request) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlDatasetWorkbenchPreviewRequest request
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         for (UUID deviceId : request.deviceIds()) {
             accessService.requireReadAccess(deviceId, userId, role, correlationId);
         }
@@ -139,131 +153,166 @@ public class MlDatasetController {
 
     @PostMapping(value = "/external-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MlExternalImportResponse importExternalCsv(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("mappingJson") String mappingJson,
-            @RequestParam(value = "datasetName", required = false) String datasetName,
-            @RequestParam(value = "description", required = false) String description) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("file") MultipartFile file,
+        @RequestParam("mappingJson") String mappingJson,
+        @RequestParam(value = "datasetName", required = false) String datasetName,
+        @RequestParam(value = "description", required = false) String description
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return importService.importCsv(
-                resolvedAccountId,
-                parseUserId(userId),
-                datasetName,
-                description,
-                file,
-                parseMapping(mappingJson));
+            resolvedAccountId,
+            parseUserId(userId),
+            datasetName,
+            description,
+            file,
+            parseMapping(mappingJson)
+        );
     }
 
     @PostMapping(value = "/external-jsonl", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public MlExternalImportResponse importExternalJsonl(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("mappingJson") String mappingJson,
-            @RequestParam(value = "datasetName", required = false) String datasetName,
-            @RequestParam(value = "description", required = false) String description) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("file") MultipartFile file,
+        @RequestParam("mappingJson") String mappingJson,
+        @RequestParam(value = "datasetName", required = false) String datasetName,
+        @RequestParam(value = "description", required = false) String description
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return importService.importJsonl(
-                resolvedAccountId,
-                parseUserId(userId),
-                datasetName,
-                description,
-                file,
-                parseMapping(mappingJson));
+            resolvedAccountId,
+            parseUserId(userId),
+            datasetName,
+            description,
+            file,
+            parseMapping(mappingJson)
+        );
     }
 
     @PostMapping("/feature-snapshots")
     public MlFeatureSnapshotResponse generateFeatureSnapshot(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlFeatureSnapshotRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlFeatureSnapshotRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         parseUserId(userId);
         return featurePipelineService.generate(resolvedAccountId, request);
     }
 
     @GetMapping("/feature-snapshots")
     public List<MlFeatureSnapshotResponse> listFeatureSnapshots(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "datasetVersionId", required = false) UUID datasetVersionId) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "datasetVersionId", required = false) UUID datasetVersionId
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return featurePipelineService.list(resolvedAccountId, datasetVersionId);
     }
 
     @PostMapping("/feature-snapshots/{featureSnapshotId}/archive")
     public MlFeatureSnapshotResponse archiveFeatureSnapshot(
-            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return featurePipelineService.archive(resolvedAccountId, parseUserId(userId), featureSnapshotId, request);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.archive(
+            resolvedAccountId,
+            parseUserId(userId),
+            featureSnapshotId,
+            request
+        );
     }
 
     @GetMapping("/feature-snapshots/{featureSnapshotId}/lifecycle-impact")
     public MlLifecycleImpactResponse featureSnapshotLifecycleImpact(
-            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return featurePipelineService.impact(resolvedAccountId, featureSnapshotId, action);
     }
 
     @PostMapping("/feature-snapshots/{featureSnapshotId}/delete")
     public MlFeatureSnapshotResponse deleteFeatureSnapshot(
-            @PathVariable("featureSnapshotId") UUID featureSnapshotId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("featureSnapshotId") UUID featureSnapshotId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return featurePipelineService.delete(resolvedAccountId, parseUserId(userId), featureSnapshotId, request);
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return featurePipelineService.delete(
+            resolvedAccountId,
+            parseUserId(userId),
+            featureSnapshotId,
+            request
+        );
     }
 
     @PostMapping("/horizon-labels")
     public ResponseEntity<MlHorizonLabelGenerationResponse> generateHorizonLabels(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlHorizonLabelGenerationRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlHorizonLabelGenerationRequest request
+    ) {
         requireWrite(role);
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return ResponseEntity.accepted().body(horizonLabelGenerationService.start(resolvedAccountId, parseUserId(userId), request));
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return ResponseEntity.accepted().body(
+            horizonLabelGenerationService.start(resolvedAccountId, parseUserId(userId), request)
+        );
     }
 
     @GetMapping("/horizon-labels/{jobId}")
     public MlHorizonLabelGenerationResponse getHorizonLabelGenerationStatus(
-            @PathVariable("jobId") UUID jobId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
-        UUID resolvedAccountId = accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        @PathVariable("jobId") UUID jobId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
+        UUID resolvedAccountId =
+            accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
         return horizonLabelGenerationService.status(resolvedAccountId, jobId);
     }
 
     private void requireWrite(String role) {
         if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML dataset write access denied");
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "ML dataset write access denied"
+            );
         }
     }
 
@@ -271,7 +320,10 @@ public class MlDatasetController {
         try {
             return UUID.fromString(userId);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 

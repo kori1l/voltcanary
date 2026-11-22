@@ -10,6 +10,6 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class DeviceKafkaProperties {
-    private boolean publishEnabled = true;
 
+    private boolean publishEnabled = true;
 }

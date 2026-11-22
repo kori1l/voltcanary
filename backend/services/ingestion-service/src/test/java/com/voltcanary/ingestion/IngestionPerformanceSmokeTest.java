@@ -1,5 +1,10 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.verify;
+
 import com.voltcanary.ingestion.kafka.TelemetryEventPublisher;
 import com.voltcanary.ingestion.source.InternalDataSourceResponse;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
@@ -11,30 +16,26 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.verify;
-
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.publish-enabled=true",
-                "app.idempotency.redis-enabled=false",
-                "app.ingestion.redis-rate-limit-enabled=false",
-                "app.ingestion.multi-replica-mode=false",
-                "app.ingestion.local-correctness-state-enabled=true",
-                "app.ingestion.backpressure-enabled=false",
-                "spring.kafka.bootstrap-servers=localhost:19092"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.publish-enabled=true",
+        "app.idempotency.redis-enabled=false",
+        "app.ingestion.redis-rate-limit-enabled=false",
+        "app.ingestion.multi-replica-mode=false",
+        "app.ingestion.local-correctness-state-enabled=true",
+        "app.ingestion.backpressure-enabled=false",
+        "spring.kafka.bootstrap-servers=localhost:19092",
+    }
+)
 class IngestionPerformanceSmokeTest {
 
     @Autowired
@@ -60,9 +61,10 @@ class IngestionPerformanceSmokeTest {
         }
 
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/ingestion/readings/batch",
-                Map.of("readings", readings),
-                String.class);
+            "/ingestion/readings/batch",
+            Map.of("readings", readings),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).contains("\"acceptedCount\":50");
@@ -79,9 +81,10 @@ class IngestionPerformanceSmokeTest {
 
         for (int index = 0; index < 20; index++) {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    "/ingestion/readings",
-                    request(deviceId, sourceId, start.plusSeconds(index)),
-                    String.class);
+                "/ingestion/readings",
+                request(deviceId, sourceId, start.plusSeconds(index)),
+                String.class
+            );
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         }
 
@@ -90,19 +93,31 @@ class IngestionPerformanceSmokeTest {
 
     private Map<String, Object> request(UUID deviceId, String sourceId, Instant timestamp) {
         return Map.of(
-                "deviceId", deviceId,
-                "sourceId", sourceId,
-                "timestamp", timestamp.toString(),
-                "metrics", Map.of(
-                        "activePowerW", 840.2,
-                        "voltageV", 230.1,
-                        "currentA", 3.65,
-                        "energyWh", 12450.7,
-                        "rssi", -61));
+            "deviceId",
+            deviceId,
+            "sourceId",
+            sourceId,
+            "timestamp",
+            timestamp.toString(),
+            "metrics",
+            Map.of(
+                "activePowerW",
+                840.2,
+                "voltageV",
+                230.1,
+                "currentA",
+                3.65,
+                "energyWh",
+                12450.7,
+                "rssi",
+                -61
+            )
+        );
     }
 
     private void seedSource(UUID deviceId, String sourceId) {
-        sourceRegistryCache.put(new InternalDataSourceResponse(
+        sourceRegistryCache.put(
+            new InternalDataSourceResponse(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -111,6 +126,9 @@ class IngestionPerformanceSmokeTest {
                 "REST",
                 "ACTIVE",
                 null,
-                null), System.nanoTime());
+                null
+            ),
+            System.nanoTime()
+        );
     }
 }

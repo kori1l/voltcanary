@@ -19,7 +19,10 @@
     "structure:check": "powershell -ExecutionPolicy Bypass -File scripts/check-project-structure.ps1",
     "vcl:check": "pwsh -NoProfile -File scripts/verify-vcl-contracts.ps1",
     "ai-contracts:check": "pwsh -NoProfile -File scripts/verify-ai-collaboration-contracts.ps1",
-    "test": "npm run structure:check && npm run openspec:validate"
+    "test": "npm run structure:check && npm run openspec:validate",
+    "format": "prettier --write \"frontend/src/**/*.{ts,tsx,css}\" \"backend/**/src/**/*.java\"",
+    "format:check": "prettier --check \"frontend/src/**/*.{ts,tsx,css}\" \"backend/**/src/**/*.java\"",
+    "architecture:check": "node scripts/check-architecture.mjs"
   },
   "repository": {
     "type": "git",
@@ -37,6 +40,8 @@
     "npm": ">=10.0.0"
   },
   "devDependencies": {
-    "@fission-ai/openspec": "1.6.0"
+    "@fission-ai/openspec": "1.6.0",
+    "prettier": "3.10.1",
+    "prettier-plugin-java": "2.12.0"
   }
 }

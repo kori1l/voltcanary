@@ -11,26 +11,28 @@ public class SimulationProfileMapper {
 
     public SimulationConfigResponse toResponse(SimulationConfig config) {
         return new SimulationConfigResponse(
-                config.getId(),
-                config.getDeviceId(),
-                config.getDataSourceId(),
-                config.getName(),
-                config.getProfile(),
-                config.getProtocol(),
-                config.getYamlConfig(),
-                config.getYamlVersion(),
-                config.getStatus(),
-                config.getUpdatedAt(),
-                config.getSourceToken() != null && !config.getSourceToken().isBlank());
+            config.getId(),
+            config.getDeviceId(),
+            config.getDataSourceId(),
+            config.getName(),
+            config.getProfile(),
+            config.getProtocol(),
+            config.getYamlConfig(),
+            config.getYamlVersion(),
+            config.getStatus(),
+            config.getUpdatedAt(),
+            config.getSourceToken() != null && !config.getSourceToken().isBlank()
+        );
     }
 
     public SimulationConfigVersionResponse toVersionResponse(SimulationConfigVersion version) {
         return new SimulationConfigVersionResponse(
-                version.getId(),
-                version.getVersion(),
-                version.getYamlConfig(),
-                version.getChangeNote(),
-                version.getCreatedAt(),
-                version.getCreatedBy());
+            version.getId(),
+            version.getVersion(),
+            version.getYamlConfig(),
+            version.getChangeNote(),
+            version.getCreatedAt(),
+            version.getCreatedBy()
+        );
     }
 }

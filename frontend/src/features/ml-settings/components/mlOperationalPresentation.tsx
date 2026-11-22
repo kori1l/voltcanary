@@ -1,7 +1,4 @@
-import {
-  MlLifecycleStatusFilter,
-  MlModelVersion,
-} from "../../../analytics/mlModuleApi";
+import { MlLifecycleStatusFilter, MlModelVersion } from "../../../analytics/mlModuleApi";
 
 export const lifecycleStatusFilters: MlLifecycleStatusFilter[] = [
   "default",
@@ -22,9 +19,7 @@ export function StatusFilterSelect(props: {
       {props.label}
       <select
         value={props.value}
-        onChange={(event) =>
-          void props.onChange(event.target.value as MlLifecycleStatusFilter)
-        }
+        onChange={(event) => void props.onChange(event.target.value as MlLifecycleStatusFilter)}
       >
         {lifecycleStatusFilters.map((value) => (
           <option key={value} value={value}>
@@ -110,9 +105,7 @@ export function humanizeFeatureName(value: string) {
     .split(/\s+/)
     .filter(Boolean)
     .map((part) =>
-      part.length <= 2
-        ? part.toUpperCase()
-        : part.replace(/^./, (match) => match.toUpperCase()),
+      part.length <= 2 ? part.toUpperCase() : part.replace(/^./, (match) => match.toUpperCase()),
     )
     .join(" ");
 }

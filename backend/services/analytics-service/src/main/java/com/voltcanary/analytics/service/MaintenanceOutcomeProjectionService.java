@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class MaintenanceOutcomeProjectionService {
+
     private final MaintenanceOutcomeReadModelRepository repository;
     private final MeterRegistry meterRegistry;
     private final DeviceHistoryDeletion deletions;
@@ -21,10 +22,17 @@ public class MaintenanceOutcomeProjectionService {
     @Transactional
     public boolean upsertSnapshot(MaintenanceOutcomeSnapshot snapshot) {
         if (!deletions.writable(snapshot.deviceId())) return false;
-        MaintenanceOutcomeReadModel entity = repository.findById(snapshot.id())
-                .orElseGet(MaintenanceOutcomeReadModel::new);
+        MaintenanceOutcomeReadModel entity = repository
+            .findById(snapshot.id())
+            .orElseGet(MaintenanceOutcomeReadModel::new);
         if (entity.getMaintenanceOutcomeId() != null && entity.getVersion() >= snapshot.version()) {
-            meterRegistry.counter("analytics.maintenance.outcome.reconciliation.projected", "status", "stale").increment();
+            meterRegistry
+                .counter(
+                    "analytics.maintenance.outcome.reconciliation.projected",
+                    "status",
+                    "stale"
+                )
+                .increment();
             return false;
         }
         entity.setMaintenanceOutcomeId(snapshot.id());
@@ -44,12 +52,18 @@ public class MaintenanceOutcomeProjectionService {
         entity.setVersion(snapshot.version());
         entity.setUpdatedAt(snapshot.updatedAt() == null ? Instant.now() : snapshot.updatedAt());
         repository.save(entity);
-        meterRegistry.counter("analytics.maintenance.outcome.reconciliation.projected", "status", "applied").increment();
+        meterRegistry
+            .counter("analytics.maintenance.outcome.reconciliation.projected", "status", "applied")
+            .increment();
         return true;
     }
 
     @Transactional(readOnly = true)
-    public List<MaintenanceOutcomeReadModel> observedForDevice(UUID deviceId, Instant from, Instant to) {
+    public List<MaintenanceOutcomeReadModel> observedForDevice(
+        UUID deviceId,
+        Instant from,
+        Instant to
+    ) {
         return repository.findByDeviceAndObservedRange(deviceId, from, to);
     }
 }

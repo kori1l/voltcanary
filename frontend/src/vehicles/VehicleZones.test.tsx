@@ -1,43 +1,121 @@
-import {render,screen,fireEvent,waitFor} from "@testing-library/react";
-import {vi,it,expect,beforeEach} from "vitest";
-import {VehicleZones} from "./VehicleZones";
-import {defaultMonitoring} from "./monitoringModel";
-const api=vi.hoisted(()=>({readMonitoringSnapshot:vi.fn(),prepareMonitoring:vi.fn(),confirmMonitoring:vi.fn(),inspectMonitoring:vi.fn()}));
-vi.mock("./monitoringApi",()=>api);
-vi.mock("./VehicleMap",()=>({VehicleMap:({onPickPosition}:{onPickPosition?:(latitude:number,longitude:number)=>void})=>onPickPosition?<button type="button" onClick={()=>onPickPosition(60,24)}>Pick map centre</button>:null}));
-beforeEach(()=>{vi.resetAllMocks();api.readMonitoringSnapshot.mockResolvedValue({revision:3,digest:"base",settings:defaultMonitoring});
-  api.prepareMonitoring.mockImplementation(async(device,revision,settings,key)=>({id:"review",deviceId:device,baseRevision:revision,before:defaultMonitoring,after:settings,digest:"digest",idempotencyKey:key,expiresAt:new Date(Date.now()+60000).toISOString(),status:"PREPARED",appliedRevision:null}));});
-it("passes an explicitly selected centre to AI without changing settings",async()=>{
-  const point=vi.fn();render(<VehicleZones deviceId="car" settings={defaultMonitoring} onSave={()=>{}} onAiPoint={point} evidence={null}/>);
-  await waitFor(()=>expect(screen.getByRole("button",{name:"Choose a point for AI"})).toBeEnabled());
-  fireEvent.click(screen.getByRole("button",{name:"Choose a point for AI"}));
-  fireEvent.click(screen.getByRole("button",{name:"Pick map centre"}));
-  expect(point).toHaveBeenCalledWith(60,24);expect(api.prepareMonitoring).not.toHaveBeenCalled();expect(api.confirmMonitoring).not.toHaveBeenCalled();
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { vi, it, expect, beforeEach } from "vitest";
+import { VehicleZones } from "./VehicleZones";
+import { defaultMonitoring } from "./monitoringModel";
+const api = vi.hoisted(() => ({
+  readMonitoringSnapshot: vi.fn(),
+  prepareMonitoring: vi.fn(),
+  confirmMonitoring: vi.fn(),
+  inspectMonitoring: vi.fn(),
+}));
+vi.mock("./monitoringApi", () => api);
+vi.mock("./VehicleMap", () => ({
+  VehicleMap: ({
+    onPickPosition,
+  }: {
+    onPickPosition?: (latitude: number, longitude: number) => void;
+  }) =>
+    onPickPosition ? (
+      <button type="button" onClick={() => onPickPosition(60, 24)}>
+        Pick map centre
+      </button>
+    ) : null,
+}));
+beforeEach(() => {
+  vi.resetAllMocks();
+  api.readMonitoringSnapshot.mockResolvedValue({
+    revision: 3,
+    digest: "base",
+    settings: defaultMonitoring,
+  });
+  api.prepareMonitoring.mockImplementation(async (device, revision, settings, key) => ({
+    id: "review",
+    deviceId: device,
+    baseRevision: revision,
+    before: defaultMonitoring,
+    after: settings,
+    digest: "digest",
+    idempotencyKey: key,
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+    status: "PREPARED",
+    appliedRevision: null,
+  }));
 });
-it("keeps zone edits local, reviews the exact diff and saves only after confirmation",async()=>{
-  const onSave=vi.fn();
-  render(<VehicleZones deviceId="car" settings={defaultMonitoring} onSave={onSave} evidence={null}/>);
-  await waitFor(()=>expect(screen.getByRole("button",{name:"Add zone"})).toBeEnabled());
-  fireEvent.click(screen.getByRole("button",{name:"Add zone"}));expect(api.confirmMonitoring).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText("Radius (metres)"),{target:{value:"500"}});
-  fireEvent.click(screen.getByRole("button",{name:"Review monitoring changes"}));
-  await screen.findByRole("button",{name:"Confirm monitoring changes"});
-  expect(api.confirmMonitoring).not.toHaveBeenCalled();expect(api.prepareMonitoring.mock.calls[0][2].zones[0].radiusMetres).toBe(500);
-  const review=await api.prepareMonitoring.mock.results[0].value;
-  api.confirmMonitoring.mockResolvedValue({...review,status:"SUCCEEDED",appliedRevision:4});
-  api.readMonitoringSnapshot.mockResolvedValue({revision:4,digest:"saved",settings:review.after});
-  fireEvent.click(screen.getByRole("button",{name:"Confirm monitoring changes"}));
-  await waitFor(()=>expect(onSave).toHaveBeenCalledWith(review.after));
+it("passes an explicitly selected centre to AI without changing settings", async () => {
+  const point = vi.fn();
+  render(
+    <VehicleZones
+      deviceId="car"
+      settings={defaultMonitoring}
+      onSave={() => {}}
+      onAiPoint={point}
+      evidence={null}
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Choose a point for AI" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Choose a point for AI" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pick map centre" }));
+  expect(point).toHaveBeenCalledWith(60, 24);
+  expect(api.prepareMonitoring).not.toHaveBeenCalled();
+  expect(api.confirmMonitoring).not.toHaveBeenCalled();
 });
-it("inspects a lost confirmation without creating or dispatching a replacement",async()=>{
-  const review={id:"original",deviceId:"car",baseRevision:3,before:defaultMonitoring,after:{...defaultMonitoring,speedLimitKmh:40},digest:"digest",idempotencyKey:"key",expiresAt:new Date(Date.now()+60000).toISOString(),status:"PREPARED",appliedRevision:null};
-  api.inspectMonitoring.mockResolvedValue(review);api.confirmMonitoring.mockRejectedValue(new Error("Lost response"));
-  render(<VehicleZones deviceId="car" settings={defaultMonitoring} onSave={()=>{}} evidence={null} reviewId="original"/>);
-  fireEvent.click(await screen.findByRole("button",{name:"Confirm monitoring changes"}));
+it("keeps zone edits local, reviews the exact diff and saves only after confirmation", async () => {
+  const onSave = vi.fn();
+  render(
+    <VehicleZones deviceId="car" settings={defaultMonitoring} onSave={onSave} evidence={null} />,
+  );
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add zone" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Add zone" }));
+  expect(api.confirmMonitoring).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Radius (metres)"), { target: { value: "500" } });
+  fireEvent.click(screen.getByRole("button", { name: "Review monitoring changes" }));
+  await screen.findByRole("button", { name: "Confirm monitoring changes" });
+  expect(api.confirmMonitoring).not.toHaveBeenCalled();
+  expect(api.prepareMonitoring.mock.calls[0][2].zones[0].radiusMetres).toBe(500);
+  const review = await api.prepareMonitoring.mock.results[0].value;
+  api.confirmMonitoring.mockResolvedValue({ ...review, status: "SUCCEEDED", appliedRevision: 4 });
+  api.readMonitoringSnapshot.mockResolvedValue({
+    revision: 4,
+    digest: "saved",
+    settings: review.after,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Confirm monitoring changes" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith(review.after));
+});
+it("inspects a lost confirmation without creating or dispatching a replacement", async () => {
+  const review = {
+    id: "original",
+    deviceId: "car",
+    baseRevision: 3,
+    before: defaultMonitoring,
+    after: { ...defaultMonitoring, speedLimitKmh: 40 },
+    digest: "digest",
+    idempotencyKey: "key",
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+    status: "PREPARED",
+    appliedRevision: null,
+  };
+  api.inspectMonitoring.mockResolvedValue(review);
+  api.confirmMonitoring.mockRejectedValue(new Error("Lost response"));
+  render(
+    <VehicleZones
+      deviceId="car"
+      settings={defaultMonitoring}
+      onSave={() => {}}
+      evidence={null}
+      reviewId="original"
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Confirm monitoring changes" }));
   await screen.findByText(/Save outcome unknown/);
-  expect(screen.queryByRole("button",{name:"Confirm monitoring changes"})).not.toBeInTheDocument();
-  api.inspectMonitoring.mockResolvedValue({...review,status:"SUCCEEDED",appliedRevision:4});
-  fireEvent.click(screen.getByRole("button",{name:"Inspect saved result"}));
+  expect(
+    screen.queryByRole("button", { name: "Confirm monitoring changes" }),
+  ).not.toBeInTheDocument();
+  api.inspectMonitoring.mockResolvedValue({ ...review, status: "SUCCEEDED", appliedRevision: 4 });
+  fireEvent.click(screen.getByRole("button", { name: "Inspect saved result" }));
   await screen.findByText(/Current owner settings refreshed/);
-  expect(api.confirmMonitoring).toHaveBeenCalledTimes(1);expect(api.prepareMonitoring).not.toHaveBeenCalled();
+  expect(api.confirmMonitoring).toHaveBeenCalledTimes(1);
+  expect(api.prepareMonitoring).not.toHaveBeenCalled();
 });

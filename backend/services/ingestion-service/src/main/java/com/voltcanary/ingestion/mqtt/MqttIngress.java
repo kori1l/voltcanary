@@ -36,9 +36,10 @@ public class MqttIngress implements MqttCallback {
     private MqttClient client;
 
     public MqttIngress(
-            IngressOrchestrator ingressOrchestrator,
-            MeterRegistry meterRegistry,
-            IngestionProperties properties) {
+        IngressOrchestrator ingressOrchestrator,
+        MeterRegistry meterRegistry,
+        IngestionProperties properties
+    ) {
         this.ingressOrchestrator = ingressOrchestrator;
         this.meterRegistry = meterRegistry;
         this.brokerUrl = properties.getMqtt().getBrokerUrl();
@@ -71,19 +72,25 @@ public class MqttIngress implements MqttCallback {
     @Override
     public void connectionLost(Throwable cause) {
         record("broker_reconnect");
-        log.warn("MQTT ingress connection lost brokerUrl={} topicFilter={}", brokerUrl, topicFilter, cause);
+        log.warn(
+            "MQTT ingress connection lost brokerUrl={} topicFilter={}",
+            brokerUrl,
+            topicFilter,
+            cause
+        );
     }
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
         try {
             ingressOrchestrator.dispatch(
-                    AdapterType.GENERIC_MQTT,
-                    ProtocolType.MQTT,
-                    TransportType.MQTT,
-                    MqttAdapterRequest.class,
-                    new MqttAdapterRequest(topic, message.getPayload()),
-                    null);
+                AdapterType.GENERIC_MQTT,
+                ProtocolType.MQTT,
+                TransportType.MQTT,
+                MqttAdapterRequest.class,
+                new MqttAdapterRequest(topic, message.getPayload()),
+                null
+            );
             record("accepted");
         } catch (UnsupportedMqttTopicException exception) {
             record("unsupported_topic");
@@ -98,15 +105,17 @@ public class MqttIngress implements MqttCallback {
     }
 
     @Override
-    public void deliveryComplete(IMqttDeliveryToken token) {
-    }
+    public void deliveryComplete(IMqttDeliveryToken token) {}
 
     private void record(String outcome) {
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "voltcanary.ingestion.mqtt.messages",
                 "adapter",
                 ADAPTER_ID,
                 "outcome",
-                outcome).increment();
+                outcome
+            )
+            .increment();
     }
 }

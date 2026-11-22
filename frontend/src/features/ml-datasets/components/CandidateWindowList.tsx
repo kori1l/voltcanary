@@ -36,33 +36,71 @@ export function CandidateWindowList({
           {candidates.map((candidate) => {
             const selected = candidate.id === draft.selectedCandidateId;
             return (
-              <article className={`workbench-candidate-card ${selected ? "workbench-candidate-card-selected" : ""}`} key={candidate.id}>
+              <article
+                className={`workbench-candidate-card ${selected ? "workbench-candidate-card-selected" : ""}`}
+                key={candidate.id}
+              >
                 <div className="workbench-candidate-title">
                   <div>
                     <strong>{statusLabel(candidate.kind)}</strong>
-                    <span>{formatDateTime(candidate.from)} - {formatDateTime(candidate.to)}</span>
+                    <span>
+                      {formatDateTime(candidate.from)} - {formatDateTime(candidate.to)}
+                    </span>
                   </div>
-                  <span className={`workbench-status-pill ${workbenchStatusClass(candidate.status)}`}>{statusLabel(candidate.status)}</span>
+                  <span
+                    className={`workbench-status-pill ${workbenchStatusClass(candidate.status)}`}
+                  >
+                    {statusLabel(candidate.status)}
+                  </span>
                 </div>
                 <dl className="workbench-candidate-grid">
-                  <div><dt>Score</dt><dd>{formatPercent(candidate.score)}</dd></div>
-                  <div><dt>Samples</dt><dd>{formatNumber(candidate.sampleCount)}</dd></div>
-                  <div><dt>Coverage</dt><dd>{formatPercent(candidate.coverageRatio)}</dd></div>
-                  <div><dt>Max gap</dt><dd>{formatSeconds(candidate.maxSamplingGapSeconds)}</dd></div>
-                  <div><dt>Labels</dt><dd>{candidate.positiveLabels} positive / {candidate.normalLabels} normal</dd></div>
-                  <div><dt>Excluded</dt><dd>{candidate.maintenanceExcludedLabels} maintenance / {candidate.unobservableLabels} unobservable</dd></div>
+                  <div>
+                    <dt>Score</dt>
+                    <dd>{formatPercent(candidate.score)}</dd>
+                  </div>
+                  <div>
+                    <dt>Samples</dt>
+                    <dd>{formatNumber(candidate.sampleCount)}</dd>
+                  </div>
+                  <div>
+                    <dt>Coverage</dt>
+                    <dd>{formatPercent(candidate.coverageRatio)}</dd>
+                  </div>
+                  <div>
+                    <dt>Max gap</dt>
+                    <dd>{formatSeconds(candidate.maxSamplingGapSeconds)}</dd>
+                  </div>
+                  <div>
+                    <dt>Labels</dt>
+                    <dd>
+                      {candidate.positiveLabels} positive / {candidate.normalLabels} normal
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Excluded</dt>
+                    <dd>
+                      {candidate.maintenanceExcludedLabels} maintenance /{" "}
+                      {candidate.unobservableLabels} unobservable
+                    </dd>
+                  </div>
                 </dl>
                 <p>{candidate.explanation}</p>
-                {candidate.blockingReasons.length > 0 && <div className="error-message">{candidate.blockingReasons.join(" ")}</div>}
-                {candidate.warningReasons.length > 0 && <div className="warning-message">{candidate.warningReasons.join(" ")}</div>}
+                {candidate.blockingReasons.length > 0 && (
+                  <div className="error-message">{candidate.blockingReasons.join(" ")}</div>
+                )}
+                {candidate.warningReasons.length > 0 && (
+                  <div className="warning-message">{candidate.warningReasons.join(" ")}</div>
+                )}
                 <button
                   className="ghost-button"
-                  onClick={() => onPatch({
-                    from: isoToDateTimeLocal(candidate.from),
-                    to: isoToDateTimeLocal(candidate.to),
-                    quickRange: "custom",
-                    selectedCandidateId: candidate.id,
-                  })}
+                  onClick={() =>
+                    onPatch({
+                      from: isoToDateTimeLocal(candidate.from),
+                      to: isoToDateTimeLocal(candidate.to),
+                      quickRange: "custom",
+                      selectedCandidateId: candidate.id,
+                    })
+                  }
                   type="button"
                 >
                   Use window

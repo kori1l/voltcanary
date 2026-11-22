@@ -14,8 +14,15 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AnalyticsResourceContext {
-    public record Context(List<MaintenanceWindowReadModel> windows, String deviceType, UUID accountId,
-            MlSettingsResponse settings, MlResolvedDeploymentPolicyResponse policy) { }
+
+    public record Context(
+        List<MaintenanceWindowReadModel> windows,
+        String deviceType,
+        UUID accountId,
+        MlSettingsResponse settings,
+        MlResolvedDeploymentPolicyResponse policy
+    ) {}
+
     private final MaintenanceWindowProjectionService maintenance;
     private final DeviceMetadataClient devices;
     private final MlPolicyService settings;
@@ -25,11 +32,29 @@ public class AnalyticsResourceContext {
         var windows = maintenance.activeOverlapping(device, from, to);
         var metadata = devices.metadata(device);
         String type = metadata == null || metadata.type() == null ? "" : metadata.type().trim();
-        var effective = settings.effectiveForAnalytics(device, windows.stream().map(MaintenanceWindowReadModel::getAccountId)
-                .filter(Objects::nonNull).findFirst().orElse(metadata == null ? null : metadata.accountId()));
-        UUID account = effective.accountId() == null && metadata != null ? metadata.accountId() : effective.accountId();
-        var policy = account == null
-                ? new MlResolvedDeploymentPolicyResponse(null, null, null, MlDeploymentMode.DISABLED, true, "ACCOUNT_UNKNOWN")
+        var effective = settings.effectiveForAnalytics(
+            device,
+            windows
+                .stream()
+                .map(MaintenanceWindowReadModel::getAccountId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(metadata == null ? null : metadata.accountId())
+        );
+        UUID account =
+            effective.accountId() == null && metadata != null
+                ? metadata.accountId()
+                : effective.accountId();
+        var policy =
+            account == null
+                ? new MlResolvedDeploymentPolicyResponse(
+                      null,
+                      null,
+                      null,
+                      MlDeploymentMode.DISABLED,
+                      true,
+                      "ACCOUNT_UNKNOWN"
+                  )
                 : models.resolvePolicy(account, device, type);
         return new Context(List.copyOf(windows), type, account, effective, policy);
     }

@@ -22,69 +22,135 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class VariableTelemetryController {
-    public record Preview(UUID deviceId, UUID dataSourceId, VariableContract contract, Map<String, Double> inputs) { }
+
+    public record Preview(
+        UUID deviceId,
+        UUID dataSourceId,
+        VariableContract contract,
+        Map<String, Double> inputs
+    ) {}
+
     private final TelemetryAccessService access;
     private final VariableSourceAccess sources;
     private final VariableSeriesQueries queries;
     private final VariableEvaluator evaluator = new VariableEvaluator();
 
     @PostMapping("/telemetry/variables/preview")
-    public VariableEvaluator.Result preview(@RequestHeader HttpHeaders headers, @RequestBody Preview request) {
+    public VariableEvaluator.Result preview(
+        @RequestHeader HttpHeaders headers,
+        @RequestBody Preview request
+    ) {
         authorize(headers, request.deviceId(), request.dataSourceId());
         return evaluator.evaluate(request.contract(), request.inputs());
     }
 
-    @GetMapping({"/telemetry/devices/{deviceId}/variables", "/internal/telemetry/devices/{deviceId}/variables"})
-    public List<VariableSeriesQueries.Descriptor> descriptors(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID device) {
+    @GetMapping({
+        "/telemetry/devices/{deviceId}/variables",
+        "/internal/telemetry/devices/{deviceId}/variables",
+    })
+    public List<VariableSeriesQueries.Descriptor> descriptors(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID device
+    ) {
         authorizeDevice(headers, device);
         var descriptors = queries.descriptors(device);
         var active = sources.activeBatch(device, descriptors);
-        return descriptors.stream().map(item -> new VariableSeriesQueries.Descriptor(
-                item.variableId(), item.dataSourceId(), item.sourceId(), item.key(), item.label(), item.origin(), item.unit(),
-                item.revision(), item.generation(), item.enabled() && active.contains(item.dataSourceId() + ":" + item.variableId()),
-                item.metricToken())).toList();
+        return descriptors
+            .stream()
+            .map(item ->
+                new VariableSeriesQueries.Descriptor(
+                    item.variableId(),
+                    item.dataSourceId(),
+                    item.sourceId(),
+                    item.key(),
+                    item.label(),
+                    item.origin(),
+                    item.unit(),
+                    item.revision(),
+                    item.generation(),
+                    item.enabled() &&
+                        active.contains(item.dataSourceId() + ":" + item.variableId()),
+                    item.metricToken()
+                )
+            )
+            .toList();
     }
 
-    @GetMapping(value = {"/telemetry/devices/{deviceId}/readings", "/telemetry/devices/{deviceId}/readings/export",
-            "/internal/telemetry/devices/{deviceId}/readings", "/internal/telemetry/devices/{deviceId}/readings/export"},
-            params = "variableId")
-    public VariableSeriesQueries.Series readings(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID device, @RequestParam("variableId") UUID variable,
-            @RequestParam("sourceId") UUID source, @RequestParam("from") Instant from, @RequestParam("to") Instant to,
-            @RequestParam(value = "metric", required = false) String metric,
-            @RequestParam(value = "limit", defaultValue = "1000") int limit,
-            @RequestParam(value = "cursor", required = false) Instant cursor,
-            @RequestParam(value = "bucketSeconds", defaultValue = "0") long bucketSeconds,
-            @RequestParam(value = "reducer", defaultValue = "AVG") String reducer) {
-        if (metric != null) throw new IllegalArgumentException("Choose metric or variableId, not both");
+    @GetMapping(
+        value = {
+            "/telemetry/devices/{deviceId}/readings",
+            "/telemetry/devices/{deviceId}/readings/export",
+            "/internal/telemetry/devices/{deviceId}/readings",
+            "/internal/telemetry/devices/{deviceId}/readings/export",
+        },
+        params = "variableId"
+    )
+    public VariableSeriesQueries.Series readings(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID device,
+        @RequestParam("variableId") UUID variable,
+        @RequestParam("sourceId") UUID source,
+        @RequestParam("from") Instant from,
+        @RequestParam("to") Instant to,
+        @RequestParam(value = "metric", required = false) String metric,
+        @RequestParam(value = "limit", defaultValue = "1000") int limit,
+        @RequestParam(value = "cursor", required = false) Instant cursor,
+        @RequestParam(value = "bucketSeconds", defaultValue = "0") long bucketSeconds,
+        @RequestParam(value = "reducer", defaultValue = "AVG") String reducer
+    ) {
+        if (metric != null) throw new IllegalArgumentException(
+            "Choose metric or variableId, not both"
+        );
         authorize(headers, device, source);
-        return queries.read(device, source, variable, from, to, limit, cursor, bucketSeconds, reducer);
+        return queries.read(
+            device,
+            source,
+            variable,
+            from,
+            to,
+            limit,
+            cursor,
+            bucketSeconds,
+            reducer
+        );
     }
 
     @GetMapping("/telemetry/devices/{deviceId}/variables/evaluations")
-    public List<Map<String, Object>> outcomes(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID device, @RequestParam("sourceId") UUID source) {
+    public List<Map<String, Object>> outcomes(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID device,
+        @RequestParam("sourceId") UUID source
+    ) {
         authorize(headers, device, source);
         return queries.outcomes(device, source);
     }
 
     @GetMapping(value = "/telemetry/devices/{deviceId}/latest", params = "variableId")
-    public VariableSeriesQueries.Series latest(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID device, @RequestParam("variableId") UUID variable,
-            @RequestParam("sourceId") UUID source) {
+    public VariableSeriesQueries.Series latest(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID device,
+        @RequestParam("variableId") UUID variable,
+        @RequestParam("sourceId") UUID source
+    ) {
         authorize(headers, device, source);
         return queries.latest(device, source, variable);
     }
 
     private void authorize(HttpHeaders headers, UUID device, UUID source) {
-        if (device == null || source == null) throw new IllegalArgumentException("Device and source are required");
+        if (device == null || source == null) throw new IllegalArgumentException(
+            "Device and source are required"
+        );
         authorizeDevice(headers, device);
         sources.require(device, source);
     }
 
     private void authorizeDevice(HttpHeaders headers, UUID device) {
-        access.requireReadAccess(device, headers.getFirst("X-User-Id"), headers.getFirst("X-User-Role"),
-                headers.getFirst("X-Correlation-Id"), headers.getFirst("X-Internal-Service-Token"));
+        access.requireReadAccess(
+            device,
+            headers.getFirst("X-User-Id"),
+            headers.getFirst("X-User-Role"),
+            headers.getFirst("X-Correlation-Id"),
+            headers.getFirst("X-Internal-Service-Token")
+        );
     }
 }

@@ -7,17 +7,50 @@ import java.util.UUID;
 
 /** One durable owner of every planner, step, continuation, repair and format-correction call. */
 public interface AttemptLedger {
-    record Turn(Scope owner, UUID conversationId, UUID planId, UUID turnId) { }
-    record Attempt(UUID callId, String phase, String stepId, String requestDigest,
-            String policyId, String policyVersion, String skillVersion, String schemaVersion, String contextVersion,
-            ModelRouting.Route route, String purpose) {
-        public Attempt(UUID callId, String phase, String stepId, String requestDigest, String policyId, String policyVersion,
-                String skillVersion, String schemaVersion, String contextVersion, ModelRouting.Route route) {
-            this(callId, phase, stepId, requestDigest, policyId, policyVersion, skillVersion, schemaVersion, contextVersion, route,
-                    phase.equals("REPAIR") ? "DOMAIN_RECOVERY" : "PRIMARY");
+    record Turn(Scope owner, UUID conversationId, UUID planId, UUID turnId) {}
+
+    record Attempt(
+        UUID callId,
+        String phase,
+        String stepId,
+        String requestDigest,
+        String policyId,
+        String policyVersion,
+        String skillVersion,
+        String schemaVersion,
+        String contextVersion,
+        ModelRouting.Route route,
+        String purpose
+    ) {
+        public Attempt(
+            UUID callId,
+            String phase,
+            String stepId,
+            String requestDigest,
+            String policyId,
+            String policyVersion,
+            String skillVersion,
+            String schemaVersion,
+            String contextVersion,
+            ModelRouting.Route route
+        ) {
+            this(
+                callId,
+                phase,
+                stepId,
+                requestDigest,
+                policyId,
+                policyVersion,
+                skillVersion,
+                schemaVersion,
+                contextVersion,
+                route,
+                phase.equals("REPAIR") ? "DOMAIN_RECOVERY" : "PRIMARY"
+            );
         }
     }
-    record Receipt(boolean newlyReserved, String status, String responseJson) { }
+
+    record Receipt(boolean newlyReserved, String status, String responseJson) {}
 
     void open(Turn turn, RoutingPolicy policy);
     long remainingCost(Turn turn);

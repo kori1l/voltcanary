@@ -4,23 +4,33 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record EventEnvelope<T>(
+    UUID eventId,
+    String eventType,
+    int eventVersion,
+    Instant occurredAt,
+    String correlationId,
+    String producer,
+    UUID accountId,
+    T payload
+) {
+    public EventEnvelope(
         UUID eventId,
         String eventType,
-        int eventVersion,
+        String eventVersion,
+        String source,
         Instant occurredAt,
-        String correlationId,
-        String producer,
-        UUID accountId,
-        T payload) {
-
-    public EventEnvelope(
-            UUID eventId,
-            String eventType,
-            String eventVersion,
-            String source,
-            Instant occurredAt,
-            T payload) {
-        this(eventId, eventType, parseVersion(eventVersion), occurredAt, null, source, null, payload);
+        T payload
+    ) {
+        this(
+            eventId,
+            eventType,
+            parseVersion(eventVersion),
+            occurredAt,
+            null,
+            source,
+            null,
+            payload
+        );
     }
 
     private static int parseVersion(String eventVersion) {

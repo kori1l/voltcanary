@@ -1,21 +1,24 @@
 package com.voltcanary.device.service;
 
 import com.voltcanary.device.domain.MaintenanceWindow;
-
 import jakarta.persistence.criteria.Predicate;
-
-import org.springframework.data.jpa.domain.Specification;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.jpa.domain.Specification;
 
 final class MaintenanceWindowFilters {
+
     private MaintenanceWindowFilters() {}
 
     static Specification<MaintenanceWindow> matching(
-            UUID accountId, UUID deviceId, Instant from, Instant to, boolean includeCancelled) {
+        UUID accountId,
+        UUID deviceId,
+        Instant from,
+        Instant to,
+        boolean includeCancelled
+    ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (accountId != null) {

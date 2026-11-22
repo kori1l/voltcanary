@@ -3,8 +3,6 @@ package com.voltcanary.analytics.service;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
-import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
-import com.voltcanary.analytics.repository.MlLabelRepository;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.Comparator;
@@ -19,31 +17,47 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MlInternalTelemetryFeatureBuilder {
 
-    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository;
-    private final MlLabelRepository labelRepository;
     private final MlFeatureTemplateAppender templateAppender;
 
     public MlFeatureGeneration generate(
-            MlDatasetVersion datasetVersion,
-            MlFeatureConfig config,
-            FeatureVectorContract contract) {
-        List<MlCanonicalMetricRow> rows = canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersion.getId()).stream()
-                .sorted(Comparator.comparing((MlCanonicalMetricRow row) -> row.getDeviceId() == null ? "" : row.getDeviceId().toString())
-                        .thenComparing(row -> row.getVirtualDeviceKey() == null ? "" : row.getVirtualDeviceKey())
-                        .thenComparing(MlCanonicalMetricRow::getCanonicalMetricName)
-                        .thenComparing(MlCanonicalMetricRow::getTimestamp))
-                .toList();
+        MlDatasetVersion datasetVersion,
+        MlFeatureConfig config,
+        FeatureVectorContract contract,
+        MlFeatureInputs inputs
+    ) {
+        List<MlCanonicalMetricRow> rows = inputs
+            .internalRows()
+            .stream()
+            .sorted(
+                Comparator.comparing((MlCanonicalMetricRow row) ->
+                    row.getDeviceId() == null ? "" : row.getDeviceId().toString()
+                )
+                    .thenComparing(row ->
+                        row.getVirtualDeviceKey() == null ? "" : row.getVirtualDeviceKey()
+                    )
+                    .thenComparing(MlCanonicalMetricRow::getCanonicalMetricName)
+                    .thenComparing(MlCanonicalMetricRow::getTimestamp)
+            )
+            .toList();
 
-        var partitions = MlFeaturePartitions.assign(datasetVersion, rows, MlCanonicalMetricRow::getId, MlCanonicalMetricRow::getTimestamp,
-                row -> row.getDeviceId() == null ? row.getVirtualDeviceKey() : row.getDeviceId().toString());
-        Map<String, List<MlCanonicalMetricRow>> groups = rows.stream()
-                .collect(Collectors.groupingBy(
-                        row -> internalEntityId(row) + "|" + row.getCanonicalMetricName(),
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-        MlFeatureLabelLookup labels = MlFeatureLabelLookup.from(labelRepository.findByAccountIdAndDatasetVersionId(
-                datasetVersion.getAccountId(),
-                datasetVersion.getId()));
+        var partitions = MlFeaturePartitions.assign(
+            datasetVersion,
+            rows,
+            MlCanonicalMetricRow::getId,
+            MlCanonicalMetricRow::getTimestamp,
+            row ->
+                row.getDeviceId() == null ? row.getVirtualDeviceKey() : row.getDeviceId().toString()
+        );
+        Map<String, List<MlCanonicalMetricRow>> groups = rows
+            .stream()
+            .collect(
+                Collectors.groupingBy(
+                    row -> internalEntityId(row) + "|" + row.getCanonicalMetricName(),
+                    LinkedHashMap::new,
+                    Collectors.toList()
+                )
+            );
+        MlFeatureLabelLookup labels = MlFeatureLabelLookup.from(inputs.labels());
 
         List<MlFeatureRowData> featureRows = new java.util.ArrayList<>();
         for (List<MlCanonicalMetricRow> groupRows : groups.values()) {
@@ -60,28 +74,65 @@ public class MlInternalTelemetryFeatureBuilder {
                 features.put("timestamp", row.getTimestamp().toString());
                 if (config.enabledFeatureFamilies().contains("rolling_stats")) {
                     features.put("rollingMean", mean(window));
-                    features.put("rollingMin", window.stream().mapToDouble(MlCanonicalMetricRow::getNumericValue).min().orElse(row.getNumericValue()));
-                    features.put("rollingMax", window.stream().mapToDouble(MlCanonicalMetricRow::getNumericValue).max().orElse(row.getNumericValue()));
+                    features.put(
+                        "rollingMin",
+                        window
+                            .stream()
+                            .mapToDouble(MlCanonicalMetricRow::getNumericValue)
+                            .min()
+                            .orElse(row.getNumericValue())
+                    );
+                    features.put(
+                        "rollingMax",
+                        window
+                            .stream()
+                            .mapToDouble(MlCanonicalMetricRow::getNumericValue)
+                            .max()
+                            .orElse(row.getNumericValue())
+                    );
                     features.put("rollingStddev", stddev(window));
                 }
                 if (config.enabledFeatureFamilies().contains("baseline_deviation")) {
-                    features.put("baselineDeviationRatio", baselineMean == 0 ? 0 : row.getNumericValue() / baselineMean);
+                    features.put(
+                        "baselineDeviationRatio",
+                        baselineMean == 0 ? 0 : row.getNumericValue() / baselineMean
+                    );
                 }
                 if (config.enabledFeatureFamilies().contains("missing_data")) {
-                    long gap = index == 0 ? 0 : Duration.between(groupRows.get(index - 1).getTimestamp(), row.getTimestamp()).toSeconds();
+                    long gap =
+                        index == 0
+                            ? 0
+                            : Duration.between(
+                                  groupRows.get(index - 1).getTimestamp(),
+                                  row.getTimestamp()
+                              ).toSeconds();
                     features.put("missingGapFlag", gap > config.missingGapSeconds());
                     features.put("samplingGapSeconds", Math.max(0, gap));
                 }
                 if (config.enabledFeatureFamilies().contains("time")) {
                     features.put("hourOfDay", row.getTimestamp().atZone(ZoneOffset.UTC).getHour());
-                    features.put("dayOfWeek", row.getTimestamp().atZone(ZoneOffset.UTC).getDayOfWeek().getValue());
+                    features.put(
+                        "dayOfWeek",
+                        row.getTimestamp().atZone(ZoneOffset.UTC).getDayOfWeek().getValue()
+                    );
                 }
                 if (config.enabledFeatureFamilies().contains("device_context")) {
                     features.put("deviceType", row.getDeviceType());
-                    features.put("metricSchemaId", row.getCanonicalMetricName() + ":" + nullToBlank(row.getCanonicalUnit()));
+                    features.put(
+                        "metricSchemaId",
+                        row.getCanonicalMetricName() + ":" + nullToBlank(row.getCanonicalUnit())
+                    );
                 }
-                templateAppender.addTemplateFeatures(features, config, row.getDeviceType(), row.getCanonicalMetricName(), row.getNumericValue(), baselineMean);
-                featureRows.add(new MlFeatureRowData(
+                templateAppender.addTemplateFeatures(
+                    features,
+                    config,
+                    row.getDeviceType(),
+                    row.getCanonicalMetricName(),
+                    row.getNumericValue(),
+                    baselineMean
+                );
+                featureRows.add(
+                    new MlFeatureRowData(
                         row.getDeviceId(),
                         row.getVirtualDeviceKey(),
                         row.getDeviceType(),
@@ -90,27 +141,33 @@ public class MlInternalTelemetryFeatureBuilder {
                         internalEntityId(row) + "|" + row.getCanonicalMetricName(),
                         features,
                         labels.valuesFor(
-                                row.getDeviceId(),
-                                row.getExternalDeviceKey(),
-                                row.getMetricName(),
-                                row.getTimestamp(),
-                                config.horizonDays()),
+                            row.getDeviceId(),
+                            row.getExternalDeviceKey(),
+                            row.getMetricName(),
+                            row.getTimestamp(),
+                            config.horizonDays()
+                        ),
                         partitions.get(row.getId()),
                         Map.of(
-                                "source", "ml_canonical_metric_rows",
-                                "canonicalRowId", row.getId().toString(),
-                                "sourceType", row.getSourceType().name()),
-                        qualityFlags(row)));
+                            "source",
+                            "ml_canonical_metric_rows",
+                            "canonicalRowId",
+                            row.getId().toString(),
+                            "sourceType",
+                            row.getSourceType().name()
+                        ),
+                        qualityFlags(row)
+                    )
+                );
             }
         }
 
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("sourceType", datasetVersion.getSourceType().name());
-        schema.put("contract", contract.metadata(
-                config.featureSetVersion(),
-                config.codeConfigVersion(),
-                "",
-                ""));
+        schema.put(
+            "contract",
+            contract.metadata(config.featureSetVersion(), config.codeConfigVersion(), "", "")
+        );
         schema.put("groupCount", groups.size());
         return new MlFeatureGeneration(featureRows.size(), 0, schema, featureRows);
     }
@@ -121,10 +178,13 @@ public class MlInternalTelemetryFeatureBuilder {
 
     private double stddev(List<MlCanonicalMetricRow> rows) {
         double mean = mean(rows);
-        return Math.sqrt(rows.stream()
+        return Math.sqrt(
+            rows
+                .stream()
                 .mapToDouble(row -> Math.pow(row.getNumericValue() - mean, 2))
                 .average()
-                .orElse(0));
+                .orElse(0)
+        );
     }
 
     private String internalEntityId(MlCanonicalMetricRow row) {
@@ -138,7 +198,11 @@ public class MlInternalTelemetryFeatureBuilder {
     }
 
     private List<String> qualityFlags(MlCanonicalMetricRow row) {
-        if (row.getQualityFlags() == null || row.getQualityFlags().isBlank() || "[]".equals(row.getQualityFlags())) {
+        if (
+            row.getQualityFlags() == null ||
+            row.getQualityFlags().isBlank() ||
+            "[]".equals(row.getQualityFlags())
+        ) {
             return List.of();
         }
         return List.of(row.getQualityFlags());
@@ -147,5 +211,4 @@ public class MlInternalTelemetryFeatureBuilder {
     private String nullToBlank(String value) {
         return value == null ? "" : value;
     }
-
 }

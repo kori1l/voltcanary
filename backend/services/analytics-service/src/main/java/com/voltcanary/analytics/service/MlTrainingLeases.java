@@ -1,14 +1,14 @@
 package com.voltcanary.analytics.service;
 
-import jakarta.persistence.EntityManager;
-import java.util.Set;
 import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
 import com.voltcanary.analytics.repository.MlTrainingRunRepository;
+import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -18,30 +18,44 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class MlTrainingLeases {
+
     public static final class Lost extends RuntimeException {
-        public Lost() { super("Training lease is no longer owned by this worker"); }
+
+        public Lost() {
+            super("Training lease is no longer owned by this worker");
+        }
     }
+
     private final MlTrainingRunRepository repository;
     private final EntityManager entityManager;
 
     @Transactional
     public Optional<MlTrainingRun> claim(String owner, Duration duration) {
-        return repository.nextQueued(MlTrainingRunStatus.QUEUED, PageRequest.of(0, 1)).stream().filter(run -> run.getStatus() == MlTrainingRunStatus.QUEUED).findFirst().map(run -> {
-            Instant now = Instant.now();
-            run.setStatus(MlTrainingRunStatus.RUNNING);
-            if (run.getStartedAt() == null) run.setStartedAt(now);
-            run.setLeaseOwner(owner);
-            run.setLeaseExpiresAt(now.plus(duration));
-            run.setHeartbeatAt(now);
-            var saved = repository.saveAndFlush(run);
-            entityManager.detach(saved);
-            return saved;
-        });
+        return repository
+            .nextQueued(MlTrainingRunStatus.QUEUED, PageRequest.of(0, 1))
+            .stream()
+            .filter(run -> run.getStatus() == MlTrainingRunStatus.QUEUED)
+            .findFirst()
+            .map(run -> {
+                Instant now = Instant.now();
+                run.setStatus(MlTrainingRunStatus.RUNNING);
+                if (run.getStartedAt() == null) run.setStartedAt(now);
+                run.setLeaseOwner(owner);
+                run.setLeaseExpiresAt(now.plus(duration));
+                run.setHeartbeatAt(now);
+                var saved = repository.saveAndFlush(run);
+                entityManager.detach(saved);
+                return saved;
+            });
     }
 
     @Transactional
     public int recover() {
-        var stale = repository.stale(MlTrainingRunStatus.RUNNING, Instant.now(), PageRequest.of(0, 100));
+        var stale = repository.stale(
+            MlTrainingRunStatus.RUNNING,
+            Instant.now(),
+            PageRequest.of(0, 100)
+        );
         for (var run : stale) {
             run.setStatus(MlTrainingRunStatus.QUEUED);
             run.setLeaseOwner(null);
@@ -67,7 +81,9 @@ public class MlTrainingLeases {
     @Transactional
     public MlTrainingRun finish(MlTrainingRun expected, Runnable registerCandidate) {
         var actual = owned(expected);
-        if (actual.isCancellationRequested() || actual.getStatus() == MlTrainingRunStatus.CANCELED) {
+        if (
+            actual.isCancellationRequested() || actual.getStatus() == MlTrainingRunStatus.CANCELED
+        ) {
             actual.setStatus(MlTrainingRunStatus.CANCELED);
             actual.setFailureReason(null);
             actual.setLogsSummary("Training canceled before candidate model registration.");
@@ -91,10 +107,15 @@ public class MlTrainingLeases {
         var actual = repository.lockById(expected.getId()).orElseThrow(Lost::new);
         entityManager.refresh(actual);
         // A terminal result in `expected` has not yet been persisted. Authority comes from the stored row.
-        if (!Objects.equals(actual.getLeaseOwner(), owner)
-                || actual.getLeaseOwner() == null || actual.getLeaseExpiresAt() == null
-                || !actual.getLeaseExpiresAt().isAfter(Instant.now())
-                || !Set.of(MlTrainingRunStatus.RUNNING, MlTrainingRunStatus.CANCELED).contains(actual.getStatus())) throw new Lost();
+        if (
+            !Objects.equals(actual.getLeaseOwner(), owner) ||
+            actual.getLeaseOwner() == null ||
+            actual.getLeaseExpiresAt() == null ||
+            !actual.getLeaseExpiresAt().isAfter(Instant.now()) ||
+            !Set.of(MlTrainingRunStatus.RUNNING, MlTrainingRunStatus.CANCELED).contains(
+                actual.getStatus()
+            )
+        ) throw new Lost();
         return actual;
     }
 }

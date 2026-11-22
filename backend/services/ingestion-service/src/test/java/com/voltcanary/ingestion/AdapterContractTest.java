@@ -1,5 +1,8 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.api.AdapterCapabilities;
 import com.voltcanary.ingestion.adapter.api.AdapterCapability;
@@ -10,9 +13,9 @@ import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.TransportType;
 import com.voltcanary.ingestion.adapter.http.HttpAdapterRequest;
-import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.http.HttpPollingResponseMapper;
 import com.voltcanary.ingestion.adapter.http.HttpPollingTelemetryAdapter;
+import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttTopicResolver;
@@ -32,110 +35,126 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class AdapterContractTest {
 
     @Test
     void manifestRequiresStableIdentityAndCapabilities() {
-        assertThatThrownBy(() -> new AdapterManifest(
+        assertThatThrownBy(() ->
+            new AdapterManifest(
                 " ",
                 AdapterType.GENERIC_HTTP_PUSH,
                 "HTTP push",
                 TransportType.HTTP,
                 ProtocolType.REST,
                 AdapterCapabilities.of(AdapterCapability.INBOUND),
-                "v1"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("adapterId");
+                "v1"
+            )
+        )
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("adapterId");
 
-        assertThatThrownBy(() -> new AdapterManifest(
+        assertThatThrownBy(() ->
+            new AdapterManifest(
                 "generic-http-push",
                 AdapterType.GENERIC_HTTP_PUSH,
                 "HTTP push",
                 TransportType.HTTP,
                 ProtocolType.REST,
                 new AdapterCapabilities(Set.of()),
-                "v1"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("capabilities");
+                "v1"
+            )
+        )
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("capabilities");
     }
 
     @Test
     void registryResolvesAdaptersBySourceRuntimeConfig() {
         TelemetryAdapter httpAdapter = adapter(
-                "generic-http-push",
-                AdapterType.GENERIC_HTTP_PUSH,
-                TransportType.HTTP,
-                ProtocolType.REST);
-        DefaultIngestionAdapterRegistry registry = new DefaultIngestionAdapterRegistry(List.of(httpAdapter));
+            "generic-http-push",
+            AdapterType.GENERIC_HTTP_PUSH,
+            TransportType.HTTP,
+            ProtocolType.REST
+        );
+        DefaultIngestionAdapterRegistry registry = new DefaultIngestionAdapterRegistry(
+            List.of(httpAdapter)
+        );
         DefaultIngestionAdapterResolver resolver = new DefaultIngestionAdapterResolver(registry);
 
         SourceRuntimeConfig config = new SourceRuntimeConfig(
-                "source-1",
-                null,
-                null,
-                null,
-                AdapterType.GENERIC_HTTP_PUSH,
-                ProtocolType.REST,
-                TransportType.HTTP,
-                "ACTIVE",
-                "mapping.v1",
-                "adapter.v1",
-                Map.of(),
-                Map.of(),
-                Map.of(),
-                "eu",
-                7);
+            "source-1",
+            null,
+            null,
+            null,
+            AdapterType.GENERIC_HTTP_PUSH,
+            ProtocolType.REST,
+            TransportType.HTTP,
+            "ACTIVE",
+            "mapping.v1",
+            "adapter.v1",
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            "eu",
+            7
+        );
 
         assertThat(registry.find(AdapterType.GENERIC_HTTP_PUSH)).containsSame(httpAdapter);
-        assertThat(registry.findByCapability(AdapterCapability.INBOUND, TelemetryAdapter.class))
-                .containsExactly(httpAdapter);
+        assertThat(
+            registry.findByCapability(AdapterCapability.INBOUND, TelemetryAdapter.class)
+        ).containsExactly(httpAdapter);
         assertThat(resolver.resolve(config)).containsSame(httpAdapter);
     }
 
     @Test
     void registryRejectsDuplicateAdapterTypes() {
         TelemetryAdapter first = adapter(
-                "generic-http-push",
-                AdapterType.GENERIC_HTTP_PUSH,
-                TransportType.HTTP,
-                ProtocolType.REST);
+            "generic-http-push",
+            AdapterType.GENERIC_HTTP_PUSH,
+            TransportType.HTTP,
+            ProtocolType.REST
+        );
         TelemetryAdapter second = adapter(
-                "generic-http-push-copy",
-                AdapterType.GENERIC_HTTP_PUSH,
-                TransportType.HTTP,
-                ProtocolType.REST);
+            "generic-http-push-copy",
+            AdapterType.GENERIC_HTTP_PUSH,
+            TransportType.HTTP,
+            ProtocolType.REST
+        );
 
         assertThatThrownBy(() -> new DefaultIngestionAdapterRegistry(List.of(first, second)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Duplicate ingestion adapter type");
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Duplicate ingestion adapter type");
     }
 
     @Test
     void inboundDispatcherResolvesRegisteredAdapterWithoutPipelineChanges() {
         HttpTelemetryAdapter httpAdapter = new HttpTelemetryAdapter();
-        DefaultIngestionAdapterRegistry registry = new DefaultIngestionAdapterRegistry(List.of(httpAdapter));
-        RegistryBackedTelemetryIngressDispatcher dispatcher = new RegistryBackedTelemetryIngressDispatcher(registry);
+        DefaultIngestionAdapterRegistry registry = new DefaultIngestionAdapterRegistry(
+            List.of(httpAdapter)
+        );
+        RegistryBackedTelemetryIngressDispatcher dispatcher =
+            new RegistryBackedTelemetryIngressDispatcher(registry);
         UUID deviceId = UUID.randomUUID();
 
         IncomingTelemetryMessage message = dispatcher.dispatch(
-                AdapterType.GENERIC_HTTP_PUSH,
-                ProtocolType.REST,
-                TransportType.HTTP,
-                HttpAdapterRequest.class,
-                new HttpAdapterRequest(
-                        new TelemetryIngestionRequest(
-                                deviceId,
-                                "plug-001",
-                                Instant.parse("2026-08-26T10:15:30Z"),
-                                Map.of("activePowerW", 10.0)),
-                        "source-token",
-                        "correlation-1",
-                        "203.0.113.10",
-                        false),
-                null);
+            AdapterType.GENERIC_HTTP_PUSH,
+            ProtocolType.REST,
+            TransportType.HTTP,
+            HttpAdapterRequest.class,
+            new HttpAdapterRequest(
+                new TelemetryIngestionRequest(
+                    deviceId,
+                    "plug-001",
+                    Instant.parse("2026-08-26T10:15:30Z"),
+                    Map.of("activePowerW", 10.0)
+                ),
+                "source-token",
+                "correlation-1",
+                "203.0.113.10",
+                false
+            ),
+            null
+        );
 
         assertThat(message.sourceId()).isEqualTo("plug-001");
         assertThat(message.origin().adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_PUSH);
@@ -144,8 +163,9 @@ class AdapterContractTest {
     @Test
     void mqttAdapterRegistersInboundMqttManifest() {
         MqttTelemetryAdapter mqttAdapter = new MqttTelemetryAdapter(
-                new MqttTopicResolver(),
-                new MqttPayloadMapper(new ObjectMapper()));
+            new MqttTopicResolver(),
+            new MqttPayloadMapper(new ObjectMapper())
+        );
 
         assertThat(mqttAdapter.adapterId()).isEqualTo("generic-mqtt");
         assertThat(mqttAdapter.adapterType()).isEqualTo(AdapterType.GENERIC_MQTT);
@@ -157,9 +177,10 @@ class AdapterContractTest {
     @Test
     void httpPollingAdapterRegistersPollingManifest() {
         HttpPollingTelemetryAdapter adapter = new HttpPollingTelemetryAdapter(
-                HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
-                ignored -> java.util.Optional.empty(),
-                new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC()));
+            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
+            ignored -> java.util.Optional.empty(),
+            new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC())
+        );
 
         assertThat(adapter.adapterId()).isEqualTo("generic-http-polling");
         assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_HTTP_POLLING);
@@ -171,10 +192,10 @@ class AdapterContractTest {
     @Test
     void opcUaAdapterRegistersSubscriptionManifest() {
         OpcUaTelemetryAdapter adapter = new OpcUaTelemetryAdapter(
-                (ignored, handler) -> () -> {
-                },
-                new OpcUaValueMapper(),
-                Clock.systemUTC());
+            (ignored, handler) -> () -> {},
+            new OpcUaValueMapper(),
+            Clock.systemUTC()
+        );
 
         assertThat(adapter.adapterId()).isEqualTo("generic-opc-ua");
         assertThat(adapter.adapterType()).isEqualTo(AdapterType.GENERIC_OPC_UA);
@@ -184,17 +205,20 @@ class AdapterContractTest {
     }
 
     private TelemetryAdapter adapter(
-            String adapterId,
-            AdapterType adapterType,
-            TransportType transport,
-            ProtocolType protocol) {
-        return () -> new AdapterManifest(
+        String adapterId,
+        AdapterType adapterType,
+        TransportType transport,
+        ProtocolType protocol
+    ) {
+        return () ->
+            new AdapterManifest(
                 adapterId,
                 adapterType,
                 adapterId,
                 transport,
                 protocol,
                 AdapterCapabilities.of(AdapterCapability.INBOUND),
-                "v1");
+                "v1"
+            );
     }
 }

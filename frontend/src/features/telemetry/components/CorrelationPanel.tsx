@@ -9,7 +9,9 @@ export function CorrelationPanel({ relatedSignals }: { relatedSignals: RelatedSi
           {relatedSignals.map((signal) => (
             <li key={signal.metricKey}>
               <strong>{signal.name}</strong>
-              <span className={`correlation-pill correlation-${signal.correlation}`}>{signal.correlation}</span>
+              <span className={`correlation-pill correlation-${signal.correlation}`}>
+                {signal.correlation}
+              </span>
               <p>{signal.note}</p>
             </li>
           ))}

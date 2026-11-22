@@ -35,17 +35,31 @@ public class SimulationProfileService {
 
     @Transactional(readOnly = true)
     public SimulationConfigResponse get(UUID deviceId) {
-        return configRepository.findByDeviceId(deviceId).map(mapper::toResponse)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
+        return configRepository
+            .findByDeviceId(deviceId)
+            .map(mapper::toResponse)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
     }
 
     @Transactional
-    public SimulationConfigResponse save(UUID userId, UUID deviceId, SaveSimulationConfigRequest request) {
+    public SimulationConfigResponse save(
+        UUID userId,
+        UUID deviceId,
+        SaveSimulationConfigRequest request
+    ) {
         List<ValidationError> errors = validator.validate(request.yamlConfig());
         if (errors.isEmpty()) {
             var model = parser.parse(request.yamlConfig());
-            if (!model.profile().equals(request.profile().name()) || !model.protocol().equals(request.protocol().name())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Profile/protocol must match YAML");
+            if (
+                !model.profile().equals(request.profile().name()) ||
+                !model.protocol().equals(request.protocol().name())
+            ) {
+                throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Profile/protocol must match YAML"
+                );
             }
             target.require(userId, deviceId, request.dataSourceId(), model);
         }
@@ -69,7 +83,9 @@ public class SimulationProfileService {
         config.setProtocol(request.protocol());
         config.setYamlConfig(request.yamlConfig());
         config.setYamlVersion(config.getYamlVersion() + 1);
-        config.setStatus(errors.isEmpty() ? SimulationConfigStatus.ACTIVE : SimulationConfigStatus.INVALID);
+        config.setStatus(
+            errors.isEmpty() ? SimulationConfigStatus.ACTIVE : SimulationConfigStatus.INVALID
+        );
         if (request.sourceToken() != null && !request.sourceToken().isBlank()) {
             config.setSourceToken(request.sourceToken());
         }
@@ -99,8 +115,11 @@ public class SimulationProfileService {
 
     @Transactional(readOnly = true)
     public List<SimulationConfigVersionResponse> versions(UUID deviceId) {
-        SimulationConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
+        SimulationConfig config = configRepository
+            .findByDeviceId(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
         return versionWriter.versions(config.getId());
     }
 }

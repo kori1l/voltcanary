@@ -7,8 +7,15 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 
 record ReservedDispatchAdvisor(DispatchPermit permit) implements CallAdvisor {
-    @Override public String getName() { return "ReservedDispatchAdvisor"; }
-    @Override public int getOrder() { return 100; }
+    @Override
+    public String getName() {
+        return "ReservedDispatchAdvisor";
+    }
+
+    @Override
+    public int getOrder() {
+        return 100;
+    }
 
     @Override
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {

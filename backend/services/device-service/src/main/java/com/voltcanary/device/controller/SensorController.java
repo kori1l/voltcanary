@@ -29,41 +29,46 @@ public class SensorController {
 
     @GetMapping
     public List<SensorResponse> list(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
         return sensorService.list(userResolver.resolve(headers), deviceId);
     }
 
     @GetMapping("/{sensorId}")
     public SensorResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId,
-            @PathVariable("sensorId") UUID sensorId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sensorId") UUID sensorId
+    ) {
         return sensorService.get(userResolver.resolve(headers), deviceId, sensorId);
     }
 
     @PostMapping
     public SensorResponse create(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId,
-            @Valid @RequestBody SensorRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @Valid @RequestBody SensorRequest request
+    ) {
         return sensorService.create(userResolver.resolve(headers), deviceId, request);
     }
 
     @PatchMapping("/{sensorId}")
     public SensorResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId,
-            @PathVariable("sensorId") UUID sensorId,
-            @Valid @RequestBody SensorRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sensorId") UUID sensorId,
+        @Valid @RequestBody SensorRequest request
+    ) {
         return sensorService.update(userResolver.resolve(headers), deviceId, sensorId, request);
     }
 
     @DeleteMapping("/{sensorId}")
     public void delete(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId,
-            @PathVariable("sensorId") UUID sensorId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sensorId") UUID sensorId
+    ) {
         sensorService.delete(userResolver.resolve(headers), deviceId, sensorId);
     }
 }

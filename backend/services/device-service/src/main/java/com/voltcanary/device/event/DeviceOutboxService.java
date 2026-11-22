@@ -18,10 +18,31 @@ public class DeviceOutboxService {
 
     public void enqueue(String eventKey, String topic, String messageKey, Object payload) {
         Instant now = Instant.now();
-        com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "device_event_outbox",
-                java.util.List.of("id", "event_key", "topic", "message_key", "payload_json", "status", "attempts", "next_attempt_at", "created_at"), java.util.List.of("event_key"),
-                UUID.randomUUID(), eventKey, topic, messageKey, writeJson(payload), "PENDING", 0,
-                Timestamp.from(now), Timestamp.from(now));
+        com.voltcanary.common.web.JdbcInsertIfAbsent.insert(
+            jdbcTemplate,
+            "device_event_outbox",
+            java.util.List.of(
+                "id",
+                "event_key",
+                "topic",
+                "message_key",
+                "payload_json",
+                "status",
+                "attempts",
+                "next_attempt_at",
+                "created_at"
+            ),
+            java.util.List.of("event_key"),
+            UUID.randomUUID(),
+            eventKey,
+            topic,
+            messageKey,
+            writeJson(payload),
+            "PENDING",
+            0,
+            Timestamp.from(now),
+            Timestamp.from(now)
+        );
     }
 
     private String writeJson(Object payload) {

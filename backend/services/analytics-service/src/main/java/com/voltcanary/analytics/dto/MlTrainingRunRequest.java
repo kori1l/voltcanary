@@ -6,31 +6,33 @@ import java.util.Map;
 import java.util.UUID;
 
 public record MlTrainingRunRequest(
-        @NotNull UUID datasetVersionId,
-        @NotNull UUID featureSnapshotId,
-        @NotNull MlModelFamily modelFamily,
-        String algorithm,
-        Integer failureHorizonDays,
-        Integer minimumPositiveLabels,
-        Double minimumLabelCoverage,
-        Map<String, Object> approvalGateProfile,
-        String hyperparametersJson) {
-
+    @NotNull UUID datasetVersionId,
+    @NotNull UUID featureSnapshotId,
+    @NotNull MlModelFamily modelFamily,
+    String algorithm,
+    Integer failureHorizonDays,
+    Integer minimumPositiveLabels,
+    Double minimumLabelCoverage,
+    Map<String, Object> approvalGateProfile,
+    String hyperparametersJson
+) {
     public MlTrainingRunRequest(
-            UUID datasetVersionId,
-            UUID featureSnapshotId,
-            MlModelFamily modelFamily,
-            String algorithm,
-            String hyperparametersJson) {
+        UUID datasetVersionId,
+        UUID featureSnapshotId,
+        MlModelFamily modelFamily,
+        String algorithm,
+        String hyperparametersJson
+    ) {
         this(
-                datasetVersionId,
-                featureSnapshotId,
-                modelFamily,
-                algorithm,
-                null,
-                null,
-                null,
-                null,
-                hyperparametersJson);
+            datasetVersionId,
+            featureSnapshotId,
+            modelFamily,
+            algorithm,
+            null,
+            null,
+            null,
+            null,
+            hyperparametersJson
+        );
     }
 }

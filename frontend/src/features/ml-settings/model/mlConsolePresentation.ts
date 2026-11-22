@@ -1,13 +1,27 @@
 import { PredictionResponse } from "../../../analytics/analyticsApi";
-import { generateFeatureSnapshot, MlDatasetSummary, MlDeploymentPolicy, MlFeatureSnapshotResponse, MlLabel, MlLabelType, MlLifecycleStatusFilter, MlModelVersion, MlTrainingRun } from "../../../analytics/mlModuleApi";
+import {
+  generateFeatureSnapshot,
+  MlFeatureSnapshotResponse,
+  MlLabel,
+  MlLabelType,
+  MlLifecycleStatusFilter,
+  MlModelVersion,
+} from "../../../analytics/mlModuleApi";
 import { Device } from "../../../devices/devicesApi";
-import { DatasetPipelineStep, DatasetWorkbenchModelFamily } from "../../../features/ml-datasets/model/datasetWorkbench.types";
+import { DatasetWorkbenchModelFamily } from "../../../features/ml-datasets/model/datasetWorkbench.types";
 
 export type WorkflowMode = DatasetWorkbenchModelFamily;
 export type FeatureSnapshotConfig = Parameters<typeof generateFeatureSnapshot>[0];
 export type DatasetLifecycleKind = "dataset" | "snapshot";
 export type ArchiveDeleteAction = "archive" | "delete";
-export const lifecycleStatusFilters: MlLifecycleStatusFilter[] = ["default", "active", "failed", "archived", "deleted", "all"];
+export const lifecycleStatusFilters: MlLifecycleStatusFilter[] = [
+  "default",
+  "active",
+  "failed",
+  "archived",
+  "deleted",
+  "all",
+];
 export function summarizeLabels(labels: MlLabel[]) {
   return labels.reduce(
     (summary, item) => {
@@ -29,18 +43,30 @@ export function summarizeLabels(labels: MlLabel[]) {
   );
 }
 
-export function upsertFeatureSnapshot(snapshots: MlFeatureSnapshotResponse[], snapshot: MlFeatureSnapshotResponse) {
+export function upsertFeatureSnapshot(
+  snapshots: MlFeatureSnapshotResponse[],
+  snapshot: MlFeatureSnapshotResponse,
+) {
   return [snapshot, ...snapshots.filter((item) => item.id !== snapshot.id)];
 }
 
 export function statusText(v: string) {
-  return ({ UNAVAILABLE: "ML unavailable; rule analytics continue", INSUFFICIENT_DATA: "More telemetry required", SUPPRESSED_MAINTENANCE: "Suppressed during maintenance" } as Record<string, string>)[v] ?? v;
+  return (
+    (
+      {
+        UNAVAILABLE: "ML unavailable; rule analytics continue",
+        INSUFFICIENT_DATA: "More telemetry required",
+        SUPPRESSED_MAINTENANCE: "Suppressed during maintenance",
+      } as Record<string, string>
+    )[v] ?? v
+  );
 }
 
 export function formatCanaryState(prediction: PredictionResponse) {
-  const percent = prediction.canaryPercent === null || prediction.canaryPercent === undefined
-    ? ""
-    : ` / ${prediction.canaryPercent}%`;
+  const percent =
+    prediction.canaryPercent === null || prediction.canaryPercent === undefined
+      ? ""
+      : ` / ${prediction.canaryPercent}%`;
   if (prediction.canaryIncluded === true) {
     return `Included${percent}`;
   }
@@ -129,23 +155,29 @@ export function humanizeAlgorithm(value: string) {
   return value
     .replace(/-v\d+$/i, "")
     .split("-")
-    .map((part) => part === "sklearn" ? "sklearn" : part.replace(/^./, (match) => match.toUpperCase()))
+    .map((part) =>
+      part === "sklearn" ? "sklearn" : part.replace(/^./, (match) => match.toUpperCase()),
+    )
     .join(" ");
 }
 
-export const defaultMapping = JSON.stringify({
-  timestampColumn: "ts",
-  deviceKeyColumn: "device",
-  metricNameColumn: "metric",
-  metricValueColumn: "value",
-  unitColumn: "unit",
-  labelColumn: "label",
-  existingDeviceIdColumn: "existingDeviceId",
-  deviceTypeColumn: "deviceType",
-  metadataColumns: ["firmware", "batch"],
-  mappingVersion: "ui-mapping-v1",
-  allowPartialAcceptance: true,
-}, null, 2);
+export const defaultMapping = JSON.stringify(
+  {
+    timestampColumn: "ts",
+    deviceKeyColumn: "device",
+    metricNameColumn: "metric",
+    metricValueColumn: "value",
+    unitColumn: "unit",
+    labelColumn: "label",
+    existingDeviceIdColumn: "existingDeviceId",
+    deviceTypeColumn: "deviceType",
+    metadataColumns: ["firmware", "batch"],
+    mappingVersion: "ui-mapping-v1",
+    allowPartialAcceptance: true,
+  },
+  null,
+  2,
+);
 
 export const labelOptions: MlLabelType[] = [
   "NORMAL",
@@ -174,7 +206,14 @@ export function snapshotLabel(snapshot: MlFeatureSnapshotResponse) {
 
 export function defaultFeatureFamilies(modelFamily: "ANOMALY_DETECTION" | "FAILURE_PREDICTION") {
   if (modelFamily === "FAILURE_PREDICTION") {
-    return ["rolling_stats", "baseline_deviation", "missing_data", "time", "device_context", "label"];
+    return [
+      "rolling_stats",
+      "baseline_deviation",
+      "missing_data",
+      "time",
+      "device_context",
+      "label",
+    ];
   }
   return ["rolling_stats", "baseline_deviation", "missing_data", "time", "label"];
 }
@@ -228,7 +267,10 @@ export function formatDecimalMetric(value: number | null) {
   if (value === null) {
     return "N/A";
   }
-  return value.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: value < 10 ? 1 : 0 });
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: value < 10 ? 1 : 0,
+  });
 }
 
 export function formatSignedMetric(value: number | null) {
@@ -247,11 +289,21 @@ export function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary 
 
   const metrics = model.evaluationMetrics ?? {};
   const positiveLabels = metricNumber(metrics, "failurePositiveLabels");
-  const minimumPositiveLabels = metricNumber(metrics, "minimumPositiveLabels") ?? metricNumber(metrics, "failureMinimumPositiveLabels") ?? 1;
-  const labelCoverage = metricNumber(metrics, "labelCoverage") ?? metricNumber(metrics, "failureLabelCoverage");
-  const minimumLabelCoverage = metricNumber(metrics, "minimumLabelCoverage") ?? metricNumber(metrics, "failureMinimumLabelCoverage") ?? 0.8;
+  const minimumPositiveLabels =
+    metricNumber(metrics, "minimumPositiveLabels") ??
+    metricNumber(metrics, "failureMinimumPositiveLabels") ??
+    1;
+  const labelCoverage =
+    metricNumber(metrics, "labelCoverage") ?? metricNumber(metrics, "failureLabelCoverage");
+  const minimumLabelCoverage =
+    metricNumber(metrics, "minimumLabelCoverage") ??
+    metricNumber(metrics, "failureMinimumLabelCoverage") ??
+    0.8;
   const validationSamples = metricNumber(metrics, "failureValidationSamples");
-  const hasEvaluation = validationSamples !== null ? validationSamples > 0 : metricNumber(metrics, "failurePrAuc") !== null;
+  const hasEvaluation =
+    validationSamples !== null
+      ? validationSamples > 0
+      : metricNumber(metrics, "failurePrAuc") !== null;
   const falseAlerts = metricNumber(metrics, "failureFalseAlertsPerDeviceMonth");
   const maxFalseAlerts = metricNumber(metrics, "maximumFalseAlertsPerDeviceMonth") ?? 30;
   const criteria: ApprovalGateCriterion[] = [
@@ -285,9 +337,20 @@ export function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary 
     },
     {
       name: "artifact_load_test",
-      observed: model.artifactUri && model.artifactManifestUri && model.artifactHash && model.artifactSizeBytes ? 1 : 0,
+      observed:
+        model.artifactUri &&
+        model.artifactManifestUri &&
+        model.artifactHash &&
+        model.artifactSizeBytes
+          ? 1
+          : 0,
       threshold: 1,
-      passed: Boolean(model.artifactUri && model.artifactManifestUri && model.artifactHash && model.artifactSizeBytes),
+      passed: Boolean(
+        model.artifactUri &&
+        model.artifactManifestUri &&
+        model.artifactHash &&
+        model.artifactSizeBytes,
+      ),
       reason: "Requires a persisted, hashed, load-tested model bundle.",
     },
     {
@@ -310,7 +373,9 @@ export function approvalGateSummary(model: MlModelVersion): ApprovalGateSummary 
   };
 }
 
-export function explicitApprovalGateSummary(metrics: Record<string, unknown>): ApprovalGateSummary | null {
+export function explicitApprovalGateSummary(
+  metrics: Record<string, unknown>,
+): ApprovalGateSummary | null {
   const raw = metrics.approvalGates;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return null;
@@ -318,7 +383,10 @@ export function explicitApprovalGateSummary(metrics: Record<string, unknown>): A
   const gateObject = raw as Record<string, unknown>;
   const criteria = Array.isArray(gateObject.criteria) ? gateObject.criteria : [];
   const normalizedCriteria = criteria
-    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    )
     .map((item) => ({
       name: stringMetric(item, "name") ?? "approval_gate",
       observed: metricNumber(item, "observed"),
@@ -327,14 +395,20 @@ export function explicitApprovalGateSummary(metrics: Record<string, unknown>): A
       reason: stringMetric(item, "reason") ?? "Approval gate failed.",
     }));
   const failedCriteria = normalizedCriteria.filter((item) => !item.passed);
-  const promotionEligible = typeof gateObject.promotionEligible === "boolean"
-    ? gateObject.promotionEligible
-    : failedCriteria.length === 0;
+  const promotionEligible =
+    typeof gateObject.promotionEligible === "boolean"
+      ? gateObject.promotionEligible
+      : failedCriteria.length === 0;
   return {
     status: stringMetric(gateObject, "status") ?? (promotionEligible ? "PASSED" : "NEEDS_REVIEW"),
-    profileId: stringMetric(gateObject, "profileId") ?? stringMetric(metrics, "approvalGateProfileId"),
-    profileVersion: stringMetric(gateObject, "profileVersion") ?? stringMetric(metrics, "approvalGateProfileVersion"),
-    thresholdSource: stringMetric(gateObject, "thresholdSource") ?? stringMetric(metrics, "approvalGateThresholdSource"),
+    profileId:
+      stringMetric(gateObject, "profileId") ?? stringMetric(metrics, "approvalGateProfileId"),
+    profileVersion:
+      stringMetric(gateObject, "profileVersion") ??
+      stringMetric(metrics, "approvalGateProfileVersion"),
+    thresholdSource:
+      stringMetric(gateObject, "thresholdSource") ??
+      stringMetric(metrics, "approvalGateThresholdSource"),
     promotionEligible,
     criteria: normalizedCriteria,
     failedCriteria,
@@ -345,7 +419,11 @@ export function formatGateValue(gate: ApprovalGateCriterion) {
   if (gate.observed === null) {
     return "N/A";
   }
-  if (gate.name.includes("coverage") || gate.name.includes("precision") || gate.name.includes("recall")) {
+  if (
+    gate.name.includes("coverage") ||
+    gate.name.includes("precision") ||
+    gate.name.includes("recall")
+  ) {
     return formatPercentMetric(gate.observed);
   }
   return formatGateNumber(gate.observed);
@@ -355,7 +433,11 @@ export function formatGateThreshold(gate: ApprovalGateCriterion) {
   if (gate.threshold === null) {
     return "N/A";
   }
-  if (gate.name.includes("coverage") || gate.name.includes("precision") || gate.name.includes("recall")) {
+  if (
+    gate.name.includes("coverage") ||
+    gate.name.includes("precision") ||
+    gate.name.includes("recall")
+  ) {
     return formatPercentMetric(gate.threshold);
   }
   return formatGateNumber(gate.threshold);
@@ -368,14 +450,18 @@ export function formatGateNumber(value: number) {
 export function normalizeRiskDrivers(drivers: Array<Record<string, unknown>>) {
   return drivers
     .map((driver) => {
-      const feature = stringMetric(driver, "feature") ?? stringMetric(driver, "metric") ?? "unknown_feature";
-      const contribution = metricNumber(driver, "contribution") ?? metricNumber(driver, "score") ?? 0;
+      const feature =
+        stringMetric(driver, "feature") ?? stringMetric(driver, "metric") ?? "unknown_feature";
+      const contribution =
+        metricNumber(driver, "contribution") ?? metricNumber(driver, "score") ?? 0;
       return {
         feature,
         value: metricNumber(driver, "value"),
         weight: metricNumber(driver, "weight"),
         contribution,
-        direction: stringMetric(driver, "direction") ?? (contribution >= 0 ? "increases_risk" : "decreases_risk"),
+        direction:
+          stringMetric(driver, "direction") ??
+          (contribution >= 0 ? "increases_risk" : "decreases_risk"),
       };
     })
     .sort((left, right) => Math.abs(right.contribution) - Math.abs(left.contribution));
@@ -402,7 +488,9 @@ export function humanizeFeatureName(value: string) {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .split(/\s+/)
     .filter(Boolean)
-    .map((part) => part.length <= 2 ? part.toUpperCase() : part.replace(/^./, (match) => match.toUpperCase()))
+    .map((part) =>
+      part.length <= 2 ? part.toUpperCase() : part.replace(/^./, (match) => match.toUpperCase()),
+    )
     .join(" ");
 }
 
@@ -417,10 +505,16 @@ export function formatTrainingWindow(value: Record<string, unknown> | undefined)
   if (!value || Object.keys(value).length === 0) {
     return "Unavailable";
   }
-  const start = stringMetric(value, "start") ?? stringMetric(value, "from") ?? stringMetric(value, "windowStart");
-  const end = stringMetric(value, "end") ?? stringMetric(value, "to") ?? stringMetric(value, "windowEnd");
+  const start =
+    stringMetric(value, "start") ??
+    stringMetric(value, "from") ??
+    stringMetric(value, "windowStart");
+  const end =
+    stringMetric(value, "end") ?? stringMetric(value, "to") ?? stringMetric(value, "windowEnd");
   if (start || end) {
     return `${start ?? "unknown start"} - ${end ?? "unknown end"}`;
   }
-  return Object.entries(value).map(([key, item]) => `${humanizeKey(key)}: ${formatQualityValue(item)}`).join(" / ");
+  return Object.entries(value)
+    .map(([key, item]) => `${humanizeKey(key)}: ${formatQualityValue(item)}`)
+    .join(" / ");
 }

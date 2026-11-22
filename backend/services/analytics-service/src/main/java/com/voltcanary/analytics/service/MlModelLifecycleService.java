@@ -38,104 +38,223 @@ public class MlModelLifecycleService {
     private final MlModelRegistryResponseMapper mapper;
 
     @Transactional(readOnly = true)
-    public MlLifecycleImpactResponse modelImpact(UUID accountId, UUID modelVersionId, String action) {
+    public MlLifecycleImpactResponse modelImpact(
+        UUID accountId,
+        UUID modelVersionId,
+        String action
+    ) {
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
         String normalizedAction = normalizedAction(action);
         List<Map<String, Object>> dependencies = modelDependencies(model);
-        boolean blocked = "delete".equals(normalizedAction)
-                && (model.getStatus() == MlModelStatus.ACTIVE
-                || dependencies.stream().anyMatch(dependency -> !"predictionResults".equals(dependency.get("type")) || predictionCount(dependency) > 0));
+        boolean blocked =
+            "delete".equals(normalizedAction) &&
+            (model.getStatus() == MlModelStatus.ACTIVE ||
+                dependencies
+                    .stream()
+                    .anyMatch(
+                        dependency ->
+                            !"predictionResults".equals(dependency.get("type")) ||
+                            predictionCount(dependency) > 0
+                    ));
         String message = blocked
-                ? "Model has runtime or prediction references and should be archived instead of deleted"
-                : "Model action is allowed when submitted with an audit reason";
+            ? "Model has runtime or prediction references and should be archived instead of deleted"
+            : "Model action is allowed when submitted with an audit reason";
         return new MlLifecycleImpactResponse(normalizedAction, blocked, message, dependencies);
     }
 
     @Transactional
-    public MlModelVersionDto deleteModel(UUID accountId, UUID actorId, UUID modelVersionId, MlLifecycleActionRequest request) {
+    public MlModelVersionDto deleteModel(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlLifecycleActionRequest request
+    ) {
         fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
         String reason = requiredReason(request);
         List<Map<String, Object>> dependencies = activeModelPolicyDependencies(modelVersionId);
         if (model.getStatus() == MlModelStatus.ACTIVE || !dependencies.isEmpty()) {
             throw new MlLifecycleConflictException(
-                    "MODEL_POLICY_REFERENCED",
-                    "Model is active or referenced by deployment policies",
-                    dependencies.isEmpty()
-                            ? List.of(dependency("modelVersion", model.getId(), Map.of("status", model.getStatus().name())))
-                            : dependencies);
+                "MODEL_POLICY_REFERENCED",
+                "Model is active or referenced by deployment policies",
+                dependencies.isEmpty()
+                    ? List.of(
+                          dependency(
+                              "modelVersion",
+                              model.getId(),
+                              Map.of("status", model.getStatus().name())
+                          )
+                      )
+                    : dependencies
+            );
         }
         long predictionReferences = predictionResultRepository.countByModelId(modelVersionId);
         if (predictionReferences > 0) {
             throw new MlLifecycleConflictException(
-                    "MODEL_PREDICTION_REFERENCED",
-                    "Model has historical prediction references and must be archived instead of deleted",
-                    dependency("predictionResults", model.getId(), Map.of("count", predictionReferences)));
+                "MODEL_PREDICTION_REFERENCED",
+                "Model has historical prediction references and must be archived instead of deleted",
+                dependency(
+                    "predictionResults",
+                    model.getId(),
+                    Map.of("count", predictionReferences)
+                )
+            );
         }
-        if (model.getStatus() != MlModelStatus.CANDIDATE && model.getStatus() != MlModelStatus.REJECTED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only unreferenced candidate or rejected models can be deleted");
+        if (
+            model.getStatus() != MlModelStatus.CANDIDATE &&
+            model.getStatus() != MlModelStatus.REJECTED
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Only unreferenced candidate or rejected models can be deleted"
+            );
         }
         model.setStatus(MlModelStatus.DELETED);
         stampLifecycle(model, actorId, reason);
         modelVersionRepository.save(model);
-        auditWriter.audit(accountId, actorId, model.getId(), null, "MODEL_DELETED", Map.of("reason", reason));
-        log.info("mlModelDeleted modelVersionId={} accountId={} actorId={} reason={}",
-                model.getId(), accountId, actorId, reason);
+        auditWriter.audit(
+            accountId,
+            actorId,
+            model.getId(),
+            null,
+            "MODEL_DELETED",
+            Map.of("reason", reason)
+        );
+        log.info(
+            "mlModelDeleted modelVersionId={} accountId={} actorId={} reason={}",
+            model.getId(),
+            accountId,
+            actorId,
+            reason
+        );
         return mapper.modelResponse(model);
     }
 
     @Transactional
-    public MlModelVersionDto approve(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto approve(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
-        if (model.getStatus() != MlModelStatus.CANDIDATE && model.getStatus() != MlModelStatus.REJECTED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only candidate or rejected models can be approved");
+        if (
+            model.getStatus() != MlModelStatus.CANDIDATE &&
+            model.getStatus() != MlModelStatus.REJECTED
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Only candidate or rejected models can be approved"
+            );
         }
         approvalGateVerifier.verify(model);
         model.setStatus(MlModelStatus.APPROVED);
         model.setApprovedBy(actorId);
         model.setApprovedAt(Instant.now());
         modelVersionRepository.save(model);
-        auditWriter.audit(accountId, actorId, model.getId(), null, "MODEL_APPROVED", Map.of("reason", reason(request)));
-        log.info("mlModelPromoted modelVersionId={} accountId={} actorId={} status={} reason={}",
-                model.getId(), accountId, actorId, model.getStatus(), reason(request));
+        auditWriter.audit(
+            accountId,
+            actorId,
+            model.getId(),
+            null,
+            "MODEL_APPROVED",
+            Map.of("reason", reason(request))
+        );
+        log.info(
+            "mlModelPromoted modelVersionId={} accountId={} actorId={} status={} reason={}",
+            model.getId(),
+            accountId,
+            actorId,
+            model.getStatus(),
+            reason(request)
+        );
         return mapper.modelResponse(model);
     }
 
     @Transactional
-    public MlModelVersionDto reject(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto reject(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
-        if (model.getStatus() == MlModelStatus.ACTIVE || !activeModelPolicyDependencies(model.getId()).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active models must be rolled back before rejection");
+        if (
+            model.getStatus() == MlModelStatus.ACTIVE ||
+            !activeModelPolicyDependencies(model.getId()).isEmpty()
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Active models must be rolled back before rejection"
+            );
         }
         model.setStatus(MlModelStatus.REJECTED);
         modelVersionRepository.save(model);
-        auditWriter.audit(accountId, actorId, model.getId(), null, "MODEL_REJECTED", Map.of("reason", reason(request)));
-        log.info("mlModelRejected modelVersionId={} accountId={} actorId={} reason={}",
-                model.getId(), accountId, actorId, reason(request));
+        auditWriter.audit(
+            accountId,
+            actorId,
+            model.getId(),
+            null,
+            "MODEL_REJECTED",
+            Map.of("reason", reason(request))
+        );
+        log.info(
+            "mlModelRejected modelVersionId={} accountId={} actorId={} reason={}",
+            model.getId(),
+            accountId,
+            actorId,
+            reason(request)
+        );
         return mapper.modelResponse(model);
     }
 
     @Transactional
-    public MlModelVersionDto archive(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto archive(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
-        if (model.getStatus() == MlModelStatus.ACTIVE || !activeModelPolicyDependencies(model.getId()).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active models must be rolled back before archive");
+        if (
+            model.getStatus() == MlModelStatus.ACTIVE ||
+            !activeModelPolicyDependencies(model.getId()).isEmpty()
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Active models must be rolled back before archive"
+            );
         }
         model.setStatus(MlModelStatus.ARCHIVED);
         stampLifecycle(model, actorId, reason(request));
         modelVersionRepository.save(model);
-        auditWriter.audit(accountId, actorId, model.getId(), null, "MODEL_ARCHIVED", Map.of("reason", reason(request)));
-        log.info("mlModelArchived modelVersionId={} accountId={} actorId={} reason={}",
-                model.getId(), accountId, actorId, reason(request));
+        auditWriter.audit(
+            accountId,
+            actorId,
+            model.getId(),
+            null,
+            "MODEL_ARCHIVED",
+            Map.of("reason", reason(request))
+        );
+        log.info(
+            "mlModelArchived modelVersionId={} accountId={} actorId={} reason={}",
+            model.getId(),
+            accountId,
+            actorId,
+            reason(request)
+        );
         return mapper.modelResponse(model);
     }
 
     private MlModelVersion findOwnedModel(UUID accountId, UUID modelVersionId) {
-        MlModelVersion model = modelVersionRepository.findById(modelVersionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found"));
+        MlModelVersion model = modelVersionRepository
+            .findById(modelVersionId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found")
+            );
         entityManager.refresh(model);
         if (!accountId.equals(model.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found");
@@ -148,19 +267,33 @@ public class MlModelLifecycleService {
         long predictionReferences = predictionResultRepository.countByModelId(model.getId());
         List<Map<String, Object>> dependencies = new java.util.ArrayList<>(policies);
         if (model.getStatus() == MlModelStatus.ACTIVE && policies.isEmpty()) {
-            dependencies.add(dependency("modelVersion", model.getId(), Map.of("status", model.getStatus().name())));
+            dependencies.add(
+                dependency(
+                    "modelVersion",
+                    model.getId(),
+                    Map.of("status", model.getStatus().name())
+                )
+            );
         }
-        dependencies.add(dependency("predictionResults", model.getId(), Map.of("count", predictionReferences)));
+        dependencies.add(
+            dependency("predictionResults", model.getId(), Map.of("count", predictionReferences))
+        );
         return dependencies;
     }
 
     private List<Map<String, Object>> activeModelPolicyDependencies(UUID modelVersionId) {
-        return policyRepository.findByModelVersionIdAndDeletedAtIsNull(modelVersionId).stream()
-                .filter(policy -> policy.getMode() != MlDeploymentMode.DISABLED)
-                .map(policy -> dependency("deploymentPolicy", policy.getId(), Map.of(
-                        "scope", policy.getScope().name(),
-                        "mode", policy.getMode().name())))
-                .toList();
+        return policyRepository
+            .findByModelVersionIdAndDeletedAtIsNull(modelVersionId)
+            .stream()
+            .filter(policy -> policy.getMode() != MlDeploymentMode.DISABLED)
+            .map(policy ->
+                dependency(
+                    "deploymentPolicy",
+                    policy.getId(),
+                    Map.of("scope", policy.getScope().name(), "mode", policy.getMode().name())
+                )
+            )
+            .toList();
     }
 
     private long predictionCount(Map<String, Object> dependency) {
@@ -183,7 +316,10 @@ public class MlModelLifecycleService {
     private String requiredReason(MlLifecycleActionRequest request) {
         String value = request == null ? null : request.reason();
         if (value == null || value.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Lifecycle reason is required"
+            );
         }
         return value.trim();
     }

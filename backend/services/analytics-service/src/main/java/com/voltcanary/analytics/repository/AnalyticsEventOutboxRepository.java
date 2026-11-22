@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AnalyticsEventOutboxRepository extends JpaRepository<AnalyticsEventOutbox, UUID> {
-
     Optional<AnalyticsEventOutbox> findByEventKey(String eventKey);
 
     List<AnalyticsEventOutbox> findTop100ByStatusOrderByCreatedAtAsc(String status);

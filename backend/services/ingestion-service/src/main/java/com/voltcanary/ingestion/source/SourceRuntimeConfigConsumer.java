@@ -19,20 +19,23 @@ public class SourceRuntimeConfigConsumer {
     private final SourceRuntimeConfigStore runtimeConfigStore;
 
     @KafkaListener(
-            topics = TOPIC,
-            groupId = "#{@sourceRuntimeConfigConsumerGroupId}",
-            containerFactory = "sourceRuntimeConfigKafkaListenerContainerFactory")
+        topics = TOPIC,
+        groupId = "#{@sourceRuntimeConfigConsumerGroupId}",
+        containerFactory = "sourceRuntimeConfigKafkaListenerContainerFactory"
+    )
     public void consume(
-            SourceRuntimeConfigEvent event,
-            @Header(KafkaHeaders.RECEIVED_KEY) String key) {
+        SourceRuntimeConfigEvent event,
+        @Header(KafkaHeaders.RECEIVED_KEY) String key
+    ) {
         cache.apply(event);
         runtimeConfigStore.apply(event);
         log.debug(
-                "sourceRuntimeConfigApplied key={} dataSourceId={} sourceId={} status={} version={}",
-                key,
-                event.dataSourceId(),
-                event.sourceId(),
-                event.status(),
-                event.configVersion());
+            "sourceRuntimeConfigApplied key={} dataSourceId={} sourceId={} status={} version={}",
+            key,
+            event.dataSourceId(),
+            event.sourceId(),
+            event.status(),
+            event.configVersion()
+        );
     }
 }

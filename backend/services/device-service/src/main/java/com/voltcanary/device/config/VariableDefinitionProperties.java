@@ -10,6 +10,6 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class VariableDefinitionProperties {
-    private boolean activationEnabled;
 
+    private boolean activationEnabled;
 }

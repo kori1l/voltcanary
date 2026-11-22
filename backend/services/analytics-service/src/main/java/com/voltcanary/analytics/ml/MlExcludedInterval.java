@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MlExcludedInterval(
-        UUID maintenanceWindowId,
-        Instant startAt,
-        Instant endAt,
-        String reason) {
-}
+    UUID maintenanceWindowId,
+    Instant startAt,
+    Instant endAt,
+    String reason
+) {}

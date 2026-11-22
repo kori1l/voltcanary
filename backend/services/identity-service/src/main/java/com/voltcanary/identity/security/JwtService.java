@@ -16,28 +16,42 @@ public class JwtService {
 
     public JwtService(IdentityJwtProperties properties) {
         this.accessTokenService = new JwtAccessTokenService(
-                properties.getKeyId(),
-                properties.getPrivateKey(),
-                properties.getPublicKeys(),
-                properties.getIssuer(),
-                properties.getAudience());
+            properties.getKeyId(),
+            properties.getPrivateKey(),
+            properties.getPublicKeys(),
+            properties.getIssuer(),
+            properties.getAudience()
+        );
         this.accessTokenTtlSeconds = properties.getAccessTokenTtlSeconds();
     }
 
     public String createAccessToken(User user) {
-        return accessTokenService.create(user.getId().toString(), user.getEmail(), user.getRole().name(), accessTokenTtlSeconds);
+        return accessTokenService.create(
+            user.getId().toString(),
+            user.getEmail(),
+            user.getRole().name(),
+            accessTokenTtlSeconds
+        );
     }
 
     public AuthenticatedUser parseAccessToken(String token) {
         try {
             JwtAccessTokenClaims claims = accessTokenService.validate(token);
             return new AuthenticatedUser(
-                    UUID.fromString(claims.subject()),
-                    claims.email(),
-                    claims.role());
+                UUID.fromString(claims.subject()),
+                claims.email(),
+                claims.role()
+            );
         } catch (Exception exception) {
             throw new AuthenticationFailedException("Invalid access token");
         }
+    }
+
+    public AuthenticatedUser parseBearerToken(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new AuthenticationFailedException("Missing bearer token");
+        }
+        return parseAccessToken(authorization.substring("Bearer ".length()));
     }
 
     public long accessTokenTtlSeconds() {

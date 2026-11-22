@@ -6,15 +6,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record AlertListFilters(
-        UUID deviceId,
-        AlertStatus status,
-        AlertSeverity severity,
-        String alertType,
-        String ruleId,
-        Instant from,
-        Instant to,
-        Integer limit) {
-
+    UUID deviceId,
+    AlertStatus status,
+    AlertSeverity severity,
+    String alertType,
+    String ruleId,
+    Instant from,
+    Instant to,
+    Integer limit
+) {
     public int normalizedLimit() {
         if (limit == null) {
             return 100;

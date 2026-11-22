@@ -19,14 +19,23 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AlertDeduplicationService {
 
-    private static final DateTimeFormatter HOUR_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyyMMddHH").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern(
+        "yyyyMMddHH"
+    ).withZone(ZoneOffset.UTC);
 
     private final AlertRepository alertRepository;
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
 
     public String key(UUID deviceId, String alertType, AlertSeverity severity, Instant occurredAt) {
-        return deviceId + ":" + alertType + ":" + severity + ":" + HOUR_FORMATTER.format(occurredAt == null ? Instant.now() : occurredAt);
+        return (
+            deviceId +
+            ":" +
+            alertType +
+            ":" +
+            severity +
+            ":" +
+            HOUR_FORMATTER.format(occurredAt == null ? Instant.now() : occurredAt)
+        );
     }
 
     public Optional<Alert> findBySourceEventId(UUID sourceEventId) {
@@ -40,40 +49,85 @@ public class AlertDeduplicationService {
         return alertRepository.findFirstByDeduplicationKeyOrderByCreatedAtDesc(deduplicationKey);
     }
 
-    public Optional<Alert> findActiveInWindow(UUID deviceId, String alertType, AlertSeverity severity, Instant occurredAt) {
-        Instant windowStart = (occurredAt == null ? Instant.now() : occurredAt).truncatedTo(ChronoUnit.HOURS);
+    public Optional<Alert> findActiveInWindow(
+        UUID deviceId,
+        String alertType,
+        AlertSeverity severity,
+        Instant occurredAt
+    ) {
+        Instant windowStart = (occurredAt == null ? Instant.now() : occurredAt).truncatedTo(
+            ChronoUnit.HOURS
+        );
         return alertRepository.findFirstByDeviceIdAndAlertTypeAndSeverityAndStatusNotAndCreatedAtBetweenOrderByCreatedAtDesc(
-                deviceId,
-                alertType,
-                severity,
-                AlertStatus.RESOLVED,
-                windowStart,
-                windowStart.plus(1, ChronoUnit.HOURS).minusNanos(1));
+            deviceId,
+            alertType,
+            severity,
+            AlertStatus.RESOLVED,
+            windowStart,
+            windowStart.plus(1, ChronoUnit.HOURS).minusNanos(1)
+        );
     }
 
     public String reopenedKey(String deduplicationKey, UUID sourceEventId) {
-        return deduplicationKey + ":reopen:" + (sourceEventId == null ? UUID.randomUUID() : sourceEventId);
+        return (
+            deduplicationKey +
+            ":reopen:" +
+            (sourceEventId == null ? UUID.randomUUID() : sourceEventId)
+        );
     }
 
-    public String anomalyKey(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
-        if (event.variableEvidence() == null) return key(event.deviceId(), event.type(), severity, event.detectedAt());
+    public String anomalyKey(
+        com.voltcanary.common.events.analytics.AnomalyDetectedEvent event,
+        AlertSeverity severity
+    ) {
+        if (event.variableEvidence() == null) return key(
+            event.deviceId(),
+            event.type(),
+            severity,
+            event.detectedAt()
+        );
         return variablePrefix(event, severity) + event.eventId();
     }
 
-    public Optional<Alert> activeAnomaly(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
-        if (event.variableEvidence() == null) return findActiveInWindow(event.deviceId(), event.type(), severity, event.detectedAt());
+    public Optional<Alert> activeAnomaly(
+        com.voltcanary.common.events.analytics.AnomalyDetectedEvent event,
+        AlertSeverity severity
+    ) {
+        if (event.variableEvidence() == null) return findActiveInWindow(
+            event.deviceId(),
+            event.type(),
+            severity,
+            event.detectedAt()
+        );
         return alertRepository.findFirstByDeduplicationKeyStartingWithAndStatusNotAndCreatedAtBetweenOrderByCreatedAtDesc(
-                variablePrefix(event, severity), AlertStatus.RESOLVED,
-                event.detectedAt().minusSeconds(event.variableEvidence().deduplicationWindowSeconds()), event.detectedAt());
+            variablePrefix(event, severity),
+            AlertStatus.RESOLVED,
+            event.detectedAt().minusSeconds(event.variableEvidence().deduplicationWindowSeconds()),
+            event.detectedAt()
+        );
     }
 
-    private String variablePrefix(com.voltcanary.common.events.analytics.AnomalyDetectedEvent event, AlertSeverity severity) {
-        return "variable:" + event.deviceId() + ":" + event.ruleId() + ":" + event.variableEvidence().dataSourceId() + ":" + severity + ":";
+    private String variablePrefix(
+        com.voltcanary.common.events.analytics.AnomalyDetectedEvent event,
+        AlertSeverity severity
+    ) {
+        return (
+            "variable:" +
+            event.deviceId() +
+            ":" +
+            event.ruleId() +
+            ":" +
+            event.variableEvidence().dataSourceId() +
+            ":" +
+            severity +
+            ":"
+        );
     }
 
     public Optional<Alert> findExisting(UUID sourceEventId, String deduplicationKey) {
-        return findBySourceEventId(sourceEventId)
-                .or(() -> findByDeduplicationKey(deduplicationKey));
+        return findBySourceEventId(sourceEventId).or(() ->
+            findByDeduplicationKey(deduplicationKey)
+        );
     }
 
     public Object lockFor(String deduplicationKey) {

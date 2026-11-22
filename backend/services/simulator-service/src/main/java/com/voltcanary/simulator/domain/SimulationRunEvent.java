@@ -14,15 +14,19 @@ import lombok.Setter;
 @Getter
 @Setter
 public class SimulationRunEvent {
+
     @Id
     private UUID id;
+
     @Column(name = "run_id", nullable = false)
     private UUID runId;
+
     @Column(name = "event_type", nullable = false)
     private String eventType;
+
     @Column(nullable = false)
     private String message;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
 }

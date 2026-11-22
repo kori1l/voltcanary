@@ -5,8 +5,7 @@ import org.testcontainers.containers.KafkaContainer;
 
 public final class KafkaTestHelper {
 
-    private KafkaTestHelper() {
-    }
+    private KafkaTestHelper() {}
 
     public static KafkaContainer createKafkaContainer() {
         return new KafkaContainer(TestcontainersConfig.KAFKA_IMAGE);
@@ -18,8 +17,12 @@ public final class KafkaTestHelper {
 
     public static Map<String, Object> consumerProperties(KafkaContainer kafka, String groupId) {
         return Map.of(
-                "bootstrap.servers", kafka.getBootstrapServers(),
-                "group.id", groupId,
-                "auto.offset.reset", "earliest");
+            "bootstrap.servers",
+            kafka.getBootstrapServers(),
+            "group.id",
+            groupId,
+            "auto.offset.reset",
+            "earliest"
+        );
     }
 }

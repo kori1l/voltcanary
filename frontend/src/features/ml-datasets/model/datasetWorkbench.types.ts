@@ -6,9 +6,13 @@ import type {
 } from "../../../analytics/mlModuleApi";
 
 export type DatasetWorkbenchPreviewStatus = "idle" | "loading" | "ready" | "stale" | "error";
-export type DatasetWorkbenchModelFamily = Extract<MlModelFamily, "ANOMALY_DETECTION" | "FAILURE_PREDICTION">;
+export type DatasetWorkbenchModelFamily = Extract<
+  MlModelFamily,
+  "ANOMALY_DETECTION" | "FAILURE_PREDICTION"
+>;
 export type DatasetWorkbenchQuickRange = "24h" | "7d" | "30d" | "custom";
-export type DatasetPipelineStepStatus = "ready" | "review" | "blocked" | "loading" | "unavailable" | "stale" | "queued" | "running";
+export type DatasetPipelineStepStatus =
+  "ready" | "review" | "blocked" | "loading" | "unavailable" | "stale" | "queued" | "running";
 
 export interface DatasetPipelineStep {
   id: string;

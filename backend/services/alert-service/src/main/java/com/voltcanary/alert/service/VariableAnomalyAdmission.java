@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 @RequiredArgsConstructor
 public class VariableAnomalyAdmission {
+
     private final AlertRuleRepository rules;
     private final VariableRuleValidation validation;
     private final ObjectMapper mapper;
@@ -22,23 +23,44 @@ public class VariableAnomalyAdmission {
     public boolean accepts(AnomalyDetectedEvent event) {
         var evidence = event.variableEvidence();
         if (evidence == null) return true;
-        if (event.ruleId() == null || event.windowStart() == null || evidence.maxLiveAgeSeconds() < 1
-                || event.windowStart().isBefore(Instant.now().minusSeconds(evidence.maxLiveAgeSeconds()))) return false;
+        if (
+            event.ruleId() == null ||
+            event.windowStart() == null ||
+            evidence.maxLiveAgeSeconds() < 1 ||
+            event.windowStart().isBefore(Instant.now().minusSeconds(evidence.maxLiveAgeSeconds()))
+        ) return false;
         UUID ruleId;
-        try { ruleId = UUID.fromString(event.ruleId()); }
-        catch (IllegalArgumentException invalid) { return false; }
+        try {
+            ruleId = UUID.fromString(event.ruleId());
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
         var rule = rules.findById(ruleId).orElse(null);
-        if (rule == null || !rule.isEnabled() || rule.getVersion() != evidence.ruleVersion()
-                || !rule.getAccountId().equals(event.accountId()) || !event.deviceId().equals(rule.getScopeId())
-                || rule.getCreatedBy() == null) return false;
-        var selector = mapper.convertValue(validation.config(rule).get("variable"), VariableRuleSelector.class);
-        if (selector == null || !evidence.variableId().equals(selector.variableId())
-                || !evidence.dataSourceId().equals(selector.dataSourceId()) || !evidence.unit().equals(selector.unit())) return false;
+        if (
+            rule == null ||
+            !rule.isEnabled() ||
+            rule.getVersion() != evidence.ruleVersion() ||
+            !rule.getAccountId().equals(event.accountId()) ||
+            !event.deviceId().equals(rule.getScopeId()) ||
+            rule.getCreatedBy() == null
+        ) return false;
+        var selector = mapper.convertValue(
+            validation.config(rule).get("variable"),
+            VariableRuleSelector.class
+        );
+        if (
+            selector == null ||
+            !evidence.variableId().equals(selector.variableId()) ||
+            !evidence.dataSourceId().equals(selector.dataSourceId()) ||
+            !evidence.unit().equals(selector.unit())
+        ) return false;
         try {
             validation.validate(rule, rule.getCreatedBy().toString(), null);
             return true;
         } catch (ResponseStatusException failure) {
-            if (failure.getStatusCode().value() >= HttpStatus.INTERNAL_SERVER_ERROR.value()) throw failure;
+            if (
+                failure.getStatusCode().value() >= HttpStatus.INTERNAL_SERVER_ERROR.value()
+            ) throw failure;
             return false;
         }
     }

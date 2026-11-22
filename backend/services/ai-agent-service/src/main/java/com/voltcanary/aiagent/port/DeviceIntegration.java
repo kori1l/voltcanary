@@ -6,6 +6,11 @@ import java.util.Map;
 public interface DeviceIntegration {
     String provider();
     void prepare(Map<String, Object> intent, String authorization, String creationKey);
-    Map<String, Object> connect(String deviceId, Map<String, Object> intent, String authorization, String creationKey);
+    Map<String, Object> connect(
+        String deviceId,
+        Map<String, Object> intent,
+        String authorization,
+        String creationKey
+    );
     Map<?, ?> status(String deviceId, String authorization);
 }

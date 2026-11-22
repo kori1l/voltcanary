@@ -1,6 +1,5 @@
 package com.voltcanary.device.service;
 
-import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
@@ -18,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -33,9 +33,11 @@ public class SensorService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SensorResponse> list(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        return sensorRepository.findByDeviceId(device.getId()).stream()
-                .map(this::toResponse)
-                .toList();
+        return sensorRepository
+            .findByDeviceId(device.getId())
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -56,19 +58,38 @@ public class SensorService {
         sensor.setUpdatedAt(now);
         Sensor saved = sensorRepository.save(sensor);
         auditService.record(user, device.getAccountId(), "SENSOR_CREATED", "SENSOR", saved.getId());
-        eventPublisher.publish("SENSOR", "CREATED", device.getAccountId(), device.getId(), saved.getId(), null);
+        eventPublisher.publish(
+            "SENSOR",
+            "CREATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            null
+        );
         return toResponse(saved);
     }
 
     @Transactional
-    public SensorResponse update(AuthenticatedUser user, UUID deviceId, UUID sensorId, SensorRequest request) {
+    public SensorResponse update(
+        AuthenticatedUser user,
+        UUID deviceId,
+        UUID sensorId,
+        SensorRequest request
+    ) {
         Device device = deviceService.findOwned(user, deviceId);
         Sensor sensor = findOwnedSensor(device, sensorId);
         apply(sensor, request);
         sensor.setUpdatedAt(Instant.now());
         Sensor saved = sensorRepository.save(sensor);
         auditService.record(user, device.getAccountId(), "SENSOR_UPDATED", "SENSOR", saved.getId());
-        eventPublisher.publish("SENSOR", "UPDATED", device.getAccountId(), device.getId(), saved.getId(), null);
+        eventPublisher.publish(
+            "SENSOR",
+            "UPDATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            null
+        );
         return toResponse(saved);
     }
 
@@ -77,8 +98,21 @@ public class SensorService {
         Device device = deviceService.findOwned(user, deviceId);
         Sensor sensor = findOwnedSensor(device, sensorId);
         sensorRepository.delete(sensor);
-        auditService.record(user, device.getAccountId(), "SENSOR_DELETED", "SENSOR", sensor.getId());
-        eventPublisher.publish("SENSOR", "DELETED", device.getAccountId(), device.getId(), sensor.getId(), null);
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "SENSOR_DELETED",
+            "SENSOR",
+            sensor.getId()
+        );
+        eventPublisher.publish(
+            "SENSOR",
+            "DELETED",
+            device.getAccountId(),
+            device.getId(),
+            sensor.getId(),
+            null
+        );
     }
 
     private void apply(Sensor sensor, SensorRequest request) {
@@ -90,22 +124,24 @@ public class SensorService {
     }
 
     private Sensor findOwnedSensor(Device device, UUID sensorId) {
-        return sensorRepository.findById(sensorId)
-                .filter(sensor -> sensor.getDeviceId().equals(device.getId()))
-                .orElseThrow(() -> new NotFoundException("Sensor not found"));
+        return sensorRepository
+            .findById(sensorId)
+            .filter(sensor -> sensor.getDeviceId().equals(device.getId()))
+            .orElseThrow(() -> new NotFoundException("Sensor not found"));
     }
 
     private SensorResponse toResponse(Sensor sensor) {
         return new SensorResponse(
-                sensor.getId(),
-                sensor.getDeviceId(),
-                sensor.getName(),
-                sensor.getType(),
-                sensor.getUnit(),
-                sensor.getMetricMapping(),
-                fromJson(sensor.getMetadataJson()),
-                sensor.getCreatedAt(),
-                sensor.getUpdatedAt());
+            sensor.getId(),
+            sensor.getDeviceId(),
+            sensor.getName(),
+            sensor.getType(),
+            sensor.getUnit(),
+            sensor.getMetricMapping(),
+            fromJson(sensor.getMetadataJson()),
+            sensor.getCreatedAt(),
+            sensor.getUpdatedAt()
+        );
     }
 
     private String trimToNull(String value) {
@@ -128,8 +164,7 @@ public class SensorService {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (Exception exception) {
             return Map.of();
         }

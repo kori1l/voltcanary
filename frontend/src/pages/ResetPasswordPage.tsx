@@ -29,22 +29,49 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <AuthShell title="Set new password" description="Review the password requirements, then apply your reset token. Invalid or expired tokens require a new recovery request.">
-        <form className="form-stack" onSubmit={onSubmit}>
-          <details open={!fromLink}><summary>{fromLink ? "Reset token received from link · manual override" : "Enter reset token manually"}</summary><label>
+    <AuthShell
+      title="Set new password"
+      description="Review the password requirements, then apply your reset token. Invalid or expired tokens require a new recovery request."
+    >
+      <form className="form-stack" onSubmit={onSubmit}>
+        <details open={!fromLink}>
+          <summary>
+            {fromLink
+              ? "Reset token received from link · manual override"
+              : "Enter reset token manually"}
+          </summary>
+          <label>
             Reset token
-            <input value={token} onChange={(event) => setToken(event.target.value)} autoComplete="one-time-code" required />
-          </label></details>
-          <PasswordField label="New password" value={newPassword} onChange={setNewPassword} newPassword disabled={isSubmitting} />
-          {error ? <div className="error-message" role="alert">{error}</div> : null}
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving..." : "Change password"}
-          </button>
-        </form>
-        <Link className="auth-link" to="/forgot-password">Request a new token</Link>
-        <Link className="auth-link" to="/login">
-          Back to sign in
-        </Link>
+            <input
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              autoComplete="one-time-code"
+              required
+            />
+          </label>
+        </details>
+        <PasswordField
+          label="New password"
+          value={newPassword}
+          onChange={setNewPassword}
+          newPassword
+          disabled={isSubmitting}
+        />
+        {error ? (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <button className="primary-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Saving..." : "Change password"}
+        </button>
+      </form>
+      <Link className="auth-link" to="/forgot-password">
+        Request a new token
+      </Link>
+      <Link className="auth-link" to="/login">
+        Back to sign in
+      </Link>
     </AuthShell>
   );
 }

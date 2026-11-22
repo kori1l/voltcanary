@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public record TelemetryLatestResponse(
-        UUID deviceId,
-        Map<String, Double> readings,
-        Instant timestamp) {
-}
+    UUID deviceId,
+    Map<String, Double> readings,
+    Instant timestamp
+) {}

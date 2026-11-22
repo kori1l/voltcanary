@@ -12,10 +12,13 @@ import org.springframework.web.client.RestClient;
 
 @Configuration
 public class RestClientConfig {
+
     @Bean
     @Primary
     @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-    RestClient.Builder restClientBuilder() { return JacksonRestClients.builder(); }
+    RestClient.Builder restClientBuilder() {
+        return JacksonRestClients.builder();
+    }
 
     @Bean
     @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
@@ -51,8 +54,13 @@ public class RestClientConfig {
         if (timeout == null || timeout.isZero() || timeout.isNegative()) {
             throw new IllegalArgumentException("Downstream timeout must be positive");
         }
-        var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
-                .connectTimeout(timeout.compareTo(Duration.ofSeconds(5)) > 0 ? Duration.ofSeconds(5) : timeout).build());
+        var factory = new JdkClientHttpRequestFactory(
+            java.net.http.HttpClient.newBuilder()
+                .connectTimeout(
+                    timeout.compareTo(Duration.ofSeconds(5)) > 0 ? Duration.ofSeconds(5) : timeout
+                )
+                .build()
+        );
         factory.setReadTimeout(timeout);
         return JacksonRestClients.builder().requestFactory(factory);
     }

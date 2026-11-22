@@ -21,38 +21,57 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/device-types/{code}/variables/{id}")
 @RequiredArgsConstructor
 public class VariableRolloutsController {
+
     private final VariableDefaults defaults;
     private final VariableRollouts rollouts;
     private final AuthenticatedUserResolver users;
 
     @PutMapping("/default-binding")
-    public Map<String, String> configure(@RequestHeader HttpHeaders headers, @PathVariable("code") String code,
-            @PathVariable("id") UUID id, @RequestBody VariableDefaults.Edit edit) {
+    public Map<String, String> configure(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @RequestBody VariableDefaults.Edit edit
+    ) {
         defaults.configure(users.resolve(headers), code, id, edit);
         return Map.of("status", "SAVED");
     }
 
     @PostMapping("/inheritance/reconcile")
-    public List<VariableDefaults.Outcome> reconcile(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id) {
+    public List<VariableDefaults.Outcome> reconcile(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id
+    ) {
         return defaults.reconcile(users.resolve(headers), code, id);
     }
 
     @PostMapping("/rollouts")
-    public List<VariableRollouts.Result> create(@RequestHeader HttpHeaders headers, @PathVariable("code") String code,
-            @PathVariable("id") UUID id, @RequestBody VariableRollouts.Request request) {
+    public List<VariableRollouts.Result> create(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @RequestBody VariableRollouts.Request request
+    ) {
         return rollouts.create(users.resolve(headers), code, id, request);
     }
 
     @GetMapping("/rollouts")
-    public List<VariableRollouts.Result> list(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id) {
+    public List<VariableRollouts.Result> list(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id
+    ) {
         return rollouts.list(users.resolve(headers), code, id);
     }
 
     @PostMapping("/rollouts/{targetId}/resume")
-    public VariableRollouts.Result resume(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id, @PathVariable("targetId") UUID targetId) {
+    public VariableRollouts.Result resume(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @PathVariable("targetId") UUID targetId
+    ) {
         return rollouts.resume(users.resolve(headers), code, id, targetId);
     }
 }

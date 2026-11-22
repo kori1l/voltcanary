@@ -16,51 +16,58 @@ public class MlDeploymentPolicyResolver {
 
     private final MlDeploymentPolicyRepository policyRepository;
 
-    public MlResolvedDeploymentPolicyResponse resolvePolicy(UUID accountId, UUID deviceId, String deviceType) {
+    public MlResolvedDeploymentPolicyResponse resolvePolicy(
+        UUID accountId,
+        UUID deviceId,
+        String deviceType
+    ) {
         Optional<MlDeploymentPolicy> selected = Optional.empty();
         MlDeploymentScope source = null;
         if (deviceId != null) {
-            selected = policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(MlDeploymentScope.DEVICE, deviceId);
+            selected = policyRepository.findByScopeAndDeviceIdAndDeletedAtIsNull(
+                MlDeploymentScope.DEVICE,
+                deviceId
+            );
             source = MlDeploymentScope.DEVICE;
         }
         if (selected.isEmpty() && deviceType != null && !deviceType.isBlank()) {
-            selected = policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(accountId, MlDeploymentScope.DEVICE_TYPE, deviceType);
+            selected = policyRepository.findByAccountIdAndScopeAndDeviceTypeAndDeletedAtIsNull(
+                accountId,
+                MlDeploymentScope.DEVICE_TYPE,
+                deviceType
+            );
             source = MlDeploymentScope.DEVICE_TYPE;
         }
         if (selected.isEmpty()) {
-            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(accountId, MlDeploymentScope.ACCOUNT);
+            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(
+                accountId,
+                MlDeploymentScope.ACCOUNT
+            );
             source = MlDeploymentScope.ACCOUNT;
         }
         if (selected.isEmpty()) {
-            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(null, MlDeploymentScope.SYSTEM);
+            selected = policyRepository.findByAccountIdAndScopeAndDeletedAtIsNull(
+                null,
+                MlDeploymentScope.SYSTEM
+            );
             source = MlDeploymentScope.SYSTEM;
         }
         if (selected.isEmpty()) {
             return new MlResolvedDeploymentPolicyResponse(
-                    null,
-                    null,
-                    null,
-                    MlDeploymentMode.DISABLED,
-                    deviceType,
-                    null,
-                    null,
-                    true,
-                    "BASELINE_HEURISTIC_FALLBACK");
+                null,
+                null,
+                null,
+                MlDeploymentMode.DISABLED,
+                deviceType,
+                null,
+                null,
+                true,
+                "BASELINE_HEURISTIC_FALLBACK"
+            );
         }
         MlDeploymentPolicy policy = selected.get();
         if (policy.getModelVersionId() == null || policy.getMode() == MlDeploymentMode.DISABLED) {
             return new MlResolvedDeploymentPolicyResponse(
-                    source,
-                    policy.getId(),
-                    policy.getModelVersionId(),
-                    policy.getMode(),
-                    deviceType,
-                    policy.getCanaryPercent(),
-                    null,
-                    policy.isFallbackEnabled(),
-                    "POLICY_DISABLED");
-        }
-        return new MlResolvedDeploymentPolicyResponse(
                 source,
                 policy.getId(),
                 policy.getModelVersionId(),
@@ -69,6 +76,19 @@ public class MlDeploymentPolicyResolver {
                 policy.getCanaryPercent(),
                 null,
                 policy.isFallbackEnabled(),
-                null);
+                "POLICY_DISABLED"
+            );
+        }
+        return new MlResolvedDeploymentPolicyResponse(
+            source,
+            policy.getId(),
+            policy.getModelVersionId(),
+            policy.getMode(),
+            deviceType,
+            policy.getCanaryPercent(),
+            null,
+            policy.isFallbackEnabled(),
+            null
+        );
     }
 }

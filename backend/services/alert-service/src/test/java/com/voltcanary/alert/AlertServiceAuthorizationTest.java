@@ -20,10 +20,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
@@ -36,15 +36,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=false",
-                "spring.datasource.url=jdbc:h2:mem:alert-auth;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
-                "spring.jpa.hibernate.ddl-auto=none",
-                "spring.flyway.enabled=true",
-                "app.alert.notifications.worker-enabled=false",
-                "app.alert.reconciliation.enabled=false"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=false",
+        "spring.datasource.url=jdbc:h2:mem:alert-auth;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.flyway.enabled=true",
+        "app.alert.notifications.worker-enabled=false",
+        "app.alert.reconciliation.enabled=false",
+    }
+)
 class AlertServiceAuthorizationTest extends SignedUserTest {
 
     private static final String USER_ID = "7f59fc77-2d41-4df6-9ad2-5063dc58adf4";
@@ -72,16 +73,36 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         ownedAccountId = UUID.randomUUID();
         foreignAccountId = UUID.randomUUID();
         when(accessService.accountScope(USER_ID)).thenAnswer(call -> {
-            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(
+                org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+            ).isFalse();
             return ownedAccountId;
         });
-        when(accessService.canReadDevice(eq(ownedDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID))).thenReturn(true);
-        when(accessService.canReadDevice(eq(foreignDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID))).thenReturn(false);
-        when(accessService.resolveDeviceAccountId(eq(ownedDeviceId), anyString())).thenReturn(ownedAccountId);
-        when(accessService.resolveDeviceAccountId(eq(foreignDeviceId), anyString())).thenReturn(foreignAccountId);
+        when(
+            accessService.canReadDevice(
+                eq(ownedDeviceId),
+                eq(USER_ID),
+                eq(ROLE),
+                eq(CORRELATION_ID)
+            )
+        ).thenReturn(true);
+        when(
+            accessService.canReadDevice(
+                eq(foreignDeviceId),
+                eq(USER_ID),
+                eq(ROLE),
+                eq(CORRELATION_ID)
+            )
+        ).thenReturn(false);
+        when(accessService.resolveDeviceAccountId(eq(ownedDeviceId), anyString())).thenReturn(
+            ownedAccountId
+        );
+        when(accessService.resolveDeviceAccountId(eq(foreignDeviceId), anyString())).thenReturn(
+            foreignAccountId
+        );
         doThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found"))
-                .when(accessService)
-                .requireReadAccess(eq(foreignDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID));
+            .when(accessService)
+            .requireReadAccess(eq(foreignDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID));
     }
 
     @Test
@@ -90,30 +111,46 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         createAlert(foreignDeviceId, "LONG_CYCLE");
 
         ResponseEntity<List<AlertResponse>> response = restTemplate.exchange(
-                "/alerts",
-                HttpMethod.GET,
-                userEntity(null),
-                new ParameterizedTypeReference<>() {
-                });
+            "/alerts",
+            HttpMethod.GET,
+            userEntity(null),
+            new ParameterizedTypeReference<>() {}
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).extracting(AlertResponse::id).contains(owned.id());
-        assertThat(response.getBody()).extracting(AlertResponse::deviceId).doesNotContain(foreignDeviceId);
+        assertThat(response.getBody())
+            .extracting(AlertResponse::deviceId)
+            .doesNotContain(foreignDeviceId);
     }
 
     @Test
     void foreignNewerAlertsCannotConsumeTheOwnedListOrPageLimit() {
         AlertResponse owned = createAlert(ownedDeviceId, "POWER_SPIKE");
         for (int index = 0; index < 5; index++) createAlert(foreignDeviceId, "FOREIGN_" + index);
-        var list = restTemplate.exchange("/alerts?limit=1", HttpMethod.GET, userEntity(null), AlertResponse[].class);
+        var list = restTemplate.exchange(
+            "/alerts?limit=1",
+            HttpMethod.GET,
+            userEntity(null),
+            AlertResponse[].class
+        );
         assertThat(list.getBody()).extracting(AlertResponse::id).containsExactly(owned.id());
-        var page = restTemplate.exchange("/alerts/page?page=0&size=1", HttpMethod.GET, userEntity(null),
-                com.voltcanary.alert.dto.AlertPageResponse.class);
-        assertThat(page.getBody().content()).extracting(AlertResponse::id).containsExactly(owned.id());
+        var page = restTemplate.exchange(
+            "/alerts/page?page=0&size=1",
+            HttpMethod.GET,
+            userEntity(null),
+            com.voltcanary.alert.dto.AlertPageResponse.class
+        );
+        assertThat(page.getBody().content())
+            .extracting(AlertResponse::id)
+            .containsExactly(owned.id());
         assertThat(page.getBody().totalElements()).isEqualTo(1);
-        org.mockito.Mockito.verify(accessService, org.mockito.Mockito.never())
-                .canReadDevice(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(accessService, org.mockito.Mockito.never()).canReadDevice(
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        );
     }
 
     @Test
@@ -128,23 +165,26 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         AlertResponse foreign = createAlert(foreignDeviceId, "LONG_CYCLE");
 
         ResponseEntity<AlertResponse> getResponse = restTemplate.exchange(
-                "/alerts/{id}",
-                HttpMethod.GET,
-                userEntity(null),
-                AlertResponse.class,
-                foreign.id());
+            "/alerts/{id}",
+            HttpMethod.GET,
+            userEntity(null),
+            AlertResponse.class,
+            foreign.id()
+        );
         ResponseEntity<AlertActionResponse> ackResponse = restTemplate.exchange(
-                "/alerts/{id}/ack",
-                HttpMethod.POST,
-                userEntity(null),
-                AlertActionResponse.class,
-                foreign.id());
+            "/alerts/{id}/ack",
+            HttpMethod.POST,
+            userEntity(null),
+            AlertActionResponse.class,
+            foreign.id()
+        );
         ResponseEntity<AlertActionResponse> resolveResponse = restTemplate.exchange(
-                "/alerts/{id}/resolve",
-                HttpMethod.POST,
-                userEntity(Map.of("reason", "foreign")),
-                AlertActionResponse.class,
-                foreign.id());
+            "/alerts/{id}/resolve",
+            HttpMethod.POST,
+            userEntity(Map.of("reason", "foreign")),
+            AlertActionResponse.class,
+            foreign.id()
+        );
 
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(ackResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -156,23 +196,26 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         AlertResponse owned = createAlert(ownedDeviceId, "POWER_SPIKE");
 
         ResponseEntity<AlertActionResponse> ackResponse = restTemplate.exchange(
-                "/alerts/{id}/ack",
-                HttpMethod.POST,
-                userEntity(null),
-                AlertActionResponse.class,
-                owned.id());
+            "/alerts/{id}/ack",
+            HttpMethod.POST,
+            userEntity(null),
+            AlertActionResponse.class,
+            owned.id()
+        );
         ResponseEntity<AlertActionResponse> resolveResponse = restTemplate.exchange(
-                "/alerts/{id}/resolve",
-                HttpMethod.POST,
-                userEntity(Map.of("reason", "handled")),
-                AlertActionResponse.class,
-                owned.id());
+            "/alerts/{id}/resolve",
+            HttpMethod.POST,
+            userEntity(Map.of("reason", "handled")),
+            AlertActionResponse.class,
+            owned.id()
+        );
         ResponseEntity<AlertResponse> getResponse = restTemplate.exchange(
-                "/alerts/{id}",
-                HttpMethod.GET,
-                userEntity(null),
-                AlertResponse.class,
-                owned.id());
+            "/alerts/{id}",
+            HttpMethod.GET,
+            userEntity(null),
+            AlertResponse.class,
+            owned.id()
+        );
 
         assertThat(ackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resolveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -186,18 +229,20 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         AlertResponse acknowledged = createAlert(ownedDeviceId, "CONSUMPTION_GROWTH");
         createAlert(foreignDeviceId, "LONG_CYCLE");
         restTemplate.exchange(
-                "/alerts/{id}/ack",
-                HttpMethod.POST,
-                userEntity(null),
-                AlertActionResponse.class,
-                acknowledged.id());
+            "/alerts/{id}/ack",
+            HttpMethod.POST,
+            userEntity(null),
+            AlertActionResponse.class,
+            acknowledged.id()
+        );
 
         ResponseEntity<AlertSummaryResponse> response = restTemplate.exchange(
-                "/alerts/summary?deviceId={deviceId}",
-                HttpMethod.GET,
-                userEntity(null),
-                AlertSummaryResponse.class,
-                ownedDeviceId);
+            "/alerts/summary?deviceId={deviceId}",
+            HttpMethod.GET,
+            userEntity(null),
+            AlertSummaryResponse.class,
+            ownedDeviceId
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().total()).isEqualTo(2);
@@ -209,7 +254,8 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
     }
 
     private AlertResponse createAlert(UUID deviceId, String type) {
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -217,35 +263,44 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Alert authorization test.",
-                Instant.now()));
+                Instant.now()
+            )
+        );
         return new AlertResponse(
-                alert.getId(),
-                alert.getDeviceId(),
-                alert.getAccountId(),
-                alert.getSourceEventId(),
-                alert.getAnomalyId(),
-                alert.getRiskScoreId(),
-                alert.getRuleId(),
-                alert.getCalculationWindowStart(),
-                alert.getCalculationWindowEnd(),
-                alert.getCalculationInputHash(),
-                alert.getAlertType(),
-                alert.getTitle(),
-                alert.getDescription(),
-                alert.getSeverity().name(),
-                alert.getStatus().name(),
-                alert.getCreatedAt(),
-                alert.getAcknowledgedAt(),
-                alert.getAcknowledgedBy(),
-                alert.getResolvedAt(),
-                alert.getResolvedBy(),
-                alert.getAssignedTo(),
-                alert.getResolutionReason());
+            alert.getId(),
+            alert.getDeviceId(),
+            alert.getAccountId(),
+            alert.getSourceEventId(),
+            alert.getAnomalyId(),
+            alert.getRiskScoreId(),
+            alert.getRuleId(),
+            alert.getCalculationWindowStart(),
+            alert.getCalculationWindowEnd(),
+            alert.getCalculationInputHash(),
+            alert.getAlertType(),
+            alert.getTitle(),
+            alert.getDescription(),
+            alert.getSeverity().name(),
+            alert.getStatus().name(),
+            alert.getCreatedAt(),
+            alert.getAcknowledgedAt(),
+            alert.getAcknowledgedBy(),
+            alert.getResolvedAt(),
+            alert.getResolvedBy(),
+            alert.getAssignedTo(),
+            alert.getResolutionReason()
+        );
     }
 
     private HttpEntity<Object> userEntity(Object body) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(UUID.fromString(USER_ID), "actor@example.invalid", ROLE));
+        headers.setBearerAuth(
+            com.voltcanary.common.test.SignedUserTokens.create(
+                UUID.fromString(USER_ID),
+                "actor@example.invalid",
+                ROLE
+            )
+        );
         headers.set("X-User-Role", ROLE);
         headers.set("X-Correlation-Id", CORRELATION_ID);
         return new HttpEntity<>(body, headers);
@@ -253,6 +308,7 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
 
     @TestConfiguration
     static class TestConfig {
+
         @Bean
         @Primary
         AlertAccessService alertAccessService() {

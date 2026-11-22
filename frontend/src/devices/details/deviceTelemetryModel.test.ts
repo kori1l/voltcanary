@@ -10,7 +10,10 @@ import {
 describe("deviceTelemetryModel", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem("voltcanary.accessToken", `${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`);
+    localStorage.setItem(
+      "voltcanary.accessToken",
+      `${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`,
+    );
   });
 
   it("falls back to safe chart preferences when storage is missing or malformed", () => {
@@ -18,7 +21,12 @@ describe("deviceTelemetryModel", () => {
 
     const preferences = readDashboardChartPreferences("device-1");
 
-    expect(preferences.selectedMetricKeys).toEqual(["activePowerW", "voltageV", "currentA", "energyWh"]);
+    expect(preferences.selectedMetricKeys).toEqual([
+      "activePowerW",
+      "voltageV",
+      "currentA",
+      "energyWh",
+    ]);
     expect(preferences.chartDensity).toBe("balanced");
     expect(preferences.chartTimeRange).toBe("24h");
   });
@@ -56,14 +64,20 @@ describe("deviceTelemetryModel", () => {
   });
 
   it("orders known and inferred telemetry metrics consistently", () => {
-    expect(buildChartMetrics({ voltageV: 230, customTemperatureC: 7, activePowerW: 120 }).map((metric) => metric.key)).toEqual([
-      "activePowerW",
-      "voltageV",
-      "customTemperatureC",
-    ]);
-    expect(buildAvailableChartMetrics({
-      activePowerW: { deviceId: "device-1", metric: "activePowerW", points: [{ timestamp: "2026-07-01T00:00:00Z", value: 1 }] },
-      voltageV: { deviceId: "device-1", metric: "voltageV", points: [] },
-    }).map((metric) => metric.key)).toEqual(["activePowerW"]);
+    expect(
+      buildChartMetrics({ voltageV: 230, customTemperatureC: 7, activePowerW: 120 }).map(
+        (metric) => metric.key,
+      ),
+    ).toEqual(["activePowerW", "voltageV", "customTemperatureC"]);
+    expect(
+      buildAvailableChartMetrics({
+        activePowerW: {
+          deviceId: "device-1",
+          metric: "activePowerW",
+          points: [{ timestamp: "2026-07-01T00:00:00Z", value: 1 }],
+        },
+        voltageV: { deviceId: "device-1", metric: "voltageV", points: [] },
+      }).map((metric) => metric.key),
+    ).toEqual(["activePowerW"]);
   });
 });

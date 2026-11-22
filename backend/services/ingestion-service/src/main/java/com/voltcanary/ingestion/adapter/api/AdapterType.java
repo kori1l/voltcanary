@@ -8,5 +8,5 @@ public enum AdapterType {
     GENERIC_HTTP_POLLING,
     GENERIC_MODBUS_TCP,
     GENERIC_OPC_UA,
-    VENDOR
+    VENDOR,
 }

@@ -1,32 +1,32 @@
-import { AlertInbox, formatEnum, severityRank, fixKnownTypos, formatShortDateTime, formatRuleScope } from "../features/alerts/AlertInbox";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import {
+  AlertInbox,
+  formatEnum,
+  severityRank,
+  fixKnownTypos,
+  formatRuleScope,
+} from "../features/alerts/AlertInbox";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   acknowledgeAlert,
   AlertRule,
-  AlertResponse,
-  AlertSummaryResponse,
-  createAlertRule,
   deleteAlertRule,
   disableAlertRule,
   enableAlertRule,
   getAlertSummary,
-  listAlerts,
   listAlertRules,
   listNotificationAttempts,
   listNotificationChannels,
   NotificationAttemptResponse,
-  NotificationChannelResponse,
   resolveAlert,
-  testAlertRule,
 } from "../alerts/alertsApi";
-import { Device, listDevices, listLocations, Location } from "../devices/devicesApi";
+import { listDevices, listLocations } from "../devices/devicesApi";
 import { useAlertConsoleData } from "../features/alerts/useAlertConsoleData";
 import { SectionFeedback } from "../components/SectionFeedback";
 import { useActionConfirmation } from "../components/useActionConfirmation";
 import { AlertRuleEditor } from "../features/alerts/AlertRuleEditor";
 import { useEntityResources } from "../components/useEntityResources";
-import {AlertInboxControls} from "../features/alerts/AlertInboxControls";
+import { AlertInboxControls } from "../features/alerts/AlertInboxControls";
 import { useConsoleQuery } from "../app/useConsoleQuery";
 import { CommandFeedback } from "../components/CommandFeedback";
 import { useEntityCommands } from "../components/useEntityCommands";
@@ -34,13 +34,6 @@ import { PageNavigation } from "../components/PageNavigation";
 import { useTaskEvidence } from "../aiAgent/taskEvidence";
 
 const ALERT_LIMIT = 100;
-
-function parseAlertView(value: string | null): "inbox" | "rules" {
-  if (value === "rules") {
-    return value;
-  }
-  return "inbox";
-}
 
 export function AlertsPage() {
   const confirmation = useActionConfirmation();
@@ -50,16 +43,17 @@ export function AlertsPage() {
   const attempts = useEntityResources<NotificationAttemptResponse[]>("alert-history");
   const [expandedAttempts, setExpandedAttempts] = useState<Record<string, boolean>>({});
   const [activeView, setActiveView] = query.state<"inbox" | "rules">("view", "inbox");
-  const [deviceFilter, setDeviceFilter] = query.state<string>("deviceId", "all");
-  const [severityFilter, setSeverityFilter] = query.state<string>("severity", "all");
-  const [statusFilter, setStatusFilter] = query.state<string>("status", "all");
-  const [ruleFilter, setRuleFilter] = query.state<string>("ruleId", "all");
+  const [deviceFilter] = query.state<string>("deviceId", "all");
+  const [severityFilter] = query.state<string>("severity", "all");
+  const [statusFilter] = query.state<string>("status", "all");
+  const [ruleFilter] = query.state<string>("ruleId", "all");
   const [ruleMessage, setRuleMessage] = useState<string | null>(null);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [sortOrder, setSortOrder] = query.state<string>("sort", "severity");
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
 
-  const serverStatusFilter = statusFilter === "active" || statusFilter === "all" ? undefined : statusFilter;
+  const serverStatusFilter =
+    statusFilter === "active" || statusFilter === "all" ? undefined : statusFilter;
   const requestFilters = {
     deviceId: deviceFilter === "all" ? undefined : deviceFilter,
     severity: severityFilter === "all" ? undefined : severityFilter,
@@ -78,7 +72,12 @@ export function AlertsPage() {
   const devices = data.devices.data ?? [];
   const locations = data.locations.data ?? [];
   const selectedIncident = alerts.find((alert) => alert.id === query.params.get("alertId"));
-  useTaskEvidence({ names: { incident: selectedIncident?.title || selectedIncident?.alertType, device: devices.find((device) => device.id === deviceFilter)?.name } });
+  useTaskEvidence({
+    names: {
+      incident: selectedIncident?.title || selectedIncident?.alertType,
+      device: devices.find((device) => device.id === deviceFilter)?.name,
+    },
+  });
   const isLoading = data.alerts.refreshing || data.summary.refreshing;
   const load = data.load;
   const setRules = data.rules.update;
@@ -95,10 +94,35 @@ export function AlertsPage() {
   async function updateStatus(alertId: string, action: "ack" | "resolve") {
     let reason = "";
     const alert = alerts.find((item) => item.id === alertId);
-    await commands.run(`alert:${alertId}:${action}`, { label: `${action === "ack" ? "Acknowledge" : "Resolve"} ${alert?.title ?? "alert"}`,
-      review: action === "resolve" ? async () => { const answer = await confirmation.confirm({ title: "Resolve alert", object: alert?.title ?? alertId, impact: "This marks the incident resolved and records your reason in its history.", reasonRequired: true }); reason = answer ?? ""; return answer !== null; } : undefined,
-      mutate: () => action === "ack" ? acknowledgeAlert(alertId) : resolveAlert(alertId, reason),
-      onCommitted: (updated) => data.alerts.update((current) => current.map((item) => item.id === (updated.alertId ?? updated.id ?? alertId) ? { ...item, status: action === "ack" ? "ACKNOWLEDGED" : "RESOLVED", resolutionReason: action === "resolve" ? reason : item.resolutionReason } : item)), refresh: load,
+    await commands.run(`alert:${alertId}:${action}`, {
+      label: `${action === "ack" ? "Acknowledge" : "Resolve"} ${alert?.title ?? "alert"}`,
+      review:
+        action === "resolve"
+          ? async () => {
+              const answer = await confirmation.confirm({
+                title: "Resolve alert",
+                object: alert?.title ?? alertId,
+                impact: "This marks the incident resolved and records your reason in its history.",
+                reasonRequired: true,
+              });
+              reason = answer ?? "";
+              return answer !== null;
+            }
+          : undefined,
+      mutate: () => (action === "ack" ? acknowledgeAlert(alertId) : resolveAlert(alertId, reason)),
+      onCommitted: (updated) =>
+        data.alerts.update((current) =>
+          current.map((item) =>
+            item.id === (updated.alertId ?? updated.id ?? alertId)
+              ? {
+                  ...item,
+                  status: action === "ack" ? "ACKNOWLEDGED" : "RESOLVED",
+                  resolutionReason: action === "resolve" ? reason : item.resolutionReason,
+                }
+              : item,
+          ),
+        ),
+      refresh: load,
     });
   }
 
@@ -113,29 +137,61 @@ export function AlertsPage() {
   }
 
   async function retryAttempts(alertId: string) {
-    await attempts.load(alertId, () => listNotificationAttempts(alertId), (items) => !items.length);
+    await attempts.load(
+      alertId,
+      () => listNotificationAttempts(alertId),
+      (items) => !items.length,
+    );
   }
 
   async function setRuleEnabled(rule: AlertRule, enabled: boolean) {
-    await commands.run(`rule:${rule.id}:toggle`, { label: `${enabled ? "Enable" : "Disable"} ${rule.name}`,
-      mutate: () => enabled ? enableAlertRule(rule.id) : disableAlertRule(rule.id),
-      onCommitted: (updated) => setRules((current) => current.map((item) => item.id === updated.id ? updated : item)), refresh: load });
+    await commands.run(`rule:${rule.id}:toggle`, {
+      label: `${enabled ? "Enable" : "Disable"} ${rule.name}`,
+      mutate: () => (enabled ? enableAlertRule(rule.id) : disableAlertRule(rule.id)),
+      onCommitted: (updated) =>
+        setRules((current) => current.map((item) => (item.id === updated.id ? updated : item))),
+      refresh: load,
+    });
   }
 
   async function removeRule(rule: AlertRule) {
-    await commands.run(`rule:${rule.id}:delete`, { label: `Delete ${rule.name}`,
-      review: async () => await confirmation.confirm({ title: "Delete rule", object: rule.name, impact: "Removes this rule from future evaluation. Existing alert history remains." }) !== null,
+    await commands.run(`rule:${rule.id}:delete`, {
+      label: `Delete ${rule.name}`,
+      review: async () =>
+        (await confirmation.confirm({
+          title: "Delete rule",
+          object: rule.name,
+          impact: "Removes this rule from future evaluation. Existing alert history remains.",
+        })) !== null,
       mutate: () => deleteAlertRule(rule.id),
-      onCommitted: () => { setRules((current) => current.filter((item) => item.id !== rule.id)); if (ruleFilter === rule.id) updateRuleFilter("all"); }, refresh: load });
+      onCommitted: () => {
+        setRules((current) => current.filter((item) => item.id !== rule.id));
+        if (ruleFilter === rule.id) updateRuleFilter("all");
+      },
+      refresh: load,
+    });
   }
 
-  const deviceById = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
-  const locationById = useMemo(() => new Map(locations.map((location) => [location.id, fixKnownTypos(location.name)])), [locations]);
+  const deviceById = useMemo(
+    () => new Map(devices.map((device) => [device.id, device])),
+    [devices],
+  );
+  const locationById = useMemo(
+    () => new Map(locations.map((location) => [location.id, fixKnownTypos(location.name)])),
+    [locations],
+  );
   const ruleById = useMemo(() => new Map(rules.map((rule) => [rule.id, rule])), [rules]);
   const visibleAlerts = useMemo(() => {
     return alerts
       .filter((alert) => (statusFilter === "active" ? alert.status !== "RESOLVED" : true))
-      .sort((left, right) => (sortOrder === "severity" ? severityRank(right.severity) - severityRank(left.severity) : sortOrder === "status" ? left.status.localeCompare(right.status) : 0) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+      .sort(
+        (left, right) =>
+          (sortOrder === "severity"
+            ? severityRank(right.severity) - severityRank(left.severity)
+            : sortOrder === "status"
+              ? left.status.localeCompare(right.status)
+              : 0) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+      );
   }, [alerts, statusFilter, sortOrder]);
   const severities = ["CRITICAL", "HIGH", "WARNING", "INFO"];
 
@@ -148,33 +204,89 @@ export function AlertsPage() {
           <h1>Alerts</h1>
           <p>Review active issues, delivery status, and source context from analytics.</p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void load()} disabled={isLoading}>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => void load()}
+          disabled={isLoading}
+        >
           Refresh
         </button>
       </header>
 
-
-      <AlertInboxControls view={activeView} onView={setActiveView} device={deviceFilter} devices={devices} onDevice={id=>query.update({deviceId:id || null,offset:null})}
-        severity={severityFilter} severities={severities} onSeverity={value=>query.update({severity:value==="all"?null:value,offset:null})}
-        status={statusFilter} onStatus={value=>query.update({status:value==="all"?null:value,offset:null})}
-        rule={ruleFilter} rules={rules} onRule={updateRuleFilter} sort={sortOrder} onSort={setSortOrder} scope={JSON.stringify([requestFilters,offset])} refresh={load}
-        onClear={()=>query.update({deviceId:null,severity:null,status:null,ruleId:null,offset:null})}/>
+      <AlertInboxControls
+        view={activeView}
+        onView={setActiveView}
+        device={deviceFilter}
+        devices={devices}
+        onDevice={(id) => query.update({ deviceId: id || null, offset: null })}
+        severity={severityFilter}
+        severities={severities}
+        onSeverity={(value) =>
+          query.update({ severity: value === "all" ? null : value, offset: null })
+        }
+        status={statusFilter}
+        onStatus={(value) => query.update({ status: value === "all" ? null : value, offset: null })}
+        rule={ruleFilter}
+        rules={rules}
+        onRule={updateRuleFilter}
+        sort={sortOrder}
+        onSort={setSortOrder}
+        scope={JSON.stringify([requestFilters, offset])}
+        refresh={load}
+        onClear={() =>
+          query.update({ deviceId: null, severity: null, status: null, ruleId: null, offset: null })
+        }
+      />
 
       <section className="alert-summary-panel compact-alert-summary">
         <div className="alert-summary-counts">
-          <SummaryMetric label="Open" value={summary ? summary.byStatus.OPEN ?? 0 : undefined} />
-          <SummaryMetric label="Acknowledged" value={summary ? summary.byStatus.ACKNOWLEDGED ?? 0 : undefined} />
-          <SummaryMetric label="Resolved" value={summary ? summary.byStatus.RESOLVED ?? 0 : undefined} />
-          <SummaryMetric label="Critical" value={summary ? summary.bySeverity.CRITICAL ?? 0 : undefined} />
+          <SummaryMetric label="Open" value={summary ? (summary.byStatus.OPEN ?? 0) : undefined} />
+          <SummaryMetric
+            label="Acknowledged"
+            value={summary ? (summary.byStatus.ACKNOWLEDGED ?? 0) : undefined}
+          />
+          <SummaryMetric
+            label="Resolved"
+            value={summary ? (summary.byStatus.RESOLVED ?? 0) : undefined}
+          />
+          <SummaryMetric
+            label="Critical"
+            value={summary ? (summary.bySeverity.CRITICAL ?? 0) : undefined}
+          />
         </div>
       </section>
 
-      <SectionFeedback resource={data.summary} label="alert summary" onRetry={() => void data.summary.load(() => getAlertSummary(requestFilters))} />
-      <SectionFeedback resource={data.alerts} label="alert inbox" onRetry={() => void load(false)} />
-      <SectionFeedback resource={data.devices} label="device names" onRetry={() => void data.devices.load(listDevices)} />
-      <SectionFeedback resource={data.locations} label="location names" onRetry={() => void data.locations.load(listLocations)} />
-      <SectionFeedback resource={data.rules} label="alert rules" onRetry={() => void data.rules.load(listAlertRules)} />
-      <SectionFeedback resource={data.channels} label="notification channels" onRetry={() => void data.channels.load(listNotificationChannels)} />
+      <SectionFeedback
+        resource={data.summary}
+        label="alert summary"
+        onRetry={() => void data.summary.load(() => getAlertSummary(requestFilters))}
+      />
+      <SectionFeedback
+        resource={data.alerts}
+        label="alert inbox"
+        onRetry={() => void load(false)}
+      />
+      <SectionFeedback
+        resource={data.devices}
+        label="device names"
+        onRetry={() => void data.devices.load(listDevices)}
+      />
+      <SectionFeedback
+        resource={data.locations}
+        label="location names"
+        onRetry={() => void data.locations.load(listLocations)}
+      />
+      <SectionFeedback
+        resource={data.rules}
+        label="alert rules"
+        onRetry={() => void data.rules.load(listAlertRules)}
+      />
+      <SectionFeedback
+        resource={data.channels}
+        label="notification channels"
+        onRetry={() => void data.channels.load(listNotificationChannels)}
+      />
 
       {activeView === "rules" ? (
         <section className="panel">
@@ -184,25 +296,67 @@ export function AlertsPage() {
               <p>{rules.length} configured</p>
             </div>
           </div>
-          <AlertRuleEditor key={editingRule?.id ?? `${searchParams.get("metric")}:${searchParams.get("deviceId")}`} existing={editingRule ?? undefined} devices={devices} locations={locations} channels={channels} metric={searchParams.get("metric") ?? undefined} deviceId={searchParams.get("deviceId")} from={searchParams.get("from")} to={searchParams.get("to")} onCancel={editingRule ? () => setEditingRule(null) : undefined} onSaved={(rule) => { setRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)]); setEditingRule(null); setRuleMessage("Rule saved"); }} />
-          {ruleMessage ? <div className="status-note" role="status">{ruleMessage}</div> : null}          <div className="notification-channel-list">
+          <AlertRuleEditor
+            key={editingRule?.id ?? `${searchParams.get("metric")}:${searchParams.get("deviceId")}`}
+            existing={editingRule ?? undefined}
+            devices={devices}
+            locations={locations}
+            channels={channels}
+            metric={searchParams.get("metric") ?? undefined}
+            deviceId={searchParams.get("deviceId")}
+            from={searchParams.get("from")}
+            to={searchParams.get("to")}
+            onCancel={editingRule ? () => setEditingRule(null) : undefined}
+            onSaved={(rule) => {
+              setRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)]);
+              setEditingRule(null);
+              setRuleMessage("Rule saved");
+            }}
+          />
+          {ruleMessage ? (
+            <div className="status-note" role="status">
+              {ruleMessage}
+            </div>
+          ) : null}{" "}
+          <div className="notification-channel-list">
             {rules.map((rule) => (
               <article className="notification-channel-row" key={rule.id}>
                 <div>
                   <strong>{rule.name}</strong>
                   <span>
-                    {formatEnum(rule.ruleType)} - {formatEnum(rule.metric)} - {formatRuleScope(rule)} - {formatEnum(rule.severity)} - {rule.enabled ? "Enabled" : "Disabled"}
+                    {formatEnum(rule.ruleType)} - {formatEnum(rule.metric)} -{" "}
+                    {formatRuleScope(rule)} - {formatEnum(rule.severity)} -{" "}
+                    {rule.enabled ? "Enabled" : "Disabled"}
                   </span>
                 </div>
                 <div className="action-row">
-                  <button type="button" className="ghost-button" onClick={() => setEditingRule(rule)}>Edit rule</button>
-                  <button className="ghost-button" type="button" disabled={commands.isPending(`rule:${rule.id}:toggle`)} onClick={() => void setRuleEnabled(rule, !rule.enabled)}>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => setEditingRule(rule)}
+                  >
+                    Edit rule
+                  </button>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    disabled={commands.isPending(`rule:${rule.id}:toggle`)}
+                    onClick={() => void setRuleEnabled(rule, !rule.enabled)}
+                  >
                     {rule.enabled ? "Disable" : "Enable"}
                   </button>
-                  <Link className="ghost-button button-link" to={`/alerts?ruleId=${encodeURIComponent(rule.id)}`}>
+                  <Link
+                    className="ghost-button button-link"
+                    to={`/alerts?ruleId=${encodeURIComponent(rule.id)}`}
+                  >
                     View alerts
                   </Link>
-                  <button className="ghost-button" type="button" disabled={commands.isPending(`rule:${rule.id}:delete`)} onClick={() => void removeRule(rule)}>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    disabled={commands.isPending(`rule:${rule.id}:delete`)}
+                    onClick={() => void removeRule(rule)}
+                  >
                     Delete
                   </button>
                 </div>
@@ -213,9 +367,21 @@ export function AlertsPage() {
       ) : null}
 
       {error ? <div className="error-message">{error}</div> : null}
-      {activeView === "inbox" && isLoading ? <section className="panel">Loading alerts...</section> : null}
+      {activeView === "inbox" && isLoading ? (
+        <section className="panel">Loading alerts...</section>
+      ) : null}
 
-      {activeView === "inbox" && (data.pagination?.hasNext || offset>0) ? <PageNavigation offset={offset} size={100} hasMore={data.pagination?.hasNext ?? false} loading={isLoading} loaded={visibleAlerts.length} total={statusFilter === "active" ? undefined : data.pagination?.totalElements} onChange={(next) => query.update({ offset: next || null })} /> : null}
+      {activeView === "inbox" && (data.pagination?.hasNext || offset > 0) ? (
+        <PageNavigation
+          offset={offset}
+          size={100}
+          hasMore={data.pagination?.hasNext ?? false}
+          loading={isLoading}
+          loaded={visibleAlerts.length}
+          total={statusFilter === "active" ? undefined : data.pagination?.totalElements}
+          onChange={(next) => query.update({ offset: next || null })}
+        />
+      ) : null}
       {activeView === "inbox" && data.alerts.data !== null ? (
         <AlertInbox
           alerts={visibleAlerts}
@@ -237,7 +403,9 @@ export function AlertsPage() {
 function SummaryMetric({ label, value }: { label: string; value: number | undefined }) {
   return (
     <article>
-      <strong title={value===undefined?"Count unavailable":"Recorded count"}>{value ?? "—"}</strong>
+      <strong title={value === undefined ? "Count unavailable" : "Recorded count"}>
+        {value ?? "—"}
+      </strong>
       <span>{label}</span>
     </article>
   );

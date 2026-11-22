@@ -8,10 +8,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-
 public interface DataSourceRepository extends JpaRepository<DataSource, UUID> {
-
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Lock(
+        jakarta.persistence.LockModeType.PESSIMISTIC_WRITE
+    )
     Optional<DataSource> findByIdAndDeviceId(UUID id, UUID deviceId);
 
     List<DataSource> findByDeviceId(UUID deviceId);

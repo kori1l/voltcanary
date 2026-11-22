@@ -18,54 +18,112 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** Bounded reads from the existing transcript; no reconciliation, summarization or second history store. */
 @RequiredArgsConstructor
 public final class JdbcContextHistory implements ContextSources.History {
+
     private final JdbcTemplate jdbc;
     private final Clock clock;
 
     private void check(Session session, UUID conversation) {
-        Long count = jdbc.queryForObject("select count(*) from ai_conversations where id=? and user_id=? and account_id=? and expires_at>?",
-                Long.class, conversation, session.owner().userId(), session.owner().accountId(), java.sql.Timestamp.from(clock.instant()));
-        if (count == null || count != 1) throw new IntentPlans.Rejected(404, "CONVERSATION_UNAVAILABLE");
+        Long count = jdbc.queryForObject(
+            "select count(*) from ai_conversations where id=? and user_id=? and account_id=? and expires_at>?",
+            Long.class,
+            conversation,
+            session.owner().userId(),
+            session.owner().accountId(),
+            java.sql.Timestamp.from(clock.instant())
+        );
+        if (count == null || count != 1) throw new IntentPlans.Rejected(
+            404,
+            "CONVERSATION_UNAVAILABLE"
+        );
     }
+
     @Override
     public long through(Session session, UUID conversation) {
         check(session, conversation);
-        return jdbc.queryForObject("select coalesce(max(sequence),0) from ai_conversation_messages where conversation_id=?", Long.class, conversation);
+        return jdbc.queryForObject(
+            "select coalesce(max(sequence),0) from ai_conversation_messages where conversation_id=?",
+            Long.class,
+            conversation
+        );
     }
+
     @Override
     public long count(Session session, UUID conversation, long through) {
         check(session, conversation);
-        return jdbc.queryForObject("select count(*) from ai_conversation_messages where conversation_id=? and sequence<=?", Long.class, conversation, through);
+        return jdbc.queryForObject(
+            "select count(*) from ai_conversation_messages where conversation_id=? and sequence<=?",
+            Long.class,
+            conversation,
+            through
+        );
     }
+
     @Override
-    public List<DialogueMessagesItem> required(Session session, UUID conversation, long through, Set<String> ids) {
+    public List<DialogueMessagesItem> required(
+        Session session,
+        UUID conversation,
+        long through,
+        Set<String> ids
+    ) {
         check(session, conversation);
         if (ids.isEmpty()) return List.of();
         if (ids.size() > 12) throw IntentPlans.reject("MANDATORY_DIALOGUE_REQUIRES_NARROWING");
         var args = new ArrayList<Object>(List.of(conversation, through));
         ids.forEach(id -> args.add(UUID.fromString(id)));
         String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
-        var rows = jdbc.query("select * from ai_conversation_messages where conversation_id=? and sequence<=? and id in (" + placeholders + ") order by sequence",
-                (row, index) -> message(row), args.toArray());
+        var rows = jdbc.query(
+            "select * from ai_conversation_messages where conversation_id=? and sequence<=? and id in (" +
+                placeholders +
+                ") order by sequence",
+            (row, index) -> message(row),
+            args.toArray()
+        );
         if (rows.size() != ids.size()) throw IntentPlans.reject("MANDATORY_DIALOGUE_UNAVAILABLE");
         return rows;
     }
+
     @Override
-    public List<DialogueMessagesItem> recent(Session session, UUID conversation, long through, int limit) {
+    public List<DialogueMessagesItem> recent(
+        Session session,
+        UUID conversation,
+        long through,
+        int limit
+    ) {
         check(session, conversation);
         limit(limit);
-        return jdbc.query("select * from ai_conversation_messages where conversation_id=? and sequence<=? order by sequence desc limit ?",
-                (row, index) -> message(row), conversation, through, limit);
+        return jdbc.query(
+            "select * from ai_conversation_messages where conversation_id=? and sequence<=? order by sequence desc limit ?",
+            (row, index) -> message(row),
+            conversation,
+            through,
+            limit
+        );
     }
+
     @Override
-    public List<DialogueMessagesItem> page(Session session, UUID conversation, long through, long after, int limit) {
+    public List<DialogueMessagesItem> page(
+        Session session,
+        UUID conversation,
+        long through,
+        long after,
+        int limit
+    ) {
         check(session, conversation);
         limit(limit);
-        return jdbc.query("select * from ai_conversation_messages where conversation_id=? and sequence>? and sequence<=? order by sequence limit ?",
-                (row, index) -> message(row), conversation, after, through, limit);
+        return jdbc.query(
+            "select * from ai_conversation_messages where conversation_id=? and sequence>? and sequence<=? order by sequence limit ?",
+            (row, index) -> message(row),
+            conversation,
+            after,
+            through,
+            limit
+        );
     }
+
     private static void limit(int limit) {
         if (limit < 1 || limit > 13) throw IntentPlans.reject("HISTORY_PAGE_LIMIT");
     }
+
     private DialogueMessagesItem message(ResultSet row) throws SQLException {
         String kind = row.getString("kind");
         kind = switch (kind) {
@@ -74,7 +132,15 @@ public final class JdbcContextHistory implements ContextSources.History {
             case "INPUT", "REPLY", "QUESTION", "EXECUTION_RESULT" -> kind;
             default -> throw IntentPlans.reject("CONTEXT_HISTORY_KIND_UNSUPPORTED");
         };
-        return new DialogueMessagesItem(row.getObject("id", UUID.class).toString(), row.getLong("sequence"),
-                row.getString("role").toUpperCase(Locale.ROOT), kind, row.getString("display_text"), null, null, null);
+        return new DialogueMessagesItem(
+            row.getObject("id", UUID.class).toString(),
+            row.getLong("sequence"),
+            row.getString("role").toUpperCase(Locale.ROOT),
+            kind,
+            row.getString("display_text"),
+            null,
+            null,
+            null
+        );
     }
 }

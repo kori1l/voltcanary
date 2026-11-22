@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DeviceHistoryDeletion {
+
     private final JdbcTemplate jdbc;
     private final RunningSimulationRegistry registry;
     private final JdbcDeviceFence fence;
@@ -19,13 +20,18 @@ public class DeviceHistoryDeletion {
         fence = new JdbcDeviceFence(jdbc);
     }
 
-    public boolean writable(UUID device) { return fence.writable(device); }
+    public boolean writable(UUID device) {
+        return fence.writable(device);
+    }
 
     @Transactional
     public void close(UUID device, boolean purge) {
         fence.close(device);
         registry.remove(device).ifPresent(future -> future.cancel(false));
-        jdbc.update("update simulation_runs set status='STOPPED', active_key=null, lease_until=null, stopped_at=CURRENT_TIMESTAMP, stop_reason='Device deleted' where device_id=? and active_key is not null", device);
+        jdbc.update(
+            "update simulation_runs set status='STOPPED', active_key=null, lease_until=null, stopped_at=CURRENT_TIMESTAMP, stop_reason='Device deleted' where device_id=? and active_key is not null",
+            device
+        );
         jdbc.update("update simulation_configs set source_token=null where device_id=?", device);
         if (purge) jdbc.update("delete from simulation_configs where device_id=?", device);
     }

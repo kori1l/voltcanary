@@ -17,32 +17,56 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class AiModelResolver {
+
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelRepository;
     private final AiModelProviderSecretRepository secretRepository;
     private final AiSecretEncryptionService encryptionService;
 
-    public Optional<AiResolvedModel> resolve(AuthenticatedUser user, UUID providerId, UUID modelConfigId) {
-        Optional<AiModelProvider> providerOptional = providerId == null
+    public Optional<AiResolvedModel> resolve(
+        AuthenticatedUser user,
+        UUID providerId,
+        UUID modelConfigId
+    ) {
+        Optional<AiModelProvider> providerOptional =
+            providerId == null
                 ? providerRepository.findByAccountIdAndDefaultProviderTrue(user.accountId())
                 : providerRepository.findByIdAndAccountId(providerId, user.accountId());
-        if (providerOptional.isEmpty() || providerOptional.get().getStatus() != AiModelProviderStatus.ACTIVE) {
-            if (providerId != null || modelConfigId != null) throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND, "Selected provider unavailable");
+        if (
+            providerOptional.isEmpty() ||
+            providerOptional.get().getStatus() != AiModelProviderStatus.ACTIVE
+        ) {
+            if (
+                providerId != null || modelConfigId != null
+            ) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "Selected provider unavailable"
+            );
             return Optional.empty();
         }
         AiModelProvider provider = providerOptional.get();
-        Optional<AiModelConfig> modelOptional = modelConfigId == null
+        Optional<AiModelConfig> modelOptional =
+            modelConfigId == null
                 ? modelRepository.findByProviderIdAndDefaultModelTrue(provider.getId())
                 : modelRepository.findByIdAndProviderId(modelConfigId, provider.getId());
         if (modelOptional.isEmpty() || !modelOptional.get().isEnabled()) {
-            if (modelConfigId != null) throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND, "Selected model unavailable");
+            if (
+                modelConfigId != null
+            ) throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.NOT_FOUND,
+                "Selected model unavailable"
+            );
             return Optional.empty();
         }
-        String apiKey = secretRepository.findByProviderIdAndSecretType(provider.getId(), AiModelSecretType.API_KEY)
-                .map(secret -> encryptionService.decrypt(secret.getEncryptedValue(), secret.getEncryptionKeyVersion()))
-                .orElse("");
+        String apiKey = secretRepository
+            .findByProviderIdAndSecretType(provider.getId(), AiModelSecretType.API_KEY)
+            .map(secret ->
+                encryptionService.decrypt(
+                    secret.getEncryptedValue(),
+                    secret.getEncryptionKeyVersion()
+                )
+            )
+            .orElse("");
         if (!provider.getAuthType().name().equals("NONE") && apiKey.isBlank()) {
             return Optional.empty();
         }

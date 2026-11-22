@@ -12,12 +12,18 @@ import org.springframework.data.jpa.domain.Specification;
 
 /** Applies owner and membership filters before paging the operation records. */
 final class MaintenanceOperationFilters {
-    private MaintenanceOperationFilters() {
-    }
+
+    private MaintenanceOperationFilters() {}
 
     static Specification<MaintenanceOperation> matching(
-            UUID accountId, Instant from, Instant to, String status,
-            boolean includeCancelled, List<UUID> deviceIds, UUID locationId) {
+        UUID accountId,
+        Instant from,
+        Instant to,
+        String status,
+        boolean includeCancelled,
+        List<UUID> deviceIds,
+        UUID locationId
+    ) {
         Instant now = Instant.now();
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -31,13 +37,19 @@ final class MaintenanceOperationFilters {
                 } else {
                     predicates.add(builder.isNull(root.get("cancelledAt")));
                     switch (status) {
-                        case "SCHEDULED" -> predicates.add(builder.greaterThan(root.get("startAt"), now));
+                        case "SCHEDULED" -> predicates.add(
+                            builder.greaterThan(root.get("startAt"), now)
+                        );
                         case "ACTIVE" -> {
                             predicates.add(builder.lessThanOrEqualTo(root.get("startAt"), now));
                             predicates.add(builder.greaterThan(root.get("endAt"), now));
                         }
-                        case "FINISHED" -> predicates.add(builder.lessThanOrEqualTo(root.get("endAt"), now));
-                        default -> throw new IllegalArgumentException("Unsupported maintenance status");
+                        case "FINISHED" -> predicates.add(
+                            builder.lessThanOrEqualTo(root.get("endAt"), now)
+                        );
+                        default -> throw new IllegalArgumentException(
+                            "Unsupported maintenance status"
+                        );
                     }
                 }
             }
@@ -54,7 +66,9 @@ final class MaintenanceOperationFilters {
                     members.add(builder.equal(device.get("accountId"), accountId));
                     members.add(builder.equal(device.get("locationId"), locationId));
                 }
-                membership.select(window.get("operationId")).where(members.toArray(Predicate[]::new));
+                membership
+                    .select(window.get("operationId"))
+                    .where(members.toArray(Predicate[]::new));
                 predicates.add(builder.exists(membership));
             }
             return builder.and(predicates.toArray(Predicate[]::new));

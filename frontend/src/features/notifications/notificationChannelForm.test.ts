@@ -55,12 +55,14 @@ describe("notificationChannelForm", () => {
   });
 
   it("rejects secret-like provider config keys before submitting", () => {
-    expect(() => createNotificationChannelRequestFromDraft({
-      ...draft(),
-      channelType: "TELEGRAM",
-      telegramChatId: "-1001234567890",
-      extraConfig: { botToken: "secret-value" },
-    })).toThrow(/provider secrets/i);
+    expect(() =>
+      createNotificationChannelRequestFromDraft({
+        ...draft(),
+        channelType: "TELEGRAM",
+        telegramChatId: "-1001234567890",
+        extraConfig: { botToken: "secret-value" },
+      }),
+    ).toThrow(/provider secrets/i);
   });
 });
 

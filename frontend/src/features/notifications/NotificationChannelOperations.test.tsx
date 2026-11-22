@@ -10,7 +10,8 @@ import {
 import { NotificationChannelOperations } from "./NotificationChannelOperations";
 
 vi.mock("../../alerts/alertsApi", async () => {
-  const actual = await vi.importActual<typeof import("../../alerts/alertsApi")>("../../alerts/alertsApi");
+  const actual =
+    await vi.importActual<typeof import("../../alerts/alertsApi")>("../../alerts/alertsApi");
   return {
     ...actual,
     getNotificationChannelDiagnostics: vi.fn(),
@@ -72,7 +73,9 @@ describe("NotificationChannelOperations", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /send test/i }));
 
-    await waitFor(() => expect(testNotificationChannel).toHaveBeenCalledWith("channel-1", expect.any(Object)));
+    await waitFor(() =>
+      expect(testNotificationChannel).toHaveBeenCalledWith("channel-1", expect.any(Object)),
+    );
     expect(screen.getByText("Last test: Retrying")).toBeInTheDocument();
     expect(screen.getByText("HTTP_503")).toBeInTheDocument();
     expect(screen.getByText("Provider unavailable")).toBeInTheDocument();

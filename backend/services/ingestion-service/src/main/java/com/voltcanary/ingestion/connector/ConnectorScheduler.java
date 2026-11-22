@@ -13,7 +13,9 @@ public class ConnectorScheduler {
     private final ConnectorRuntimeProperties properties;
 
     public Duration pollingInterval(SourceRuntimeConfig config) {
-        Object value = config.adapterConfig().getOrDefault("pollingInterval", config.adapterConfig().get("pollInterval"));
+        Object value = config
+            .adapterConfig()
+            .getOrDefault("pollingInterval", config.adapterConfig().get("pollInterval"));
         if (value == null) {
             return properties.getDefaultPollingInterval();
         }

@@ -2,7 +2,13 @@ import { DeviceHealth } from "../model/telemetry.types";
 import { formatShortDateTime } from "../model/telemetry.utils";
 import { StatusBadge } from "./StatusBadge";
 
-export function TelemetryHeader({ health, selectedRangeLabel }: { health: DeviceHealth; selectedRangeLabel: string }) {
+export function TelemetryHeader({
+  health,
+  selectedRangeLabel,
+}: {
+  health: DeviceHealth;
+  selectedRangeLabel: string;
+}) {
   return (
     <div className="telemetry-monitor-header">
       <div>
@@ -15,7 +21,10 @@ export function TelemetryHeader({ health, selectedRangeLabel }: { health: Device
       </div>
       <div className="telemetry-health-meta">
         <span>
-          Last sample <strong>{health.lastSampleAt ? formatShortDateTime(health.lastSampleAt) : "No data"}</strong>
+          Last sample{" "}
+          <strong>
+            {health.lastSampleAt ? formatShortDateTime(health.lastSampleAt) : "No data"}
+          </strong>
         </span>
         <span>
           Data quality <strong>{health.dataQuality}</strong>

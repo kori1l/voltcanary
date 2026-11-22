@@ -1,4 +1,3 @@
 package com.voltcanary.ingestion.adapter.modbus;
 
-record ModbusReadResult(ModbusReadRequest request, int[] registers) {
-}
+record ModbusReadResult(ModbusReadRequest request, int[] registers) {}

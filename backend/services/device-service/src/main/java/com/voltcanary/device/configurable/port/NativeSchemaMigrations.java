@@ -8,6 +8,14 @@ public interface NativeSchemaMigrations {
     JsonNode reserve(UUID account, UUID actor, UUID dataset, String key, List<String> fieldKeys);
     JsonNode prepare(UUID account, UUID actor, UUID dataset, UUID review, JsonNode request);
     JsonNode inspect(UUID account, UUID actor, UUID dataset, UUID review);
-    JsonNode apply(UUID account, UUID actor, UUID dataset, UUID review, long revision, String digest, String key);
+    JsonNode apply(
+        UUID account,
+        UUID actor,
+        UUID dataset,
+        UUID review,
+        long revision,
+        String digest,
+        String key
+    );
     JsonNode archive(UUID account, UUID actor, UUID dataset, JsonNode request);
 }

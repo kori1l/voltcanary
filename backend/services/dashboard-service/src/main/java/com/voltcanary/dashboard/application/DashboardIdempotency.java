@@ -19,14 +19,25 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class DashboardIdempotency {
+
     private final DashboardStorage storage;
     private final ObjectMapper mapper;
 
     /** Call within the use case transaction, after current actor authorization. */
-    public <T> T execute(DashboardActor actor, String route, String key, JsonNode body,
-            Class<T> type, Consumer<T> authorizeReplay, Supplier<T> operation) {
+    public <T> T execute(
+        DashboardActor actor,
+        String route,
+        String key,
+        JsonNode body,
+        Class<T> type,
+        Consumer<T> authorizeReplay,
+        Supplier<T> operation
+    ) {
         if (key == null || !key.matches("[A-Za-z0-9_-]{1,128}")) {
-            throw new DashboardFailure("PRECONDITION_REQUIRED", "A safe Idempotency-Key of 1–128 characters is required");
+            throw new DashboardFailure(
+                "PRECONDITION_REQUIRED",
+                "A safe Idempotency-Key of 1–128 characters is required"
+            );
         }
         storage.lockActor(actor);
         String keyHash = hash(key);
@@ -35,22 +46,37 @@ public class DashboardIdempotency {
         var previous = storage.idempotency(actor, route, keyHash, now);
         if (previous.isPresent()) {
             if (!previous.get().bodyHash().equals(bodyHash)) {
-                throw new DashboardFailure("CONFLICT", "Idempotency key was already used with a different body");
+                throw new DashboardFailure(
+                    "CONFLICT",
+                    "Idempotency key was already used with a different body"
+                );
             }
             T outcome = mapper.convertValue(previous.get().outcome(), type);
             authorizeReplay.accept(outcome);
             return outcome;
         }
         T result = operation.get();
-        storage.saveIdempotency(actor, route, keyHash,
-                new Idempotency(bodyHash, mapper.valueToTree(result), now.plusSeconds(86400)));
+        storage.saveIdempotency(
+            actor,
+            route,
+            keyHash,
+            new Idempotency(bodyHash, mapper.valueToTree(result), now.plusSeconds(86400))
+        );
         return result;
     }
 
-    public <T> java.util.Optional<T> lookup(DashboardActor actor, String route, String key,
-            Class<T> type, Consumer<T> authorizeReplay) {
+    public <T> java.util.Optional<T> lookup(
+        DashboardActor actor,
+        String route,
+        String key,
+        Class<T> type,
+        Consumer<T> authorizeReplay
+    ) {
         if (key == null || !key.matches("[A-Za-z0-9_-]{1,128}")) {
-            throw new DashboardFailure("PRECONDITION_REQUIRED", "A safe Idempotency-Key is required");
+            throw new DashboardFailure(
+                "PRECONDITION_REQUIRED",
+                "A safe Idempotency-Key is required"
+            );
         }
         return storage.readIdempotency(actor, route, hash(key), Instant.now()).map(receipt -> {
             T outcome = mapper.convertValue(receipt.outcome(), type);
@@ -61,8 +87,9 @@ public class DashboardIdempotency {
 
     private String hash(String value) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))
+            );
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }

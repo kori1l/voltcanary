@@ -15,14 +15,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DashboardScopeController {
+
     private final InternalServiceAuth internal;
     private final AuthenticatedUserResolver users;
     private final DashboardScopeReadService scopes;
 
     @PostMapping("/internal/dashboard/scope")
-    public DashboardScopeResponse scope(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody DashboardScopeRequest request) {
+    public DashboardScopeResponse scope(
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardScopeRequest request
+    ) {
         internal.require(token);
         HttpHeaders signedActorOnly = new HttpHeaders();
         if (authorization != null) signedActorOnly.set(HttpHeaders.AUTHORIZATION, authorization);

@@ -5,12 +5,32 @@ import { createMemoryRouter, RouterProvider } from "react-router-dom";
 import { useConsoleQuery } from "./useConsoleQuery";
 afterEach(cleanup);
 function Context() {
-  const query = useConsoleQuery(); const [tab, setTab] = query.state<string>("tab", "settings");
-  return <><p>Tab {tab}</p><p>Dataset {query.params.get("datasetVersionId")}</p><button onClick={() => { setTab("training"); query.update({ datasetVersionId: "dataset-B", family: "FAILURE_PREDICTION", horizonDays: 7 }); }}>Choose task</button></>;
+  const query = useConsoleQuery();
+  const [tab, setTab] = query.state<string>("tab", "settings");
+  return (
+    <>
+      <p>Tab {tab}</p>
+      <p>Dataset {query.params.get("datasetVersionId")}</p>
+      <button
+        onClick={() => {
+          setTab("training");
+          query.update({
+            datasetVersionId: "dataset-B",
+            family: "FAILURE_PREDICTION",
+            horizonDays: 7,
+          });
+        }}
+      >
+        Choose task
+      </button>
+    </>
+  );
 }
 it("merges synchronous context updates and restores Back and reload", async () => {
   const routes = [{ path: "/settings/ml", element: <Context /> }];
-  const router = createMemoryRouter(routes, { initialEntries: ["/settings/ml?tab=models&datasetVersionId=dataset-A"] });
+  const router = createMemoryRouter(routes, {
+    initialEntries: ["/settings/ml?tab=models&datasetVersionId=dataset-A"],
+  });
   const rendered = render(<RouterProvider router={router} />);
   await userEvent.click(screen.getByText("Choose task"));
   expect(router.state.location.search).toContain("tab=training");

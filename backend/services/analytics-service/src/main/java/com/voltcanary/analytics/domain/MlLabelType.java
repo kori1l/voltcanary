@@ -12,5 +12,5 @@ public enum MlLabelType {
     FALSE_POSITIVE,
     SENSOR_FAULT,
     UNRESOLVED_ANOMALY,
-    UNKNOWN
+    UNKNOWN,
 }

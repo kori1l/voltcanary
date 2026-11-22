@@ -27,9 +27,10 @@ public class IngestionRateLimiter {
     private final MeterRegistry meterRegistry;
 
     public IngestionRateLimiter(
-            IngestionProperties properties,
-            Optional<StringRedisTemplate> redisTemplate,
-            MeterRegistry meterRegistry) {
+        IngestionProperties properties,
+        Optional<StringRedisTemplate> redisTemplate,
+        MeterRegistry meterRegistry
+    ) {
         this.properties = properties;
         this.redisTemplate = redisTemplate.orElse(null);
         this.meterRegistry = meterRegistry;
@@ -83,28 +84,44 @@ public class IngestionRateLimiter {
             return allowed;
         } catch (RuntimeException exception) {
             outcome = "error";
-            meterRegistry.counter(
+            meterRegistry
+                .counter(
                     "voltcanary.ingestion.redis.rate_limit.errors",
                     "reason",
-                    exception.getClass().getSimpleName()).increment();
-            log.warn("ingestionRateLimitRedisUnavailable reasonCode={}", exception.getClass().getSimpleName());
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            log.warn(
+                "ingestionRateLimitRedisUnavailable reasonCode={}",
+                exception.getClass().getSimpleName()
+            );
             if (!properties.isLocalCorrectnessStateEnabled()) {
                 throw new ResponseStatusException(
-                        HttpStatus.SERVICE_UNAVAILABLE,
-                        "Shared ingestion rate limit store unavailable",
-                        exception);
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Shared ingestion rate limit store unavailable",
+                    exception
+                );
             }
             return null;
         } finally {
-            sample.stop(meterRegistry.timer("voltcanary.ingestion.redis.rate_limit.latency", "outcome", outcome));
+            sample.stop(
+                meterRegistry.timer(
+                    "voltcanary.ingestion.redis.rate_limit.latency",
+                    "outcome",
+                    outcome
+                )
+            );
         }
     }
 
     private boolean allowInMemory(String key, long windowStartedAt, int limit) {
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "voltcanary.ingestion.rate_limit.local_only",
                 "mode",
-                properties.isLocalCorrectnessStateEnabled() ? "explicit" : "implicit").increment();
+                properties.isLocalCorrectnessStateEnabled() ? "explicit" : "implicit"
+            )
+            .increment();
         WindowCounter counter = counters.compute(key, (ignored, existing) -> {
             if (existing == null || existing.windowStartedAt != windowStartedAt) {
                 return new WindowCounter(windowStartedAt);
@@ -119,7 +136,10 @@ public class IngestionRateLimiter {
     }
 
     private void reject() {
-        throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Ingestion rate limit exceeded");
+        throw new ResponseStatusException(
+            HttpStatus.TOO_MANY_REQUESTS,
+            "Ingestion rate limit exceeded"
+        );
     }
 
     private long currentWindowStartedAt() {
@@ -129,6 +149,7 @@ public class IngestionRateLimiter {
     }
 
     private static final class WindowCounter {
+
         private final long windowStartedAt;
         private final AtomicInteger count = new AtomicInteger();
 

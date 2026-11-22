@@ -24,33 +24,48 @@ public class HttpPollingResponseMapper {
     private final Clock clock;
 
     IncomingTelemetryMessage map(
-            SourceRuntimeConfig sourceRuntimeConfig,
-            String body,
-            int statusCode,
-            URI endpoint,
-            TelemetryOrigin origin) {
+        SourceRuntimeConfig sourceRuntimeConfig,
+        String body,
+        int statusCode,
+        URI endpoint,
+        TelemetryOrigin origin
+    ) {
         try {
             JsonNode root = objectMapper.readTree(body);
             Instant receivedAt = clock.instant();
             Instant occurredAt = timestamp(root, sourceRuntimeConfig.mapping(), receivedAt);
             Map<String, Object> metrics = metrics(root, sourceRuntimeConfig.mapping());
             if (metrics.isEmpty()) {
-                throw new IllegalArgumentException("HTTP polling response produced no mapped metrics");
+                throw new IllegalArgumentException(
+                    "HTTP polling response produced no mapped metrics"
+                );
             }
             return new IncomingTelemetryMessage(
-                    sourceRuntimeConfig.sourceId(),
-                    sourceRuntimeConfig.deviceId(),
-                    sourceRuntimeConfig.accountId(),
-                    occurredAt,
-                    receivedAt,
-                    metrics,
-                    origin,
-                    new IngestionContext(null, null, null, Map.of(
-                            "httpStatus", Integer.toString(statusCode),
-                            "endpointHost", endpoint.getHost() == null ? "" : endpoint.getHost())),
-                    false);
+                sourceRuntimeConfig.sourceId(),
+                sourceRuntimeConfig.deviceId(),
+                sourceRuntimeConfig.accountId(),
+                occurredAt,
+                receivedAt,
+                metrics,
+                origin,
+                new IngestionContext(
+                    null,
+                    null,
+                    null,
+                    Map.of(
+                        "httpStatus",
+                        Integer.toString(statusCode),
+                        "endpointHost",
+                        endpoint.getHost() == null ? "" : endpoint.getHost()
+                    )
+                ),
+                false
+            );
         } catch (JsonProcessingException exception) {
-            throw new IllegalArgumentException("HTTP polling response body must be JSON", exception);
+            throw new IllegalArgumentException(
+                "HTTP polling response body must be JSON",
+                exception
+            );
         }
     }
 
@@ -61,7 +76,9 @@ public class HttpPollingResponseMapper {
             return fallback;
         }
         if (!node.isTextual()) {
-            throw new IllegalArgumentException("HTTP polling timestamp mapping must resolve to an ISO-8601 string");
+            throw new IllegalArgumentException(
+                "HTTP polling timestamp mapping must resolve to an ISO-8601 string"
+            );
         }
         return Instant.parse(node.asText());
     }
@@ -75,7 +92,9 @@ public class HttpPollingResponseMapper {
                 String path = string(entry.getValue(), "metric path");
                 JsonNode node = at(root, path);
                 if (node == null || node.isMissingNode() || node.isNull()) {
-                    throw new IllegalArgumentException("HTTP polling metric mapping missing path " + path);
+                    throw new IllegalArgumentException(
+                        "HTTP polling metric mapping missing path " + path
+                    );
                 }
                 result.put(metricName, scalar(node, metricName));
             }
@@ -83,7 +102,9 @@ public class HttpPollingResponseMapper {
         }
         JsonNode metricsNode = root.get("metrics");
         if (metricsNode == null || !metricsNode.isObject()) {
-            throw new IllegalArgumentException("HTTP polling mapping must define metrics or response must contain metrics object");
+            throw new IllegalArgumentException(
+                "HTTP polling mapping must define metrics or response must contain metrics object"
+            );
         }
         Map<String, Object> result = new LinkedHashMap<>();
         Iterator<Map.Entry<String, JsonNode>> fields = metricsNode.fields();
@@ -98,7 +119,9 @@ public class HttpPollingResponseMapper {
         JsonNode current = root;
         for (String segment : path.split("\\.")) {
             if (segment.isBlank()) {
-                throw new IllegalArgumentException("HTTP polling mapping path contains a blank segment");
+                throw new IllegalArgumentException(
+                    "HTTP polling mapping path contains a blank segment"
+                );
             }
             current = current.get(segment);
             if (current == null) {
@@ -118,12 +141,16 @@ public class HttpPollingResponseMapper {
         if (node.isBoolean()) {
             return node.booleanValue();
         }
-        throw new IllegalArgumentException("HTTP polling metric " + name + " must resolve to a scalar value");
+        throw new IllegalArgumentException(
+            "HTTP polling metric " + name + " must resolve to a scalar value"
+        );
     }
 
     private String string(Object value, String name) {
         if (!(value instanceof String text) || text.isBlank()) {
-            throw new IllegalArgumentException("HTTP polling " + name + " must be a non-blank string");
+            throw new IllegalArgumentException(
+                "HTTP polling " + name + " must be a non-blank string"
+            );
         }
         return text;
     }

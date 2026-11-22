@@ -10,25 +10,31 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
+import com.voltcanary.vcl.VclObservationPage;
 import com.voltcanary.vcl.VclObservationProfile;
 import com.voltcanary.vcl.VclObservationReadiness;
-import com.voltcanary.vcl.VclObservationPage;
-import com.voltcanary.vcl.VclSourceCoverage;
 import com.voltcanary.vcl.VclSourceBindingDescription;
 import com.voltcanary.vcl.VclSourceBindingProfile;
 import com.voltcanary.vcl.VclSourceCaptureDescription;
+import com.voltcanary.vcl.VclSourceCoverage;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class WorkerSourceCaptureSnapshotsTest {
-    private final UUID account = UUID.randomUUID(), actor = UUID.randomUUID(), epoch = UUID.randomUUID();
-    private final UUID binding = UUID.randomUUID(), device = UUID.randomUUID(), schema = UUID.randomUUID();
+
+    private final UUID account = UUID.randomUUID(),
+        actor = UUID.randomUUID(),
+        epoch = UUID.randomUUID();
+    private final UUID binding = UUID.randomUUID(),
+        device = UUID.randomUUID(),
+        schema = UUID.randomUUID();
     private final UUID generation = UUID.randomUUID();
     private final WorkerSourceCaptureReads reads = mock(WorkerSourceCaptureReads.class);
 
-    @Test void restoresExactCutWithoutUserBearerAndRenewsMachineAuthority() {
+    @Test
+    void restoresExactCutWithoutUserBearerAndRenewsMachineAuthority() {
         var original = fixture();
         when(reads.capture(account, epoch, binding, 1)).thenReturn(original);
         var snapshots = new WorkerSourceCaptureSnapshots(reads);
@@ -39,69 +45,192 @@ class WorkerSourceCaptureSnapshotsTest {
         assertEquals("5", retained.capturedHeadCheckpoint());
     }
 
-    @Test void rejectsChangedCutAndRevokedOwnerOnRestoredRead() {
+    @Test
+    void rejectsChangedCutAndRevokedOwnerOnRestoredRead() {
         var original = fixture();
         when(reads.capture(account, epoch, binding, 1)).thenReturn(original);
         var snapshots = new WorkerSourceCaptureSnapshots(reads);
-        assertEquals("CAPTURE_CUT_CHANGED", assertThrows(VclException.class, () -> snapshots.capture(account, epoch,
-                binding, 1, new SourceCaptureSnapshot.Cut("5", "0".repeat(64)))).code());
+        assertEquals(
+            "CAPTURE_CUT_CHANGED",
+            assertThrows(VclException.class, () ->
+                snapshots.capture(
+                    account,
+                    epoch,
+                    binding,
+                    1,
+                    new SourceCaptureSnapshot.Cut("5", "0".repeat(64))
+                )
+            ).code()
+        );
         var retained = snapshots.capture(account, epoch, binding, 1, null);
-        when(reads.capture(account, epoch, binding, 1)).thenThrow(new VclException("AUTOMATION_GRANT_INACTIVE", ""));
-        assertEquals("AUTOMATION_GRANT_INACTIVE", assertThrows(VclException.class, retained::inputGeneration).code());
+        when(reads.capture(account, epoch, binding, 1)).thenThrow(
+            new VclException("AUTOMATION_GRANT_INACTIVE", "")
+        );
+        assertEquals(
+            "AUTOMATION_GRANT_INACTIVE",
+            assertThrows(VclException.class, retained::inputGeneration).code()
+        );
     }
 
-    @Test void routesPageAndProofThroughScopedMachineOwner() {
+    @Test
+    void routesPageAndProofThroughScopedMachineOwner() {
         var original = fixture();
         when(reads.capture(account, epoch, binding, 1)).thenReturn(original);
-        when(reads.observations(org.mockito.ArgumentMatchers.eq(account), org.mockito.ArgumentMatchers.eq(epoch),
-                org.mockito.ArgumentMatchers.eq(binding), org.mockito.ArgumentMatchers.eq(1L), any()))
-                .thenAnswer(call -> {
-                    var request = (com.voltcanary.vcl.VclObservationRead) call.getArgument(4);
-                    var page = mock(VclObservationPage.class);
-                    when(page.request()).thenReturn(request);
-                    return page;
-                });
+        when(
+            reads.observations(
+                org.mockito.ArgumentMatchers.eq(account),
+                org.mockito.ArgumentMatchers.eq(epoch),
+                org.mockito.ArgumentMatchers.eq(binding),
+                org.mockito.ArgumentMatchers.eq(1L),
+                any()
+            )
+        ).thenAnswer(call -> {
+            var request = (com.voltcanary.vcl.VclObservationRead) call.getArgument(4);
+            var page = mock(VclObservationPage.class);
+            when(page.request()).thenReturn(request);
+            return page;
+        });
         UUID proof = UUID.randomUUID();
-        when(reads.coverage(account, epoch, binding, 1, proof, original.capture().pin()))
-                .thenReturn(new VclSourceCoverage(proof, null, schema, "UNKNOWN", "PROOF_UNAVAILABLE", null, null));
-        var retained = new WorkerSourceCaptureSnapshots(reads).capture(account, epoch, binding, 1, null);
+        when(
+            reads.coverage(account, epoch, binding, 1, proof, original.capture().pin())
+        ).thenReturn(
+            new VclSourceCoverage(proof, null, schema, "UNKNOWN", "PROOF_UNAVAILABLE", null, null)
+        );
+        var retained = new WorkerSourceCaptureSnapshots(reads).capture(
+            account,
+            epoch,
+            binding,
+            1,
+            null
+        );
         retained.readPage("0", 8);
-        assertEquals("UNKNOWN", retained.coverage(proof, Instant.parse("2026-11-03T00:00:00Z"),
-                Instant.parse("2026-11-03T01:00:00Z")).coverage());
+        assertEquals(
+            "UNKNOWN",
+            retained
+                .coverage(
+                    proof,
+                    Instant.parse("2026-11-03T00:00:00Z"),
+                    Instant.parse("2026-11-03T01:00:00Z")
+                )
+                .coverage()
+        );
         verify(reads).coverage(account, epoch, binding, 1, proof, original.capture().pin());
     }
 
-    @Test void startCheckpointRequiresOwnerQualifiedEventTime() {
+    @Test
+    void startCheckpointRequiresOwnerQualifiedEventTime() {
         var original = fixture();
         var from = Instant.parse("2026-11-03T00:00:00Z");
         var boundary = from.plusSeconds(60);
         UUID proof = UUID.randomUUID();
         var position = new VclSourceCoverage.Position(UUID.randomUUID(), "1");
-        var unqualified = new VclSourceCoverage.Evidence(proof, generation, position, from, boundary);
-        var qualified = new VclSourceCoverage.Evidence(proof, generation, position, from, boundary,
-                VclSourceCoverage.SOURCE_EVENT_TIME, java.util.List.of());
+        var unqualified = new VclSourceCoverage.Evidence(
+            proof,
+            generation,
+            position,
+            from,
+            boundary
+        );
+        var qualified = new VclSourceCoverage.Evidence(
+            proof,
+            generation,
+            position,
+            from,
+            boundary,
+            VclSourceCoverage.SOURCE_EVENT_TIME,
+            java.util.List.of()
+        );
         when(reads.capture(account, epoch, binding, 1)).thenReturn(original);
-        when(reads.coverage(account, epoch, binding, 1, proof, original.capture().pin())).thenReturn(
-                new VclSourceCoverage(proof, generation, schema, "COVERED", null, "5", unqualified),
-                new VclSourceCoverage(proof, generation, schema, "COVERED", null, "5", qualified, boundary));
-        var retained = new WorkerSourceCaptureSnapshots(reads).capture(account, epoch, binding, 1, null);
-        assertEquals("SOURCE_START_CHECKPOINT_UNAVAILABLE", assertThrows(VclException.class,
-                () -> retained.coveredCheckpoint(proof, from, boundary)).code());
-        assertEquals(qualified, retained.coveredCheckpoint(proof, from, boundary).proof().evidence());
+        when(
+            reads.coverage(account, epoch, binding, 1, proof, original.capture().pin())
+        ).thenReturn(
+            new VclSourceCoverage(proof, generation, schema, "COVERED", null, "5", unqualified),
+            new VclSourceCoverage(
+                proof,
+                generation,
+                schema,
+                "COVERED",
+                null,
+                "5",
+                qualified,
+                boundary
+            )
+        );
+        var retained = new WorkerSourceCaptureSnapshots(reads).capture(
+            account,
+            epoch,
+            binding,
+            1,
+            null
+        );
+        assertEquals(
+            "SOURCE_START_CHECKPOINT_UNAVAILABLE",
+            assertThrows(VclException.class, () ->
+                retained.coveredCheckpoint(proof, from, boundary)
+            ).code()
+        );
+        assertEquals(
+            qualified,
+            retained.coveredCheckpoint(proof, from, boundary).proof().evidence()
+        );
     }
 
     private VclSourceCaptureDescription fixture() {
-        var definition = new ObjectMapper().createObjectNode().put("id", binding.toString()).put("schemaRevision", 1)
-                .put("profile", VclSourceBindingProfile.VERSION).put("configurationDigest", "a".repeat(64));
-        definition.putArray("fields").addObject().put("id", UUID.randomUUID().toString()).put("type", "BOOLEAN")
-                .put("label", "Switch").put("nullable", true);
+        var definition = new ObjectMapper()
+            .createObjectNode()
+            .put("id", binding.toString())
+            .put("schemaRevision", 1)
+            .put("profile", VclSourceBindingProfile.VERSION)
+            .put("configurationDigest", "a".repeat(64));
+        definition
+            .putArray("fields")
+            .addObject()
+            .put("id", UUID.randomUUID().toString())
+            .put("type", "BOOLEAN")
+            .put("label", "Switch")
+            .put("nullable", true);
         String digest = VclCanonical.sha256(VclCanonical.encode(definition));
-        var source = new VclSourceBindingDescription(binding, account, actor, device, 1, 1, schema, definition, digest,
-                "a".repeat(64), "a".repeat(64), true, false, VclSourceBindingProfile.capabilities());
-        var pin = new VclObservationReadiness.Pin(binding, account, device, "source", 1, schema, digest);
-        var capture = new VclObservationReadiness(pin, VclObservationProfile.VERSION, "READY", generation, "0", "5",
-                Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.MICROS), true, false, false,
-                "UNKNOWN", "UNKNOWN", "UNQUALIFIED", null);
+        var source = new VclSourceBindingDescription(
+            binding,
+            account,
+            actor,
+            device,
+            1,
+            1,
+            schema,
+            definition,
+            digest,
+            "a".repeat(64),
+            "a".repeat(64),
+            true,
+            false,
+            VclSourceBindingProfile.capabilities()
+        );
+        var pin = new VclObservationReadiness.Pin(
+            binding,
+            account,
+            device,
+            "source",
+            1,
+            schema,
+            digest
+        );
+        var capture = new VclObservationReadiness(
+            pin,
+            VclObservationProfile.VERSION,
+            "READY",
+            generation,
+            "0",
+            "5",
+            Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.MICROS),
+            true,
+            false,
+            false,
+            "UNKNOWN",
+            "UNKNOWN",
+            "UNQUALIFIED",
+            null
+        );
         return new VclSourceCaptureDescription(source, capture);
     }
 }

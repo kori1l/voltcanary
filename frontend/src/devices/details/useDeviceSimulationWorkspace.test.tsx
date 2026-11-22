@@ -114,9 +114,7 @@ describe("simulation workspace asynchronous boundaries", () => {
     });
     expect(result.current.simulationProfile).toBe("HEATER");
     expect(result.current.simulationYaml).toBe("profile: HEATER");
-    expect(result.current.simulationMessage).toContain(
-      "Profile template loaded",
-    );
+    expect(result.current.simulationMessage).toContain("Profile template loaded");
   });
 
   it("preserves a manual draft edited while its template is loading", async () => {
@@ -178,9 +176,7 @@ describe("simulation workspace asynchronous boundaries", () => {
     await act(async () => {
       await result.current.loadSimulation();
     });
-    vi.mocked(updateDataSource).mockRejectedValue(
-      new Error("Source update unavailable"),
-    );
+    vi.mocked(updateDataSource).mockRejectedValue(new Error("Source update unavailable"));
     await act(async () => {
       await result.current.saveYaml();
     });
@@ -194,17 +190,13 @@ describe("simulation workspace asynchronous boundaries", () => {
     await act(async () => {
       await result.current.loadSimulation();
     });
-    vi.mocked(api.validateSimulationConfig).mockRejectedValue(
-      new Error("Validation unavailable"),
-    );
+    vi.mocked(api.validateSimulationConfig).mockRejectedValue(new Error("Validation unavailable"));
     await act(async () => {
       await result.current.validateYaml();
     });
     expect(result.current.simulationMessage).toBe("Validation unavailable");
     expect(result.current.simulationValidation.valid).toBe(false);
-    vi.mocked(api.resetSimulationTemplate).mockRejectedValue(
-      new Error("Template unavailable"),
-    );
+    vi.mocked(api.resetSimulationTemplate).mockRejectedValue(new Error("Template unavailable"));
     await act(async () => {
       await result.current.resetYamlTemplate();
     });
@@ -301,16 +293,12 @@ describe("simulation workspace asynchronous boundaries", () => {
     await act(async () => {
       await result.current.loadSimulation();
     });
-    vi.mocked(api.getSimulationConfig).mockRejectedValue(
-      new Error("Credential sync unavailable"),
-    );
+    vi.mocked(api.getSimulationConfig).mockRejectedValue(new Error("Credential sync unavailable"));
     await act(async () => {
-      await expect(
-        result.current.syncSourceToken("source-a", "rotated"),
-      ).rejects.toThrow("Credential sync unavailable");
+      await expect(result.current.syncSourceToken("source-a", "rotated")).rejects.toThrow(
+        "Credential sync unavailable",
+      );
     });
-    expect(result.current.simulationMessage).toBe(
-      "Credential sync unavailable",
-    );
+    expect(result.current.simulationMessage).toBe("Credential sync unavailable");
   });
 });

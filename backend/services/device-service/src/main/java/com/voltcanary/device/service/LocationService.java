@@ -1,8 +1,6 @@
 package com.voltcanary.device.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.voltcanary.device.repository.RegistryQueries;
-import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
@@ -13,12 +11,14 @@ import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.event.DeviceRegistryEventPublisher;
 import com.voltcanary.device.exception.NotFoundException;
 import com.voltcanary.device.repository.LocationRepository;
+import com.voltcanary.device.repository.RegistryQueries;
 import com.voltcanary.device.security.AuthenticatedUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -57,9 +57,18 @@ public class LocationService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public List<LocationResponse> list(AuthenticatedUser user, String search, Integer limit, Integer offset) {
+    public List<LocationResponse> list(
+        AuthenticatedUser user,
+        String search,
+        Integer limit,
+        Integer offset
+    ) {
         Account account = accountService.currentAccount(user);
-        return queries.locations(account.getId(), search, limit, offset).stream().map(this::toResponse).toList();
+        return queries
+            .locations(account.getId(), search, limit, offset)
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -73,8 +82,21 @@ public class LocationService {
         applyRequest(user, location, request);
         location.setUpdatedAt(Instant.now());
         Location saved = locationRepository.save(location);
-        auditService.record(user, saved.getAccountId(), "LOCATION_UPDATED", "LOCATION", saved.getId());
-        eventPublisher.publish("LOCATION", "UPDATED", saved.getAccountId(), null, saved.getId(), null);
+        auditService.record(
+            user,
+            saved.getAccountId(),
+            "LOCATION_UPDATED",
+            "LOCATION",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "LOCATION",
+            "UPDATED",
+            saved.getAccountId(),
+            null,
+            saved.getId(),
+            null
+        );
         return toResponse(saved);
     }
 
@@ -82,27 +104,42 @@ public class LocationService {
     public void delete(AuthenticatedUser user, UUID id) {
         Location location = findOwned(user, id);
         locationRepository.delete(location);
-        auditService.record(user, location.getAccountId(), "LOCATION_DELETED", "LOCATION", location.getId());
-        eventPublisher.publish("LOCATION", "DELETED", location.getAccountId(), null, location.getId(), null);
+        auditService.record(
+            user,
+            location.getAccountId(),
+            "LOCATION_DELETED",
+            "LOCATION",
+            location.getId()
+        );
+        eventPublisher.publish(
+            "LOCATION",
+            "DELETED",
+            location.getAccountId(),
+            null,
+            location.getId(),
+            null
+        );
     }
 
     public Location findOwned(AuthenticatedUser user, UUID id) {
         Account account = accountService.currentAccount(user);
-        return locationRepository.findByIdAndAccountId(id, account.getId())
-                .orElseThrow(() -> new NotFoundException("Location not found"));
+        return locationRepository
+            .findByIdAndAccountId(id, account.getId())
+            .orElseThrow(() -> new NotFoundException("Location not found"));
     }
 
     private LocationResponse toResponse(Location location) {
         return new LocationResponse(
-                location.getId(),
-                location.getName(),
-                location.getDescription(),
-                location.getParentId(),
-                location.getBuilding(),
-                location.getFloor(),
-                location.getRoom(),
-                location.getZone(),
-                fromTagsJson(location.getTagsJson()));
+            location.getId(),
+            location.getName(),
+            location.getDescription(),
+            location.getParentId(),
+            location.getBuilding(),
+            location.getFloor(),
+            location.getRoom(),
+            location.getZone(),
+            fromTagsJson(location.getTagsJson())
+        );
     }
 
     private String normalizeRequired(String value, String field) {
@@ -144,11 +181,12 @@ public class LocationService {
         if (tags == null || tags.isEmpty()) {
             return "[]";
         }
-        List<String> normalized = tags.stream()
-                .map(this::normalizeOptional)
-                .filter(tag -> tag != null)
-                .distinct()
-                .toList();
+        List<String> normalized = tags
+            .stream()
+            .map(this::normalizeOptional)
+            .filter(tag -> tag != null)
+            .distinct()
+            .toList();
         try {
             return objectMapper.writeValueAsString(normalized);
         } catch (Exception exception) {
@@ -161,8 +199,7 @@ public class LocationService {
             return List.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Invalid persisted location tags", exception);
         }

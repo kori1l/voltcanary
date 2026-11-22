@@ -11,32 +11,52 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SimulationUserAccess {
+
     private final RestClient devices;
     private final SimulationRunRepository runs;
 
-    public SimulationUserAccess(SimulationTargetProperties properties, RestClient.Builder builder,
-            SimulationRunRepository runs) {
+    public SimulationUserAccess(
+        SimulationTargetProperties properties,
+        RestClient.Builder builder,
+        SimulationRunRepository runs
+    ) {
         this.devices = builder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
         this.runs = runs;
     }
 
     public void requireDevice(String authorization, UUID device) {
         try {
-            devices.get().uri("/devices/{id}", device).header("Authorization", authorization)
-                    .retrieve().toBodilessEntity();
+            devices
+                .get()
+                .uri("/devices/{id}", device)
+                .header("Authorization", authorization)
+                .retrieve()
+                .toBodilessEntity();
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().is4xxClientError()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation device not found");
+                throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Simulation device not found"
+                );
             }
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device authorization unavailable"
+            );
         } catch (org.springframework.web.client.RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device authorization unavailable"
+            );
         }
     }
 
     public void requireRun(String authorization, UUID run) {
-        var saved = runs.findById(run)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation run not found"));
+        var saved = runs
+            .findById(run)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation run not found")
+            );
         requireDevice(authorization, saved.getDeviceId());
     }
 }

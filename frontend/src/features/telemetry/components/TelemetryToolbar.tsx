@@ -60,11 +60,23 @@ export function TelemetryToolbar({
             <TimezoneNote />
             <label>
               <span>From</span>
-              <input type="datetime-local" step="1" value={customFrom} onInput={(event) => onCustomFromChange(event.currentTarget.value)} onChange={(event) => onCustomFromChange(event.target.value)} />
+              <input
+                type="datetime-local"
+                step="1"
+                value={customFrom}
+                onInput={(event) => onCustomFromChange(event.currentTarget.value)}
+                onChange={(event) => onCustomFromChange(event.target.value)}
+              />
             </label>
             <label>
               <span>To</span>
-              <input type="datetime-local" step="1" value={customTo} onInput={(event) => onCustomToChange(event.currentTarget.value)} onChange={(event) => onCustomToChange(event.target.value)} />
+              <input
+                type="datetime-local"
+                step="1"
+                value={customTo}
+                onInput={(event) => onCustomToChange(event.currentTarget.value)}
+                onChange={(event) => onCustomToChange(event.target.value)}
+              />
             </label>
           </div>
         ) : null}
@@ -81,7 +93,11 @@ export function TelemetryToolbar({
           onClear={onClear}
         />
         <label className="chart-option">
-          <input type="checkbox" checked={showPoints} onChange={(event) => onShowPointsChange(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={showPoints}
+            onChange={(event) => onShowPointsChange(event.target.checked)}
+          />
           <span>Show points</span>
         </label>
       </div>

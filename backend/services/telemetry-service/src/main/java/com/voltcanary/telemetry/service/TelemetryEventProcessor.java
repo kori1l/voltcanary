@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class TelemetryEventProcessor {
+
     private final TelemetryMeasurementRepository measurementRepository;
     private final TelemetryReadingRepository readingRepository;
     private final TelemetryQualityFlagRepository qualityFlagRepository;
@@ -45,7 +46,7 @@ public class TelemetryEventProcessor {
     private final PositionProjection positions;
     private final DeviceHistoryDeletion deletions;
 
-    public record InputOutcome(int inserted, boolean eligibleForDerived) { }
+    public record InputOutcome(int inserted, boolean eligibleForDerived) {}
 
     @Transactional
     public int process(TelemetryReceivedEvent event) {
@@ -54,7 +55,9 @@ public class TelemetryEventProcessor {
 
     @Transactional
     public InputOutcome processInput(TelemetryReceivedEvent event) {
-        if (event != null && event.deviceId() != null && !deletions.writable(event.deviceId())) return new InputOutcome(0, false);
+        if (
+            event != null && event.deviceId() != null && !deletions.writable(event.deviceId())
+        ) return new InputOutcome(0, false);
         Timer.Sample sample = Timer.start(meterRegistry);
         String outcome = "accepted";
         List<String> qualityFlags = new ArrayList<>();
@@ -62,7 +65,10 @@ public class TelemetryEventProcessor {
         int inserted = 0;
         try {
             increment("consumed", "received");
-            if (event != null && !processedEventService.markIfNew("telemetry.raw.v1", event.eventId())) {
+            if (
+                event != null &&
+                !processedEventService.markIfNew("telemetry.raw.v1", event.eventId())
+            ) {
                 increment("duplicate", "event_id");
                 outcome = "duplicate";
                 log.info("Skipped duplicate telemetry eventId={}", event.eventId());
@@ -93,22 +99,36 @@ public class TelemetryEventProcessor {
                 outcome = "invalid";
                 return new InputOutcome(0, false);
             }
-            if (measurementRepository.countByDeviceSourceTimestamp(event.deviceId(), event.sourceId(), event.timestamp()) > 0) {
+            if (
+                measurementRepository.countByDeviceSourceTimestamp(
+                    event.deviceId(),
+                    event.sourceId(),
+                    event.timestamp()
+                ) > 0
+            ) {
                 addQualityFlag(qualityFlags, QualityFlag.DUPLICATE);
                 increment("duplicate", "device_source_timestamp");
             }
-            measurementRepository.latestTimestamp(event.deviceId())
-                    .filter(latestTimestamp -> event.timestamp().isBefore(latestTimestamp))
-                    .ifPresent(ignored -> addQualityFlag(qualityFlags, QualityFlag.OUT_OF_ORDER));
+            measurementRepository
+                .latestTimestamp(event.deviceId())
+                .filter(latestTimestamp -> event.timestamp().isBefore(latestTimestamp))
+                .ifPresent(ignored -> addQualityFlag(qualityFlags, QualityFlag.OUT_OF_ORDER));
 
-            if (com.voltcanary.common.events.telemetry.GpsMetrics.hasPosition(event.metrics()) && qualityFlags.contains(QualityFlag.DUPLICATE.name())) {
+            if (
+                com.voltcanary.common.events.telemetry.GpsMetrics.hasPosition(event.metrics()) &&
+                qualityFlags.contains(QualityFlag.DUPLICATE.name())
+            ) {
                 persistQualityFlags(readingId, event.deviceId(), qualityFlags);
                 return new InputOutcome(0, false);
             }
             List<TelemetryMeasurement> measurements = normalize(event, qualityFlags);
             persistQualityFlags(readingId, event.deviceId(), qualityFlags);
             if (measurements.isEmpty() || hasRejectingEnvelopeQuality(qualityFlags)) {
-                if (event.processingContext() != null && measurements.isEmpty() && !hasRejectingEnvelopeQuality(qualityFlags)) {
+                if (
+                    event.processingContext() != null &&
+                    measurements.isEmpty() &&
+                    !hasRejectingEnvelopeQuality(qualityFlags)
+                ) {
                     return new InputOutcome(0, true);
                 }
                 deadLetterPublisher.publish(event, "telemetry_validation_failed", qualityFlags);
@@ -117,16 +137,21 @@ public class TelemetryEventProcessor {
                 return new InputOutcome(0, false);
             }
             inserted = measurementRepository.insertAll(measurements);
-            meterRegistry.counter("voltcanary.telemetry.rows", "outcome", "inserted")
-                    .increment(inserted);
+            meterRegistry
+                .counter("voltcanary.telemetry.rows", "outcome", "inserted")
+                .increment(inserted);
             if (inserted > 0) {
                 positions.accepted(event, readingId, qualityFlags);
             }
-            if (inserted > 0 && !qualityFlags.contains(QualityFlag.BACKFILL.name())
-                    && !numericMetrics(event.metrics()).isEmpty()
-                    && (event.processingContext() == null || !event.processingContext().historicalImport())) {
+            if (
+                inserted > 0 &&
+                !qualityFlags.contains(QualityFlag.BACKFILL.name()) &&
+                !numericMetrics(event.metrics()).isEmpty() &&
+                (event.processingContext() == null || !event.processingContext().historicalImport())
+            ) {
                 Instant validatedAt = Instant.now();
-                validatedPublisher.publish(new TelemetryValidatedEvent(
+                validatedPublisher.publish(
+                    new TelemetryValidatedEvent(
                         UUID.randomUUID(),
                         event.deviceId(),
                         event.sourceId(),
@@ -138,32 +163,43 @@ public class TelemetryEventProcessor {
                         event.correlationId(),
                         "telemetry-service",
                         event.accountId(),
-                        validatedAt), readingId);
+                        validatedAt
+                    ),
+                    readingId
+                );
             } else {
                 outcome = "duplicate";
             }
             log.info(
-                    "Processed telemetry eventId={} deviceId={} metricRows={} insertedRows={} qualityFlags={}",
-                    event.eventId(),
-                    event.deviceId(),
-                    measurements.size(),
-                    inserted,
-                    qualityFlags);
+                "Processed telemetry eventId={} deviceId={} metricRows={} insertedRows={} qualityFlags={}",
+                event.eventId(),
+                event.deviceId(),
+                measurements.size(),
+                inserted,
+                qualityFlags
+            );
             return new InputOutcome(inserted, inserted > 0);
         } finally {
-            sample.stop(Timer.builder("voltcanary.telemetry.processing")
+            sample.stop(
+                Timer.builder("voltcanary.telemetry.processing")
                     .description("Telemetry event processing latency")
                     .tag("outcome", outcome)
-                    .register(meterRegistry));
+                    .register(meterRegistry)
+            );
         }
     }
 
-    private List<TelemetryMeasurement> normalize(TelemetryReceivedEvent event, List<String> qualityFlags) {
+    private List<TelemetryMeasurement> normalize(
+        TelemetryReceivedEvent event,
+        List<String> qualityFlags
+    ) {
         Instant createdAt = Instant.now();
         Instant receivedAt = event.receivedAt() == null ? createdAt : event.receivedAt();
         List<TelemetryMeasurement> measurements = new ArrayList<>();
         for (var entry : event.metrics().entrySet()) {
-            if ("transport".equals(entry.getKey()) || "configuredFields".equals(entry.getKey())) continue; // context is projected with GPS, not numeric analytics
+            if (
+                "transport".equals(entry.getKey()) || "configuredFields".equals(entry.getKey())
+            ) continue; // context is projected with GPS, not numeric analytics
             String metricName = entry.getKey();
             MetricCatalog.MetricDefinition definition = metricCatalog.find(metricName).orElse(null);
             if (definition == null) {
@@ -187,7 +223,8 @@ public class TelemetryEventProcessor {
                 increment("invalid_metric", "out_of_range");
                 continue;
             }
-            measurements.add(new TelemetryMeasurement(
+            measurements.add(
+                new TelemetryMeasurement(
                     event.deviceId(),
                     event.sourceId(),
                     event.timestamp(),
@@ -196,15 +233,36 @@ public class TelemetryEventProcessor {
                     definition.unit(),
                     QualityFlag.OK,
                     receivedAt,
-                    createdAt));
+                    createdAt
+                )
+            );
         }
-        for (var entry : com.voltcanary.common.events.telemetry.ConfiguredFields.values(event.metrics()).entrySet()) {
+        for (var entry : com.voltcanary.common.events.telemetry.ConfiguredFields.values(
+            event.metrics()
+        ).entrySet()) {
             var field = entry.getValue();
             boolean state = "boolean".equals(field.get("type"));
-            if ((!state && !"number".equals(field.get("type"))) || event.metrics().containsKey(entry.getKey())) continue;
-            measurements.add(new TelemetryMeasurement(event.deviceId(), event.sourceId(), event.timestamp(), entry.getKey(),
-                    state ? (Boolean.TRUE.equals(field.get("value")) ? 1 : 0) : ((Number) field.get("value")).doubleValue(),
-                    state ? "boolean" : (String) field.get("unit"), QualityFlag.OK, receivedAt, createdAt));
+            if (
+                (!state && !"number".equals(field.get("type"))) ||
+                event.metrics().containsKey(entry.getKey())
+            ) continue;
+            measurements.add(
+                new TelemetryMeasurement(
+                    event.deviceId(),
+                    event.sourceId(),
+                    event.timestamp(),
+                    entry.getKey(),
+                    state
+                        ? Boolean.TRUE.equals(field.get("value"))
+                            ? 1
+                            : 0
+                        : ((Number) field.get("value")).doubleValue(),
+                    state ? "boolean" : (String) field.get("unit"),
+                    QualityFlag.OK,
+                    receivedAt,
+                    createdAt
+                )
+            );
         }
         return measurements;
     }
@@ -220,13 +278,15 @@ public class TelemetryEventProcessor {
     }
 
     private void validateRequiredFields(TelemetryReceivedEvent event, List<String> qualityFlags) {
-        if (event == null
-                || event.deviceId() == null
-                || event.sourceId() == null
-                || event.sourceId().isBlank()
-                || event.timestamp() == null
-                || event.metrics() == null
-                || event.metrics().isEmpty()) {
+        if (
+            event == null ||
+            event.deviceId() == null ||
+            event.sourceId() == null ||
+            event.sourceId().isBlank() ||
+            event.timestamp() == null ||
+            event.metrics() == null ||
+            event.metrics().isEmpty()
+        ) {
             addQualityFlag(qualityFlags, QualityFlag.MISSING_REQUIRED_FIELD);
         }
     }
@@ -252,8 +312,10 @@ public class TelemetryEventProcessor {
         if (sourceId == null || sourceId.isBlank()) {
             return false;
         }
-        return validationProperties.getBackfillSourcePrefixes().stream()
-                .anyMatch(sourceId::startsWith);
+        return validationProperties
+            .getBackfillSourcePrefixes()
+            .stream()
+            .anyMatch(sourceId::startsWith);
     }
 
     private void persistReading(TelemetryReceivedEvent event, UUID readingId) {
@@ -261,13 +323,16 @@ public class TelemetryEventProcessor {
             return;
         }
         Instant receivedAt = event.receivedAt() == null ? Instant.now() : event.receivedAt();
-        readingRepository.save(new TelemetryReading(
+        readingRepository.save(
+            new TelemetryReading(
                 readingId,
                 event.deviceId(),
                 event.sourceId(),
                 event.timestamp(),
                 receivedAt,
-                toJson(sanitizedMetrics(event.metrics()))));
+                toJson(sanitizedMetrics(event.metrics()))
+            )
+        );
     }
 
     private void persistQualityFlags(UUID readingId, UUID deviceId, List<String> qualityFlags) {
@@ -275,21 +340,27 @@ public class TelemetryEventProcessor {
             return;
         }
         Instant createdAt = Instant.now();
-        qualityFlags.stream()
-                .distinct()
-                .map(flag -> new TelemetryQualityFlag(
-                        UUID.randomUUID(),
-                        readingId,
-                        deviceId,
-                        QualityFlag.valueOf(flag),
-                        messageFor(flag),
-                        createdAt))
-                .forEach(qualityFlagRepository::save);
+        qualityFlags
+            .stream()
+            .distinct()
+            .map(flag ->
+                new TelemetryQualityFlag(
+                    UUID.randomUUID(),
+                    readingId,
+                    deviceId,
+                    QualityFlag.valueOf(flag),
+                    messageFor(flag),
+                    createdAt
+                )
+            )
+            .forEach(qualityFlagRepository::save);
     }
 
     private boolean hasRejectingEnvelopeQuality(List<String> qualityFlags) {
-        return qualityFlags.contains(QualityFlag.MISSING_REQUIRED_FIELD.name())
-                || qualityFlags.contains(QualityFlag.INVALID_TIMESTAMP.name());
+        return (
+            qualityFlags.contains(QualityFlag.MISSING_REQUIRED_FIELD.name()) ||
+            qualityFlags.contains(QualityFlag.INVALID_TIMESTAMP.name())
+        );
     }
 
     private void addQualityFlag(List<String> qualityFlags, QualityFlag flag) {
@@ -299,7 +370,9 @@ public class TelemetryEventProcessor {
     }
 
     private void increment(String metric, String outcome) {
-        meterRegistry.counter("voltcanary.telemetry.events", "metric", metric, "outcome", outcome).increment();
+        meterRegistry
+            .counter("voltcanary.telemetry.events", "metric", metric, "outcome", outcome)
+            .increment();
     }
 
     private String toJson(Map<String, Object> metrics) {
@@ -329,9 +402,13 @@ public class TelemetryEventProcessor {
             return sanitized;
         }
         for (var entry : metrics.entrySet()) {
-            if (metricCatalog.isSupported(entry.getKey()) || "configuredFields".equals(entry.getKey())
-                    && com.voltcanary.common.events.telemetry.ConfiguredFields.valid(metrics) || "transport".equals(entry.getKey())
-                    && com.voltcanary.common.events.telemetry.TransportContext.validMetrics(metrics)) {
+            if (
+                metricCatalog.isSupported(entry.getKey()) ||
+                ("configuredFields".equals(entry.getKey()) &&
+                    com.voltcanary.common.events.telemetry.ConfiguredFields.valid(metrics)) ||
+                ("transport".equals(entry.getKey()) &&
+                    com.voltcanary.common.events.telemetry.TransportContext.validMetrics(metrics))
+            ) {
                 sanitized.put(entry.getKey(), entry.getValue());
             }
         }

@@ -17,8 +17,15 @@ import org.springframework.scheduling.annotation.Scheduled;
 /** Opt-in autonomous drain of diagnostic WINDOW_CLOSE measures under fresh machine authority. */
 @Slf4j
 public final class WorkerDueWindows {
+
     private static final int MAX_TIMER_CURSORS = 128;
-    private record DeploymentKey(UUID account, UUID rule, UUID epoch, KeyedStateStore.TimerKind kind) {}
+
+    private record DeploymentKey(
+        UUID account,
+        UUID rule,
+        UUID epoch,
+        KeyedStateStore.TimerKind kind
+    ) {}
 
     private final WorkerDeploymentAdmission admission;
     private final WorkerRuleCompilationSnapshots recovery;
@@ -26,18 +33,33 @@ public final class WorkerDueWindows {
     private final VclCompiler compiler;
     private final UUID holder = UUID.randomUUID();
     private final LinkedHashMap<DeploymentKey, KeyedStateStore.DueTimer> timerCursors =
-            new LinkedHashMap<>(16, 0.75f, true);
+        new LinkedHashMap<>(16, 0.75f, true);
     private int nextPageOffset;
-    private final LinkedHashMap<UUID, Integer> sustainedOffsets = new LinkedHashMap<>(16, 0.75f, true);
+    private final LinkedHashMap<UUID, Integer> sustainedOffsets = new LinkedHashMap<>(
+        16,
+        0.75f,
+        true
+    );
 
-    public WorkerDueWindows(DataSource source, WorkerDeploymentAdmission admission,
-            WorkerRuleCompilationSnapshots recovery) {
-        this(admission, recovery, new JdbcKeyedStateStore(source),
-                new VclCompiler(new VclRegistry(new VclParser()), VclUnits.standard()));
+    public WorkerDueWindows(
+        DataSource source,
+        WorkerDeploymentAdmission admission,
+        WorkerRuleCompilationSnapshots recovery
+    ) {
+        this(
+            admission,
+            recovery,
+            new JdbcKeyedStateStore(source),
+            new VclCompiler(new VclRegistry(new VclParser()), VclUnits.standard())
+        );
     }
 
-    WorkerDueWindows(WorkerDeploymentAdmission admission, WorkerRuleCompilationSnapshots recovery,
-            KeyedStateStore store, VclCompiler compiler) {
+    WorkerDueWindows(
+        WorkerDeploymentAdmission admission,
+        WorkerRuleCompilationSnapshots recovery,
+        KeyedStateStore store,
+        VclCompiler compiler
+    ) {
         this.admission = admission;
         this.recovery = recovery;
         this.store = store;
@@ -46,12 +68,18 @@ public final class WorkerDueWindows {
 
     @Scheduled(fixedDelayString = "${app.vcl.worker.delay:5s}")
     public void poll() {
-        try { drain(32, 32); }
-        catch (RuntimeException unavailable) { log.warn("VCL diagnostic worker scan failed: {}", reason(unavailable)); }
+        try {
+            drain(32, 32);
+        } catch (RuntimeException unavailable) {
+            log.warn("VCL diagnostic worker scan failed: {}", reason(unavailable));
+        }
     }
 
     /** Owner failures leave the corresponding due timer pending for a later scan. */
-    public synchronized List<KeyedStateStore.OutputStatus> drain(int deploymentLimit, int timerLimit) {
+    public synchronized List<KeyedStateStore.OutputStatus> drain(
+        int deploymentLimit,
+        int timerLimit
+    ) {
         var results = new ArrayList<KeyedStateStore.OutputStatus>();
         int offset = nextPageOffset;
         var candidates = admission.candidates(deploymentLimit, offset);
@@ -59,23 +87,36 @@ public final class WorkerDueWindows {
             offset = 0;
             candidates = admission.candidates(deploymentLimit, 0);
         }
-        nextPageOffset = candidates.size() < deploymentLimit || offset + candidates.size() > 1_000_000
-                ? 0 : offset + candidates.size();
+        nextPageOffset =
+            candidates.size() < deploymentLimit || offset + candidates.size() > 1_000_000
+                ? 0
+                : offset + candidates.size();
         for (var candidate : candidates) {
             try {
                 admission.inspect(candidate);
                 var timers = page(candidate, KeyedStateStore.TimerKind.WINDOW_CLOSE, timerLimit);
                 for (var due : timers) {
                     try {
-                        if (store instanceof JdbcKeyedStateStore jdbc
-                                && IntervalWindowSchedule.handles(due.scheduled().timer().payload())) {
+                        if (
+                            store instanceof JdbcKeyedStateStore jdbc &&
+                            IntervalWindowSchedule.handles(due.scheduled().timer().payload())
+                        ) {
                             recovery.finishIntervalWindow(candidate, jdbc, due, compiler, holder);
                             continue;
                         }
-                        var restored = recovery.restoreWindow(candidate, store, due.key(), due.pinsDigest(), compiler);
+                        var restored = recovery.restoreWindow(
+                            candidate,
+                            store,
+                            due.key(),
+                            due.pinsDigest(),
+                            compiler
+                        );
                         results.add(restored.consumeDiscovered(due, holder));
                     } catch (RuntimeException unavailable) {
-                        log.warn("VCL diagnostic worker left a due timer pending: {}", reason(unavailable));
+                        log.warn(
+                            "VCL diagnostic worker left a due timer pending: {}",
+                            reason(unavailable)
+                        );
                     }
                 }
                 if (candidate.start() != null && store instanceof JdbcKeyedStateStore jdbc) {
@@ -85,41 +126,78 @@ public final class WorkerDueWindows {
                         sustainedOffsets.remove(candidate.epoch());
                     } else {
                         sustainedOffsets.put(candidate.epoch(), sustainedOffset + timerLimit);
-                        if (sustainedOffsets.size() > MAX_TIMER_CURSORS) sustainedOffsets.pollFirstEntry();
+                        if (
+                            sustainedOffsets.size() > MAX_TIMER_CURSORS
+                        ) sustainedOffsets.pollFirstEntry();
                     }
                     for (var pending : measures) {
                         try {
                             recovery.finishSustained(candidate, jdbc, pending, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            log.warn("VCL sustained measure remains pending: {}", reason(unavailable));
+                            log.warn(
+                                "VCL sustained measure remains pending: {}",
+                                reason(unavailable)
+                            );
                         }
                     }
-                    for (var due : page(candidate, KeyedStateStore.TimerKind.SESSION_TIMEOUT, timerLimit)) {
+                    for (var due : page(
+                        candidate,
+                        KeyedStateStore.TimerKind.SESSION_TIMEOUT,
+                        timerLimit
+                    )) {
                         try {
                             recovery.timeoutSession(candidate, jdbc, due, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            log.warn("VCL session timeout remains pending: {}", reason(unavailable));
+                            log.warn(
+                                "VCL session timeout remains pending: {}",
+                                reason(unavailable)
+                            );
                         }
                     }
-                    for (var due : page(candidate, KeyedStateStore.TimerKind.WAIT_TIMEOUT, timerLimit)) {
+                    for (var due : page(
+                        candidate,
+                        KeyedStateStore.TimerKind.WAIT_TIMEOUT,
+                        timerLimit
+                    )) {
                         try {
                             recovery.finishSessionAbsence(candidate, jdbc, due, compiler, holder);
                         } catch (RuntimeException unavailable) {
-                            log.warn("VCL session absence remains pending: {}", reason(unavailable));
+                            log.warn(
+                                "VCL session absence remains pending: {}",
+                                reason(unavailable)
+                            );
                         }
                     }
                 }
             } catch (RuntimeException unavailable) {
-                log.warn("VCL diagnostic worker left a deployment pending: {}", reason(unavailable));
+                log.warn(
+                    "VCL diagnostic worker left a deployment pending: {}",
+                    reason(unavailable)
+                );
             }
         }
         return List.copyOf(results);
     }
 
-    private List<KeyedStateStore.DueTimer> page(JdbcRuleDeployments.Deployment candidate,
-            KeyedStateStore.TimerKind kind, int limit) {
-        var scope = new DeploymentKey(candidate.account(), candidate.rule(), candidate.epoch(), kind);
-        var timers = store.dueTimers(scope.account(), scope.rule(), scope.epoch(), kind, timerCursors.get(scope), limit);
+    private List<KeyedStateStore.DueTimer> page(
+        JdbcRuleDeployments.Deployment candidate,
+        KeyedStateStore.TimerKind kind,
+        int limit
+    ) {
+        var scope = new DeploymentKey(
+            candidate.account(),
+            candidate.rule(),
+            candidate.epoch(),
+            kind
+        );
+        var timers = store.dueTimers(
+            scope.account(),
+            scope.rule(),
+            scope.epoch(),
+            kind,
+            timerCursors.get(scope),
+            limit
+        );
         if (timers.size() < limit) {
             timerCursors.remove(scope);
         } else {
@@ -130,6 +208,8 @@ public final class WorkerDueWindows {
     }
 
     private static String reason(RuntimeException failure) {
-        return failure instanceof VclException vcl ? vcl.code() : failure.getClass().getSimpleName();
+        return failure instanceof VclException vcl
+            ? vcl.code()
+            : failure.getClass().getSimpleName();
     }
 }

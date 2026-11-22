@@ -4,5 +4,5 @@ public enum MlDeploymentScope {
     SYSTEM,
     ACCOUNT,
     DEVICE_TYPE,
-    DEVICE
+    DEVICE,
 }

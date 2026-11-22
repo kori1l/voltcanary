@@ -6,12 +6,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MlLabelRequest(
-        UUID datasetVersionId,
-        UUID deviceId,
-        String externalDeviceKey,
-        String metricName,
-        Instant labelStartAt,
-        Instant labelEndAt,
-        @NotNull MlLabelType label,
-        String reason) {
-}
+    UUID datasetVersionId,
+    UUID deviceId,
+    String externalDeviceKey,
+    String metricName,
+    Instant labelStartAt,
+    Instant labelEndAt,
+    @NotNull MlLabelType label,
+    String reason
+) {}

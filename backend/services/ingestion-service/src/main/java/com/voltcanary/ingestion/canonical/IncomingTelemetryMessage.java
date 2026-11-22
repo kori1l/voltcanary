@@ -7,6 +7,18 @@ import java.util.Objects;
 import java.util.UUID;
 
 public record IncomingTelemetryMessage(
+    String sourceId,
+    UUID deviceId,
+    UUID accountId,
+    Instant occurredAt,
+    Instant receivedAt,
+    Map<String, Object> metrics,
+    TelemetryOrigin origin,
+    IngestionContext context,
+    boolean historicalImport,
+    com.voltcanary.common.events.telemetry.SourcePosition sourcePosition
+) {
+    public IncomingTelemetryMessage(
         String sourceId,
         UUID deviceId,
         UUID accountId,
@@ -15,12 +27,20 @@ public record IncomingTelemetryMessage(
         Map<String, Object> metrics,
         TelemetryOrigin origin,
         IngestionContext context,
-        boolean historicalImport,
-        com.voltcanary.common.events.telemetry.SourcePosition sourcePosition) {
-
-    public IncomingTelemetryMessage(String sourceId, UUID deviceId, UUID accountId, Instant occurredAt, Instant receivedAt,
-            Map<String, Object> metrics, TelemetryOrigin origin, IngestionContext context, boolean historicalImport) {
-        this(sourceId, deviceId, accountId, occurredAt, receivedAt, metrics, origin, context, historicalImport, null);
+        boolean historicalImport
+    ) {
+        this(
+            sourceId,
+            deviceId,
+            accountId,
+            occurredAt,
+            receivedAt,
+            metrics,
+            origin,
+            context,
+            historicalImport,
+            null
+        );
     }
 
     public IncomingTelemetryMessage {

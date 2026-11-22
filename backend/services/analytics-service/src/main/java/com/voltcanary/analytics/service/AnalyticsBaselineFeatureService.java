@@ -21,7 +21,13 @@ public class AnalyticsBaselineFeatureService {
 
     private final AnalyticsPredictionTraceService traceService;
 
-    public DeviceBaseline baseline(UUID deviceId, String metric, String period, BaselineStats baseline, Instant now) {
+    public DeviceBaseline baseline(
+        UUID deviceId,
+        String metric,
+        String period,
+        BaselineStats baseline,
+        Instant now
+    ) {
         DeviceBaseline entity = new DeviceBaseline();
         entity.setId(UUID.randomUUID());
         entity.setDeviceId(deviceId);
@@ -35,49 +41,73 @@ public class AnalyticsBaselineFeatureService {
         entity.setMin(baseline.min());
         entity.setMax(baseline.max());
         entity.setSampleCount(baseline.sampleCount());
-        entity.setBaselineJson(traceService.writeJson(Map.of(
-                "metric", metric,
-                "period", period,
-                "algorithmVersion", BASELINE_ALGORITHM_VERSION,
-                "mean", baseline.mean(),
-                "median", baseline.median(),
-                "p90", baseline.p90(),
-                "min", baseline.min(),
-                "max", baseline.max(),
-                "sampleCount", baseline.sampleCount())));
+        entity.setBaselineJson(
+            traceService.writeJson(
+                Map.of(
+                    "metric",
+                    metric,
+                    "period",
+                    period,
+                    "algorithmVersion",
+                    BASELINE_ALGORITHM_VERSION,
+                    "mean",
+                    baseline.mean(),
+                    "median",
+                    baseline.median(),
+                    "p90",
+                    baseline.p90(),
+                    "min",
+                    baseline.min(),
+                    "max",
+                    baseline.max(),
+                    "sampleCount",
+                    baseline.sampleCount()
+                )
+            )
+        );
         return entity;
     }
 
     public FeatureSet featureSet(
-            UUID deviceId,
-            String metric,
-            String period,
-            Instant windowStart,
-            Instant windowEnd,
-            BaselineStats baseline,
-            TelemetryChartResponse chart,
-            int excludedSamples,
-            List<MaintenanceWindowReadModel> maintenanceWindows) {
+        UUID deviceId,
+        String metric,
+        String period,
+        Instant windowStart,
+        Instant windowEnd,
+        BaselineStats baseline,
+        TelemetryChartResponse chart,
+        int excludedSamples,
+        List<MaintenanceWindowReadModel> maintenanceWindows
+    ) {
         FeatureSet entity = new FeatureSet();
         entity.setId(UUID.randomUUID());
         entity.setDeviceId(deviceId);
         entity.setWindowStart(windowStart);
         entity.setWindowEnd(windowEnd);
-        entity.setFeaturesJson(traceService.writeJson(Map.ofEntries(
-                Map.entry("metric", metric),
-                Map.entry("period", period),
-                Map.entry("sampleCount", baseline.sampleCount()),
-                Map.entry("mean", baseline.mean()),
-                Map.entry("median", baseline.median()),
-                Map.entry("p90", baseline.p90()),
-                Map.entry("min", baseline.min()),
-                Map.entry("max", baseline.max()),
-                Map.entry("latestValue", latestValue(chart)),
-                Map.entry("maintenanceExcludedSampleCount", excludedSamples),
-                Map.entry("maintenanceExcludedWindowIds", maintenanceWindows.stream()
-                        .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
-                        .map(UUID::toString)
-                        .toList()))));
+        entity.setFeaturesJson(
+            traceService.writeJson(
+                Map.ofEntries(
+                    Map.entry("metric", metric),
+                    Map.entry("period", period),
+                    Map.entry("sampleCount", baseline.sampleCount()),
+                    Map.entry("mean", baseline.mean()),
+                    Map.entry("median", baseline.median()),
+                    Map.entry("p90", baseline.p90()),
+                    Map.entry("min", baseline.min()),
+                    Map.entry("max", baseline.max()),
+                    Map.entry("latestValue", latestValue(chart)),
+                    Map.entry("maintenanceExcludedSampleCount", excludedSamples),
+                    Map.entry(
+                        "maintenanceExcludedWindowIds",
+                        maintenanceWindows
+                            .stream()
+                            .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
+                            .map(UUID::toString)
+                            .toList()
+                    )
+                )
+            )
+        );
         return entity;
     }
 
@@ -85,9 +115,11 @@ public class AnalyticsBaselineFeatureService {
         if (chart == null || chart.points().isEmpty()) {
             return 0;
         }
-        return chart.points().stream()
-                .max(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                .map(TelemetryChartResponse.Point::value)
-                .orElse(0.0);
+        return chart
+            .points()
+            .stream()
+            .max(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+            .map(TelemetryChartResponse.Point::value)
+            .orElse(0.0);
     }
 }

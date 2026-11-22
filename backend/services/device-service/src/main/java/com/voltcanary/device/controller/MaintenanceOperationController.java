@@ -31,52 +31,68 @@ public class MaintenanceOperationController {
 
     @GetMapping
     public List<MaintenanceOperationResponse> list(
-            @RequestHeader HttpHeaders headers,
-            @RequestParam(value = "from", required = false) Instant from,
-            @RequestParam(value = "to", required = false) Instant to,
-            @RequestParam(value = "deviceIds", required = false) List<UUID> deviceIds,
-            @RequestParam(value = "locationId", required = false) UUID locationId,
-            @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "includeCancelled", defaultValue = "false") boolean includeCancelled,
-            @RequestParam(value = "limit", required = false) Integer limit,
-            @RequestParam(value = "offset", required = false) Integer offset) {
-        return service.list(userResolver.resolve(headers), from, to, deviceIds, locationId, status, includeCancelled, limit, offset);
+        @RequestHeader HttpHeaders headers,
+        @RequestParam(value = "from", required = false) Instant from,
+        @RequestParam(value = "to", required = false) Instant to,
+        @RequestParam(value = "deviceIds", required = false) List<UUID> deviceIds,
+        @RequestParam(value = "locationId", required = false) UUID locationId,
+        @RequestParam(value = "status", required = false) String status,
+        @RequestParam(value = "includeCancelled", defaultValue = "false") boolean includeCancelled,
+        @RequestParam(value = "limit", required = false) Integer limit,
+        @RequestParam(value = "offset", required = false) Integer offset
+    ) {
+        return service.list(
+            userResolver.resolve(headers),
+            from,
+            to,
+            deviceIds,
+            locationId,
+            status,
+            includeCancelled,
+            limit,
+            offset
+        );
     }
 
     @PostMapping
     public MaintenanceOperationResponse create(
-            @RequestHeader HttpHeaders headers,
-            @Valid @RequestBody MaintenanceOperationRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @Valid @RequestBody MaintenanceOperationRequest request
+    ) {
         return service.create(userResolver.resolve(headers), request);
     }
 
     @GetMapping("/{operationId}")
     public MaintenanceOperationResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId
+    ) {
         return service.get(userResolver.resolve(headers), operationId);
     }
 
     @PatchMapping("/{operationId}")
     public MaintenanceOperationResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId,
-            @Valid @RequestBody MaintenanceOperationRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId,
+        @Valid @RequestBody MaintenanceOperationRequest request
+    ) {
         return service.update(userResolver.resolve(headers), operationId, request);
     }
 
     @PostMapping("/{operationId}/cancel")
     public MaintenanceOperationResponse cancel(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId,
-            @Valid @RequestBody(required = false) CancelMaintenanceWindowRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId,
+        @Valid @RequestBody(required = false) CancelMaintenanceWindowRequest request
+    ) {
         return service.cancel(userResolver.resolve(headers), operationId, request);
     }
 
     @PostMapping("/{operationId}/finish-now")
     public MaintenanceOperationResponse finishNow(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId
+    ) {
         return service.finishNow(userResolver.resolve(headers), operationId);
     }
 }

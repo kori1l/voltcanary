@@ -125,13 +125,15 @@ class MlInternalBoundaryTest(unittest.TestCase):
         self.assertNotIn("input", response.json()["detail"][0])
 
     def test_authorized_training_alias_reaches_training_service(self) -> None:
-        training_api.training_service.start_training.return_value = TrainingRunResponse.model_validate(
-            {
-                "runId": "run-1",
-                "status": "SUCCEEDED",
-                "datasetVersionId": "dataset-v1",
-                "metrics": {},
-            }
+        training_api.training_service.start_training.return_value = (
+            TrainingRunResponse.model_validate(
+                {
+                    "runId": "run-1",
+                    "status": "SUCCEEDED",
+                    "datasetVersionId": "dataset-v1",
+                    "metrics": {},
+                }
+            )
         )
 
         response = self.client.post(

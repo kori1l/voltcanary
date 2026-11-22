@@ -87,5 +87,4 @@ public class Alert {
 
     @Column(name = "resolution_reason")
     private String resolutionReason;
-
 }

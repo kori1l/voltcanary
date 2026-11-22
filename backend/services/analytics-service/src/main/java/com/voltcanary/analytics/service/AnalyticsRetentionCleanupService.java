@@ -46,13 +46,15 @@ public class AnalyticsRetentionCleanupService {
         deleteOlderThan("recommendations", "created_at", now, properties.getRecommendations());
         deleteOlderThan("analytics_jobs", "created_at", now, properties.getJobs());
         jdbcTemplate.update(
-                "DELETE FROM analytics_event_outbox WHERE status IN ('PUBLISHED', 'FAILED') AND created_at < ?",
-                Timestamp.from(now.minus(properties.getOutbox())));
+            "DELETE FROM analytics_event_outbox WHERE status IN ('PUBLISHED', 'FAILED') AND created_at < ?",
+            Timestamp.from(now.minus(properties.getOutbox()))
+        );
     }
 
     private void deleteOlderThan(String table, String column, Instant now, Duration retention) {
         jdbcTemplate.update(
-                "DELETE FROM " + table + " WHERE " + column + " < ?",
-                Timestamp.from(now.minus(retention)));
+            "DELETE FROM " + table + " WHERE " + column + " < ?",
+            Timestamp.from(now.minus(retention))
+        );
     }
 }

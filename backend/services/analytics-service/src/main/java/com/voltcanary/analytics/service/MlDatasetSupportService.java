@@ -36,7 +36,8 @@ public class MlDatasetSupportService {
     public static final long DEFAULT_MAX_SAMPLING_GAP_SECONDS = 6 * 60 * 60;
     public static final Duration PREVIEW_TTL = Duration.ofMinutes(15);
     public static final String PREVIEW_ALGORITHM_VERSION = "ml-dataset-workbench-preview-v1";
-    public static final String DEFAULT_SPLIT_CONFIG = "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}";
+    public static final String DEFAULT_SPLIT_CONFIG =
+        "{\"train\":0.7,\"validation\":0.15,\"test\":0.15}";
 
     private final ObjectMapper objectMapper;
 
@@ -56,21 +57,23 @@ public class MlDatasetSupportService {
         if (metrics == null) {
             return List.of();
         }
-        return metrics.stream()
-                .filter(metric -> metric != null && !metric.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
+        return metrics
+            .stream()
+            .filter(metric -> metric != null && !metric.isBlank())
+            .map(String::trim)
+            .distinct()
+            .toList();
     }
 
     public List<UUID> normalizedDeviceIds(List<UUID> deviceIds) {
         if (deviceIds == null) {
             return List.of();
         }
-        return deviceIds.stream()
-                .filter(id -> id != null)
-                .distinct()
-                .toList();
+        return deviceIds
+            .stream()
+            .filter(id -> id != null)
+            .distinct()
+            .toList();
     }
 
     public int minSamplesPerMetric(Integer value) {
@@ -96,7 +99,13 @@ public class MlDatasetSupportService {
         if (previewHash == null || previewHash.length() <= "sha256:".length()) {
             return "prev_unknown";
         }
-        return "prev_" + previewHash.substring("sha256:".length(), Math.min(previewHash.length(), "sha256:".length() + 16));
+        return (
+            "prev_" +
+            previewHash.substring(
+                "sha256:".length(),
+                Math.min(previewHash.length(), "sha256:".length() + 16)
+            )
+        );
     }
 
     public String candidateId(MlCandidateWindowKind kind) {
@@ -104,11 +113,12 @@ public class MlDatasetSupportService {
     }
 
     public List<String> distinct(List<String> values) {
-        return values.stream()
-                .filter(value -> value != null && !value.isBlank())
-                .map(String::trim)
-                .distinct()
-                .toList();
+        return values
+            .stream()
+            .filter(value -> value != null && !value.isBlank())
+            .map(String::trim)
+            .distinct()
+            .toList();
     }
 
     public boolean isBlank(String value) {
@@ -126,10 +136,18 @@ public class MlDatasetSupportService {
         return duplicates;
     }
 
-    public boolean isMlExcluded(MlDatasetTelemetryRow row, List<MaintenanceWindowReadModel> windows) {
-        return windows.stream()
-                .filter(MaintenanceWindowReadModel::isExcludeFromMl)
-                .anyMatch(window -> !row.timestamp().isBefore(window.getStartAt()) && row.timestamp().isBefore(window.getEndAt()));
+    public boolean isMlExcluded(
+        MlDatasetTelemetryRow row,
+        List<MaintenanceWindowReadModel> windows
+    ) {
+        return windows
+            .stream()
+            .filter(MaintenanceWindowReadModel::isExcludeFromMl)
+            .anyMatch(
+                window ->
+                    !row.timestamp().isBefore(window.getStartAt()) &&
+                    row.timestamp().isBefore(window.getEndAt())
+            );
     }
 
     public MlLabelType labelType(MaintenanceOutcomeReadModel outcome) {
@@ -146,7 +164,9 @@ public class MlDatasetSupportService {
     }
 
     public boolean isPositive(MlLabelType label) {
-        return label == MlLabelType.CONFIRMED_FAILURE || label == MlLabelType.CORRECTIVE_MAINTENANCE;
+        return (
+            label == MlLabelType.CONFIRMED_FAILURE || label == MlLabelType.CORRECTIVE_MAINTENANCE
+        );
     }
 
     public long longQualityValue(Map<String, Object> qualityProfile, String key) {
@@ -158,14 +178,20 @@ public class MlDatasetSupportService {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Long> longMapFromQualityProfile(Map<String, Object> qualityProfile, String key) {
+    public Map<String, Long> longMapFromQualityProfile(
+        Map<String, Object> qualityProfile,
+        String key
+    ) {
         Object value = qualityProfile.get(key);
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();
         }
         Map<String, Long> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (entry.getKey() instanceof String stringKey && entry.getValue() instanceof Number numberValue) {
+            if (
+                entry.getKey() instanceof String stringKey &&
+                entry.getValue() instanceof Number numberValue
+            ) {
                 result.put(stringKey, numberValue.longValue());
             }
         }
@@ -174,19 +200,26 @@ public class MlDatasetSupportService {
 
     public Map<String, Long> sortedLongMap(Map<String, Long> values) {
         Map<String, Long> sorted = new LinkedHashMap<>();
-        values.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
+        values
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry -> sorted.put(entry.getKey(), entry.getValue()));
         return sorted;
     }
 
     public Map<String, List<String>> sortedUuidListMap(Map<UUID, List<UUID>> values) {
         Map<String, List<String>> sorted = new LinkedHashMap<>();
-        values.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> sorted.put(
-                        entry.getKey().toString(),
-                        entry.getValue().stream().map(UUID::toString).sorted().toList()));
+        values
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry ->
+                sorted.put(
+                    entry.getKey().toString(),
+                    entry.getValue().stream().map(UUID::toString).sorted().toList()
+                )
+            );
         return sorted;
     }
 
@@ -214,15 +247,51 @@ public class MlDatasetSupportService {
     public MlDatasetNormalizedMetric normalizeMetric(String metricName) {
         String metric = metricName == null ? "" : metricName.trim();
         return switch (metric) {
-            case "activePowerW", "active_power_w", "active_power" -> new MlDatasetNormalizedMetric(metric, "active_power", "W");
-            case "voltage", "voltageV", "voltage_v" -> new MlDatasetNormalizedMetric(metric, "voltage", "V");
-            case "current", "currentA", "current_a" -> new MlDatasetNormalizedMetric(metric, "current", "A");
-            case "energyGrowth", "energy_growth", "energyGrowthWh", "energy_growth_wh" -> new MlDatasetNormalizedMetric(metric, "energy_growth", "Wh");
-            case "temperature", "temperatureC", "temperature_c" -> new MlDatasetNormalizedMetric(metric, "temperature", "C");
-            case "vibration", "vibrationMmS", "vibration_mm_s" -> new MlDatasetNormalizedMetric(metric, "vibration", "mm/s");
-            case "runtime", "runtimeHours", "runtime_hours" -> new MlDatasetNormalizedMetric(metric, "runtime", "h");
-            case "powerFactor", "power_factor" -> new MlDatasetNormalizedMetric(metric, "power_factor", "ratio");
-            case "frequency", "frequencyHz", "frequency_hz" -> new MlDatasetNormalizedMetric(metric, "frequency", "Hz");
+            case "activePowerW", "active_power_w", "active_power" -> new MlDatasetNormalizedMetric(
+                metric,
+                "active_power",
+                "W"
+            );
+            case "voltage", "voltageV", "voltage_v" -> new MlDatasetNormalizedMetric(
+                metric,
+                "voltage",
+                "V"
+            );
+            case "current", "currentA", "current_a" -> new MlDatasetNormalizedMetric(
+                metric,
+                "current",
+                "A"
+            );
+            case
+                "energyGrowth",
+                "energy_growth",
+                "energyGrowthWh",
+                "energy_growth_wh" -> new MlDatasetNormalizedMetric(metric, "energy_growth", "Wh");
+            case "temperature", "temperatureC", "temperature_c" -> new MlDatasetNormalizedMetric(
+                metric,
+                "temperature",
+                "C"
+            );
+            case "vibration", "vibrationMmS", "vibration_mm_s" -> new MlDatasetNormalizedMetric(
+                metric,
+                "vibration",
+                "mm/s"
+            );
+            case "runtime", "runtimeHours", "runtime_hours" -> new MlDatasetNormalizedMetric(
+                metric,
+                "runtime",
+                "h"
+            );
+            case "powerFactor", "power_factor" -> new MlDatasetNormalizedMetric(
+                metric,
+                "power_factor",
+                "ratio"
+            );
+            case "frequency", "frequencyHz", "frequency_hz" -> new MlDatasetNormalizedMetric(
+                metric,
+                "frequency",
+                "Hz"
+            );
             default -> new MlDatasetNormalizedMetric(metric, toSnakeCase(metric), null);
         };
     }
@@ -230,7 +299,12 @@ public class MlDatasetSupportService {
     public long maxGapSeconds(List<TelemetryChartResponse.Point> points) {
         long max = 0;
         for (int index = 1; index < points.size(); index++) {
-            long gap = Math.abs(Duration.between(points.get(index - 1).timestamp(), points.get(index).timestamp()).toSeconds());
+            long gap = Math.abs(
+                Duration.between(
+                    points.get(index - 1).timestamp(),
+                    points.get(index).timestamp()
+                ).toSeconds()
+            );
             max = Math.max(max, gap);
         }
         return max;
@@ -248,13 +322,18 @@ public class MlDatasetSupportService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not serialize ML dataset metadata");
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Could not serialize ML dataset metadata"
+            );
         }
     }
 
     public String sha256(String value) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                value.getBytes(StandardCharsets.UTF_8)
+            );
             StringBuilder builder = new StringBuilder("sha256:");
             for (byte b : digest) {
                 builder.append(String.format("%02x", b));
@@ -273,7 +352,12 @@ public class MlDatasetSupportService {
         StringBuilder builder = new StringBuilder();
         char previous = 0;
         for (char current : value.toCharArray()) {
-            if (Character.isUpperCase(current) && builder.length() > 0 && previous != '_' && previous != '-') {
+            if (
+                Character.isUpperCase(current) &&
+                builder.length() > 0 &&
+                previous != '_' &&
+                previous != '-'
+            ) {
                 builder.append('_');
             }
             if (current == '-' || current == ' ' || current == '.') {

@@ -17,33 +17,54 @@ export function ForgotPasswordPage() {
     setIsSubmitting(true);
     try {
       await forgotPassword(email);
-      setMessage("If this email is eligible for recovery, a reset token has been requested. Follow the configured delivery instructions; this screen cannot verify email delivery. If delivery is unavailable, ask your administrator for the approved manual token recovery process.");
-    } catch (requestError) {
-      setError("Could not confirm recovery. Check the configured delivery instructions or manual recovery process before trying again.");
+      setMessage(
+        "If this email is eligible for recovery, a reset token has been requested. Follow the configured delivery instructions; this screen cannot verify email delivery. If delivery is unavailable, ask your administrator for the approved manual token recovery process.",
+      );
+    } catch {
+      setError(
+        "Could not confirm recovery. Check the configured delivery instructions or manual recovery process before trying again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <AuthShell title="Reset password" description="Request a recovery token using your account email.">
-        <form className="form-stack" onSubmit={onSubmit}>
-          <label>
-            Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required />
-          </label>
-          {message ? <div className="success-message" role="status">{message}</div> : null}
-          {error ? <div className="error-message" role="alert">{error}</div> : null}
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Requesting..." : "Request reset token"}
-          </button>
-        </form>
-        <Link className="auth-link" to="/reset-password">
-          I have a token
-        </Link>
-        <Link className="auth-link auth-link-secondary" to="/login">
-          Back to sign in
-        </Link>
+    <AuthShell
+      title="Reset password"
+      description="Request a recovery token using your account email."
+    >
+      <form className="form-stack" onSubmit={onSubmit}>
+        <label>
+          Email
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            type="email"
+            autoComplete="email"
+            required
+          />
+        </label>
+        {message ? (
+          <div className="success-message" role="status">
+            {message}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <button className="primary-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Requesting..." : "Request reset token"}
+        </button>
+      </form>
+      <Link className="auth-link" to="/reset-password">
+        I have a token
+      </Link>
+      <Link className="auth-link auth-link-secondary" to="/login">
+        Back to sign in
+      </Link>
     </AuthShell>
   );
 }

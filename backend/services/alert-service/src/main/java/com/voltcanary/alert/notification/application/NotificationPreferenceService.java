@@ -34,19 +34,22 @@ public class NotificationPreferenceService {
     @Transactional(readOnly = true)
     public NotificationPreferenceResponse getDefault(String userId, String accountId) {
         UUID scope = accountScope(userId, accountId);
-        return repository.findByAccountIdAndUserIdIsNull(scope)
-                .map(this::toResponse)
-                .orElseGet(() -> toResponse(defaultPreference(scope)));
+        return repository
+            .findByAccountIdAndUserIdIsNull(scope)
+            .map(this::toResponse)
+            .orElseGet(() -> toResponse(defaultPreference(scope)));
     }
 
     @Transactional
     public NotificationPreferenceResponse updateDefault(
-            String userId,
-            String accountId,
-            NotificationPreferenceRequest request) {
+        String userId,
+        String accountId,
+        NotificationPreferenceRequest request
+    ) {
         UUID scope = accountScope(userId, accountId);
-        NotificationPreference preference = repository.findByAccountIdAndUserIdIsNull(scope)
-                .orElseGet(() -> newPreference(scope));
+        NotificationPreference preference = repository
+            .findByAccountIdAndUserIdIsNull(scope)
+            .orElseGet(() -> newPreference(scope));
         applyRequest(preference, request);
         preference.setUpdatedAt(Instant.now());
         return toResponse(repository.save(preference));
@@ -55,31 +58,40 @@ public class NotificationPreferenceService {
     @Transactional(readOnly = true)
     public boolean shouldDeliver(AlertNotificationRequest request, String channelType) {
         if ("CONFIGURABLE_RULE".equals(request.alertType())) {
-            return repository.findByAccountIdAndUserIdIsNull(request.accountId())
-                    .filter(NotificationPreferenceService::allowsConfigurableRuleAlerts)
-                    .map(preference -> matches(preference, request, channelType))
-                    .orElse(false);
+            return repository
+                .findByAccountIdAndUserIdIsNull(request.accountId())
+                .filter(NotificationPreferenceService::allowsConfigurableRuleAlerts)
+                .map(preference -> matches(preference, request, channelType))
+                .orElse(false);
         }
         if (request.accountId() == null) {
             return true;
         }
-        return repository.findByAccountIdAndEnabledTrueOrderByCreatedAtAsc(request.accountId()).stream()
-                .findFirst()
-                .map(preference -> matches(preference, request, channelType))
-                .orElse(true);
+        return repository
+            .findByAccountIdAndEnabledTrueOrderByCreatedAtAsc(request.accountId())
+            .stream()
+            .findFirst()
+            .map(preference -> matches(preference, request, channelType))
+            .orElse(true);
     }
 
     @Transactional(readOnly = true)
     public boolean configurableRuleDeliveryEnabled(UUID account) {
-        return repository.findByAccountIdAndUserIdIsNull(account)
-                .map(NotificationPreferenceService::allowsConfigurableRuleAlerts).orElse(false);
+        return repository
+            .findByAccountIdAndUserIdIsNull(account)
+            .map(NotificationPreferenceService::allowsConfigurableRuleAlerts)
+            .orElse(false);
     }
 
     private static boolean allowsConfigurableRuleAlerts(NotificationPreference preference) {
         return preference.isEnabled() && preference.isConfigurableRuleAlertsEnabled();
     }
 
-    private boolean matches(NotificationPreference preference, AlertNotificationRequest request, String channelType) {
+    private boolean matches(
+        NotificationPreference preference,
+        AlertNotificationRequest request,
+        String channelType
+    ) {
         if (!contains(preference.getSeverityFilter(), request.severity())) {
             return false;
         }
@@ -115,9 +127,15 @@ public class NotificationPreferenceService {
         return !now.isBefore(start) || now.isBefore(end);
     }
 
-    private void applyRequest(NotificationPreference preference, NotificationPreferenceRequest request) {
+    private void applyRequest(
+        NotificationPreference preference,
+        NotificationPreferenceRequest request
+    ) {
         if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Notification preference request is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Notification preference request is required"
+            );
         }
         if (request.enabled() != null) {
             preference.setEnabled(request.enabled());
@@ -132,9 +150,15 @@ public class NotificationPreferenceService {
             preference.setChannelTypeFilter(joinNormalized(request.channelTypes(), false));
         }
         if (request.deviceIds() != null) {
-            preference.setDeviceFilter(request.deviceIds().isEmpty()
+            preference.setDeviceFilter(
+                request.deviceIds().isEmpty()
                     ? ALL
-                    : request.deviceIds().stream().map(UUID::toString).collect(Collectors.joining(",")));
+                    : request
+                          .deviceIds()
+                          .stream()
+                          .map(UUID::toString)
+                          .collect(Collectors.joining(","))
+            );
         }
         preference.setQuietHoursStart(request.quietHoursStart());
         preference.setQuietHoursEnd(request.quietHoursEnd());
@@ -177,10 +201,11 @@ public class NotificationPreferenceService {
         if (values.isEmpty()) {
             return ALL;
         }
-        Set<String> normalized = values.stream()
-                .map(this::normalize)
-                .filter(value -> !value.isBlank())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> normalized = values
+            .stream()
+            .map(this::normalize)
+            .filter(value -> !value.isBlank())
+            .collect(Collectors.toCollection(LinkedHashSet::new));
         if (validateSeverity) {
             normalized.forEach(AlertSeverity::valueOf);
         }
@@ -208,20 +233,21 @@ public class NotificationPreferenceService {
 
     private NotificationPreferenceResponse toResponse(NotificationPreference preference) {
         return new NotificationPreferenceResponse(
-                preference.getId(),
-                preference.getAccountId(),
-                preference.getUserId(),
-                preference.isEnabled(),
-                splitStrings(preference.getSeverityFilter()),
-                splitStrings(preference.getChannelTypeFilter()),
-                splitUuids(preference.getDeviceFilter()),
-                preference.getQuietHoursStart(),
-                preference.getQuietHoursEnd(),
-                preference.getTimezone(),
-                preference.isCriticalBypassQuietHours(),
-                preference.getCreatedAt(),
-                preference.getUpdatedAt(),
-                preference.isConfigurableRuleAlertsEnabled());
+            preference.getId(),
+            preference.getAccountId(),
+            preference.getUserId(),
+            preference.isEnabled(),
+            splitStrings(preference.getSeverityFilter()),
+            splitStrings(preference.getChannelTypeFilter()),
+            splitUuids(preference.getDeviceFilter()),
+            preference.getQuietHoursStart(),
+            preference.getQuietHoursEnd(),
+            preference.getTimezone(),
+            preference.isCriticalBypassQuietHours(),
+            preference.getCreatedAt(),
+            preference.getUpdatedAt(),
+            preference.isConfigurableRuleAlertsEnabled()
+        );
     }
 
     private Set<String> splitStrings(String csv) {
@@ -229,9 +255,9 @@ public class NotificationPreferenceService {
             return Set.of();
         }
         return Arrays.stream(csv.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     private Set<UUID> splitUuids(String csv) {
@@ -239,9 +265,9 @@ public class NotificationPreferenceService {
             return Set.of();
         }
         return Arrays.stream(csv.split(","))
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .map(UUID::fromString)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+            .map(String::trim)
+            .filter(value -> !value.isBlank())
+            .map(UUID::fromString)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

@@ -3,7 +3,6 @@ package com.voltcanary.ingestion.connector;
 import java.util.UUID;
 
 public record ConnectorLease(UUID dataSourceId, String ownerId, long fencingToken) {
-
     public ConnectorLease {
         if (dataSourceId == null) {
             throw new IllegalArgumentException("dataSourceId must not be null");

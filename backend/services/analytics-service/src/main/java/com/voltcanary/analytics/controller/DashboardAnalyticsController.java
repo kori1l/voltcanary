@@ -1,8 +1,7 @@
 package com.voltcanary.analytics.controller;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.voltcanary.analytics.adapter.DashboardReadAuthorization;
-import com.voltcanary.analytics.repository.DashboardAnalyticsRepository;
+import com.voltcanary.analytics.service.DashboardEvidenceReads;
 import com.voltcanary.common.web.DashboardOwnerReadRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,13 +12,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DashboardAnalyticsController {
-    private final DashboardReadAuthorization access;
-    private final DashboardAnalyticsRepository repository;
+
+    private final DashboardEvidenceReads reads;
 
     @PostMapping("/internal/dashboard/analytics")
-    public ObjectNode read(@RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody DashboardOwnerReadRequest request) {
-        return repository.read(request, access.authorize(token, authorization, request));
+    public ObjectNode read(
+        @RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardOwnerReadRequest request
+    ) {
+        return reads.read(token, authorization, request);
     }
 }

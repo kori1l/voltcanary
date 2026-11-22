@@ -23,20 +23,41 @@ public class MlFeatureHashService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not serialize ML feature metadata");
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Could not serialize ML feature metadata"
+            );
         }
     }
 
     public String featureDataHash(List<MlFeatureRowData> rows) {
-        return sha256(rows.stream()
-                .sorted(Comparator.comparing(MlFeatureRowData::entityId).thenComparing(MlFeatureRowData::predictionAt))
-                .map(row -> row.entityId() + "|" + row.predictionAt() + "|" + writeJson(row.featureValues()) + "|" + writeJson(row.labelValues()))
-                .collect(Collectors.joining("\n")));
+        return sha256(
+            rows
+                .stream()
+                .sorted(
+                    Comparator.comparing(MlFeatureRowData::entityId).thenComparing(
+                        MlFeatureRowData::predictionAt
+                    )
+                )
+                .map(
+                    row ->
+                        row.entityId() +
+                        "|" +
+                        row.predictionAt() +
+                        "|" +
+                        writeJson(row.featureValues()) +
+                        "|" +
+                        writeJson(row.labelValues())
+                )
+                .collect(Collectors.joining("\n"))
+        );
     }
 
     public String sha256(String value) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                value.getBytes(StandardCharsets.UTF_8)
+            );
             StringBuilder builder = new StringBuilder("sha256:");
             for (byte b : digest) {
                 builder.append(String.format("%02x", b));

@@ -17,10 +17,20 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertEventWrites {
+
     private final AlertEventRepository alertEventRepository;
     private final ObjectMapper objectMapper;
-    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public UUID saveEvent(Alert alert, String eventType, UUID actorId, String reason, Object details) {
+
+    @org.springframework.transaction.annotation.Transactional(
+        propagation = org.springframework.transaction.annotation.Propagation.MANDATORY
+    )
+    public UUID saveEvent(
+        Alert alert,
+        String eventType,
+        UUID actorId,
+        String reason,
+        Object details
+    ) {
         UUID eventId = UUID.randomUUID();
         Instant createdAt = Instant.now();
         AlertEvent event = new AlertEvent();
@@ -38,19 +48,25 @@ public class AlertEventWrites {
         context.put("calculationWindowEnd", alert.getCalculationWindowEnd());
         context.put("calculationInputHash", alert.getCalculationInputHash());
         context.put("details", details == null ? Map.of() : details);
-        event.setPayloadJson(writeJson(new AlertEventPayload(
-                eventId,
-                alert.getId(),
-                actorId,
-                eventType,
-                createdAt,
-                alert.getStatus().name(),
-                reason,
-                context)));
+        event.setPayloadJson(
+            writeJson(
+                new AlertEventPayload(
+                    eventId,
+                    alert.getId(),
+                    actorId,
+                    eventType,
+                    createdAt,
+                    alert.getStatus().name(),
+                    reason,
+                    context
+                )
+            )
+        );
         event.setCreatedAt(createdAt);
         alertEventRepository.save(event);
         return eventId;
     }
+
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -58,16 +74,15 @@ public class AlertEventWrites {
             throw new IllegalStateException("Failed to write alert event JSON", e);
         }
     }
+
     private record AlertEventPayload(
-            UUID eventId,
-            UUID alertId,
-            UUID actorId,
-            String action,
-            Instant timestamp,
-            String status,
-            String reason,
-            Map<String, Object> context) {
-    }
-
-
+        UUID eventId,
+        UUID alertId,
+        UUID actorId,
+        String action,
+        Instant timestamp,
+        String status,
+        String reason,
+        Map<String, Object> context
+    ) {}
 }

@@ -19,10 +19,11 @@ public class AnalyticsDeadLetterPublisher {
     private final boolean publishEnabled;
 
     public AnalyticsDeadLetterPublisher(
-            KafkaTemplate<String, String> kafkaTemplate,
-            ObjectMapper objectMapper,
-            AnalyticsDlqProperties dlqProperties,
-            AnalyticsKafkaProperties kafkaProperties) {
+        KafkaTemplate<String, String> kafkaTemplate,
+        ObjectMapper objectMapper,
+        AnalyticsDlqProperties dlqProperties,
+        AnalyticsKafkaProperties kafkaProperties
+    ) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.topic = dlqProperties.getTopic();
@@ -34,12 +35,24 @@ public class AnalyticsDeadLetterPublisher {
             return;
         }
         String deadLetterId = UUID.randomUUID().toString();
-        kafkaTemplate.send(topic, deadLetterId, writeJson(Map.of(
-                "deadLetterId", deadLetterId,
-                "sourceTopic", sourceTopic,
-                "reason", reason,
-                "originalPayload", originalPayload == null ? "" : originalPayload,
-                "failedAt", Instant.now().toString())));
+        kafkaTemplate.send(
+            topic,
+            deadLetterId,
+            writeJson(
+                Map.of(
+                    "deadLetterId",
+                    deadLetterId,
+                    "sourceTopic",
+                    sourceTopic,
+                    "reason",
+                    reason,
+                    "originalPayload",
+                    originalPayload == null ? "" : originalPayload,
+                    "failedAt",
+                    Instant.now().toString()
+                )
+            )
+        );
     }
 
     private String writeJson(Map<String, Object> payload) {

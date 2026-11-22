@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RunningSimulationRegistry {
+
     private final Map<UUID, ScheduledFuture<?>> byDeviceId = new ConcurrentHashMap<>();
 
     public boolean putIfAbsent(UUID deviceId, ScheduledFuture<?> future) {

@@ -22,54 +22,57 @@ public class MlDatasetResponseMapper {
 
     public MlDatasetSummaryDto summary(MlDataset dataset, MlDatasetVersion version) {
         return new MlDatasetSummaryDto(
-                dataset.getId(),
-                version.getId(),
-                dataset.getName(),
-                dataset.getDescription(),
-                version.getSourceType(),
-                version.getVersion(),
-                version.getStatus(),
-                version.getSplitStrategy(),
-                version.getFeatureConfigVersion(),
-                version.getSourceWindowStart(),
-                version.getSourceWindowEnd(),
-                version.getCreatedAt(),
-                version.getReadyAt(),
-                version.getFailureReason(),
-                version.getArtifactUri(),
-                version.getArtifactHash(),
-                version.getImmutableRowReference(),
-                version.getDataHash(),
-                version.getAccountId());
+            dataset.getId(),
+            version.getId(),
+            dataset.getName(),
+            dataset.getDescription(),
+            version.getSourceType(),
+            version.getVersion(),
+            version.getStatus(),
+            version.getSplitStrategy(),
+            version.getFeatureConfigVersion(),
+            version.getSourceWindowStart(),
+            version.getSourceWindowEnd(),
+            version.getCreatedAt(),
+            version.getReadyAt(),
+            version.getFailureReason(),
+            version.getArtifactUri(),
+            version.getArtifactHash(),
+            version.getImmutableRowReference(),
+            version.getDataHash(),
+            version.getAccountId()
+        );
     }
 
     public MlValidationReportDto validationReport(MlValidationReport report) {
         return new MlValidationReportDto(
-                report.getId(),
-                report.getDatasetVersionId(),
-                report.getImportedFileId(),
-                report.getAcceptedRows(),
-                report.getRejectedRows(),
-                report.getWarningCount(),
-                readLongMap(report.getRejectedReasonsJson()),
-                readLongMap(report.getMappingStatsJson()),
-                readObjectMap(report.getQualityProfileJson()),
-                report.getSummary(),
-                report.getCreatedAt());
+            report.getId(),
+            report.getDatasetVersionId(),
+            report.getImportedFileId(),
+            report.getAcceptedRows(),
+            report.getRejectedRows(),
+            report.getWarningCount(),
+            readLongMap(report.getRejectedReasonsJson()),
+            readLongMap(report.getMappingStatsJson()),
+            readObjectMap(report.getQualityProfileJson()),
+            report.getSummary(),
+            report.getCreatedAt()
+        );
     }
 
     public MlLineageDto lineage(MlDatasetLineage lineage) {
         return new MlLineageDto(
-                lineage.getId(),
-                lineage.getDatasetVersionId(),
-                lineage.getSourceType(),
-                lineage.getSourceReference(),
-                lineage.getFilterJson(),
-                lineage.getSelectedDevicesJson(),
-                lineage.getSelectedMetricsJson(),
-                lineage.getSourceWindowStart(),
-                lineage.getSourceWindowEnd(),
-                lineage.getContentHash());
+            lineage.getId(),
+            lineage.getDatasetVersionId(),
+            lineage.getSourceType(),
+            lineage.getSourceReference(),
+            lineage.getFilterJson(),
+            lineage.getSelectedDevicesJson(),
+            lineage.getSelectedMetricsJson(),
+            lineage.getSourceWindowStart(),
+            lineage.getSourceWindowEnd(),
+            lineage.getContentHash()
+        );
     }
 
     private Map<String, Long> readLongMap(String json) {
@@ -78,8 +81,11 @@ public class MlDatasetResponseMapper {
         }
         try {
             return objectMapper.readValue(
-                    json,
-                    objectMapper.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Long.class));
+                json,
+                objectMapper
+                    .getTypeFactory()
+                    .constructMapType(LinkedHashMap.class, String.class, Long.class)
+            );
         } catch (JsonProcessingException exception) {
             return Map.of();
         }
@@ -91,8 +97,11 @@ public class MlDatasetResponseMapper {
         }
         try {
             return objectMapper.readValue(
-                    json,
-                    objectMapper.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class));
+                json,
+                objectMapper
+                    .getTypeFactory()
+                    .constructMapType(LinkedHashMap.class, String.class, Object.class)
+            );
         } catch (JsonProcessingException exception) {
             return Map.of();
         }

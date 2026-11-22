@@ -32,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AccountRecoveryService {
+
     private final UserRepository userRepository;
     private final RecoveryMail recoveryMail;
     private final PasswordEncoder passwordEncoder;
@@ -65,8 +66,9 @@ public class AccountRecoveryService {
 
     @Transactional
     public AuthMessageResponse resetPassword(ResetPasswordRequest request) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(hash(request.token()))
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid password reset token"));
+        PasswordResetToken resetToken = passwordResetTokenRepository
+            .findByTokenHash(hash(request.token()))
+            .orElseThrow(() -> new AuthenticationFailedException("Invalid password reset token"));
         Instant now = Instant.now();
         if (resetToken.getUsedAt() != null || !resetToken.getExpiresAt().isAfter(now)) {
             throw new AuthenticationFailedException("Invalid password reset token");
@@ -97,7 +99,9 @@ public class AccountRecoveryService {
         verificationToken.setTokenHash(hash(token));
         Instant now = Instant.now();
         verificationToken.setCreatedAt(now);
-        verificationToken.setExpiresAt(now.plusSeconds(properties.getEmailVerificationTokenTtlSeconds()));
+        verificationToken.setExpiresAt(
+            now.plusSeconds(properties.getEmailVerificationTokenTtlSeconds())
+        );
         emailVerificationTokenRepository.save(verificationToken);
         recoveryMail.queue(user.getEmail(), "email verification", token);
         return new AuthMessageResponse("email verification requested");
@@ -105,10 +109,15 @@ public class AccountRecoveryService {
 
     @Transactional
     public AuthMessageResponse confirmEmailVerification(EmailVerificationConfirmRequest request) {
-        EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByTokenHash(hash(request.token()))
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid email verification token"));
+        EmailVerificationToken verificationToken = emailVerificationTokenRepository
+            .findByTokenHash(hash(request.token()))
+            .orElseThrow(() ->
+                new AuthenticationFailedException("Invalid email verification token")
+            );
         Instant now = Instant.now();
-        if (verificationToken.getUsedAt() != null || !verificationToken.getExpiresAt().isAfter(now)) {
+        if (
+            verificationToken.getUsedAt() != null || !verificationToken.getExpiresAt().isAfter(now)
+        ) {
             throw new AuthenticationFailedException("Invalid email verification token");
         }
 
@@ -137,7 +146,9 @@ public class AccountRecoveryService {
 
     private String hash(String token) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                token.getBytes(StandardCharsets.UTF_8)
+            );
             return HexFormat.of().formatHex(digest);
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to hash token", exception);

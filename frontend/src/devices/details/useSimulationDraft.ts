@@ -18,10 +18,7 @@ type Draft = ReturnType<typeof initialDraft>;
 
 /** Device/session scope and draft revisions fence every asynchronous completion. */
 export function useSimulationDraft(deviceId: string | undefined) {
-  const identity = useSyncExternalStore(
-    subscribeSession,
-    sessionIdentityRevision,
-  );
+  const identity = useSyncExternalStore(subscribeSession, sessionIdentityRevision);
   const key = `${identity}:${deviceId ?? ""}`;
   const scope = useRef({ key, revision: 0 });
   if (scope.current.key !== key) scope.current = { key, revision: 0 };
@@ -48,17 +45,12 @@ export function useSimulationDraft(deviceId: string | undefined) {
       identity === sessionIdentityRevision();
   }
   function update(patch: Partial<Draft> | ((draft: Draft) => Draft)) {
-    if (
-      scope.current !== currentScope ||
-      identity !== sessionIdentityRevision()
-    )
-      return;
+    if (scope.current !== currentScope || identity !== sessionIdentityRevision()) return;
     setStored((previous) => {
       const draft = previous.key === key ? previous.value : initialDraft();
       return {
         key,
-        value:
-          typeof patch === "function" ? patch(draft) : { ...draft, ...patch },
+        value: typeof patch === "function" ? patch(draft) : { ...draft, ...patch },
       };
     });
   }

@@ -40,40 +40,69 @@ public class MlDatasetQueryService {
         var datasets = datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
         boolean latestOnly = List.of("default", "active", "current").contains(filter);
         var selectedVersions = latestOnly
-                ? datasetVersionRepository.findLatestVisibleByAccountId(accountId, List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED))
-                : switch (filter) {
-                    case "archived" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.ARCHIVED);
-                    case "deleted" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.DELETED);
-                    case "failed" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.FAILED);
-                    default -> datasetVersionRepository.findByAccountIdOrderByVersionDesc(accountId);
-                };
-        var versions = selectedVersions.stream()
-                .collect(java.util.stream.Collectors.groupingBy(MlDatasetVersion::getDatasetId));
-        return datasets.stream().flatMap(dataset -> {
-            var selected = versions.getOrDefault(dataset.getId(), List.of()).stream()
+            ? datasetVersionRepository.findLatestVisibleByAccountId(
+                  accountId,
+                  List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)
+              )
+            : switch (filter) {
+                  case "archived" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
+                      accountId,
+                      MlDatasetStatus.ARCHIVED
+                  );
+                  case "deleted" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
+                      accountId,
+                      MlDatasetStatus.DELETED
+                  );
+                  case "failed" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
+                      accountId,
+                      MlDatasetStatus.FAILED
+                  );
+                  default -> datasetVersionRepository.findByAccountIdOrderByVersionDesc(accountId);
+              };
+        var versions = selectedVersions
+            .stream()
+            .collect(java.util.stream.Collectors.groupingBy(MlDatasetVersion::getDatasetId));
+        return datasets
+            .stream()
+            .flatMap(dataset -> {
+                var selected = versions
+                    .getOrDefault(dataset.getId(), List.of())
+                    .stream()
                     .filter(version -> matchesFilter(version.getStatus(), filter));
-            if (latestOnly) selected = selected.limit(1);
-            return selected.map(version -> mapper.summary(dataset, version));
-        }).toList();
+                if (latestOnly) selected = selected.limit(1);
+                return selected.map(version -> mapper.summary(dataset, version));
+            })
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public MlDatasetDetailDto detail(UUID accountId, UUID datasetVersionId) {
-        MlDatasetVersion version = datasetVersionRepository.findById(datasetVersionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found"));
+        MlDatasetVersion version = datasetVersionRepository
+            .findById(datasetVersionId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found")
+            );
         if (!accountId.equals(version.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
         }
-        MlDataset dataset = datasetRepository.findById(version.getDatasetId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset not found"));
+        MlDataset dataset = datasetRepository
+            .findById(version.getDatasetId())
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset not found")
+            );
         return new MlDatasetDetailDto(
-                mapper.summary(dataset, version),
-                validationReportRepository.findByDatasetVersionIdOrderByCreatedAtDesc(version.getId()).stream()
-                        .map(mapper::validationReport)
-                        .toList(),
-                lineageRepository.findByDatasetVersionId(version.getId()).stream()
-                        .map(mapper::lineage)
-                        .toList());
+            mapper.summary(dataset, version),
+            validationReportRepository
+                .findByDatasetVersionIdOrderByCreatedAtDesc(version.getId())
+                .stream()
+                .map(mapper::validationReport)
+                .toList(),
+            lineageRepository
+                .findByDatasetVersionId(version.getId())
+                .stream()
+                .map(mapper::lineage)
+                .toList()
+        );
     }
 
     private boolean matchesFilter(MlDatasetStatus status, String filter) {

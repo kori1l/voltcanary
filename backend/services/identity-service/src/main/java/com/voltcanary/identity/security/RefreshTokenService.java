@@ -27,12 +27,15 @@ public class RefreshTokenService {
     private final long refreshTokenTtlSeconds;
 
     public RefreshTokenService(
-            RefreshTokenRepository refreshTokenRepository,
-            PlatformTransactionManager transactionManager,
-            IdentityJwtProperties properties) {
+        RefreshTokenRepository refreshTokenRepository,
+        PlatformTransactionManager transactionManager,
+        IdentityJwtProperties properties
+    ) {
         this.refreshTokenRepository = refreshTokenRepository;
         this.requiresNewTransaction = new TransactionTemplate(transactionManager);
-        this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.requiresNewTransaction.setPropagationBehavior(
+            TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        );
         this.refreshTokenTtlSeconds = properties.getRefreshTokenTtlSeconds();
     }
 
@@ -53,8 +56,9 @@ public class RefreshTokenService {
 
     @Transactional
     public RefreshToken validate(String token) {
-        RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hash(token))
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));
+        RefreshToken refreshToken = refreshTokenRepository
+            .findByTokenHash(hash(token))
+            .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));
 
         if (refreshToken.getRevokedAt() != null) {
             UUID userId = refreshToken.getUser().getId();
@@ -85,7 +89,9 @@ public class RefreshTokenService {
 
     public String hash(String token) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                token.getBytes(StandardCharsets.UTF_8)
+            );
             return HexFormat.of().formatHex(digest);
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to hash refresh token", exception);
@@ -98,6 +104,5 @@ public class RefreshTokenService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    public record IssuedRefreshToken(String token, RefreshToken entity) {
-    }
+    public record IssuedRefreshToken(String token, RefreshToken entity) {}
 }

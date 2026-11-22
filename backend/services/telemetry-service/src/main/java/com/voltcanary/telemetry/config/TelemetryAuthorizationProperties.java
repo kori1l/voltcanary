@@ -16,5 +16,4 @@ public class TelemetryAuthorizationProperties {
     private String deviceServiceBaseUrl = "http://localhost:8082";
     private String internalServiceToken = "dev-internal-token";
     private Duration timeout = Duration.ofSeconds(2);
-
 }

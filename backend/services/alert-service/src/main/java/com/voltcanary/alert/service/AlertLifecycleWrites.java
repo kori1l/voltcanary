@@ -19,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertLifecycleWrites {
+
     private final AlertRepository alertRepository;
     private final jakarta.persistence.EntityManager entityManager;
     private final AlertEventWrites events;
@@ -36,6 +37,7 @@ public class AlertLifecycleWrites {
         }
         return AlertViews.response(alert);
     }
+
     @Transactional
     public AlertResponse resolve(UUID id, String reason, UUID actorId, String correlationId) {
         Alert alert = locked(id);
@@ -49,43 +51,74 @@ public class AlertLifecycleWrites {
         }
         return AlertViews.response(alert);
     }
+
     private void recordAcknowledged(Alert alert, UUID actorId, String correlationId) {
-        meterRegistry.counter("alert.actions", "action", "acknowledge", "status", "success").increment();
-        recordLifecycleDuration("alert.lifecycle.time_to_ack", alert.getCreatedAt(), alert.getAcknowledgedAt(), alert);
+        meterRegistry
+            .counter("alert.actions", "action", "acknowledge", "status", "success")
+            .increment();
+        recordLifecycleDuration(
+            "alert.lifecycle.time_to_ack",
+            alert.getCreatedAt(),
+            alert.getAcknowledgedAt(),
+            alert
+        );
         log.info(
-                "alertAcknowledged correlationId={} alertId={} deviceId={} sourceEventId={} actorId={} status={}",
-                correlationId,
-                alert.getId(),
-                alert.getDeviceId(),
-                alert.getSourceEventId(),
-                actorId,
-                alert.getStatus());
+            "alertAcknowledged correlationId={} alertId={} deviceId={} sourceEventId={} actorId={} status={}",
+            correlationId,
+            alert.getId(),
+            alert.getDeviceId(),
+            alert.getSourceEventId(),
+            actorId,
+            alert.getStatus()
+        );
     }
+
     private void recordResolved(Alert alert, UUID actorId, String correlationId) {
-        meterRegistry.counter("alert.actions", "action", "resolve", "status", "success").increment();
-        recordLifecycleDuration("alert.lifecycle.time_to_resolve", alert.getCreatedAt(), alert.getResolvedAt(), alert);
+        meterRegistry
+            .counter("alert.actions", "action", "resolve", "status", "success")
+            .increment();
+        recordLifecycleDuration(
+            "alert.lifecycle.time_to_resolve",
+            alert.getCreatedAt(),
+            alert.getResolvedAt(),
+            alert
+        );
         log.info(
-                "alertResolved correlationId={} alertId={} deviceId={} sourceEventId={} actorId={} status={} reasonProvided={}",
-                correlationId,
-                alert.getId(),
-                alert.getDeviceId(),
-                alert.getSourceEventId(),
-                actorId,
-                alert.getStatus(),
-                alert.getResolutionReason() != null && !alert.getResolutionReason().isBlank());
+            "alertResolved correlationId={} alertId={} deviceId={} sourceEventId={} actorId={} status={} reasonProvided={}",
+            correlationId,
+            alert.getId(),
+            alert.getDeviceId(),
+            alert.getSourceEventId(),
+            actorId,
+            alert.getStatus(),
+            alert.getResolutionReason() != null && !alert.getResolutionReason().isBlank()
+        );
     }
-    private void recordLifecycleDuration(String metricName, Instant start, Instant end, Alert alert) {
+
+    private void recordLifecycleDuration(
+        String metricName,
+        Instant start,
+        Instant end,
+        Alert alert
+    ) {
         if (start == null || end == null || end.isBefore(start)) {
             return;
         }
-        meterRegistry.timer(
+        meterRegistry
+            .timer(
                 metricName,
-                "alertType", safeTag(alert.getAlertType()),
-                "severity", alert.getSeverity().name()).record(Duration.between(start, end));
+                "alertType",
+                safeTag(alert.getAlertType()),
+                "severity",
+                alert.getSeverity().name()
+            )
+            .record(Duration.between(start, end));
     }
+
     private String safeTag(String value) {
         return value == null || value.isBlank() ? "UNKNOWN" : value;
     }
+
     private String normalizeReason(String reason) {
         if (reason == null || reason.isBlank()) {
             return "Resolved without a reason.";
@@ -93,11 +126,14 @@ public class AlertLifecycleWrites {
         String trimmed = reason.trim();
         return trimmed.length() > 1000 ? trimmed.substring(0, 1000) : trimmed;
     }
+
     private Alert locked(UUID id) {
-        var alert = alertRepository.lockById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found"));
+        var alert = alertRepository
+            .lockById(id)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found")
+            );
         entityManager.refresh(alert);
         return alert;
     }
-
 }

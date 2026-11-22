@@ -29,8 +29,10 @@ public class SimulationProfileVersionWriter {
     }
 
     public List<SimulationConfigVersionResponse> versions(UUID configId) {
-        return versionRepository.findByConfigIdOrderByVersionDesc(configId).stream()
-                .map(mapper::toVersionResponse)
-                .toList();
+        return versionRepository
+            .findByConfigIdOrderByVersionDesc(configId)
+            .stream()
+            .map(mapper::toVersionResponse)
+            .toList();
     }
 }

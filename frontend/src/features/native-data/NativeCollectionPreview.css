@@ -1,3 +1,10 @@
-.native-schema-preview { min-width: 0; overflow-wrap: anywhere; }
-.native-schema-preview ul { padding-left: 20px; }
-.native-schema-preview li { padding: 3px 0; }
+.native-schema-preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.native-schema-preview ul {
+  padding-left: 20px;
+}
+.native-schema-preview li {
+  padding: 3px 0;
+}

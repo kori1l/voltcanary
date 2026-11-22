@@ -8,8 +8,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 /** The complete signed owner/review/reconcile/archive contract also runs on production PostgreSQL. */
 @Testcontainers
+@org.junit.jupiter.api.Tag("docker")
 class NativeCollectionsPostgresApiTest extends NativeCollectionsApiTest {
-    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @DynamicPropertySource
     static void postgres(DynamicPropertyRegistry registry) {

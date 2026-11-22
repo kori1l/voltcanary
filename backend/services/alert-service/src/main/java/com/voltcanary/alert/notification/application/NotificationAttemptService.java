@@ -1,8 +1,5 @@
 package com.voltcanary.alert.notification.application;
 
-import jakarta.persistence.EntityManager;
-import java.util.Map;
-import java.util.Objects;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.alert.domain.Alert;
@@ -16,9 +13,12 @@ import com.voltcanary.alert.notification.repository.NotificationAttemptRepositor
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.service.AlertAccessService;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -31,11 +31,15 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class NotificationAttemptService {
-    public static final class LeaseLost extends RuntimeException {
-        public LeaseLost() { super("Notification attempt lease is no longer owned"); }
-    }
-    private final EntityManager entityManager;
 
+    public static final class LeaseLost extends RuntimeException {
+
+        public LeaseLost() {
+            super("Notification attempt lease is no longer owned");
+        }
+    }
+
+    private final EntityManager entityManager;
 
     private final NotificationAttemptRepository attemptRepository;
     private final AlertRepository alertRepository;
@@ -46,22 +50,30 @@ public class NotificationAttemptService {
 
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NEVER)
     public List<NotificationAttemptResponse> listForAlert(
-            UUID alertId,
-            String userId,
-            String role,
-            String correlationId) {
+        UUID alertId,
+        String userId,
+        String role,
+        String correlationId
+    ) {
         Alert alert = loadAlert(alertId);
         alertAccessService.requireReadAccess(alert.getDeviceId(), userId, role, correlationId);
-        return attemptRepository.findByAlertIdOrderByCreatedAtDesc(alertId).stream()
-                .map(this::toResponse)
-                .toList();
+        return attemptRepository
+            .findByAlertIdOrderByCreatedAtDesc(alertId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional
-    public NotificationAttempt createPendingAttempt(AlertNotificationRequest request, NotificationChannel channel) {
+    public NotificationAttempt createPendingAttempt(
+        AlertNotificationRequest request,
+        NotificationChannel channel
+    ) {
         String normalizedEventType = normalizeRequired(request.eventType(), 100);
         String idempotencyKey = idempotencyKey(request.idempotencyKey(), channel.getId());
-        Optional<NotificationAttempt> existing = attemptRepository.findByIdempotencyKey(idempotencyKey);
+        Optional<NotificationAttempt> existing = attemptRepository.findByIdempotencyKey(
+            idempotencyKey
+        );
         if (existing.isPresent()) {
             return existing.get();
         }
@@ -74,7 +86,11 @@ public class NotificationAttemptService {
         attempt.setChannelType(channel.getChannelType());
         attempt.setDeliveryEventType(normalizedEventType);
         attempt.setIdempotencyKey(idempotencyKey);
-        attempt.setStatus(channel.isEnabled() ? NotificationAttemptStatus.PENDING : NotificationAttemptStatus.DISABLED);
+        attempt.setStatus(
+            channel.isEnabled()
+                ? NotificationAttemptStatus.PENDING
+                : NotificationAttemptStatus.DISABLED
+        );
         attempt.setRetryCount(0);
         attempt.setMaxAttempts(properties.getMaxAttempts());
         attempt.setRetryExhausted(false);
@@ -87,7 +103,10 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt createTestAttempt(NotificationChannel channel, Map<String, Object> sample) {
+    public NotificationAttempt createTestAttempt(
+        NotificationChannel channel,
+        Map<String, Object> sample
+    ) {
         Instant now = Instant.now();
         NotificationAttempt attempt = new NotificationAttempt();
         attempt.setId(UUID.randomUUID());
@@ -97,7 +116,11 @@ public class NotificationAttemptService {
         attempt.setChannelType(channel.getChannelType());
         attempt.setDeliveryEventType("NOTIFICATION_TEST");
         attempt.setIdempotencyKey("notification-test:" + channel.getId() + ":" + attempt.getId());
-        attempt.setStatus(channel.isEnabled() ? NotificationAttemptStatus.PENDING : NotificationAttemptStatus.DISABLED);
+        attempt.setStatus(
+            channel.isEnabled()
+                ? NotificationAttemptStatus.PENDING
+                : NotificationAttemptStatus.DISABLED
+        );
         attempt.setRetryCount(0);
         attempt.setMaxAttempts(properties.getMaxAttempts());
         attempt.setRetryExhausted(false);
@@ -111,23 +134,29 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public Optional<NotificationAttempt> claimNext(String workerId, Duration leaseDuration, int batchSize) {
+    public Optional<NotificationAttempt> claimNext(
+        String workerId,
+        Duration leaseDuration,
+        int batchSize
+    ) {
         Instant now = Instant.now();
         Instant lockExpiredBefore = now.minus(leaseDuration);
         List<NotificationAttempt> candidates = attemptRepository.findClaimCandidates(
+            List.of(NotificationAttemptStatus.PENDING, NotificationAttemptStatus.RETRYING),
+            NotificationAttemptStatus.PROCESSING,
+            now,
+            lockExpiredBefore,
+            PageRequest.of(0, Math.max(1, batchSize))
+        );
+        for (NotificationAttempt candidate : candidates) {
+            int claimed = attemptRepository.claim(
+                candidate.getId(),
                 List.of(NotificationAttemptStatus.PENDING, NotificationAttemptStatus.RETRYING),
                 NotificationAttemptStatus.PROCESSING,
                 now,
-                lockExpiredBefore,
-                PageRequest.of(0, Math.max(1, batchSize)));
-        for (NotificationAttempt candidate : candidates) {
-            int claimed = attemptRepository.claim(
-                    candidate.getId(),
-                    List.of(NotificationAttemptStatus.PENDING, NotificationAttemptStatus.RETRYING),
-                    NotificationAttemptStatus.PROCESSING,
-                    now,
-                    workerId,
-                    lockExpiredBefore);
+                workerId,
+                lockExpiredBefore
+            );
             if (claimed == 1) {
                 return attemptRepository.findById(candidate.getId());
             }
@@ -136,16 +165,21 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public Optional<NotificationAttempt> claimAttempt(UUID attemptId, String workerId, Duration leaseDuration) {
+    public Optional<NotificationAttempt> claimAttempt(
+        UUID attemptId,
+        String workerId,
+        Duration leaseDuration
+    ) {
         Instant now = Instant.now();
         Instant lockExpiredBefore = now.minus(leaseDuration);
         int claimed = attemptRepository.claim(
-                attemptId,
-                List.of(NotificationAttemptStatus.PENDING, NotificationAttemptStatus.RETRYING),
-                NotificationAttemptStatus.PROCESSING,
-                now,
-                workerId,
-                lockExpiredBefore);
+            attemptId,
+            List.of(NotificationAttemptStatus.PENDING, NotificationAttemptStatus.RETRYING),
+            NotificationAttemptStatus.PROCESSING,
+            now,
+            workerId,
+            lockExpiredBefore
+        );
         if (claimed == 1) {
             return attemptRepository.findById(attemptId);
         }
@@ -153,12 +187,21 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markRetrying(NotificationAttempt expected, String errorCode, String providerResponseSummary) {
+    public NotificationAttempt markRetrying(
+        NotificationAttempt expected,
+        String errorCode,
+        String providerResponseSummary
+    ) {
         return markRetrying(expected, errorCode, providerResponseSummary, Instant.now());
     }
 
     @Transactional
-    public NotificationAttempt markRetrying(NotificationAttempt expected, String errorCode, String providerResponseSummary, Instant nextAttemptAt) {
+    public NotificationAttempt markRetrying(
+        NotificationAttempt expected,
+        String errorCode,
+        String providerResponseSummary,
+        Instant nextAttemptAt
+    ) {
         NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.RETRYING);
         attempt.setRetryCount(attempt.getRetryCount() + 1);
@@ -174,12 +217,19 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markSent(NotificationAttempt expected, String providerResponseSummary) {
+    public NotificationAttempt markSent(
+        NotificationAttempt expected,
+        String providerResponseSummary
+    ) {
         return markSent(expected, providerResponseSummary, null);
     }
 
     @Transactional
-    public NotificationAttempt markSent(NotificationAttempt expected, String providerResponseSummary, String providerMessageId) {
+    public NotificationAttempt markSent(
+        NotificationAttempt expected,
+        String providerResponseSummary,
+        String providerMessageId
+    ) {
         NotificationAttempt attempt = owned(expected);
         Instant now = Instant.now();
         attempt.setStatus(NotificationAttemptStatus.SENT);
@@ -195,16 +245,21 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markFailed(NotificationAttempt expected, String errorCode, String providerResponseSummary) {
+    public NotificationAttempt markFailed(
+        NotificationAttempt expected,
+        String errorCode,
+        String providerResponseSummary
+    ) {
         return markFailed(expected, errorCode, providerResponseSummary, false);
     }
 
     @Transactional
     public NotificationAttempt markFailed(
-            NotificationAttempt expected,
-            String errorCode,
-            String providerResponseSummary,
-            boolean retryExhausted) {
+        NotificationAttempt expected,
+        String errorCode,
+        String providerResponseSummary,
+        boolean retryExhausted
+    ) {
         NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.FAILED);
         attempt.setLastErrorCode(normalize(errorCode, 100));
@@ -217,7 +272,10 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markDisabled(NotificationAttempt expected, String providerResponseSummary) {
+    public NotificationAttempt markDisabled(
+        NotificationAttempt expected,
+        String providerResponseSummary
+    ) {
         NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.DISABLED);
         attempt.setProviderResponseSummary(normalize(providerResponseSummary, 1000));
@@ -236,31 +294,47 @@ public class NotificationAttemptService {
     private NotificationAttempt owned(NotificationAttempt expected) {
         String owner = expected.getLockedBy();
         Instant acquiredAt = expected.getLockedAt();
-        NotificationAttempt actual = attemptRepository.lockById(expected.getId()).orElseThrow(LeaseLost::new);
+        NotificationAttempt actual = attemptRepository
+            .lockById(expected.getId())
+            .orElseThrow(LeaseLost::new);
         entityManager.refresh(actual);
-        if (actual.getStatus() != NotificationAttemptStatus.PROCESSING
-                || !Objects.equals(actual.getLockedBy(), owner)
-                || !Objects.equals(actual.getLockedAt(), acquiredAt)
-                || actual.getLockedBy() == null || actual.getLockedAt() == null
-                || actual.getLockedAt().isBefore(Instant.now().minus(properties.getLeaseDuration()))) throw new LeaseLost();
+        if (
+            actual.getStatus() != NotificationAttemptStatus.PROCESSING ||
+            !Objects.equals(actual.getLockedBy(), owner) ||
+            !Objects.equals(actual.getLockedAt(), acquiredAt) ||
+            actual.getLockedBy() == null ||
+            actual.getLockedAt() == null ||
+            actual.getLockedAt().isBefore(Instant.now().minus(properties.getLeaseDuration()))
+        ) throw new LeaseLost();
         return actual;
     }
 
     private Alert loadAlert(UUID alertId) {
-        return alertRepository.findById(alertId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found"));
+        return alertRepository
+            .findById(alertId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found")
+            );
     }
 
     private NotificationAttempt loadAttempt(UUID attemptId) {
-        return attemptRepository.findById(attemptId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification attempt not found"));
+        return attemptRepository
+            .findById(attemptId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification attempt not found")
+            );
     }
 
     private void recordAttempt(NotificationAttempt attempt) {
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "alert.notifications.attempts",
-                "status", attempt.getStatus().name(),
-                "channelType", attempt.getChannelType()).increment();
+                "status",
+                attempt.getStatus().name(),
+                "channelType",
+                attempt.getChannelType()
+            )
+            .increment();
     }
 
     private String normalize(String value, int maxLength) {
@@ -287,7 +361,11 @@ public class NotificationAttemptService {
         try {
             return objectMapper.writeValueAsString(sample == null ? Map.of() : sample);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification test payload", exception);
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid notification test payload",
+                exception
+            );
         }
     }
 
@@ -298,22 +376,23 @@ public class NotificationAttemptService {
 
     public NotificationAttemptResponse toResponse(NotificationAttempt attempt) {
         return new NotificationAttemptResponse(
-                attempt.getId(),
-                attempt.getAlertId(),
-                attempt.getChannelId(),
-                attempt.getAccountId(),
-                attempt.getChannelType(),
-                attempt.getDeliveryEventType(),
-                attempt.getStatus().name(),
-                attempt.getRetryCount(),
-                Math.max(1, attempt.getMaxAttempts()),
-                attempt.getNextAttemptAt(),
-                attempt.isRetryExhausted(),
-                attempt.getLastErrorCode(),
-                attempt.getProviderResponseSummary(),
-                attempt.getProviderMessageId(),
-                attempt.getCreatedAt(),
-                attempt.getUpdatedAt(),
-                attempt.getSentAt());
+            attempt.getId(),
+            attempt.getAlertId(),
+            attempt.getChannelId(),
+            attempt.getAccountId(),
+            attempt.getChannelType(),
+            attempt.getDeliveryEventType(),
+            attempt.getStatus().name(),
+            attempt.getRetryCount(),
+            Math.max(1, attempt.getMaxAttempts()),
+            attempt.getNextAttemptAt(),
+            attempt.isRetryExhausted(),
+            attempt.getLastErrorCode(),
+            attempt.getProviderResponseSummary(),
+            attempt.getProviderMessageId(),
+            attempt.getCreatedAt(),
+            attempt.getUpdatedAt(),
+            attempt.getSentAt()
+        );
     }
 }

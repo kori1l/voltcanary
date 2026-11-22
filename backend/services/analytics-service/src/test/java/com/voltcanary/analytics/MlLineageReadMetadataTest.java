@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class MlLineageReadMetadataTest {
+
     @Test
     void serializesPersistedOwnerAndTrainingLineageWithoutInferringMissingValues() {
         ObjectMapper json = new ObjectMapper();
@@ -29,8 +30,12 @@ class MlLineageReadMetadataTest {
         model.setModelKey("lineage-test");
         model.setTrainingRunId(run);
         var mapper = new MlModelRegistryResponseMapper();
-        assertThat(json.valueToTree(mapper.modelResponse(model)).get("trainingRunId").asText()).isEqualTo(run.toString());
+        assertThat(
+            json.valueToTree(mapper.modelResponse(model)).get("trainingRunId").asText()
+        ).isEqualTo(run.toString());
         model.setTrainingRunId(null);
-        assertThat(json.valueToTree(mapper.modelResponse(model)).get("trainingRunId").isNull()).isTrue();
+        assertThat(
+            json.valueToTree(mapper.modelResponse(model)).get("trainingRunId").isNull()
+        ).isTrue();
     }
 }

@@ -22,14 +22,17 @@ public class RuleEvaluationController {
 
     @PostMapping("/test")
     public RuleEvaluationResponse test(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) RuleEvaluationRequest request) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) RuleEvaluationRequest request
+    ) {
         if (request != null && request.deviceId() != null) {
             accessService.requireReadAccess(request.deviceId(), userId, role, correlationId);
         }
-        if (request != null && request.config() != null && request.config().containsKey("variable")) {
+        if (
+            request != null && request.config() != null && request.config().containsKey("variable")
+        ) {
             return variables.evaluate(request);
         }
         return evaluationService.evaluate(request);

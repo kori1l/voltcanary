@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class WorkerDeploymentAdmissionTest {
+
     private final UUID actor = UUID.randomUUID();
     private final UUID account = UUID.randomUUID();
     private final UUID rule = UUID.randomUUID();
@@ -27,16 +28,32 @@ class WorkerDeploymentAdmissionTest {
     private final UUID policy = UUID.randomUUID();
     private final String digest = "a".repeat(64);
     private final JdbcRuleDeployments.Deployment active = new JdbcRuleDeployments.Deployment(
-            actor, account, rule, epoch, bundleId, digest, grant, JdbcRuleDeployments.State.ACTIVE, 1);
+        actor,
+        account,
+        rule,
+        epoch,
+        bundleId,
+        digest,
+        grant,
+        JdbcRuleDeployments.State.ACTIVE,
+        1
+    );
     private final JdbcCompilationBundleStore bundles = mock(JdbcCompilationBundleStore.class);
     private final JdbcRuleDeployments deployments = mock(JdbcRuleDeployments.class);
     private final WorkerGrantReads grants = mock(WorkerGrantReads.class);
     private final WorkerPolicyReads policies = mock(WorkerPolicyReads.class);
     private final WorkerSourceCaptureReads owners = mock(WorkerSourceCaptureReads.class);
 
-    @Test void readsCurrentMachineOwnersAndKeepsUnqualifiedCoverageUnknown() {
+    @Test
+    void readsCurrentMachineOwnersAndKeepsUnqualifiedCoverageUnknown() {
         fixture();
-        var admission = new WorkerDeploymentAdmission(bundles, deployments, grants, policies, owners);
+        var admission = new WorkerDeploymentAdmission(
+            bundles,
+            deployments,
+            grants,
+            policies,
+            owners
+        );
         var result = admission.inspect(active);
         assertEquals(active, result.deployment());
         assertEquals(1, result.sources().size());
@@ -46,22 +63,54 @@ class WorkerDeploymentAdmissionTest {
         verify(deployments, times(2)).find(account, epoch);
     }
 
-    @Test void refusesDeploymentRevokedDuringOwnerReads() {
+    @Test
+    void refusesDeploymentRevokedDuringOwnerReads() {
         fixture();
-        var revoked = new JdbcRuleDeployments.Deployment(actor, account, rule, epoch, bundleId, digest, grant,
-                JdbcRuleDeployments.State.REVOKED, 2);
-        when(deployments.find(account, epoch)).thenReturn(Optional.of(active), Optional.of(revoked));
-        var admission = new WorkerDeploymentAdmission(bundles, deployments, grants, policies, owners);
-        assertEquals("DEPLOYMENT_CHANGED", assertThrows(VclException.class, () -> admission.inspect(active)).code());
+        var revoked = new JdbcRuleDeployments.Deployment(
+            actor,
+            account,
+            rule,
+            epoch,
+            bundleId,
+            digest,
+            grant,
+            JdbcRuleDeployments.State.REVOKED,
+            2
+        );
+        when(deployments.find(account, epoch)).thenReturn(
+            Optional.of(active),
+            Optional.of(revoked)
+        );
+        var admission = new WorkerDeploymentAdmission(
+            bundles,
+            deployments,
+            grants,
+            policies,
+            owners
+        );
+        assertEquals(
+            "DEPLOYMENT_CHANGED",
+            assertThrows(VclException.class, () -> admission.inspect(active)).code()
+        );
     }
 
     private void fixture() {
         when(deployments.find(account, epoch)).thenReturn(Optional.of(active));
         var bundle = mock(CompilationBundle.class);
         when(bundle.digest()).thenReturn(digest);
-        when(bundle.json()).thenReturn(new com.voltcanary.vcl.VclParser().readJson(("{\"compilation\":{\"graph\":["
-                + "{\"method\":\"read_stream\",\"config\":{\"bindingId\":\"" + binding + "\",\"schemaRevision\":1}},"
-                + "{\"method\":\"emit_alert\",\"config\":{\"evidencePolicyId\":\"" + policy + "\"}}]}}").getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(bundle.json()).thenReturn(
+            new com.voltcanary.vcl.VclParser().readJson(
+                (
+                    "{\"compilation\":{\"graph\":[" +
+                    "{\"method\":\"read_stream\",\"config\":{\"bindingId\":\"" +
+                    binding +
+                    "\",\"schemaRevision\":1}}," +
+                    "{\"method\":\"emit_alert\",\"config\":{\"evidencePolicyId\":\"" +
+                    policy +
+                    "\"}}]}}"
+                ).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            )
+        );
         when(bundles.find(account, bundleId)).thenReturn(Optional.of(bundle));
         var source = mock(VclSourceCaptureDescription.class);
         var readiness = mock(VclObservationReadiness.class);

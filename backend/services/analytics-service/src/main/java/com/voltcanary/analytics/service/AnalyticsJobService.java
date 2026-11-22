@@ -15,13 +15,18 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 public class AnalyticsJobService {
+
     private final AnalyticsJobRepository jobRepository;
     private final AnalyticsJobQueue queue;
     private final AnalyticsJobRunner jobRunner;
     private final AnalyticsJobProperties properties;
 
-    public AnalyticsJobService(AnalyticsJobRepository jobRepository, AnalyticsJobQueue queue,
-            AnalyticsJobRunner jobRunner, AnalyticsJobProperties properties) {
+    public AnalyticsJobService(
+        AnalyticsJobRepository jobRepository,
+        AnalyticsJobQueue queue,
+        AnalyticsJobRunner jobRunner,
+        AnalyticsJobProperties properties
+    ) {
         this.jobRepository = jobRepository;
         this.queue = queue;
         this.jobRunner = jobRunner;
@@ -38,9 +43,13 @@ public class AnalyticsJobService {
         if (!properties.isAsync() && "PENDING".equals(job.getStatus())) {
             if (TransactionSynchronizationManager.isSynchronizationActive()) {
                 TransactionSynchronizationManager.registerSynchronization(
-                        new TransactionSynchronization() {
-                            @Override public void afterCommit() { jobRunner.run(jobId); }
-                        });
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            jobRunner.run(jobId);
+                        }
+                    }
+                );
             } else {
                 jobRunner.run(job.getId());
                 job = jobRepository.findById(job.getId()).orElse(job);
@@ -56,21 +65,23 @@ public class AnalyticsJobService {
 
     @Transactional(readOnly = true)
     public List<AnalyticsJobResponse> list(UUID deviceId) {
-        return jobRepository.findTop100ByDeviceIdOrderByCreatedAtDesc(deviceId).stream()
-                .map(this::toResponse)
-                .toList();
+        return jobRepository
+            .findTop100ByDeviceIdOrderByCreatedAtDesc(deviceId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     private AnalyticsJobResponse toResponse(AnalyticsJob job) {
         return new AnalyticsJobResponse(
-                job.getId(),
-                job.getDeviceId(),
-                job.getJobType(),
-                job.getStatus(),
-                job.getCreatedAt(),
-                job.getStartedAt(),
-                job.getCompletedAt(),
-                job.getErrorMessage());
+            job.getId(),
+            job.getDeviceId(),
+            job.getJobType(),
+            job.getStatus(),
+            job.getCreatedAt(),
+            job.getStartedAt(),
+            job.getCompletedAt(),
+            job.getErrorMessage()
+        );
     }
-
 }

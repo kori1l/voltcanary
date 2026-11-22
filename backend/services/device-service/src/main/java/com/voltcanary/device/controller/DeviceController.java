@@ -35,16 +35,18 @@ public class DeviceController {
 
     @PostMapping
     public DeviceResponse create(
-            @RequestHeader HttpHeaders headers,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @Valid @RequestBody DeviceRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key,
+        @Valid @RequestBody DeviceRequest request
+    ) {
         return creation.create(user(headers), request, key);
     }
 
     @PostMapping(value = "/imports/csv", consumes = MediaType.TEXT_PLAIN_VALUE)
     public DeviceImportResponse importCsv(
-            @RequestHeader HttpHeaders headers,
-            @RequestBody String csv) {
+        @RequestHeader HttpHeaders headers,
+        @RequestBody String csv
+    ) {
         return deviceService.importCsv(user(headers), csv);
     }
 
@@ -55,56 +57,51 @@ public class DeviceController {
 
     @GetMapping
     public List<DeviceResponse> list(
-            @RequestHeader HttpHeaders headers,
-            @RequestParam(value = "locationId", required = false) UUID locationId,
-            @RequestParam(value = "type", required = false) String type,
-            @RequestParam(value = "status", required = false) DeviceStatus status,
-            @RequestParam(value = "search", required = false) String search,
-            @RequestParam(value = "limit", required = false) Integer limit,
-            @RequestParam(value = "offset", required = false) Integer offset) {
+        @RequestHeader HttpHeaders headers,
+        @RequestParam(value = "locationId", required = false) UUID locationId,
+        @RequestParam(value = "type", required = false) String type,
+        @RequestParam(value = "status", required = false) DeviceStatus status,
+        @RequestParam(value = "search", required = false) String search,
+        @RequestParam(value = "limit", required = false) Integer limit,
+        @RequestParam(value = "offset", required = false) Integer offset
+    ) {
         return deviceService.list(user(headers), locationId, type, status, search, limit, offset);
     }
 
     @GetMapping("/{id}")
-    public DeviceResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public DeviceResponse get(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         return deviceService.get(user(headers), id);
     }
 
     @PatchMapping("/{id}")
     public DeviceResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id,
-            @Valid @RequestBody DeviceRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id,
+        @Valid @RequestBody DeviceRequest request
+    ) {
         return deviceService.update(user(headers), id, request);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public void delete(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         deviceService.delete(user(headers), id);
     }
 
     @PostMapping("/{id}/enable")
-    public DeviceResponse enable(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public DeviceResponse enable(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         return deviceService.enable(user(headers), id);
     }
 
     @PostMapping("/{id}/disable")
-    public DeviceResponse disable(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public DeviceResponse disable(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         return deviceService.disable(user(headers), id);
     }
 
     @PostMapping("/{id}/decommission")
     public DeviceResponse decommission(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id
+    ) {
         return deviceService.decommission(user(headers), id);
     }
 

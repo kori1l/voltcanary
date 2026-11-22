@@ -10,7 +10,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AnomalyRepository extends JpaRepository<Anomaly, UUID> {
-
     List<Anomaly> findTop100ByDeviceIdOrderByDetectedAtDesc(UUID deviceId);
 
     List<Anomaly> findTop100ByDeviceIdAndStatusOrderByDetectedAtDesc(UUID deviceId, String status);
@@ -18,14 +17,17 @@ public interface AnomalyRepository extends JpaRepository<Anomaly, UUID> {
     void deleteByDeviceId(UUID deviceId);
 
     @Modifying
-    @Query("""
-            update Anomaly anomaly
-            set anomaly.status = 'SUPERSEDED',
-                anomaly.supersededAt = :supersededAt
-            where anomaly.deviceId = :deviceId
-              and anomaly.status = 'ACTIVE'
-            """)
+    @Query(
+        """
+        update Anomaly anomaly
+        set anomaly.status = 'SUPERSEDED',
+            anomaly.supersededAt = :supersededAt
+        where anomaly.deviceId = :deviceId
+          and anomaly.status = 'ACTIVE'
+        """
+    )
     int supersedeActiveByDeviceId(
-            @Param("deviceId") UUID deviceId,
-            @Param("supersededAt") Instant supersededAt);
+        @Param("deviceId") UUID deviceId,
+        @Param("supersededAt") Instant supersededAt
+    );
 }

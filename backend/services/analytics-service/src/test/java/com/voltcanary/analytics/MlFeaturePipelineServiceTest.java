@@ -7,10 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
-import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlFeatureRow;
 import com.voltcanary.analytics.domain.MlFeatureSnapshot;
 import com.voltcanary.analytics.domain.MlImportedFile;
@@ -24,9 +24,12 @@ import com.voltcanary.analytics.dto.MlFeatureSnapshotResponse;
 import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.ml.FeatureTemplateCatalog;
 import com.voltcanary.analytics.ml.FeatureVectorContract;
+import com.voltcanary.analytics.ml.MlInferenceBaseline;
+import com.voltcanary.analytics.ml.MlInferenceModelPreference;
+import com.voltcanary.analytics.ml.MlInferenceRecentWindow;
 import com.voltcanary.analytics.ml.MlInferenceRequest;
-import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlCanonicalMetricRowRepository;
+import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlFeatureRowRepository;
 import com.voltcanary.analytics.repository.MlFeatureSnapshotRepository;
 import com.voltcanary.analytics.repository.MlImportedFileRepository;
@@ -46,8 +49,8 @@ import com.voltcanary.analytics.service.MlInternalTelemetryFeatureBuilder;
 import com.voltcanary.analytics.service.MlLifecycleConflictException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -55,6 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 class MlFeaturePipelineServiceTest {
+
     @Test
     void changingFutureValuesCannotChangePastFeaturesInEitherBuilder() {
         UUID account = UUID.randomUUID();
@@ -62,67 +66,186 @@ class MlFeaturePipelineServiceTest {
         UUID version = UUID.randomUUID();
         UUID file = UUID.randomUUID();
         UUID device = UUID.randomUUID();
-        var config = new com.voltcanary.analytics.service.MlFeatureConfig("v1", "test", 2, 7200,
-                List.of("rolling_stats", "baseline_deviation", "device_context"), "ANOMALY_DETECTION", null,
-                "generic-appliance", "template-v1");
-        var contract = FeatureVectorContract.forConfig(config.modelFamily(), config.horizonDays(),
-                config.featureTemplateId(), config.featureTemplateVersion(), config.enabledFeatureFamilies());
+        var config = new com.voltcanary.analytics.service.MlFeatureConfig(
+            "v1",
+            "test",
+            2,
+            7200,
+            List.of("rolling_stats", "baseline_deviation", "device_context"),
+            "ANOMALY_DETECTION",
+            null,
+            "generic-appliance",
+            "template-v1"
+        );
+        var contract = FeatureVectorContract.forConfig(
+            config.modelFamily(),
+            config.horizonDays(),
+            config.featureTemplateId(),
+            config.featureTemplateVersion(),
+            config.enabledFeatureFamilies()
+        );
         var importedVersion = datasetVersion(account, dataset, version);
         var importedRows = rows(account, file);
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(dataset)).thenReturn(List.of(importedFile(file, dataset)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(file)).thenReturn(importedRows);
-        var importedPast = importedBuilder.generate(importedVersion, config, contract).rows().getFirst().featureValues();
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(dataset),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(file, dataset)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(file),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(importedRows);
+        var importedPast = importedBuilder
+            .generate(importedVersion, config, contract, inputReader.captureRows(importedVersion))
+            .rows()
+            .getFirst()
+            .featureValues();
         importedRows.getLast().setNumericValue(1_000_000_000);
-        assertThat(importedBuilder.generate(importedVersion, config, contract).rows().getFirst().featureValues()).isEqualTo(importedPast);
+        assertThat(
+            importedBuilder
+                .generate(
+                    importedVersion,
+                    config,
+                    contract,
+                    inputReader.captureRows(importedVersion)
+                )
+                .rows()
+                .getFirst()
+                .featureValues()
+        ).isEqualTo(importedPast);
 
-        var internalVersion = datasetVersion(account, dataset, version, MlDatasetSourceType.INTERNAL_TELEMETRY);
+        var internalVersion = datasetVersion(
+            account,
+            dataset,
+            version,
+            MlDatasetSourceType.INTERNAL_TELEMETRY
+        );
         var internalRows = List.of(
-                canonicalRow(account, version, device, 1, "activePowerW", "activePowerW", "2026-07-01T00:00:00Z", 100),
-                canonicalRow(account, version, device, 2, "activePowerW", "activePowerW", "2026-07-01T01:00:00Z", 120),
-                canonicalRow(account, version, device, 3, "activePowerW", "activePowerW", "2026-07-01T02:00:00Z", 110));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(version)).thenReturn(internalRows);
-        var internalPast = internalBuilder.generate(internalVersion, config, contract).rows().getFirst().featureValues();
+            canonicalRow(
+                account,
+                version,
+                device,
+                1,
+                "activePowerW",
+                "activePowerW",
+                "2026-07-01T00:00:00Z",
+                100
+            ),
+            canonicalRow(
+                account,
+                version,
+                device,
+                2,
+                "activePowerW",
+                "activePowerW",
+                "2026-07-01T01:00:00Z",
+                120
+            ),
+            canonicalRow(
+                account,
+                version,
+                device,
+                3,
+                "activePowerW",
+                "activePowerW",
+                "2026-07-01T02:00:00Z",
+                110
+            )
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(
+                org.mockito.ArgumentMatchers.eq(version),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(internalRows);
+        var internalPast = internalBuilder
+            .generate(internalVersion, config, contract, inputReader.captureRows(internalVersion))
+            .rows()
+            .getFirst()
+            .featureValues();
         internalRows.getLast().setNumericValue(1_000_000_000);
-        assertThat(internalBuilder.generate(internalVersion, config, contract).rows().getFirst().featureValues()).isEqualTo(internalPast);
+        assertThat(
+            internalBuilder
+                .generate(
+                    internalVersion,
+                    config,
+                    contract,
+                    inputReader.captureRows(internalVersion)
+                )
+                .rows()
+                .getFirst()
+                .featureValues()
+        ).isEqualTo(internalPast);
     }
 
-    private final MlDatasetVersionRepository datasetVersionRepository = mock(MlDatasetVersionRepository.class);
-    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(MlCanonicalMetricRowRepository.class);
-    private final MlImportedFileRepository importedFileRepository = mock(MlImportedFileRepository.class);
-    private final MlImportedMetricRowRepository rowRepository = mock(MlImportedMetricRowRepository.class);
-    private final MlFeatureSnapshotRepository snapshotRepository = mock(MlFeatureSnapshotRepository.class);
+    private final MlDatasetVersionRepository datasetVersionRepository = mock(
+        MlDatasetVersionRepository.class
+    );
+    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(
+        MlCanonicalMetricRowRepository.class
+    );
+    private final MlImportedFileRepository importedFileRepository = mock(
+        MlImportedFileRepository.class
+    );
+    private final MlImportedMetricRowRepository rowRepository = mock(
+        MlImportedMetricRowRepository.class
+    );
+    private final MlFeatureSnapshotRepository snapshotRepository = mock(
+        MlFeatureSnapshotRepository.class
+    );
     private final MlFeatureRowRepository featureRowRepository = mock(MlFeatureRowRepository.class);
     private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
-    private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
-    private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
+    private final MlTrainingRunRepository trainingRunRepository = mock(
+        MlTrainingRunRepository.class
+    );
+    private final MlModelVersionRepository modelVersionRepository = mock(
+        MlModelVersionRepository.class
+    );
     private final MlFeatureTemplateAppender templateAppender = new MlFeatureTemplateAppender();
-    private final MlInternalTelemetryFeatureBuilder internalBuilder = new MlInternalTelemetryFeatureBuilder(
+    private final com.voltcanary.analytics.service.MlFeatureInputReader inputReader =
+        new com.voltcanary.analytics.service.MlFeatureInputReader(
+            datasetVersionRepository,
             canonicalMetricRowRepository,
-            labelRepository,
-            templateAppender);
-    private final MlImportedDatasetFeatureBuilder importedBuilder = new MlImportedDatasetFeatureBuilder(
             importedFileRepository,
             rowRepository,
             labelRepository,
-            templateAppender);
-    private final MlFeatureGenerationService featureGenerationService = new MlFeatureGenerationService(internalBuilder, importedBuilder);
+            new com.voltcanary.analytics.config.MlFeatureGenerationProperties()
+        );
+    private final MlInternalTelemetryFeatureBuilder internalBuilder =
+        new MlInternalTelemetryFeatureBuilder(templateAppender);
+    private final MlImportedDatasetFeatureBuilder importedBuilder =
+        new MlImportedDatasetFeatureBuilder(templateAppender);
+    private final MlFeatureGenerationService featureGenerationService =
+        new MlFeatureGenerationService(internalBuilder, importedBuilder);
     private final MlFeatureSnapshotResponseMapper mapper = new MlFeatureSnapshotResponseMapper();
     private final MlFeaturePipelineService service = new MlFeaturePipelineService(
-            new MlFeatureSnapshotGenerationService(
-            datasetVersionRepository,
+        new MlFeatureSnapshotGenerationService(
+            inputReader,
+            featureGenerationService,
+            new com.voltcanary.analytics.service.MlFeatureSnapshotAssembler(
+                new MlFeatureHashService(new ObjectMapper())
+            ),
+            new com.voltcanary.analytics.service.MlFeatureSnapshotWrites(
+                datasetVersionRepository,
+                snapshotRepository,
+                featureRowRepository,
+                mock(jakarta.persistence.EntityManager.class),
+                mapper,
+                new SimpleMeterRegistry()
+            )
+        ),
+        new MlFeatureSnapshotLifecycleService(
             snapshotRepository,
-            featureRowRepository,
-                    featureGenerationService,
-                    new MlFeatureHashService(new ObjectMapper()),
-                    mapper,
-                    new SimpleMeterRegistry()),
-            new MlFeatureSnapshotLifecycleService(
-                    snapshotRepository,
             trainingRunRepository,
             modelVersionRepository,
-                    mapper),
-            snapshotRepository,
-            mapper);
+            mapper
+        ),
+        snapshotRepository,
+        mapper
+    );
 
     @Test
     void sameDatasetAndFeatureConfigProduceSameFeatureSchemaHash() {
@@ -130,21 +253,34 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId)));
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(datasetId)).thenReturn(List.of(importedFile(fileId, datasetId)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(fileId)).thenReturn(rows(accountId, fileId));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetId, versionId))
+        );
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(datasetId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(fileId, datasetId)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(fileId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(rows(accountId, fileId));
 
         MlFeatureSnapshotRequest request = new MlFeatureSnapshotRequest(
-                versionId,
-                "feature-set-v1",
-                "pipeline-v1",
-                2,
-                7200L,
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "label"),
-                "ANOMALY_DETECTION",
-                null,
-                "generic-appliance",
-                "template-v1");
+            versionId,
+            "feature-set-v1",
+            "pipeline-v1",
+            2,
+            7200L,
+            List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "label"),
+            "ANOMALY_DETECTION",
+            null,
+            "generic-appliance",
+            "template-v1"
+        );
 
         MlFeatureSnapshotResponse first = service.generate(accountId, request);
         MlFeatureSnapshotResponse second = service.generate(accountId, request);
@@ -168,27 +304,61 @@ class MlFeaturePipelineServiceTest {
         when(snapshotRepository.findById(snapshotId)).thenReturn(Optional.of(snapshot));
         when(trainingRunRepository.countByFeatureSnapshotId(snapshotId)).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.delete(accountId, actorId, snapshotId, new MlLifecycleActionRequest("cleanup", false)))
-                .isInstanceOf(MlLifecycleConflictException.class)
-                .hasMessageContaining("Feature snapshot is referenced");
+        assertThatThrownBy(() ->
+            service.delete(
+                accountId,
+                actorId,
+                snapshotId,
+                new MlLifecycleActionRequest("cleanup", false)
+            )
+        )
+            .isInstanceOf(MlLifecycleConflictException.class)
+            .hasMessageContaining("Feature snapshot is referenced");
     }
 
     @Test
     void listsActiveFeatureSnapshotsForDataset() {
         UUID accountId = UUID.randomUUID();
         UUID datasetVersionId = UUID.randomUUID();
-        MlFeatureSnapshot newest = featureSnapshot(accountId, datasetVersionId, UUID.randomUUID(), "FAILURE_PREDICTION", 30, 20);
-        MlFeatureSnapshot older = featureSnapshot(accountId, datasetVersionId, UUID.randomUUID(), "ANOMALY_DETECTION", null, 12);
-        when(snapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE"))
-                .thenReturn(List.of(newest, older));
+        MlFeatureSnapshot newest = featureSnapshot(
+            accountId,
+            datasetVersionId,
+            UUID.randomUUID(),
+            "FAILURE_PREDICTION",
+            30,
+            20
+        );
+        MlFeatureSnapshot older = featureSnapshot(
+            accountId,
+            datasetVersionId,
+            UUID.randomUUID(),
+            "ANOMALY_DETECTION",
+            null,
+            12
+        );
+        when(
+            snapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(
+                accountId,
+                datasetVersionId,
+                "ACTIVE"
+            )
+        ).thenReturn(List.of(newest, older));
 
         List<MlFeatureSnapshotResponse> response = service.list(accountId, datasetVersionId);
 
-        assertThat(response).extracting(MlFeatureSnapshotResponse::id).containsExactly(newest.getId(), older.getId());
+        assertThat(response)
+            .extracting(MlFeatureSnapshotResponse::id)
+            .containsExactly(newest.getId(), older.getId());
         assertThat(response.getFirst().modelFamily()).isEqualTo("FAILURE_PREDICTION");
         assertThat(response.getFirst().horizonDays()).isEqualTo(30);
         assertThat(response.getFirst().lifecycleStatus()).isEqualTo("ACTIVE");
-        verify(snapshotRepository).findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE");
+        verify(
+            snapshotRepository
+        ).findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(
+            accountId,
+            datasetVersionId,
+            "ACTIVE"
+        );
     }
 
     @Test
@@ -196,17 +366,41 @@ class MlFeaturePipelineServiceTest {
         UUID accountId = UUID.randomUUID();
         UUID firstDatasetVersionId = UUID.randomUUID();
         UUID secondDatasetVersionId = UUID.randomUUID();
-        MlFeatureSnapshot newest = featureSnapshot(accountId, secondDatasetVersionId, UUID.randomUUID(), "FAILURE_PREDICTION", 30, 20);
-        MlFeatureSnapshot older = featureSnapshot(accountId, firstDatasetVersionId, UUID.randomUUID(), "ANOMALY_DETECTION", null, 12);
-        when(snapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE"))
-                .thenReturn(List.of(newest, older));
+        MlFeatureSnapshot newest = featureSnapshot(
+            accountId,
+            secondDatasetVersionId,
+            UUID.randomUUID(),
+            "FAILURE_PREDICTION",
+            30,
+            20
+        );
+        MlFeatureSnapshot older = featureSnapshot(
+            accountId,
+            firstDatasetVersionId,
+            UUID.randomUUID(),
+            "ANOMALY_DETECTION",
+            null,
+            12
+        );
+        when(
+            snapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(
+                accountId,
+                "ACTIVE"
+            )
+        ).thenReturn(List.of(newest, older));
 
         List<MlFeatureSnapshotResponse> response = service.list(accountId, null);
 
-        assertThat(response).extracting(MlFeatureSnapshotResponse::id).containsExactly(newest.getId(), older.getId());
-        assertThat(response).extracting(MlFeatureSnapshotResponse::datasetVersionId)
-                .containsExactly(secondDatasetVersionId, firstDatasetVersionId);
-        verify(snapshotRepository).findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE");
+        assertThat(response)
+            .extracting(MlFeatureSnapshotResponse::id)
+            .containsExactly(newest.getId(), older.getId());
+        assertThat(response)
+            .extracting(MlFeatureSnapshotResponse::datasetVersionId)
+            .containsExactly(secondDatasetVersionId, firstDatasetVersionId);
+        verify(snapshotRepository).findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(
+            accountId,
+            "ACTIVE"
+        );
     }
 
     @Test
@@ -215,25 +409,65 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId)));
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(datasetId)).thenReturn(List.of(importedFile(fileId, datasetId)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(fileId))
-                .thenReturn(rows(accountId, fileId))
-                .thenReturn(List.of(
-                        row(accountId, fileId, 1, "washer-1", "activePowerW", "2026-07-01T00:00:00Z", 100.0),
-                        row(accountId, fileId, 2, "washer-1", "activePowerW", "2026-07-01T01:00:00Z", 140.0),
-                        row(accountId, fileId, 3, "washer-1", "activePowerW", "2026-07-01T02:00:00Z", 110.0)));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetId, versionId))
+        );
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(datasetId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(fileId, datasetId)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(fileId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        )
+            .thenReturn(rows(accountId, fileId))
+            .thenReturn(
+                List.of(
+                    row(
+                        accountId,
+                        fileId,
+                        1,
+                        "washer-1",
+                        "activePowerW",
+                        "2026-07-01T00:00:00Z",
+                        100.0
+                    ),
+                    row(
+                        accountId,
+                        fileId,
+                        2,
+                        "washer-1",
+                        "activePowerW",
+                        "2026-07-01T01:00:00Z",
+                        140.0
+                    ),
+                    row(
+                        accountId,
+                        fileId,
+                        3,
+                        "washer-1",
+                        "activePowerW",
+                        "2026-07-01T02:00:00Z",
+                        110.0
+                    )
+                )
+            );
         MlFeatureSnapshotRequest request = new MlFeatureSnapshotRequest(
-                versionId,
-                "feature-set-v1",
-                "pipeline-v1",
-                2,
-                7200L,
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "label"),
-                "ANOMALY_DETECTION",
-                null,
-                "generic-appliance",
-                "template-v1");
+            versionId,
+            "feature-set-v1",
+            "pipeline-v1",
+            2,
+            7200L,
+            List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "label"),
+            "ANOMALY_DETECTION",
+            null,
+            "generic-appliance",
+            "template-v1"
+        );
 
         MlFeatureSnapshotResponse first = service.generate(accountId, request);
         MlFeatureSnapshotResponse second = service.generate(accountId, request);
@@ -248,13 +482,41 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId)));
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(datasetId)).thenReturn(List.of(importedFile(fileId, datasetId)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(fileId)).thenReturn(rows(accountId, fileId));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetId, versionId))
+        );
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(datasetId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(fileId, datasetId)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(fileId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(rows(accountId, fileId));
 
-        service.generate(accountId, new MlFeatureSnapshotRequest(versionId, null, null, 2, null, null, null, null, null, null));
+        service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
+                versionId,
+                null,
+                null,
+                2,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+            )
+        );
 
-        ArgumentCaptor<MlFeatureSnapshot> snapshot = ArgumentCaptor.forClass(MlFeatureSnapshot.class);
+        ArgumentCaptor<MlFeatureSnapshot> snapshot = ArgumentCaptor.forClass(
+            MlFeatureSnapshot.class
+        );
         verify(snapshotRepository).save(snapshot.capture());
         assertThat(snapshot.getValue().getFeatureConfigJson()).contains("rollingWindowSize");
         assertThat(snapshot.getValue().getFeatureSchemaHash()).startsWith("sha256:");
@@ -265,7 +527,9 @@ class MlFeaturePipelineServiceTest {
         assertThat(snapshot.getValue().getImmutableRowReference()).contains("ml_feature_rows");
         assertThat(snapshot.getValue().getFeatureTemplateId()).isEqualTo("generic-appliance");
 
-        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(
+            Iterable.class
+        );
         verify(featureRowRepository).saveAll(featureRows.capture());
         MlFeatureRow firstRow = featureRows.getValue().iterator().next();
         assertThat(firstRow.getFeatureSnapshotId()).isEqualTo(snapshot.getValue().getId());
@@ -276,55 +540,101 @@ class MlFeaturePipelineServiceTest {
     @Test
     void schemaIncludesCanonicalFeatureVectorContractForModelFamily() {
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                "FAILURE_PREDICTION",
-                30,
-                "generic-appliance",
-                "template-v1",
-                List.of("rolling_stats", "baseline_deviation", "trend", "drift", "maintenance", "device_context", "label"));
+            "FAILURE_PREDICTION",
+            30,
+            "generic-appliance",
+            "template-v1",
+            List.of(
+                "rolling_stats",
+                "baseline_deviation",
+                "trend",
+                "drift",
+                "maintenance",
+                "device_context",
+                "label"
+            )
+        );
         assertThat(contract.contractVersion()).isEqualTo("feature-vector-contract-v1");
         assertThat(contract.requiredColumns()).contains(
-                "deviceKey",
-                "metricName",
-                "timestamp",
-                "rollingMean",
-                "rollingStddev",
-                "baselineDeviationRatio",
-                "trendSlope",
-                "ewmaValue",
-                "cusumPositive",
-                "cusumNegative",
-                "daysSinceMaintenance",
-                "daysUntilPlannedMaintenance",
-                "deviceType");
-        assertThat(contract.labelColumns()).containsExactly("failureWithinHorizon", "failureOutcomeType");
-        assertThat(contract.generatedColumns()).contains("applianceLoadRatio", "applianceActivityFlag");
+            "deviceKey",
+            "metricName",
+            "timestamp",
+            "rollingMean",
+            "rollingStddev",
+            "baselineDeviationRatio",
+            "trendSlope",
+            "ewmaValue",
+            "cusumPositive",
+            "cusumNegative",
+            "daysSinceMaintenance",
+            "daysUntilPlannedMaintenance",
+            "deviceType"
+        );
+        assertThat(contract.labelColumns()).containsExactly(
+            "failureWithinHorizon",
+            "failureOutcomeType"
+        );
+        assertThat(contract.generatedColumns()).contains(
+            "applianceLoadRatio",
+            "applianceActivityFlag"
+        );
         assertThat(contract.requiredColumns()).contains("applianceLoadRatio");
 
         UUID accountId = UUID.randomUUID();
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId)));
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(datasetId)).thenReturn(List.of(importedFile(fileId, datasetId)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(fileId)).thenReturn(rows(accountId, fileId));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetId, versionId))
+        );
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(datasetId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(fileId, datasetId)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(fileId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(rows(accountId, fileId));
 
-        service.generate(accountId, new MlFeatureSnapshotRequest(
+        service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
                 versionId,
                 null,
                 null,
                 2,
                 null,
-                List.of("rolling_stats", "baseline_deviation", "trend", "drift", "maintenance", "device_context", "label"),
+                List.of(
+                    "rolling_stats",
+                    "baseline_deviation",
+                    "trend",
+                    "drift",
+                    "maintenance",
+                    "device_context",
+                    "label"
+                ),
                 "FAILURE_PREDICTION",
                 30,
                 "generic-appliance",
-                "template-v1"));
+                "template-v1"
+            )
+        );
 
-        ArgumentCaptor<MlFeatureSnapshot> snapshot = ArgumentCaptor.forClass(MlFeatureSnapshot.class);
+        ArgumentCaptor<MlFeatureSnapshot> snapshot = ArgumentCaptor.forClass(
+            MlFeatureSnapshot.class
+        );
         verify(snapshotRepository).save(snapshot.capture());
-        assertThat(snapshot.getValue().getFeatureConfigJson()).contains("\"modelFamily\":\"FAILURE_PREDICTION\"");
+        assertThat(snapshot.getValue().getFeatureConfigJson()).contains(
+            "\"modelFamily\":\"FAILURE_PREDICTION\""
+        );
         assertThat(snapshot.getValue().getFeatureConfigJson()).contains("\"horizonDays\":30");
-        assertThat(snapshot.getValue().getFeatureConfigJson()).contains("\"featureTemplateId\":\"generic-appliance\"");
+        assertThat(snapshot.getValue().getFeatureConfigJson()).contains(
+            "\"featureTemplateId\":\"generic-appliance\""
+        );
         assertThat(snapshot.getValue().getModelFamily()).isEqualTo("FAILURE_PREDICTION");
         assertThat(snapshot.getValue().getHorizonDays()).isEqualTo(30);
     }
@@ -335,70 +645,99 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId)));
-        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(datasetId)).thenReturn(List.of(importedFile(fileId, datasetId)));
-        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(fileId)).thenReturn(rows(accountId, fileId));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetId, versionId))
+        );
+        when(
+            importedFileRepository.findByDatasetIdOrderByImportedAtDesc(
+                org.mockito.ArgumentMatchers.eq(datasetId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(List.of(importedFile(fileId, datasetId)));
+        when(
+            rowRepository.findByImportedFileIdOrderBySourceRowNumber(
+                org.mockito.ArgumentMatchers.eq(fileId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(rows(accountId, fileId));
 
         MlFeatureSnapshotRequest request = new MlFeatureSnapshotRequest(
-                versionId,
-                null,
-                null,
-                2,
-                null,
-                List.of("rolling_stats", "baseline_deviation"),
-                "FAILURE_PREDICTION",
-                null,
-                "generic-appliance",
-                "template-v1");
+            versionId,
+            null,
+            null,
+            2,
+            null,
+            List.of("rolling_stats", "baseline_deviation"),
+            "FAILURE_PREDICTION",
+            null,
+            "generic-appliance",
+            "template-v1"
+        );
 
         assertThatThrownBy(() -> service.generate(accountId, request))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("FAILURE_PREDICTION features require horizonDays");
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("FAILURE_PREDICTION features require horizonDays");
     }
 
     @Test
     void genericApplianceTemplateAddsVersionedGeneratedFeatureNames() {
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                "ANOMALY_DETECTION",
-                null,
-                "generic-appliance",
-                "template-v1",
-                List.of("rolling_stats", "baseline_deviation"));
+            "ANOMALY_DETECTION",
+            null,
+            "generic-appliance",
+            "template-v1",
+            List.of("rolling_stats", "baseline_deviation")
+        );
 
         assertThat(contract.featureTemplateId()).isEqualTo("generic-appliance");
         assertThat(contract.featureTemplateVersion()).isEqualTo("template-v1");
-        assertThat(contract.generatedColumns()).contains("applianceLoadRatio", "applianceActivityFlag");
+        assertThat(contract.generatedColumns()).contains(
+            "applianceLoadRatio",
+            "applianceActivityFlag"
+        );
         assertThat(contract.requiredColumns()).contains("applianceLoadRatio");
-        assertThat(FeatureTemplateCatalog.resolve("generic-appliance", "template-v1").compatibleDeviceTypes())
-                .containsExactly("*");
+        assertThat(
+            FeatureTemplateCatalog.resolve(
+                "generic-appliance",
+                "template-v1"
+            ).compatibleDeviceTypes()
+        ).containsExactly("*");
     }
 
     @Test
     void fridgeFreezerTemplateAddsCompatibleDeviceSpecificFeatureNames() {
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                "ANOMALY_DETECTION",
-                null,
-                "fridge-freezer",
-                "template-v1",
-                List.of("rolling_stats", "baseline_deviation", "device_context"));
+            "ANOMALY_DETECTION",
+            null,
+            "fridge-freezer",
+            "template-v1",
+            List.of("rolling_stats", "baseline_deviation", "device_context")
+        );
 
-        assertThat(contract.generatedColumns())
-                .contains("fridgeTemperatureBandC", "compressorDutyProxy", "defrostCycleRiskFlag");
+        assertThat(contract.generatedColumns()).contains(
+            "fridgeTemperatureBandC",
+            "compressorDutyProxy",
+            "defrostCycleRiskFlag"
+        );
         assertThat(contract.requiredColumns()).contains("compressorDutyProxy");
-        assertThat(FeatureTemplateCatalog.resolve("fridge-freezer", "template-v1").compatibleDeviceTypes())
-                .contains("fridge", "freezer", "refrigerator");
+        assertThat(
+            FeatureTemplateCatalog.resolve("fridge-freezer", "template-v1").compatibleDeviceTypes()
+        ).contains("fridge", "freezer", "refrigerator");
     }
 
     @Test
     void rejectsUnsupportedFeatureTemplateVersion() {
-        assertThatThrownBy(() -> FeatureVectorContract.forConfig(
+        assertThatThrownBy(() ->
+            FeatureVectorContract.forConfig(
                 "ANOMALY_DETECTION",
                 null,
                 "generic-appliance",
                 "template-v2",
-                List.of("rolling_stats")))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Unsupported ML feature template");
+                List.of("rolling_stats")
+            )
+        )
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Unsupported ML feature template");
     }
 
     @Test
@@ -407,37 +746,101 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId))
-                .thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.INTERNAL_TELEMETRY)));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(versionId))
-                .thenReturn(List.of(
-                        canonicalRow(accountId, versionId, deviceId, 1, "activePowerW", "active_power", "2026-07-01T00:00:00Z", 100.0),
-                        canonicalRow(accountId, versionId, deviceId, 2, "activePowerW", "active_power", "2026-07-01T01:00:00Z", 120.0),
-                        canonicalRow(accountId, versionId, deviceId, 3, "activePowerW", "active_power", "2026-07-01T02:00:00Z", 110.0)));
-        when(labelRepository.findByAccountIdAndDatasetVersionId(accountId, versionId))
-                .thenReturn(List.of(horizonLabel(
-                        accountId,
-                        versionId,
-                        deviceId,
-                        "activePowerW",
-                        "2026-07-01T01:00:00Z",
-                        14,
-                        MlLabelType.CONFIRMED_FAILURE)));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(
+                datasetVersion(
+                    accountId,
+                    datasetId,
+                    versionId,
+                    MlDatasetSourceType.INTERNAL_TELEMETRY
+                )
+            )
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(
+                org.mockito.ArgumentMatchers.eq(versionId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(
+            List.of(
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    1,
+                    "activePowerW",
+                    "active_power",
+                    "2026-07-01T00:00:00Z",
+                    100.0
+                ),
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    2,
+                    "activePowerW",
+                    "active_power",
+                    "2026-07-01T01:00:00Z",
+                    120.0
+                ),
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    3,
+                    "activePowerW",
+                    "active_power",
+                    "2026-07-01T02:00:00Z",
+                    110.0
+                )
+            )
+        );
+        when(
+            labelRepository.findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(
+                org.mockito.ArgumentMatchers.eq(accountId),
+                org.mockito.ArgumentMatchers.eq(versionId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(
+            List.of(
+                horizonLabel(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    "activePowerW",
+                    "2026-07-01T01:00:00Z",
+                    14,
+                    MlLabelType.CONFIRMED_FAILURE
+                )
+            )
+        );
 
-        MlFeatureSnapshotResponse response = service.generate(accountId, new MlFeatureSnapshotRequest(
+        MlFeatureSnapshotResponse response = service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
                 versionId,
                 null,
                 null,
                 2,
                 7200L,
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"),
+                List.of(
+                    "rolling_stats",
+                    "baseline_deviation",
+                    "missing_data",
+                    "time",
+                    "device_context"
+                ),
                 "FAILURE_PREDICTION",
                 14,
                 "generic-appliance",
-                "template-v1"));
+                "template-v1"
+            )
+        );
 
         assertThat(response.rowCount()).isEqualTo(3);
-        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(
+            Iterable.class
+        );
         verify(featureRowRepository).saveAll(featureRows.capture());
         MlFeatureRow firstRow = featureRows.getValue().iterator().next();
         assertThat(firstRow.getDeviceId()).isEqualTo(deviceId);
@@ -446,11 +849,13 @@ class MlFeaturePipelineServiceTest {
         assertThat(firstRow.getFeatureValuesJson()).contains("applianceLoadRatio");
         assertThat(firstRow.getSourceLineageJson()).contains("ml_canonical_metric_rows");
         assertThat(featureRows.getValue())
-                .extracting(MlFeatureRow::getLabelValuesJson)
-                .anySatisfy(json -> assertThat(json)
-                        .contains("\"failureWithinHorizon\":true")
-                        .contains("\"failureOutcomeType\":\"CONFIRMED_FAILURE\"")
-                        .contains("\"horizonDays\":14"));
+            .extracting(MlFeatureRow::getLabelValuesJson)
+            .anySatisfy(json ->
+                assertThat(json)
+                    .contains("\"failureWithinHorizon\":true")
+                    .contains("\"failureOutcomeType\":\"CONFIRMED_FAILURE\"")
+                    .contains("\"horizonDays\":14")
+            );
     }
 
     @Test
@@ -459,14 +864,51 @@ class MlFeaturePipelineServiceTest {
         UUID datasetId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(versionId))
-                .thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.INTERNAL_TELEMETRY)));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(versionId))
-                .thenReturn(List.of(
-                        canonicalRow(accountId, versionId, deviceId, 1, "temperatureC", "temperature_c", "2026-07-01T00:00:00Z", 4.0, "fridge"),
-                        canonicalRow(accountId, versionId, deviceId, 2, "temperatureC", "temperature_c", "2026-07-01T01:00:00Z", 8.0, "fridge")));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(
+                datasetVersion(
+                    accountId,
+                    datasetId,
+                    versionId,
+                    MlDatasetSourceType.INTERNAL_TELEMETRY
+                )
+            )
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(
+                org.mockito.ArgumentMatchers.eq(versionId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(
+            List.of(
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    1,
+                    "temperatureC",
+                    "temperature_c",
+                    "2026-07-01T00:00:00Z",
+                    4.0,
+                    "fridge"
+                ),
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    2,
+                    "temperatureC",
+                    "temperature_c",
+                    "2026-07-01T01:00:00Z",
+                    8.0,
+                    "fridge"
+                )
+            )
+        );
 
-        MlFeatureSnapshotResponse response = service.generate(accountId, new MlFeatureSnapshotRequest(
+        MlFeatureSnapshotResponse response = service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
                 versionId,
                 null,
                 null,
@@ -476,17 +918,21 @@ class MlFeaturePipelineServiceTest {
                 "ANOMALY_DETECTION",
                 null,
                 "fridge-freezer",
-                "template-v1"));
+                "template-v1"
+            )
+        );
 
         assertThat(response.featureTemplateId()).isEqualTo("fridge-freezer");
         assertThat(response.featureTemplateVersion()).isEqualTo("template-v1");
-        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(
+            Iterable.class
+        );
         verify(featureRowRepository).saveAll(featureRows.capture());
         MlFeatureRow firstRow = featureRows.getValue().iterator().next();
         assertThat(firstRow.getFeatureValuesJson())
-                .contains("fridgeTemperatureBandC")
-                .contains("compressorDutyProxy")
-                .contains("defrostCycleRiskFlag");
+            .contains("fridgeTemperatureBandC")
+            .contains("compressorDutyProxy")
+            .contains("defrostCycleRiskFlag");
     }
 
     @Test
@@ -496,70 +942,111 @@ class MlFeaturePipelineServiceTest {
         UUID versionId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
         Instant predictionAt = Instant.parse("2026-07-01T02:00:00Z");
-        when(datasetVersionRepository.findById(versionId))
-                .thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.INTERNAL_TELEMETRY)));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(versionId))
-                .thenReturn(List.of(canonicalRow(
-                        accountId,
-                        versionId,
-                        deviceId,
-                        1,
-                        "activePowerW",
-                        "active_power",
-                        predictionAt.toString(),
-                        120.0)));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(
+                datasetVersion(
+                    accountId,
+                    datasetId,
+                    versionId,
+                    MlDatasetSourceType.INTERNAL_TELEMETRY
+                )
+            )
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(
+                org.mockito.ArgumentMatchers.eq(versionId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(
+            List.of(
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    1,
+                    "activePowerW",
+                    "active_power",
+                    predictionAt.toString(),
+                    120.0
+                )
+            )
+        );
 
-        service.generate(accountId, new MlFeatureSnapshotRequest(
+        service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
                 versionId,
                 "feature-set-v1",
                 "analytics-feature-pipeline-v1",
                 1,
                 7200L,
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"),
+                List.of(
+                    "rolling_stats",
+                    "baseline_deviation",
+                    "missing_data",
+                    "time",
+                    "device_context"
+                ),
                 "ANOMALY_DETECTION",
                 null,
                 "generic-appliance",
-                "template-v1"));
+                "template-v1"
+            )
+        );
 
-        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(
+            Iterable.class
+        );
         verify(featureRowRepository).saveAll(featureRows.capture());
         MlFeatureRow offlineRow = featureRows.getValue().iterator().next();
-        Map<String, Object> offlineFeatures = new ObjectMapper().readValue(offlineRow.getFeatureValuesJson(), Map.class);
+        Map<String, Object> offlineFeatures = new ObjectMapper().readValue(
+            offlineRow.getFeatureValuesJson(),
+            Map.class
+        );
 
         MlInferenceRequest onlineRequest = new MlInferenceRequest(
-                deviceId,
-                predictionAt,
-                Map.of(
-                        "metric", "active_power",
-                        "metricUnit", "W",
-                        "latestValue", 120.0,
-                        "mean", 120.0,
-                        "min", 120.0,
-                        "max", 120.0,
-                        "deviceType", "washer"),
-                List.of(),
-                Map.of("mean", 120.0),
-                Map.of("sampleCount", 1),
-                Map.of("modelFamily", "ANOMALY_DETECTION"));
+            deviceId,
+            predictionAt,
+            Map.of(
+                "metric",
+                "active_power",
+                "metricUnit",
+                "W",
+                "latestValue",
+                120.0,
+                "mean",
+                120.0,
+                "min",
+                120.0,
+                "max",
+                120.0,
+                "deviceType",
+                "washer"
+            ),
+            List.of(),
+            MlInferenceBaseline.builder().mean(120.0).build(),
+            MlInferenceRecentWindow.builder().sampleCount(1).build(),
+            MlInferenceModelPreference.builder().modelFamily("ANOMALY_DETECTION").build()
+        );
 
         assertThat(onlineRequest.featureGenerationStatus()).isEqualTo("READY");
         assertThat(onlineRequest.featureVector())
-                .containsEntry("deviceKey", offlineFeatures.get("deviceKey"))
-                .containsEntry("metricName", offlineFeatures.get("metricName"))
-                .containsEntry("timestamp", offlineFeatures.get("timestamp"))
-                .containsEntry("rollingMean", offlineFeatures.get("rollingMean"))
-                .containsEntry("rollingMin", offlineFeatures.get("rollingMin"))
-                .containsEntry("rollingMax", offlineFeatures.get("rollingMax"))
-                .containsEntry("rollingStddev", offlineFeatures.get("rollingStddev"))
-                .containsEntry("baselineDeviationRatio", offlineFeatures.get("baselineDeviationRatio"))
-                .containsEntry("missingGapFlag", offlineFeatures.get("missingGapFlag"))
-                .containsEntry("samplingGapSeconds", offlineFeatures.get("samplingGapSeconds"))
-                .containsEntry("hourOfDay", offlineFeatures.get("hourOfDay"))
-                .containsEntry("dayOfWeek", offlineFeatures.get("dayOfWeek"))
-                .containsEntry("deviceType", offlineFeatures.get("deviceType"))
-                .containsEntry("metricSchemaId", offlineFeatures.get("metricSchemaId"))
-                .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"))
-                .containsEntry("applianceActivityFlag", offlineFeatures.get("applianceActivityFlag"));
+            .containsEntry("deviceKey", offlineFeatures.get("deviceKey"))
+            .containsEntry("metricName", offlineFeatures.get("metricName"))
+            .containsEntry("timestamp", offlineFeatures.get("timestamp"))
+            .containsEntry("rollingMean", offlineFeatures.get("rollingMean"))
+            .containsEntry("rollingMin", offlineFeatures.get("rollingMin"))
+            .containsEntry("rollingMax", offlineFeatures.get("rollingMax"))
+            .containsEntry("rollingStddev", offlineFeatures.get("rollingStddev"))
+            .containsEntry("baselineDeviationRatio", offlineFeatures.get("baselineDeviationRatio"))
+            .containsEntry("missingGapFlag", offlineFeatures.get("missingGapFlag"))
+            .containsEntry("samplingGapSeconds", offlineFeatures.get("samplingGapSeconds"))
+            .containsEntry("hourOfDay", offlineFeatures.get("hourOfDay"))
+            .containsEntry("dayOfWeek", offlineFeatures.get("dayOfWeek"))
+            .containsEntry("deviceType", offlineFeatures.get("deviceType"))
+            .containsEntry("metricSchemaId", offlineFeatures.get("metricSchemaId"))
+            .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"))
+            .containsEntry("applianceActivityFlag", offlineFeatures.get("applianceActivityFlag"));
     }
 
     @Test
@@ -569,95 +1056,145 @@ class MlFeaturePipelineServiceTest {
         UUID versionId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
         Instant predictionAt = Instant.parse("2026-07-01T02:00:00Z");
-        when(datasetVersionRepository.findById(versionId))
-                .thenReturn(Optional.of(datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.INTERNAL_TELEMETRY)));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(versionId))
-                .thenReturn(List.of(canonicalRow(
-                        accountId,
-                        versionId,
-                        deviceId,
-                        1,
-                        "activePowerW",
-                        "active_power",
-                        predictionAt.toString(),
-                        120.0)));
+        when(datasetVersionRepository.findById(versionId)).thenReturn(
+            Optional.of(
+                datasetVersion(
+                    accountId,
+                    datasetId,
+                    versionId,
+                    MlDatasetSourceType.INTERNAL_TELEMETRY
+                )
+            )
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(
+                org.mockito.ArgumentMatchers.eq(versionId),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)
+            )
+        ).thenReturn(
+            List.of(
+                canonicalRow(
+                    accountId,
+                    versionId,
+                    deviceId,
+                    1,
+                    "activePowerW",
+                    "active_power",
+                    predictionAt.toString(),
+                    120.0
+                )
+            )
+        );
 
-        service.generate(accountId, new MlFeatureSnapshotRequest(
+        service.generate(
+            accountId,
+            new MlFeatureSnapshotRequest(
                 versionId,
                 "feature-set-v1",
                 "analytics-feature-pipeline-v1",
                 1,
                 7200L,
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"),
+                List.of(
+                    "rolling_stats",
+                    "baseline_deviation",
+                    "missing_data",
+                    "time",
+                    "device_context"
+                ),
                 "FAILURE_PREDICTION",
                 14,
                 "generic-appliance",
-                "template-v1"));
+                "template-v1"
+            )
+        );
 
-        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(Iterable.class);
+        ArgumentCaptor<Iterable<MlFeatureRow>> featureRows = ArgumentCaptor.forClass(
+            Iterable.class
+        );
         verify(featureRowRepository).saveAll(featureRows.capture());
         MlFeatureRow offlineRow = featureRows.getValue().iterator().next();
-        Map<String, Object> offlineFeatures = new ObjectMapper().readValue(offlineRow.getFeatureValuesJson(), Map.class);
+        Map<String, Object> offlineFeatures = new ObjectMapper().readValue(
+            offlineRow.getFeatureValuesJson(),
+            Map.class
+        );
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                "FAILURE_PREDICTION",
-                14,
-                "generic-appliance",
-                "template-v1",
-                List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context"));
+            "FAILURE_PREDICTION",
+            14,
+            "generic-appliance",
+            "template-v1",
+            List.of("rolling_stats", "baseline_deviation", "missing_data", "time", "device_context")
+        );
         String requiredContractHash = FeatureVectorContract.contractMetadataHash(
-                "feature-set-v1",
-                "analytics-feature-pipeline-v1",
-                contract.contractVersion(),
-                contract.modelFamily().name(),
-                contract.horizonDays(),
-                contract.featureTemplateId(),
-                contract.featureTemplateVersion(),
-                contract.requiredColumns());
+            "feature-set-v1",
+            "analytics-feature-pipeline-v1",
+            contract.contractVersion(),
+            contract.modelFamily().name(),
+            contract.horizonDays(),
+            contract.featureTemplateId(),
+            contract.featureTemplateVersion(),
+            contract.requiredColumns()
+        );
 
         MlInferenceRequest onlineRequest = new MlInferenceRequest(
-                deviceId,
-                predictionAt,
-                Map.of(
-                        "metric", "active_power",
-                        "metricUnit", "W",
-                        "latestValue", 120.0,
-                        "mean", 120.0,
-                        "min", 120.0,
-                        "max", 120.0,
-                        "horizonDays", 14,
-                        "deviceType", "washer"),
-                List.of(),
-                Map.of("mean", 120.0),
-                Map.of("sampleCount", 1),
-                Map.of(
-                        "modelFamily", "FAILURE_PREDICTION",
-                        "requiredFeatureContractVersion", "feature-vector-contract-v1",
-                        "requiredFeatureSetVersion", "feature-set-v1",
-                        "requiredFeatureGeneratorVersion", "analytics-feature-pipeline-v1",
-                        "requiredFeatureTemplateId", "generic-appliance",
-                        "requiredFeatureTemplateVersion", "template-v1",
-                        "requiredHorizonDays", 14,
-                        "requiredFeatureContractMetadataHash", requiredContractHash));
+            deviceId,
+            predictionAt,
+            Map.of(
+                "metric",
+                "active_power",
+                "metricUnit",
+                "W",
+                "latestValue",
+                120.0,
+                "mean",
+                120.0,
+                "min",
+                120.0,
+                "max",
+                120.0,
+                "horizonDays",
+                14,
+                "deviceType",
+                "washer"
+            ),
+            List.of(),
+            MlInferenceBaseline.builder().mean(120.0).build(),
+            MlInferenceRecentWindow.builder().sampleCount(1).build(),
+            MlInferenceModelPreference.builder()
+                .modelFamily("FAILURE_PREDICTION")
+                .requiredFeatureContractVersion("feature-vector-contract-v1")
+                .requiredFeatureSetVersion("feature-set-v1")
+                .requiredFeatureGeneratorVersion("analytics-feature-pipeline-v1")
+                .requiredFeatureTemplateId("generic-appliance")
+                .requiredFeatureTemplateVersion("template-v1")
+                .requiredHorizonDays(14)
+                .requiredFeatureContractMetadataHash(requiredContractHash)
+                .build()
+        );
 
         assertThat(onlineRequest.featureGenerationStatus()).isEqualTo("READY");
         assertThat(onlineRequest.featureVector())
-                .containsEntry("deviceKey", offlineFeatures.get("deviceKey"))
-                .containsEntry("metricName", offlineFeatures.get("metricName"))
-                .containsEntry("timestamp", offlineFeatures.get("timestamp"))
-                .containsEntry("rollingMean", offlineFeatures.get("rollingMean"))
-                .containsEntry("baselineDeviationRatio", offlineFeatures.get("baselineDeviationRatio"))
-                .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"));
+            .containsEntry("deviceKey", offlineFeatures.get("deviceKey"))
+            .containsEntry("metricName", offlineFeatures.get("metricName"))
+            .containsEntry("timestamp", offlineFeatures.get("timestamp"))
+            .containsEntry("rollingMean", offlineFeatures.get("rollingMean"))
+            .containsEntry("baselineDeviationRatio", offlineFeatures.get("baselineDeviationRatio"))
+            .containsEntry("applianceLoadRatio", offlineFeatures.get("applianceLoadRatio"));
         assertThat(onlineRequest.featureContract())
-                .containsEntry("horizonDays", 14)
-                .containsEntry("requiredFeatureContractMetadataHash", requiredContractHash)
-                .containsEntry("contractMetadataHash", requiredContractHash);
+            .containsEntry("horizonDays", 14)
+            .containsEntry("requiredFeatureContractMetadataHash", requiredContractHash)
+            .containsEntry("contractMetadataHash", requiredContractHash);
     }
 
     private MlDatasetVersion datasetVersion(UUID accountId, UUID datasetId, UUID versionId) {
         return datasetVersion(accountId, datasetId, versionId, MlDatasetSourceType.EXTERNAL_IMPORT);
     }
 
-    private MlDatasetVersion datasetVersion(UUID accountId, UUID datasetId, UUID versionId, MlDatasetSourceType sourceType) {
+    private MlDatasetVersion datasetVersion(
+        UUID accountId,
+        UUID datasetId,
+        UUID versionId,
+        MlDatasetSourceType sourceType
+    ) {
         MlDatasetVersion version = new MlDatasetVersion();
         version.setId(versionId);
         version.setDatasetId(datasetId);
@@ -680,19 +1217,21 @@ class MlFeaturePipelineServiceTest {
 
     private List<MlImportedMetricRow> rows(UUID accountId, UUID fileId) {
         return List.of(
-                row(accountId, fileId, 1, "washer-1", "activePowerW", "2026-07-01T00:00:00Z", 100.0),
-                row(accountId, fileId, 2, "washer-1", "activePowerW", "2026-07-01T01:00:00Z", 120.0),
-                row(accountId, fileId, 3, "washer-1", "activePowerW", "2026-07-01T02:00:00Z", 110.0));
+            row(accountId, fileId, 1, "washer-1", "activePowerW", "2026-07-01T00:00:00Z", 100.0),
+            row(accountId, fileId, 2, "washer-1", "activePowerW", "2026-07-01T01:00:00Z", 120.0),
+            row(accountId, fileId, 3, "washer-1", "activePowerW", "2026-07-01T02:00:00Z", 110.0)
+        );
     }
 
     private MlImportedMetricRow row(
-            UUID accountId,
-            UUID fileId,
-            long sourceRowNumber,
-            String deviceKey,
-            String metric,
-            String timestamp,
-            double value) {
+        UUID accountId,
+        UUID fileId,
+        long sourceRowNumber,
+        String deviceKey,
+        String metric,
+        String timestamp,
+        double value
+    ) {
         MlImportedMetricRow row = new MlImportedMetricRow();
         row.setId(UUID.randomUUID());
         row.setAccountId(accountId);
@@ -710,27 +1249,39 @@ class MlFeaturePipelineServiceTest {
     }
 
     private MlCanonicalMetricRow canonicalRow(
-            UUID accountId,
-            UUID versionId,
-            UUID deviceId,
-            long rowNumber,
-            String metric,
-            String canonicalMetric,
-            String timestamp,
-            double value) {
-        return canonicalRow(accountId, versionId, deviceId, rowNumber, metric, canonicalMetric, timestamp, value, "washer");
+        UUID accountId,
+        UUID versionId,
+        UUID deviceId,
+        long rowNumber,
+        String metric,
+        String canonicalMetric,
+        String timestamp,
+        double value
+    ) {
+        return canonicalRow(
+            accountId,
+            versionId,
+            deviceId,
+            rowNumber,
+            metric,
+            canonicalMetric,
+            timestamp,
+            value,
+            "washer"
+        );
     }
 
     private MlCanonicalMetricRow canonicalRow(
-            UUID accountId,
-            UUID versionId,
-            UUID deviceId,
-            long rowNumber,
-            String metric,
-            String canonicalMetric,
-            String timestamp,
-            double value,
-            String deviceType) {
+        UUID accountId,
+        UUID versionId,
+        UUID deviceId,
+        long rowNumber,
+        String metric,
+        String canonicalMetric,
+        String timestamp,
+        double value,
+        String deviceType
+    ) {
         MlCanonicalMetricRow row = new MlCanonicalMetricRow();
         row.setId(UUID.nameUUIDFromBytes((deviceId + ":" + rowNumber).getBytes()));
         row.setAccountId(accountId);
@@ -755,12 +1306,13 @@ class MlFeaturePipelineServiceTest {
     }
 
     private MlFeatureSnapshot featureSnapshot(
-            UUID accountId,
-            UUID datasetVersionId,
-            UUID snapshotId,
-            String modelFamily,
-            Integer horizonDays,
-            long rowCount) {
+        UUID accountId,
+        UUID datasetVersionId,
+        UUID snapshotId,
+        String modelFamily,
+        Integer horizonDays,
+        long rowCount
+    ) {
         MlFeatureSnapshot snapshot = new MlFeatureSnapshot();
         snapshot.setId(snapshotId);
         snapshot.setAccountId(accountId);
@@ -785,13 +1337,14 @@ class MlFeaturePipelineServiceTest {
     }
 
     private MlLabel horizonLabel(
-            UUID accountId,
-            UUID datasetVersionId,
-            UUID deviceId,
-            String metricName,
-            String timestamp,
-            int horizonDays,
-            MlLabelType labelType) {
+        UUID accountId,
+        UUID datasetVersionId,
+        UUID deviceId,
+        String metricName,
+        String timestamp,
+        int horizonDays,
+        MlLabelType labelType
+    ) {
         Instant at = Instant.parse(timestamp);
         MlLabel label = new MlLabel();
         label.setId(UUID.randomUUID());

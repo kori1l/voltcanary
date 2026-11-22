@@ -33,69 +33,91 @@ public class MlLabelController {
 
     @GetMapping
     public List<MlLabelDto> list(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("datasetVersionId") UUID datasetVersionId) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("datasetVersionId") UUID datasetVersionId
+    ) {
         return service.list(resolveAccountId(accountId, userId, correlationId), datasetVersionId);
     }
 
     @PostMapping
     public MlLabelDto create(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlLabelRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlLabelRequest request
+    ) {
         requireWrite(role);
-        return service.create(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), request);
+        return service.create(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            request
+        );
     }
 
     @PutMapping("/{labelId}")
     public MlLabelDto correct(
-            @PathVariable("labelId") UUID labelId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlLabelRequest request) {
+        @PathVariable("labelId") UUID labelId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlLabelRequest request
+    ) {
         requireWrite(role);
-        return service.correct(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), labelId, request);
+        return service.correct(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            labelId,
+            request
+        );
     }
 
     @GetMapping("/{labelId}/audit")
     public List<MlLabelAuditDto> audit(
-            @PathVariable("labelId") UUID labelId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        @PathVariable("labelId") UUID labelId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
         return service.audit(resolveAccountId(accountId, userId, correlationId), labelId);
     }
 
     @GetMapping("/{labelId}/lifecycle-impact")
     public MlLifecycleImpactResponse lifecycleImpact(
-            @PathVariable("labelId") UUID labelId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        @PathVariable("labelId") UUID labelId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
         return service.impact(resolveAccountId(accountId, userId, correlationId), labelId, action);
     }
 
     @PostMapping("/{labelId}/delete")
     public MlLabelDto delete(
-            @PathVariable("labelId") UUID labelId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("labelId") UUID labelId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.delete(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), labelId, request);
+        return service.delete(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            labelId,
+            request
+        );
     }
 
     private UUID resolveAccountId(UUID accountId, String userId, String correlationId) {
-        return accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return accountId != null
+            ? accountId
+            : accessService.accountIdForUser(userId, correlationId);
     }
 
     private void requireWrite(String role) {
@@ -108,7 +130,10 @@ public class MlLabelController {
         try {
             return UUID.fromString(userId);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 }

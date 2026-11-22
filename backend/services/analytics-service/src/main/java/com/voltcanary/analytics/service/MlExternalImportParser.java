@@ -5,13 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MlImportedMetricRow;
 import com.voltcanary.analytics.dto.MlCsvSchemaMapping;
-
-import lombok.RequiredArgsConstructor;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -22,21 +15,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 public class MlExternalImportParser {
+
     private final AnalyticsAccessService accessService;
     private final MlImportCsv csv;
     private final ObjectMapper objectMapper;
 
     public ImportResult parseRows(
-            UUID accountId,
-            UUID importedFileId,
-            byte[] content,
-            MlCsvSchemaMapping mapping,
-            Instant now,
-            Map<UUID, UUID> owners) {
+        UUID accountId,
+        UUID importedFileId,
+        byte[] content,
+        MlCsvSchemaMapping mapping,
+        Instant now,
+        Map<UUID, UUID> owners
+    ) {
         List<MlImportedMetricRow> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
@@ -50,18 +49,19 @@ public class MlExternalImportParser {
         for (var record : table.records()) {
             long rowNumber = record.getRecordNumber() + 1;
             try {
-                if (record.size() != table.headers().size())
-                    throw new IllegalArgumentException("CSV_COLUMN_COUNT_MISMATCH");
-                var row =
-                        toImportedRow(
-                                accountId,
-                                importedFileId,
-                                rowNumber,
-                                record.toList(),
-                                indexes,
-                                mapping,
-                                now,
-                                owners);
+                if (record.size() != table.headers().size()) throw new IllegalArgumentException(
+                    "CSV_COLUMN_COUNT_MISMATCH"
+                );
+                var row = toImportedRow(
+                    accountId,
+                    importedFileId,
+                    rowNumber,
+                    record.toList(),
+                    indexes,
+                    mapping,
+                    now,
+                    owners
+                );
                 accepted.add(row);
                 MlImportSchema.increment(mappingStats, "accepted:" + row.getMetricName());
             } catch (IllegalArgumentException exception) {
@@ -71,27 +71,37 @@ public class MlExternalImportParser {
             }
         }
         return new ImportResult(
-                accepted, rejected, 0, rejectedReasons, mappingStats, List.copyOf(messages));
+            accepted,
+            rejected,
+            0,
+            rejectedReasons,
+            mappingStats,
+            List.copyOf(messages)
+        );
     }
 
     public ImportResult parseJsonlRows(
-            UUID accountId,
-            UUID importedFileId,
-            byte[] content,
-            MlCsvSchemaMapping mapping,
-            Instant now,
-            Map<UUID, UUID> owners) {
+        UUID accountId,
+        UUID importedFileId,
+        byte[] content,
+        MlCsvSchemaMapping mapping,
+        Instant now,
+        Map<UUID, UUID> owners
+    ) {
         List<MlImportedMetricRow> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
         Map<String, Long> mappingStats = new LinkedHashMap<>();
         long rejected = 0;
 
-        try (BufferedReader reader =
-                new BufferedReader(
-                        new InputStreamReader(
-                                new java.io.ByteArrayInputStream(content),
-                                StandardCharsets.UTF_8))) {
+        try (
+            BufferedReader reader = new BufferedReader(
+                new InputStreamReader(
+                    new java.io.ByteArrayInputStream(content),
+                    StandardCharsets.UTF_8
+                )
+            )
+        ) {
             String line;
             long rowNumber = 0;
             while ((line = reader.readLine()) != null) {
@@ -100,20 +110,24 @@ public class MlExternalImportParser {
                     continue;
                 }
                 try {
-                    Map<String, Object> row =
-                            objectMapper.readValue(line, new TypeReference<>() {});
-                    MlImportedMetricRow acceptedRow =
-                            toImportedRow(
-                                    accountId,
-                                    importedFileId,
-                                    rowNumber,
-                                    row,
-                                    mapping,
-                                    now,
-                                    owners);
+                    Map<String, Object> row = objectMapper.readValue(
+                        line,
+                        new TypeReference<>() {}
+                    );
+                    MlImportedMetricRow acceptedRow = toImportedRow(
+                        accountId,
+                        importedFileId,
+                        rowNumber,
+                        row,
+                        mapping,
+                        now,
+                        owners
+                    );
                     accepted.add(acceptedRow);
                     MlImportSchema.increment(
-                            mappingStats, "accepted:" + acceptedRow.getMetricName());
+                        mappingStats,
+                        "accepted:" + acceptedRow.getMetricName()
+                    );
                 } catch (IllegalArgumentException exception) {
                     rejected++;
                     MlImportSchema.increment(rejectedReasons, exception.getMessage());
@@ -126,21 +140,31 @@ public class MlExternalImportParser {
             }
         } catch (IOException exception) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Could not read JSONL import file", exception);
+                HttpStatus.BAD_REQUEST,
+                "Could not read JSONL import file",
+                exception
+            );
         }
         return new ImportResult(
-                accepted, rejected, 0, rejectedReasons, mappingStats, List.copyOf(messages));
+            accepted,
+            rejected,
+            0,
+            rejectedReasons,
+            mappingStats,
+            List.copyOf(messages)
+        );
     }
 
     public MlImportedMetricRow toImportedRow(
-            UUID accountId,
-            UUID importedFileId,
-            long rowNumber,
-            List<String> row,
-            Map<String, Integer> indexes,
-            MlCsvSchemaMapping mapping,
-            Instant now,
-            Map<UUID, UUID> owners) {
+        UUID accountId,
+        UUID importedFileId,
+        long rowNumber,
+        List<String> row,
+        Map<String, Integer> indexes,
+        MlCsvSchemaMapping mapping,
+        Instant now,
+        Map<UUID, UUID> owners
+    ) {
         String deviceKey = MlImportSchema.cell(row, indexes, mapping.deviceKeyColumn());
         String metricName = MlImportSchema.cell(row, indexes, mapping.metricNameColumn());
         String rawValue = MlImportSchema.cell(row, indexes, mapping.metricValueColumn());
@@ -166,10 +190,11 @@ public class MlExternalImportParser {
             throw new IllegalArgumentException("NON_FINITE_METRIC_VALUE");
         }
         String unit =
-                mapping.unitColumn() == null
-                        ? null
-                        : MlImportSchema.blankToNull(
-                                MlImportSchema.cell(row, indexes, mapping.unitColumn()));
+            mapping.unitColumn() == null
+                ? null
+                : MlImportSchema.blankToNull(
+                      MlImportSchema.cell(row, indexes, mapping.unitColumn())
+                  );
         MlImportSchema.validateMetricUnit(metricName, unit);
 
         MlImportedMetricRow importedRow = new MlImportedMetricRow();
@@ -178,25 +203,28 @@ public class MlExternalImportParser {
         importedRow.setImportedFileId(importedFileId);
         importedRow.setExternalDeviceKey(deviceKey);
         applyDeviceMatch(
-                importedRow,
-                accountId,
-                deviceKey,
-                mapping.existingDeviceIdColumn() == null
-                        ? ""
-                        : MlImportSchema.cell(row, indexes, mapping.existingDeviceIdColumn()),
-                mapping.deviceTypeColumn() == null
-                        ? ""
-                        : MlImportSchema.cell(row, indexes, mapping.deviceTypeColumn()),
-                owners);
+            importedRow,
+            accountId,
+            deviceKey,
+            mapping.existingDeviceIdColumn() == null
+                ? ""
+                : MlImportSchema.cell(row, indexes, mapping.existingDeviceIdColumn()),
+            mapping.deviceTypeColumn() == null
+                ? ""
+                : MlImportSchema.cell(row, indexes, mapping.deviceTypeColumn()),
+            owners
+        );
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
         importedRow.setUnit(unit);
         importedRow.setLabel(
-                MlImportSchema.parseLabel(
-                        mapping.labelColumn() == null
-                                ? ""
-                                : MlImportSchema.cell(row, indexes, mapping.labelColumn())));
+            MlImportSchema.parseLabel(
+                mapping.labelColumn() == null
+                    ? ""
+                    : MlImportSchema.cell(row, indexes, mapping.labelColumn())
+            )
+        );
         importedRow.setMetadataJson(writeJson(metadata(row, indexes, mapping)));
         importedRow.setSourceRowNumber(rowNumber);
         importedRow.setCreatedAt(now);
@@ -204,13 +232,14 @@ public class MlExternalImportParser {
     }
 
     public MlImportedMetricRow toImportedRow(
-            UUID accountId,
-            UUID importedFileId,
-            long rowNumber,
-            Map<String, Object> row,
-            MlCsvSchemaMapping mapping,
-            Instant now,
-            Map<UUID, UUID> owners) {
+        UUID accountId,
+        UUID importedFileId,
+        long rowNumber,
+        Map<String, Object> row,
+        MlCsvSchemaMapping mapping,
+        Instant now,
+        Map<UUID, UUID> owners
+    ) {
         String deviceKey = MlImportSchema.field(row, mapping.deviceKeyColumn());
         String metricName = MlImportSchema.field(row, mapping.metricNameColumn());
         String rawValue = MlImportSchema.field(row, mapping.metricValueColumn());
@@ -236,10 +265,9 @@ public class MlExternalImportParser {
             throw new IllegalArgumentException("NON_FINITE_METRIC_VALUE");
         }
         String unit =
-                mapping.unitColumn() == null
-                        ? null
-                        : MlImportSchema.blankToNull(
-                                MlImportSchema.field(row, mapping.unitColumn()));
+            mapping.unitColumn() == null
+                ? null
+                : MlImportSchema.blankToNull(MlImportSchema.field(row, mapping.unitColumn()));
         MlImportSchema.validateMetricUnit(metricName, unit);
 
         MlImportedMetricRow importedRow = new MlImportedMetricRow();
@@ -248,25 +276,28 @@ public class MlExternalImportParser {
         importedRow.setImportedFileId(importedFileId);
         importedRow.setExternalDeviceKey(deviceKey);
         applyDeviceMatch(
-                importedRow,
-                accountId,
-                deviceKey,
-                mapping.existingDeviceIdColumn() == null
-                        ? ""
-                        : MlImportSchema.field(row, mapping.existingDeviceIdColumn()),
-                mapping.deviceTypeColumn() == null
-                        ? ""
-                        : MlImportSchema.field(row, mapping.deviceTypeColumn()),
-                owners);
+            importedRow,
+            accountId,
+            deviceKey,
+            mapping.existingDeviceIdColumn() == null
+                ? ""
+                : MlImportSchema.field(row, mapping.existingDeviceIdColumn()),
+            mapping.deviceTypeColumn() == null
+                ? ""
+                : MlImportSchema.field(row, mapping.deviceTypeColumn()),
+            owners
+        );
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
         importedRow.setUnit(unit);
         importedRow.setLabel(
-                MlImportSchema.parseLabel(
-                        mapping.labelColumn() == null
-                                ? ""
-                                : MlImportSchema.field(row, mapping.labelColumn())));
+            MlImportSchema.parseLabel(
+                mapping.labelColumn() == null
+                    ? ""
+                    : MlImportSchema.field(row, mapping.labelColumn())
+            )
+        );
         importedRow.setMetadataJson(writeJson(metadata(row, mapping)));
         importedRow.setSourceRowNumber(rowNumber);
         importedRow.setCreatedAt(now);
@@ -274,7 +305,10 @@ public class MlExternalImportParser {
     }
 
     public Map<String, String> metadata(
-            List<String> row, Map<String, Integer> indexes, MlCsvSchemaMapping mapping) {
+        List<String> row,
+        Map<String, Integer> indexes,
+        MlCsvSchemaMapping mapping
+    ) {
         Map<String, String> metadata = new LinkedHashMap<>();
         if (mapping.metadataColumns() == null) {
             return metadata;
@@ -297,12 +331,13 @@ public class MlExternalImportParser {
     }
 
     public void applyDeviceMatch(
-            MlImportedMetricRow row,
-            UUID accountId,
-            String externalDeviceKey,
-            String existingDeviceId,
-            String deviceType,
-            Map<UUID, UUID> owners) {
+        MlImportedMetricRow row,
+        UUID accountId,
+        String externalDeviceKey,
+        String existingDeviceId,
+        String deviceType,
+        Map<UUID, UUID> owners
+    ) {
         row.setVirtualDeviceKey("virtual:" + accountId + ":" + externalDeviceKey);
         row.setDeviceType(MlImportSchema.blankToNull(deviceType));
         if (existingDeviceId == null || existingDeviceId.isBlank()) {
@@ -314,30 +349,33 @@ public class MlExternalImportParser {
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("INVALID_EXISTING_DEVICE_ID");
         }
-        UUID ownerAccountId =
-                owners.computeIfAbsent(
-                        matchedDeviceId, id -> accessService.accountIdForDevice(id, null));
-        if (!accountId.equals(ownerAccountId))
-            throw new IllegalArgumentException("DEVICE_OWNERSHIP_MISMATCH");
+        UUID ownerAccountId = owners.computeIfAbsent(matchedDeviceId, id ->
+            accessService.accountIdForDevice(id, null)
+        );
+        if (!accountId.equals(ownerAccountId)) throw new IllegalArgumentException(
+            "DEVICE_OWNERSHIP_MISMATCH"
+        );
         row.setMatchedDeviceId(matchedDeviceId);
     }
 
     public record ImportResult(
-            List<MlImportedMetricRow> acceptedRows,
-            long rejectedRows,
-            long warningCount,
-            Map<String, Long> rejectedReasons,
-            Map<String, Long> mappingStats,
-            List<String> messages) {}
+        List<MlImportedMetricRow> acceptedRows,
+        long rejectedRows,
+        long warningCount,
+        Map<String, Long> rejectedReasons,
+        Map<String, Long> mappingStats,
+        List<String> messages
+    ) {}
 
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException failure) {
             throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not serialize ML import metadata",
-                    failure);
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Could not serialize ML import metadata",
+                failure
+            );
         }
     }
 }

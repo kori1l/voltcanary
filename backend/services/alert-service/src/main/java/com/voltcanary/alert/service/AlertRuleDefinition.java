@@ -7,59 +7,65 @@ import com.voltcanary.alert.domain.AlertRule;
 import com.voltcanary.alert.domain.AlertSeverity;
 import com.voltcanary.alert.dto.CreateAlertRuleRequest;
 import com.voltcanary.alert.dto.UpdateAlertRuleRequest;
-
-import lombok.RequiredArgsConstructor;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 class AlertRuleDefinition {
+
     private static final TypeReference<List<UUID>> UUID_LIST_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {};
-    private static final Set<String> RULE_TYPES =
-            Set.of(
-                    "POWER_SPIKE",
-                    "CONSUMPTION_GROWTH",
-                    "LONG_CYCLE",
-                    "OFFLINE",
-                    "THRESHOLD",
-                    "CUSTOM");
-    private static final Set<String> SCOPE_TYPES =
-            Set.of("FLEET", "LOCATION", "DEVICE_TYPE", "DEVICE");
-    private static final Set<String> CONDITION_TYPES =
-            Set.of(
-                    "ABOVE_THRESHOLD",
-                    "BELOW_THRESHOLD",
-                    "BASELINE_MULTIPLIER",
-                    "GROWTH_RATE",
-                    "MISSING_TELEMETRY",
-                    "LONG_HIGH_RUN");
+    private static final Set<String> RULE_TYPES = Set.of(
+        "POWER_SPIKE",
+        "CONSUMPTION_GROWTH",
+        "LONG_CYCLE",
+        "OFFLINE",
+        "THRESHOLD",
+        "CUSTOM"
+    );
+    private static final Set<String> SCOPE_TYPES = Set.of(
+        "FLEET",
+        "LOCATION",
+        "DEVICE_TYPE",
+        "DEVICE"
+    );
+    private static final Set<String> CONDITION_TYPES = Set.of(
+        "ABOVE_THRESHOLD",
+        "BELOW_THRESHOLD",
+        "BASELINE_MULTIPLIER",
+        "GROWTH_RATE",
+        "MISSING_TELEMETRY",
+        "LONG_HIGH_RUN"
+    );
 
     private final ObjectMapper objectMapper;
 
     void applyCreate(AlertRule rule, CreateAlertRuleRequest request) {
         if (request == null) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Alert rule request is required");
+                HttpStatus.BAD_REQUEST,
+                "Alert rule request is required"
+            );
         }
         rule.setName(nonBlank(request.name(), "name", 160));
         rule.setDescription(optionalText(request.description(), 1000));
         rule.setRuleType(enumValue(request.ruleType(), "ruleType", RULE_TYPES));
         rule.setEnabled(request.enabled() == null || request.enabled());
         rule.setScopeType(
-                enumValue(
-                        request.scopeType() == null ? "FLEET" : request.scopeType(),
-                        "scopeType",
-                        SCOPE_TYPES));
+            enumValue(
+                request.scopeType() == null ? "FLEET" : request.scopeType(),
+                "scopeType",
+                SCOPE_TYPES
+            )
+        );
         rule.setScopeId(request.scopeId());
         rule.setDeviceType(optionalText(request.deviceType(), 100));
         rule.setMetric(nonBlank(request.metric(), "metric", 120));
@@ -70,15 +76,22 @@ class AlertRuleDefinition {
         rule.setMinPoints(request.minPoints());
         rule.setSeverity(enumValue(request.severity(), "severity", severityValues()));
         rule.setCooldownSeconds(
-                normalizedPositive(request.cooldownSeconds(), 900, "cooldownSeconds"));
+            normalizedPositive(request.cooldownSeconds(), 900, "cooldownSeconds")
+        );
         rule.setDeduplicationWindowSeconds(
-                normalizedPositive(
-                        request.deduplicationWindowSeconds(), 900, "deduplicationWindowSeconds"));
+            normalizedPositive(
+                request.deduplicationWindowSeconds(),
+                900,
+                "deduplicationWindowSeconds"
+            )
+        );
         rule.setNotificationChannelIdsJson(
-                writeValue(
-                        request.notificationChannelIds() == null
-                                ? List.of()
-                                : request.notificationChannelIds()));
+            writeValue(
+                request.notificationChannelIds() == null
+                    ? List.of()
+                    : request.notificationChannelIds()
+            )
+        );
         rule.setConfigJson(writeValue(request.config() == null ? Map.of() : request.config()));
         validate(rule);
     }
@@ -86,7 +99,9 @@ class AlertRuleDefinition {
     void applyUpdate(AlertRule rule, UpdateAlertRuleRequest request) {
         if (request == null) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Alert rule request is required");
+                HttpStatus.BAD_REQUEST,
+                "Alert rule request is required"
+            );
         }
         if (request.name() != null) {
             rule.setName(nonBlank(request.name(), "name", 160));
@@ -114,7 +129,8 @@ class AlertRuleDefinition {
         }
         if (request.conditionType() != null) {
             rule.setConditionType(
-                    enumValue(request.conditionType(), "conditionType", CONDITION_TYPES));
+                enumValue(request.conditionType(), "conditionType", CONDITION_TYPES)
+            );
         }
         if (request.threshold() != null) {
             rule.setThreshold(request.threshold());
@@ -133,14 +149,17 @@ class AlertRuleDefinition {
         }
         if (request.cooldownSeconds() != null) {
             rule.setCooldownSeconds(
-                    normalizedPositive(request.cooldownSeconds(), 900, "cooldownSeconds"));
+                normalizedPositive(request.cooldownSeconds(), 900, "cooldownSeconds")
+            );
         }
         if (request.deduplicationWindowSeconds() != null) {
             rule.setDeduplicationWindowSeconds(
-                    normalizedPositive(
-                            request.deduplicationWindowSeconds(),
-                            900,
-                            "deduplicationWindowSeconds"));
+                normalizedPositive(
+                    request.deduplicationWindowSeconds(),
+                    900,
+                    "deduplicationWindowSeconds"
+                )
+            );
         }
         if (request.notificationChannelIds() != null) {
             rule.setNotificationChannelIdsJson(writeValue(request.notificationChannelIds()));
@@ -152,32 +171,50 @@ class AlertRuleDefinition {
     }
 
     void validate(AlertRule rule) {
-        if (("DEVICE".equals(rule.getScopeType()) || "LOCATION".equals(rule.getScopeType()))
-                && rule.getScopeId() == null) {
+        if (
+            ("DEVICE".equals(rule.getScopeType()) || "LOCATION".equals(rule.getScopeType())) &&
+            rule.getScopeId() == null
+        ) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    rule.getScopeType().toLowerCase(Locale.ROOT) + " scope requires scopeId");
+                HttpStatus.BAD_REQUEST,
+                rule.getScopeType().toLowerCase(Locale.ROOT) + " scope requires scopeId"
+            );
         }
-        if ("DEVICE_TYPE".equals(rule.getScopeType())
-                && (rule.getDeviceType() == null || rule.getDeviceType().isBlank())) {
+        if (
+            "DEVICE_TYPE".equals(rule.getScopeType()) &&
+            (rule.getDeviceType() == null || rule.getDeviceType().isBlank())
+        ) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "device type scope requires deviceType");
+                HttpStatus.BAD_REQUEST,
+                "device type scope requires deviceType"
+            );
         }
-        if (Set.of("ABOVE_THRESHOLD", "BELOW_THRESHOLD").contains(rule.getConditionType())
-                && rule.getThreshold() == null) {
+        if (
+            Set.of("ABOVE_THRESHOLD", "BELOW_THRESHOLD").contains(rule.getConditionType()) &&
+            rule.getThreshold() == null
+        ) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "threshold is required for " + rule.getConditionType());
+                HttpStatus.BAD_REQUEST,
+                "threshold is required for " + rule.getConditionType()
+            );
         }
-        if ("BASELINE_MULTIPLIER".equals(rule.getConditionType())
-                && rule.getBaselineMultiplier() == null) {
+        if (
+            "BASELINE_MULTIPLIER".equals(rule.getConditionType()) &&
+            rule.getBaselineMultiplier() == null
+        ) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "baselineMultiplier is required for baseline multiplier rules");
+                HttpStatus.BAD_REQUEST,
+                "baselineMultiplier is required for baseline multiplier rules"
+            );
         }
-        if (Set.of("GROWTH_RATE", "LONG_HIGH_RUN").contains(rule.getConditionType())
-                && rule.getMinPoints() == null) {
+        if (
+            Set.of("GROWTH_RATE", "LONG_HIGH_RUN").contains(rule.getConditionType()) &&
+            rule.getMinPoints() == null
+        ) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "minPoints is required for " + rule.getConditionType());
+                HttpStatus.BAD_REQUEST,
+                "minPoints is required for " + rule.getConditionType()
+            );
         }
     }
 
@@ -224,10 +261,11 @@ class AlertRuleDefinition {
 
     Set<String> severityValues() {
         return Set.of(
-                AlertSeverity.CRITICAL.name(),
-                AlertSeverity.HIGH.name(),
-                AlertSeverity.WARNING.name(),
-                AlertSeverity.INFO.name());
+            AlertSeverity.CRITICAL.name(),
+            AlertSeverity.HIGH.name(),
+            AlertSeverity.WARNING.name(),
+            AlertSeverity.INFO.name()
+        );
     }
 
     String writeValue(Object value) {
@@ -235,24 +273,33 @@ class AlertRuleDefinition {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Invalid alert rule JSON field", exception);
+                HttpStatus.BAD_REQUEST,
+                "Invalid alert rule JSON field",
+                exception
+            );
         }
     }
 
     List<UUID> readNotificationChannelIds(String value) {
         try {
             return objectMapper.readValue(
-                    value == null || value.isBlank() ? "[]" : value, UUID_LIST_TYPE);
+                value == null || value.isBlank() ? "[]" : value,
+                UUID_LIST_TYPE
+            );
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException(
-                    "Stored notification channel ids are invalid", exception);
+                "Stored notification channel ids are invalid",
+                exception
+            );
         }
     }
 
     Map<String, Object> readConfig(String value) {
         try {
             return objectMapper.readValue(
-                    value == null || value.isBlank() ? "{}" : value, CONFIG_TYPE);
+                value == null || value.isBlank() ? "{}" : value,
+                CONFIG_TYPE
+            );
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Stored alert rule config is invalid", exception);
         }
@@ -260,13 +307,13 @@ class AlertRuleDefinition {
 
     String normalizeOptional(String value) {
         return value == null || value.isBlank() || "all".equalsIgnoreCase(value)
-                ? null
-                : value.trim().toUpperCase(Locale.ROOT);
+            ? null
+            : value.trim().toUpperCase(Locale.ROOT);
     }
 
     String normalizeMetric(String value) {
         return value == null || value.isBlank() || "all".equalsIgnoreCase(value)
-                ? null
-                : value.trim();
+            ? null
+            : value.trim();
     }
 }

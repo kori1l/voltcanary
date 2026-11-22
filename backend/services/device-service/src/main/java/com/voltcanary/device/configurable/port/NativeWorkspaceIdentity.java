@@ -11,15 +11,30 @@ public interface NativeWorkspaceIdentity {
         }
 
         public String digest() {
-            return VclCanonical.sha256("NATIVE_WORKSPACE_MEMBERSHIP/1:" + workspace + ":" + actor + ":"
-                    + role + ":" + version + ":" + teams.stream().sorted().toList());
+            return VclCanonical.sha256(
+                "NATIVE_WORKSPACE_MEMBERSHIP/1:" +
+                    workspace +
+                    ":" +
+                    actor +
+                    ":" +
+                    role +
+                    ":" +
+                    version +
+                    ":" +
+                    teams.stream().sorted().toList()
+            );
         }
     }
 
     Membership membership(UUID workspace, UUID actor);
     boolean teamExists(UUID workspace, UUID team);
 
-    record ResourceReads(String membershipDigest, long associationVersion, Set<UUID> deviceIds, String digest) {
+    record ResourceReads(
+        String membershipDigest,
+        long associationVersion,
+        Set<UUID> deviceIds,
+        String digest
+    ) {
         public ResourceReads {
             deviceIds = Set.copyOf(deviceIds);
         }

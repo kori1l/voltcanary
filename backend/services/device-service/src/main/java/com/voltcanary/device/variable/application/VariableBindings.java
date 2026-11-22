@@ -23,8 +23,14 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class VariableBindings {
-    public record Edit(UUID variableId, int revision, int expectedVersion,
-            Map<String, String> inputPaths, boolean enabled) { }
+
+    public record Edit(
+        UUID variableId,
+        int revision,
+        int expectedVersion,
+        Map<String, String> inputPaths,
+        boolean enabled
+    ) {}
 
     private final VariableStore variables;
     private final AccountService accounts;
@@ -51,9 +57,17 @@ public class VariableBindings {
 
     public Map<String, Object> status(AuthenticatedUser user, UUID device, UUID source) {
         rows.source(accounts.currentAccount(user).getId(), device, source, false);
-        Long generation = jdbc.queryForObject("select max(generation) from source_processing_bundles where data_source_id=?",
-                Long.class, source);
-        return Map.of("desiredGeneration", generation == null ? 0L : generation, "bindings", rows.bindings(source));
+        Long generation = jdbc.queryForObject(
+            "select max(generation) from source_processing_bundles where data_source_id=?",
+            Long.class,
+            source
+        );
+        return Map.of(
+            "desiredGeneration",
+            generation == null ? 0L : generation,
+            "bindings",
+            rows.bindings(source)
+        );
     }
 
     @Transactional
@@ -62,11 +76,22 @@ public class VariableBindings {
         variables.lockAccount(account);
         var context = rows.source(account, device, source, true);
         var definition = variables.get(account, context.deviceType(), edit.variableId());
-        var defaults = jdbc.queryForList("select * from device_variable_default_bindings where variable_id=?", edit.variableId());
-        if (!java.util.Objects.equals(definition.defaultRevision(), edit.revision()) || defaults.isEmpty()
-                || !context.sourceType().equals(defaults.getFirst().get("source_type"))
-                || !edit.inputPaths().equals(rows.paths(defaults.getFirst().get("input_paths_json").toString()))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Default binding changed; retry reconciliation");
+        var defaults = jdbc.queryForList(
+            "select * from device_variable_default_bindings where variable_id=?",
+            edit.variableId()
+        );
+        if (
+            !java.util.Objects.equals(definition.defaultRevision(), edit.revision()) ||
+            defaults.isEmpty() ||
+            !context.sourceType().equals(defaults.getFirst().get("source_type")) ||
+            !edit
+                .inputPaths()
+                .equals(rows.paths(defaults.getFirst().get("input_paths_json").toString()))
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Default binding changed; retry reconciliation"
+            );
         }
         apply(user.id(), context, edit, true);
     }
@@ -76,15 +101,32 @@ public class VariableBindings {
             throw new IllegalArgumentException("Variable binding is required");
         }
         if (edit.enabled() && !properties.isActivationEnabled()) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Variable processing is not enabled for activation");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Variable processing is not enabled for activation"
+            );
         }
-        VariableDefinition definition = variables.get(source.accountId(), source.deviceType(), edit.variableId());
+        VariableDefinition definition = variables.get(
+            source.accountId(),
+            source.deviceType(),
+            edit.variableId()
+        );
         var revision = variables.revision(definition.id(), edit.revision());
-        if (edit.enabled() && (definition.archived() || !"PUBLISHED".equals(revision.state()) || !source.active())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Binding needs a published variable and active source");
+        if (
+            edit.enabled() &&
+            (definition.archived() || !"PUBLISHED".equals(revision.state()) || !source.active())
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Binding needs a published variable and active source"
+            );
         }
-        VariableBinding previous = rows.bindings(source.sourceId()).stream()
-                .filter(binding -> binding.variableId().equals(edit.variableId())).findFirst().orElse(null);
+        VariableBinding previous = rows
+            .bindings(source.sourceId())
+            .stream()
+            .filter(binding -> binding.variableId().equals(edit.variableId()))
+            .findFirst()
+            .orElse(null);
         int currentVersion = previous == null ? 0 : previous.version();
         if (edit.expectedVersion() != currentVersion) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Binding changed; reload");
@@ -94,43 +136,80 @@ public class VariableBindings {
         }
         var policy = retention.policy(SourceRuntimeJson.objectMap(mapper, source.mappingJson()));
         for (var entry : edit.inputPaths().entrySet()) {
-            if (entry.getValue() == null || !entry.getValue().matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,3}")) {
+            if (
+                entry.getValue() == null ||
+                !entry.getValue().matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,3}")
+            ) {
                 throw new IllegalArgumentException("Invalid input path");
             }
             if (edit.enabled() && !retention.retained(policy, entry.getValue())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Retain numeric input " + entry.getValue() + " before activation");
+                throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Retain numeric input " + entry.getValue() + " before activation"
+                );
             }
             if (edit.enabled() && policy != null) {
                 String inputUnit = revision.contract().inputs().get(entry.getKey()).unit();
-                boolean compatible = policy.fields().stream().anyMatch(field -> field.path().equals(entry.getValue())
-                        && field.unit().equals(inputUnit));
-                if (!compatible) throw new IllegalArgumentException("Input unit differs from retained field metadata");
+                boolean compatible = policy
+                    .fields()
+                    .stream()
+                    .anyMatch(
+                        field ->
+                            field.path().equals(entry.getValue()) && field.unit().equals(inputUnit)
+                    );
+                if (!compatible) throw new IllegalArgumentException(
+                    "Input unit differs from retained field metadata"
+                );
             }
         }
-        if (edit.enabled() && (previous == null || !previous.enabled()) && rows.bindings(source.sourceId()).stream()
-                .filter(VariableBinding::enabled).count() >= 32) {
+        if (
+            edit.enabled() &&
+            (previous == null || !previous.enabled()) &&
+            rows.bindings(source.sourceId()).stream().filter(VariableBinding::enabled).count() >= 32
+        ) {
             throw new IllegalArgumentException("At most 32 enabled variables per source");
         }
         Timestamp now = Timestamp.from(Instant.now());
         if (previous == null) {
-            jdbc.update("""
-                    insert into source_variable_bindings
-                    (data_source_id,variable_id,revision,version,input_paths_json,enabled,inherited,updated_by,updated_at)
-                    values(?,?,?,1,?,?,?,?,?)
-                    """, source.sourceId(), definition.id(), edit.revision(), json(edit.inputPaths()),
-                    edit.enabled(), inherited, actor, now);
+            jdbc.update(
+                """
+                insert into source_variable_bindings
+                (data_source_id,variable_id,revision,version,input_paths_json,enabled,inherited,updated_by,updated_at)
+                values(?,?,?,1,?,?,?,?,?)
+                """,
+                source.sourceId(),
+                definition.id(),
+                edit.revision(),
+                json(edit.inputPaths()),
+                edit.enabled(),
+                inherited,
+                actor,
+                now
+            );
         } else {
-            jdbc.update("""
-                    update source_variable_bindings set revision=?,version=version+1,input_paths_json=?,
-                    enabled=?,inherited=?,updated_by=?,updated_at=? where data_source_id=? and variable_id=?
-                    """, edit.revision(), json(edit.inputPaths()), edit.enabled(), inherited, actor, now,
-                    source.sourceId(), definition.id());
+            jdbc.update(
+                """
+                update source_variable_bindings set revision=?,version=version+1,input_paths_json=?,
+                enabled=?,inherited=?,updated_by=?,updated_at=? where data_source_id=? and variable_id=?
+                """,
+                edit.revision(),
+                json(edit.inputPaths()),
+                edit.enabled(),
+                inherited,
+                actor,
+                now,
+                source.sourceId(),
+                definition.id()
+            );
         }
         bundles.rebuild(source);
     }
 
     private String json(Object value) {
-        try { return mapper.writeValueAsString(value); }
-        catch (Exception failure) { throw new IllegalArgumentException("Invalid binding", failure); }
+        try {
+            return mapper.writeValueAsString(value);
+        } catch (Exception failure) {
+            throw new IllegalArgumentException("Invalid binding", failure);
+        }
     }
 }

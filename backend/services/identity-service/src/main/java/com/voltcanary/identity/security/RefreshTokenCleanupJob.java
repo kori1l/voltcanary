@@ -18,8 +18,9 @@ public class RefreshTokenCleanupJob {
     private final SchedulerLockService schedulerLockService;
 
     @Scheduled(
-            initialDelayString = "${app.auth.refresh-token-cleanup.initial-delay-ms:60000}",
-            fixedDelayString = "${app.auth.refresh-token-cleanup.fixed-delay-ms:3600000}")
+        initialDelayString = "${app.auth.refresh-token-cleanup.initial-delay-ms:60000}",
+        fixedDelayString = "${app.auth.refresh-token-cleanup.fixed-delay-ms:3600000}"
+    )
     public void deleteExpiredRefreshTokens() {
         if (!schedulerLockService.acquire(LOCK_NAME, LOCK_LEASE)) {
             return;

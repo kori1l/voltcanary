@@ -17,8 +17,9 @@ public class DefaultIngestionAdapterResolver implements IngestionAdapterResolver
     @Override
     public Optional<TelemetryAdapter> resolve(SourceRuntimeConfig sourceRuntimeConfig) {
         return registry.find(
-                sourceRuntimeConfig.adapterType(),
-                sourceRuntimeConfig.protocol(),
-                sourceRuntimeConfig.transport());
+            sourceRuntimeConfig.adapterType(),
+            sourceRuntimeConfig.protocol(),
+            sourceRuntimeConfig.transport()
+        );
     }
 }

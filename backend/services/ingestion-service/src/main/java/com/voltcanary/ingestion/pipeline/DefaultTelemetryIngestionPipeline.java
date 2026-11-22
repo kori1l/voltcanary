@@ -13,16 +13,12 @@ import com.voltcanary.ingestion.source.ResolvedSource;
 import com.voltcanary.ingestion.source.SourceResolver;
 import com.voltcanary.ingestion.source.SourceUsageRecorder;
 import com.voltcanary.ingestion.validation.IngestionValidator;
-
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-
-import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.stereotype.Service;
-
 import java.time.Instant;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 @Service
 @Slf4j
@@ -42,18 +38,19 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
     private final com.voltcanary.ingestion.source.SourceProcessingProjection processing;
 
     public DefaultTelemetryIngestionPipeline(
-            IngestionValidator ingestionValidator,
-            PayloadNormalizer payloadNormalizer,
-            SourceResolver sourceResolver,
-            SourceUsageRecorder sourceUsageRecorder,
-            IdempotencyService idempotencyService,
-            TelemetryEventPublisher telemetryEventPublisher,
-            IngestionRateLimiter rateLimiter,
-            KafkaBackpressureService backpressureService,
-            IngestionAuditService auditService,
-            MeterRegistry meterRegistry,
-            IngestionProperties properties,
-            com.voltcanary.ingestion.source.SourceProcessingProjection processing) {
+        IngestionValidator ingestionValidator,
+        PayloadNormalizer payloadNormalizer,
+        SourceResolver sourceResolver,
+        SourceUsageRecorder sourceUsageRecorder,
+        IdempotencyService idempotencyService,
+        TelemetryEventPublisher telemetryEventPublisher,
+        IngestionRateLimiter rateLimiter,
+        KafkaBackpressureService backpressureService,
+        IngestionAuditService auditService,
+        MeterRegistry meterRegistry,
+        IngestionProperties properties,
+        com.voltcanary.ingestion.source.SourceProcessingProjection processing
+    ) {
         this.ingestionValidator = ingestionValidator;
         this.payloadNormalizer = payloadNormalizer;
         this.sourceResolver = sourceResolver;
@@ -76,46 +73,52 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
             backpressureService.check();
             ingestionValidator.validateEnvelope(message);
             var position = message.sourcePosition();
-            if (position != null
-                    && (message.historicalImport()
-                            || message.sourceToken() == null
-                            || message.sourceToken().isBlank())) {
+            if (
+                position != null &&
+                (message.historicalImport() ||
+                    message.sourceToken() == null ||
+                    message.sourceToken().isBlank())
+            ) {
                 throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.BAD_REQUEST,
-                        "Source position requires authenticated live ingestion");
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Source position requires authenticated live ingestion"
+                );
             }
             ResolvedSource source = sourceResolver.resolve(message);
             var bindingSchemaPin = com.voltcanary.ingestion.source.SourceBindingPins.pin(source);
             if (position != null && bindingSchemaPin == null) {
                 throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.BAD_REQUEST,
-                        "Source position requires a live bound source");
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Source position requires a live bound source"
+                );
             }
             var processingContext = processing.pin(source);
             if (processingContext != null && message.historicalImport()) {
-                processingContext =
-                        new com.voltcanary.common.events.telemetry.ProcessingContext(
-                                processingContext.dataSourceId(),
-                                processingContext.generation(),
-                                processingContext.digest(),
-                                "v1",
-                                true);
+                processingContext = new com.voltcanary.common.events.telemetry.ProcessingContext(
+                    processingContext.dataSourceId(),
+                    processingContext.generation(),
+                    processingContext.digest(),
+                    "v1",
+                    true
+                );
             }
-            IncomingTelemetryMessage normalizedMessage =
-                    payloadNormalizer.normalize(message, source.mapping());
+            IncomingTelemetryMessage normalizedMessage = payloadNormalizer.normalize(
+                message,
+                source.mapping()
+            );
             if (processingContext != null && normalizedMessage.metrics().isEmpty()) {
-                normalizedMessage =
-                        new IncomingTelemetryMessage(
-                                normalizedMessage.sourceId(),
-                                normalizedMessage.deviceId(),
-                                normalizedMessage.accountId(),
-                                normalizedMessage.occurredAt(),
-                                normalizedMessage.receivedAt(),
-                                java.util.Map.of("configuredFields", java.util.Map.of()),
-                                normalizedMessage.origin(),
-                                normalizedMessage.context(),
-                                normalizedMessage.historicalImport(),
-                                position);
+                normalizedMessage = new IncomingTelemetryMessage(
+                    normalizedMessage.sourceId(),
+                    normalizedMessage.deviceId(),
+                    normalizedMessage.accountId(),
+                    normalizedMessage.occurredAt(),
+                    normalizedMessage.receivedAt(),
+                    java.util.Map.of("configuredFields", java.util.Map.of()),
+                    normalizedMessage.origin(),
+                    normalizedMessage.context(),
+                    normalizedMessage.historicalImport(),
+                    position
+                );
             }
             processing.validateInputs(source, normalizedMessage.metrics(), processingContext);
             rateLimiter.check(normalizedMessage, source);
@@ -123,62 +126,66 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                 outcome = "filtered";
                 sourceUsageRecorder.record(source);
                 meterRegistry
-                        .counter("voltcanary.ingestion.readings", "outcome", outcome)
-                        .increment();
+                    .counter("voltcanary.ingestion.readings", "outcome", outcome)
+                    .increment();
                 auditService.record(
-                        outcome,
-                        "source_policy",
-                        message.correlationId(),
-                        source.deviceId(),
-                        message.sourceId(),
-                        null);
+                    outcome,
+                    "source_policy",
+                    message.correlationId(),
+                    source.deviceId(),
+                    message.sourceId(),
+                    null
+                );
                 return new IngestionResult(true, null, "filtered");
             }
             ingestionValidator.validate(normalizedMessage, processingContext != null);
             sourceUsageRecorder.record(source);
             UUID eventId = UUID.randomUUID();
             Instant receivedAt = normalizedMessage.receivedAt();
-            TelemetryReceivedEvent event =
-                    new TelemetryReceivedEvent(
-                            eventId,
-                            source.deviceId(),
-                            normalizedMessage.sourceId(),
-                            normalizedMessage.occurredAt(),
-                            normalizedMessage.metrics(),
-                            receivedAt,
-                            "v1",
-                            normalizedMessage.correlationId(),
-                            "ingestion-service",
-                            source.accountId(),
-                            normalizedMessage.occurredAt(),
-                            processingContext,
-                            bindingSchemaPin,
-                            position);
+            TelemetryReceivedEvent event = new TelemetryReceivedEvent(
+                eventId,
+                source.deviceId(),
+                normalizedMessage.sourceId(),
+                normalizedMessage.occurredAt(),
+                normalizedMessage.metrics(),
+                receivedAt,
+                "v1",
+                normalizedMessage.correlationId(),
+                "ingestion-service",
+                source.accountId(),
+                normalizedMessage.occurredAt(),
+                processingContext,
+                bindingSchemaPin,
+                position
+            );
             var reservation = idempotencyService.reserve(event);
             if (reservation.status() == IdempotencyService.Status.IN_FLIGHT) {
                 throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-                        "Telemetry publication is in progress; retry the original reading");
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Telemetry publication is in progress; retry the original reading"
+                );
             }
             if (reservation.status() == IdempotencyService.Status.PUBLISHED) {
                 outcome = "duplicate";
                 meterRegistry
-                        .counter("voltcanary.ingestion.readings", "outcome", outcome)
-                        .increment();
+                    .counter("voltcanary.ingestion.readings", "outcome", outcome)
+                    .increment();
                 auditService.record(
-                        outcome,
-                        "duplicate",
-                        normalizedMessage.correlationId(),
-                        source.deviceId(),
-                        normalizedMessage.sourceId(),
-                        null);
+                    outcome,
+                    "duplicate",
+                    normalizedMessage.correlationId(),
+                    source.deviceId(),
+                    normalizedMessage.sourceId(),
+                    null
+                );
                 log.info(
-                        "Ignoring duplicate telemetry reading correlationId={} deviceId={}"
-                                + " sourceId={} timestamp={}",
-                        normalizedMessage.correlationId(),
-                        source.deviceId(),
-                        normalizedMessage.sourceId(),
-                        normalizedMessage.occurredAt());
+                    "Ignoring duplicate telemetry reading correlationId={} deviceId={}" +
+                        " sourceId={} timestamp={}",
+                    normalizedMessage.correlationId(),
+                    source.deviceId(),
+                    normalizedMessage.sourceId(),
+                    normalizedMessage.occurredAt()
+                );
                 return new IngestionResult(false, null, "duplicate");
             }
 
@@ -198,58 +205,64 @@ public class DefaultTelemetryIngestionPipeline implements TelemetryIngestionPipe
                 }
                 backpressureService.markPublishFailure();
                 auditService.record(
-                        "failed_publish",
-                        failure.getClass().getSimpleName(),
-                        normalizedMessage.correlationId(),
-                        source.deviceId(),
-                        normalizedMessage.sourceId(),
-                        eventId);
+                    "failed_publish",
+                    failure.getClass().getSimpleName(),
+                    normalizedMessage.correlationId(),
+                    source.deviceId(),
+                    normalizedMessage.sourceId(),
+                    eventId
+                );
                 throw failure;
             }
             meterRegistry.counter("voltcanary.ingestion.readings", "outcome", outcome).increment();
             meterRegistry
-                    .counter("voltcanary.ingestion.metrics")
-                    .increment(normalizedMessage.metrics().size());
+                .counter("voltcanary.ingestion.metrics")
+                .increment(normalizedMessage.metrics().size());
             log.info(
-                    "Accepted telemetry reading correlationId={} eventId={} deviceId={} sourceId={}"
-                            + " protocol={} metricCount={}",
-                    normalizedMessage.correlationId(),
-                    eventId,
-                    source.deviceId(),
-                    normalizedMessage.sourceId(),
-                    normalizedMessage.origin().protocol(),
-                    normalizedMessage.metrics().size());
+                "Accepted telemetry reading correlationId={} eventId={} deviceId={} sourceId={}" +
+                    " protocol={} metricCount={}",
+                normalizedMessage.correlationId(),
+                eventId,
+                source.deviceId(),
+                normalizedMessage.sourceId(),
+                normalizedMessage.origin().protocol(),
+                normalizedMessage.metrics().size()
+            );
             auditService.record(
-                    outcome,
-                    "accepted",
-                    normalizedMessage.correlationId(),
-                    source.deviceId(),
-                    normalizedMessage.sourceId(),
-                    eventId);
+                outcome,
+                "accepted",
+                normalizedMessage.correlationId(),
+                source.deviceId(),
+                normalizedMessage.sourceId(),
+                eventId
+            );
             return new IngestionResult(true, eventId, "accepted");
         } catch (RuntimeException exception) {
             outcome = "rejected";
             meterRegistry.counter("voltcanary.ingestion.readings", "outcome", outcome).increment();
             auditService.record(
-                    outcome,
-                    exception.getClass().getSimpleName(),
-                    message == null ? null : message.correlationId(),
-                    message == null ? null : message.deviceId(),
-                    message == null ? null : message.sourceId(),
-                    null);
+                outcome,
+                exception.getClass().getSimpleName(),
+                message == null ? null : message.correlationId(),
+                message == null ? null : message.deviceId(),
+                message == null ? null : message.sourceId(),
+                null
+            );
             if (exception instanceof IdempotencyService.Unavailable) {
                 throw new org.springframework.web.server.ResponseStatusException(
-                        org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-                        "Telemetry delivery state unavailable; retry the original reading",
-                        exception);
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Telemetry delivery state unavailable; retry the original reading",
+                    exception
+                );
             }
             throw exception;
         } finally {
             sample.stop(
-                    Timer.builder("voltcanary.ingestion.processing")
-                            .description("Telemetry ingestion processing latency")
-                            .tag("outcome", outcome)
-                            .register(meterRegistry));
+                Timer.builder("voltcanary.ingestion.processing")
+                    .description("Telemetry ingestion processing latency")
+                    .tag("outcome", outcome)
+                    .register(meterRegistry)
+            );
         }
     }
 }

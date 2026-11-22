@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MaintenanceWindowProjectionService {
+
     private final DeviceHistoryDeletion deletions;
 
     private static final String SOURCE_TOPIC = "maintenance-window.changed.v1";
@@ -21,10 +22,12 @@ public class MaintenanceWindowProjectionService {
     private final MeterRegistry meterRegistry;
 
     public MaintenanceWindowProjectionService(
-            ProcessedEventService processedEventService,
-            MaintenanceWindowReadModelRepository repository,
-            AlertMaintenanceSuppressionService suppressionService,
-            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        ProcessedEventService processedEventService,
+        MaintenanceWindowReadModelRepository repository,
+        AlertMaintenanceSuppressionService suppressionService,
+        MeterRegistry meterRegistry,
+        DeviceHistoryDeletion deletions
+    ) {
         this.deletions = deletions;
         this.processedEventService = processedEventService;
         this.repository = repository;
@@ -38,32 +41,42 @@ public class MaintenanceWindowProjectionService {
         if (!processedEventService.markIfNew(SOURCE_TOPIC, event.eventId())) {
             return false;
         }
-        MaintenanceWindowReadModel entity = repository.findById(event.maintenanceWindowId())
-                .orElseGet(MaintenanceWindowReadModel::new);
+        MaintenanceWindowReadModel entity = repository
+            .findById(event.maintenanceWindowId())
+            .orElseGet(MaintenanceWindowReadModel::new);
         if (entity.getMaintenanceWindowId() != null && entity.getVersion() >= event.version()) {
-            meterRegistry.counter("alert.maintenance.events_projected", "status", "stale").increment();
+            meterRegistry
+                .counter("alert.maintenance.events_projected", "status", "stale")
+                .increment();
             return true;
         }
         apply(entity, event);
         MaintenanceWindowReadModel saved = repository.save(entity);
         suppressionService.autoResolveOverlappingAlerts(saved);
-        meterRegistry.counter("alert.maintenance.events_projected", "status", "applied").increment();
+        meterRegistry
+            .counter("alert.maintenance.events_projected", "status", "applied")
+            .increment();
         return true;
     }
 
     @Transactional
     public boolean upsertSnapshot(MaintenanceWindowSnapshot snapshot) {
         if (!deletions.writable(snapshot.deviceId())) return false;
-        MaintenanceWindowReadModel entity = repository.findById(snapshot.id())
-                .orElseGet(MaintenanceWindowReadModel::new);
+        MaintenanceWindowReadModel entity = repository
+            .findById(snapshot.id())
+            .orElseGet(MaintenanceWindowReadModel::new);
         if (entity.getMaintenanceWindowId() != null && entity.getVersion() >= snapshot.version()) {
-            meterRegistry.counter("alert.maintenance.reconciliation.projected", "status", "stale").increment();
+            meterRegistry
+                .counter("alert.maintenance.reconciliation.projected", "status", "stale")
+                .increment();
             return false;
         }
         apply(entity, snapshot);
         MaintenanceWindowReadModel saved = repository.save(entity);
         suppressionService.autoResolveOverlappingAlerts(saved);
-        meterRegistry.counter("alert.maintenance.reconciliation.projected", "status", "applied").increment();
+        meterRegistry
+            .counter("alert.maintenance.reconciliation.projected", "status", "applied")
+            .increment();
         return true;
     }
 

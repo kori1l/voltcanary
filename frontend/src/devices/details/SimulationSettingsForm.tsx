@@ -126,17 +126,11 @@ export function SimulationSettingsForm({
         <div className="sim-form-grid">
           <label>
             On min
-            <DurationInput
-              value={settings.onMin}
-              onChange={(value) => onChange("onMin", value)}
-            />
+            <DurationInput value={settings.onMin} onChange={(value) => onChange("onMin", value)} />
           </label>
           <label>
             On max
-            <DurationInput
-              value={settings.onMax}
-              onChange={(value) => onChange("onMax", value)}
-            />
+            <DurationInput value={settings.onMax} onChange={(value) => onChange("onMax", value)} />
           </label>
           <label>
             Off min
@@ -154,10 +148,7 @@ export function SimulationSettingsForm({
           </label>
         </div>
       </div>
-      <div
-        hidden={profile === "VEHICLE_GPS"}
-        className="sim-form-section sim-anomaly-section"
-      >
+      <div hidden={profile === "VEHICLE_GPS"} className="sim-form-section sim-anomaly-section">
         <h3>Anomalies</h3>
         <div className="sim-anomaly-grid">
           <article>
@@ -165,9 +156,7 @@ export function SimulationSettingsForm({
               <input
                 type="checkbox"
                 checked={settings.powerSpikeEnabled}
-                onChange={(event) =>
-                  onChange("powerSpikeEnabled", event.target.checked)
-                }
+                onChange={(event) => onChange("powerSpikeEnabled", event.target.checked)}
               />
               Power spike
             </label>
@@ -190,9 +179,7 @@ export function SimulationSettingsForm({
               <input
                 type="number"
                 value={settings.powerSpikeWatts}
-                onChange={(event) =>
-                  onChange("powerSpikeWatts", event.target.value)
-                }
+                onChange={(event) => onChange("powerSpikeWatts", event.target.value)}
               />
             </label>
           </article>
@@ -201,9 +188,7 @@ export function SimulationSettingsForm({
               <input
                 type="checkbox"
                 checked={settings.offlineEnabled}
-                onChange={(event) =>
-                  onChange("offlineEnabled", event.target.checked)
-                }
+                onChange={(event) => onChange("offlineEnabled", event.target.checked)}
               />
               Offline window
             </label>
@@ -227,9 +212,7 @@ export function SimulationSettingsForm({
               <input
                 type="checkbox"
                 checked={settings.growthEnabled}
-                onChange={(event) =>
-                  onChange("growthEnabled", event.target.checked)
-                }
+                onChange={(event) => onChange("growthEnabled", event.target.checked)}
               />
               Consumption growth
             </label>
@@ -245,9 +228,7 @@ export function SimulationSettingsForm({
               <input
                 type="number"
                 value={settings.growthPercent}
-                onChange={(event) =>
-                  onChange("growthPercent", event.target.value)
-                }
+                onChange={(event) => onChange("growthPercent", event.target.value)}
               />
             </label>
             <label>

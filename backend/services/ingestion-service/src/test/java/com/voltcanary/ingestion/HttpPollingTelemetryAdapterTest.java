@@ -1,5 +1,8 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -25,9 +28,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class HttpPollingTelemetryAdapterTest {
 
     private HttpServer server;
@@ -52,7 +52,11 @@ class HttpPollingTelemetryAdapterTest {
 
     @Test
     void pollsEndpointAndMapsResponseIntoCanonicalTelemetry() throws IOException {
-        server = server(exchange -> respond(exchange, 200, """
+        server = server(exchange ->
+            respond(
+                exchange,
+                200,
+                """
                 {
                   "sampledAt": "2026-01-01T00:00:00Z",
                   "payload": {
@@ -60,18 +64,19 @@ class HttpPollingTelemetryAdapterTest {
                     "voltage": 230.1
                   }
                 }
-                """));
+                """
+            )
+        );
         SourceRuntimeConfig config = config(
-                Map.of(
-                        "url", endpoint("/reading"),
-                        "pollingInterval", "1s",
-                        "timeout", "2s"),
-                Map.of(
-                        "timestampPath", "sampledAt",
-                        "metrics", Map.of(
-                                "activePowerW", "payload.power",
-                                "voltageV", "payload.voltage")),
-                Map.of());
+            Map.of("url", endpoint("/reading"), "pollingInterval", "1s", "timeout", "2s"),
+            Map.of(
+                "timestampPath",
+                "sampledAt",
+                "metrics",
+                Map.of("activePowerW", "payload.power", "voltageV", "payload.voltage")
+            ),
+            Map.of()
+        );
 
         List<IncomingTelemetryMessage> messages = adapter(Map.of()).poll(config);
 
@@ -96,23 +101,33 @@ class HttpPollingTelemetryAdapterTest {
                 respond(exchange, 401, "{}");
                 return;
             }
-            respond(exchange, 200, """
-                    {
-                      "timestamp": "2026-01-01T00:00:00Z",
-                      "metrics": { "activePowerW": 42.0 }
-                    }
-                    """);
+            respond(
+                exchange,
+                200,
+                """
+                {
+                  "timestamp": "2026-01-01T00:00:00Z",
+                  "metrics": { "activePowerW": 42.0 }
+                }
+                """
+            );
         });
         SourceRuntimeConfig config = config(
-                Map.of(
-                        "url", endpoint("/secure"),
-                        "pollingInterval", "1s",
-                        "credentialHeaders", Map.of("Authorization", "apiToken")),
-                Map.of(),
-                Map.of("apiToken", "vault://sources/source-1/api-token"));
+            Map.of(
+                "url",
+                endpoint("/secure"),
+                "pollingInterval",
+                "1s",
+                "credentialHeaders",
+                Map.of("Authorization", "apiToken")
+            ),
+            Map.of(),
+            Map.of("apiToken", "vault://sources/source-1/api-token")
+        );
 
-        List<IncomingTelemetryMessage> messages = adapter(Map.of(
-                "vault://sources/source-1/api-token", "Bearer resolved-token")).poll(config);
+        List<IncomingTelemetryMessage> messages = adapter(
+            Map.of("vault://sources/source-1/api-token", "Bearer resolved-token")
+        ).poll(config);
 
         assertThat(messages).hasSize(1);
         assertThat(messages.get(0).metrics()).containsEntry("activePowerW", 42.0);
@@ -121,43 +136,48 @@ class HttpPollingTelemetryAdapterTest {
     @Test
     void rejectsInvalidConfigBeforePolling() {
         SourceRuntimeConfig config = config(
-                Map.of("url", "ftp://example.invalid/reading", "pollingInterval", "1s"),
-                Map.of(),
-                Map.of());
+            Map.of("url", "ftp://example.invalid/reading", "pollingInterval", "1s"),
+            Map.of(),
+            Map.of()
+        );
 
         assertThatThrownBy(() -> adapter(Map.of()).poll(config))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("http or https");
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("http or https");
     }
 
     private HttpPollingTelemetryAdapter adapter(Map<String, String> credentials) {
-        CredentialProvider credentialProvider = reference -> Optional.ofNullable(credentials.get(reference));
+        CredentialProvider credentialProvider = reference ->
+            Optional.ofNullable(credentials.get(reference));
         return new HttpPollingTelemetryAdapter(
-                HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
-                credentialProvider,
-                new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC()));
+            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
+            credentialProvider,
+            new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC())
+        );
     }
 
     private SourceRuntimeConfig config(
-            Map<String, Object> adapterConfig,
-            Map<String, Object> mapping,
-            Map<String, String> credentialReferences) {
+        Map<String, Object> adapterConfig,
+        Map<String, Object> mapping,
+        Map<String, String> credentialReferences
+    ) {
         return new SourceRuntimeConfig(
-                "source-1",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                AdapterType.GENERIC_HTTP_POLLING,
-                ProtocolType.HTTP,
-                TransportType.HTTP,
-                "ACTIVE",
-                "v1",
-                "v1",
-                mapping,
-                adapterConfig,
-                credentialReferences,
-                "default",
-                1L);
+            "source-1",
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            AdapterType.GENERIC_HTTP_POLLING,
+            ProtocolType.HTTP,
+            TransportType.HTTP,
+            "ACTIVE",
+            "v1",
+            "v1",
+            mapping,
+            adapterConfig,
+            credentialReferences,
+            "default",
+            1L
+        );
     }
 
     private HttpServer server(ExchangeHandler handler) throws IOException {

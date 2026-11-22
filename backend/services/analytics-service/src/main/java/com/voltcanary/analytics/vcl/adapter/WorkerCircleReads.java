@@ -18,14 +18,20 @@ import org.springframework.web.client.RestClient;
 /** Reads only circle revisions explicitly pinned by an executable sealed RULE bundle. */
 @Component
 final class WorkerCircleReads {
+
     private final JdbcCompilationBundleStore bundles;
     private final JdbcRuleDeployments deployments;
     private final WorkerGrantReads grants;
     private final ConfigurableOwnerReads owner;
     private final VclWorkerAssertion signer;
 
-    WorkerCircleReads(DataSource source, WorkerGrantReads grants, RestClient.Builder builder,
-            AnalyticsDownstreamProperties properties, VclWorkerIdentityProperties identity) {
+    WorkerCircleReads(
+        DataSource source,
+        WorkerGrantReads grants,
+        RestClient.Builder builder,
+        AnalyticsDownstreamProperties properties,
+        VclWorkerIdentityProperties identity
+    ) {
         bundles = new JdbcCompilationBundleStore(source);
         deployments = new JdbcRuleDeployments(source, bundles);
         this.grants = grants;
@@ -34,11 +40,21 @@ final class WorkerCircleReads {
         signer = identity.forAudience("device-service");
     }
 
-    SpatialFeatureSnapshot read(JdbcRuleDeployments.Deployment deployment, UUID zone, long revision, String scope) {
+    SpatialFeatureSnapshot read(
+        JdbcRuleDeployments.Deployment deployment,
+        UUID zone,
+        long revision,
+        String scope
+    ) {
         return read(deployment, zone, revision, scope, false);
     }
 
-    SpatialFeatureSnapshot current(JdbcRuleDeployments.Deployment deployment, UUID zone, long revision, String scope) {
+    SpatialFeatureSnapshot current(
+        JdbcRuleDeployments.Deployment deployment,
+        UUID zone,
+        long revision,
+        String scope
+    ) {
         try {
             return read(deployment, zone, revision, scope, true);
         } catch (VclException changed) {
@@ -48,50 +64,105 @@ final class WorkerCircleReads {
         }
     }
 
-    private SpatialFeatureSnapshot read(JdbcRuleDeployments.Deployment deployment, UUID zone, long revision, String scope,
-            boolean requireCurrent) {
+    private SpatialFeatureSnapshot read(
+        JdbcRuleDeployments.Deployment deployment,
+        UUID zone,
+        long revision,
+        String scope,
+        boolean requireCurrent
+    ) {
         if (signer == null) throw new VclException("WORKER_IDENTITY_UNAVAILABLE", "");
         if (!deployment.permitsOwnerInspection()) throw new VclException("DEPLOYMENT_INACTIVE", "");
         renew(deployment);
-        var bundle = bundles.find(deployment.account(), deployment.bundle())
-                .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
-        if (!bundle.digest().equals(deployment.bundleDigest())) throw new VclException("DEPLOYMENT_BUNDLE_CHANGED", "");
-        var pins = bundle.json()
-                .at("/ownerValidation/execution/resourceRevisions");
+        var bundle = bundles
+            .find(deployment.account(), deployment.bundle())
+            .orElseThrow(() -> new VclException("DEPLOYMENT_BUNDLE_UNAVAILABLE", ""));
+        if (!bundle.digest().equals(deployment.bundleDigest())) throw new VclException(
+            "DEPLOYMENT_BUNDLE_CHANGED",
+            ""
+        );
+        var pins = bundle.json().at("/ownerValidation/execution/resourceRevisions");
         String expected = null;
         long selected = 0;
         for (var pin : pins) {
-            if ("SPATIAL_FEATURE".equals(pin.path("kind").textValue())
-                    && zone.toString().equals(pin.path("id").textValue())
-                    && (revision == 0 || revision == pin.path("revision").longValue())) {
+            if (
+                "SPATIAL_FEATURE".equals(pin.path("kind").textValue()) &&
+                zone.toString().equals(pin.path("id").textValue()) &&
+                (revision == 0 || revision == pin.path("revision").longValue())
+            ) {
                 if (expected != null) throw new VclException("WORKER_SPATIAL_NOT_PINNED", "");
                 expected = pin.path("snapshotDigest").textValue();
                 selected = pin.path("revision").longValue();
             }
         }
-        if (expected == null || selected < 1) throw new VclException("WORKER_SPATIAL_NOT_PINNED", "");
-        var path = "/internal/vcl/spatial-features/" + zone + "/circle?revision=" + selected
-                + (requireCurrent ? "&current=true" : "");
-        var assertion = signer.sign(new VclWorkerAssertion.Scope(deployment.actor(), deployment.account(),
-                deployment.rule(), deployment.epoch(), deployment.grant(), zone, "SPATIAL_CIRCLE",
-                VclWorkerAssertion.requestDigest("GET", path, new byte[0])), 20);
+        if (expected == null || selected < 1) throw new VclException(
+            "WORKER_SPATIAL_NOT_PINNED",
+            ""
+        );
+        var path =
+            "/internal/vcl/spatial-features/" +
+            zone +
+            "/circle?revision=" +
+            selected +
+            (requireCurrent ? "&current=true" : "");
+        var assertion = signer.sign(
+            new VclWorkerAssertion.Scope(
+                deployment.actor(),
+                deployment.account(),
+                deployment.rule(),
+                deployment.epoch(),
+                deployment.grant(),
+                zone,
+                "SPATIAL_CIRCLE",
+                VclWorkerAssertion.requestDigest("GET", path, new byte[0])
+            ),
+            20
+        );
         try {
-            var response = VclCircleRevision.parse(owner.workerCircleRevision(assertion, zone, selected,
-                    System.nanoTime() + Duration.ofSeconds(20).toNanos(), requireCurrent));
-            if (!response.id().equals(zone) || !response.accountId().equals(deployment.account())
-                    || response.revision() != selected || !expected.equals(response.digest())) {
+            var response = VclCircleRevision.parse(
+                owner.workerCircleRevision(
+                    assertion,
+                    zone,
+                    selected,
+                    System.nanoTime() + Duration.ofSeconds(20).toNanos(),
+                    requireCurrent
+                )
+            );
+            if (
+                !response.id().equals(zone) ||
+                !response.accountId().equals(deployment.account()) ||
+                response.revision() != selected ||
+                !expected.equals(response.digest())
+            ) {
                 throw new VclException("SPATIAL_REVISION_CHANGED", "");
             }
             renew(deployment);
             var shape = response.geometry();
-            return new SpatialFeatureSnapshot(scope, Map.of(zone, new SpatialFeatureSnapshot.Circle(zone, selected,
-                    new SpatialFeatureSnapshot.Point(shape.longitude(), shape.latitude()), new BigDecimal(shape.radiusMetres()))));
-        } catch (ConfigurableOwnerReads.Failure failure) { throw new VclException(failure.code(), ""); }
+            return new SpatialFeatureSnapshot(
+                scope,
+                Map.of(
+                    zone,
+                    new SpatialFeatureSnapshot.Circle(
+                        zone,
+                        selected,
+                        new SpatialFeatureSnapshot.Point(shape.longitude(), shape.latitude()),
+                        new BigDecimal(shape.radiusMetres())
+                    )
+                )
+            );
+        } catch (ConfigurableOwnerReads.Failure failure) {
+            throw new VclException(failure.code(), "");
+        }
     }
 
     private void renew(JdbcRuleDeployments.Deployment expected) {
         grants.read(expected.account(), expected.epoch());
-        if (deployments.find(expected.account(), expected.epoch()).filter(expected::equals).isEmpty()) {
+        if (
+            deployments
+                .find(expected.account(), expected.epoch())
+                .filter(expected::equals)
+                .isEmpty()
+        ) {
             throw new VclException("DEPLOYMENT_CHANGED", "");
         }
     }

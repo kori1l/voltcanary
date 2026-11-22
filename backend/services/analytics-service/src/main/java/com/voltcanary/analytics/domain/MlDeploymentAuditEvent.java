@@ -14,21 +14,28 @@ import lombok.Setter;
 @Getter
 @Setter
 public class MlDeploymentAuditEvent {
+
     @Id
     private UUID id;
+
     @Column(name = "account_id")
     private UUID accountId;
+
     @Column(name = "model_version_id")
     private UUID modelVersionId;
+
     @Column(name = "policy_id")
     private UUID policyId;
+
     @Column(name = "action", nullable = false)
     private String action;
+
     @Column(name = "details_json", nullable = false, columnDefinition = "text")
     private String detailsJson;
+
     @Column(name = "actor_id")
     private UUID actorId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
 }

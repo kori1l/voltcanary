@@ -6,6 +6,5 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RiskScoreRepository extends JpaRepository<RiskScore, UUID> {
-
     Optional<RiskScore> findFirstByDeviceIdOrderByCalculatedAtDesc(UUID deviceId);
 }

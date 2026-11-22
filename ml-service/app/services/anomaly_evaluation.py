@@ -1,5 +1,5 @@
-from app.schemas.training import MetricRow
 from app.models.tabular_anomaly_model import TabularAnomalyModel
+from app.schemas.training import MetricRow
 
 
 class AnomalyEvaluation:
@@ -8,7 +8,10 @@ class AnomalyEvaluation:
     def split(self, rows: list[MetricRow]) -> tuple[list[MetricRow], list[MetricRow]]:
         ordered = sorted(rows, key=lambda row: (row.timestamp, row.device_id, row.metric))
         if any(row.metadata.get("splitAssignment") for row in rows):
-            if any(row.metadata.get("splitAssignment") not in {"TRAIN", "VALIDATION", "TEST"} for row in rows):
+            if any(
+                row.metadata.get("splitAssignment") not in {"TRAIN", "VALIDATION", "TEST"}
+                for row in rows
+            ):
                 raise ValueError("Invalid split assignments")
             training = [row for row in ordered if row.metadata["splitAssignment"] == "TRAIN"]
             validation = [row for row in ordered if row.metadata["splitAssignment"] == "VALIDATION"]
@@ -19,10 +22,14 @@ class AnomalyEvaluation:
         if len(timestamps) < 2:
             return ordered, []
         cutoff = timestamps[min(len(timestamps) - 1, max(1, int(len(timestamps) * 0.7)))]
-        return ([row for row in ordered if row.timestamp < cutoff],
-                [row for row in ordered if row.timestamp >= cutoff])
+        return (
+            [row for row in ordered if row.timestamp < cutoff],
+            [row for row in ordered if row.timestamp >= cutoff],
+        )
 
-    def evaluate(self, model: TabularAnomalyModel, train: list[MetricRow], validation: list[MetricRow]) -> dict[str, float]:
+    def evaluate(
+        self, model: TabularAnomalyModel, train: list[MetricRow], validation: list[MetricRow]
+    ) -> dict[str, float]:
         metrics = {
             "trainingRows": float(len(train)),
             "validationRows": float(len(validation)),

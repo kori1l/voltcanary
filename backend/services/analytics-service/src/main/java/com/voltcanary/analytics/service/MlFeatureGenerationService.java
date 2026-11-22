@@ -15,19 +15,29 @@ public class MlFeatureGenerationService {
     private final MlInternalTelemetryFeatureBuilder internalTelemetryFeatureBuilder;
     private final MlImportedDatasetFeatureBuilder importedDatasetFeatureBuilder;
 
-    public MlFeatureGeneration generateFeatures(MlDatasetVersion datasetVersion, MlFeatureConfig config) {
+    public MlFeatureGeneration generateFeatures(MlFeatureInputs inputs, MlFeatureConfig config) {
+        MlDatasetVersion datasetVersion = inputs.version();
         FeatureVectorContract contract = FeatureVectorContract.forConfig(
-                config.modelFamily(),
-                config.horizonDays(),
-                config.featureTemplateId(),
-                config.featureTemplateVersion(),
-                config.enabledFeatureFamilies());
+            config.modelFamily(),
+            config.horizonDays(),
+            config.featureTemplateId(),
+            config.featureTemplateVersion(),
+            config.enabledFeatureFamilies()
+        );
         if (datasetVersion.getSourceType() == MlDatasetSourceType.INTERNAL_TELEMETRY) {
-            return internalTelemetryFeatureBuilder.generate(datasetVersion, config, contract);
+            return internalTelemetryFeatureBuilder.generate(
+                datasetVersion,
+                config,
+                contract,
+                inputs
+            );
         }
         if (datasetVersion.getSourceType() == MlDatasetSourceType.EXTERNAL_IMPORT) {
-            return importedDatasetFeatureBuilder.generate(datasetVersion, config, contract);
+            return importedDatasetFeatureBuilder.generate(datasetVersion, config, contract, inputs);
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported ML dataset source type for feature generation");
+        throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "Unsupported ML dataset source type for feature generation"
+        );
     }
 }

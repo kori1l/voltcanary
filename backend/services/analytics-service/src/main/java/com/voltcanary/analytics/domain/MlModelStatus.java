@@ -6,5 +6,5 @@ public enum MlModelStatus {
     ACTIVE,
     REJECTED,
     ARCHIVED,
-    DELETED
+    DELETED,
 }

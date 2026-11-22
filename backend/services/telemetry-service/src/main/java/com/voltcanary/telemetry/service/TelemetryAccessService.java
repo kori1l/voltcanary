@@ -18,8 +18,9 @@ public class TelemetryAccessService {
     private final String internalServiceToken;
 
     public TelemetryAccessService(
-            TelemetryAuthorizationProperties properties,
-            RestClient.Builder restClientBuilder) {
+        TelemetryAuthorizationProperties properties,
+        RestClient.Builder restClientBuilder
+    ) {
         this.properties = properties;
         this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
         this.internalServiceToken = properties.getInternalServiceToken();
@@ -30,37 +31,48 @@ public class TelemetryAccessService {
             return;
         }
         if (userId == null || userId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
         try {
-            var decision=restClient.get()
-                    .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
-                        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Device access denied");
-                    })
-                    .body(com.fasterxml.jackson.databind.JsonNode.class);
-            if (decision==null || !decision.path("allowed").asBoolean(false)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Device access denied");
+            var decision = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Device access denied");
+                })
+                .body(com.fasterxml.jackson.databind.JsonNode.class);
+            if (
+                decision == null || !decision.path("allowed").asBoolean(false)
+            ) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Device access denied");
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (Exception exception) {
             log.warn(
-                    "telemetryAccessCheckFailed deviceId={} userId={} reason={}",
-                    deviceId,
-                    userId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
+                "telemetryAccessCheckFailed deviceId={} userId={} reason={}",
+                deviceId,
+                userId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device authorization unavailable"
+            );
         }
     }
 
     public void requireReadAccess(
-            UUID deviceId,
-            String userId,
-            String role,
-            String correlationId,
-            String callerInternalServiceToken) {
+        UUID deviceId,
+        String userId,
+        String role,
+        String correlationId,
+        String callerInternalServiceToken
+    ) {
         if (isValidInternalServiceToken(callerInternalServiceToken)) {
             return;
         }
@@ -68,8 +80,10 @@ public class TelemetryAccessService {
     }
 
     private boolean isValidInternalServiceToken(String callerInternalServiceToken) {
-        return callerInternalServiceToken != null
-                && !callerInternalServiceToken.isBlank()
-                && callerInternalServiceToken.equals(internalServiceToken);
+        return (
+            callerInternalServiceToken != null &&
+            !callerInternalServiceToken.isBlank() &&
+            callerInternalServiceToken.equals(internalServiceToken)
+        );
     }
 }

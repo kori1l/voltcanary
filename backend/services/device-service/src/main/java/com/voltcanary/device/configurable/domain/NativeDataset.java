@@ -5,8 +5,21 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.UUID;
 
 /** Immutable head snapshot. A current head is refreshed and fenced at every write. */
-public record NativeDataset(UUID accountId, UUID generation, long dataVersion, UUID recordIdFieldId, NativeSchema schema, UUID physicalId) {
-    public NativeDataset(UUID accountId, UUID generation, long dataVersion, UUID recordIdFieldId, NativeSchema schema) {
+public record NativeDataset(
+    UUID accountId,
+    UUID generation,
+    long dataVersion,
+    UUID recordIdFieldId,
+    NativeSchema schema,
+    UUID physicalId
+) {
+    public NativeDataset(
+        UUID accountId,
+        UUID generation,
+        long dataVersion,
+        UUID recordIdFieldId,
+        NativeSchema schema
+    ) {
         this(accountId, generation, dataVersion, recordIdFieldId, schema, schema.id());
     }
 

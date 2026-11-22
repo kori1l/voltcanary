@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class AnalyticsRecalculationService {
+
     private final AnalyticsInputReader inputs;
     private final AnalyticsComputation computation;
     private final AnalyticsPrediction predictions;
@@ -37,14 +38,23 @@ public class AnalyticsRecalculationService {
     private final DeviceHistoryDeletion deletions;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public RecalculationResult recalculate(UUID deviceId) { return recalculate(deviceId, Instant.now(), null); }
+    public RecalculationResult recalculate(UUID deviceId) {
+        return recalculate(deviceId, Instant.now(), null);
+    }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public RecalculationResult recalculate(UUID deviceId, Instant windowEnd) { return recalculate(deviceId, windowEnd, null); }
+    public RecalculationResult recalculate(UUID deviceId, Instant windowEnd) {
+        return recalculate(deviceId, windowEnd, null);
+    }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public RecalculationResult recalculate(UUID deviceId, Instant windowEnd, AnalyticsJob job) {
-        if (!deletions.writable(deviceId)) return RecalculationResult.skipped(inputs.windowStart(windowEnd), windowEnd, "", "DEVICE_DELETED");
+        if (!deletions.writable(deviceId)) return RecalculationResult.skipped(
+            inputs.windowStart(windowEnd),
+            windowEnd,
+            "",
+            "DEVICE_DELETED"
+        );
         var sample = Timer.start(meterRegistry);
         String status = "failure";
         try {
@@ -52,28 +62,79 @@ public class AnalyticsRecalculationService {
             var calculated = computation.calculate(input);
             if (calculated.skipped()) {
                 status = "skipped";
-                meterRegistry.counter("analytics.maintenance.jobs_skipped", "reason", "full_coverage").increment();
-                return RecalculationResult.skipped(input.from(), input.to(), input.inputHash(), "MAINTENANCE_FULL_COVERAGE");
+                meterRegistry
+                    .counter("analytics.maintenance.jobs_skipped", "reason", "full_coverage")
+                    .increment();
+                return RecalculationResult.skipped(
+                    input.from(),
+                    input.to(),
+                    input.inputHash(),
+                    "MAINTENANCE_FULL_COVERAGE"
+                );
             }
-            var context = input.context();
-            var prepared = predictions.prepare(deviceId, calculated.primaryChart(), calculated.primaryBaseline(), calculated.risk(),
-                    input.now(), context.windows(), input.from(), input.to(), input.inputHash(), context.accountId(),
-                    context.deviceType(), context.settings(), context.policy());
-            var recommendations = computation.recommendations(deviceId, calculated.anomalies(), prepared.primary(), input.now());
-            var committed = results.save(deviceId, job, input.now(), calculated.baselines(), calculated.features(), calculated.anomalies(),
-                    calculated.risk(), prepared.all(), recommendations);
+            var prepared = predictions.prepare(input, calculated);
+            var recommendations = computation.recommendations(
+                deviceId,
+                calculated.anomalies(),
+                prepared.primary(),
+                input.now()
+            );
+            var committed = results.save(
+                deviceId,
+                job,
+                input.now(),
+                calculated.baselines(),
+                calculated.features(),
+                calculated.anomalies(),
+                calculated.risk(),
+                prepared.all(),
+                recommendations
+            );
             if (committed != AnalyticsResultStore.Outcome.SAVED) {
                 status = "skipped";
-                return RecalculationResult.skipped(input.from(), input.to(), input.inputHash(), committed.name());
+                return RecalculationResult.skipped(
+                    input.from(),
+                    input.to(),
+                    input.inputHash(),
+                    committed.name()
+                );
             }
-            calculated.anomalies().forEach(anomaly -> meterRegistry.counter("analytics.anomalies.detected",
-                    "type", anomaly.getType() == null ? "unknown" : anomaly.getType(),
-                    "severity", anomaly.getSeverity() == null ? "unknown" : anomaly.getSeverity()).increment());
+            calculated
+                .anomalies()
+                .forEach(anomaly ->
+                    meterRegistry
+                        .counter(
+                            "analytics.anomalies.detected",
+                            "type",
+                            anomaly.getType() == null ? "unknown" : anomaly.getType(),
+                            "severity",
+                            anomaly.getSeverity() == null ? "unknown" : anomaly.getSeverity()
+                        )
+                        .increment()
+                );
             status = "success";
-            log.info("analyticsRecalculationCompleted deviceId={} windowStart={} windowEnd={} inputHash={} anomalies={} riskLevel={} riskScore={}",
-                    deviceId, input.from(), input.to(), input.inputHash(), calculated.anomalies().size(), calculated.risk().getLevel(), calculated.risk().getScore());
-            return new RecalculationResult(calculated.baselines().isEmpty() ? null : calculated.baselines().getFirst(), calculated.anomalies(),
-                    calculated.risk(), recommendations, prepared.primary(), input.from(), input.to(), input.inputHash(), false, null);
+            log.info(
+                "analyticsRecalculationCompleted deviceId={} windowStart={} windowEnd={} inputHash={} anomalies={} riskLevel={} riskScore={}",
+                deviceId,
+                input.from(),
+                input.to(),
+                input.inputHash(),
+                calculated.anomalies().size(),
+                calculated.risk().getLevel(),
+                calculated.risk().getScore()
+            );
+            return new RecalculationResult(
+                calculated.baselines().isEmpty() ? null : calculated.baselines().getFirst(),
+                calculated.anomalies(),
+                calculated.risk(),
+                recommendations,
+                prepared.primary(),
+                input.from(),
+                input.to(),
+                input.inputHash(),
+                false,
+                null
+            );
         } finally {
             sample.stop(meterRegistry.timer("analytics.recalculation.duration", "status", status));
         }
@@ -110,30 +171,35 @@ public class AnalyticsRecalculationService {
     }
 
     public record RecalculationResult(
-            DeviceBaseline baseline,
-            List<Anomaly> anomalies,
-            RiskScore riskScore,
-            List<Recommendation> recommendations,
-            PredictionResult prediction,
+        DeviceBaseline baseline,
+        List<Anomaly> anomalies,
+        RiskScore riskScore,
+        List<Recommendation> recommendations,
+        PredictionResult prediction,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        boolean skipped,
+        String skipReason
+    ) {
+        static RecalculationResult skipped(
             Instant windowStart,
             Instant windowEnd,
             String inputHash,
-            boolean skipped,
-            String skipReason) {
-
-        static RecalculationResult skipped(Instant windowStart, Instant windowEnd, String inputHash, String skipReason) {
+            String skipReason
+        ) {
             return new RecalculationResult(
-                    null,
-                    List.of(),
-                    null,
-                    List.of(),
-                    null,
-                    windowStart,
-                    windowEnd,
-                    inputHash,
-                    true,
-                    skipReason);
+                null,
+                List.of(),
+                null,
+                List.of(),
+                null,
+                windowStart,
+                windowEnd,
+                inputHash,
+                true,
+                skipReason
+            );
         }
     }
-
 }

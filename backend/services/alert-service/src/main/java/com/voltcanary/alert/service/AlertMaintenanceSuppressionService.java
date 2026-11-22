@@ -36,36 +36,43 @@ public class AlertMaintenanceSuppressionService {
 
     @Transactional
     public boolean suppressesEvent(
-            UUID deviceId,
-            UUID sourceEventId,
-            String sourceEventType,
-            Instant from,
-            Instant to,
-            Instant eventTime) {
+        UUID deviceId,
+        UUID sourceEventId,
+        String sourceEventType,
+        Instant from,
+        Instant to,
+        Instant eventTime
+    ) {
         Instant normalizedFrom = from == null ? eventTime : from;
         Instant normalizedTo = normalizeTo(to, normalizedFrom);
-        return maintenanceRepository.findActiveOverlapping(deviceId, normalizedFrom, normalizedTo).stream()
-                .filter(MaintenanceWindowReadModel::isSuppressAlerts)
-                .findFirst()
-                .map(window -> {
-                    recordSuppression(
-                            deviceId,
-                            null,
-                            sourceEventId,
-                            sourceEventType,
-                            window,
-                            "EVENT_SUPPRESSED_BY_MAINTENANCE",
-                            eventTime == null ? Instant.now() : eventTime);
-                    meterRegistry.counter("alert.maintenance.suppressions", "outcome", "event_suppressed").increment();
-                    log.info(
-                            "alertSuppressedByMaintenance deviceId={} sourceEventId={} sourceEventType={} maintenanceWindowId={}",
-                            deviceId,
-                            sourceEventId,
-                            sourceEventType,
-                            window.getMaintenanceWindowId());
-                    return true;
-                })
-                .orElse(false);
+        return maintenanceRepository
+            .findActiveOverlapping(deviceId, normalizedFrom, normalizedTo)
+            .stream()
+            .filter(MaintenanceWindowReadModel::isSuppressAlerts)
+            .findFirst()
+            .map(window -> {
+                recordSuppression(
+                    deviceId,
+                    null,
+                    sourceEventId,
+                    sourceEventType,
+                    window,
+                    "EVENT_SUPPRESSED_BY_MAINTENANCE",
+                    eventTime == null ? Instant.now() : eventTime
+                );
+                meterRegistry
+                    .counter("alert.maintenance.suppressions", "outcome", "event_suppressed")
+                    .increment();
+                log.info(
+                    "alertSuppressedByMaintenance deviceId={} sourceEventId={} sourceEventType={} maintenanceWindowId={}",
+                    deviceId,
+                    sourceEventId,
+                    sourceEventType,
+                    window.getMaintenanceWindowId()
+                );
+                return true;
+            })
+            .orElse(false);
     }
 
     @Transactional
@@ -75,48 +82,61 @@ public class AlertMaintenanceSuppressionService {
         }
         int resolved = 0;
         for (Alert alert : alertRepository.findSuppressibleOverlapping(
-                window.getDeviceId(),
-                window.getStartAt(),
-                window.getEndAt(),
-                AlertStatus.RESOLVED)) {
-            if (suppressionRepository.existsByAlertIdAndMaintenanceWindowId(alert.getId(), window.getMaintenanceWindowId())) {
+            window.getDeviceId(),
+            window.getStartAt(),
+            window.getEndAt(),
+            AlertStatus.RESOLVED
+        )) {
+            if (
+                suppressionRepository.existsByAlertIdAndMaintenanceWindowId(
+                    alert.getId(),
+                    window.getMaintenanceWindowId()
+                )
+            ) {
                 continue;
             }
             alert.setStatus(AlertStatus.RESOLVED);
             alert.setResolvedAt(Instant.now());
             alert.setResolvedBy(null);
-            alert.setResolutionReason("Auto-resolved because the device is in a maintenance window.");
+            alert.setResolutionReason(
+                "Auto-resolved because the device is in a maintenance window."
+            );
             alertRepository.save(alert);
             saveAlertEvent(alert, window);
             recordSuppression(
-                    alert.getDeviceId(),
-                    alert.getId(),
-                    alert.getSourceEventId(),
-                    "EXISTING_ALERT",
-                    window,
-                    "AUTO_RESOLVED_BY_MAINTENANCE",
-                    alert.getCreatedAt());
+                alert.getDeviceId(),
+                alert.getId(),
+                alert.getSourceEventId(),
+                "EXISTING_ALERT",
+                window,
+                "AUTO_RESOLVED_BY_MAINTENANCE",
+                alert.getCreatedAt()
+            );
             resolved++;
         }
         if (resolved > 0) {
-            meterRegistry.counter("alert.maintenance.suppressions", "outcome", "alerts_auto_resolved").increment(resolved);
+            meterRegistry
+                .counter("alert.maintenance.suppressions", "outcome", "alerts_auto_resolved")
+                .increment(resolved);
             log.info(
-                    "alertsAutoResolvedByMaintenance maintenanceWindowId={} deviceId={} resolved={}",
-                    window.getMaintenanceWindowId(),
-                    window.getDeviceId(),
-                    resolved);
+                "alertsAutoResolvedByMaintenance maintenanceWindowId={} deviceId={} resolved={}",
+                window.getMaintenanceWindowId(),
+                window.getDeviceId(),
+                resolved
+            );
         }
         return resolved;
     }
 
     private void recordSuppression(
-            UUID deviceId,
-            UUID alertId,
-            UUID sourceEventId,
-            String sourceEventType,
-            MaintenanceWindowReadModel window,
-            String reason,
-            Instant eventTime) {
+        UUID deviceId,
+        UUID alertId,
+        UUID sourceEventId,
+        String sourceEventType,
+        MaintenanceWindowReadModel window,
+        String reason,
+        Instant eventTime
+    ) {
         if (sourceEventId != null && suppressionRepository.existsBySourceEventId(sourceEventId)) {
             return;
         }
@@ -141,17 +161,26 @@ public class AlertMaintenanceSuppressionService {
         event.setId(eventId);
         event.setAlertId(alert.getId());
         event.setEventType("AUTO_RESOLVED_BY_MAINTENANCE");
-        event.setPayloadJson(writeJson(new AlertEventPayload(
-                eventId,
-                alert.getId(),
-                "AUTO_RESOLVED_BY_MAINTENANCE",
-                createdAt,
-                alert.getStatus().name(),
-                alert.getResolutionReason(),
-                Map.of(
-                        "deviceId", alert.getDeviceId(),
-                        "maintenanceWindowId", window.getMaintenanceWindowId(),
-                        "maintenanceWindowVersion", window.getVersion()))));
+        event.setPayloadJson(
+            writeJson(
+                new AlertEventPayload(
+                    eventId,
+                    alert.getId(),
+                    "AUTO_RESOLVED_BY_MAINTENANCE",
+                    createdAt,
+                    alert.getStatus().name(),
+                    alert.getResolutionReason(),
+                    Map.of(
+                        "deviceId",
+                        alert.getDeviceId(),
+                        "maintenanceWindowId",
+                        window.getMaintenanceWindowId(),
+                        "maintenanceWindowVersion",
+                        window.getVersion()
+                    )
+                )
+            )
+        );
         event.setCreatedAt(createdAt);
         alertEventRepository.save(event);
     }
@@ -168,17 +197,20 @@ public class AlertMaintenanceSuppressionService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to write alert maintenance event JSON", exception);
+            throw new IllegalStateException(
+                "Failed to write alert maintenance event JSON",
+                exception
+            );
         }
     }
 
     private record AlertEventPayload(
-            UUID eventId,
-            UUID alertId,
-            String action,
-            Instant timestamp,
-            String status,
-            String reason,
-            Map<String, Object> context) {
-    }
+        UUID eventId,
+        UUID alertId,
+        String action,
+        Instant timestamp,
+        String status,
+        String reason,
+        Map<String, Object> context
+    ) {}
 }

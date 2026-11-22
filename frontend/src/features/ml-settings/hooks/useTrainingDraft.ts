@@ -1,4 +1,3 @@
-import { Dispatch, SetStateAction, useEffect, useState } from "react";
 import { MlFeatureSnapshotResponse } from "../../../analytics/mlModuleApi";
 import { decodeDraftFields, draftScope } from "../../../components/scopedDrafts";
 import { useScopedDraftValue } from "../../../components/useScopedDraftValue";
@@ -13,23 +12,45 @@ export type TrainingDraft = {
   minimumLabelCoverage: number;
 };
 
-export function useTrainingDraft(accountId: string, datasetVersionId = "new", selection?: { snapshotId: string; family: TrainingDraft["modelFamily"]; horizonDays: number | null }) {
+export function useTrainingDraft(
+  accountId: string,
+  datasetVersionId = "new",
+  selection?: {
+    snapshotId: string;
+    family: TrainingDraft["modelFamily"];
+    horizonDays: number | null;
+  },
+) {
   const initial: TrainingDraft = {
-      datasetVersionId: datasetVersionId === "new" ? "" : datasetVersionId,
-      featureSnapshotId: selection?.snapshotId ?? "",
-      modelFamily: selection?.family ?? "ANOMALY_DETECTION",
-      algorithm: "baseline-statistical-anomaly-v1",
-      failureHorizonDays: selection?.horizonDays ?? 14,
-      minimumPositiveLabels: 20,
-      minimumLabelCoverage: 0.8,
-    };
+    datasetVersionId: datasetVersionId === "new" ? "" : datasetVersionId,
+    featureSnapshotId: selection?.snapshotId ?? "",
+    modelFamily: selection?.family ?? "ANOMALY_DETECTION",
+    algorithm: "baseline-statistical-anomaly-v1",
+    failureHorizonDays: selection?.horizonDays ?? 14,
+    minimumPositiveLabels: 20,
+    minimumLabelCoverage: 0.8,
+  };
   const scope = draftScope(accountId, `training.${datasetVersionId || "new"}`, "new-run-v1");
-  return useScopedDraftValue(scope, initial, (data) => {
-    const decoded = decodeDraftFields(data, initial);
-    if (decoded?.modelFamily && !["ANOMALY_DETECTION", "FAILURE_PREDICTION"].includes(decoded.modelFamily)) return null;
-    if (datasetVersionId !== "new" && decoded?.datasetVersionId && decoded.datasetVersionId !== datasetVersionId) return null;
-    return decoded;
-  }, `voltcanary.ml.${accountId}.training.ANOMALY_DETECTION.training-run`);
+  return useScopedDraftValue(
+    scope,
+    initial,
+    (data) => {
+      const decoded = decodeDraftFields(data, initial);
+      if (
+        decoded?.modelFamily &&
+        !["ANOMALY_DETECTION", "FAILURE_PREDICTION"].includes(decoded.modelFamily)
+      )
+        return null;
+      if (
+        datasetVersionId !== "new" &&
+        decoded?.datasetVersionId &&
+        decoded.datasetVersionId !== datasetVersionId
+      )
+        return null;
+      return decoded;
+    },
+    `voltcanary.ml.${accountId}.training.ANOMALY_DETECTION.training-run`,
+  );
 }
 
 export function trainingBlockReason(
@@ -54,7 +75,11 @@ export function trainingBlockReason(
   if (modelFamily === "FAILURE_PREDICTION" && (!failureHorizonDays || failureHorizonDays < 1)) {
     return "Failure prediction requires a positive horizon.";
   }
-  if (modelFamily === "FAILURE_PREDICTION" && selectedSnapshot.horizonDays && selectedSnapshot.horizonDays !== failureHorizonDays) {
+  if (
+    modelFamily === "FAILURE_PREDICTION" &&
+    selectedSnapshot.horizonDays &&
+    selectedSnapshot.horizonDays !== failureHorizonDays
+  ) {
     return `Feature snapshot horizon ${selectedSnapshot.horizonDays} must match training horizon ${failureHorizonDays}.`;
   }
   return null;

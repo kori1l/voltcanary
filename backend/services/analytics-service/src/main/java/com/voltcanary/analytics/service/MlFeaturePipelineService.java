@@ -26,15 +26,29 @@ public class MlFeaturePipelineService {
 
     @Transactional(readOnly = true)
     public List<MlFeatureSnapshotResponse> list(UUID accountId, UUID datasetVersionId) {
-        return (datasetVersionId == null
-                ? featureSnapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, "ACTIVE")
-                : featureSnapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(accountId, datasetVersionId, "ACTIVE"))
-                .stream()
-                .map(mapper::response)
-                .toList();
+        return (
+            datasetVersionId == null
+                ? featureSnapshotRepository.findByAccountIdAndLifecycleStatusOrderByCreatedAtDesc(
+                      accountId,
+                      "ACTIVE"
+                  )
+                : featureSnapshotRepository.findByAccountIdAndDatasetVersionIdAndLifecycleStatusOrderByCreatedAtDesc(
+                      accountId,
+                      datasetVersionId,
+                      "ACTIVE"
+                  )
+        )
+            .stream()
+            .map(mapper::response)
+            .toList();
     }
 
-    public MlFeatureSnapshotResponse archive(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {
+    public MlFeatureSnapshotResponse archive(
+        UUID accountId,
+        UUID actorId,
+        UUID featureSnapshotId,
+        MlLifecycleActionRequest request
+    ) {
         return lifecycleService.archive(accountId, actorId, featureSnapshotId, request);
     }
 
@@ -42,7 +56,12 @@ public class MlFeaturePipelineService {
         return lifecycleService.impact(accountId, featureSnapshotId, action);
     }
 
-    public MlFeatureSnapshotResponse delete(UUID accountId, UUID actorId, UUID featureSnapshotId, MlLifecycleActionRequest request) {
+    public MlFeatureSnapshotResponse delete(
+        UUID accountId,
+        UUID actorId,
+        UUID featureSnapshotId,
+        MlLifecycleActionRequest request
+    ) {
         return lifecycleService.delete(accountId, actorId, featureSnapshotId, request);
     }
 }

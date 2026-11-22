@@ -3,12 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { EntitySelector } from "./EntitySelector";
 import type { EntityOptionLoader } from "./usePagedEntityOptions";
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
-const options = Array.from({ length: 121 }, (_, index) => ({ id: `device-${index + 1}`, name: `Device ${index + 1}` }));
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+const options = Array.from({ length: 121 }, (_, index) => ({
+  id: `device-${index + 1}`,
+  name: `Device ${index + 1}`,
+}));
 it("reaches device 101 through continuation and keeps unknown totals explicit", async () => {
   const changed = vi.fn();
-  const loader: EntityOptionLoader = vi.fn(async ({ offset, limit }) => options.slice(offset, offset + limit));
-  render(<EntitySelector label="Device" options={[]} value="" onChange={changed} loadOptions={loader} />);
+  const loader: EntityOptionLoader = vi.fn(async ({ offset, limit }) =>
+    options.slice(offset, offset + limit),
+  );
+  render(
+    <EntitySelector label="Device" options={[]} value="" onChange={changed} loadOptions={loader} />,
+  );
   await screen.findByRole("option", { name: "Device 50" });
   await userEvent.click(screen.getByText("Load more choices"));
   await screen.findByRole("option", { name: "Device 100" });
@@ -21,13 +32,26 @@ it("reaches device 101 through continuation and keeps unknown totals explicit", 
 it("debounces the complete search and aborts its obsolete request", async () => {
   vi.useFakeTimers();
   const requests: Array<{ search: string; signal: AbortSignal }> = [];
-  const loader: EntityOptionLoader = vi.fn(async (request) => { requests.push(request); return []; });
-  const rendered = render(<EntitySelector label="Device" options={[]} value="" onChange={() => {}} loadOptions={loader} />);
+  const loader: EntityOptionLoader = vi.fn(async (request) => {
+    requests.push(request);
+    return [];
+  });
+  const rendered = render(
+    <EntitySelector
+      label="Device"
+      options={[]}
+      value=""
+      onChange={() => {}}
+      loadOptions={loader}
+    />,
+  );
   await act(async () => {});
-  for (const value of ["s", "so", "sol", "sola", "solar"]) fireEvent.change(screen.getByLabelText("Search device"), { target: { value } });
+  for (const value of ["s", "so", "sol", "sola", "solar"])
+    fireEvent.change(screen.getByLabelText("Search device"), { target: { value } });
   expect(requests.map((request) => request.search)).toEqual([""]);
   await act(async () => vi.advanceTimersByTime(300));
   expect(requests.map((request) => request.search)).toEqual(["", "solar"]);
   expect(requests[0].signal.aborted).toBe(true);
-  rendered.unmount(); expect(requests[1].signal.aborted).toBe(true);
+  rendered.unmount();
+  expect(requests[1].signal.aborted).toBe(true);
 });

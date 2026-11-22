@@ -1,11 +1,11 @@
 package com.voltcanary.identity.scheduling;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.lang.management.ManagementFactory;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -18,48 +18,70 @@ public class SchedulerLockService {
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
-    private final String ownerId = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
+    private final String ownerId =
+        ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
 
     public SchedulerLockService(
-            JdbcTemplate jdbcTemplate,
-            PlatformTransactionManager transactionManager,
-            MeterRegistry meterRegistry) {
+        JdbcTemplate jdbcTemplate,
+        PlatformTransactionManager transactionManager,
+        MeterRegistry meterRegistry
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.meterRegistry = meterRegistry;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
-        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.transactionTemplate.setPropagationBehavior(
+            TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        );
     }
 
     public boolean acquire(String lockName, Duration lease) {
         boolean acquired = transactionTemplate.execute(status -> {
             Instant now = Instant.now();
             Instant lockedUntil = now.plus(lease);
-            int updated = jdbcTemplate.update("""
-                    update scheduler_locks
-                    set locked_until = ?, locked_at = ?, locked_by = ?
-                    where lock_name = ? and locked_until <= ?
-                    """,
-                    Timestamp.from(lockedUntil),
-                    Timestamp.from(now),
-                    ownerId,
-                    lockName,
-                    Timestamp.from(now));
+            int updated = jdbcTemplate.update(
+                """
+                update scheduler_locks
+                set locked_until = ?, locked_at = ?, locked_by = ?
+                where lock_name = ? and locked_until <= ?
+                """,
+                Timestamp.from(lockedUntil),
+                Timestamp.from(now),
+                ownerId,
+                lockName,
+                Timestamp.from(now)
+            );
             if (updated == 1) {
                 return true;
             }
-            return com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "scheduler_locks",
-                    java.util.List.of("lock_name", "locked_until", "locked_at", "locked_by"), java.util.List.of("lock_name"),
-                    lockName, Timestamp.from(lockedUntil), Timestamp.from(now), ownerId) == 1;
+            return (
+                com.voltcanary.common.web.JdbcInsertIfAbsent.insert(
+                    jdbcTemplate,
+                    "scheduler_locks",
+                    java.util.List.of("lock_name", "locked_until", "locked_at", "locked_by"),
+                    java.util.List.of("lock_name"),
+                    lockName,
+                    Timestamp.from(lockedUntil),
+                    Timestamp.from(now),
+                    ownerId
+                ) == 1
+            );
         });
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "identity.scheduler.lock.acquire",
-                "lock", lockName,
-                "outcome", acquired ? "acquired" : "skipped").increment();
+                "lock",
+                lockName,
+                "outcome",
+                acquired ? "acquired" : "skipped"
+            )
+            .increment();
         return acquired;
     }
 
     public void release(String lockName) {
-        transactionTemplate.executeWithoutResult(status -> jdbcTemplate.update("""
+        transactionTemplate.executeWithoutResult(status ->
+            jdbcTemplate.update(
+                """
                 update scheduler_locks
                 set locked_until = ?, locked_at = ?
                 where lock_name = ? and locked_by = ?
@@ -67,6 +89,8 @@ public class SchedulerLockService {
                 Timestamp.from(Instant.now()),
                 Timestamp.from(Instant.now()),
                 lockName,
-                ownerId));
+                ownerId
+            )
+        );
     }
 }

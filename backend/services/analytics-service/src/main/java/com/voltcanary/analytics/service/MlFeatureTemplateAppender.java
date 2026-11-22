@@ -9,14 +9,17 @@ import org.springframework.stereotype.Component;
 public class MlFeatureTemplateAppender {
 
     public void addTemplateFeatures(
-            Map<String, Object> features,
-            MlFeatureConfig config,
-            String deviceType,
-            String metricName,
-            double value,
-            double baselineMean) {
-        FeatureTemplateCatalog.FeatureTemplate template =
-                FeatureTemplateCatalog.resolve(config.featureTemplateId(), config.featureTemplateVersion());
+        Map<String, Object> features,
+        MlFeatureConfig config,
+        String deviceType,
+        String metricName,
+        double value,
+        double baselineMean
+    ) {
+        FeatureTemplateCatalog.FeatureTemplate template = FeatureTemplateCatalog.resolve(
+            config.featureTemplateId(),
+            config.featureTemplateVersion()
+        );
         double loadRatio = baselineMean == 0 ? 0 : value / baselineMean;
         if (FeatureTemplateCatalog.DEFAULT_TEMPLATE_ID.equals(template.id())) {
             features.put("applianceLoadRatio", loadRatio);
@@ -37,6 +40,10 @@ public class MlFeatureTemplateAppender {
 
     private boolean isFridgeCompatible(String deviceType) {
         String normalized = deviceType == null ? "" : deviceType.toLowerCase(Locale.ROOT);
-        return normalized.contains("fridge") || normalized.contains("freezer") || normalized.contains("refrigerator");
+        return (
+            normalized.contains("fridge") ||
+            normalized.contains("freezer") ||
+            normalized.contains("refrigerator")
+        );
     }
 }

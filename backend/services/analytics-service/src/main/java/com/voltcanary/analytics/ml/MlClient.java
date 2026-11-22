@@ -30,11 +30,12 @@ public class MlClient {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public MlClient(
-            @Qualifier("mlRestClientBuilder") RestClient.Builder restClientBuilder,
-            @Qualifier("mlTrainingRestClientBuilder") RestClient.Builder trainingBuilder,
-            AnalyticsDownstreamProperties downstreamProperties,
-            AnalyticsInternalProperties internalProperties,
-            MeterRegistry meterRegistry) {
+        @Qualifier("mlRestClientBuilder") RestClient.Builder restClientBuilder,
+        @Qualifier("mlTrainingRestClientBuilder") RestClient.Builder trainingBuilder,
+        AnalyticsDownstreamProperties downstreamProperties,
+        AnalyticsInternalProperties internalProperties,
+        MeterRegistry meterRegistry
+    ) {
         this.restClient = buildRestClient(restClientBuilder, downstreamProperties);
         this.trainingClient = buildRestClient(trainingBuilder, downstreamProperties);
         this.internalServiceToken = internalProperties.getServiceToken();
@@ -43,14 +44,19 @@ public class MlClient {
     }
 
     private static RestClient buildRestClient(
-            RestClient.Builder restClientBuilder,
-            AnalyticsDownstreamProperties downstreamProperties) {
-        AnalyticsDownstreamProperties.DownstreamService mlService = downstreamProperties.getMlService();
-        return restClientBuilder
-                .baseUrl(mlService.getBaseUrl())
-                .build();
+        RestClient.Builder restClientBuilder,
+        AnalyticsDownstreamProperties downstreamProperties
+    ) {
+        AnalyticsDownstreamProperties.DownstreamService mlService =
+            downstreamProperties.getMlService();
+        return restClientBuilder.baseUrl(mlService.getBaseUrl()).build();
     }
-    public MlInferenceResponse requestPrediction(UUID deviceId, Instant timestamp, Map<String, Object> metrics) {
+
+    public MlInferenceResponse requestPrediction(
+        UUID deviceId,
+        Instant timestamp,
+        Map<String, Object> metrics
+    ) {
         return requestPrediction(deviceId, timestamp, metrics, List.of());
     }
 
@@ -58,140 +64,240 @@ public class MlClient {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             String body = objectMapper.writeValueAsString(request);
-            MlTrainingResponse response = trainingClient.post()
-                    .uri("/train")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .body(body)
-                    .retrieve()
-                    .body(MlTrainingResponse.class);
-            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "success"));
+            MlTrainingResponse response = trainingClient
+                .post()
+                .uri("/train")
+                .contentType(MediaType.APPLICATION_JSON)
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .body(body)
+                .retrieve()
+                .body(MlTrainingResponse.class);
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.worker.request.duration",
+                    "status",
+                    "success"
+                )
+            );
             return response;
         } catch (JsonProcessingException exception) {
-            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
-            log.warn("mlTrainingRequestFailed datasetVersionId={} reason={} phase=serialize", request.datasetVersionId(), exception.getClass().getSimpleName());
+            meterRegistry
+                .counter(
+                    "analytics.ml.training.worker.request.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.worker.request.duration",
+                    "status",
+                    "failure"
+                )
+            );
+            log.warn(
+                "mlTrainingRequestFailed datasetVersionId={} reason={} phase=serialize",
+                request.datasetVersionId(),
+                exception.getClass().getSimpleName()
+            );
             return null;
         } catch (RestClientResponseException exception) {
-            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
-            log.warn("mlTrainingRequestFailed datasetVersionId={} status={} phase=request",
-                    request.datasetVersionId(), exception.getStatusCode());
+            meterRegistry
+                .counter(
+                    "analytics.ml.training.worker.request.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.worker.request.duration",
+                    "status",
+                    "failure"
+                )
+            );
+            log.warn(
+                "mlTrainingRequestFailed datasetVersionId={} status={} phase=request",
+                request.datasetVersionId(),
+                exception.getStatusCode()
+            );
             return null;
         } catch (RestClientException exception) {
-            meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
-            log.warn("mlTrainingRequestFailed datasetVersionId={} reason={} phase=request", request.datasetVersionId(), exception.getClass().getSimpleName());
+            meterRegistry
+                .counter(
+                    "analytics.ml.training.worker.request.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.ml.training.worker.request.duration",
+                    "status",
+                    "failure"
+                )
+            );
+            log.warn(
+                "mlTrainingRequestFailed datasetVersionId={} reason={} phase=request",
+                request.datasetVersionId(),
+                exception.getClass().getSimpleName()
+            );
             return null;
         }
     }
 
     public MlInferenceResponse requestPrediction(
-            UUID deviceId,
-            Instant timestamp,
-            Map<String, Object> metrics,
-            List<MlExcludedInterval> excludedIntervals) {
+        UUID deviceId,
+        Instant timestamp,
+        Map<String, Object> metrics,
+        List<MlExcludedInterval> excludedIntervals
+    ) {
         return requestPrediction(deviceId, timestamp, metrics, excludedIntervals, null, null, null);
     }
 
     public MlInferenceResponse requestPrediction(
-            UUID deviceId,
-            Instant timestamp,
-            Map<String, Object> metrics,
-            List<MlExcludedInterval> excludedIntervals,
-            Map<String, Object> baseline,
-            Map<String, Object> recentWindow,
-            Map<String, Object> modelPreference) {
+        UUID deviceId,
+        Instant timestamp,
+        Map<String, Object> metrics,
+        List<MlExcludedInterval> excludedIntervals,
+        MlInferenceBaseline baseline,
+        MlInferenceRecentWindow recentWindow,
+        MlInferenceModelPreference modelPreference
+    ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            String body = objectMapper.writeValueAsString(new MlInferenceRequest(
+            String body = objectMapper.writeValueAsString(
+                new MlInferenceRequest(
                     deviceId,
                     timestamp,
                     metrics,
                     excludedIntervals,
                     baseline,
                     recentWindow,
-                    modelPreference));
-            MlInferenceResponse response = restClient.post()
-                    .uri("/inference")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .body(body)
-                    .retrieve()
-                    .body(MlInferenceResponse.class);
-            sample.stop(meterRegistry.timer(
+                    modelPreference
+                )
+            );
+            MlInferenceResponse response = restClient
+                .post()
+                .uri("/inference")
+                .contentType(MediaType.APPLICATION_JSON)
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .body(body)
+                .retrieve()
+                .body(MlInferenceResponse.class);
+            sample.stop(
+                meterRegistry.timer(
                     "analytics.ml.inference.duration",
                     "status",
-                    response == null || response.predictionStatus() == null ? "success" : response.predictionStatus(),
+                    response == null || response.predictionStatus() == null
+                        ? "success"
+                        : response.predictionStatus(),
                     "modelVersionId",
-                    modelVersionId(modelPreference, response)));
+                    modelVersionId(modelPreference, response)
+                )
+            );
             return response;
         } catch (JsonProcessingException exception) {
-            meterRegistry.counter(
+            meterRegistry
+                .counter(
                     "analytics.ml.inference.failures",
                     "reason",
                     exception.getClass().getSimpleName(),
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)).increment();
-            sample.stop(meterRegistry.timer(
+                    modelVersionId(modelPreference, null)
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
                     "analytics.ml.inference.duration",
                     "status",
                     "failure",
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)));
-            log.warn("mlInferenceFailed deviceId={} reason={} phase=serialize", deviceId, exception.getClass().getSimpleName());
+                    modelVersionId(modelPreference, null)
+                )
+            );
+            log.warn(
+                "mlInferenceFailed deviceId={} reason={} phase=serialize",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
             return null;
         } catch (RestClientResponseException exception) {
-            meterRegistry.counter(
+            meterRegistry
+                .counter(
                     "analytics.ml.inference.failures",
                     "reason",
                     exception.getClass().getSimpleName(),
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)).increment();
-            sample.stop(meterRegistry.timer(
+                    modelVersionId(modelPreference, null)
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
                     "analytics.ml.inference.duration",
                     "status",
                     "failure",
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)));
-            log.warn("mlInferenceFailed deviceId={} status={} phase=request",
-                    deviceId, exception.getStatusCode());
+                    modelVersionId(modelPreference, null)
+                )
+            );
+            log.warn(
+                "mlInferenceFailed deviceId={} status={} phase=request",
+                deviceId,
+                exception.getStatusCode()
+            );
             return null;
         } catch (RestClientException exception) {
-            meterRegistry.counter(
+            meterRegistry
+                .counter(
                     "analytics.ml.inference.failures",
                     "reason",
                     exception.getClass().getSimpleName(),
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)).increment();
-            sample.stop(meterRegistry.timer(
+                    modelVersionId(modelPreference, null)
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
                     "analytics.ml.inference.duration",
                     "status",
                     "failure",
                     "modelVersionId",
-                    modelVersionId(modelPreference, null)));
-            log.warn("mlInferenceFailed deviceId={} reason={} phase=request", deviceId, exception.getClass().getSimpleName());
+                    modelVersionId(modelPreference, null)
+                )
+            );
+            log.warn(
+                "mlInferenceFailed deviceId={} reason={} phase=request",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
             return null;
         }
     }
 
-    private String modelVersionId(Map<String, Object> modelPreference, MlInferenceResponse response) {
-        if (response != null && response.modelVersionId() != null && !response.modelVersionId().isBlank()) {
+    private String modelVersionId(
+        MlInferenceModelPreference modelPreference,
+        MlInferenceResponse response
+    ) {
+        if (
+            response != null &&
+            response.modelVersionId() != null &&
+            !response.modelVersionId().isBlank()
+        ) {
             return response.modelVersionId();
         }
-        Object value = modelPreference == null ? null : modelPreference.get("modelVersionId");
+        Object value = modelPreference == null ? null : modelPreference.modelVersionId();
         String result = value == null ? "" : value.toString();
         return result.isBlank() ? "none" : result;
     }
-
 }

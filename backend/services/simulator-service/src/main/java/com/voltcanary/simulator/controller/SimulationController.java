@@ -42,30 +42,35 @@ public class SimulationController {
 
     @PutMapping("/devices/{deviceId}/config")
     public SimulationConfigResponse saveConfig(
-            @RequestHeader("X-User-Id") UUID userId,
-            @PathVariable("deviceId") UUID deviceId,
-            @Valid @RequestBody SaveSimulationConfigRequest request) {
+        @RequestHeader("X-User-Id") UUID userId,
+        @PathVariable("deviceId") UUID deviceId,
+        @Valid @RequestBody SaveSimulationConfigRequest request
+    ) {
         return profileService.save(userId, deviceId, request);
     }
 
     @PostMapping("/devices/{deviceId}/config/validate")
     public ValidateConfigResponse validateConfig(
-            @PathVariable("deviceId") UUID deviceId,
-            @Valid @RequestBody ValidateConfigRequest request) {
+        @PathVariable("deviceId") UUID deviceId,
+        @Valid @RequestBody ValidateConfigRequest request
+    ) {
         return profileService.validate(request.yamlConfig());
     }
 
     @PostMapping("/devices/{deviceId}/config/reset-template")
     public Map<String, String> resetTemplate(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam(value = "profile", defaultValue = "FRIDGE") SimulationProfile profile,
-            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
-            @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam(value = "profile", defaultValue = "FRIDGE") SimulationProfile profile,
+        @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
+        @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset
+    ) {
         return Map.of("yamlConfig", profileService.template(profile, sourceId, preset));
     }
 
     @GetMapping("/devices/{deviceId}/config/versions")
-    public List<SimulationConfigVersionResponse> configVersions(@PathVariable("deviceId") UUID deviceId) {
+    public List<SimulationConfigVersionResponse> configVersions(
+        @PathVariable("deviceId") UUID deviceId
+    ) {
         return profileService.versions(deviceId);
     }
 
@@ -81,16 +86,18 @@ public class SimulationController {
 
     @GetMapping("/templates/{profile}")
     public Map<String, String> template(
-            @PathVariable("profile") SimulationProfile profile,
-            @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
-            @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset) {
+        @PathVariable("profile") SimulationProfile profile,
+        @RequestParam(value = "sourceId", defaultValue = "sim-fridge-001") String sourceId,
+        @RequestParam(value = "preset", defaultValue = "NORMAL_OPERATION") String preset
+    ) {
         return Map.of("yamlConfig", profileService.template(profile, sourceId, preset));
     }
 
     @PostMapping("/devices/{deviceId}/start")
     public SimulationRunResponse start(
-            @RequestHeader("X-User-Id") UUID userId,
-            @PathVariable("deviceId") UUID deviceId) {
+        @RequestHeader("X-User-Id") UUID userId,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
         return runManager.start(userId, deviceId);
     }
 
@@ -113,5 +120,4 @@ public class SimulationController {
     public SimulationRunDetailResponse run(@PathVariable("runId") UUID runId) {
         return runManager.run(runId);
     }
-
 }

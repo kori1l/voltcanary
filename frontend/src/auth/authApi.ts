@@ -124,8 +124,11 @@ export function confirmEmailVerification(token: string) {
   });
 }
 
-export function listAdminUsers() {
-  return apiRequest<AdminUserResponse[]>("/auth/admin/users");
+export function listAdminUsers(page = 0, search = "") {
+  const query = new URLSearchParams();
+  if (page > 0) query.set("page", String(page));
+  if (search) query.set("search", search);
+  return apiRequest<AdminUserResponse[]>(`/auth/admin/users${query.size ? `?${query}` : ""}`);
 }
 
 export function updateAdminUserRole(userId: string, role: AdminUserResponse["role"]) {

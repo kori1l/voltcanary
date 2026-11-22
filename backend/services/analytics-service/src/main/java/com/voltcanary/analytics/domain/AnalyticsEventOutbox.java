@@ -53,5 +53,4 @@ public class AnalyticsEventOutbox {
 
     @Column(name = "published_at")
     private Instant publishedAt;
-
 }

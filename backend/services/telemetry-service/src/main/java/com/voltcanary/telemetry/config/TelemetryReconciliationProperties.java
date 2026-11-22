@@ -16,5 +16,4 @@ public class TelemetryReconciliationProperties {
     private Duration interval = Duration.ofMinutes(1);
     private Duration readingGracePeriod = Duration.ofSeconds(30);
     private int batchSize = 100;
-
 }

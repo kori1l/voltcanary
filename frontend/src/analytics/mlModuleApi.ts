@@ -3,15 +3,19 @@ import { apiRequest } from "../api/client";
 export type MlDatasetStatus = "DRAFT" | "VALIDATING" | "READY" | "FAILED" | "ARCHIVED" | "DELETED";
 export type MlDatasetSourceType = "INTERNAL_TELEMETRY" | "EXTERNAL_IMPORT" | "MIXED";
 export type MlTrainingSplitStrategy = "TIME_BASED" | "DEVICE_BASED" | "RANDOM";
-export type MlTrainingRunStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED" | "ARCHIVED" | "DELETED";
-export type MlModelStatus = "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED" | "DELETED";
+export type MlTrainingRunStatus =
+  "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED" | "ARCHIVED" | "DELETED";
+export type MlModelStatus =
+  "CANDIDATE" | "APPROVED" | "ACTIVE" | "REJECTED" | "ARCHIVED" | "DELETED";
 export type MlDeploymentMode = "SHADOW" | "CANARY" | "ACTIVE" | "DISABLED";
 export type MlDeploymentScope = "SYSTEM" | "ACCOUNT" | "DEVICE_TYPE" | "DEVICE";
-export type MlModelFamily = "ANOMALY_DETECTION" | "DEGRADATION_SCORING" | "FAILURE_PREDICTION" | "FORECASTING";
+export type MlModelFamily =
+  "ANOMALY_DETECTION" | "DEGRADATION_SCORING" | "FAILURE_PREDICTION" | "FORECASTING";
 export type MlMetricSelectionMode = "COMMON" | "ALL_AVAILABLE";
 export type MlWorkbenchStatus = "READY" | "READY_WITH_WARNINGS" | "BLOCKED" | "NO_DATA";
 export type MlWorkbenchGateStatus = "PASS" | "WARN" | "BLOCK";
-export type MlCandidateWindowKind = "BEST_COVERAGE" | "RECENT_STABLE" | "FAILURE_RICH" | "USER_SELECTED";
+export type MlCandidateWindowKind =
+  "BEST_COVERAGE" | "RECENT_STABLE" | "FAILURE_RICH" | "USER_SELECTED";
 export type MlLabelType =
   | "NORMAL"
   | "ANOMALY"
@@ -403,7 +407,8 @@ export interface MlLifecycleImpact {
   }>;
 }
 
-export type MlLifecycleStatusFilter = "default" | "active" | "failed" | "archived" | "deleted" | "all";
+export type MlLifecycleStatusFilter =
+  "default" | "active" | "failed" | "archived" | "deleted" | "all";
 
 function statusFilterQuery(statusFilter: MlLifecycleStatusFilter = "default") {
   return statusFilter === "default" ? "" : `?statusFilter=${encodeURIComponent(statusFilter)}`;
@@ -444,13 +449,22 @@ export function createInternalTelemetryDataset(body: {
 }
 
 export function previewInternalTelemetryDataset(body: MlDatasetWorkbenchPreviewRequest) {
-  return apiRequest<MlDatasetWorkbenchPreviewResponse>("/analytics/ml/datasets/internal-telemetry/preview", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return apiRequest<MlDatasetWorkbenchPreviewResponse>(
+    "/analytics/ml/datasets/internal-telemetry/preview",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
-export function importMlDataset(kind: "csv" | "jsonl", file: File, mapping: Record<string, unknown>, datasetName: string, description: string) {
+export function importMlDataset(
+  kind: "csv" | "jsonl",
+  file: File,
+  mapping: Record<string, unknown>,
+  datasetName: string,
+  description: string,
+) {
   const form = new FormData();
   form.set("file", file);
   form.set("mappingJson", JSON.stringify(mapping));
@@ -486,45 +500,71 @@ export function generateFeatureSnapshot(body: {
 
 export function listFeatureSnapshots(datasetVersionId?: string) {
   const query = datasetVersionId ? `?datasetVersionId=${encodeURIComponent(datasetVersionId)}` : "";
-  return apiRequest<MlFeatureSnapshotResponse[]>(`/analytics/ml/datasets/feature-snapshots${query}`);
+  return apiRequest<MlFeatureSnapshotResponse[]>(
+    `/analytics/ml/datasets/feature-snapshots${query}`,
+  );
 }
 
 export function archiveMlDatasetVersion(datasetVersionId: string, reason: string) {
   return datasetVersionAction(datasetVersionId, "archive", reason);
 }
 
-export function previewMlDatasetVersionLifecycle(datasetVersionId: string, action: "archive" | "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/datasets/versions/${datasetVersionId}/lifecycle-impact?action=${action}`);
+export function previewMlDatasetVersionLifecycle(
+  datasetVersionId: string,
+  action: "archive" | "delete",
+) {
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/datasets/versions/${datasetVersionId}/lifecycle-impact?action=${action}`,
+  );
 }
 
 export function deleteMlDatasetVersion(datasetVersionId: string, reason: string) {
   return datasetVersionAction(datasetVersionId, "delete", reason);
 }
 
-function datasetVersionAction(datasetVersionId: string, action: "archive" | "delete", reason: string) {
-  return apiRequest<MlDatasetSummary>(`/analytics/ml/datasets/versions/${datasetVersionId}/${action}`, {
-    method: "POST",
-    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
-  });
+function datasetVersionAction(
+  datasetVersionId: string,
+  action: "archive" | "delete",
+  reason: string,
+) {
+  return apiRequest<MlDatasetSummary>(
+    `/analytics/ml/datasets/versions/${datasetVersionId}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+    },
+  );
 }
 
 export function archiveFeatureSnapshot(featureSnapshotId: string, reason: string) {
   return featureSnapshotAction(featureSnapshotId, "archive", reason);
 }
 
-export function previewFeatureSnapshotLifecycle(featureSnapshotId: string, action: "archive" | "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/lifecycle-impact?action=${action}`);
+export function previewFeatureSnapshotLifecycle(
+  featureSnapshotId: string,
+  action: "archive" | "delete",
+) {
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/lifecycle-impact?action=${action}`,
+  );
 }
 
 export function deleteFeatureSnapshot(featureSnapshotId: string, reason: string) {
   return featureSnapshotAction(featureSnapshotId, "delete", reason);
 }
 
-function featureSnapshotAction(featureSnapshotId: string, action: "archive" | "delete", reason: string) {
-  return apiRequest<MlFeatureSnapshotResponse>(`/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/${action}`, {
-    method: "POST",
-    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
-  });
+function featureSnapshotAction(
+  featureSnapshotId: string,
+  action: "archive" | "delete",
+  reason: string,
+) {
+  return apiRequest<MlFeatureSnapshotResponse>(
+    `/analytics/ml/datasets/feature-snapshots/${featureSnapshotId}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+    },
+  );
 }
 
 export function generateHorizonLabels(body: {
@@ -540,11 +580,20 @@ export function generateHorizonLabels(body: {
 }
 
 export function getHorizonLabelGenerationStatus(jobId: string) {
-  return apiRequest<MlHorizonLabelGenerationResponse>(`/analytics/ml/datasets/horizon-labels/${jobId}`);
+  return apiRequest<MlHorizonLabelGenerationResponse>(
+    `/analytics/ml/datasets/horizon-labels/${jobId}`,
+  );
 }
 
-export function listTrainingRuns(statusFilter: MlLifecycleStatusFilter = "default") {
-  return apiRequest<MlTrainingRun[]>(`/analytics/ml/training-runs${statusFilterQuery(statusFilter)}`);
+export const trainingPageSize = 100;
+export function listTrainingRuns(statusFilter: MlLifecycleStatusFilter = "default", page = 0) {
+  const query = new URLSearchParams(statusFilterQuery(statusFilter).replace(/^\?/, ""));
+  if (page > 0) query.set("page", String(page));
+  const suffix = query.size ? `?${query}` : "";
+  return apiRequest<MlTrainingRun[]>(`/analytics/ml/training-runs${suffix}`);
+}
+export function getTrainingRun(id: string) {
+  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${encodeURIComponent(id)}`);
 }
 
 export function createTrainingRun(body: {
@@ -564,11 +613,15 @@ export function createTrainingRun(body: {
 }
 
 export function cancelTrainingRun(runId: string) {
-  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/cancel`, { method: "POST" });
+  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/cancel`, {
+    method: "POST",
+  });
 }
 
 export function retryTrainingRun(runId: string) {
-  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/retry`, { method: "POST" });
+  return apiRequest<MlTrainingRun>(`/analytics/ml/training-runs/${runId}/retry`, {
+    method: "POST",
+  });
 }
 
 export function archiveTrainingRun(runId: string, reason: string) {
@@ -576,7 +629,9 @@ export function archiveTrainingRun(runId: string, reason: string) {
 }
 
 export function previewTrainingRunLifecycle(runId: string, action: "archive" | "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/training-runs/${runId}/lifecycle-impact?action=${action}`);
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/training-runs/${runId}/lifecycle-impact?action=${action}`,
+  );
 }
 
 export function deleteTrainingRun(runId: string, reason: string) {
@@ -590,15 +645,38 @@ function trainingRunAction(runId: string, action: "archive" | "delete", reason: 
   });
 }
 
-type MlModelWire = MlModelVersion & { compatibleDeviceTypesJson?: string | null; supportedMetricsJson?: string | null; evaluationMetricsJson?: string | null };
+type MlModelWire = MlModelVersion & {
+  compatibleDeviceTypesJson?: string | null;
+  supportedMetricsJson?: string | null;
+  evaluationMetricsJson?: string | null;
+};
 export function readModelMetadata(model: MlModelWire): MlModelVersion {
-  const parse = (value: string | null | undefined): unknown => { try { return value ? JSON.parse(value) : null; } catch { return null; } };
-  const strings = (value: unknown): string[] => Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
+  const parse = (value: string | null | undefined): unknown => {
+    try {
+      return value ? JSON.parse(value) : null;
+    } catch {
+      return null;
+    }
+  };
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) && value.every((item) => typeof item === "string") ? value : [];
   const metrics = model.evaluationMetrics ?? parse(model.evaluationMetricsJson);
-  return { ...model, trainingRunId: model.trainingRunId ?? null, compatibleDeviceTypes: model.compatibleDeviceTypes ?? strings(parse(model.compatibleDeviceTypesJson)), supportedMetrics: model.supportedMetrics ?? strings(parse(model.supportedMetricsJson)), evaluationMetrics: metrics && typeof metrics === "object" && !Array.isArray(metrics) ? metrics as Record<string, unknown> : {} };
+  return {
+    ...model,
+    trainingRunId: model.trainingRunId ?? null,
+    compatibleDeviceTypes:
+      model.compatibleDeviceTypes ?? strings(parse(model.compatibleDeviceTypesJson)),
+    supportedMetrics: model.supportedMetrics ?? strings(parse(model.supportedMetricsJson)),
+    evaluationMetrics:
+      metrics && typeof metrics === "object" && !Array.isArray(metrics)
+        ? (metrics as Record<string, unknown>)
+        : {},
+  };
 }
 export async function listMlModels(statusFilter: MlLifecycleStatusFilter = "default") {
-  const models = await apiRequest<MlModelWire[]>(`/analytics/ml/models${statusFilterQuery(statusFilter)}`);
+  const models = await apiRequest<MlModelWire[]>(
+    `/analytics/ml/models${statusFilterQuery(statusFilter)}`,
+  );
   if (!Array.isArray(models)) throw new Error("Model inventory unavailable: invalid list response");
   return models.map(readModelMetadata);
 }
@@ -620,18 +698,28 @@ export function deleteMlModel(modelVersionId: string, reason: string) {
 }
 
 export function previewMlModelLifecycle(modelVersionId: string, action: "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/models/${modelVersionId}/lifecycle-impact?action=${action}`);
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/models/${modelVersionId}/lifecycle-impact?action=${action}`,
+  );
 }
 
-async function modelAction(modelVersionId: string, action: "approve" | "reject" | "archive" | "delete", reason: string) {
-  return readModelMetadata(await apiRequest<MlModelWire>(`/analytics/ml/models/${modelVersionId}/${action}`, {
-    method: "POST",
-    body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
-  }));
+async function modelAction(
+  modelVersionId: string,
+  action: "approve" | "reject" | "archive" | "delete",
+  reason: string,
+) {
+  return readModelMetadata(
+    await apiRequest<MlModelWire>(`/analytics/ml/models/${modelVersionId}/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ reason, force: false } satisfies MlLifecycleActionRequest),
+    }),
+  );
 }
 
 export function listDeploymentPolicies(statusFilter: MlLifecycleStatusFilter = "default") {
-  return apiRequest<MlDeploymentPolicy[]>(`/analytics/ml/deployment-policies${statusFilterQuery(statusFilter)}`);
+  return apiRequest<MlDeploymentPolicy[]>(
+    `/analytics/ml/deployment-policies${statusFilterQuery(statusFilter)}`,
+  );
 }
 
 export function saveDeploymentPolicy(body: {
@@ -659,7 +747,9 @@ export function resolveDeploymentPolicy(deviceId: string, deviceType: string) {
     params.set("deviceType", deviceType.trim());
   }
   const query = params.toString();
-  return apiRequest<MlResolvedPolicy>(`/analytics/ml/deployment-policies/resolve${query ? `?${query}` : ""}`);
+  return apiRequest<MlResolvedPolicy>(
+    `/analytics/ml/deployment-policies/resolve${query ? `?${query}` : ""}`,
+  );
 }
 
 export function disableDeploymentPolicy(policyId: string, reason: string) {
@@ -667,7 +757,9 @@ export function disableDeploymentPolicy(policyId: string, reason: string) {
 }
 
 export function previewDeploymentPolicyLifecycle(policyId: string, action: "disable" | "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/deployment-policies/${policyId}/lifecycle-impact?action=${action}`);
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/deployment-policies/${policyId}/lifecycle-impact?action=${action}`,
+  );
 }
 
 export function deleteDeploymentPolicy(policyId: string, reason: string) {
@@ -682,7 +774,9 @@ function deploymentPolicyAction(policyId: string, action: "disable" | "delete", 
 }
 
 export function listMlLabels(datasetVersionId: string) {
-  return apiRequest<MlLabel[]>(`/analytics/ml/labels?datasetVersionId=${encodeURIComponent(datasetVersionId)}`);
+  return apiRequest<MlLabel[]>(
+    `/analytics/ml/labels?datasetVersionId=${encodeURIComponent(datasetVersionId)}`,
+  );
 }
 
 export function createMlLabel(body: {
@@ -701,7 +795,10 @@ export function createMlLabel(body: {
   });
 }
 
-export function correctMlLabel(labelId: string, body: { label: MlLabelType; reason?: string | null }) {
+export function correctMlLabel(
+  labelId: string,
+  body: { label: MlLabelType; reason?: string | null },
+) {
   return apiRequest<MlLabel>(`/analytics/ml/labels/${labelId}`, {
     method: "PUT",
     body: JSON.stringify(body),
@@ -720,5 +817,7 @@ export function deleteMlLabel(labelId: string, reason: string) {
 }
 
 export function previewMlLabelLifecycle(labelId: string, action: "delete") {
-  return apiRequest<MlLifecycleImpact>(`/analytics/ml/labels/${labelId}/lifecycle-impact?action=${action}`);
+  return apiRequest<MlLifecycleImpact>(
+    `/analytics/ml/labels/${labelId}/lifecycle-impact?action=${action}`,
+  );
 }

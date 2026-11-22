@@ -1,5 +1,7 @@
 package com.voltcanary.ingestion.connector;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.ingestion.adapter.api.AdapterCapabilities;
 import com.voltcanary.ingestion.adapter.api.AdapterCapability;
 import com.voltcanary.ingestion.adapter.api.AdapterManifest;
@@ -27,8 +29,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class ConnectorSupervisorTest {
 
     private final ConnectorRuntimeProperties properties = properties();
@@ -51,36 +51,43 @@ class ConnectorSupervisorTest {
 
         assertThat(adapter.polls).isEqualTo(1);
         assertThat(pipeline.ingested).hasSize(1);
-        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.RUNNING);
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.RUNNING
+        );
 
         clock.advance(Duration.ofSeconds(1));
         leaseManager.allowRenew = false;
         supervisor.tick();
 
         assertThat(adapter.polls).isEqualTo(1);
-        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.LEASE_LOST);
-        assertThat(healthManager.snapshot(config.sourceId()).state()).isEqualTo(ConnectorRuntimeState.LEASE_LOST);
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.LEASE_LOST
+        );
+        assertThat(healthManager.snapshot(config.sourceId()).state()).isEqualTo(
+            ConnectorRuntimeState.LEASE_LOST
+        );
     }
 
     @Test
     void configVersionChangeRestartsSubscriptionAndDisabledSourceStopsIt() {
         SourceRuntimeConfig first = config(1L, "ACTIVE", Map.of());
         SourceRuntimeConfig second = new SourceRuntimeConfig(
-                first.sourceId(),
-                first.dataSourceId(),
-                first.accountId(),
-                first.deviceId(),
-                first.adapterType(),
-                first.protocol(),
-                first.transport(),
-                "ACTIVE",
-                first.mappingSchemaVersion(),
-                first.adapterConfigSchemaVersion(),
-                first.mapping(),
-                Map.of("pollInterval", "2s"),
-                first.credentialReferences(),
-                first.homeRegion(),
-                2L);
+            first.sourceId(),
+            first.dataSourceId(),
+            first.accountId(),
+            first.deviceId(),
+            first.adapterType(),
+            first.protocol(),
+            first.transport(),
+            "ACTIVE",
+            first.mappingSchemaVersion(),
+            first.adapterConfigSchemaVersion(),
+            first.mapping(),
+            Map.of("pollInterval", "2s"),
+            first.credentialReferences(),
+            first.homeRegion(),
+            2L
+        );
         RecordingSubscriptionAdapter adapter = new RecordingSubscriptionAdapter();
         ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
 
@@ -99,89 +106,116 @@ class ConnectorSupervisorTest {
     void failedSourceBacksOffWithoutStoppingOtherSources() {
         SourceRuntimeConfig failing = config(1L, "ACTIVE", Map.of("pollInterval", "1s"));
         SourceRuntimeConfig healthy = new SourceRuntimeConfig(
-                "healthy-source",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                AdapterType.GENERIC_HTTP_POLLING,
-                ProtocolType.HTTP,
-                TransportType.HTTP,
-                "ACTIVE",
-                "mapping.v1",
-                "adapter.v1",
-                Map.of(),
-                Map.of("pollInterval", "1s"),
-                Map.of(),
-                "default",
-                1L);
-        SelectivePollingAdapter adapter = new SelectivePollingAdapter(failing.sourceId(), message(healthy));
+            "healthy-source",
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            AdapterType.GENERIC_HTTP_POLLING,
+            ProtocolType.HTTP,
+            TransportType.HTTP,
+            "ACTIVE",
+            "mapping.v1",
+            "adapter.v1",
+            Map.of(),
+            Map.of("pollInterval", "1s"),
+            Map.of(),
+            "default",
+            1L
+        );
+        SelectivePollingAdapter adapter = new SelectivePollingAdapter(
+            failing.sourceId(),
+            message(healthy)
+        );
         ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
 
         supervisor.reconcile(List.of(failing, healthy));
         supervisor.tick();
 
-        assertThat(supervisor.state(failing.dataSourceId())).isEqualTo(ConnectorRuntimeState.DEGRADED);
-        assertThat(supervisor.state(healthy.dataSourceId())).isEqualTo(ConnectorRuntimeState.RUNNING);
+        assertThat(supervisor.state(failing.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.DEGRADED
+        );
+        assertThat(supervisor.state(healthy.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.RUNNING
+        );
         assertThat(pipeline.ingested).hasSize(1);
-        assertThat(healthManager.snapshot(failing.sourceId()).nextAttemptAt()).isAfter(clock.instant());
+        assertThat(healthManager.snapshot(failing.sourceId()).nextAttemptAt()).isAfter(
+            clock.instant()
+        );
     }
 
     @Test
     void modbusPollingFailureUsesConnectorHealthAndBackoff() {
         SourceRuntimeConfig config = new SourceRuntimeConfig(
-                "modbus-source",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+            "modbus-source",
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            AdapterType.GENERIC_MODBUS_TCP,
+            ProtocolType.MODBUS_TCP,
+            TransportType.TCP,
+            "ACTIVE",
+            "v1",
+            "v1",
+            Map.of("registers", List.of(Map.of("metric", "voltageV", "address", 0))),
+            Map.of("host", "plc-1.internal", "pollInterval", "1s"),
+            Map.of(),
+            "default",
+            1L
+        );
+        FailingPollingAdapter adapter = new FailingPollingAdapter(
+            manifest(
                 AdapterType.GENERIC_MODBUS_TCP,
-                ProtocolType.MODBUS_TCP,
-                TransportType.TCP,
-                "ACTIVE",
-                "v1",
-                "v1",
-                Map.of("registers", List.of(Map.of("metric", "voltageV", "address", 0))),
-                Map.of("host", "plc-1.internal", "pollInterval", "1s"),
-                Map.of(),
-                "default",
-                1L);
-        FailingPollingAdapter adapter = new FailingPollingAdapter(manifest(
-                AdapterType.GENERIC_MODBUS_TCP,
                 TransportType.TCP,
                 ProtocolType.MODBUS_TCP,
-                AdapterCapability.POLLING));
+                AdapterCapability.POLLING
+            )
+        );
         ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
 
         supervisor.reconcile(List.of(config));
         supervisor.tick();
 
-        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.DEGRADED);
-        assertThat(healthManager.snapshot(config.sourceId()).message()).contains("Modbus TCP operation timed out");
-        assertThat(healthManager.snapshot(config.sourceId()).nextAttemptAt()).isAfter(clock.instant());
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.DEGRADED
+        );
+        assertThat(healthManager.snapshot(config.sourceId()).message()).contains(
+            "Modbus TCP operation timed out"
+        );
+        assertThat(healthManager.snapshot(config.sourceId()).nextAttemptAt()).isAfter(
+            clock.instant()
+        );
     }
 
     @Test
     void opcUaSubscriptionFailureStopsSessionAndBacksOffForReconnect() {
         SourceRuntimeConfig config = new SourceRuntimeConfig(
-                "opcua-source",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
+            "opcua-source",
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            AdapterType.GENERIC_OPC_UA,
+            ProtocolType.OPC_UA,
+            TransportType.TCP,
+            "ACTIVE",
+            "v1",
+            "v1",
+            Map.of(
+                "nodes",
+                List.of(Map.of("metric", "voltageV", "nodeId", "ns=2;s=Line1.Voltage"))
+            ),
+            Map.of("endpointUrl", "opc.tcp://plc-1.internal:4840", "pollInterval", "1s"),
+            Map.of(),
+            "default",
+            1L
+        );
+        RecordingSubscriptionAdapter adapter = new RecordingSubscriptionAdapter(
+            manifest(
                 AdapterType.GENERIC_OPC_UA,
-                ProtocolType.OPC_UA,
-                TransportType.TCP,
-                "ACTIVE",
-                "v1",
-                "v1",
-                Map.of("nodes", List.of(Map.of("metric", "voltageV", "nodeId", "ns=2;s=Line1.Voltage"))),
-                Map.of("endpointUrl", "opc.tcp://plc-1.internal:4840", "pollInterval", "1s"),
-                Map.of(),
-                "default",
-                1L);
-        RecordingSubscriptionAdapter adapter = new RecordingSubscriptionAdapter(manifest(
-                AdapterType.GENERIC_OPC_UA,
                 TransportType.TCP,
                 ProtocolType.OPC_UA,
-                AdapterCapability.SUBSCRIPTION));
+                AdapterCapability.SUBSCRIPTION
+            )
+        );
         ConnectorSupervisor supervisor = supervisor(new ManualLeaseManager(), adapter);
 
         supervisor.reconcile(List.of(config));
@@ -190,8 +224,12 @@ class ConnectorSupervisorTest {
 
         assertThat(adapter.starts).isEqualTo(1);
         assertThat(adapter.stops).isEqualTo(1);
-        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.DEGRADED);
-        assertThat(healthManager.snapshot(config.sourceId()).message()).contains("OPC UA session lost");
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.DEGRADED
+        );
+        assertThat(healthManager.snapshot(config.sourceId()).message()).contains(
+            "OPC UA session lost"
+        );
 
         clock.advance(Duration.ofSeconds(1));
         supervisor.tick();
@@ -215,19 +253,25 @@ class ConnectorSupervisorTest {
 
         assertThat(leaseManager.isCurrent(firstLease)).isFalse();
         assertThat(pipeline.ingested).isEmpty();
-        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(ConnectorRuntimeState.LEASE_LOST);
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.LEASE_LOST
+        );
     }
 
-    private ConnectorSupervisor supervisor(ConnectorLeaseManager leaseManager, TelemetryAdapter adapter) {
+    private ConnectorSupervisor supervisor(
+        ConnectorLeaseManager leaseManager,
+        TelemetryAdapter adapter
+    ) {
         IngestionAdapterResolver resolver = ignored -> Optional.of(adapter);
         return new ConnectorSupervisor(
-                leaseManager,
-                resolver,
-                scheduler,
-                backoffPolicy,
-                healthManager,
-                pipeline,
-                clock);
+            leaseManager,
+            resolver,
+            scheduler,
+            backoffPolicy,
+            healthManager,
+            pipeline,
+            clock
+        );
     }
 
     private static ConnectorRuntimeProperties properties() {
@@ -239,63 +283,78 @@ class ConnectorSupervisorTest {
         return properties;
     }
 
-    private static SourceRuntimeConfig config(long version, String status, Map<String, Object> adapterConfig) {
+    private static SourceRuntimeConfig config(
+        long version,
+        String status,
+        Map<String, Object> adapterConfig
+    ) {
         return new SourceRuntimeConfig(
-                "source-1",
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                AdapterType.GENERIC_HTTP_POLLING,
-                ProtocolType.HTTP,
-                TransportType.HTTP,
-                status,
-                "mapping.v1",
-                "adapter.v1",
-                Map.of(),
-                adapterConfig,
-                Map.of(),
-                "default",
-                version);
+            "source-1",
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            AdapterType.GENERIC_HTTP_POLLING,
+            ProtocolType.HTTP,
+            TransportType.HTTP,
+            status,
+            "mapping.v1",
+            "adapter.v1",
+            Map.of(),
+            adapterConfig,
+            Map.of(),
+            "default",
+            version
+        );
     }
 
     private static IncomingTelemetryMessage message(SourceRuntimeConfig config) {
         return new IncomingTelemetryMessage(
-                config.sourceId(),
-                config.deviceId(),
-                config.accountId(),
-                Instant.parse("2026-01-01T00:00:00Z"),
-                Instant.parse("2026-01-01T00:00:00Z"),
-                Map.of("temperature", 4.2),
-                new TelemetryOrigin(
-                        config.adapterType(),
-                        config.protocol(),
-                        config.transport(),
-                        "test-active-adapter",
-                        Map.of()),
-                IngestionContext.empty(),
-                false);
+            config.sourceId(),
+            config.deviceId(),
+            config.accountId(),
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Map.of("temperature", 4.2),
+            new TelemetryOrigin(
+                config.adapterType(),
+                config.protocol(),
+                config.transport(),
+                "test-active-adapter",
+                Map.of()
+            ),
+            IngestionContext.empty(),
+            false
+        );
     }
 
     private static AdapterManifest manifest(AdapterCapability capability) {
-        return manifest(AdapterType.GENERIC_HTTP_POLLING, TransportType.HTTP, ProtocolType.HTTP, capability);
+        return manifest(
+            AdapterType.GENERIC_HTTP_POLLING,
+            TransportType.HTTP,
+            ProtocolType.HTTP,
+            capability
+        );
     }
 
     private static AdapterManifest manifest(
-            AdapterType adapterType,
-            TransportType transport,
-            ProtocolType protocol,
-            AdapterCapability capability) {
+        AdapterType adapterType,
+        TransportType transport,
+        ProtocolType protocol,
+        AdapterCapability capability
+    ) {
         return new AdapterManifest(
-                "test-active-adapter",
-                adapterType,
-                "Test active adapter",
-                transport,
-                protocol,
-                AdapterCapabilities.of(capability),
-                "v1");
+            "test-active-adapter",
+            adapterType,
+            "Test active adapter",
+            transport,
+            protocol,
+            AdapterCapabilities.of(capability),
+            "v1"
+        );
     }
 
     private static final class RecordingPollingAdapter implements PollingTelemetryAdapter {
+
         private final IncomingTelemetryMessage message;
         private int polls;
 
@@ -316,6 +375,7 @@ class ConnectorSupervisorTest {
     }
 
     private static final class SelectivePollingAdapter implements PollingTelemetryAdapter {
+
         private final String failingSourceId;
         private final IncomingTelemetryMessage message;
 
@@ -339,6 +399,7 @@ class ConnectorSupervisorTest {
     }
 
     private static final class FailingPollingAdapter implements PollingTelemetryAdapter {
+
         private final AdapterManifest manifest;
 
         private FailingPollingAdapter(AdapterManifest manifest) {
@@ -356,7 +417,10 @@ class ConnectorSupervisorTest {
         }
     }
 
-    private static final class RecordingSubscriptionAdapter implements SubscriptionTelemetryAdapter {
+    private static final class RecordingSubscriptionAdapter
+        implements SubscriptionTelemetryAdapter
+    {
+
         private final AdapterManifest manifest;
         private int starts;
         private int stops;
@@ -371,7 +435,10 @@ class ConnectorSupervisorTest {
         }
 
         @Override
-        public void startSubscription(SourceRuntimeConfig sourceRuntimeConfig, SubscriptionTelemetrySink sink) {
+        public void startSubscription(
+            SourceRuntimeConfig sourceRuntimeConfig,
+            SubscriptionTelemetrySink sink
+        ) {
             starts++;
             this.sink = sink;
         }
@@ -388,6 +455,7 @@ class ConnectorSupervisorTest {
     }
 
     private static final class RecordingPipeline implements TelemetryIngestionPipeline {
+
         private final List<IncomingTelemetryMessage> ingested = new java.util.ArrayList<>();
 
         @Override
@@ -398,6 +466,7 @@ class ConnectorSupervisorTest {
     }
 
     private static final class ManualLeaseManager implements ConnectorLeaseManager {
+
         private boolean allowAcquire = true;
         private boolean allowRenew = true;
         private long fencingSequence;
@@ -408,9 +477,9 @@ class ConnectorSupervisorTest {
             if (!allowAcquire) {
                 return Optional.empty();
             }
-            ConnectorLease lease = leases.computeIfAbsent(
-                    dataSourceId,
-                    ignored -> new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence));
+            ConnectorLease lease = leases.computeIfAbsent(dataSourceId, ignored ->
+                new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence)
+            );
             return Optional.of(lease);
         }
 
@@ -435,11 +504,15 @@ class ConnectorSupervisorTest {
         }
 
         private void failOver(UUID dataSourceId) {
-            leases.put(dataSourceId, new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence));
+            leases.put(
+                dataSourceId,
+                new ConnectorLease(dataSourceId, "manual-test-owner", ++fencingSequence)
+            );
         }
     }
 
     private static final class MutableClock extends Clock {
+
         private Instant instant;
 
         private MutableClock(Instant instant) {

@@ -12,7 +12,13 @@ export function DeviceIcon({ type }: { type: string }) {
     );
   }
   if (normalizedType.includes("KETTLE")) {
-    return <svg viewBox="0 0 48 48" role="img"><path d="M14 18h20l3 20H11z" /><path d="M18 18v-4h12v4M34 22h5c5 0 5 10 0 10h-3M14 21l-7-4 4 12M10 41h28" /><path d="M21 10v-3M27 10v-3" /></svg>;
+    return (
+      <svg viewBox="0 0 48 48" role="img">
+        <path d="M14 18h20l3 20H11z" />
+        <path d="M18 18v-4h12v4M34 22h5c5 0 5 10 0 10h-3M14 21l-7-4 4 12M10 41h28" />
+        <path d="M21 10v-3M27 10v-3" />
+      </svg>
+    );
   }
   if (normalizedType.includes("HEATER") || normalizedType.includes("BOILER")) {
     return (
@@ -114,7 +120,9 @@ export function formatEnum(value: string) {
 }
 
 export function formatNumber(value: number) {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export function formatRelativeTime(value: string) {
@@ -130,11 +138,21 @@ export function formatRelativeTime(value: string) {
   if (diffHours < 24) {
     return `${diffHours} hr ago`;
   }
-  return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 export function locationLabel(location: Location) {
-  const hierarchy = [location.building, location.floor ? `Floor ${location.floor}` : null, location.room, location.zone]
+  const hierarchy = [
+    location.building,
+    location.floor ? `Floor ${location.floor}` : null,
+    location.room,
+    location.zone,
+  ]
     .filter(Boolean)
     .join(" / ");
   return hierarchy ? `${location.name} - ${hierarchy}` : location.name;
@@ -153,7 +171,9 @@ export function parseMetadata(value: string) {
     return null;
   }
   const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-  const secretKey = Object.keys(parsed).find((key) => /password|token|secret|credential/i.test(key));
+  const secretKey = Object.keys(parsed).find((key) =>
+    /password|token|secret|credential/i.test(key),
+  );
   if (secretKey) {
     throw new Error(`Metadata must not contain secret key: ${secretKey}`);
   }

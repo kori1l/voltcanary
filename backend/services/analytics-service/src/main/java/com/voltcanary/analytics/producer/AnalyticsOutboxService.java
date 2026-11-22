@@ -29,28 +29,39 @@ public class AnalyticsOutboxService {
     @Transactional
     public void enqueueAnomaly(Anomaly anomaly) {
         AnomalyDetectedEvent event = new AnomalyDetectedEvent(
-                anomaly.getId(),
-                anomaly.getDeviceId(),
-                anomaly.getId(),
-                anomaly.getRuleId(),
-                anomaly.getWindowStart(),
-                anomaly.getWindowEnd(),
-                anomaly.getInputHash(),
-                anomaly.getType(),
-                anomaly.getSeverity(),
-                anomaly.getScore(),
-                anomaly.getDescription(),
-                anomaly.getDetectedAt(),
-                "v1",
-                null,
-                "analytics-service",
-                null,
-                anomaly.getDetectedAt());
+            anomaly.getId(),
+            anomaly.getDeviceId(),
+            anomaly.getId(),
+            anomaly.getRuleId(),
+            anomaly.getWindowStart(),
+            anomaly.getWindowEnd(),
+            anomaly.getInputHash(),
+            anomaly.getType(),
+            anomaly.getSeverity(),
+            anomaly.getScore(),
+            anomaly.getDescription(),
+            anomaly.getDetectedAt(),
+            "v1",
+            null,
+            "analytics-service",
+            null,
+            anomaly.getDetectedAt()
+        );
         enqueue(
-                "anomaly:" + anomaly.getDeviceId() + ":" + anomaly.getRuleId() + ":" + anomaly.getWindowStart() + ":" + anomaly.getWindowEnd() + ":" + anomaly.getInputHash(),
-                ANOMALY_TOPIC,
-                anomaly.getDeviceId().toString(),
-                event);
+            "anomaly:" +
+                anomaly.getDeviceId() +
+                ":" +
+                anomaly.getRuleId() +
+                ":" +
+                anomaly.getWindowStart() +
+                ":" +
+                anomaly.getWindowEnd() +
+                ":" +
+                anomaly.getInputHash(),
+            ANOMALY_TOPIC,
+            anomaly.getDeviceId().toString(),
+            event
+        );
     }
 
     @Transactional
@@ -59,35 +70,67 @@ public class AnalyticsOutboxService {
             return;
         }
         RiskScoreChangedEvent event = new RiskScoreChangedEvent(
-                riskScore.getId(),
-                riskScore.getDeviceId(),
-                riskScore.getId(),
-                riskScore.getWindowStart(),
-                riskScore.getWindowEnd(),
-                riskScore.getInputHash(),
-                previousScore,
-                riskScore.getScore(),
-                riskScore.getLevel(),
-                riskScore.getCalculatedAt(),
-                "v1",
-                null,
-                "analytics-service",
-                null,
-                riskScore.getCalculatedAt());
+            riskScore.getId(),
+            riskScore.getDeviceId(),
+            riskScore.getId(),
+            riskScore.getWindowStart(),
+            riskScore.getWindowEnd(),
+            riskScore.getInputHash(),
+            previousScore,
+            riskScore.getScore(),
+            riskScore.getLevel(),
+            riskScore.getCalculatedAt(),
+            "v1",
+            null,
+            "analytics-service",
+            null,
+            riskScore.getCalculatedAt()
+        );
         enqueue(
-                "risk:" + riskScore.getDeviceId() + ":" + riskScore.getWindowStart() + ":" + riskScore.getWindowEnd() + ":" + riskScore.getInputHash(),
-                RISK_TOPIC,
-                riskScore.getDeviceId().toString(),
-                event);
+            "risk:" +
+                riskScore.getDeviceId() +
+                ":" +
+                riskScore.getWindowStart() +
+                ":" +
+                riskScore.getWindowEnd() +
+                ":" +
+                riskScore.getInputHash(),
+            RISK_TOPIC,
+            riskScore.getDeviceId().toString(),
+            event
+        );
     }
 
-    public void enqueueVariableAnomaly(Anomaly anomaly,
-            com.voltcanary.common.events.analytics.VariableRuleEvidence evidence) {
-        var event = new AnomalyDetectedEvent(anomaly.getId(), anomaly.getDeviceId(), anomaly.getId(),
-                anomaly.getRuleId(), anomaly.getWindowStart(), anomaly.getWindowEnd(), anomaly.getInputHash(),
-                anomaly.getType(), anomaly.getSeverity(), anomaly.getScore(), anomaly.getDescription(), anomaly.getDetectedAt(),
-                "v1", null, "analytics-service", anomaly.getAccountId(), anomaly.getDetectedAt(), evidence);
-        enqueue("variable-anomaly:" + anomaly.getId(), ANOMALY_TOPIC, anomaly.getDeviceId().toString(), event);
+    public void enqueueVariableAnomaly(
+        Anomaly anomaly,
+        com.voltcanary.common.events.analytics.VariableRuleEvidence evidence
+    ) {
+        var event = new AnomalyDetectedEvent(
+            anomaly.getId(),
+            anomaly.getDeviceId(),
+            anomaly.getId(),
+            anomaly.getRuleId(),
+            anomaly.getWindowStart(),
+            anomaly.getWindowEnd(),
+            anomaly.getInputHash(),
+            anomaly.getType(),
+            anomaly.getSeverity(),
+            anomaly.getScore(),
+            anomaly.getDescription(),
+            anomaly.getDetectedAt(),
+            "v1",
+            null,
+            "analytics-service",
+            anomaly.getAccountId(),
+            anomaly.getDetectedAt(),
+            evidence
+        );
+        enqueue(
+            "variable-anomaly:" + anomaly.getId(),
+            ANOMALY_TOPIC,
+            anomaly.getDeviceId().toString(),
+            event
+        );
     }
 
     private void enqueue(String eventKey, String topic, String messageKey, Object payload) {

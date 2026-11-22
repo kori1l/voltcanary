@@ -30,7 +30,9 @@ export function useDeviceRegistryActions({
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [analyticsConfig, setAnalyticsConfig] = useState<AnalyticsConfig | null>(null);
-  const [analyticsConfigText, setAnalyticsConfigText] = useState("{\n  \"baselineWindowDays\": 14\n}");
+  const [analyticsConfigText, setAnalyticsConfigText] = useState(
+    '{\n  "baselineWindowDays": 14\n}',
+  );
   const [dataSourceExternalId, setDataSourceExternalId] = useState("");
   const [dataSourceType, setDataSourceType] = useState("SMART_PLUG");
   const [dataSourceProtocol, setDataSourceProtocol] = useState("REST");
@@ -62,9 +64,15 @@ export function useDeviceRegistryActions({
       setAnalyticsConfig(analyticsConfigResponse.value);
       setAnalyticsConfigText(JSON.stringify(analyticsConfigResponse.value.config ?? {}, null, 2));
     }
-    const failures = [sourcesResponse, sensorsResponse, analyticsConfigResponse].flatMap((result, index) => result.status === "rejected" ? [["Sources", "Sensors", "Analytics configuration"][index]] : []);
+    const failures = [sourcesResponse, sensorsResponse, analyticsConfigResponse].flatMap(
+      (result, index) =>
+        result.status === "rejected"
+          ? [["Sources", "Sensors", "Analytics configuration"][index]]
+          : [],
+    );
     setRegistryLoaded(failures.length === 0);
-    if (failures.length) setError(`${failures.join(", ")} unavailable. Retained records may be stale.`);
+    if (failures.length)
+      setError(`${failures.join(", ")} unavailable. Retained records may be stale.`);
   }
 
   async function addDataSource() {
@@ -80,7 +88,9 @@ export function useDeviceRegistryActions({
       setDataSourceExternalId("");
       await loadRegistry(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to create data source");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to create data source",
+      );
     } finally {
       setIsRegistryBusy(false);
     }
@@ -88,7 +98,18 @@ export function useDeviceRegistryActions({
 
   async function rotateSourceToken(dataSourceId: string) {
     if (!deviceId) return;
-    if (await confirmation.confirm({ title: "Rotate source token", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Replaces the active credential. External integrations using the previous token must be updated.", dependencies: "The attached simulator configuration is updated with the new token when available." }) === null) return;
+    if (
+      (await confirmation.confirm({
+        title: "Rotate source token",
+        object:
+          dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId,
+        impact:
+          "Replaces the active credential. External integrations using the previous token must be updated.",
+        dependencies:
+          "The attached simulator configuration is updated with the new token when available.",
+      })) === null
+    )
+      return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -97,7 +118,9 @@ export function useDeviceRegistryActions({
       await onSourceTokenRotated(dataSourceId, response.token);
       await loadRegistry(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to rotate source token");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to rotate source token",
+      );
     } finally {
       setIsRegistryBusy(false);
     }
@@ -105,14 +128,25 @@ export function useDeviceRegistryActions({
 
   async function revokeSourceToken(dataSourceId: string) {
     if (!deviceId) return;
-    if (await confirmation.confirm({ title: "Revoke source token", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Invalidates the active credential. Senders using it can no longer authenticate telemetry." }) === null) return;
+    if (
+      (await confirmation.confirm({
+        title: "Revoke source token",
+        object:
+          dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId,
+        impact:
+          "Invalidates the active credential. Senders using it can no longer authenticate telemetry.",
+      })) === null
+    )
+      return;
     setIsRegistryBusy(true);
     setError(null);
     try {
       await revokeDataSourceToken(deviceId, dataSourceId);
       await loadRegistry(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to revoke source token");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to revoke source token",
+      );
     } finally {
       setIsRegistryBusy(false);
     }
@@ -120,14 +154,25 @@ export function useDeviceRegistryActions({
 
   async function disableSource(dataSourceId: string) {
     if (!deviceId) return;
-    if (await confirmation.confirm({ title: "Disable source", object: dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId, impact: "Disables ingestion from this source. Telemetry gaps can affect alerts and analytics." }) === null) return;
+    if (
+      (await confirmation.confirm({
+        title: "Disable source",
+        object:
+          dataSources.find((source) => source.id === dataSourceId)?.externalId ?? dataSourceId,
+        impact:
+          "Disables ingestion from this source. Telemetry gaps can affect alerts and analytics.",
+      })) === null
+    )
+      return;
     setIsRegistryBusy(true);
     setError(null);
     try {
       await disableDataSource(deviceId, dataSourceId);
       await loadRegistry(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to disable data source");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to disable data source",
+      );
     } finally {
       setIsRegistryBusy(false);
     }
@@ -135,7 +180,11 @@ export function useDeviceRegistryActions({
 
   async function importSourcesCsv() {
     if (!deviceId) return;
-    if (!inspectImportCsv(sourceCsvText, ["externalId", "sourceType", "protocol"]).valid || isRegistryBusy) return;
+    if (
+      !inspectImportCsv(sourceCsvText, ["externalId", "sourceType", "protocol"]).valid ||
+      isRegistryBusy
+    )
+      return;
     setIsRegistryBusy(true);
     setSourceCsvMessage(null);
     setError(null);
@@ -148,7 +197,9 @@ export function useDeviceRegistryActions({
       );
       await loadRegistry(deviceId);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to import data sources");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to import data sources",
+      );
     } finally {
       setIsRegistryBusy(false);
     }
@@ -158,9 +209,15 @@ export function useDeviceRegistryActions({
     if (!deviceId) return;
     setError(null);
     try {
-      downloadText(await exportDataSourcesCsv(deviceId), `device-${deviceId}-sources.csv`, "text/csv");
+      downloadText(
+        await exportDataSourcesCsv(deviceId),
+        `device-${deviceId}-sources.csv`,
+        "text/csv",
+      );
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to export data sources");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to export data sources",
+      );
     }
   }
 
@@ -191,7 +248,14 @@ export function useDeviceRegistryActions({
 
   async function removeSensor(sensorId: string) {
     if (!deviceId) return;
-    if (await confirmation.confirm({ title: "Delete sensor", object: sensors.find((sensor) => sensor.id === sensorId)?.name ?? sensorId, impact: "Removes this physical sensor mapping. Existing telemetry history is retained." }) === null) return;
+    if (
+      (await confirmation.confirm({
+        title: "Delete sensor",
+        object: sensors.find((sensor) => sensor.id === sensorId)?.name ?? sensorId,
+        impact: "Removes this physical sensor mapping. Existing telemetry history is retained.",
+      })) === null
+    )
+      return;
     setIsRegistryBusy(true);
     setError(null);
     try {
@@ -210,7 +274,11 @@ export function useDeviceRegistryActions({
     setError(null);
     try {
       const config = parseJsonObject(analyticsConfigText) ?? {};
-      if (config.baselineWindowDays !== undefined && (!Number.isInteger(config.baselineWindowDays) || Number(config.baselineWindowDays) < 1)) throw new Error("Baseline window days must be a positive integer.");
+      if (
+        config.baselineWindowDays !== undefined &&
+        (!Number.isInteger(config.baselineWindowDays) || Number(config.baselineWindowDays) < 1)
+      )
+        throw new Error("Baseline window days must be a positive integer.");
       const saved = await updateAnalyticsConfig(deviceId, {
         enabled: analyticsConfig.enabled,
         config,
@@ -218,7 +286,9 @@ export function useDeviceRegistryActions({
       setAnalyticsConfig(saved);
       setAnalyticsConfigText(JSON.stringify(saved.config ?? {}, null, 2));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to save analytics config");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to save analytics config",
+      );
     } finally {
       setIsRegistryBusy(false);
     }

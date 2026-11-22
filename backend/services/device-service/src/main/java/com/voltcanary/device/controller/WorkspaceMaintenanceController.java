@@ -22,24 +22,59 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/workspaces/{workspace}/maintenance/{account}/{device}")
 @RequiredArgsConstructor
 public class WorkspaceMaintenanceController {
+
     private final MaintenanceWindowService windows;
     private final AuthenticatedUserResolver users;
 
-    private AuthenticatedUser actor(String token) {var headers=new HttpHeaders();headers.setBearerAuth(token.replaceFirst("^Bearer ",""));return users.resolve(headers);}
+    private AuthenticatedUser actor(String token) {
+        var headers = new HttpHeaders();
+        headers.setBearerAuth(token.replaceFirst("^Bearer ", ""));
+        return users.resolve(headers);
+    }
+
     @PostMapping
-    public MaintenanceWindowResponse create(@RequestHeader("Authorization") String token,@PathVariable("workspace") UUID workspace,@PathVariable("account") UUID account,@PathVariable("device") UUID device,@Valid @RequestBody MaintenanceWindowRequest body) {
-        return windows.workspaceCreate(actor(token),workspace,account,device,body);
+    public MaintenanceWindowResponse create(
+        @RequestHeader("Authorization") String token,
+        @PathVariable("workspace") UUID workspace,
+        @PathVariable("account") UUID account,
+        @PathVariable("device") UUID device,
+        @Valid @RequestBody MaintenanceWindowRequest body
+    ) {
+        return windows.workspaceCreate(actor(token), workspace, account, device, body);
     }
+
     @PutMapping("/{id}")
-    public MaintenanceWindowResponse update(@RequestHeader("Authorization") String token,@PathVariable("workspace") UUID workspace,@PathVariable("account") UUID account,@PathVariable("device") UUID device,@PathVariable("id") UUID id,@Valid @RequestBody MaintenanceWindowRequest body) {
-        return windows.workspaceUpdate(actor(token),workspace,account,device,id,body);
+    public MaintenanceWindowResponse update(
+        @RequestHeader("Authorization") String token,
+        @PathVariable("workspace") UUID workspace,
+        @PathVariable("account") UUID account,
+        @PathVariable("device") UUID device,
+        @PathVariable("id") UUID id,
+        @Valid @RequestBody MaintenanceWindowRequest body
+    ) {
+        return windows.workspaceUpdate(actor(token), workspace, account, device, id, body);
     }
+
     @PostMapping("/{id}/cancel")
-    public MaintenanceWindowResponse cancel(@RequestHeader("Authorization") String token,@PathVariable("workspace") UUID workspace,@PathVariable("account") UUID account,@PathVariable("device") UUID device,@PathVariable("id") UUID id,@RequestBody(required=false) CancelMaintenanceWindowRequest body) {
-        return windows.workspaceCancel(actor(token),workspace,account,device,id,body);
+    public MaintenanceWindowResponse cancel(
+        @RequestHeader("Authorization") String token,
+        @PathVariable("workspace") UUID workspace,
+        @PathVariable("account") UUID account,
+        @PathVariable("device") UUID device,
+        @PathVariable("id") UUID id,
+        @RequestBody(required = false) CancelMaintenanceWindowRequest body
+    ) {
+        return windows.workspaceCancel(actor(token), workspace, account, device, id, body);
     }
+
     @PostMapping("/{id}/finish")
-    public MaintenanceWindowResponse finish(@RequestHeader("Authorization") String token,@PathVariable("workspace") UUID workspace,@PathVariable("account") UUID account,@PathVariable("device") UUID device,@PathVariable("id") UUID id) {
-        return windows.workspaceFinish(actor(token),workspace,account,device,id);
+    public MaintenanceWindowResponse finish(
+        @RequestHeader("Authorization") String token,
+        @PathVariable("workspace") UUID workspace,
+        @PathVariable("account") UUID account,
+        @PathVariable("device") UUID device,
+        @PathVariable("id") UUID id
+    ) {
+        return windows.workspaceFinish(actor(token), workspace, account, device, id);
     }
 }

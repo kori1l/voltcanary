@@ -21,25 +21,35 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/dashboard-preferences/me")
 @RequiredArgsConstructor
 public class DashboardPreferencesController {
+
     private final DashboardOwnership ownership;
     private final PersonalDashboardPreferences preferences;
     private final DefinitionValidation validation;
     private final DashboardRequestDecoder decoder;
 
     @GetMapping
-    public ResponseEntity<Preferences> get(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    public ResponseEntity<Preferences> get(
+        @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
         Preferences current = preferences.get(ownership.resolve(authorization));
         return ResponseEntity.ok().eTag(current.etag().toString()).body(current);
     }
 
     @PutMapping
-    public ResponseEntity<Preferences> put(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "If-Match", required = false) String ifMatch, @RequestBody JsonNode body) {
+    public ResponseEntity<Preferences> put(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch,
+        @RequestBody JsonNode body
+    ) {
         var actor = ownership.resolve(authorization);
         validation.validatePayload(body);
         JsonNode favorites = body.path("favorites");
         if (!favorites.isArray() || favorites.size() > 10) {
-            throw new DashboardFailure("VALIDATION_ERROR", "Expected at most ten favorites", "favorites");
+            throw new DashboardFailure(
+                "VALIDATION_ERROR",
+                "Expected at most ten favorites",
+                "favorites"
+            );
         }
         var favoriteIds = new ArrayList<UUID>();
         for (JsonNode favorite : favorites) {
@@ -49,11 +59,21 @@ public class DashboardPreferencesController {
                 }
                 favoriteIds.add(UUID.fromString(favorite.asText()));
             } catch (IllegalArgumentException exception) {
-                throw new DashboardFailure("VALIDATION_ERROR", "Expected a favorite UUID", "favorites");
+                throw new DashboardFailure(
+                    "VALIDATION_ERROR",
+                    "Expected a favorite UUID",
+                    "favorites"
+                );
             }
         }
-        Preferences saved = preferences.save(actor, authorization, ifMatch,
-                decoder.uuid(body, "defaultDashboardId", true), favoriteIds, body.path("defaultContext"));
+        Preferences saved = preferences.save(
+            actor,
+            authorization,
+            ifMatch,
+            decoder.uuid(body, "defaultDashboardId", true),
+            favoriteIds,
+            body.path("defaultContext")
+        );
         return ResponseEntity.ok().eTag(saved.etag().toString()).body(saved);
     }
 }

@@ -17,6 +17,7 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Device {
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
@@ -54,5 +55,4 @@ public class Device {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
 }

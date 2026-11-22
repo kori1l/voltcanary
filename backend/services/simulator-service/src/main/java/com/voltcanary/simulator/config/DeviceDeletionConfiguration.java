@@ -7,10 +7,12 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class DeviceDeletionConfiguration {
+
     @Bean
     DeviceDeletionAuthorization deviceDeletionAuthorization(
-            @Value("${DEVICE_SERVICE_URI:${DEVICE_SERVICE_URL:http://localhost:8082}}") String devices,
-            @Value("${INTERNAL_SERVICE_TOKEN:dev-internal-token}") String token) {
+        @Value("${DEVICE_SERVICE_URI:${DEVICE_SERVICE_URL:http://localhost:8082}}") String devices,
+        @Value("${INTERNAL_SERVICE_TOKEN:dev-internal-token}") String token
+    ) {
         return new DeviceDeletionAuthorization(devices, token);
     }
 }

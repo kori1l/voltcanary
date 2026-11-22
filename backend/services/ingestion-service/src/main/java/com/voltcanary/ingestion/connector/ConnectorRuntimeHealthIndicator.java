@@ -15,13 +15,24 @@ public class ConnectorRuntimeHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         List<ConnectorHealthSnapshot> snapshots = healthManager.snapshots();
-        boolean failed = snapshots.stream().anyMatch(snapshot -> snapshot.state() == ConnectorRuntimeState.FAILED);
-        boolean degraded = snapshots.stream().anyMatch(snapshot -> snapshot.state() == ConnectorRuntimeState.DEGRADED
-                || snapshot.state() == ConnectorRuntimeState.LEASE_LOST);
-        Health.Builder builder = failed ? Health.down() : degraded ? Health.status("DEGRADED") : Health.up();
+        boolean failed = snapshots
+            .stream()
+            .anyMatch(snapshot -> snapshot.state() == ConnectorRuntimeState.FAILED);
+        boolean degraded = snapshots
+            .stream()
+            .anyMatch(
+                snapshot ->
+                    snapshot.state() == ConnectorRuntimeState.DEGRADED ||
+                    snapshot.state() == ConnectorRuntimeState.LEASE_LOST
+            );
+        Health.Builder builder = failed
+            ? Health.down()
+            : degraded
+              ? Health.status("DEGRADED")
+              : Health.up();
         return builder
-                .withDetail("sources", snapshots.size())
-                .withDetail("states", snapshots)
-                .build();
+            .withDetail("sources", snapshots.size())
+            .withDetail("states", snapshots)
+            .build();
     }
 }

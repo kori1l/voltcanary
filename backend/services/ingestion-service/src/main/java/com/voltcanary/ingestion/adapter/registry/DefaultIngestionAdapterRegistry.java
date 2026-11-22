@@ -42,29 +42,42 @@ public class DefaultIngestionAdapterRegistry implements IngestionAdapterRegistry
     }
 
     @Override
-    public Optional<TelemetryAdapter> find(AdapterType adapterType, ProtocolType protocol, TransportType transport) {
+    public Optional<TelemetryAdapter> find(
+        AdapterType adapterType,
+        ProtocolType protocol,
+        TransportType transport
+    ) {
         return find(adapterType)
-                .filter(adapter -> adapter.manifest().protocol() == protocol)
-                .filter(adapter -> adapter.manifest().transport() == transport);
+            .filter(adapter -> adapter.manifest().protocol() == protocol)
+            .filter(adapter -> adapter.manifest().transport() == transport);
     }
 
     @Override
-    public <T extends TelemetryAdapter> List<T> findByCapability(AdapterCapability capability, Class<T> adapterClass) {
-        return adaptersByType.values().stream()
-                .filter(adapter -> adapter.manifest().supports(capability))
-                .filter(adapterClass::isInstance)
-                .map(adapterClass::cast)
-                .toList();
+    public <T extends TelemetryAdapter> List<T> findByCapability(
+        AdapterCapability capability,
+        Class<T> adapterClass
+    ) {
+        return adaptersByType
+            .values()
+            .stream()
+            .filter(adapter -> adapter.manifest().supports(capability))
+            .filter(adapterClass::isInstance)
+            .map(adapterClass::cast)
+            .toList();
     }
 
     private void register(TelemetryAdapter adapter) {
         TelemetryAdapter previousType = adaptersByType.putIfAbsent(adapter.adapterType(), adapter);
         if (previousType != null) {
-            throw new IllegalArgumentException("Duplicate ingestion adapter type " + adapter.adapterType());
+            throw new IllegalArgumentException(
+                "Duplicate ingestion adapter type " + adapter.adapterType()
+            );
         }
         TelemetryAdapter previousId = adaptersById.putIfAbsent(adapter.adapterId(), adapter);
         if (previousId != null) {
-            throw new IllegalArgumentException("Duplicate ingestion adapter id " + adapter.adapterId());
+            throw new IllegalArgumentException(
+                "Duplicate ingestion adapter id " + adapter.adapterId()
+            );
         }
     }
 }

@@ -30,27 +30,34 @@ public class DownstreamFailureGlobalFilter implements GlobalFilter, Ordered {
                 return Mono.error(exception);
             }
 
-            String correlationId = exchange.getRequest().getHeaders()
-                    .getFirst(CorrelationIdGlobalFilter.CORRELATION_ID_HEADER);
+            String correlationId = exchange
+                .getRequest()
+                .getHeaders()
+                .getFirst(CorrelationIdGlobalFilter.CORRELATION_ID_HEADER);
             log.warn(
-                    "downstreamFailure correlationId={} path={} reason={}",
-                    correlationId,
-                    exchange.getRequest().getURI().getPath(),
-                    exception.getClass().getSimpleName());
+                "downstreamFailure correlationId={} path={} reason={}",
+                correlationId,
+                exchange.getRequest().getURI().getPath(),
+                exception.getClass().getSimpleName()
+            );
             if (meterRegistry != null) {
-                meterRegistry.counter(
+                meterRegistry
+                    .counter(
                         "voltcanary.gateway.downstream.failures",
                         "path",
                         exchange.getRequest().getURI().getPath(),
                         "reason",
-                        exception.getClass().getSimpleName()).increment();
+                        exception.getClass().getSimpleName()
+                    )
+                    .increment();
             }
 
             return GatewayErrorResponseWriter.write(
-                    exchange,
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "downstream_unavailable",
-                    "Downstream service is unavailable");
+                exchange,
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "downstream_unavailable",
+                "Downstream service is unavailable"
+            );
         });
     }
 
@@ -58,5 +65,4 @@ public class DownstreamFailureGlobalFilter implements GlobalFilter, Ordered {
     public int getOrder() {
         return Ordered.LOWEST_PRECEDENCE;
     }
-
 }

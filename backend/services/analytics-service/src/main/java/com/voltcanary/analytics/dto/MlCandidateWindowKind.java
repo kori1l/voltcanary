@@ -4,5 +4,5 @@ public enum MlCandidateWindowKind {
     BEST_COVERAGE,
     RECENT_STABLE,
     FAILURE_RICH,
-    USER_SELECTED
+    USER_SELECTED,
 }

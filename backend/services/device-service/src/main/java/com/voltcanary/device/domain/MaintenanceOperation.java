@@ -65,5 +65,4 @@ public class MaintenanceOperation {
 
     @Column(nullable = false)
     private long version;
-
 }

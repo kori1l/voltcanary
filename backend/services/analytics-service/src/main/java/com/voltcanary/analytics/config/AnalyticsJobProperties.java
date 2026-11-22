@@ -13,5 +13,4 @@ public class AnalyticsJobProperties {
 
     private boolean async = true;
     private boolean workerEnabled = false;
-
 }

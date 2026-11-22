@@ -1,15 +1,37 @@
 package com.voltcanary.aiagent.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import static org.assertj.core.api.Assertions.assertThat;
 
 class DashboardModelContextTest {
-    @Test void removesCompetingLegacyCatalogueAndRetainsExplicitIndependentWidgetPeriods() {
-        var widgets = List.of(Map.of("key", "speed", "period", "LAST_24_HOURS"), Map.of("key", "map", "period", "LAST_1_HOUR"));
-        var previous = Map.of("name", "Bus", "period", "LAST_24_HOURS", "widgets", widgets, "templateRef", "obsolete");
-        var original = Map.<String, Object>of("dashboardTemplates", List.of("legacy"), "dashboardWidgetTypes", List.of("vehicle-map", "time-series"), "previousDashboardIntent", previous);
+
+    @Test
+    void removesCompetingLegacyCatalogueAndRetainsExplicitIndependentWidgetPeriods() {
+        var widgets = List.of(
+            Map.of("key", "speed", "period", "LAST_24_HOURS"),
+            Map.of("key", "map", "period", "LAST_1_HOUR")
+        );
+        var previous = Map.of(
+            "name",
+            "Bus",
+            "period",
+            "LAST_24_HOURS",
+            "widgets",
+            widgets,
+            "templateRef",
+            "obsolete"
+        );
+        var original = Map.<String, Object>of(
+            "dashboardTemplates",
+            List.of("legacy"),
+            "dashboardWidgetTypes",
+            List.of("vehicle-map", "time-series"),
+            "previousDashboardIntent",
+            previous
+        );
         var reduced = DashboardModelContext.forModel(original);
         assertThat(reduced).doesNotContainKey("dashboardTemplates");
         assertThat(original).containsKey("dashboardTemplates");

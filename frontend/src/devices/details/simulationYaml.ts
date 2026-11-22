@@ -4,7 +4,7 @@ export type SimulationSettings = {
   interval: string;
   duration: string;
   speed: string;
-  gpsSpeedKmh:string;
+  gpsSpeedKmh: string;
   voltageV: string;
   rssi: string;
   idlePowerW: string;
@@ -34,16 +34,31 @@ export function readSimulationSettings(yaml: string): SimulationSettings {
     interval: readYamlString(yaml, /interval:[ \t]*([^\n]*)/),
     duration: readYamlString(yaml, /duration:[ \t]*([^\n]*)/),
     speed: readYamlString(yaml, /speed:[ \t]*([^\n]*)/),
-    gpsSpeedKmh:readYamlString(yaml,/speedKmh:[ \t]*([^\n]+)/),
-    voltageV: readYamlString(yaml, /voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
-    rssi: readYamlString(yaml, /rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/),
+    gpsSpeedKmh: readYamlString(yaml, /speedKmh:[ \t]*([^\n]+)/),
+    voltageV: readYamlString(
+      yaml,
+      /voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/,
+    ),
+    rssi: readYamlString(
+      yaml,
+      /rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*([^\n]*)/,
+    ),
     idlePowerW: readYamlString(yaml, /offValue:[ \t]*\n[ \t]+mean:[ \t]*([^\n]*)/),
     activePowerW: readYamlString(yaml, /onValue:[ \t]*\n[ \t]+mean:[ \t]*([^\n]*)/),
-    activeNoiseW: readYamlString(yaml, /onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*([^\n]*)/),
+    activeNoiseW: readYamlString(
+      yaml,
+      /onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*([^\n]*)/,
+    ),
     onMin: readYamlString(yaml, /onDuration:[ \t]*\n[ \t]+min:[ \t]*([^\n]*)/),
-    onMax: readYamlString(yaml, /onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/),
+    onMax: readYamlString(
+      yaml,
+      /onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/,
+    ),
     offMin: readYamlString(yaml, /offDuration:[ \t]*\n[ \t]+min:[ \t]*([^\n]*)/),
-    offMax: readYamlString(yaml, /offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/),
+    offMax: readYamlString(
+      yaml,
+      /offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*([^\n]*)/,
+    ),
     powerSpikeEnabled: readAnomalyBoolean(yaml, "POWER_SPIKE", "enabled"),
     powerSpikeAfter: readAnomalyString(yaml, "POWER_SPIKE", "startAfter"),
     powerSpikeDuration: readAnomalyString(yaml, "POWER_SPIKE", "duration"),
@@ -58,7 +73,11 @@ export function readSimulationSettings(yaml: string): SimulationSettings {
   };
 }
 
-export function updateSimulationYaml(yaml: string, field: keyof SimulationSettings | "profile" | "protocol", value: string | boolean) {
+export function updateSimulationYaml(
+  yaml: string,
+  field: keyof SimulationSettings | "profile" | "protocol",
+  value: string | boolean,
+) {
   const textValue = typeof value === "boolean" ? String(value) : value;
   switch (field) {
     case "name":
@@ -78,23 +97,43 @@ export function updateSimulationYaml(yaml: string, field: keyof SimulationSettin
     case "gpsSpeedKmh":
       return replaceYaml(yaml, /(speedKmh:[ \t]*)[^\n]+/, `$1${textValue}`);
     case "voltageV":
-      return replaceYaml(yaml, /(voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/, `$1${textValue}`);
+      return replaceYaml(
+        yaml,
+        /(voltageV:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/,
+        `$1${textValue}`,
+      );
     case "rssi":
-      return replaceYaml(yaml, /(rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/, `$1${textValue}`);
+      return replaceYaml(
+        yaml,
+        /(rssi:[ \t]*\n[ \t]+type:[ \t]+constant[ \t]*\n[ \t]+value:[ \t]*)[^\n]*/,
+        `$1${textValue}`,
+      );
     case "idlePowerW":
       return replaceYaml(yaml, /(offValue:[ \t]*\n[ \t]+mean:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "activePowerW":
       return replaceYaml(yaml, /(onValue:[ \t]*\n[ \t]+mean:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "activeNoiseW":
-      return replaceYaml(yaml, /(onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*)[^\n]*/, `$1${textValue}`);
+      return replaceYaml(
+        yaml,
+        /(onValue:[ \t]*\n[ \t]+mean:[ \t]*[^\n]*\n[ \t]+noise:[ \t]*)[^\n]*/,
+        `$1${textValue}`,
+      );
     case "onMin":
       return replaceYaml(yaml, /(onDuration:[ \t]*\n[ \t]+min:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "onMax":
-      return replaceYaml(yaml, /(onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/, `$1${textValue}`);
+      return replaceYaml(
+        yaml,
+        /(onDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/,
+        `$1${textValue}`,
+      );
     case "offMin":
       return replaceYaml(yaml, /(offDuration:[ \t]*\n[ \t]+min:[ \t]*)[^\n]*/, `$1${textValue}`);
     case "offMax":
-      return replaceYaml(yaml, /(offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/, `$1${textValue}`);
+      return replaceYaml(
+        yaml,
+        /(offDuration:[ \t]*\n[ \t]+min:[ \t]*[^\n]*\n[ \t]+max:[ \t]*)[^\n]*/,
+        `$1${textValue}`,
+      );
     case "powerSpikeEnabled":
       return updateAnomalyYaml(yaml, "POWER_SPIKE", "enabled", textValue);
     case "powerSpikeAfter":
@@ -157,7 +196,10 @@ function updateAnomalyYaml(yaml: string, type: string, field: string, value: str
     return yaml;
   }
   const updatedBlock = new RegExp(`(\\n[ \\t]+${field}:[ \\t]*)[^\\n]*`).test(block)
-    ? block.replace(new RegExp(`(\\n[ \\t]+${field}:[ \\t]*)[^\\n]*`), (_match, prefix: string) => `${prefix}${value}`)
+    ? block.replace(
+        new RegExp(`(\\n[ \\t]+${field}:[ \\t]*)[^\\n]*`),
+        (_match, prefix: string) => `${prefix}${value}`,
+      )
     : block.replace(new RegExp(`(  - type: ${type})`), `$1\n    ${field}: ${value}`);
   return yaml.replace(block, updatedBlock);
 }

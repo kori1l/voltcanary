@@ -1,10 +1,5 @@
 package com.voltcanary.identity.controller;
 
-import com.voltcanary.identity.dto.AdminRefreshSessionResponse;
-import com.voltcanary.identity.dto.AdminRevokeSessionsResponse;
-import com.voltcanary.identity.dto.AdminUpdateUserRoleRequest;
-import com.voltcanary.identity.dto.AdminUpdateUserStatusRequest;
-import com.voltcanary.identity.dto.AdminUserResponse;
 import com.voltcanary.identity.dto.AuthMessageResponse;
 import com.voltcanary.identity.dto.AuthTokenResponse;
 import com.voltcanary.identity.dto.ChangePasswordRequest;
@@ -20,13 +15,8 @@ import com.voltcanary.identity.dto.ResetPasswordRequest;
 import com.voltcanary.identity.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.List;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -46,12 +36,16 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthTokenResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+    public AuthTokenResponse login(
+        @Valid @RequestBody LoginRequest request,
+        HttpServletRequest httpRequest
+    ) {
         return authService.login(
-                request,
-                clientIp(httpRequest),
-                httpRequest.getHeader("User-Agent"),
-                correlationId(httpRequest));
+            request,
+            clientIp(httpRequest),
+            httpRequest.getHeader("User-Agent"),
+            correlationId(httpRequest)
+        );
     }
 
     @PostMapping("/refresh")
@@ -65,15 +59,17 @@ public class AuthController {
     }
 
     @PostMapping("/logout-all")
-    public AuthMessageResponse logoutAll(@RequestHeader(value = "Authorization", required = false)
-            String authorizationHeader) {
+    public AuthMessageResponse logoutAll(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
         return authService.logoutAll(authorizationHeader);
     }
 
     @PostMapping("/change-password")
     public AuthMessageResponse changePassword(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @Valid @RequestBody ChangePasswordRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+        @Valid @RequestBody ChangePasswordRequest request
+    ) {
         return authService.changePassword(authorizationHeader, request);
     }
 
@@ -88,62 +84,24 @@ public class AuthController {
     }
 
     @PostMapping("/email-verification/request")
-    public AuthMessageResponse requestEmailVerification(@Valid @RequestBody EmailVerificationRequest request) {
+    public AuthMessageResponse requestEmailVerification(
+        @Valid @RequestBody EmailVerificationRequest request
+    ) {
         return authService.requestEmailVerification(request);
     }
 
     @PostMapping("/email-verification/confirm")
     public AuthMessageResponse confirmEmailVerification(
-            @Valid @RequestBody EmailVerificationConfirmRequest request) {
+        @Valid @RequestBody EmailVerificationConfirmRequest request
+    ) {
         return authService.confirmEmailVerification(request);
     }
 
     @GetMapping("/me")
-    public MeResponse me(@RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
+    public MeResponse me(
+        @RequestHeader(value = "Authorization", required = false) String authorizationHeader
+    ) {
         return authService.me(authorizationHeader);
-    }
-
-    @GetMapping("/admin/users")
-    public List<AdminUserResponse> listUsers(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        return authService.listUsers(authorizationHeader);
-    }
-
-    @PatchMapping("/admin/users/{userId}/status")
-    public AdminUserResponse updateUserStatus(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable("userId") UUID userId,
-            @Valid @RequestBody AdminUpdateUserStatusRequest request) {
-        return authService.updateUserStatus(authorizationHeader, userId, request);
-    }
-
-    @PatchMapping("/admin/users/{userId}/role")
-    public AdminUserResponse updateUserRole(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable("userId") UUID userId,
-            @Valid @RequestBody AdminUpdateUserRoleRequest request) {
-        return authService.updateUserRole(authorizationHeader, userId, request);
-    }
-
-    @DeleteMapping("/admin/users/{userId}")
-    public AdminUserResponse deleteUser(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable("userId") UUID userId) {
-        return authService.deleteUser(authorizationHeader, userId);
-    }
-
-    @GetMapping("/admin/users/{userId}/sessions")
-    public List<AdminRefreshSessionResponse> listUserSessions(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable("userId") UUID userId) {
-        return authService.listUserSessions(authorizationHeader, userId);
-    }
-
-    @PostMapping("/admin/users/{userId}/sessions/revoke")
-    public AdminRevokeSessionsResponse revokeUserSessions(
-            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
-            @PathVariable("userId") UUID userId) {
-        return authService.revokeUserSessions(authorizationHeader, userId);
     }
 
     private String clientIp(HttpServletRequest request) {

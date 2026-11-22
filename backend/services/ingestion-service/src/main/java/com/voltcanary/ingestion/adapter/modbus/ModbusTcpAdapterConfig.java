@@ -9,17 +9,19 @@ import java.util.Map;
 import org.springframework.boot.convert.DurationStyle;
 
 record ModbusTcpAdapterConfig(
-        String host,
-        int port,
-        int unitId,
-        Duration timeout,
-        Duration pollingInterval,
-        ModbusTimestampPolicy timestampPolicy,
-        List<ModbusRegisterMapping> registers) {
-
+    String host,
+    int port,
+    int unitId,
+    Duration timeout,
+    Duration pollingInterval,
+    ModbusTimestampPolicy timestampPolicy,
+    List<ModbusRegisterMapping> registers
+) {
     static ModbusTcpAdapterConfig from(SourceRuntimeConfig sourceRuntimeConfig) {
         if (!"v1".equalsIgnoreCase(sourceRuntimeConfig.adapterConfigSchemaVersion())) {
-            throw new IllegalArgumentException("Unsupported Modbus TCP adapter config schema version");
+            throw new IllegalArgumentException(
+                "Unsupported Modbus TCP adapter config schema version"
+            );
         }
         Map<String, Object> adapterConfig = sourceRuntimeConfig.adapterConfig();
         String host = string(adapterConfig, "host", null);
@@ -46,34 +48,47 @@ record ModbusTcpAdapterConfig(
             throw new IllegalArgumentException("Modbus TCP polling interval must be positive");
         }
         ModbusTimestampPolicy timestampPolicy = enumValue(
-                ModbusTimestampPolicy.class,
-                string(adapterConfig, "timestampPolicy", "POLL_TIME"),
-                "timestampPolicy");
+            ModbusTimestampPolicy.class,
+            string(adapterConfig, "timestampPolicy", "POLL_TIME"),
+            "timestampPolicy"
+        );
         return new ModbusTcpAdapterConfig(
-                host.trim(),
-                port,
-                unitId,
-                timeout,
-                pollingInterval,
-                timestampPolicy,
-                registers(sourceRuntimeConfig.mapping()));
+            host.trim(),
+            port,
+            unitId,
+            timeout,
+            pollingInterval,
+            timestampPolicy,
+            registers(sourceRuntimeConfig.mapping())
+        );
     }
 
     List<ModbusReadRequest> readRequests() {
-        return registers.stream()
-                .map(mapping -> new ModbusReadRequest(mapping.function(), mapping.address(), mapping.dataType().registerCount()))
-                .toList();
+        return registers
+            .stream()
+            .map(mapping ->
+                new ModbusReadRequest(
+                    mapping.function(),
+                    mapping.address(),
+                    mapping.dataType().registerCount()
+                )
+            )
+            .toList();
     }
 
     private static List<ModbusRegisterMapping> registers(Map<String, Object> mapping) {
         Object value = mapping.get("registers");
         if (!(value instanceof List<?> rawRegisters) || rawRegisters.isEmpty()) {
-            throw new IllegalArgumentException("Modbus TCP mapping registers must be a non-empty array");
+            throw new IllegalArgumentException(
+                "Modbus TCP mapping registers must be a non-empty array"
+            );
         }
         List<ModbusRegisterMapping> registers = new ArrayList<>();
         for (Object item : rawRegisters) {
             if (!(item instanceof Map<?, ?> raw)) {
-                throw new IllegalArgumentException("Modbus TCP register mapping entries must be objects");
+                throw new IllegalArgumentException(
+                    "Modbus TCP register mapping entries must be objects"
+                );
             }
             registers.add(register(raw));
         }
@@ -84,23 +99,31 @@ record ModbusTcpAdapterConfig(
         String metric = requiredString(raw, "metric");
         int address = integer(raw, "address", -1);
         if (address < 0 || address > 65535) {
-            throw new IllegalArgumentException("Modbus TCP register address must be between 0 and 65535");
+            throw new IllegalArgumentException(
+                "Modbus TCP register address must be between 0 and 65535"
+            );
         }
         ModbusRegisterFunction function = enumValue(
-                ModbusRegisterFunction.class,
-                string(raw, "function", "HOLDING_REGISTER"),
-                "function");
-        ModbusDataType dataType = enumValue(ModbusDataType.class, string(raw, "dataType", "UINT16"), "dataType");
+            ModbusRegisterFunction.class,
+            string(raw, "function", "HOLDING_REGISTER"),
+            "function"
+        );
+        ModbusDataType dataType = enumValue(
+            ModbusDataType.class,
+            string(raw, "dataType", "UINT16"),
+            "dataType"
+        );
         return new ModbusRegisterMapping(
-                metric,
-                function,
-                address,
-                dataType,
-                decimal(raw, "scale", 1.0),
-                decimal(raw, "offset", 0.0),
-                string(raw, "unit", null),
-                enumValue(ModbusByteOrder.class, string(raw, "byteOrder", "BIG_ENDIAN"), "byteOrder"),
-                enumValue(ModbusWordOrder.class, string(raw, "wordOrder", "BIG_ENDIAN"), "wordOrder"));
+            metric,
+            function,
+            address,
+            dataType,
+            decimal(raw, "scale", 1.0),
+            decimal(raw, "offset", 0.0),
+            string(raw, "unit", null),
+            enumValue(ModbusByteOrder.class, string(raw, "byteOrder", "BIG_ENDIAN"), "byteOrder"),
+            enumValue(ModbusWordOrder.class, string(raw, "wordOrder", "BIG_ENDIAN"), "wordOrder")
+        );
     }
 
     private static String requiredString(Map<?, ?> config, String key) {

@@ -9,17 +9,28 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
+@org.junit.jupiter.api.Tag("docker")
 class LangGraphPlanPostgresTest {
+
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     private IntentScenarioSupport fixture() throws Exception {
         String schema = "graph_" + UUID.randomUUID().toString().replace("-", "");
-        var root = new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        var root = new DriverManagerDataSource(
+            postgres.getJdbcUrl(),
+            postgres.getUsername(),
+            postgres.getPassword()
+        );
         new JdbcTemplate(root).execute("create schema " + schema);
         String separator = postgres.getJdbcUrl().contains("?") ? "&" : "?";
-        return new IntentScenarioSupport(new DriverManagerDataSource(postgres.getJdbcUrl() + separator + "currentSchema=" + schema,
-                postgres.getUsername(), postgres.getPassword()));
+        return new IntentScenarioSupport(
+            new DriverManagerDataSource(
+                postgres.getJdbcUrl() + separator + "currentSchema=" + schema,
+                postgres.getUsername(),
+                postgres.getPassword()
+            )
+        );
     }
 
     @Test

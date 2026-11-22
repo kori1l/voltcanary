@@ -1,29 +1,31 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class MqttPayloadMapperTest {
 
     @Test
     void mapsPayloadToIncomingMessage() {
         String payload = """
-                {
-                  "timestamp": "2026-05-19T12:30:00Z",
-                  "metrics": {
-                    "activePowerW": 120.5,
-                    "voltageV": 230.2
-                  }
-                }
-                """;
+        {
+          "timestamp": "2026-05-19T12:30:00Z",
+          "metrics": {
+            "activePowerW": 120.5,
+            "voltageV": 230.2
+          }
+        }
+        """;
 
-        var message = new MqttPayloadMapper(new ObjectMapper())
-                .map("sim-fridge-001", payload.getBytes(StandardCharsets.UTF_8));
+        var message = new MqttPayloadMapper(new ObjectMapper()).map(
+            "sim-fridge-001",
+            payload.getBytes(StandardCharsets.UTF_8)
+        );
 
         assertThat(message.sourceId()).isEqualTo("sim-fridge-001");
         assertThat(message.origin().protocol()).isEqualTo(ProtocolType.MQTT);

@@ -19,42 +19,65 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/device-types/{code}/variables")
 @RequiredArgsConstructor
 public class DeviceVariablesController {
-    public record ExpectedVersion(int expectedVersion) { }
+
+    public record ExpectedVersion(int expectedVersion) {}
+
     private final VariableDefinitions definitions;
     private final AuthenticatedUserResolver users;
 
     @GetMapping
-    public List<VariableDefinition> list(@RequestHeader HttpHeaders headers, @PathVariable("code") String code) {
+    public List<VariableDefinition> list(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code
+    ) {
         return definitions.list(users.resolve(headers), code);
     }
 
     @GetMapping("/{id}")
-    public VariableDefinitions.Detail detail(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id) {
+    public VariableDefinitions.Detail detail(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id
+    ) {
         return definitions.detail(users.resolve(headers), code, id);
     }
 
     @PostMapping
-    public VariableDefinitions.Detail create(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @RequestBody VariableDefinitions.Draft draft) {
+    public VariableDefinitions.Detail create(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @RequestBody VariableDefinitions.Draft draft
+    ) {
         return definitions.create(users.resolve(headers), code, draft);
     }
 
     @PostMapping("/{id}/revisions")
-    public VariableDefinitions.Detail revise(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id, @RequestBody VariableDefinitions.Draft draft) {
+    public VariableDefinitions.Detail revise(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @RequestBody VariableDefinitions.Draft draft
+    ) {
         return definitions.revise(users.resolve(headers), code, id, draft);
     }
 
     @PostMapping("/{id}/publish")
-    public VariableDefinitions.Detail publish(@RequestHeader HttpHeaders headers,
-            @PathVariable("code") String code, @PathVariable("id") UUID id, @RequestBody VariableDefinitions.Publication request) {
+    public VariableDefinitions.Detail publish(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @RequestBody VariableDefinitions.Publication request
+    ) {
         return definitions.publish(users.resolve(headers), code, id, request);
     }
 
     @PostMapping("/{id}/archive")
-    public VariableDefinition archive(@RequestHeader HttpHeaders headers, @PathVariable("code") String code,
-            @PathVariable("id") UUID id, @RequestBody ExpectedVersion request) {
+    public VariableDefinition archive(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("code") String code,
+        @PathVariable("id") UUID id,
+        @RequestBody ExpectedVersion request
+    ) {
         return definitions.archive(users.resolve(headers), code, id, request.expectedVersion());
     }
 }

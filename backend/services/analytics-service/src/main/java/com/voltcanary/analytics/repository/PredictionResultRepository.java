@@ -7,12 +7,13 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PredictionResultRepository extends JpaRepository<PredictionResult, UUID> {
-
     List<PredictionResult> findTop100ByDeviceIdOrderByCreatedAtDesc(UUID deviceId);
 
     Optional<PredictionResult> findFirstByDeviceIdOrderByCreatedAtDesc(UUID deviceId);
 
-    Optional<PredictionResult> findFirstByDeviceIdAndShadowPredictionFalseOrderByCreatedAtDesc(UUID deviceId);
+    Optional<PredictionResult> findFirstByDeviceIdAndShadowPredictionFalseOrderByCreatedAtDesc(
+        UUID deviceId
+    );
 
     long countByModelId(UUID modelId);
 }

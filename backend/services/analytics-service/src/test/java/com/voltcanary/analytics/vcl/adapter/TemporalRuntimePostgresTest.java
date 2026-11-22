@@ -8,12 +8,26 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
+@org.junit.jupiter.api.Tag("docker")
 class TemporalRuntimePostgresTest extends TemporalRuntimeContract {
-    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
     private static DataSource source;
-    @BeforeAll static void migrate() throws Exception {
-        source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+
+    @BeforeAll
+    static void migrate() throws Exception {
+        source = new DriverManagerDataSource(
+            POSTGRES.getJdbcUrl(),
+            POSTGRES.getUsername(),
+            POSTGRES.getPassword()
+        );
         migrate(source);
     }
-    @Override DataSource source() { return source; }
+
+    @Override
+    DataSource source() {
+        return source;
+    }
 }

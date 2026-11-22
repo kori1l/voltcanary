@@ -1,27 +1,56 @@
 package com.voltcanary.analytics.vcl;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-
 class VclZoneSessionKernelTest {
+
     private static final String SCOPE = "a".repeat(64);
     private static final UUID ZONE = new UUID(0, 1);
     private static final UUID RULE = new UUID(0, 2);
     private static final KeyedStateStore.Key KEY = new KeyedStateStore.Key(
-            new UUID(0, 3), RULE, new UUID(0, 4), "b".repeat(64), "c".repeat(64));
-    private static final SpatialFeatureSnapshot.Point INSIDE = new SpatialFeatureSnapshot.Point(0, 0);
-    private static final SpatialFeatureSnapshot.Point OUTSIDE = new SpatialFeatureSnapshot.Point(0.001, 0);
+        new UUID(0, 3),
+        RULE,
+        new UUID(0, 4),
+        "b".repeat(64),
+        "c".repeat(64)
+    );
+    private static final SpatialFeatureSnapshot.Point INSIDE = new SpatialFeatureSnapshot.Point(
+        0,
+        0
+    );
+    private static final SpatialFeatureSnapshot.Point OUTSIDE = new SpatialFeatureSnapshot.Point(
+        0.001,
+        0
+    );
     private static final SpatialFeatureSnapshot.Circle CIRCLE = new SpatialFeatureSnapshot.Circle(
-            ZONE, 1, INSIDE, new BigDecimal("30"));
-    private static final SpatialFeatureSnapshot GEOMETRY = new SpatialFeatureSnapshot(SCOPE, Map.of(ZONE, CIRCLE));
+        ZONE,
+        1,
+        INSIDE,
+        new BigDecimal("30")
+    );
+    private static final SpatialFeatureSnapshot GEOMETRY = new SpatialFeatureSnapshot(
+        SCOPE,
+        Map.of(ZONE, CIRCLE)
+    );
     private static final VclZoneSessionKernel.Plan PLAN = new VclZoneSessionKernel.Plan(
-            "d".repeat(64), SCOPE, RULE, CIRCLE, BigDecimal.ZERO, false, 30_000_000, 5_000_000, 0, 2);
+        "d".repeat(64),
+        SCOPE,
+        RULE,
+        CIRCLE,
+        BigDecimal.ZERO,
+        false,
+        30_000_000,
+        5_000_000,
+        0,
+        2
+    );
 
     private final VclZoneSessionKernel kernel = new VclZoneSessionKernel();
 
@@ -69,9 +98,24 @@ class VclZoneSessionKernelTest {
         assertNull(state.exitWitness());
     }
 
-    private VclZoneSessionKernel.State observe(VclZoneSessionKernel.State state, long id, long seconds,
-            SpatialFeatureSnapshot.Point position) {
-        return kernel.observe(PLAN, state, new VclZoneSessionKernel.Observation(
-                new UUID(0, id), Instant.EPOCH.plusSeconds(seconds), KEY, ZONE, position, BigDecimal.ONE), GEOMETRY);
+    private VclZoneSessionKernel.State observe(
+        VclZoneSessionKernel.State state,
+        long id,
+        long seconds,
+        SpatialFeatureSnapshot.Point position
+    ) {
+        return kernel.observe(
+            PLAN,
+            state,
+            new VclZoneSessionKernel.Observation(
+                new UUID(0, id),
+                Instant.EPOCH.plusSeconds(seconds),
+                KEY,
+                ZONE,
+                position,
+                BigDecimal.ONE
+            ),
+            GEOMETRY
+        );
     }
 }

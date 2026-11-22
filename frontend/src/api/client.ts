@@ -11,18 +11,28 @@ let authEpoch = 0;
 let identityEpoch = 0;
 export function sessionIdentityRevision() {
   const current = localStorage.getItem(SESSION_IDENTITY_KEY);
-  if (current !== observedIdentity) { observedIdentity = current; identityEpoch++; }
+  if (current !== observedIdentity) {
+    observedIdentity = current;
+    identityEpoch++;
+  }
   return identityEpoch;
 }
 let expired = false;
 let refreshFlight: { token: string; epoch: number; promise: Promise<boolean> } | null = null;
-export function sessionStatus() { return getAccessToken() ? "authenticated" : expired ? "expired" : "anonymous"; }
+export function sessionStatus() {
+  return getAccessToken() ? "authenticated" : expired ? "expired" : "anonymous";
+}
 export function subscribeSession(listener: () => void) {
   window.addEventListener(AUTH_CHANGED, listener);
   return () => window.removeEventListener(AUTH_CHANGED, listener);
 }
 window.addEventListener("storage", (event) => {
-  if (event.key === null || event.key === ACCESS_TOKEN_KEY || event.key === REFRESH_TOKEN_KEY || event.key === SESSION_IDENTITY_KEY) {
+  if (
+    event.key === null ||
+    event.key === ACCESS_TOKEN_KEY ||
+    event.key === REFRESH_TOKEN_KEY ||
+    event.key === SESSION_IDENTITY_KEY
+  ) {
     authEpoch++;
     if (event.key === null) identityEpoch++;
     sessionIdentityRevision();
@@ -32,11 +42,29 @@ window.addEventListener("storage", (event) => {
 });
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly fieldErrors?: Record<string, string>) { super(sanitizeApiMessage(message)); this.name = "ApiError"; }
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+    public readonly fieldErrors?: Record<string, string>,
+  ) {
+    super(sanitizeApiMessage(message));
+    this.name = "ApiError";
+  }
 }
 export function sanitizeApiMessage(message: string) {
-  if (/^(?:reset |refresh |verification )?token (?:is |has )?(?:expired|invalid|revoked)\.?$/i.test(message.trim())) return "Recovery or session code expired or invalid. Request a new code or sign in again.";
-  if (/bearer\s|password|secret|api.?key|token[\s:=]|credential|authorization|telegram\.org|webhook/i.test(message)) return "The request could not be completed. Review the configuration and permissions.";
+  if (
+    /^(?:reset |refresh |verification )?token (?:is |has )?(?:expired|invalid|revoked)\.?$/i.test(
+      message.trim(),
+    )
+  )
+    return "Recovery or session code expired or invalid. Request a new code or sign in again.";
+  if (
+    /bearer\s|password|secret|api.?key|token[\s:=]|credential|authorization|telegram\.org|webhook/i.test(
+      message,
+    )
+  )
+    return "The request could not be completed. Review the configuration and permissions.";
   return message.replace(/https?:\/\/[^\s)]+/gi, "[service address omitted]").slice(0, 500);
 }
 
@@ -54,7 +82,8 @@ export function setTokens(accessToken: string, refreshToken: string) {
   writeTokens(accessToken, refreshToken);
 }
 function writeTokens(accessToken: string, refreshToken: string) {
-  authEpoch++; expired = false;
+  authEpoch++;
+  expired = false;
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   window.dispatchEvent(new Event(AUTH_CHANGED));
@@ -93,11 +122,15 @@ export async function prepareAiSession() {
     const payload = token.split(".")[1];
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
     expiry = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "="))).exp;
-  } catch { return; }
+  } catch {
+    return;
+  }
   if (typeof expiry !== "number" || expiry * 1000 > Date.now() + 300_000) return;
   const identity = sessionIdentityRevision();
-  if (!getRefreshToken() || !await refreshAccessToken()) throw new ApiError("Renew your session before preparing this request.", 401);
-  if (identity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+  if (!getRefreshToken() || !(await refreshAccessToken()))
+    throw new ApiError("Renew your session before preparing this request.", 401);
+  if (identity !== sessionIdentityRevision())
+    throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
 }
 
 export async function apiRequest<TResponse>(
@@ -107,13 +140,13 @@ export async function apiRequest<TResponse>(
   return requestWithAuth<TResponse>(path, options, true, "json");
 }
 
-export async function apiTextRequest(
-  path: string,
-  options: RequestInit = {},
-): Promise<string> {
+export async function apiTextRequest(path: string, options: RequestInit = {}): Promise<string> {
   return requestWithAuth<string>(path, options, true, "text");
 }
-export async function apiResponseRequest(path: string, options: RequestInit = {}): Promise<Response> {
+export async function apiResponseRequest(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
   return requestWithAuth<Response>(path, options, true, "response");
 }
 
@@ -126,7 +159,11 @@ async function requestWithAuth<TResponse>(
   const token = getAccessToken();
   const requestIdentity = sessionIdentityRevision();
   const headers = new Headers(options.headers);
-  if (options.body !== undefined && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
+  if (
+    options.body !== undefined &&
+    !(options.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
@@ -134,27 +171,64 @@ async function requestWithAuth<TResponse>(
   }
 
   let response: Response;
-  try { response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers }); }
-  catch { if (options.signal?.aborted) throw new DOMException("Obsolete read", "AbortError"); throw new ApiError("The server response was not received. Check your connection and refresh current records.", 0); }
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  } catch {
+    if (options.signal?.aborted) throw new DOMException("Obsolete read", "AbortError");
+    throw new ApiError(
+      "The server response was not received. Check your connection and refresh current records.",
+      0,
+    );
+  }
   if (options.signal?.aborted) throw new DOMException("Obsolete read", "AbortError");
-  if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+  if (requestIdentity !== sessionIdentityRevision())
+    throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
 
-  if (response.status === 401 && allowRefresh && !path.startsWith("/auth/login") && !path.startsWith("/auth/refresh")) {
-    if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
-    if (token && getAccessToken() && token !== getAccessToken()) return requestWithAuth<TResponse>(path, options, false, responseType);
+  if (
+    response.status === 401 &&
+    allowRefresh &&
+    !path.startsWith("/auth/login") &&
+    !path.startsWith("/auth/refresh")
+  ) {
+    if (requestIdentity !== sessionIdentityRevision())
+      throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+    if (token && getAccessToken() && token !== getAccessToken())
+      return requestWithAuth<TResponse>(path, options, false, responseType);
     const refreshed = await refreshAccessToken();
-    if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+    if (requestIdentity !== sessionIdentityRevision())
+      throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
     if (refreshed) {
       return requestWithAuth<TResponse>(path, options, false, responseType);
     }
   }
 
   if (!response.ok) {
-    const detail = await response.clone().json().catch(() => null) as { code?: unknown; fieldErrors?: unknown } | null;
-    const code = typeof detail?.code === "string" && /^[A-Z0-9_]{1,80}$/.test(detail.code) ? detail.code : undefined;
-    const fields = detail?.fieldErrors && typeof detail.fieldErrors === "object" && !Array.isArray(detail.fieldErrors) ? Object.fromEntries(Object.entries(detail.fieldErrors).filter(([key, value]) => /^[a-zA-Z][a-zA-Z0-9.]{0,80}$/.test(key) && !/password|secret|token|credential/i.test(key) && typeof value === "string").map(([key, value]) => [key, sanitizeApiMessage(String(value))])) : undefined;
+    const detail = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { code?: unknown; fieldErrors?: unknown } | null;
+    const code =
+      typeof detail?.code === "string" && /^[A-Za-z0-9_]{1,80}$/.test(detail.code)
+        ? detail.code
+        : undefined;
+    const fields =
+      detail?.fieldErrors &&
+      typeof detail.fieldErrors === "object" &&
+      !Array.isArray(detail.fieldErrors)
+        ? Object.fromEntries(
+            Object.entries(detail.fieldErrors)
+              .filter(
+                ([key, value]) =>
+                  /^[a-zA-Z][a-zA-Z0-9.]{0,80}$/.test(key) &&
+                  !/password|secret|token|credential/i.test(key) &&
+                  typeof value === "string",
+              )
+              .map(([key, value]) => [key, sanitizeApiMessage(String(value))]),
+          )
+        : undefined;
     const message = await errorMessage(response);
-    if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+    if (requestIdentity !== sessionIdentityRevision())
+      throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
     throw new ApiError(message, response.status, code, fields);
   }
 
@@ -162,11 +236,13 @@ async function requestWithAuth<TResponse>(
   if (response.status === 204) return (responseType === "text" ? "" : undefined) as TResponse;
   if (responseType === "text") {
     const body = await response.text();
-    if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+    if (requestIdentity !== sessionIdentityRevision())
+      throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
     return body as TResponse;
   }
-  const body = await response.json() as TResponse;
-  if (requestIdentity !== sessionIdentityRevision()) throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
+  const body = (await response.json()) as TResponse;
+  if (requestIdentity !== sessionIdentityRevision())
+    throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
   return body;
 }
 
@@ -176,44 +252,77 @@ async function refreshAccessToken() {
     if (getAccessToken()) expireSession();
     return false;
   }
-  if (refreshFlight?.token === refreshToken && refreshFlight.epoch === authEpoch) return refreshFlight.promise;
+  if (refreshFlight?.token === refreshToken && refreshFlight.epoch === authEpoch)
+    return refreshFlight.promise;
   const epoch = authEpoch;
   const refreshIdentity = sessionIdentityRevision();
   const promise = withSessionRefreshLock(async () => {
-  // A preceding tab may already have rotated this exact token while we waited.
-  if (getRefreshToken() !== refreshToken || refreshIdentity !== sessionIdentityRevision()) return Boolean(getAccessToken());
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-  let response: Response;
-  try { response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-    signal: controller.signal,
-  }); } catch { throw new ApiError("Session refresh unavailable. Retry when the connection recovers.", 503); }
+    // A preceding tab may already have rotated this exact token while we waited.
+    if (getRefreshToken() !== refreshToken || refreshIdentity !== sessionIdentityRevision())
+      return Boolean(getAccessToken());
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    try {
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+          signal: controller.signal,
+        });
+      } catch {
+        throw new ApiError("Session refresh unavailable. Retry when the connection recovers.", 503);
+      }
 
-  if (epoch !== authEpoch || refreshIdentity !== sessionIdentityRevision()) return Boolean(getAccessToken());
+      if (epoch !== authEpoch || refreshIdentity !== sessionIdentityRevision())
+        return Boolean(getAccessToken());
 
-  if (!response.ok) {
-    if ([401, 403].includes(response.status)) { expireSession(); return false; }
-    throw new ApiError("Session refresh unavailable. Retry when the service recovers.", response.status);
-  }
+      if (!response.ok) {
+        if ([401, 403].includes(response.status)) {
+          expireSession();
+          return false;
+        }
+        throw new ApiError(
+          "Session refresh unavailable. Retry when the service recovers.",
+          response.status,
+        );
+      }
 
-  const tokens = (await response.json()) as { accessToken: string; refreshToken: string } | null;
-  if (!tokens || typeof tokens !== "object") throw new ApiError("Session refresh returned an invalid response.", 503);
-  if (typeof tokens.accessToken !== "string" || !tokens.accessToken.trim() || typeof tokens.refreshToken !== "string" || !tokens.refreshToken.trim()) throw new ApiError("Session refresh returned an invalid response.", 503);
-  if (epoch !== authEpoch || refreshIdentity !== sessionIdentityRevision()) return Boolean(getAccessToken());
-  writeTokens(tokens.accessToken, tokens.refreshToken);
-  return true;
-  } finally { clearTimeout(timeout); }
+      const tokens = (await response.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      } | null;
+      if (!tokens || typeof tokens !== "object")
+        throw new ApiError("Session refresh returned an invalid response.", 503);
+      if (
+        typeof tokens.accessToken !== "string" ||
+        !tokens.accessToken.trim() ||
+        typeof tokens.refreshToken !== "string" ||
+        !tokens.refreshToken.trim()
+      )
+        throw new ApiError("Session refresh returned an invalid response.", 503);
+      if (epoch !== authEpoch || refreshIdentity !== sessionIdentityRevision())
+        return Boolean(getAccessToken());
+      writeTokens(tokens.accessToken, tokens.refreshToken);
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
   }).catch((failure: unknown) => {
     if (failure instanceof ApiError) throw failure;
-    throw new ApiError("Session refresh coordination unavailable. Retry when the connection recovers.", 503);
+    throw new ApiError(
+      "Session refresh coordination unavailable. Retry when the connection recovers.",
+      503,
+    );
   });
   const flight = { token: refreshToken, epoch, promise };
   refreshFlight = flight;
-  try { return await promise; } finally { if (refreshFlight === flight) refreshFlight = null; }
+  try {
+    return await promise;
+  } finally {
+    if (refreshFlight === flight) refreshFlight = null;
+  }
 }
 
 async function errorMessage(response: Response) {
@@ -224,7 +333,8 @@ async function errorMessage(response: Response) {
 
   try {
     const value: unknown = JSON.parse(body);
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid error response");
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Invalid error response");
     const raw = value as Record<string, unknown>;
     const parsed = {
       message: typeof raw.message === "string" ? raw.message : undefined,
@@ -232,12 +342,23 @@ async function errorMessage(response: Response) {
       error: typeof raw.error === "string" ? raw.error : undefined,
       status: typeof raw.status === "number" ? raw.status : undefined,
       path: typeof raw.path === "string" ? raw.path : undefined,
-      dependencies: raw.dependencies && typeof raw.dependencies === "object" && !Array.isArray(raw.dependencies)
-        ? Object.fromEntries(Object.entries(raw.dependencies).filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])).slice(0, 20)) : undefined,
+      dependencies:
+        raw.dependencies && typeof raw.dependencies === "object" && !Array.isArray(raw.dependencies)
+          ? Object.fromEntries(
+              Object.entries(raw.dependencies)
+                .filter(
+                  (entry): entry is [string, number] =>
+                    typeof entry[1] === "number" && Number.isFinite(entry[1]),
+                )
+                .slice(0, 20),
+            )
+          : undefined,
     };
     if (parsed.message && parsed.code) {
       const dependencies = formatDependencies(parsed.dependencies);
-      return dependencies ? `${parsed.message} (${parsed.code}): ${dependencies}` : `${parsed.message} (${parsed.code})`;
+      return dependencies
+        ? `${parsed.message} (${parsed.code}): ${dependencies}`
+        : `${parsed.message} (${parsed.code})`;
     }
     if (parsed.message) {
       return parsed.message;

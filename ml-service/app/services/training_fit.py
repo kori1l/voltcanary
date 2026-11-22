@@ -1,8 +1,8 @@
 import json
 import multiprocessing
-from pathlib import Path
 import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import joblib
@@ -17,7 +17,9 @@ def _fit_child(directory: str, model: Any, arguments: tuple) -> None:
         joblib.dump(model, root / "fitted.joblib")
         (root / "status.json").write_text(json.dumps({"success": True}), encoding="utf-8")
     except BaseException as failure:
-        (root / "status.json").write_text(json.dumps({"success": False, "kind": type(failure).__name__}), encoding="utf-8")
+        (root / "status.json").write_text(
+            json.dumps({"success": False, "kind": type(failure).__name__}), encoding="utf-8"
+        )
 
 
 def fit_with_deadline(model: Any, arguments: tuple, timeout: float) -> Any:
@@ -26,7 +28,9 @@ def fit_with_deadline(model: Any, arguments: tuple, timeout: float) -> Any:
         raise TrainingTimeoutError()
     deadline = time.monotonic() + timeout
     with tempfile.TemporaryDirectory(prefix="voltcanary-fit-") as directory:
-        process = multiprocessing.get_context("spawn").Process(target=_fit_child, args=(directory, model, arguments), daemon=True)
+        process = multiprocessing.get_context("spawn").Process(
+            target=_fit_child, args=(directory, model, arguments), daemon=True
+        )
         try:
             process.start()
             process.join(max(0, deadline - time.monotonic()))

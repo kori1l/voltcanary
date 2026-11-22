@@ -11,13 +11,16 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class VariableMeasurementsConsumer {
+
     private final ObjectMapper mapper;
     private final VariableRuleEvaluation evaluation;
 
-    @KafkaListener(topics = "telemetry.measurements.accepted.v1",
-            groupId = "${spring.kafka.consumer.group-id}-variables",
-            containerFactory = "variableKafkaListenerContainerFactory",
-            autoStartup = "${app.variables.consume-enabled:false}")
+    @KafkaListener(
+        topics = "telemetry.measurements.accepted.v1",
+        groupId = "${spring.kafka.consumer.group-id}-variables",
+        containerFactory = "variableKafkaListenerContainerFactory",
+        autoStartup = "${app.variables.consume-enabled:false}"
+    )
     public void consume(String json) throws JsonProcessingException {
         evaluation.evaluate(mapper.readValue(json, MeasurementsAcceptedEvent.class));
     }

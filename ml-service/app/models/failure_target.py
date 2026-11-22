@@ -4,7 +4,6 @@ from typing import Any
 
 from app.schemas.training import MetricRow, TrainingRequest
 
-
 POSITIVE_OUTCOMES = {"CONFIRMED_FAILURE", "CORRECTIVE_MAINTENANCE"}
 NEGATIVE_OUTCOMES = {"NORMAL", "INSPECTION_NORMAL", "FALSE_POSITIVE"}
 EXCLUDED_OUTCOMES = {
@@ -43,7 +42,9 @@ class FailureTargetBuilder:
             grouped.setdefault(self._sample_id(row), []).append(row)
 
         samples = [self._sample(rows, horizon_days) for rows in grouped.values()]
-        return sorted(samples, key=lambda sample: (sample.prediction_at, sample.device_id, sample.sample_id))
+        return sorted(
+            samples, key=lambda sample: (sample.prediction_at, sample.device_id, sample.sample_id)
+        )
 
     def usable_samples(self, samples: list[FailureTargetSample]) -> list[FailureTargetSample]:
         return [sample for sample in samples if sample.target is not None and sample.features]
@@ -136,7 +137,9 @@ class FailureTargetBuilder:
             return outcome_type
         return "UNSUPPORTED_LABEL"
 
-    def _lead_time_days(self, label_values: dict[str, Any], prediction_at: datetime, target: int | None) -> float | None:
+    def _lead_time_days(
+        self, label_values: dict[str, Any], prediction_at: datetime, target: int | None
+    ) -> float | None:
         if target != 1:
             return None
         explicit_lead_time = label_values.get("leadTimeDays")

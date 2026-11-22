@@ -26,10 +26,14 @@ class ApprovalGateProfile(BaseModel):
     minimum_recall: float = Field(default=0.6, alias="minimumRecall")
     minimum_pr_auc: float = Field(default=0.6, alias="minimumPrAuc")
     minimum_pr_auc_lift: float = Field(default=0.0, alias="minimumPrAucLift")
-    maximum_false_alerts_per_device_month: float = Field(default=10.0, alias="maximumFalseAlertsPerDeviceMonth")
+    maximum_false_alerts_per_device_month: float = Field(
+        default=10.0, alias="maximumFalseAlertsPerDeviceMonth"
+    )
     minimum_lead_time_days: float = Field(default=1.0, alias="minimumLeadTimeDays")
     require_artifact_load_test: bool = Field(default=True, alias="requireArtifactLoadTest")
-    require_feature_schema_compatibility: bool = Field(default=True, alias="requireFeatureSchemaCompatibility")
+    require_feature_schema_compatibility: bool = Field(
+        default=True, alias="requireFeatureSchemaCompatibility"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -46,7 +50,9 @@ class TrainingRequest(BaseModel):
     failure_horizon_days: int | None = Field(default=None, alias="failureHorizonDays")
     minimum_positive_labels: int | None = Field(default=None, alias="minimumPositiveLabels")
     minimum_label_coverage: float | None = Field(default=None, alias="minimumLabelCoverage")
-    approval_gate_profile: ApprovalGateProfile | None = Field(default=None, alias="approvalGateProfile")
+    approval_gate_profile: ApprovalGateProfile | None = Field(
+        default=None, alias="approvalGateProfile"
+    )
     cancellation_requested: bool = Field(default=False, alias="cancellationRequested")
     training_timeout_seconds: float | None = Field(default=None, alias="trainingTimeoutSeconds")
     rows: list[MetricRow]

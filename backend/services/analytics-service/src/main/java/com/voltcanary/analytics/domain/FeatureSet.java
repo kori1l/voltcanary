@@ -29,5 +29,4 @@ public class FeatureSet {
 
     @Column(name = "features_json", nullable = false, columnDefinition = "text")
     private String featuresJson;
-
 }

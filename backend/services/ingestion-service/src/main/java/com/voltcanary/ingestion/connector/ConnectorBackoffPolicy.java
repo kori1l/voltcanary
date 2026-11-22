@@ -21,7 +21,10 @@ public class ConnectorBackoffPolicy {
         }
         double jitterRatio = Math.max(0.0, properties.getJitterRatio());
         long jitterBound = Math.round(exponentialMillis * jitterRatio);
-        long jitter = jitterBound == 0 ? 0 : ThreadLocalRandom.current().nextLong(-jitterBound, jitterBound + 1);
+        long jitter =
+            jitterBound == 0
+                ? 0
+                : ThreadLocalRandom.current().nextLong(-jitterBound, jitterBound + 1);
         return Duration.ofMillis(Math.max(0, Math.min(maxMillis, exponentialMillis + jitter)));
     }
 }

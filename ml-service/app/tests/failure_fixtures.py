@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.schemas.training import TrainingRequest
 
-
 FAILURE_FIXTURE_ACCOUNT_ID = "account-1"
 FAILURE_FIXTURE_DATASET_VERSION_ID = "dataset-failure-known-outcomes-v1"
 FAILURE_FIXTURE_FEATURE_SCHEMA_HASH = "sha256:failure-fixture"
@@ -74,11 +73,15 @@ def known_failure_training_request(
     return TrainingRequest.model_validate(body)
 
 
-def _row(timestamp: datetime, feature_row_id: str, metric: str, value: float, metadata: dict) -> dict:
+def _row(
+    timestamp: datetime, feature_row_id: str, metric: str, value: float, metadata: dict
+) -> dict:
     return {
         "timestamp": timestamp.isoformat(),
         "deviceId": "device-1",
         "metric": metric,
         "value": value,
-        "metadata": dict(metadata, sourceFixture="known-failure-outcomes-v1", featureRowId=feature_row_id),
+        "metadata": dict(
+            metadata, sourceFixture="known-failure-outcomes-v1", featureRowId=feature_row_id
+        ),
     }

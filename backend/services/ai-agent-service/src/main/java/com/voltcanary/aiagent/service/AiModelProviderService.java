@@ -32,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class AiModelProviderService {
+
     private final AiModelProviderRepository providerRepository;
     private final AiModelProviderSecretRepository secretRepository;
     private final AiModelConfigRepository modelRepository;
@@ -40,9 +41,11 @@ public class AiModelProviderService {
     private final AiSecretEncryptionService encryptionService;
 
     public List<ModelProviderResponse> list(AuthenticatedUser user) {
-        return providerRepository.findByAccountIdOrderByCreatedAtDesc(user.accountId()).stream()
-                .map(this::toResponse)
-                .toList();
+        return providerRepository
+            .findByAccountIdOrderByCreatedAtDesc(user.accountId())
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     public ModelProviderResponse get(AuthenticatedUser user, UUID providerId) {
@@ -50,14 +53,25 @@ public class AiModelProviderService {
     }
 
     @Transactional
-    public ModelProviderResponse create(AuthenticatedUser user, CreateModelProviderRequest request) {
+    public ModelProviderResponse create(
+        AuthenticatedUser user,
+        CreateModelProviderRequest request
+    ) {
         AiModelProviderType type = parseProviderType(request.providerType());
-        if (!type.equals(AiModelProviderType.OLLAMA_LOCAL) && (request.apiKey() == null || request.apiKey().isBlank())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "API key is required for this provider");
+        if (
+            !type.equals(AiModelProviderType.OLLAMA_LOCAL) &&
+            (request.apiKey() == null || request.apiKey().isBlank())
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "API key is required for this provider"
+            );
         }
         var capability = capabilityRegistry.capability(type);
         Instant now = Instant.now();
-        boolean firstProvider = providerRepository.findByAccountIdOrderByCreatedAtDesc(user.accountId()).isEmpty();
+        boolean firstProvider = providerRepository
+            .findByAccountIdOrderByCreatedAtDesc(user.accountId())
+            .isEmpty();
         AiModelProvider provider = new AiModelProvider();
         provider.setId(UUID.randomUUID());
         provider.setAccountId(user.accountId());
@@ -67,7 +81,11 @@ public class AiModelProviderService {
         provider.setStatus(AiModelProviderStatus.ACTIVE);
         provider.setDefaultProvider(firstProvider || Boolean.TRUE.equals(request.makeDefault()));
         provider.setBaseUrl(normalizeBaseUrl(request.baseUrl(), capability.defaultBaseUrl()));
-        provider.setAuthType(type.equals(AiModelProviderType.OLLAMA_LOCAL) ? AiModelAuthType.NONE : AiModelAuthType.API_KEY);
+        provider.setAuthType(
+            type.equals(AiModelProviderType.OLLAMA_LOCAL)
+                ? AiModelAuthType.NONE
+                : AiModelAuthType.API_KEY
+        );
         provider.setCreatedAt(now);
         provider.setUpdatedAt(now);
         if (provider.isDefaultProvider()) {
@@ -77,8 +95,13 @@ public class AiModelProviderService {
         if (request.apiKey() != null && !request.apiKey().isBlank()) {
             saveSecret(saved, request.apiKey(), now, false);
         }
-        modelSelectionService.create(user, saved.getId(), new CreateModelConfigRequest(
-                request.modelDisplayName() == null || request.modelDisplayName().isBlank() ? request.modelId() : request.modelDisplayName(),
+        modelSelectionService.create(
+            user,
+            saved.getId(),
+            new CreateModelConfigRequest(
+                request.modelDisplayName() == null || request.modelDisplayName().isBlank()
+                    ? request.modelId()
+                    : request.modelDisplayName(),
                 request.modelId(),
                 true,
                 true,
@@ -88,16 +111,26 @@ public class AiModelProviderService {
                 request.timeoutMs(),
                 request.supportsTools(),
                 request.supportsJson(),
-                request.supportsJson() == null || request.supportsJson() ? "json_object" : null));
+                request.supportsJson() == null || request.supportsJson() ? "json_object" : null
+            )
+        );
         return toResponse(saved);
     }
 
     @Transactional
-    public ModelProviderResponse update(AuthenticatedUser user, UUID providerId, UpdateModelProviderRequest request) {
+    public ModelProviderResponse update(
+        AuthenticatedUser user,
+        UUID providerId,
+        UpdateModelProviderRequest request
+    ) {
         AiModelProvider provider = requireProvider(user, providerId);
         if (request.name() != null && !request.name().isBlank()) provider.setName(request.name());
-        if (request.baseUrl() != null) provider.setBaseUrl(normalizeBaseUrl(request.baseUrl(), provider.getBaseUrl()));
-        if (request.status() != null && !request.status().isBlank()) provider.setStatus(AiModelProviderStatus.valueOf(request.status()));
+        if (request.baseUrl() != null) provider.setBaseUrl(
+            normalizeBaseUrl(request.baseUrl(), provider.getBaseUrl())
+        );
+        if (request.status() != null && !request.status().isBlank()) provider.setStatus(
+            AiModelProviderStatus.valueOf(request.status())
+        );
         provider.setUpdatedAt(Instant.now());
         return toResponse(providerRepository.save(provider));
     }
@@ -117,7 +150,11 @@ public class AiModelProviderService {
     }
 
     @Transactional
-    public ModelProviderResponse rotateSecret(AuthenticatedUser user, UUID providerId, RotateModelProviderSecretRequest request) {
+    public ModelProviderResponse rotateSecret(
+        AuthenticatedUser user,
+        UUID providerId,
+        RotateModelProviderSecretRequest request
+    ) {
         AiModelProvider provider = requireProvider(user, providerId);
         saveSecret(provider, request.apiKey(), Instant.now(), true);
         return toResponse(providerRepository.findById(providerId).orElse(provider));
@@ -126,17 +163,29 @@ public class AiModelProviderService {
     @Transactional
     public TestModelProviderResponse test(AuthenticatedUser user, UUID providerId) {
         AiModelProvider provider = requireProvider(user, providerId);
-        AiModelConfig model = modelRepository.findByProviderIdAndDefaultModelTrue(providerId)
-                .orElseGet(() -> modelRepository.findByProviderIdOrderByCreatedAtAsc(providerId).stream().findFirst()
-                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provider has no models")));
+        AiModelConfig model = modelRepository
+            .findByProviderIdAndDefaultModelTrue(providerId)
+            .orElseGet(() ->
+                modelRepository
+                    .findByProviderIdOrderByCreatedAtAsc(providerId)
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() ->
+                        new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Provider has no models"
+                        )
+                    )
+            );
         Instant now = Instant.now();
         TestModelProviderResponse response = new TestModelProviderResponse(
-                "READY",
-                "Provider config is present. Live provider call will run during agent planning.",
-                provider.getProviderType().name(),
-                model.getModelId(),
-                0,
-                now);
+            "READY",
+            "Provider config is present. Live provider call will run during agent planning.",
+            provider.getProviderType().name(),
+            model.getModelId(),
+            0,
+            now
+        );
         provider.setLastTestStatus(response.status());
         provider.setLastTestMessage(response.message());
         provider.setLastTestAt(now);
@@ -146,28 +195,34 @@ public class AiModelProviderService {
     }
 
     public AiModelProvider requireProvider(AuthenticatedUser user, UUID providerId) {
-        return providerRepository.findByIdAndAccountId(providerId, user.accountId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Model provider not found"));
+        return providerRepository
+            .findByIdAndAccountId(providerId, user.accountId())
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Model provider not found")
+            );
     }
 
     private ModelProviderResponse toResponse(AiModelProvider provider) {
-        List<ModelConfigResponse> models = modelRepository.findByProviderIdOrderByCreatedAtAsc(provider.getId()).stream()
-                .map(AiProviderMapper::model)
-                .toList();
+        List<ModelConfigResponse> models = modelRepository
+            .findByProviderIdOrderByCreatedAtAsc(provider.getId())
+            .stream()
+            .map(AiProviderMapper::model)
+            .toList();
         return AiProviderMapper.provider(provider, models);
     }
 
     private void saveSecret(AiModelProvider provider, String apiKey, Instant now, boolean rotated) {
         EncryptedSecret encrypted = encryptionService.encrypt(apiKey);
-        AiModelProviderSecret secret = secretRepository.findByProviderIdAndSecretType(provider.getId(), AiModelSecretType.API_KEY)
-                .orElseGet(() -> {
-                    AiModelProviderSecret next = new AiModelProviderSecret();
-                    next.setId(UUID.randomUUID());
-                    next.setProviderId(provider.getId());
-                    next.setSecretType(AiModelSecretType.API_KEY);
-                    next.setCreatedAt(now);
-                    return next;
-                });
+        AiModelProviderSecret secret = secretRepository
+            .findByProviderIdAndSecretType(provider.getId(), AiModelSecretType.API_KEY)
+            .orElseGet(() -> {
+                AiModelProviderSecret next = new AiModelProviderSecret();
+                next.setId(UUID.randomUUID());
+                next.setProviderId(provider.getId());
+                next.setSecretType(AiModelSecretType.API_KEY);
+                next.setCreatedAt(now);
+                return next;
+            });
         secret.setEncryptedValue(encrypted.encryptedValue());
         secret.setEncryptionKeyVersion(encrypted.keyVersion());
         if (rotated) {
@@ -180,7 +235,9 @@ public class AiModelProviderService {
     }
 
     private void unsetDefaultProviders(UUID accountId) {
-        for (AiModelProvider existing : providerRepository.findByAccountIdAndDefaultProviderTrueOrderByCreatedAtDesc(accountId)) {
+        for (AiModelProvider existing : providerRepository.findByAccountIdAndDefaultProviderTrueOrderByCreatedAtDesc(
+            accountId
+        )) {
             existing.setDefaultProvider(false);
             existing.setUpdatedAt(Instant.now());
             providerRepository.save(existing);

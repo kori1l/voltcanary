@@ -24,30 +24,33 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     public static final String USER_ROLE_HEADER = "X-User-Role";
 
     private static final Set<String> PUBLIC_PATHS = Set.of(
-            "/auth/register",
-            "/auth/login",
-            "/auth/refresh",
-            "/auth/logout",
-            "/auth/forgot-password",
-            "/auth/reset-password",
-            "/auth/email-verification/request",
-            "/auth/email-verification/confirm",
-            "/actuator/health",
-            "/actuator/info",
-            "/internal/ping");
+        "/auth/register",
+        "/auth/login",
+        "/auth/refresh",
+        "/auth/logout",
+        "/auth/forgot-password",
+        "/auth/reset-password",
+        "/auth/email-verification/request",
+        "/auth/email-verification/confirm",
+        "/actuator/health",
+        "/actuator/info",
+        "/internal/ping"
+    );
 
     private static final Set<String> PUBLIC_PATH_PREFIXES = Set.of(
-            "/ingestion/readings",
-            "/ingestion/imports/readings");
+        "/ingestion/readings",
+        "/ingestion/imports/readings"
+    );
 
     private final JwtAccessTokenService accessTokenService;
 
     public JwtAuthenticationGlobalFilter(GatewayJwtProperties properties) {
         this.accessTokenService = new JwtAccessTokenService(
-                properties.getKeyId(),
-                properties.getPublicKeys(),
-                properties.getIssuer(),
-                properties.getAudience());
+            properties.getKeyId(),
+            properties.getPublicKeys(),
+            properties.getIssuer(),
+            properties.getAudience()
+        );
     }
 
     @Override
@@ -65,12 +68,16 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         }
 
         try {
-            JwtAccessTokenClaims claims = accessTokenService.validate(authorization.substring("Bearer ".length()));
+            JwtAccessTokenClaims claims = accessTokenService.validate(
+                authorization.substring("Bearer ".length())
+            );
             String userId = claims.subject();
             String userEmail = claims.email();
             String userRole = claims.role();
-            ServerWebExchange authenticatedExchange = exchange.mutate()
-                    .request(request -> request.headers(headers -> {
+            ServerWebExchange authenticatedExchange = exchange
+                .mutate()
+                .request(request ->
+                    request.headers(headers -> {
                         headers.remove(USER_ID_HEADER);
                         headers.remove(USER_EMAIL_HEADER);
                         headers.remove(USER_ROLE_HEADER);
@@ -81,8 +88,9 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
                         headers.set(USER_ID_HEADER, userId);
                         headers.set(USER_EMAIL_HEADER, userEmail);
                         headers.set(USER_ROLE_HEADER, userRole);
-                    }))
-                    .build();
+                    })
+                )
+                .build();
             return chain.filter(authenticatedExchange);
         } catch (Exception exception) {
             return unauthorized(exchange, authFailureReason(exception));
@@ -99,23 +107,28 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             return true;
         }
         String path = exchange.getRequest().getPath().pathWithinApplication().value();
-        return PUBLIC_PATHS.contains(path)
-                || PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith);
+        return (
+            PUBLIC_PATHS.contains(path) || PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith)
+        );
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String reason) {
-        String correlationId = exchange.getRequest().getHeaders()
-                .getFirst(CorrelationIdGlobalFilter.CORRELATION_ID_HEADER);
+        String correlationId = exchange
+            .getRequest()
+            .getHeaders()
+            .getFirst(CorrelationIdGlobalFilter.CORRELATION_ID_HEADER);
         log.warn(
-                "securityEvent=authentication_rejected correlationId={} reason={} path={}",
-                correlationId,
-                reason,
-                exchange.getRequest().getURI().getPath());
+            "securityEvent=authentication_rejected correlationId={} reason={} path={}",
+            correlationId,
+            reason,
+            exchange.getRequest().getURI().getPath()
+        );
         return GatewayErrorResponseWriter.write(
-                exchange,
-                HttpStatus.UNAUTHORIZED,
-                "unauthorized",
-                "Authentication is required");
+            exchange,
+            HttpStatus.UNAUTHORIZED,
+            "unauthorized",
+            "Authentication is required"
+        );
     }
 
     private String authFailureReason(Exception exception) {
@@ -137,16 +150,19 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private ServerWebExchange stripUserHeaders(ServerWebExchange exchange) {
-        return exchange.mutate()
-                .request(request -> request.headers(headers -> {
+        return exchange
+            .mutate()
+            .request(request ->
+                request.headers(headers -> {
                     headers.remove(USER_ID_HEADER);
                     headers.remove(USER_EMAIL_HEADER);
                     headers.remove(USER_ROLE_HEADER);
-                        headers.remove("X-Workspace-Id");
-                        headers.remove("X-Account-Id");
-                        headers.remove("X-Resource-Capabilities");
-                        headers.remove("X-Authorization-Fingerprint");
-                }))
-                .build();
+                    headers.remove("X-Workspace-Id");
+                    headers.remove("X-Account-Id");
+                    headers.remove("X-Resource-Capabilities");
+                    headers.remove("X-Authorization-Fingerprint");
+                })
+            )
+            .build();
     }
 }

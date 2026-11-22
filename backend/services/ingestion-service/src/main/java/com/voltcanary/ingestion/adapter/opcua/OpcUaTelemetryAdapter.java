@@ -25,13 +25,14 @@ import org.springframework.stereotype.Component;
 public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
-            "generic-opc-ua",
-            AdapterType.GENERIC_OPC_UA,
-            "Generic OPC UA",
-            TransportType.TCP,
-            ProtocolType.OPC_UA,
-            AdapterCapabilities.of(AdapterCapability.SUBSCRIPTION),
-            "v1");
+        "generic-opc-ua",
+        AdapterType.GENERIC_OPC_UA,
+        "Generic OPC UA",
+        TransportType.TCP,
+        ProtocolType.OPC_UA,
+        AdapterCapabilities.of(AdapterCapability.SUBSCRIPTION),
+        "v1"
+    );
 
     private final OpcUaClientOperations client;
     private final OpcUaValueMapper mapper;
@@ -44,13 +45,16 @@ public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
     }
 
     @Override
-    public void startSubscription(SourceRuntimeConfig sourceRuntimeConfig, SubscriptionTelemetrySink sink) {
+    public void startSubscription(
+        SourceRuntimeConfig sourceRuntimeConfig,
+        SubscriptionTelemetrySink sink
+    ) {
         OpcUaAdapterConfig config = OpcUaAdapterConfig.from(sourceRuntimeConfig);
         stopSubscription(sourceRuntimeConfig);
-        OpcUaSubscriptionHandle handle = client.subscribe(config, new SinkForwardingValueChangeHandler(
-                sourceRuntimeConfig,
-                config,
-                sink));
+        OpcUaSubscriptionHandle handle = client.subscribe(
+            config,
+            new SinkForwardingValueChangeHandler(sourceRuntimeConfig, config, sink)
+        );
         subscriptions.put(sourceRuntimeConfig.sourceId(), handle);
     }
 
@@ -63,26 +67,32 @@ public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
     }
 
     private IncomingTelemetryMessage message(
-            SourceRuntimeConfig sourceRuntimeConfig,
-            OpcUaAdapterConfig config,
-            OpcUaNodeValue value) {
+        SourceRuntimeConfig sourceRuntimeConfig,
+        OpcUaAdapterConfig config,
+        OpcUaNodeValue value
+    ) {
         Instant receivedAt = clock.instant();
         Instant occurredAt = switch (config.timestampPolicy()) {
-            case SOURCE_TIME -> value.sourceTimestamp() == null ? receivedAt : value.sourceTimestamp();
-            case SERVER_TIME -> value.serverTimestamp() == null ? receivedAt : value.serverTimestamp();
+            case SOURCE_TIME -> value.sourceTimestamp() == null
+                ? receivedAt
+                : value.sourceTimestamp();
+            case SERVER_TIME -> value.serverTimestamp() == null
+                ? receivedAt
+                : value.serverTimestamp();
             case RECEIVE_TIME -> receivedAt;
         };
         Object metricValue = mapper.map(value.mapping(), value.value());
         return new IncomingTelemetryMessage(
-                sourceRuntimeConfig.sourceId(),
-                sourceRuntimeConfig.deviceId(),
-                sourceRuntimeConfig.accountId(),
-                occurredAt,
-                receivedAt,
-                Map.of(value.mapping().metric(), metricValue),
-                origin(config),
-                context(sourceRuntimeConfig, config, value.mapping()),
-                false);
+            sourceRuntimeConfig.sourceId(),
+            sourceRuntimeConfig.deviceId(),
+            sourceRuntimeConfig.accountId(),
+            occurredAt,
+            receivedAt,
+            Map.of(value.mapping().metric(), metricValue),
+            origin(config),
+            context(sourceRuntimeConfig, config, value.mapping()),
+            false
+        );
     }
 
     private TelemetryOrigin origin(OpcUaAdapterConfig config) {
@@ -96,20 +106,26 @@ public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
         }
         metadata.put("securityPolicy", config.securityPolicy());
         return new TelemetryOrigin(
-                MANIFEST.adapterType(),
-                MANIFEST.protocol(),
-                MANIFEST.transport(),
-                MANIFEST.adapterId(),
-                metadata);
+            MANIFEST.adapterType(),
+            MANIFEST.protocol(),
+            MANIFEST.transport(),
+            MANIFEST.adapterId(),
+            metadata
+        );
     }
 
     private IngestionContext context(
-            SourceRuntimeConfig sourceRuntimeConfig,
-            OpcUaAdapterConfig config,
-            OpcUaNodeMapping mapping) {
+        SourceRuntimeConfig sourceRuntimeConfig,
+        OpcUaAdapterConfig config,
+        OpcUaNodeMapping mapping
+    ) {
         Map<String, String> metadata = new LinkedHashMap<>();
         putIfPresent(metadata, "mappingSchemaVersion", sourceRuntimeConfig.mappingSchemaVersion());
-        putIfPresent(metadata, "adapterConfigSchemaVersion", sourceRuntimeConfig.adapterConfigSchemaVersion());
+        putIfPresent(
+            metadata,
+            "adapterConfigSchemaVersion",
+            sourceRuntimeConfig.adapterConfigSchemaVersion()
+        );
         metadata.put("configVersion", Long.toString(sourceRuntimeConfig.version()));
         metadata.put("timestampPolicy", config.timestampPolicy().name());
         metadata.put("publishingIntervalMs", Long.toString(config.publishingInterval().toMillis()));
@@ -127,14 +143,16 @@ public class OpcUaTelemetryAdapter implements SubscriptionTelemetryAdapter {
     }
 
     private final class SinkForwardingValueChangeHandler implements OpcUaValueChangeHandler {
+
         private final SourceRuntimeConfig sourceRuntimeConfig;
         private final OpcUaAdapterConfig config;
         private final SubscriptionTelemetrySink sink;
 
         private SinkForwardingValueChangeHandler(
-                SourceRuntimeConfig sourceRuntimeConfig,
-                OpcUaAdapterConfig config,
-                SubscriptionTelemetrySink sink) {
+            SourceRuntimeConfig sourceRuntimeConfig,
+            OpcUaAdapterConfig config,
+            SubscriptionTelemetrySink sink
+        ) {
             this.sourceRuntimeConfig = sourceRuntimeConfig;
             this.config = config;
             this.sink = sink;

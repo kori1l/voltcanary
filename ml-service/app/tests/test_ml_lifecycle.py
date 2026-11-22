@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -46,12 +46,27 @@ class _FakeS3Client:
         if Bucket not in self.buckets:
             raise RuntimeError("bucket missing")
 
-    def put_object(self, Bucket: str, Key: str, Body: bytes, ContentType: str) -> None:
+    def put_object(
+        self, Bucket: str, Key: str, Body: bytes, ContentType: str, IfNoneMatch: str | None = None
+    ) -> None:
+        if IfNoneMatch == "*" and (Bucket, Key) in self.objects:
+            from botocore.exceptions import ClientError
+
+            raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
         self.buckets.add(Bucket)
         self.objects[(Bucket, Key)] = Body
 
     def get_object(self, Bucket: str, Key: str) -> dict:
         return {"Body": _FakeBody(self.objects[(Bucket, Key)])}
+
+    def list_objects_v2(self, Bucket: str, Prefix: str = "", MaxKeys: int = 1000) -> dict:
+        keys = sorted(
+            key for bucket, key in self.objects if bucket == Bucket and key.startswith(Prefix)
+        )
+        return {
+            "IsTruncated": len(keys) > MaxKeys,
+            "Contents": [{"Key": key} for key in keys[:MaxKeys]],
+        }
 
     def delete_object(self, Bucket: str, Key: str) -> None:
         self.objects.pop((Bucket, Key), None)
@@ -180,7 +195,10 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertGreater(run.artifact_size_bytes or 0, 0)
             self.assertGreater(run.metrics["trainingRows"], 0)
             self.assertGreater(run.metrics["validationRows"], 0)
-            self.assertEqual(run.metrics["trainingRows"] + run.metrics["validationRows"], float(len(sample_rows())))
+            self.assertEqual(
+                run.metrics["trainingRows"] + run.metrics["validationRows"],
+                float(len(sample_rows())),
+            )
             self.assertIn("validationAnomalyScore", run.metrics)
             bundle = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
             artifact = bundle["files"]["model.json"]
@@ -191,10 +209,15 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(manifest["artifactFormat"], "voltcanary-model-bundle-v1")
             self.assertEqual(manifest["modelVersionId"], run.model_version_id)
             self.assertEqual(manifest["datasetVersionId"], "dataset-internal-v1")
-            self.assertEqual(manifest["featureSchemaHash"], run.feature_snapshot.feature_schema_hash)
+            self.assertEqual(
+                manifest["featureSchemaHash"], run.feature_snapshot.feature_schema_hash
+            )
             self.assertEqual(bundle["files"]["model.json"]["modelVersionId"], run.model_version_id)
             self.assertIsInstance(bundle["files"]["model.joblib"], bytes)
-            self.assertEqual(bundle["files"]["preprocessor.json"]["preprocessorType"], "tabular-metric-robust-scaler")
+            self.assertEqual(
+                bundle["files"]["preprocessor.json"]["preprocessorType"],
+                "tabular-metric-robust-scaler",
+            )
 
     def test_feature_artifact_loading_rejects_schema_drift(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -204,7 +227,10 @@ class MlLifecycleTest(unittest.TestCase):
             snapshot = service.generate_snapshot("dataset-v1", rows)
             artifact = artifact_store.load_json(snapshot.artifact_uri)
             artifact["features"]["new_column"] = 1.0
-            artifact_store.save_json(snapshot.artifact_uri.removeprefix("artifact://local/").removesuffix(".json"), artifact)
+            artifact_store.save_json(
+                snapshot.artifact_uri.removeprefix("artifact://local/").removesuffix(".json"),
+                artifact,
+            )
 
             with self.assertRaisesRegex(ValueError, "schema hash"):
                 service.load_snapshot_artifact(snapshot.artifact_uri)
@@ -229,7 +255,9 @@ class MlLifecycleTest(unittest.TestCase):
                 },
             )
 
-            self.assertTrue(artifact_store.verify_model_bundle(bundle["manifestUri"], bundle["artifactHash"]))
+            self.assertTrue(
+                artifact_store.verify_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
+            )
             loaded = artifact_store.load_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
             self.assertEqual(loaded["manifest"]["modelVersionId"], "model-version-1")
             self.assertEqual(loaded["files"]["model.json"]["metricStats"]["voltage"]["mean"], 230.0)
@@ -259,7 +287,9 @@ class MlLifecycleTest(unittest.TestCase):
             {"model.joblib": b"serialized-model"},
         )
 
-        self.assertTrue(bundle["artifactUri"].startswith("s3://model-artifacts/model-s3-round-trip/"))
+        self.assertTrue(
+            bundle["artifactUri"].startswith("s3://model-artifacts/model-s3-round-trip/")
+        )
         loaded = artifact_store.load_model_bundle(bundle["manifestUri"], bundle["artifactHash"])
         self.assertEqual(loaded["manifest"]["modelVersionId"], "model-version-s3")
         self.assertEqual(loaded["files"]["model.json"]["metricStats"]["current"]["mean"], 5.0)
@@ -496,10 +526,33 @@ class MlLifecycleTest(unittest.TestCase):
                     "modelFamily": "FAILURE_PREDICTION",
                     "failureHorizonDays": 14,
                     "rows": [
-                        failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                        failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                        failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                        failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                        failure_row(
+                            start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"
+                        ),
+                        failure_row(
+                            start,
+                            "row-positive",
+                            "baselineDeviationRatio",
+                            1.8,
+                            True,
+                            "CONFIRMED_FAILURE",
+                        ),
+                        failure_row(
+                            start + timedelta(hours=1),
+                            "row-normal",
+                            "rollingMean",
+                            90.0,
+                            False,
+                            "NORMAL",
+                        ),
+                        failure_row(
+                            start + timedelta(hours=1),
+                            "row-normal",
+                            "baselineDeviationRatio",
+                            0.9,
+                            False,
+                            "NORMAL",
+                        ),
                     ],
                 }
             )
@@ -516,21 +569,36 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(manifest["artifactContractVersion"], "failure-prediction-artifact-v1")
             self.assertEqual(manifest["modelFamily"], "FAILURE_PREDICTION")
             self.assertEqual(manifest["featureSchemaHash"], "sha256:failure-fixture")
-            self.assertEqual(set(file_entries), {"model.json", "model.joblib", "model-card.json", "preprocessor.json"})
+            self.assertEqual(
+                set(file_entries),
+                {"model.json", "model.joblib", "model-card.json", "preprocessor.json"},
+            )
             self.assertTrue(file_entries["model.joblib"]["sha256"].startswith("sha256:"))
             self.assertEqual(file_entries["model-card.json"]["contentType"], "application/json")
             self.assertEqual(file_entries["preprocessor.json"]["contentType"], "application/json")
             model_artifact = bundle["files"]["model.json"]
-            self.assertEqual(model_artifact["artifactContractVersion"], "failure-prediction-artifact-v1")
+            self.assertEqual(
+                model_artifact["artifactContractVersion"], "failure-prediction-artifact-v1"
+            )
             self.assertEqual(model_artifact["modelType"], "trained_failure_prediction")
             self.assertEqual(model_artifact["modelFamily"], "FAILURE_PREDICTION")
             self.assertEqual(model_artifact["failureHorizonDays"], 14)
-            self.assertEqual(model_artifact["targetContract"]["targetColumn"], "failureWithinHorizon")
+            self.assertEqual(
+                model_artifact["targetContract"]["targetColumn"], "failureWithinHorizon"
+            )
             self.assertIn("CONFIRMED_FAILURE", model_artifact["targetContract"]["positiveOutcomes"])
-            self.assertEqual(model_artifact["approvalGates"]["approvalGateVersion"], "failure-approval-gates-v1")
-            self.assertEqual(model_artifact["approvalGates"]["profileId"], "failure-production-default")
-            self.assertEqual(model_artifact["approvalGates"]["profileVersion"], "2026-08-approval-v1")
-            self.assertEqual(model_artifact["approvalGates"]["thresholdSource"], "ml-service-default-config")
+            self.assertEqual(
+                model_artifact["approvalGates"]["approvalGateVersion"], "failure-approval-gates-v1"
+            )
+            self.assertEqual(
+                model_artifact["approvalGates"]["profileId"], "failure-production-default"
+            )
+            self.assertEqual(
+                model_artifact["approvalGates"]["profileVersion"], "2026-08-approval-v1"
+            )
+            self.assertEqual(
+                model_artifact["approvalGates"]["thresholdSource"], "ml-service-default-config"
+            )
             self.assertEqual(model_artifact["approvalGates"]["status"], "NEEDS_REVIEW")
             self.assertFalse(model_artifact["approvalGates"]["promotionEligible"])
             self.assertIn(
@@ -553,7 +621,10 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(model_card["trainingData"]["datasetVersionId"], "dataset-failure-v1")
             self.assertEqual(model_card["target"], model_artifact["targetContract"])
             self.assertEqual(model_card["approvalGates"], model_artifact["approvalGates"])
-            self.assertIn("Rule-based risk remains separate from supervised failure risk.", model_card["limitations"])
+            self.assertIn(
+                "Rule-based risk remains separate from supervised failure risk.",
+                model_card["limitations"],
+            )
             self.assertIsInstance(bundle["files"]["model.joblib"], bytes)
 
     def test_failure_training_fits_random_forest_candidate(self) -> None:
@@ -570,10 +641,33 @@ class MlLifecycleTest(unittest.TestCase):
                     "algorithm": "sklearn-random-forest-failure-v1",
                     "failureHorizonDays": 14,
                     "rows": [
-                        failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                        failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                        failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                        failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                        failure_row(
+                            start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"
+                        ),
+                        failure_row(
+                            start,
+                            "row-positive",
+                            "baselineDeviationRatio",
+                            1.8,
+                            True,
+                            "CONFIRMED_FAILURE",
+                        ),
+                        failure_row(
+                            start + timedelta(hours=1),
+                            "row-normal",
+                            "rollingMean",
+                            90.0,
+                            False,
+                            "NORMAL",
+                        ),
+                        failure_row(
+                            start + timedelta(hours=1),
+                            "row-normal",
+                            "baselineDeviationRatio",
+                            0.9,
+                            False,
+                            "NORMAL",
+                        ),
                     ],
                 }
             )
@@ -581,7 +675,9 @@ class MlLifecycleTest(unittest.TestCase):
             run = service.start_training(request)
 
             self.assertEqual(run.status, "SUCCEEDED")
-            self.assertTrue((run.model_version or "").startswith("sklearn-random-forest-failure-v1-"))
+            self.assertTrue(
+                (run.model_version or "").startswith("sklearn-random-forest-failure-v1-")
+            )
             bundle = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
             artifact = bundle["files"]["model.json"]
             self.assertEqual(artifact["algorithm"], "sklearn-random-forest-failure-v1")
@@ -592,7 +688,9 @@ class MlLifecycleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             artifact_store = ArtifactStore(directory)
             service = TrainingService(artifact_store)
-            request = known_failure_training_request(dataset_version_id="dataset-failure-evaluation-v1")
+            request = known_failure_training_request(
+                dataset_version_id="dataset-failure-evaluation-v1"
+            )
 
             run = service.start_training(request)
 
@@ -615,19 +713,28 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(run.metrics["approvalGateProfileVersion"], "2026-08-approval-v1")
             self.assertIn("approvalGates", run.metrics)
             bundle = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
-            self.assertEqual(bundle["manifest"]["approvalGates"]["profileId"], "failure-production-default")
+            self.assertEqual(
+                bundle["manifest"]["approvalGates"]["profileId"], "failure-production-default"
+            )
             self.assertEqual(bundle["manifest"]["evaluation"]["strategy"], "time_based_holdout")
             self.assertEqual(bundle["manifest"]["evaluation"]["status"], "EVALUATED")
-            self.assertEqual(bundle["manifest"]["evaluation"]["baseline"]["name"], "training-positive-rate-baseline-v1")
+            self.assertEqual(
+                bundle["manifest"]["evaluation"]["baseline"]["name"],
+                "training-positive-rate-baseline-v1",
+            )
             self.assertEqual(bundle["manifest"]["approvalGates"]["status"], "PASSED")
             self.assertTrue(bundle["manifest"]["approvalGates"]["promotionEligible"])
             self.assertEqual(bundle["files"]["model.json"]["evaluation"]["status"], "EVALUATED")
             self.assertEqual(bundle["files"]["model.json"]["evaluation"]["baseline"]["score"], 0.5)
             self.assertEqual(bundle["files"]["model.json"]["approvalGates"]["status"], "PASSED")
-            self.assertEqual(bundle["files"]["model.json"]["metrics"]["failureValidationSamples"], 2.0)
+            self.assertEqual(
+                bundle["files"]["model.json"]["metrics"]["failureValidationSamples"], 2.0
+            )
             model_card = bundle["files"]["model-card.json"]
             self.assertEqual(model_card["evaluation"]["status"], "EVALUATED")
-            self.assertEqual(model_card["evaluation"]["baseline"]["name"], "training-positive-rate-baseline-v1")
+            self.assertEqual(
+                model_card["evaluation"]["baseline"]["name"], "training-positive-rate-baseline-v1"
+            )
             self.assertEqual(model_card["evaluation"]["metrics"]["failureValidationSamples"], 2.0)
             gate_names = {gate["name"] for gate in model_card["approvalGates"]["criteria"]}
             self.assertIn("minimum_positive_labels", gate_names)
@@ -667,7 +774,9 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertEqual(gates["profileVersion"], "v2")
             self.assertEqual(gates["thresholdSource"], "analytics-service-config")
             self.assertEqual(gates["status"], "NEEDS_REVIEW")
-            precision_gate = next(gate for gate in gates["criteria"] if gate["name"] == "minimum_precision")
+            precision_gate = next(
+                gate for gate in gates["criteria"] if gate["name"] == "minimum_precision"
+            )
             self.assertEqual(precision_gate["threshold"], 1.1)
             self.assertFalse(precision_gate["passed"])
 
@@ -684,7 +793,14 @@ class MlLifecycleTest(unittest.TestCase):
                 "minimumPositiveLabels": 1,
                 "rows": [
                     failure_row(start, "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                    failure_row(start + timedelta(hours=1), "row-normal-2", "rollingMean", 95.0, False, "NORMAL"),
+                    failure_row(
+                        start + timedelta(hours=1),
+                        "row-normal-2",
+                        "rollingMean",
+                        95.0,
+                        False,
+                        "NORMAL",
+                    ),
                 ],
             }
         )
@@ -706,8 +822,17 @@ class MlLifecycleTest(unittest.TestCase):
                 "modelFamily": "FAILURE_PREDICTION",
                 "failureHorizonDays": 14,
                 "rows": [
-                    failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                    failure_row(start + timedelta(hours=1), "row-positive-2", "rollingMean", 130.0, True, "CONFIRMED_FAILURE"),
+                    failure_row(
+                        start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"
+                    ),
+                    failure_row(
+                        start + timedelta(hours=1),
+                        "row-positive-2",
+                        "rollingMean",
+                        130.0,
+                        True,
+                        "CONFIRMED_FAILURE",
+                    ),
                 ],
             }
         )
@@ -730,9 +855,25 @@ class MlLifecycleTest(unittest.TestCase):
                 "failureHorizonDays": 14,
                 "minimumLabelCoverage": 0.8,
                 "rows": [
-                    failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                    failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                    failure_row(start + timedelta(hours=2), "row-unlabeled", "rollingMean", 95.0, False, "MAINTENANCE"),
+                    failure_row(
+                        start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"
+                    ),
+                    failure_row(
+                        start + timedelta(hours=1),
+                        "row-normal",
+                        "rollingMean",
+                        90.0,
+                        False,
+                        "NORMAL",
+                    ),
+                    failure_row(
+                        start + timedelta(hours=2),
+                        "row-unlabeled",
+                        "rollingMean",
+                        95.0,
+                        False,
+                        "MAINTENANCE",
+                    ),
                 ],
             }
         )
@@ -757,10 +898,38 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
@@ -793,7 +962,9 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertIsNotNone(response.failure_risk_band)
             self.assertGreater(response.confidence, 0.35)
             self.assertTrue(response.risk_drivers)
-            self.assertEqual(response.training_data_window["datasetVersionId"], "dataset-failure-inference-v1")
+            self.assertEqual(
+                response.training_data_window["datasetVersionId"], "dataset-failure-inference-v1"
+            )
             self.assertIn("sklearn-logistic-regression-failure-v1", response.explanations[0])
 
     def test_failure_model_inference_scores_online_feature_vector(self) -> None:
@@ -810,10 +981,38 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
@@ -856,16 +1055,46 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
             )
             artifact_store.load_model_bundle_calls = 0
-            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
+            service = InferenceService(
+                artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300)
+            )
             request = InferenceRequest.model_validate(
                 {
                     "deviceId": "device-1",
@@ -904,10 +1133,38 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
@@ -935,7 +1192,9 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertIsNotNone(response.failure_risk_score)
             self.assertTrue(response.risk_drivers)
 
-    def test_failure_model_inference_returns_features_unavailable_for_missing_feature_columns(self) -> None:
+    def test_failure_model_inference_returns_features_unavailable_for_missing_feature_columns(
+        self,
+    ) -> None:
         start = datetime(2026, 7, 30, tzinfo=timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             artifact_store = ArtifactStore(directory)
@@ -949,10 +1208,38 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
@@ -992,10 +1279,38 @@ class MlLifecycleTest(unittest.TestCase):
                         "modelFamily": "FAILURE_PREDICTION",
                         "failureHorizonDays": 14,
                         "rows": [
-                            failure_row(start, "row-positive", "rollingMean", 120.0, True, "CONFIRMED_FAILURE"),
-                            failure_row(start, "row-positive", "baselineDeviationRatio", 1.8, True, "CONFIRMED_FAILURE"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "rollingMean", 90.0, False, "NORMAL"),
-                            failure_row(start + timedelta(hours=1), "row-normal", "baselineDeviationRatio", 0.9, False, "NORMAL"),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "rollingMean",
+                                120.0,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start,
+                                "row-positive",
+                                "baselineDeviationRatio",
+                                1.8,
+                                True,
+                                "CONFIRMED_FAILURE",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "rollingMean",
+                                90.0,
+                                False,
+                                "NORMAL",
+                            ),
+                            failure_row(
+                                start + timedelta(hours=1),
+                                "row-normal",
+                                "baselineDeviationRatio",
+                                0.9,
+                                False,
+                                "NORMAL",
+                            ),
                         ],
                     }
                 )
@@ -1004,9 +1319,7 @@ class MlLifecycleTest(unittest.TestCase):
             artifact = dict(loaded["files"]["model.json"])
             gates = dict(artifact["approvalGates"])
             gates["criteria"] = [
-                {**gate, "passed": False}
-                if gate["name"] == "minimum_positive_labels"
-                else gate
+                {**gate, "passed": False} if gate["name"] == "minimum_positive_labels" else gate
                 for gate in gates["criteria"]
             ]
             gates["status"] = "NEEDS_REVIEW"
@@ -1059,7 +1372,10 @@ class MlLifecycleTest(unittest.TestCase):
         self.assertEqual(train.status_code, 200)
         trained = train.json()
         self.assertEqual(trained["status"], "SUCCEEDED")
-        self.assertEqual(trained["metrics"]["trainingRows"] + trained["metrics"]["validationRows"], float(len(sample_rows())))
+        self.assertEqual(
+            trained["metrics"]["trainingRows"] + trained["metrics"]["validationRows"],
+            float(len(sample_rows())),
+        )
 
         models = client.get("/models")
         self.assertEqual(models.status_code, 200)
@@ -1194,10 +1510,23 @@ class MlLifecycleTest(unittest.TestCase):
                 },
             )
             artifact_store.load_model_bundle_calls = 0
-            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
+            service = InferenceService(
+                artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300)
+            )
 
-            first = service.predict(self._artifact_request(run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash))
-            second = service.predict(self._artifact_request(run.model_version_id, bundle["manifestUri"], bundle["artifactUri"], bundle["artifactHash"]))
+            first = service.predict(
+                self._artifact_request(
+                    run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash
+                )
+            )
+            second = service.predict(
+                self._artifact_request(
+                    run.model_version_id,
+                    bundle["manifestUri"],
+                    bundle["artifactUri"],
+                    bundle["artifactHash"],
+                )
+            )
 
             self.assertEqual(first.prediction_status, "TRAINED_MODEL")
             self.assertEqual(second.prediction_status, "TRAINED_MODEL")
@@ -1216,11 +1545,17 @@ class MlLifecycleTest(unittest.TestCase):
                     }
                 )
             )
-            artifact_path = Path(directory) / (run.artifact_uri or "").removeprefix("artifact://local/")
+            artifact_path = Path(directory) / (run.artifact_uri or "").removeprefix(
+                "artifact://local/"
+            )
             artifact_path.write_bytes(b"corrupted")
             artifact_store.load_model_bundle_calls = 0
-            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300))
-            request = self._artifact_request(run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash)
+            service = InferenceService(
+                artifact_store, ServingArtifactCache(artifact_store, max_entries=2, ttl_seconds=300)
+            )
+            request = self._artifact_request(
+                run.model_version_id, run.manifest_uri, run.artifact_uri, run.artifact_hash
+            )
 
             first = service.predict(request)
             second = service.predict(request)
@@ -1255,11 +1590,34 @@ class MlLifecycleTest(unittest.TestCase):
                 )
             )
             artifact_store.load_model_bundle_calls = 0
-            service = InferenceService(artifact_store, ServingArtifactCache(artifact_store, max_entries=1, ttl_seconds=300))
+            service = InferenceService(
+                artifact_store, ServingArtifactCache(artifact_store, max_entries=1, ttl_seconds=300)
+            )
 
-            service.predict(self._artifact_request(first_run.model_version_id, first_run.manifest_uri, first_run.artifact_uri, first_run.artifact_hash))
-            service.predict(self._artifact_request(second_run.model_version_id, second_run.manifest_uri, second_run.artifact_uri, second_run.artifact_hash))
-            service.predict(self._artifact_request(first_run.model_version_id, first_run.manifest_uri, first_run.artifact_uri, first_run.artifact_hash))
+            service.predict(
+                self._artifact_request(
+                    first_run.model_version_id,
+                    first_run.manifest_uri,
+                    first_run.artifact_uri,
+                    first_run.artifact_hash,
+                )
+            )
+            service.predict(
+                self._artifact_request(
+                    second_run.model_version_id,
+                    second_run.manifest_uri,
+                    second_run.artifact_uri,
+                    second_run.artifact_hash,
+                )
+            )
+            service.predict(
+                self._artifact_request(
+                    first_run.model_version_id,
+                    first_run.manifest_uri,
+                    first_run.artifact_uri,
+                    first_run.artifact_hash,
+                )
+            )
 
             self.assertEqual(artifact_store.load_model_bundle_calls, 3)
             self.assertEqual(service.serving_cache.stats()["evictions"], 2)
@@ -1278,7 +1636,9 @@ class MlLifecycleTest(unittest.TestCase):
                 }
             )
             run = training_service.start_training(request)
-            artifact_path = Path(directory) / (run.artifact_uri or "").removeprefix("artifact://local/")
+            artifact_path = Path(directory) / (run.artifact_uri or "").removeprefix(
+                "artifact://local/"
+            )
             artifact_path.unlink()
 
             response = InferenceService(artifact_store).predict(

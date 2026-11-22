@@ -16,8 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/alerts/notification-preferences")
 @ApiResponses({
-        @ApiResponse(responseCode = "400", description = "Invalid account scope, timezone, severity, or preference request"),
-        @ApiResponse(responseCode = "401", description = "Missing authenticated user context")
+    @ApiResponse(
+        responseCode = "400",
+        description = "Invalid account scope, timezone, severity, or preference request"
+    ),
+    @ApiResponse(responseCode = "401", description = "Missing authenticated user context"),
 })
 @RequiredArgsConstructor
 public class NotificationPreferenceController {
@@ -26,16 +29,18 @@ public class NotificationPreferenceController {
 
     @GetMapping
     public NotificationPreferenceResponse getDefault(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId
+    ) {
         return service.getDefault(userId, accountId);
     }
 
     @PutMapping
     public NotificationPreferenceResponse updateDefault(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @RequestBody(required = false) NotificationPreferenceRequest request) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @RequestBody(required = false) NotificationPreferenceRequest request
+    ) {
         return service.updateDefault(userId, accountId, request);
     }
 }

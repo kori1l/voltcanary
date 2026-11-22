@@ -17,8 +17,17 @@ public class ProcessedEventService {
         if (eventId == null) {
             return true;
         }
-        return com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "processed_events",
-                java.util.List.of("id", "source_name", "event_id", "processed_at"), java.util.List.of("source_name", "event_id"),
-                UUID.randomUUID(), sourceName, eventId, Timestamp.from(Instant.now())) == 1;
+        return (
+            com.voltcanary.common.web.JdbcInsertIfAbsent.insert(
+                jdbcTemplate,
+                "processed_events",
+                java.util.List.of("id", "source_name", "event_id", "processed_at"),
+                java.util.List.of("source_name", "event_id"),
+                UUID.randomUUID(),
+                sourceName,
+                eventId,
+                Timestamp.from(Instant.now())
+            ) == 1
+        );
     }
 }

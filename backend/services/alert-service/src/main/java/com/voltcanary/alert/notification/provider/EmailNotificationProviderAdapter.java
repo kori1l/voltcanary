@@ -31,8 +31,9 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
     private final AlertNotificationProperties properties;
 
     public EmailNotificationProviderAdapter(
-            ObjectProvider<JavaMailSender> mailSender,
-            AlertNotificationProperties properties) {
+        ObjectProvider<JavaMailSender> mailSender,
+        AlertNotificationProperties properties
+    ) {
         this.mailSender = mailSender.getIfAvailable();
         this.properties = properties;
     }
@@ -55,37 +56,51 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
     public NotificationDeliveryResult deliver(NotificationDeliveryCommand command) {
         if (mailSender == null) {
             return NotificationDeliveryResult.permanentFailure(
-                    "EMAIL_PROVIDER_UNCONFIGURED",
-                    "Email provider is not configured");
+                "EMAIL_PROVIDER_UNCONFIGURED",
+                "Email provider is not configured"
+            );
         }
         try {
             mailSender.send(message(command));
             return NotificationDeliveryResult.sent("EMAIL accepted", null);
         } catch (ResponseStatusException exception) {
             return NotificationDeliveryResult.permanentFailure(
-                    "INVALID_EMAIL_CONFIG",
-                    exception.getReason());
-        } catch (MailParseException | MailAuthenticationException | IllegalArgumentException exception) {
+                "INVALID_EMAIL_CONFIG",
+                exception.getReason()
+            );
+        } catch (
+            MailParseException
+            | MailAuthenticationException
+            | IllegalArgumentException exception
+        ) {
             return NotificationDeliveryResult.permanentFailure(
-                    exception.getClass().getSimpleName(),
-                    bounded(exception.getMessage()));
+                exception.getClass().getSimpleName(),
+                bounded(exception.getMessage())
+            );
         } catch (MailException exception) {
             return NotificationDeliveryResult.retryableFailure(
-                    exception.getClass().getSimpleName(),
-                    bounded(exception.getMessage()));
+                exception.getClass().getSimpleName(),
+                bounded(exception.getMessage())
+            );
         } catch (MessagingException | UnsupportedEncodingException exception) {
             return NotificationDeliveryResult.permanentFailure(
-                    exception.getClass().getSimpleName(),
-                    bounded(exception.getMessage()));
+                exception.getClass().getSimpleName(),
+                bounded(exception.getMessage())
+            );
         }
     }
 
     private MimeMessage message(NotificationDeliveryCommand command)
-            throws MessagingException, UnsupportedEncodingException {
+        throws MessagingException, UnsupportedEncodingException
+    {
         Map<String, Object> config = command.channelConfig();
         AlertNotificationMessage notification = AlertNotificationMessage.from(command);
         MimeMessage mimeMessage = mailSender.createMimeMessage();
-        MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, false, StandardCharsets.UTF_8.name());
+        MimeMessageHelper helper = new MimeMessageHelper(
+            mimeMessage,
+            false,
+            StandardCharsets.UTF_8.name()
+        );
         String fromAddress = properties.getEmail().getFromAddress();
         String fromAlias = stringValue(config.get("fromAlias"));
         if (fromAddress != null && fromAlias != null) {
@@ -117,10 +132,11 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
         List<String> addresses = switch (value) {
             case null -> List.of();
             case String text -> splitAddresses(text);
-            case Collection<?> collection -> collection.stream()
-                    .map(this::stringValue)
-                    .filter(item -> item != null)
-                    .toList();
+            case Collection<?> collection -> collection
+                .stream()
+                .map(this::stringValue)
+                .filter(item -> item != null)
+                .toList();
             default -> throw badRequest(field + " must be a list of email addresses");
         };
         if (required && addresses.isEmpty()) {
@@ -139,10 +155,10 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
 
     private List<String> splitAddresses(String text) {
         return Pattern.compile("[,\\n;]")
-                .splitAsStream(text)
-                .map(String::trim)
-                .filter(item -> !item.isEmpty())
-                .toList();
+            .splitAsStream(text)
+            .map(String::trim)
+            .filter(item -> !item.isEmpty())
+            .toList();
     }
 
     private void boundedString(Map<String, Object> config, String field, int maxLength) {
@@ -172,7 +188,9 @@ public class EmailNotificationProviderAdapter implements NotificationProviderAda
             return "Email provider failed";
         }
         String trimmed = value.trim();
-        return trimmed.length() <= MAX_SUMMARY_LENGTH ? trimmed : trimmed.substring(0, MAX_SUMMARY_LENGTH);
+        return trimmed.length() <= MAX_SUMMARY_LENGTH
+            ? trimmed
+            : trimmed.substring(0, MAX_SUMMARY_LENGTH);
     }
 
     private ResponseStatusException badRequest(String reason) {

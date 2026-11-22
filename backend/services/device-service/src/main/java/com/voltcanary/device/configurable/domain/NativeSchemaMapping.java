@@ -16,30 +16,52 @@ import java.util.UUID;
 
 /** Explicit, statically checked migration of values; it has no storage or authority effects. */
 public final class NativeSchemaMapping {
+
     private static final VclParser PARSER = new VclParser();
-    private static final VclCompiler COMPILER = new VclCompiler(new VclRegistry(PARSER), VclUnits.standard());
+    private static final VclCompiler COMPILER = new VclCompiler(
+        new VclRegistry(PARSER),
+        VclUnits.standard()
+    );
     private final Map<UUID, JsonNode> mappings;
 
     private NativeSchemaMapping(Map<UUID, JsonNode> mappings) {
         this.mappings = Map.copyOf(mappings);
     }
 
-    public static NativeSchemaMapping compile(NativeSchema previous, NativeSchema next, JsonNode declarations,
-            Set<UUID> reservedFields, VclMetadata metadata) {
-        require(previous.id().equals(next.id()) && previous.revision() < 9_007_199_254_740_991L
-                && next.revision() == previous.revision() + 1, "SCHEMA_REVISION_CONFLICT");
+    public static NativeSchemaMapping compile(
+        NativeSchema previous,
+        NativeSchema next,
+        JsonNode declarations,
+        Set<UUID> reservedFields,
+        VclMetadata metadata
+    ) {
+        require(
+            previous.id().equals(next.id()) &&
+                previous.revision() < 9_007_199_254_740_991L &&
+                next.revision() == previous.revision() + 1,
+            "SCHEMA_REVISION_CONFLICT"
+        );
         require(declarations.isArray() && declarations.size() <= 64, "MIGRATION_MAPPING_INVALID");
         var oldFields = new LinkedHashMap<UUID, JsonNode>();
-        previous.fields().forEach(field -> oldFields.put(UUID.fromString(field.path("id").asText()), field));
+        previous
+            .fields()
+            .forEach(field -> oldFields.put(UUID.fromString(field.path("id").asText()), field));
         var selected = new LinkedHashMap<UUID, JsonNode>();
         for (var mapping : declarations) {
             require(mapping.isObject(), "MIGRATION_MAPPING_INVALID");
             boolean constant = mapping.has("literal");
-            closed(mapping, constant ? Set.of("targetFieldId", "literal")
-                    : Set.of("targetFieldId", "sourceFieldId", "column"));
+            closed(
+                mapping,
+                constant
+                    ? Set.of("targetFieldId", "literal")
+                    : Set.of("targetFieldId", "sourceFieldId", "column")
+            );
             UUID target = uuid(mapping.path("targetFieldId"));
             var targetField = next.field(target);
-            require(selected.putIfAbsent(target, mapping.deepCopy()) == null, "MIGRATION_MAPPING_DUPLICATE");
+            require(
+                selected.putIfAbsent(target, mapping.deepCopy()) == null,
+                "MIGRATION_MAPPING_DUPLICATE"
+            );
             if (constant) {
                 var literal = PARSER.literal(mapping.path("literal").toString());
                 if (literal.path("type").asText().equals("NULL")) {
@@ -52,7 +74,10 @@ public final class NativeSchemaMapping {
                 var sourceField = oldFields.get(source);
                 require(sourceField != null, "FIELD_NOT_IN_SCOPE");
                 var column = mapping.path("column");
-                require(column.path("sourceColumn").asText().equals(source.toString()), "MIGRATION_MAPPING_INVALID");
+                require(
+                    column.path("sourceColumn").asText().equals(source.toString()),
+                    "MIGRATION_MAPPING_INVALID"
+                );
                 COMPILER.checkImportColumn(column, previous.type(source), targetField, metadata);
             }
         }
@@ -66,11 +91,17 @@ public final class NativeSchemaMapping {
             } else {
                 var before = previous.type(id);
                 var after = next.type(id);
-                require(before.kind() == after.kind() && before.unit().equals(after.unit())
-                        && Objects.equals(before.referenceTarget(), after.referenceTarget()), "FIELD_ID_MEANING_CHANGED");
+                require(
+                    before.kind() == after.kind() &&
+                        before.unit().equals(after.unit()) &&
+                        Objects.equals(before.referenceTarget(), after.referenceTarget()),
+                    "FIELD_ID_MEANING_CHANGED"
+                );
                 if (!selected.containsKey(id)) {
-                    var mapping = JsonNodeFactory.instance.objectNode().put("targetFieldId", id.toString())
-                            .put("sourceFieldId", id.toString());
+                    var mapping = JsonNodeFactory.instance
+                        .objectNode()
+                        .put("targetFieldId", id.toString())
+                        .put("sourceFieldId", id.toString());
                     selected.put(id, mapping);
                 }
             }
@@ -79,7 +110,10 @@ public final class NativeSchemaMapping {
     }
 
     /** Source literals were decoded by the old schema. Final values still require target row validation. */
-    public Map<UUID, JsonNode> convert(Map<UUID, JsonNode> source, NativeImportInput.ReferenceResolver references) {
+    public Map<UUID, JsonNode> convert(
+        Map<UUID, JsonNode> source,
+        NativeImportInput.ReferenceResolver references
+    ) {
         var result = new LinkedHashMap<UUID, JsonNode>();
         for (var entry : mappings.entrySet()) {
             var mapping = entry.getValue();

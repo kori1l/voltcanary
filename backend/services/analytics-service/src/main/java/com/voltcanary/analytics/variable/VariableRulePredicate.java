@@ -1,7 +1,9 @@
 package com.voltcanary.analytics.variable;
 
 public final class VariableRulePredicate {
-    private VariableRulePredicate() { }
+
+    private VariableRulePredicate() {}
+
     public static boolean matches(String condition, double value, double threshold) {
         if (!Double.isFinite(value) || !Double.isFinite(threshold)) return false;
         return switch (condition) {

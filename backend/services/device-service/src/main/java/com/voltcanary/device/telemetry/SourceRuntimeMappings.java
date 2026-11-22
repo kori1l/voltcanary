@@ -12,12 +12,15 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class SourceRuntimeMappings {
+
     private final ObjectMapper objectMapper;
     private final VariableRetentionGuard retention;
 
     public void apply(DataSource source, DataSourceRequest request) {
         var stored = objectMap(source.getMappingJson());
-        var requested = new java.util.LinkedHashMap<String, Object>(request.mapping() == null ? Map.of() : request.mapping());
+        var requested = new java.util.LinkedHashMap<String, Object>(
+            request.mapping() == null ? Map.of() : request.mapping()
+        );
         Object submitted = requested.remove("reviewedBooleanMappings");
         Object reviewed = stored.get("reviewedBooleanMappings");
         if (submitted != null && !submitted.equals(reviewed)) {
@@ -25,28 +28,52 @@ public class SourceRuntimeMappings {
         }
         retention.check(source.getId(), request.mapping());
         var policy = requested.containsKey("telemetryPolicy")
-                ? objectMapper.convertValue(requested.get("telemetryPolicy"), com.voltcanary.common.events.telemetry.TelemetryFieldPolicy.class)
-                : null;
+            ? objectMapper.convertValue(
+                  requested.get("telemetryPolicy"),
+                  com.voltcanary.common.events.telemetry.TelemetryFieldPolicy.class
+              )
+            : null;
         var mappingConfig = objectMapper.valueToTree(requested);
         com.voltcanary.vcl.VclSourceBindingProfile.sampleHoldUs(mappingConfig);
-        com.voltcanary.vcl.VclSourceBindingProfile.intervalReport(mappingConfig).ifPresent(contract -> {
-            if (!retainedField(policy, contract.startKey(), "instant") || !retainedField(policy, contract.endKey(), "instant")) {
-                throw new IllegalArgumentException("Interval bounds must be retained instant fields");
+        com.voltcanary.vcl.VclSourceBindingProfile.intervalReport(mappingConfig).ifPresent(
+            contract -> {
+                if (
+                    !retainedField(policy, contract.startKey(), "instant") ||
+                    !retainedField(policy, contract.endKey(), "instant")
+                ) {
+                    throw new IllegalArgumentException(
+                        "Interval bounds must be retained instant fields"
+                    );
+                }
             }
-        });
-        com.voltcanary.vcl.VclSourceBindingProfile.occurrenceRouting(mappingConfig).ifPresent(contract -> {
-            if (!retainedField(policy, contract.subjectKey(), "string") || !retainedField(policy, contract.occurrenceKey(), "string")) {
-                throw new IllegalArgumentException("Occurrence routing requires retained string fields");
+        );
+        com.voltcanary.vcl.VclSourceBindingProfile.occurrenceRouting(mappingConfig).ifPresent(
+            contract -> {
+                if (
+                    !retainedField(policy, contract.subjectKey(), "string") ||
+                    !retainedField(policy, contract.occurrenceKey(), "string")
+                ) {
+                    throw new IllegalArgumentException(
+                        "Occurrence routing requires retained string fields"
+                    );
+                }
             }
-        });
+        );
         rejectRawCredentials(requested, "mapping");
         rejectRawCredentials(request.adapterConfig(), "adapterConfig");
         if (reviewed instanceof Map<?, ?> conversions) {
             var oldPolicy = objectMapper.valueToTree(stored.get("telemetryPolicy"));
             var newPolicy = objectMapper.valueToTree(requested.get("telemetryPolicy"));
             for (var key : conversions.keySet()) {
-                if (!java.util.Objects.equals(policyField(oldPolicy, key), policyField(newPolicy, key))) {
-                    throw new IllegalArgumentException("Reviewed mapping field requires confirmation");
+                if (
+                    !java.util.Objects.equals(
+                        policyField(oldPolicy, key),
+                        policyField(newPolicy, key)
+                    )
+                ) {
+                    throw new IllegalArgumentException(
+                        "Reviewed mapping field requires confirmation"
+                    );
                 }
             }
             requested.put("reviewedBooleanMappings", reviewed);
@@ -57,18 +84,39 @@ public class SourceRuntimeMappings {
         source.setHomeRegion(normalizeHomeRegion(request.homeRegion()));
     }
 
-    private static boolean retainedField(com.voltcanary.common.events.telemetry.TelemetryFieldPolicy policy, String key, String type) {
-        return policy != null && policy.fields().stream()
-                .anyMatch(field -> key.equals(field.key()) && field.store() && type.equals(field.type()));
+    private static boolean retainedField(
+        com.voltcanary.common.events.telemetry.TelemetryFieldPolicy policy,
+        String key,
+        String type
+    ) {
+        return (
+            policy != null &&
+            policy
+                .fields()
+                .stream()
+                .anyMatch(
+                    field -> key.equals(field.key()) && field.store() && type.equals(field.type())
+                )
+        );
     }
 
-    private static com.fasterxml.jackson.databind.JsonNode policyField(com.fasterxml.jackson.databind.JsonNode policy, Object key) {
-        for (var field : policy.path("fields")) if (key.equals(field.path("key").textValue())) return field;
+    private static com.fasterxml.jackson.databind.JsonNode policyField(
+        com.fasterxml.jackson.databind.JsonNode policy,
+        Object key
+    ) {
+        for (var field : policy.path("fields"))
+            if (key.equals(field.path("key").textValue())) return field;
         return null;
     }
 
-    public Map<String, Object> objectMap(String json) { return SourceRuntimeJson.objectMap(objectMapper, json); }
-    public Map<String, String> stringMap(String json) { return SourceRuntimeJson.stringMap(objectMapper, json); }
+    public Map<String, Object> objectMap(String json) {
+        return SourceRuntimeJson.objectMap(objectMapper, json);
+    }
+
+    public Map<String, String> stringMap(String json) {
+        return SourceRuntimeJson.stringMap(objectMapper, json);
+    }
+
     private String normalizeHomeRegion(String homeRegion) {
         if (homeRegion == null || homeRegion.isBlank()) {
             return "default";
@@ -100,10 +148,12 @@ public class SourceRuntimeMappings {
         }
         values.forEach((key, value) -> {
             String normalized = key == null ? "" : key.toLowerCase();
-            if (normalized.contains("password")
-                    || normalized.contains("secret")
-                    || normalized.contains("token")
-                    || normalized.contains("credential")) {
+            if (
+                normalized.contains("password") ||
+                normalized.contains("secret") ||
+                normalized.contains("token") ||
+                normalized.contains("credential")
+            ) {
                 throw new IllegalArgumentException(field + " must not contain raw credentials");
             }
             if (value instanceof Map<?, ?> nested) {
@@ -117,5 +167,4 @@ public class SourceRuntimeMappings {
         nested.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
-
 }

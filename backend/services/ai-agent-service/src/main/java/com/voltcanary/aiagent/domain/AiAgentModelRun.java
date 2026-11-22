@@ -13,8 +13,10 @@ import lombok.Setter;
 @Getter
 @Setter
 public class AiAgentModelRun {
+
     @Id
     private UUID id;
+
     private UUID accountId;
     private UUID userId;
     private UUID planId;
@@ -30,5 +32,4 @@ public class AiAgentModelRun {
     private String errorCode;
     private String errorMessage;
     private Instant createdAt;
-
 }

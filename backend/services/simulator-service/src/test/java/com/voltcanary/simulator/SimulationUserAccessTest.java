@@ -21,6 +21,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.server.ResponseStatusException;
 
 class SimulationUserAccessTest {
+
     @Test
     void deviceAndRunReadsForwardCurrentJwtAndFailClosedOnDeniedOrUnavailableOwner() {
         var builder = com.voltcanary.common.web.JacksonRestClients.builder();
@@ -34,18 +35,32 @@ class SimulationUserAccessTest {
         var run = new SimulationRun();
         run.setDeviceId(device);
         when(runs.findById(runId)).thenReturn(Optional.of(run));
-        server.expect(requestTo("http://devices/devices/" + device)).andExpect(header("Authorization", "Bearer current"))
-                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
-        server.expect(requestTo("http://devices/devices/" + device)).andExpect(header("Authorization", "Bearer revoked"))
-                .andRespond(withStatus(HttpStatus.FORBIDDEN));
-        server.expect(requestTo("http://devices/devices/" + device)).andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+        server
+            .expect(requestTo("http://devices/devices/" + device))
+            .andExpect(header("Authorization", "Bearer current"))
+            .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        server
+            .expect(requestTo("http://devices/devices/" + device))
+            .andExpect(header("Authorization", "Bearer revoked"))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN));
+        server
+            .expect(requestTo("http://devices/devices/" + device))
+            .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
         access.requireRun("Bearer current", runId);
-        assertThatThrownBy(() -> access.requireRun("Bearer revoked", runId))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        failure -> org.assertj.core.api.Assertions.assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
-        assertThatThrownBy(() -> access.requireDevice("Bearer current", device))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        failure -> org.assertj.core.api.Assertions.assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        assertThatThrownBy(() -> access.requireRun("Bearer revoked", runId)).isInstanceOfSatisfying(
+            ResponseStatusException.class,
+            failure ->
+                org.assertj.core.api.Assertions.assertThat(failure.getStatusCode()).isEqualTo(
+                    HttpStatus.NOT_FOUND
+                )
+        );
+        assertThatThrownBy(() ->
+            access.requireDevice("Bearer current", device)
+        ).isInstanceOfSatisfying(ResponseStatusException.class, failure ->
+            org.assertj.core.api.Assertions.assertThat(failure.getStatusCode()).isEqualTo(
+                HttpStatus.SERVICE_UNAVAILABLE
+            )
+        );
         server.verify();
     }
 }

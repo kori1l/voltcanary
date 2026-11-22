@@ -1,7 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useSectionResource } from "../../components/useSectionResource";
 import { SectionFeedback } from "../../components/SectionFeedback";
-import { clearScopedDraft, draftScope, readScopedDraft, saveScopedDraft } from "../../components/scopedDrafts";
+import {
+  clearScopedDraft,
+  draftScope,
+  readScopedDraft,
+  saveScopedDraft,
+} from "../../components/scopedDrafts";
 import { markWorkflowDraftSaved, useWorkflowDraft } from "../../components/workflowDraftContext";
 import {
   getNotificationPreference,
@@ -31,32 +36,128 @@ export function NotificationPreferenceSettings() {
   const [isBusy, setIsBusy] = useState(false);
   const [channels, setChannels] = useState<NotificationChannelResponse[] | null>(null);
   const [recovered, setRecovered] = useState(false);
-  const fields = { enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours, configurableRuleAlertsEnabled };
-  const scope = preference ? draftScope(preference.accountId, preference.id ?? "notification-preferences", preference.updatedAt ?? "legacy") : null;
-  useWorkflowDraft(recovered, () => { clearScopedDraft(scope); setRecovered(false); if (preference) applyPreference(preference); });
+  const fields = {
+    enabled,
+    severities,
+    channelTypes,
+    quietHoursStart,
+    quietHoursEnd,
+    timezone,
+    criticalBypassQuietHours,
+    configurableRuleAlertsEnabled,
+  };
+  const scope = preference
+    ? draftScope(
+        preference.accountId,
+        preference.id ?? "notification-preferences",
+        preference.updatedAt ?? "legacy",
+      )
+    : null;
+  useWorkflowDraft(recovered, () => {
+    clearScopedDraft(scope);
+    setRecovered(false);
+    if (preference) applyPreference(preference);
+  });
   useEffect(() => {
     if (!preference) return;
-    const baseline = { enabled: preference.enabled, severities: preference.severities ?? [], channelTypes: preference.channelTypes ?? [], quietHoursStart: preference.quietHoursStart ?? "", quietHoursEnd: preference.quietHoursEnd ?? "", timezone: preference.timezone || "UTC", criticalBypassQuietHours: preference.criticalBypassQuietHours, configurableRuleAlertsEnabled: preference.configurableRuleAlertsEnabled ?? false };
-    if (JSON.stringify(fields) === JSON.stringify(baseline)) clearScopedDraft(scope); else saveScopedDraft(scope, fields, Object.keys(fields));
-  }, [preference, enabled, severities, channelTypes, quietHoursStart, quietHoursEnd, timezone, criticalBypassQuietHours, configurableRuleAlertsEnabled]);
-  const timezoneOptions = [...new Set([timezone, "UTC", Intl.DateTimeFormat().resolvedOptions().timeZone, "Europe/Belgrade", "Europe/London", "America/New_York", "Asia/Tokyo"])];
+    const baseline = {
+      enabled: preference.enabled,
+      severities: preference.severities ?? [],
+      channelTypes: preference.channelTypes ?? [],
+      quietHoursStart: preference.quietHoursStart ?? "",
+      quietHoursEnd: preference.quietHoursEnd ?? "",
+      timezone: preference.timezone || "UTC",
+      criticalBypassQuietHours: preference.criticalBypassQuietHours,
+      configurableRuleAlertsEnabled: preference.configurableRuleAlertsEnabled ?? false,
+    };
+    if (JSON.stringify(fields) === JSON.stringify(baseline)) clearScopedDraft(scope);
+    else saveScopedDraft(scope, fields, Object.keys(fields));
+  }, [
+    preference,
+    enabled,
+    severities,
+    channelTypes,
+    quietHoursStart,
+    quietHoursEnd,
+    timezone,
+    criticalBypassQuietHours,
+    configurableRuleAlertsEnabled,
+  ]);
+  const timezoneOptions = [
+    ...new Set([
+      timezone,
+      "UTC",
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      "Europe/Belgrade",
+      "Europe/London",
+      "America/New_York",
+      "Asia/Tokyo",
+    ]),
+  ];
 
   useEffect(() => {
     void loadPreference();
-    listNotificationChannels().then(setChannels).catch(() => setChannels(null));
+    listNotificationChannels()
+      .then(setChannels)
+      .catch(() => setChannels(null));
   }, []);
 
   async function loadPreference() {
     setError(null);
     const response = await preferenceResource.load(getNotificationPreference);
     if (response) {
-      const saved = readScopedDraft(draftScope(response.accountId, response.id ?? "notification-preferences", response.updatedAt ?? "legacy"), (value) => {
-        if (typeof value.enabled !== "boolean" || typeof value.criticalBypassQuietHours !== "boolean" || !Array.isArray(value.severities) || !value.severities.every((item) => typeof item === "string" && severityOptions.includes(item)) || !Array.isArray(value.channelTypes) || !value.channelTypes.every((item) => typeof item === "string" && channelTypeOptions.includes(item)) || typeof value.timezone !== "string") return null;
-        try { new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }); } catch { return null; }
-        return { enabled: value.enabled, criticalBypassQuietHours: value.criticalBypassQuietHours, severities: value.severities as string[], channelTypes: value.channelTypes as string[], timezone: value.timezone, quietHoursStart: typeof value.quietHoursStart === "string" ? value.quietHoursStart : "", quietHoursEnd: typeof value.quietHoursEnd === "string" ? value.quietHoursEnd : "", configurableRuleAlertsEnabled: typeof value.configurableRuleAlertsEnabled === "boolean" ? value.configurableRuleAlertsEnabled : response.configurableRuleAlertsEnabled ?? false };
-      });
+      const saved = readScopedDraft(
+        draftScope(
+          response.accountId,
+          response.id ?? "notification-preferences",
+          response.updatedAt ?? "legacy",
+        ),
+        (value) => {
+          if (
+            typeof value.enabled !== "boolean" ||
+            typeof value.criticalBypassQuietHours !== "boolean" ||
+            !Array.isArray(value.severities) ||
+            !value.severities.every(
+              (item) => typeof item === "string" && severityOptions.includes(item),
+            ) ||
+            !Array.isArray(value.channelTypes) ||
+            !value.channelTypes.every(
+              (item) => typeof item === "string" && channelTypeOptions.includes(item),
+            ) ||
+            typeof value.timezone !== "string"
+          )
+            return null;
+          try {
+            new Intl.DateTimeFormat(undefined, { timeZone: value.timezone });
+          } catch {
+            return null;
+          }
+          return {
+            enabled: value.enabled,
+            criticalBypassQuietHours: value.criticalBypassQuietHours,
+            severities: value.severities as string[],
+            channelTypes: value.channelTypes as string[],
+            timezone: value.timezone,
+            quietHoursStart: typeof value.quietHoursStart === "string" ? value.quietHoursStart : "",
+            quietHoursEnd: typeof value.quietHoursEnd === "string" ? value.quietHoursEnd : "",
+            configurableRuleAlertsEnabled:
+              typeof value.configurableRuleAlertsEnabled === "boolean"
+                ? value.configurableRuleAlertsEnabled
+                : (response.configurableRuleAlertsEnabled ?? false),
+          };
+        },
+      );
       applyPreference(response);
-      if (saved) { setEnabled(saved.enabled); setSeverities(saved.severities); setChannelTypes(saved.channelTypes); setTimezone(saved.timezone); setCriticalBypassQuietHours(saved.criticalBypassQuietHours); setQuietHoursStart(saved.quietHoursStart); setQuietHoursEnd(saved.quietHoursEnd); setConfigurableRuleAlertsEnabled(saved.configurableRuleAlertsEnabled); }
+      if (saved) {
+        setEnabled(saved.enabled);
+        setSeverities(saved.severities);
+        setChannelTypes(saved.channelTypes);
+        setTimezone(saved.timezone);
+        setCriticalBypassQuietHours(saved.criticalBypassQuietHours);
+        setQuietHoursStart(saved.quietHoursStart);
+        setQuietHoursEnd(saved.quietHoursEnd);
+        setConfigurableRuleAlertsEnabled(saved.configurableRuleAlertsEnabled);
+      }
       setRecovered(Boolean(saved));
     }
   }
@@ -76,8 +177,16 @@ export function NotificationPreferenceSettings() {
   async function savePreference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isBusy || !preference) return;
-    if (Boolean(quietHoursStart) !== Boolean(quietHoursEnd)) { setError("Set both quiet-hours times, or clear both."); return; }
-    try { new Intl.DateTimeFormat(undefined, { timeZone: timezone }); } catch { setError("Choose a valid IANA timezone."); return; }
+    if (Boolean(quietHoursStart) !== Boolean(quietHoursEnd)) {
+      setError("Set both quiet-hours times, or clear both.");
+      return;
+    }
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    } catch {
+      setError("Choose a valid IANA timezone.");
+      return;
+    }
     setIsBusy(true);
     setMessage(null);
     setError(null);
@@ -95,16 +204,27 @@ export function NotificationPreferenceSettings() {
           : {}),
       });
       applyPreference(response);
-      clearScopedDraft(scope); setRecovered(false); markWorkflowDraftSaved("notification-preferences");
+      clearScopedDraft(scope);
+      setRecovered(false);
+      markWorkflowDraftSaved("notification-preferences");
       setMessage("Notification preferences saved");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to save notification preferences");
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to save notification preferences",
+      );
     } finally {
       setIsBusy(false);
     }
   }
 
-  function toggleSelected(value: string, selected: boolean, current: string[], update: (next: string[]) => void) {
+  function toggleSelected(
+    value: string,
+    selected: boolean,
+    current: string[],
+    update: (next: string[]) => void,
+  ) {
     update(selected ? [...new Set([...current, value])] : current.filter((item) => item !== value));
   }
 
@@ -113,19 +233,46 @@ export function NotificationPreferenceSettings() {
       <div className="section-header">
         <div>
           <h2>Notification Preferences</h2>
-          <p>{preference ? `${preference.timezone} routing policy` : preferenceResource.status === "loading" ? "Loading routing policy" : "Routing policy unavailable"}</p>
+          <p>
+            {preference
+              ? `${preference.timezone} routing policy`
+              : preferenceResource.status === "loading"
+                ? "Loading routing policy"
+                : "Routing policy unavailable"}
+          </p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void loadPreference()} disabled={isBusy}>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => void loadPreference()}
+          disabled={isBusy}
+        >
           Refresh
         </button>
       </div>
       {message ? <div className="success-message account-message">{message}</div> : null}
-      <SectionFeedback resource={preferenceResource} label="routing policy" onRetry={() => void loadPreference()} />
-      {recovered ? <p role="status">Recovered notification draft for this account and server revision. Review before saving.</p> : null}
+      <SectionFeedback
+        resource={preferenceResource}
+        label="routing policy"
+        onRetry={() => void loadPreference()}
+      />
+      {recovered ? (
+        <p role="status">
+          Recovered notification draft for this account and server revision. Review before saving.
+        </p>
+      ) : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
-      <form className="notification-channel-form" data-draft-id="notification-preferences" onSubmit={savePreference}>
+      <form
+        className="notification-channel-form"
+        data-draft-id="notification-preferences"
+        onSubmit={savePreference}
+      >
         <label className="notification-attempt-row">
-          <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => setEnabled(event.target.checked)}
+          />
           <span>Delivery enabled</span>
         </label>
         <label className="notification-attempt-row">
@@ -145,7 +292,9 @@ export function NotificationPreferenceSettings() {
               <input
                 type="checkbox"
                 checked={severities.includes(severity)}
-                onChange={(event) => toggleSelected(severity, event.target.checked, severities, setSeverities)}
+                onChange={(event) =>
+                  toggleSelected(severity, event.target.checked, severities, setSeverities)
+                }
               />
               <span>{formatEnum(severity)}</span>
             </label>
@@ -158,19 +307,83 @@ export function NotificationPreferenceSettings() {
               <input
                 type="checkbox"
                 checked={channelTypes.includes(channelType)}
-                onChange={(event) => toggleSelected(channelType, event.target.checked, channelTypes, setChannelTypes)}
+                onChange={(event) =>
+                  toggleSelected(channelType, event.target.checked, channelTypes, setChannelTypes)
+                }
               />
               <span>{formatEnum(channelType)}</span>
-              <small>{!["WEBHOOK", "EMAIL", "TELEGRAM"].includes(channelType) ? "No current delivery adapter" : channels === null ? "Availability unknown" : channels.some((channel) => channel.channelType === channelType && channel.enabled) ? "Enabled channel configured; check its health" : "No enabled channel configured"}</small>
+              <small>
+                {!["WEBHOOK", "EMAIL", "TELEGRAM"].includes(channelType)
+                  ? "No current delivery adapter"
+                  : channels === null
+                    ? "Availability unknown"
+                    : channels.some(
+                          (channel) => channel.channelType === channelType && channel.enabled,
+                        )
+                      ? "Enabled channel configured; check its health"
+                      : "No enabled channel configured"}
+              </small>
             </label>
           ))}
         </fieldset>
-        <fieldset><legend>Quiet hours</legend><div className="form-grid-two"><label>Quiet hours start<input value={quietHoursStart} onChange={(event) => setQuietHoursStart(event.target.value)} type="time" /></label><label>Quiet hours end<input value={quietHoursEnd} onChange={(event) => setQuietHoursEnd(event.target.value)} type="time" /></label></div><label>Timezone<input list="routing-timezones" value={timezone} onChange={(event) => setTimezone(event.target.value)} required /><datalist id="routing-timezones">{timezoneOptions.map((zone) => <option key={zone} value={zone} />)}</datalist></label><p>Times follow this timezone, including overnight intervals. Leave both times blank to disable quiet hours.</p></fieldset>
+        <fieldset>
+          <legend>Quiet hours</legend>
+          <div className="form-grid-two">
+            <label>
+              Quiet hours start
+              <input
+                value={quietHoursStart}
+                onChange={(event) => setQuietHoursStart(event.target.value)}
+                type="time"
+              />
+            </label>
+            <label>
+              Quiet hours end
+              <input
+                value={quietHoursEnd}
+                onChange={(event) => setQuietHoursEnd(event.target.value)}
+                type="time"
+              />
+            </label>
+          </div>
+          <label>
+            Timezone
+            <input
+              list="routing-timezones"
+              value={timezone}
+              onChange={(event) => setTimezone(event.target.value)}
+              required
+            />
+            <datalist id="routing-timezones">
+              {timezoneOptions.map((zone) => (
+                <option key={zone} value={zone} />
+              ))}
+            </datalist>
+          </label>
+          <p>
+            Times follow this timezone, including overnight intervals. Leave both times blank to
+            disable quiet hours.
+          </p>
+        </fieldset>
         <label className="notification-attempt-row">
-          <input type="checkbox" checked={criticalBypassQuietHours} onChange={(event) => setCriticalBypassQuietHours(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={criticalBypassQuietHours}
+            onChange={(event) => setCriticalBypassQuietHours(event.target.checked)}
+          />
           <span>Critical bypass quiet hours</span>
         </label>
-        <p className="status-note">{enabled ? `Deliver ${severities.join(", ") || "no selected severities"} through ${channelTypes.join(", ") || "no selected channel types"}.` : "Personal delivery disabled."} {quietHoursStart && quietHoursEnd ? `Quiet ${quietHoursStart}–${quietHoursEnd} in ${timezone}.` : "No quiet hours."} {criticalBypassQuietHours ? "Critical alerts can bypass quiet hours." : "Quiet hours also apply to critical alerts."}</p>
+        <p className="status-note">
+          {enabled
+            ? `Deliver ${severities.join(", ") || "no selected severities"} through ${channelTypes.join(", ") || "no selected channel types"}.`
+            : "Personal delivery disabled."}{" "}
+          {quietHoursStart && quietHoursEnd
+            ? `Quiet ${quietHoursStart}–${quietHoursEnd} in ${timezone}.`
+            : "No quiet hours."}{" "}
+          {criticalBypassQuietHours
+            ? "Critical alerts can bypass quiet hours."
+            : "Quiet hours also apply to critical alerts."}
+        </p>
         <button className="primary-button" type="submit" disabled={isBusy || !preference}>
           Save preferences
         </button>

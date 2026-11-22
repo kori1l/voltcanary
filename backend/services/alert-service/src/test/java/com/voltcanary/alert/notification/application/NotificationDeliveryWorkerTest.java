@@ -42,13 +42,14 @@ class NotificationDeliveryWorkerTest {
 
     private NotificationDeliveryWorker worker(AlertNotificationProperties properties) {
         return new NotificationDeliveryWorker(
-                null,
-                null,
-                null,
-                null,
-                properties,
-                new ObjectMapper(),
-                null,
-                new SimpleMeterRegistry());
+            null,
+            null,
+            null,
+            null,
+            properties,
+            new ObjectMapper(),
+            null,
+            new SimpleMeterRegistry()
+        );
     }
 }

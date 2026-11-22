@@ -28,16 +28,29 @@ public class InMemoryConnectorLeaseManager implements ConnectorLeaseManager {
     public Optional<ConnectorLease> acquire(UUID dataSourceId) {
         Instant now = clock.instant();
         leases.compute(dataSourceId, (ignored, existing) -> {
-            if (existing == null || existing.expiresAt().isBefore(now) || ownedByThisInstance(existing)) {
-                long fencingToken = existing != null && ownedByThisInstance(existing)
+            if (
+                existing == null ||
+                existing.expiresAt().isBefore(now) ||
+                ownedByThisInstance(existing)
+            ) {
+                long fencingToken =
+                    existing != null && ownedByThisInstance(existing)
                         ? existing.fencingToken()
                         : fencingSequence.incrementAndGet();
-                return new Lease(properties.getInstanceId(), fencingToken, now.plus(properties.getLeaseTtl()));
+                return new Lease(
+                    properties.getInstanceId(),
+                    fencingToken,
+                    now.plus(properties.getLeaseTtl())
+                );
             }
             return existing;
         });
         Lease lease = leases.get(dataSourceId);
-        if (lease == null || !ownedByThisInstance(lease) || lease.expiresAt().isBefore(clock.instant())) {
+        if (
+            lease == null ||
+            !ownedByThisInstance(lease) ||
+            lease.expiresAt().isBefore(clock.instant())
+        ) {
             return Optional.empty();
         }
         return Optional.of(new ConnectorLease(dataSourceId, lease.ownerId(), lease.fencingToken()));
@@ -48,7 +61,11 @@ public class InMemoryConnectorLeaseManager implements ConnectorLeaseManager {
         Instant now = clock.instant();
         leases.computeIfPresent(currentLease.dataSourceId(), (ignored, existing) -> {
             if (matches(existing, currentLease) && existing.expiresAt().isAfter(now)) {
-                return new Lease(existing.ownerId(), existing.fencingToken(), now.plus(properties.getLeaseTtl()));
+                return new Lease(
+                    existing.ownerId(),
+                    existing.fencingToken(),
+                    now.plus(properties.getLeaseTtl())
+                );
             }
             return existing;
         });
@@ -58,21 +75,28 @@ public class InMemoryConnectorLeaseManager implements ConnectorLeaseManager {
     @Override
     public void release(ConnectorLease lease) {
         leases.computeIfPresent(lease.dataSourceId(), (ignored, existing) ->
-                matches(existing, lease) ? null : existing);
+            matches(existing, lease) ? null : existing
+        );
     }
 
     @Override
     public boolean isCurrent(ConnectorLease lease) {
         Lease current = leases.get(lease.dataSourceId());
-        return current != null
-                && matches(current, lease)
-                && current.expiresAt().isAfter(clock.instant());
+        return (
+            current != null &&
+            matches(current, lease) &&
+            current.expiresAt().isAfter(clock.instant())
+        );
     }
 
     @Override
     public Optional<ConnectorLease> current(UUID dataSourceId) {
         Lease lease = leases.get(dataSourceId);
-        if (lease == null || !ownedByThisInstance(lease) || lease.expiresAt().isBefore(clock.instant())) {
+        if (
+            lease == null ||
+            !ownedByThisInstance(lease) ||
+            lease.expiresAt().isBefore(clock.instant())
+        ) {
             return Optional.empty();
         }
         return Optional.of(new ConnectorLease(dataSourceId, lease.ownerId(), lease.fencingToken()));
@@ -83,12 +107,13 @@ public class InMemoryConnectorLeaseManager implements ConnectorLeaseManager {
     }
 
     private boolean matches(Lease current, ConnectorLease lease) {
-        return current != null
-                && properties.getInstanceId().equals(lease.ownerId())
-                && current.ownerId().equals(lease.ownerId())
-                && current.fencingToken() == lease.fencingToken();
+        return (
+            current != null &&
+            properties.getInstanceId().equals(lease.ownerId()) &&
+            current.ownerId().equals(lease.ownerId()) &&
+            current.fencingToken() == lease.fencingToken()
+        );
     }
 
-    private record Lease(String ownerId, long fencingToken, Instant expiresAt) {
-    }
+    private record Lease(String ownerId, long fencingToken, Instant expiresAt) {}
 }

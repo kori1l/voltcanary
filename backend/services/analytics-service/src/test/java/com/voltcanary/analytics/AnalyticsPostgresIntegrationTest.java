@@ -1,8 +1,16 @@
 package com.voltcanary.analytics;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.analytics.dto.PredictionResponse;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
+import com.voltcanary.analytics.ml.MlInferenceBaseline;
+import com.voltcanary.analytics.ml.MlInferenceModelPreference;
+import com.voltcanary.analytics.ml.MlInferenceRecentWindow;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import com.voltcanary.analytics.telemetry.TelemetryClient;
@@ -12,9 +20,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -24,31 +32,41 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
-
 @Testcontainers
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.publish-enabled=false",
-                "app.analytics.authorization.enabled=false",
-                "app.analytics.jobs.async=false",
-                "spring.jpa.hibernate.ddl-auto=none"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.publish-enabled=false",
+        "app.analytics.authorization.enabled=false",
+        "app.analytics.jobs.async=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+    }
+)
+@org.junit.jupiter.api.Tag("docker")
 class AnalyticsPostgresIntegrationTest extends SignedUserTest {
+
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
-        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
-            if (request.getURI().getPath().startsWith("/analytics/") && !request.getHeaders().containsHeader("Authorization")) {
-                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
-            }
-            return execution.execute(request, body);
-        }));
+        restTemplate.getRestTemplate().setInterceptors(
+            java.util.List.of((request, body, execution) -> {
+                if (
+                    request.getURI().getPath().startsWith("/analytics/") &&
+                    !request.getHeaders().containsHeader("Authorization")
+                ) {
+                    request
+                        .getHeaders()
+                        .setBearerAuth(
+                            com.voltcanary.common.test.SignedUserTokens.create(
+                                java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                                "actor@example.invalid",
+                                "USER"
+                            )
+                        );
+                }
+                return execution.execute(request, body);
+            })
+        );
     }
 
     @Container
@@ -71,73 +89,153 @@ class AnalyticsPostgresIntegrationTest extends SignedUserTest {
     @MockitoBean
     private MlClient mlClient;
 
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
-    @Autowired private com.voltcanary.analytics.repository.DashboardAnalyticsRepository dashboardReads;
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Autowired
+    private com.voltcanary.analytics.repository.DashboardAnalyticsRepository dashboardReads;
 
     @Test
     void dashboardReadsStoredEvidenceWithoutInferenceOrJobsAndQualifiesAccount() {
-        UUID user = UUID.randomUUID(), account = UUID.randomUUID(), device = UUID.randomUUID();
-        UUID responseModel = UUID.randomUUID(), policyModel = UUID.randomUUID();
+        UUID user = UUID.randomUUID(),
+            account = UUID.randomUUID(),
+            device = UUID.randomUUID();
+        UUID responseModel = UUID.randomUUID(),
+            policyModel = UUID.randomUUID();
         Instant asOf = Instant.parse("2026-10-08T12:00:00Z");
-        jdbc.update("insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
-                UUID.randomUUID(), device, account, 0, "LOW", java.sql.Timestamp.from(asOf.minusSeconds(1)));
-        jdbc.update("insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
-                UUID.randomUUID(), device, UUID.randomUUID(), 99, "HIGH", java.sql.Timestamp.from(asOf));
-        jdbc.update("insert into prediction_results(id,device_id,account_id,model_name,prediction_json,created_at,shadow_prediction) values(?,?,?,?,?,?,false)",
-                UUID.randomUUID(), device, account, "fixture", "{\"modelFamily\":\"heuristic\",\"failureHorizonDays\":7,\"responseModelVersionId\":\"" + responseModel + "\",\"modelId\":\"" + policyModel + "\",\"sourceToken\":\"must-not-leak\"}", java.sql.Timestamp.from(asOf));
-        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(asOf.minusSeconds(86400), asOf, asOf, null, null);
-        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(user, account, List.of(device), frame,
-                java.util.Set.of(), List.of(device), 20, 0, "ACTIVE", List.of());
+        jdbc.update(
+            "insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
+            UUID.randomUUID(),
+            device,
+            account,
+            0,
+            "LOW",
+            java.sql.Timestamp.from(asOf.minusSeconds(1))
+        );
+        jdbc.update(
+            "insert into risk_scores(id,device_id,account_id,score,level,calculated_at) values(?,?,?,?,?,?)",
+            UUID.randomUUID(),
+            device,
+            UUID.randomUUID(),
+            99,
+            "HIGH",
+            java.sql.Timestamp.from(asOf)
+        );
+        jdbc.update(
+            "insert into prediction_results(id,device_id,account_id,model_name,prediction_json,created_at,shadow_prediction) values(?,?,?,?,?,?,false)",
+            UUID.randomUUID(),
+            device,
+            account,
+            "fixture",
+            "{\"modelFamily\":\"heuristic\",\"failureHorizonDays\":7,\"responseModelVersionId\":\"" +
+                responseModel +
+                "\",\"modelId\":\"" +
+                policyModel +
+                "\",\"sourceToken\":\"must-not-leak\"}",
+            java.sql.Timestamp.from(asOf)
+        );
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(
+            asOf.minusSeconds(86400),
+            asOf,
+            asOf,
+            null,
+            null
+        );
+        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(
+            user,
+            account,
+            List.of(device),
+            frame,
+            java.util.Set.of(),
+            List.of(device),
+            20,
+            0,
+            "ACTIVE",
+            List.of()
+        );
         long before = jdbc.queryForObject("select count(*) from analytics_jobs", Long.class);
         var result = dashboardReads.read(request, List.of(device));
         assertThat(result.path("risks").get(0).path("score").asDouble()).isZero();
         assertThat(result.path("predictions").get(0).path("horizonDays").asInt()).isEqualTo(7);
-        assertThat(result.path("predictions").get(0).path("modelVersionId").asText()).isEqualTo(responseModel.toString());
+        assertThat(result.path("predictions").get(0).path("modelVersionId").asText()).isEqualTo(
+            responseModel.toString()
+        );
         assertThat(result.toString()).doesNotContain(policyModel.toString());
         assertThat(result.toString()).doesNotContain("sourceToken", "must-not-leak");
-        assertThat(jdbc.queryForObject("select count(*) from analytics_jobs", Long.class)).isEqualTo(before);
+        assertThat(
+            jdbc.queryForObject("select count(*) from analytics_jobs", Long.class)
+        ).isEqualTo(before);
         org.mockito.Mockito.verifyNoInteractions(mlClient, telemetryClient);
-        assertThat(restTemplate.postForEntity("/internal/dashboard/analytics", request, String.class).getStatusCode().is4xxClientError()).isTrue();
+        assertThat(
+            restTemplate
+                .postForEntity("/internal/dashboard/analytics", request, String.class)
+                .getStatusCode()
+                .is4xxClientError()
+        ).isTrue();
     }
 
     @Test
     void recalculatePersistsPredictionResultInPostgres() {
         UUID deviceId = UUID.randomUUID();
         Instant start = Instant.parse("2026-05-13T00:00:00Z");
-        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
-                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", List.of(
-                        new TelemetryChartResponse.Point(start, 100),
-                        new TelemetryChartResponse.Point(start.plusSeconds(60), 400))));
-        when(mlClient.requestPrediction(
+        when(
+            telemetryClient.readings(
+                eq(deviceId),
+                eq("activePowerW"),
+                any(Instant.class),
+                any(Instant.class)
+            )
+        ).thenReturn(
+            new TelemetryChartResponse(
+                deviceId,
+                "activePowerW",
+                List.of(
+                    new TelemetryChartResponse.Point(start, 100),
+                    new TelemetryChartResponse.Point(start.plusSeconds(60), 400)
+                )
+            )
+        );
+        when(
+            mlClient.requestPrediction(
                 eq(deviceId),
                 any(Instant.class),
                 any(),
                 org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
-                .thenReturn(new MlInferenceResponse(
-                        deviceId,
-                        "voltcanary-baseline-heuristic",
-                        "baseline-heuristic-v1",
-                        "baseline_heuristic",
-                        "READY_HEURISTIC",
-                        "BASELINE_HEURISTIC",
-                        0.12,
-                        0.08,
-                        "LOW",
-                        0.5,
-                        List.of(Map.of("metric", "activePowerW", "score", 0.12)),
-                        List.of("Mock"),
-                        List.of("Continue normal monitoring."),
-                        "ml-input-hash"));
+                org.mockito.ArgumentMatchers.<MlInferenceBaseline>any(),
+                org.mockito.ArgumentMatchers.<MlInferenceRecentWindow>any(),
+                org.mockito.ArgumentMatchers.<MlInferenceModelPreference>any()
+            )
+        ).thenReturn(
+            new MlInferenceResponse(
+                deviceId,
+                "voltcanary-baseline-heuristic",
+                "baseline-heuristic-v1",
+                "baseline_heuristic",
+                "READY_HEURISTIC",
+                "BASELINE_HEURISTIC",
+                0.12,
+                0.08,
+                "LOW",
+                0.5,
+                List.of(Map.of("metric", "activePowerW", "score", 0.12)),
+                List.of("Mock"),
+                List.of("Continue normal monitoring."),
+                "ml-input-hash"
+            )
+        );
 
-        restTemplate.postForEntity("/analytics/devices/{deviceId}/recalculate", null, String.class, deviceId);
+        restTemplate.postForEntity(
+            "/analytics/devices/{deviceId}/recalculate",
+            null,
+            String.class,
+            deviceId
+        );
 
         ResponseEntity<PredictionResponse> prediction = restTemplate.getForEntity(
-                "/analytics/devices/{deviceId}/predictions/latest",
-                PredictionResponse.class,
-                deviceId);
+            "/analytics/devices/{deviceId}/predictions/latest",
+            PredictionResponse.class,
+            deviceId
+        );
         assertThat(prediction.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(prediction.getBody()).isNotNull();
         assertThat(prediction.getBody().modelName()).isEqualTo("voltcanary-baseline-heuristic");

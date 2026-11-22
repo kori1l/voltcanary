@@ -1,12 +1,10 @@
 package com.voltcanary.alert.notification.application;
 
-import com.voltcanary.alert.domain.AlertStatus;
-import java.time.Instant;
-import java.util.List;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.alert.domain.Alert;
+import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.notification.config.AlertNotificationProperties;
 import com.voltcanary.alert.notification.domain.NotificationAttempt;
 import com.voltcanary.alert.notification.domain.NotificationChannel;
@@ -18,6 +16,8 @@ import com.voltcanary.alert.notification.repository.NotificationChannelRepositor
 import com.voltcanary.alert.repository.AlertRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,8 +33,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class NotificationDeliveryWorker {
 
-    private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {
-    };
+    private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {};
 
     private final AlertRepository alertRepository;
     private final NotificationChannelRepository channelRepository;
@@ -47,8 +46,9 @@ public class NotificationDeliveryWorker {
     private final String workerId = "alert-notification-" + UUID.randomUUID();
 
     @Scheduled(
-            initialDelayString = "${app.alert.notifications.initial-delay-ms:5000}",
-            fixedDelayString = "${app.alert.notifications.scan-interval-ms:5000}")
+        initialDelayString = "${app.alert.notifications.initial-delay-ms:5000}",
+        fixedDelayString = "${app.alert.notifications.scan-interval-ms:5000}"
+    )
     public void processScheduled() {
         if (!properties.isWorkerEnabled()) {
             return;
@@ -63,9 +63,10 @@ public class NotificationDeliveryWorker {
         int limit = properties.getClaimBatchSize();
         for (int index = 0; index < limit; index++) {
             Optional<NotificationAttempt> claimed = attemptService.claimNext(
-                    workerId,
-                    properties.getLeaseDuration(),
-                    limit);
+                workerId,
+                properties.getLeaseDuration(),
+                limit
+            );
             if (claimed.isEmpty()) {
                 return;
             }
@@ -80,9 +81,10 @@ public class NotificationDeliveryWorker {
 
     public NotificationAttempt processAttemptNow(UUID attemptId) {
         Optional<NotificationAttempt> claimed = attemptService.claimAttempt(
-                attemptId,
-                workerId,
-                properties.getLeaseDuration());
+            attemptId,
+            workerId,
+            properties.getLeaseDuration()
+        );
         if (claimed.isPresent()) {
             deliver(claimed.get());
         }
@@ -90,16 +92,23 @@ public class NotificationDeliveryWorker {
     }
 
     private void deliver(NotificationAttempt attempt) {
-        try { deliverOwned(attempt); }
-        catch (NotificationAttemptService.LeaseLost lost) {
+        try {
+            deliverOwned(attempt);
+        } catch (NotificationAttemptService.LeaseLost lost) {
             log.info("notificationAttemptLeaseLost attemptId={}", attempt.getId());
         }
     }
 
     private void deliverOwned(NotificationAttempt attempt) {
-        NotificationChannel channel = channelRepository.findById(attempt.getChannelId()).orElse(null);
+        NotificationChannel channel = channelRepository
+            .findById(attempt.getChannelId())
+            .orElse(null);
         if (channel == null) {
-            attemptService.markFailed(attempt, "CHANNEL_NOT_FOUND", "Notification channel is missing");
+            attemptService.markFailed(
+                attempt,
+                "CHANNEL_NOT_FOUND",
+                "Notification channel is missing"
+            );
             return;
         }
         AlertNotificationRequest request = requestFor(attempt, channel);
@@ -110,51 +119,86 @@ public class NotificationDeliveryWorker {
             attemptService.markDisabled(attempt, "Notification channel is disabled");
             return;
         }
-        if (!isTestDelivery(attempt) && (!allowsRecipient(channel, request)
-                || !preferenceService.shouldDeliver(request, channel.getChannelType()))) {
+        if (
+            !isTestDelivery(attempt) &&
+            (!allowsRecipient(channel, request) ||
+                !preferenceService.shouldDeliver(request, channel.getChannelType()))
+        ) {
             attemptService.markDisabled(attempt, "Suppressed by notification preferences");
-            meterRegistry.counter(
+            meterRegistry
+                .counter(
                     "alert.notifications.deliveries",
-                    "channelType", safeChannelType(channel),
-                    "status", "suppressed").increment();
+                    "channelType",
+                    safeChannelType(channel),
+                    "status",
+                    "suppressed"
+                )
+                .increment();
             return;
         }
-        NotificationDeliveryResult result = providerRegistry.find(channel.getChannelType())
-                .map(adapter -> adapter.deliver(command(attempt, channel, request)))
-                .orElseGet(() -> NotificationDeliveryResult.permanentFailure(
-                        "UNSUPPORTED_CHANNEL_TYPE",
-                        "No notification provider adapter registered for " + safeChannelType(channel)));
+        NotificationDeliveryResult result = providerRegistry
+            .find(channel.getChannelType())
+            .map(adapter -> adapter.deliver(command(attempt, channel, request)))
+            .orElseGet(() ->
+                NotificationDeliveryResult.permanentFailure(
+                    "UNSUPPORTED_CHANNEL_TYPE",
+                    "No notification provider adapter registered for " + safeChannelType(channel)
+                )
+            );
         applyResult(attempt, channel, result);
     }
 
     private NotificationDeliveryCommand command(
-            NotificationAttempt attempt,
-            NotificationChannel channel,
-            AlertNotificationRequest request) {
+        NotificationAttempt attempt,
+        NotificationChannel channel,
+        AlertNotificationRequest request
+    ) {
         return new NotificationDeliveryCommand(
-                attempt.getId(),
-                channel.getId(),
-                safeChannelType(channel),
-                attempt.getIdempotencyKey(),
-                attempt.getDeliveryEventType(),
-                readConfig(channel),
-                channel.getCredentialsRef(),
-                request);
+            attempt.getId(),
+            channel.getId(),
+            safeChannelType(channel),
+            attempt.getIdempotencyKey(),
+            attempt.getDeliveryEventType(),
+            readConfig(channel),
+            channel.getCredentialsRef(),
+            request
+        );
     }
 
     private void applyResult(
-            NotificationAttempt attempt,
-            NotificationChannel channel,
-            NotificationDeliveryResult result) {
+        NotificationAttempt attempt,
+        NotificationChannel channel,
+        NotificationDeliveryResult result
+    ) {
         String channelType = safeChannelType(channel);
         switch (result.status()) {
             case SENT -> {
-                attemptService.markSent(attempt, result.providerResponseSummary(), result.providerMessageId());
-                meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "sent").increment();
+                attemptService.markSent(
+                    attempt,
+                    result.providerResponseSummary(),
+                    result.providerMessageId()
+                );
+                meterRegistry
+                    .counter(
+                        "alert.notifications.deliveries",
+                        "channelType",
+                        channelType,
+                        "status",
+                        "sent"
+                    )
+                    .increment();
             }
             case DISABLED -> {
                 attemptService.markDisabled(attempt, result.providerResponseSummary());
-                meterRegistry.counter("alert.notifications.deliveries", "channelType", channelType, "status", "disabled").increment();
+                meterRegistry
+                    .counter(
+                        "alert.notifications.deliveries",
+                        "channelType",
+                        channelType,
+                        "status",
+                        "disabled"
+                    )
+                    .increment();
             }
             case RETRYABLE_FAILURE -> {
                 if (canRetry(attempt)) {
@@ -167,23 +211,45 @@ public class NotificationDeliveryWorker {
         }
     }
 
-    private void markFailed(NotificationAttempt attempt, NotificationChannel channel, NotificationDeliveryResult result) {
-        boolean retryExhausted = result.retryable() && attempt.getRetryCount() + 1 >= effectiveMaxAttempts(attempt);
-        attemptService.markFailed(attempt, result.errorCode(), result.providerResponseSummary(), retryExhausted);
-        meterRegistry.counter("alert.notifications.deliveries", "channelType", safeChannelType(channel), "status", "failed").increment();
-        log.warn(
-                "alertNotificationDeliveryFailed alertId={} channelId={} channelType={} reason={}",
-                attempt.getAlertId(),
-                channel.getId(),
+    private void markFailed(
+        NotificationAttempt attempt,
+        NotificationChannel channel,
+        NotificationDeliveryResult result
+    ) {
+        boolean retryExhausted =
+            result.retryable() && attempt.getRetryCount() + 1 >= effectiveMaxAttempts(attempt);
+        attemptService.markFailed(
+            attempt,
+            result.errorCode(),
+            result.providerResponseSummary(),
+            retryExhausted
+        );
+        meterRegistry
+            .counter(
+                "alert.notifications.deliveries",
+                "channelType",
                 safeChannelType(channel),
-                result.errorCode());
+                "status",
+                "failed"
+            )
+            .increment();
+        log.warn(
+            "alertNotificationDeliveryFailed alertId={} channelId={} channelType={} reason={}",
+            attempt.getAlertId(),
+            channel.getId(),
+            safeChannelType(channel),
+            result.errorCode()
+        );
     }
 
     private Map<String, Object> readConfig(NotificationChannel channel) {
         try {
             return objectMapper.readValue(
-                    channel.getConfigJson() == null || channel.getConfigJson().isBlank() ? "{}" : channel.getConfigJson(),
-                    CONFIG_TYPE);
+                channel.getConfigJson() == null || channel.getConfigJson().isBlank()
+                    ? "{}"
+                    : channel.getConfigJson(),
+                CONFIG_TYPE
+            );
         } catch (JsonProcessingException exception) {
             return Map.of();
         }
@@ -191,48 +257,70 @@ public class NotificationDeliveryWorker {
 
     boolean allowsRecipient(NotificationChannel channel, AlertNotificationRequest request) {
         if (!"CONFIGURABLE_RULE".equals(request.alertType())) return true;
-        return request.ruleId() != null && channel.getAccountId().equals(request.accountId())
-                && readConfig(channel).get("configurableRuleIds") instanceof List<?> rules
-                && rules.contains(request.ruleId());
+        return (
+            request.ruleId() != null &&
+            channel.getAccountId().equals(request.accountId()) &&
+            readConfig(channel).get("configurableRuleIds") instanceof List<?> rules &&
+            rules.contains(request.ruleId())
+        );
     }
 
-    private AlertNotificationRequest requestFor(NotificationAttempt attempt, NotificationChannel channel) {
+    private AlertNotificationRequest requestFor(
+        NotificationAttempt attempt,
+        NotificationChannel channel
+    ) {
         if (isTestDelivery(attempt)) {
             return AlertNotificationRequest.fromTestDelivery(
-                    attempt.getAccountId(),
-                    channel.getId(),
-                    readAttemptPayload(attempt),
-                    attempt.getIdempotencyKey(),
-                    attempt.getCreatedAt());
+                attempt.getAccountId(),
+                channel.getId(),
+                readAttemptPayload(attempt),
+                attempt.getIdempotencyKey(),
+                attempt.getCreatedAt()
+            );
         }
         Alert alert = alertRepository.findById(attempt.getAlertId()).orElse(null);
         if (alert == null || alert.getAccountId() == null) {
-            attemptService.markFailed(attempt, "ALERT_NOT_FOUND", "Alert is missing or has no account");
+            attemptService.markFailed(
+                attempt,
+                "ALERT_NOT_FOUND",
+                "Alert is missing or has no account"
+            );
             return null;
         }
-        if (!alert.getAccountId().equals(attempt.getAccountId()) || !alert.getAccountId().equals(channel.getAccountId())) {
-            attemptService.markFailed(attempt, "ALERT_ACCOUNT_CHANGED", "Alert and notification accounts differ");
+        if (
+            !alert.getAccountId().equals(attempt.getAccountId()) ||
+            !alert.getAccountId().equals(channel.getAccountId())
+        ) {
+            attemptService.markFailed(
+                attempt,
+                "ALERT_ACCOUNT_CHANGED",
+                "Alert and notification accounts differ"
+            );
             return null;
         }
-        if ("CONFIGURABLE_RULE".equals(alert.getAlertType())
-                && (alert.getStatus() == AlertStatus.RESOLVED
-                || channel.getUpdatedAt().isAfter(attempt.getCreatedAt()))) {
+        if (
+            "CONFIGURABLE_RULE".equals(alert.getAlertType()) &&
+            (alert.getStatus() == AlertStatus.RESOLVED ||
+                channel.getUpdatedAt().isAfter(attempt.getCreatedAt()))
+        ) {
             attemptService.markDisabled(attempt, "Configurable rule alert or channel changed");
             return null;
         }
         return AlertNotificationRequest.fromDeliveryAttempt(
-                alert,
-                attempt.getDeliveryEventType(),
-                attempt.getIdempotencyKey());
+            alert,
+            attempt.getDeliveryEventType(),
+            attempt.getIdempotencyKey()
+        );
     }
 
     private Map<String, Object> readAttemptPayload(NotificationAttempt attempt) {
         try {
             return objectMapper.readValue(
-                    attempt.getRequestPayloadJson() == null || attempt.getRequestPayloadJson().isBlank()
-                            ? "{}"
-                            : attempt.getRequestPayloadJson(),
-                    CONFIG_TYPE);
+                attempt.getRequestPayloadJson() == null || attempt.getRequestPayloadJson().isBlank()
+                    ? "{}"
+                    : attempt.getRequestPayloadJson(),
+                CONFIG_TYPE
+            );
         } catch (JsonProcessingException exception) {
             return Map.of();
         }
@@ -244,31 +332,43 @@ public class NotificationDeliveryWorker {
 
     private String safeChannelType(NotificationChannel channel) {
         return channel.getChannelType() == null || channel.getChannelType().isBlank()
-                ? "UNKNOWN"
-                : channel.getChannelType();
+            ? "UNKNOWN"
+            : channel.getChannelType();
     }
 
     private boolean canRetry(NotificationAttempt attempt) {
         return attempt.getRetryCount() + 1 < effectiveMaxAttempts(attempt);
     }
 
-    private void markRetrying(NotificationAttempt attempt, String errorCode, String providerResponseSummary) {
+    private void markRetrying(
+        NotificationAttempt attempt,
+        String errorCode,
+        String providerResponseSummary
+    ) {
         Instant nextAttemptAt = Instant.now().plus(retryDelay(attempt.getRetryCount() + 1));
         attemptService.markRetrying(attempt, errorCode, providerResponseSummary, nextAttemptAt);
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "alert.notifications.deliveries",
-                "channelType", attempt.getChannelType(),
-                "status", "retrying").increment();
+                "channelType",
+                attempt.getChannelType(),
+                "status",
+                "retrying"
+            )
+            .increment();
     }
 
     private int effectiveMaxAttempts(NotificationAttempt attempt) {
-        return attempt.getMaxAttempts() <= 0 ? properties.getMaxAttempts() : attempt.getMaxAttempts();
+        return attempt.getMaxAttempts() <= 0
+            ? properties.getMaxAttempts()
+            : attempt.getMaxAttempts();
     }
 
     Duration retryDelay(int retryNumber) {
         long initialMillis = Math.max(0L, properties.getRetryInterval().toMillis());
         long maxMillis = Math.max(initialMillis, properties.getMaxRetryDelay().toMillis());
-        double scaled = initialMillis * Math.pow(properties.getRetryMultiplier(), Math.max(0, retryNumber - 1));
+        double scaled =
+            initialMillis * Math.pow(properties.getRetryMultiplier(), Math.max(0, retryNumber - 1));
         long capped = Math.min(maxMillis, Math.max(0L, Math.round(scaled)));
         double jitterPercent = properties.getRetryJitterPercent();
         if (capped == 0L || jitterPercent <= 0.0d) {

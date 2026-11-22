@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping({"/telemetry/devices/{deviceId}", "/internal/telemetry/devices/{deviceId}"})
+@RequestMapping({ "/telemetry/devices/{deviceId}", "/internal/telemetry/devices/{deviceId}" })
 @RequiredArgsConstructor
 public class TelemetryController {
 
@@ -34,93 +34,173 @@ public class TelemetryController {
 
     @GetMapping("/readings")
     public TelemetryChartResponse readings(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam("metric") String metric,
-            @RequestParam(value = "from", required = false) Instant from,
-            @RequestParam(value = "to", required = false) Instant to,
-            @RequestParam(value = "interval", required = false) String interval,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam("metric") String metric,
+        @RequestParam(value = "from", required = false) Instant from,
+        @RequestParam(value = "to", required = false) Instant to,
+        @RequestParam(value = "interval", required = false) String interval,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
         Instant effectiveTo = to == null ? Instant.now() : to;
-        Instant effectiveFrom = from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
+        Instant effectiveFrom =
+            from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
         requireAcceptedRange(effectiveFrom, effectiveTo);
         return telemetryQueryService.chart(deviceId, metric, effectiveFrom, effectiveTo, interval);
     }
 
     @GetMapping("/readings/export")
     public TelemetryExportResponse exportReadings(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam("metric") String metric,
-            @RequestParam("from") Instant from,
-            @RequestParam("to") Instant to,
-            @RequestParam(value = "cursor", required = false) Instant cursor,
-            @RequestParam(value = "cursorSourceId", required = false) String cursorSourceId,
-            @RequestParam(value = "limit", required = false, defaultValue = "500") int limit,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam("metric") String metric,
+        @RequestParam("from") Instant from,
+        @RequestParam("to") Instant to,
+        @RequestParam(value = "cursor", required = false) Instant cursor,
+        @RequestParam(value = "cursorSourceId", required = false) String cursorSourceId,
+        @RequestParam(value = "limit", required = false, defaultValue = "500") int limit,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
         requireAcceptedRange(from, to);
-        int effectiveLimit = Math.max(1, Math.min(limit, validationProperties.getMaxExportPageSize()));
-        return telemetryQueryService.export(deviceId, metric, from, to, cursor, cursorSourceId, effectiveLimit);
+        int effectiveLimit = Math.max(
+            1,
+            Math.min(limit, validationProperties.getMaxExportPageSize())
+        );
+        return telemetryQueryService.export(
+            deviceId,
+            metric,
+            from,
+            to,
+            cursor,
+            cursorSourceId,
+            effectiveLimit
+        );
     }
 
     @GetMapping("/readings/envelope")
     public TelemetryEnvelopeResponse envelope(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam("metric") String metric,
-            @RequestParam("from") Instant from, @RequestParam("to") Instant to,
-            @RequestParam(value="buckets", defaultValue="200") int buckets,
-            @RequestHeader(value="X-User-Id", required=false) String userId,
-            @RequestHeader(value="X-User-Role", required=false) String role,
-            @RequestHeader(value="X-Correlation-Id", required=false) String correlationId,
-            @RequestHeader(value="X-Internal-Service-Token", required=false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam("metric") String metric,
+        @RequestParam("from") Instant from,
+        @RequestParam("to") Instant to,
+        @RequestParam(value = "buckets", defaultValue = "200") int buckets,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
         requireAcceptedRange(from, to);
-        if (buckets < 1 || buckets > 250) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "buckets must be between 1 and 250");
+        if (buckets < 1 || buckets > 250) throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "buckets must be between 1 and 250"
+        );
         return telemetryQueryService.envelope(deviceId, metric, from, to, buckets);
     }
 
     @GetMapping("/latest")
     public TelemetryLatestResponse latest(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
-        return telemetryQueryService.latestMeasurements(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No telemetry for device"));
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
+        return telemetryQueryService
+            .latestMeasurements(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "No telemetry for device")
+            );
     }
 
     @GetMapping("/quality")
     public List<TelemetryQualityResponse> quality(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
         return telemetryQueryService.getQuality(deviceId);
     }
 
     @GetMapping("/metrics")
     public List<TelemetryMetricResponse> metrics(
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam(value="from", required=false) Instant from,
-            @RequestParam(value="to", required=false) Instant to,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Internal-Service-Token", required = false) String internalServiceToken) {
-        telemetryAccessService.requireReadAccess(deviceId, userId, role, correlationId, internalServiceToken);
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam(value = "from", required = false) Instant from,
+        @RequestParam(value = "to", required = false) Instant to,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(
+            value = "X-Internal-Service-Token",
+            required = false
+        ) String internalServiceToken
+    ) {
+        telemetryAccessService.requireReadAccess(
+            deviceId,
+            userId,
+            role,
+            correlationId,
+            internalServiceToken
+        );
         if (from == null && to == null) return telemetryQueryService.getMetrics(deviceId);
         Instant effectiveTo = to == null ? Instant.now() : to;
-        Instant effectiveFrom = from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
+        Instant effectiveFrom =
+            from == null ? effectiveTo.minus(validationProperties.getMaxChartRange()) : from;
         requireAcceptedRange(effectiveFrom, effectiveTo);
         return telemetryQueryService.getMetrics(deviceId, effectiveFrom, effectiveTo);
     }
@@ -131,7 +211,10 @@ public class TelemetryController {
         }
         Duration range = Duration.between(from, to);
         if (range.compareTo(validationProperties.getMaxChartRange()) > 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Telemetry query range exceeds configured limit");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Telemetry query range exceeds configured limit"
+            );
         }
     }
 }

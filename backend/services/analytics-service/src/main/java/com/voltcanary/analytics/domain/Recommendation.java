@@ -38,5 +38,4 @@ public class Recommendation {
 
     @Column(name = "superseded_at")
     private Instant supersededAt;
-
 }

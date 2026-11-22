@@ -12,16 +12,16 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MaintenanceOutcomeRequest(
-        @NotNull UUID deviceId,
-        UUID maintenanceWindowId,
-        @NotNull Instant observedAt,
-        Instant resolvedAt,
-        @NotNull MaintenanceOutcomeType outcomeType,
-        @Size(max = 255) String failureMode,
-        @Size(max = 255) String component,
-        MaintenanceOutcomeSeverity severity,
-        @Min(0) Integer downtimeMinutes,
-        @Size(max = 5000) String technicianNotes,
-        MaintenanceOutcomeSource source,
-        @DecimalMin("0.0") @DecimalMax("1.0") Double confidence) {
-}
+    @NotNull UUID deviceId,
+    UUID maintenanceWindowId,
+    @NotNull Instant observedAt,
+    Instant resolvedAt,
+    @NotNull MaintenanceOutcomeType outcomeType,
+    @Size(max = 255) String failureMode,
+    @Size(max = 255) String component,
+    MaintenanceOutcomeSeverity severity,
+    @Min(0) Integer downtimeMinutes,
+    @Size(max = 5000) String technicianNotes,
+    MaintenanceOutcomeSource source,
+    @DecimalMin("0.0") @DecimalMax("1.0") Double confidence
+) {}

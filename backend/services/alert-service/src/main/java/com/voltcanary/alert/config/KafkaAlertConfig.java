@@ -34,10 +34,18 @@ public class KafkaAlertConfig {
     private static final String MAINTENANCE_WINDOW_TOPIC = "maintenance-window.changed.v1";
 
     @Bean
-    ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory(KafkaProperties kafkaProperties) {
+    ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
-        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
-        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        properties.put(
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
+        properties.put(
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
         properties.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
         properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, AnomalyDetectedEvent.class.getName());
@@ -47,9 +55,13 @@ public class KafkaAlertConfig {
     }
 
     @Bean
-    ConcurrentKafkaListenerContainerFactory<String, AnomalyDetectedEvent> anomalyDetectedKafkaListenerContainerFactory(
-            ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory,
-            DefaultErrorHandler alertKafkaErrorHandler) {
+    ConcurrentKafkaListenerContainerFactory<
+        String,
+        AnomalyDetectedEvent
+    > anomalyDetectedKafkaListenerContainerFactory(
+        ConsumerFactory<String, AnomalyDetectedEvent> anomalyDetectedConsumerFactory,
+        DefaultErrorHandler alertKafkaErrorHandler
+    ) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, AnomalyDetectedEvent>();
         factory.setConsumerFactory(anomalyDetectedConsumerFactory);
         factory.setCommonErrorHandler(alertKafkaErrorHandler);
@@ -57,10 +69,18 @@ public class KafkaAlertConfig {
     }
 
     @Bean
-    ConsumerFactory<String, RiskScoreChangedEvent> riskScoreChangedConsumerFactory(KafkaProperties kafkaProperties) {
+    ConsumerFactory<String, RiskScoreChangedEvent> riskScoreChangedConsumerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
-        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
-        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        properties.put(
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
+        properties.put(
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
         properties.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
         properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, RiskScoreChangedEvent.class.getName());
@@ -70,9 +90,13 @@ public class KafkaAlertConfig {
     }
 
     @Bean
-    ConcurrentKafkaListenerContainerFactory<String, RiskScoreChangedEvent> riskScoreChangedKafkaListenerContainerFactory(
-            ConsumerFactory<String, RiskScoreChangedEvent> riskScoreChangedConsumerFactory,
-            DefaultErrorHandler alertKafkaErrorHandler) {
+    ConcurrentKafkaListenerContainerFactory<
+        String,
+        RiskScoreChangedEvent
+    > riskScoreChangedKafkaListenerContainerFactory(
+        ConsumerFactory<String, RiskScoreChangedEvent> riskScoreChangedConsumerFactory,
+        DefaultErrorHandler alertKafkaErrorHandler
+    ) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, RiskScoreChangedEvent>();
         factory.setConsumerFactory(riskScoreChangedConsumerFactory);
         factory.setCommonErrorHandler(alertKafkaErrorHandler);
@@ -80,30 +104,53 @@ public class KafkaAlertConfig {
     }
 
     @Bean
-    ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory(KafkaProperties kafkaProperties) {
+    ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
-        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
-        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        properties.put(
+            ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
+        properties.put(
+            ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+            ErrorHandlingDeserializer.class
+        );
         properties.put(ErrorHandlingDeserializer.KEY_DESERIALIZER_CLASS, StringDeserializer.class);
         properties.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, JsonDeserializer.class);
-        properties.put(JsonDeserializer.VALUE_DEFAULT_TYPE, MaintenanceWindowChangedEvent.class.getName());
+        properties.put(
+            JsonDeserializer.VALUE_DEFAULT_TYPE,
+            MaintenanceWindowChangedEvent.class.getName()
+        );
         properties.put(JsonDeserializer.TRUSTED_PACKAGES, "com.voltcanary.common.events.device");
         properties.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
         return new DefaultKafkaConsumerFactory<>(properties);
     }
 
     @Bean
-    ConcurrentKafkaListenerContainerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedKafkaListenerContainerFactory(
-            ConsumerFactory<String, MaintenanceWindowChangedEvent> maintenanceWindowChangedConsumerFactory,
-            DefaultErrorHandler alertKafkaErrorHandler) {
-        var factory = new ConcurrentKafkaListenerContainerFactory<String, MaintenanceWindowChangedEvent>();
+    ConcurrentKafkaListenerContainerFactory<
+        String,
+        MaintenanceWindowChangedEvent
+    > maintenanceWindowChangedKafkaListenerContainerFactory(
+        ConsumerFactory<
+            String,
+            MaintenanceWindowChangedEvent
+        > maintenanceWindowChangedConsumerFactory,
+        DefaultErrorHandler alertKafkaErrorHandler
+    ) {
+        var factory = new ConcurrentKafkaListenerContainerFactory<
+            String,
+            MaintenanceWindowChangedEvent
+        >();
         factory.setConsumerFactory(maintenanceWindowChangedConsumerFactory);
         factory.setCommonErrorHandler(alertKafkaErrorHandler);
         return factory;
     }
 
     @Bean
-    ProducerFactory<String, Object> alertDeadLetterProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, Object> alertDeadLetterProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
@@ -112,34 +159,51 @@ public class KafkaAlertConfig {
 
     @Bean
     KafkaTemplate<String, Object> alertDeadLetterKafkaTemplate(
-            ProducerFactory<String, Object> alertDeadLetterProducerFactory) {
+        ProducerFactory<String, Object> alertDeadLetterProducerFactory
+    ) {
         return new KafkaTemplate<>(alertDeadLetterProducerFactory);
     }
 
     @Bean
     DeadLetterPublishingRecoverer alertDeadLetterPublishingRecoverer(
-            KafkaTemplate<String, Object> alertDeadLetterKafkaTemplate,
-            AlertKafkaProperties alertKafkaProperties) {
+        KafkaTemplate<String, Object> alertDeadLetterKafkaTemplate,
+        AlertKafkaProperties alertKafkaProperties
+    ) {
         return new DeadLetterPublishingRecoverer(
-                alertDeadLetterKafkaTemplate,
-                (record, exception) -> new TopicPartition(dlqTopic(record.topic(), alertKafkaProperties), record.partition()));
+            alertDeadLetterKafkaTemplate,
+            (record, exception) ->
+                new TopicPartition(
+                    dlqTopic(record.topic(), alertKafkaProperties),
+                    record.partition()
+                )
+        );
     }
 
     @Bean
     DefaultErrorHandler alertKafkaErrorHandler(
-            DeadLetterPublishingRecoverer alertDeadLetterPublishingRecoverer,
-            AlertKafkaProperties alertKafkaProperties,
-            MeterRegistry meterRegistry) {
+        DeadLetterPublishingRecoverer alertDeadLetterPublishingRecoverer,
+        AlertKafkaProperties alertKafkaProperties,
+        MeterRegistry meterRegistry
+    ) {
         long retryAttempts = Math.max(0, alertKafkaProperties.getRetry().getMaxAttempts() - 1L);
         long retryInterval = Math.max(0, alertKafkaProperties.getRetry().getInterval().toMillis());
         var errorHandler = new DefaultErrorHandler(
-                alertDeadLetterPublishingRecoverer,
-                new FixedBackOff(retryInterval, retryAttempts));
-        errorHandler.setRetryListeners((record, exception, deliveryAttempt) -> meterRegistry.counter(
-                "alert.kafka.consumer.failures",
-                "topic", record.topic(),
-                "exception", exception.getClass().getSimpleName(),
-                "deliveryAttempt", Integer.toString(deliveryAttempt)).increment());
+            alertDeadLetterPublishingRecoverer,
+            new FixedBackOff(retryInterval, retryAttempts)
+        );
+        errorHandler.setRetryListeners((record, exception, deliveryAttempt) ->
+            meterRegistry
+                .counter(
+                    "alert.kafka.consumer.failures",
+                    "topic",
+                    record.topic(),
+                    "exception",
+                    exception.getClass().getSimpleName(),
+                    "deliveryAttempt",
+                    Integer.toString(deliveryAttempt)
+                )
+                .increment()
+        );
         return errorHandler;
     }
 

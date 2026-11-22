@@ -16,22 +16,29 @@ import lombok.Setter;
 @Getter
 @Setter
 public class MlDataset {
+
     @Id
     private UUID id;
+
     @Column(name = "account_id", nullable = false)
     private UUID accountId;
+
     @Column(name = "name", nullable = false)
     private String name;
+
     @Column(name = "description", columnDefinition = "text")
     private String description;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false)
     private MlDatasetSourceType sourceType;
+
     @Column(name = "created_by")
     private UUID createdBy;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
 }

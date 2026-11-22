@@ -4,6 +4,7 @@ import java.util.UUID;
 
 /** Verifies user credentials independently of gateway-provided identity headers. */
 public final class BearerUserIdentity {
+
     private final JwtAccessTokenService tokens;
 
     public BearerUserIdentity(JwtAccessTokenService tokens) {

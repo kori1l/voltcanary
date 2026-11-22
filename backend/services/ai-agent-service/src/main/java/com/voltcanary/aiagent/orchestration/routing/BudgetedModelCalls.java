@@ -13,39 +13,92 @@ import lombok.RequiredArgsConstructor;
 /** One exchange per reservation. A correction/continuation must return through this same boundary. */
 @RequiredArgsConstructor
 public final class BudgetedModelCalls {
-    public record Reply(String outputMode, String proposalJson, Usage usage, String completionCode) {
-        public Reply(String outputMode, String proposalJson, Usage usage) { this(outputMode, proposalJson, usage, null); }
+
+    public record Reply(
+        String outputMode,
+        String proposalJson,
+        Usage usage,
+        String completionCode
+    ) {
+        public Reply(String outputMode, String proposalJson, Usage usage) {
+            this(outputMode, proposalJson, usage, null);
+        }
     }
+
     @FunctionalInterface
     public interface SingleExchange {
-        Reply send(String completeSerializedBody, ModelRouting.Route route, long timeoutMillis) throws Exception;
-        default Reply send(String body, ModelRouting.Route route, long timeoutMillis, DispatchPermit permit) throws Exception {
+        Reply send(
+            String completeSerializedBody,
+            ModelRouting.Route route,
+            long timeoutMillis
+        ) throws Exception;
+
+        default Reply send(
+            String body,
+            ModelRouting.Route route,
+            long timeoutMillis,
+            DispatchPermit permit
+        ) throws Exception {
             permit.consume();
             return send(body, route, timeoutMillis);
         }
+
         /** Pure wire lowering before canonical validation; stored successful replies are already canonical. */
-        default JsonNode normalize(JsonNode proposal, String completeSerializedBody) { return proposal; }
+        default JsonNode normalize(JsonNode proposal, String completeSerializedBody) {
+            return proposal;
+        }
     }
 
     private final AttemptLedger ledger;
     private final ProtocolValidator validator;
     private final AssistantTraceRecorder traces;
 
-    public JsonNode call(AttemptLedger.Turn turn, AttemptLedger.Attempt attempt, String completeSerializedBody,
-            String responseDefinition, AssistantTraceRecorder.Correlation correlation, SingleExchange exchange,
-            Consumer<JsonNode> registeredContractCheck) {
-        return call(turn, attempt, completeSerializedBody, responseDefinition, correlation, exchange,
-                registeredContractCheck, () -> { });
+    public JsonNode call(
+        AttemptLedger.Turn turn,
+        AttemptLedger.Attempt attempt,
+        String completeSerializedBody,
+        String responseDefinition,
+        AssistantTraceRecorder.Correlation correlation,
+        SingleExchange exchange,
+        Consumer<JsonNode> registeredContractCheck
+    ) {
+        return call(
+            turn,
+            attempt,
+            completeSerializedBody,
+            responseDefinition,
+            correlation,
+            exchange,
+            registeredContractCheck,
+            () -> {}
+        );
     }
 
-    JsonNode call(AttemptLedger.Turn turn, AttemptLedger.Attempt attempt, String completeSerializedBody,
-            String responseDefinition, AssistantTraceRecorder.Correlation correlation, SingleExchange exchange,
-            Consumer<JsonNode> registeredContractCheck, Runnable verifyAccess) {
-        if (!correlation.owner().equals(turn.owner()) || !correlation.conversationId().equals(turn.conversationId())
-                || !correlation.turnId().equals(turn.turnId())) throw new ModelRouting.Stop("TRACE_SCOPE_MISMATCH");
-        if (!SkillRegistry.digest(completeSerializedBody).equals(attempt.requestDigest())) throw new ModelRouting.Stop("REQUEST_DIGEST_MISMATCH");
-        long bodyBytes = completeSerializedBody.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-        if (bodyBytes != attempt.route().size().bytes() || attempt.route().size().inputTokens() < bodyBytes) throw new ModelRouting.Stop("REQUEST_SIZE_MISMATCH");
+    JsonNode call(
+        AttemptLedger.Turn turn,
+        AttemptLedger.Attempt attempt,
+        String completeSerializedBody,
+        String responseDefinition,
+        AssistantTraceRecorder.Correlation correlation,
+        SingleExchange exchange,
+        Consumer<JsonNode> registeredContractCheck,
+        Runnable verifyAccess
+    ) {
+        if (
+            !correlation.owner().equals(turn.owner()) ||
+            !correlation.conversationId().equals(turn.conversationId()) ||
+            !correlation.turnId().equals(turn.turnId())
+        ) throw new ModelRouting.Stop("TRACE_SCOPE_MISMATCH");
+        if (
+            !SkillRegistry.digest(completeSerializedBody).equals(attempt.requestDigest())
+        ) throw new ModelRouting.Stop("REQUEST_DIGEST_MISMATCH");
+        long bodyBytes = completeSerializedBody
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            .length;
+        if (
+            bodyBytes != attempt.route().size().bytes() ||
+            attempt.route().size().inputTokens() < bodyBytes
+        ) throw new ModelRouting.Stop("REQUEST_SIZE_MISMATCH");
         verifyAccess.run();
         var receipt = ledger.reserve(turn, attempt);
         if (!receipt.newlyReserved()) {
@@ -69,11 +122,27 @@ public final class BudgetedModelCalls {
             verifyAccess.run();
         } catch (RuntimeException denied) {
             ledger.finish(turn, attempt.callId(), "FAILED", null, null);
-            traces.append(correlation, attempt.callId(), "BUDGET", "FAILED", "DISPATCH_ACCESS_DENIED", null, details);
+            traces.append(
+                correlation,
+                attempt.callId(),
+                "BUDGET",
+                "FAILED",
+                "DISPATCH_ACCESS_DENIED",
+                null,
+                details
+            );
             throw denied;
         }
         try {
-            traces.append(correlation, attempt.callId(), "MODEL_CALL", "STARTED", null, null, details);
+            traces.append(
+                correlation,
+                attempt.callId(),
+                "MODEL_CALL",
+                "STARTED",
+                null,
+                null,
+                details
+            );
         } catch (RuntimeException failure) {
             ledger.finish(turn, attempt.callId(), "FAILED", null, null);
             throw failure;
@@ -84,26 +153,53 @@ public final class BudgetedModelCalls {
         boolean finished = false;
         try {
             long timeout = ledger.remainingTimeMillis(turn);
-            Reply reply = exchange.send(completeSerializedBody, attempt.route(), timeout,
-                    new DispatchPermit(attempt.requestDigest(), timeout));
-            if (!reply.outputMode().equals(attempt.route().candidate().outputMode())) throw new ModelRouting.Stop("OUTPUT_MODE_MISMATCH");
-            if (attempt.route().price() != null) actual = ModelRouting.reconcile(attempt.route().price(), reply.usage());
-            else if (reply.usage() != null) actual = new Usage(reply.usage().inputTokens(), reply.usage().cachedInputTokens(),
-                    reply.usage().outputTokens(), reply.usage().reasoningTokens(), null);
+            Reply reply = exchange.send(
+                completeSerializedBody,
+                attempt.route(),
+                timeout,
+                new DispatchPermit(attempt.requestDigest(), timeout)
+            );
+            if (
+                !reply.outputMode().equals(attempt.route().candidate().outputMode())
+            ) throw new ModelRouting.Stop("OUTPUT_MODE_MISMATCH");
+            if (attempt.route().price() != null) actual = ModelRouting.reconcile(
+                attempt.route().price(),
+                reply.usage()
+            );
+            else if (reply.usage() != null) actual = new Usage(
+                reply.usage().inputTokens(),
+                reply.usage().cachedInputTokens(),
+                reply.usage().outputTokens(),
+                reply.usage().reasoningTokens(),
+                null
+            );
             if (reply.completionCode() != null) throw new ModelRouting.Stop(reply.completionCode());
             if (actual != null && actual.costMicros() != null) {
                 long output = actual.outputTokens();
-                if (!attempt.route().price().reasoningIncludedInOutput()) output = Math.addExact(output, actual.reasoningTokens());
-                if (actual.inputTokens() > attempt.route().size().inputTokens() || output > attempt.route().size().outputTokens()
-                        || actual.costMicros() > attempt.route().costMicros()) throw new ModelRouting.Stop("RESERVATION_EXCEEDED");
+                if (!attempt.route().price().reasoningIncludedInOutput()) output = Math.addExact(
+                    output,
+                    actual.reasoningTokens()
+                );
+                if (
+                    actual.inputTokens() > attempt.route().size().inputTokens() ||
+                    output > attempt.route().size().outputTokens() ||
+                    actual.costMicros() > attempt.route().costMicros()
+                ) throw new ModelRouting.Stop("RESERVATION_EXCEEDED");
             }
             JsonNode proposal;
             try {
                 proposal = validator.parse(reply.proposalJson());
             } catch (IllegalArgumentException invalid) {
-                if (reply.proposalJson() == null || reply.proposalJson().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > ProtocolValidator.MAX_BYTES) throw invalid;
-                throw new ModelProposalRejected(com.fasterxml.jackson.databind.node.TextNode.valueOf(reply.proposalJson()),
-                        responseDefinition + ": INVALID_JSON; return exactly one complete JSON object without prose or Markdown, preserving the original request.");
+                if (
+                    reply.proposalJson() == null ||
+                    reply.proposalJson().getBytes(java.nio.charset.StandardCharsets.UTF_8).length >
+                        ProtocolValidator.MAX_BYTES
+                ) throw invalid;
+                throw new ModelProposalRejected(
+                    com.fasterxml.jackson.databind.node.TextNode.valueOf(reply.proposalJson()),
+                    responseDefinition +
+                        ": INVALID_JSON; return exactly one complete JSON object without prose or Markdown, preserving the original request."
+                );
             }
             try {
                 proposal = exchange.normalize(proposal, completeSerializedBody);
@@ -111,33 +207,61 @@ public final class BudgetedModelCalls {
                 registeredContractCheck.accept(proposal);
             } catch (IllegalArgumentException invalid) {
                 if (invalid instanceof ModelProposalRejected rejected) throw rejected;
-                String diagnostic = invalid instanceof ProtocolValidator.RegisteredViolation registered
-                        ? "registered schema: " + registered.locations() : validator.violations(responseDefinition, proposal);
-                if (diagnostic.isEmpty()) diagnostic = java.util.Set.of("UNKNOWN_QUESTION_FIELD", "UNKNOWN_COMMAND_SCHEMA", "UNKNOWN_LOADER", "UNKNOWN_OR_UNAVAILABLE_INTENT")
-                        .contains(String.valueOf(invalid.getMessage())) ? invalid.getMessage() : "REGISTERED_CONTRACT_VIOLATION";
+                String diagnostic =
+                    invalid instanceof ProtocolValidator.RegisteredViolation registered
+                        ? "registered schema: " + registered.locations()
+                        : validator.violations(responseDefinition, proposal);
+                if (diagnostic.isEmpty()) diagnostic = java.util.Set.of(
+                    "UNKNOWN_QUESTION_FIELD",
+                    "UNKNOWN_COMMAND_SCHEMA",
+                    "UNKNOWN_LOADER",
+                    "UNKNOWN_OR_UNAVAILABLE_INTENT"
+                ).contains(String.valueOf(invalid.getMessage()))
+                    ? invalid.getMessage()
+                    : "REGISTERED_CONTRACT_VIOLATION";
                 throw new ModelProposalRejected(proposal, responseDefinition + ": " + diagnostic);
             }
             ledger.finish(turn, attempt.callId(), "SUCCEEDED", actual, proposal.toString());
             finished = true;
             var outcome = new LinkedHashMap<>(details);
             outcome.put("usage", actual == null ? "UNKNOWN" : actual);
-            outcome.put("costStatus", actual == null || actual.costMicros() == null ? "UNKNOWN" : "PRICED");
+            outcome.put(
+                "costStatus",
+                actual == null || actual.costMicros() == null ? "UNKNOWN" : "PRICED"
+            );
             outcome(correlation, attempt, "SUCCEEDED", null, started, outcome);
             return proposal;
         } catch (Exception failure) {
             if (!finished) {
                 // Unknown transport completion retains the full reservation. Never repeat an uncertain call.
-                String state = failure instanceof IllegalArgumentException || failure instanceof ModelRouting.Stop ? "FAILED" : "UNCERTAIN";
+                String state =
+                    failure instanceof IllegalArgumentException ||
+                    failure instanceof ModelRouting.Stop
+                        ? "FAILED"
+                        : "UNCERTAIN";
                 ledger.finish(turn, attempt.callId(), state, actual, null);
                 var failedDetails = new LinkedHashMap<>(details);
                 failedDetails.put("usage", actual == null ? "UNKNOWN" : actual);
-                failedDetails.put("costStatus", actual == null || actual.costMicros() == null ? "UNKNOWN" : "PRICED");
+                failedDetails.put(
+                    "costStatus",
+                    actual == null || actual.costMicros() == null ? "UNKNOWN" : "PRICED"
+                );
                 if (failure instanceof ModelProposalRejected rejected) {
                     failedDetails.put("validation", rejected.diagnostic());
                     failedDetails.put("proposalShape", proposalShape(rejected.proposal()));
                 }
-                outcome(correlation, attempt, state.equals("UNCERTAIN") ? "UNKNOWN" : "FAILED",
-                        failure instanceof ModelRouting.Stop ? failure.getMessage() : failure instanceof ModelProposalRejected ? "MODEL_PROPOSAL_CONTRACT_INVALID" : "PROVIDER_OR_CONTRACT_FAILURE", started, failedDetails);
+                outcome(
+                    correlation,
+                    attempt,
+                    state.equals("UNCERTAIN") ? "UNKNOWN" : "FAILED",
+                    failure instanceof ModelRouting.Stop
+                        ? failure.getMessage()
+                        : failure instanceof ModelProposalRejected
+                          ? "MODEL_PROPOSAL_CONTRACT_INVALID"
+                          : "PROVIDER_OR_CONTRACT_FAILURE",
+                    started,
+                    failedDetails
+                );
             }
             if (failure instanceof ModelRouting.Stop stop) throw stop;
             if (failure instanceof IllegalArgumentException invalid) throw invalid;
@@ -151,11 +275,25 @@ public final class BudgetedModelCalls {
         result.put("hasQuestion", proposal.hasNonNull("question"));
         result.put("hasCommand", proposal.hasNonNull("command"));
         result.put("stepCount", Math.min(128, proposal.path("steps").size()));
-        result.put("operationCount", Math.min(128, proposal.at("/command/payload/operations").size()));
+        result.put(
+            "operationCount",
+            Math.min(128, proposal.at("/command/payload/operations").size())
+        );
         String decision = proposal.path("decision").asText();
-        if (java.util.Set.of("PLAN", "AMEND", "CONTINUE", "ASK", "UNSUPPORTED").contains(decision)) result.put("decision", decision);
+        if (
+            java.util.Set.of("PLAN", "AMEND", "CONTINUE", "ASK", "UNSUPPORTED").contains(decision)
+        ) result.put("decision", decision);
         String outcome = proposal.path("outcome").asText();
-        if (java.util.Set.of("PREPARED", "QUESTION", "NEED_CONTEXT", "REPLAN_REQUIRED", "UNSUPPORTED", "NO_CHANGE").contains(outcome)) result.put("outcome", outcome);
+        if (
+            java.util.Set.of(
+                "PREPARED",
+                "QUESTION",
+                "NEED_CONTEXT",
+                "REPLAN_REQUIRED",
+                "UNSUPPORTED",
+                "NO_CHANGE"
+            ).contains(outcome)
+        ) result.put("outcome", outcome);
         return result;
     }
 
@@ -184,11 +322,33 @@ public final class BudgetedModelCalls {
         return details;
     }
 
-    private void outcome(AssistantTraceRecorder.Correlation correlation, AttemptLedger.Attempt attempt, String status,
-            String code, long started, Map<String, Object> details) {
+    private void outcome(
+        AssistantTraceRecorder.Correlation correlation,
+        AttemptLedger.Attempt attempt,
+        String status,
+        String code,
+        long started,
+        Map<String, Object> details
+    ) {
         try {
-            traces.append(correlation, attempt.callId(), "MODEL_CALL", status, code, (System.nanoTime() - started) / 1_000_000, details);
-            traces.append(correlation, attempt.callId(), "BUDGET", "RECONCILED", code, null, details);
+            traces.append(
+                correlation,
+                attempt.callId(),
+                "MODEL_CALL",
+                status,
+                code,
+                (System.nanoTime() - started) / 1_000_000,
+                details
+            );
+            traces.append(
+                correlation,
+                attempt.callId(),
+                "BUDGET",
+                "RECONCILED",
+                code,
+                null,
+                details
+            );
         } catch (RuntimeException unavailable) {
             // Durable ledger outcome survives a diagnostic outage; an unfinished trace start is recoverable.
         }

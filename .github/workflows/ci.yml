@@ -63,6 +63,32 @@ jobs:
       - name: Validate OpenSpec
         run: npm run openspec:validate
 
+  quality:
+    name: Formatting and Architecture
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root tooling
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check architecture boundaries
+        run: npm run architecture:check
+
+      - name: Check repository structure
+        run: pwsh -NoProfile -File scripts/check-project-structure.ps1
+
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -99,7 +125,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: ml-service
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      - name: Check Python quality
+        working-directory: ml-service
+        run: |
+          python -m ruff check app
+          python -m ruff format --check app
 
       - name: Run ML tests
         working-directory: ml-service
@@ -123,9 +155,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
       - name: Typecheck
         working-directory: frontend
         run: npx tsc --noEmit
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm run test
 
       - name: Build
         working-directory: frontend

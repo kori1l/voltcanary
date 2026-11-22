@@ -1,7 +1,16 @@
 package com.voltcanary.analytics;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.ml.MlExcludedInterval;
+import com.voltcanary.analytics.ml.MlInferenceBaseline;
+import com.voltcanary.analytics.ml.MlInferenceModelPreference;
+import com.voltcanary.analytics.ml.MlInferenceRecentWindow;
 import com.voltcanary.analytics.repository.AnalyticsEventOutboxRepository;
 import com.voltcanary.analytics.repository.AnomalyRepository;
 import com.voltcanary.analytics.repository.DeviceBaselineRepository;
@@ -23,21 +32,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-@SpringBootTest(properties = {
+@SpringBootTest(
+    properties = {
         "app.kafka.consume-enabled=false",
         "app.kafka.publish-enabled=false",
         "app.analytics.authorization.enabled=false",
         "spring.datasource.url=jdbc:h2:mem:analytics-performance;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
         "spring.jpa.hibernate.ddl-auto=none",
-        "spring.flyway.enabled=true"
-})
+        "spring.flyway.enabled=true",
+    }
+)
 class AnalyticsPerformanceTest {
+
     @MockitoBean
     private com.voltcanary.analytics.service.AlertRuleClient alertRuleClient;
 
@@ -85,17 +91,25 @@ class AnalyticsPerformanceTest {
 
     private void verifyWindow(String label, int sampleCount) {
         UUID deviceId = UUID.randomUUID();
-        when(telemetryClient.readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class)))
-                .thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", points(sampleCount)));
-        when(mlClient.requestPrediction(
+        when(
+            telemetryClient.readings(
+                eq(deviceId),
+                eq("activePowerW"),
+                any(Instant.class),
+                any(Instant.class)
+            )
+        ).thenReturn(new TelemetryChartResponse(deviceId, "activePowerW", points(sampleCount)));
+        when(
+            mlClient.requestPrediction(
                 eq(deviceId),
                 any(Instant.class),
                 any(),
                 org.mockito.ArgumentMatchers.<List<MlExcludedInterval>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any(),
-                org.mockito.ArgumentMatchers.<Map<String, Object>>any()))
-                .thenReturn(null);
+                org.mockito.ArgumentMatchers.<MlInferenceBaseline>any(),
+                org.mockito.ArgumentMatchers.<MlInferenceRecentWindow>any(),
+                org.mockito.ArgumentMatchers.<MlInferenceModelPreference>any()
+            )
+        ).thenReturn(null);
 
         long baselinesBefore = baselineRepository.count();
         long featuresBefore = featureSetRepository.count();
@@ -110,8 +124,8 @@ class AnalyticsPerformanceTest {
 
         Duration elapsed = Duration.between(startedAt, Instant.now());
         assertThat(elapsed)
-                .as(label + " telemetry window should complete within a broad regression budget")
-                .isLessThan(Duration.ofSeconds(5));
+            .as(label + " telemetry window should complete within a broad regression budget")
+            .isLessThan(Duration.ofSeconds(5));
         assertThat(baselineRepository.count() - baselinesBefore).isEqualTo(1);
         assertThat(featureSetRepository.count() - featuresBefore).isEqualTo(1);
         assertThat(riskScoreRepository.count() - riskBefore).isEqualTo(1);
@@ -119,15 +133,23 @@ class AnalyticsPerformanceTest {
         assertThat(recommendationRepository.count() - recommendationsBefore).isLessThanOrEqualTo(3);
         assertThat(anomalyRepository.count() - anomaliesBefore).isLessThanOrEqualTo(3);
         assertThat(outboxRepository.count() - outboxBefore).isLessThanOrEqualTo(4);
-        verify(telemetryClient).readings(eq(deviceId), eq("activePowerW"), any(Instant.class), any(Instant.class));
+        verify(telemetryClient).readings(
+            eq(deviceId),
+            eq("activePowerW"),
+            any(Instant.class),
+            any(Instant.class)
+        );
     }
 
     private List<TelemetryChartResponse.Point> points(int sampleCount) {
         Instant start = Instant.parse("2026-05-12T12:00:00Z");
         return IntStream.range(0, sampleCount)
-                .mapToObj(index -> new TelemetryChartResponse.Point(
-                        start.plusSeconds(index * 60L),
-                        index == sampleCount - 1 ? 420.0 : 120.0))
-                .toList();
+            .mapToObj(index ->
+                new TelemetryChartResponse.Point(
+                    start.plusSeconds(index * 60L),
+                    index == sampleCount - 1 ? 420.0 : 120.0
+                )
+            )
+            .toList();
     }
 }

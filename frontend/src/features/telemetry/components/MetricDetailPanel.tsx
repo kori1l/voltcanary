@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "../../../components/Dialog";
-import { MetricDetailResponse, TelemetryEvent, TelemetryOverviewResponse } from "../model/telemetry.types";
+import {
+  MetricDetailResponse,
+  TelemetryEvent,
+  TelemetryOverviewResponse,
+} from "../model/telemetry.types";
 import { formatShortDateTime } from "../model/telemetry.utils";
 import { CorrelationPanel } from "./CorrelationPanel";
 import { EventTimeline } from "./EventTimeline";
@@ -37,11 +41,20 @@ export function MetricDetailPanel({
 }) {
   const [isBrushZoomEnabled, setIsBrushZoomEnabled] = useState(true);
   const lastSample = detail.series[detail.series.length - 1];
-  const localTime = (value: string) => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19); };
+  const localTime = (value: string) => {
+    const date = new Date(value);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+  };
   const [exactFrom, setExactFrom] = useState(localTime(range.from));
   const [exactTo, setExactTo] = useState(localTime(range.to));
-  useEffect(() => { setExactFrom(localTime(range.from)); setExactTo(localTime(range.to)); }, [range.from, range.to]);
-  const validRange = Number.isFinite(Date.parse(exactFrom)) && Number.isFinite(Date.parse(exactTo)) && Date.parse(exactFrom) < Date.parse(exactTo);
+  useEffect(() => {
+    setExactFrom(localTime(range.from));
+    setExactTo(localTime(range.to));
+  }, [range.from, range.to]);
+  const validRange =
+    Number.isFinite(Date.parse(exactFrom)) &&
+    Number.isFinite(Date.parse(exactTo)) &&
+    Date.parse(exactFrom) < Date.parse(exactTo);
 
   return (
     <Dialog title={detail.metric.name} onClose={onClose} wide>
@@ -68,7 +81,11 @@ export function MetricDetailPanel({
           <span>{showPoints ? "Points on" : "Points off"}</span>
           <span>Display budget: {maxDisplayPoints}</span>
           <label className="chart-option metric-detail-option">
-            <input type="checkbox" checked={isBrushZoomEnabled} onChange={(event) => setIsBrushZoomEnabled(event.target.checked)} />
+            <input
+              type="checkbox"
+              checked={isBrushZoomEnabled}
+              onChange={(event) => setIsBrushZoomEnabled(event.target.checked)}
+            />
             <span>Brush zoom</span>
           </label>
         </div>
@@ -87,16 +104,75 @@ export function MetricDetailPanel({
           onRangeSelect={onRangeSelect}
           mode="detailed"
         />
-        <form className="form-grid-two" onSubmit={(event) => { event.preventDefault(); if (validRange) onRangeSelect(new Date(exactFrom).toISOString(), new Date(exactTo).toISOString()); }}>
-          <label>Analyze from<input type="datetime-local" step="1" value={exactFrom} onInput={(event) => setExactFrom(event.currentTarget.value)} onChange={(event) => setExactFrom(event.target.value)} /></label><label>Analyze to<input type="datetime-local" step="1" value={exactTo} onInput={(event) => setExactTo(event.currentTarget.value)} onChange={(event) => setExactTo(event.target.value)} /></label>
-          <small>Exact interval in {Intl.DateTimeFormat().resolvedOptions().timeZone}. Keyboard alternative to brush selection.</small><button className="ghost-button" disabled={!validRange}>Apply analysis interval</button>
+        <form
+          className="form-grid-two"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (validRange)
+              onRangeSelect(new Date(exactFrom).toISOString(), new Date(exactTo).toISOString());
+          }}
+        >
+          <label>
+            Analyze from
+            <input
+              type="datetime-local"
+              step="1"
+              value={exactFrom}
+              onInput={(event) => setExactFrom(event.currentTarget.value)}
+              onChange={(event) => setExactFrom(event.target.value)}
+            />
+          </label>
+          <label>
+            Analyze to
+            <input
+              type="datetime-local"
+              step="1"
+              value={exactTo}
+              onInput={(event) => setExactTo(event.currentTarget.value)}
+              onChange={(event) => setExactTo(event.target.value)}
+            />
+          </label>
+          <small>
+            Exact interval in {Intl.DateTimeFormat().resolvedOptions().timeZone}. Keyboard
+            alternative to brush selection.
+          </small>
+          <button className="ghost-button" disabled={!validRange}>
+            Apply analysis interval
+          </button>
         </form>
-        <p className="muted-text">Measurements are recorded samples. Thresholds and related-signal explanations are inferred evidence; recommended checks are not a confirmed diagnosis.</p>
+        <p className="muted-text">
+          Measurements are recorded samples. Thresholds and related-signal explanations are inferred
+          evidence; recommended checks are not a confirmed diagnosis.
+        </p>
 
         <MetricStatsBar metric={detail.metric} statistics={detail.statistics} />
-        <p>Interval: {range.from} to {range.to} (UTC). {Intl.DateTimeFormat().resolvedOptions().timeZone} is used for local time controls. Min {formatMetricValue(detail.statistics.min, detail.metric.unit)}{detail.evidence?.summary?.minAt ? ` at ${detail.evidence.summary.minAt}` : ""}; max {formatMetricValue(detail.statistics.max, detail.metric.unit)}{detail.evidence?.summary?.maxAt ? ` at ${detail.evidence.summary.maxAt}` : ""}. {detail.evidence?.summary ? "Statistics cover all persisted samples in this interval." : "Statistics cover the returned source points; full interval coverage is unconfirmed."}</p>
-        <p>Sample quality: {detail.evidence?.qualityCounts ? Object.entries(detail.evidence.qualityCounts).map(([flag, count]) => `${flag}: ${count}`).join(", ") || "No persisted samples" : "Unknown"}. Imported BACKFILL samples retain their flag. Missing intervals contain no invented zeros.</p>
-        <TelemetryValuesTable deviceId={detail.deviceId} metric={detail.metric.key} unit={detail.metric.unit} range={range}/>
+        <p>
+          Interval: {range.from} to {range.to} (UTC).{" "}
+          {Intl.DateTimeFormat().resolvedOptions().timeZone} is used for local time controls. Min{" "}
+          {formatMetricValue(detail.statistics.min, detail.metric.unit)}
+          {detail.evidence?.summary?.minAt ? ` at ${detail.evidence.summary.minAt}` : ""}; max{" "}
+          {formatMetricValue(detail.statistics.max, detail.metric.unit)}
+          {detail.evidence?.summary?.maxAt ? ` at ${detail.evidence.summary.maxAt}` : ""}.{" "}
+          {detail.evidence?.summary
+            ? "Statistics cover all persisted samples in this interval."
+            : "Statistics cover the returned source points; full interval coverage is unconfirmed."}
+        </p>
+        <p>
+          Sample quality:{" "}
+          {detail.evidence?.qualityCounts
+            ? Object.entries(detail.evidence.qualityCounts)
+                .map(([flag, count]) => `${flag}: ${count}`)
+                .join(", ") || "No persisted samples"
+            : "Unknown"}
+          . Imported BACKFILL samples retain their flag. Missing intervals contain no invented
+          zeros.
+        </p>
+        <TelemetryValuesTable
+          deviceId={detail.deviceId}
+          metric={detail.metric.key}
+          unit={detail.metric.unit}
+          range={range}
+        />
 
         <div className="metric-detail-layout">
           <ThresholdLegend threshold={detail.threshold} unit={detail.metric.unit} />
@@ -108,7 +184,12 @@ export function MetricDetailPanel({
           <CorrelationPanel relatedSignals={detail.relatedSignals} />
         </div>
 
-        <EventTimeline events={detail.events} incompleteEvidence={detail.evidence?.aggregationMode === "MIN_MAX_ENVELOPE"} selectedEventId={selectedEventId} onSelectEvent={onSelectEvent} />
+        <EventTimeline
+          events={detail.events}
+          incompleteEvidence={detail.evidence?.aggregationMode === "MIN_MAX_ENVELOPE"}
+          selectedEventId={selectedEventId}
+          onSelectEvent={onSelectEvent}
+        />
       </section>
     </Dialog>
   );

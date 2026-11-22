@@ -21,8 +21,6 @@ export function DeviceSimulationPanel({
     simulationValidation,
     isSimulationBusy,
     simulationSettings,
-    simulationSourceId,
-    loadSimulation,
     validateYaml,
     saveYaml,
     updateSimulationField,
@@ -34,10 +32,7 @@ export function DeviceSimulationPanel({
   return (
     <section className="panel simulation-panel">
       {simulationProfile === "VEHICLE_GPS" ? (
-        <VehicleRouteEditor
-          yaml={simulationYaml}
-          onChange={setSimulationYaml}
-        />
+        <VehicleRouteEditor yaml={simulationYaml} onChange={setSimulationYaml} />
       ) : null}
       {simulation.confirmationDialog}
       <p className="status-note">
@@ -47,9 +42,8 @@ export function DeviceSimulationPanel({
           : simulationConfig
             ? "Saved"
             : "Unavailable"}
-        . Runtime:{" "}
-        {simulationStatus ? formatEnum(simulationStatus.status) : "Unknown"}.
-        Loading a preset does not start a run.
+        . Runtime: {simulationStatus ? formatEnum(simulationStatus.status) : "Unknown"}. Loading a
+        preset does not start a run.
       </p>
       {simulationConfig ? (
         <div className="form-stack">
@@ -57,9 +51,7 @@ export function DeviceSimulationPanel({
             Scenario preset
             <select
               value={simulation.simulationPreset}
-              onChange={(event) =>
-                simulation.setSimulationPreset(event.target.value)
-              }
+              onChange={(event) => simulation.setSimulationPreset(event.target.value)}
             >
               {simulation.simulationPresets.map((preset) => (
                 <option key={preset.id} value={preset.id}>
@@ -86,8 +78,7 @@ export function DeviceSimulationPanel({
       <div className="section-header">
         <div>
           <h2>
-            Demo tools{" "}
-            <SimulatorStatusIcon resource={simulation.presetResource} />
+            Demo tools <SimulatorStatusIcon resource={simulation.presetResource} />
           </h2>
           <p>
             {simulationConfig
@@ -102,9 +93,7 @@ export function DeviceSimulationPanel({
             onClick={() => void simulation.presetResource.retry()}
             disabled={simulation.presetResource.refreshing}
           >
-            {simulation.presetResource.error
-              ? "Retry simulator"
-              : "Check simulator"}
+            {simulation.presetResource.error ? "Retry simulator" : "Check simulator"}
           </button>
           <button
             className="ghost-button"
@@ -118,11 +107,7 @@ export function DeviceSimulationPanel({
             className="ghost-button"
             type="button"
             onClick={() => void saveYaml()}
-            disabled={
-              !simulationConfig ||
-              isSimulationBusy ||
-              !simulationValidation.valid
-            }
+            disabled={!simulationConfig || isSimulationBusy || !simulationValidation.valid}
           >
             Save Config
           </button>
@@ -138,19 +123,13 @@ export function DeviceSimulationPanel({
             className="primary-button"
             type="button"
             onClick={() => void toggleSimulation()}
-            disabled={
-              !simulationConfig ||
-              isSimulationBusy ||
-              !simulationValidation.valid
-            }
+            disabled={!simulationConfig || isSimulationBusy || !simulationValidation.valid}
           >
             {simulationStatus?.status === "RUNNING" ? "Stop" : "Start"}
           </button>
         </div>
       </div>
-      {simulationMessage ? (
-        <div className="status-note">{simulationMessage}</div>
-      ) : null}
+      {simulationMessage ? <div className="status-note">{simulationMessage}</div> : null}
       {simulationConfig ? (
         <div
           className={
@@ -167,11 +146,7 @@ export function DeviceSimulationPanel({
           <section className="metric-grid">
             <Metric
               label="Status"
-              valueText={
-                simulationStatus
-                  ? formatEnum(simulationStatus.status)
-                  : "Unknown"
-              }
+              valueText={simulationStatus ? formatEnum(simulationStatus.status) : "Unknown"}
             />
             <Metric label="Protocol" valueText={simulationConfig.protocol} />
             <Metric
@@ -193,20 +168,11 @@ export function DeviceSimulationPanel({
               Profile
               <select
                 value={simulationProfile}
-                onChange={(event) =>
-                  changeSimulationProfile(event.target.value)
-                }
+                onChange={(event) => changeSimulationProfile(event.target.value)}
               >
                 {(simulationProfile === "VEHICLE_GPS"
                   ? ["VEHICLE_GPS"]
-                  : [
-                      "GENERIC_APPLIANCE",
-                      "FRIDGE",
-                      "AIR_CONDITIONER",
-                      "BOILER",
-                      "PUMP",
-                      "HEATER",
-                    ]
+                  : ["GENERIC_APPLIANCE", "FRIDGE", "AIR_CONDITIONER", "BOILER", "PUMP", "HEATER"]
                 ).map((profile) => (
                   <option value={profile} key={profile}>
                     {formatEnum(profile)}
@@ -219,9 +185,7 @@ export function DeviceSimulationPanel({
               <select
                 disabled={simulationProfile === "VEHICLE_GPS"}
                 value={simulationProtocol}
-                onChange={(event) =>
-                  changeSimulationProtocol(event.target.value)
-                }
+                onChange={(event) => changeSimulationProtocol(event.target.value)}
               >
                 <option value="HTTP">HTTP</option>
                 <option value="MQTT">MQTT</option>
@@ -251,9 +215,7 @@ export function DeviceSimulationPanel({
                     <strong>{formatEnum(run.status)}</strong>
                     <span>
                       {run.generatedPoints} points -{" "}
-                      {run.startedAt
-                        ? formatShortDateTime(run.startedAt)
-                        : "No start time"}
+                      {run.startedAt ? formatShortDateTime(run.startedAt) : "No start time"}
                     </span>
                   </li>
                 ))}
@@ -266,9 +228,7 @@ export function DeviceSimulationPanel({
       ) : (
         <div className="empty-state">
           <strong>No simulator attached</strong>
-          <span>
-            Create a device with data source Simulator to manage runs here.
-          </span>
+          <span>Create a device with data source Simulator to manage runs here.</span>
         </div>
       )}
     </section>

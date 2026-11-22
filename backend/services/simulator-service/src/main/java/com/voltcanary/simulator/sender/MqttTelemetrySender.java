@@ -35,9 +35,9 @@ public class MqttTelemetrySender implements TelemetrySender {
         try {
             String topic = topicTemplate.replace("{sourceId}", point.sourceId());
             MqttClient mqttClient = client();
-            byte[] payload = objectMapper.writeValueAsBytes(Map.of(
-                    "timestamp", point.timestamp(),
-                    "metrics", point.metrics()));
+            byte[] payload = objectMapper.writeValueAsBytes(
+                Map.of("timestamp", point.timestamp(), "metrics", point.metrics())
+            );
             mqttClient.publish(topic, new MqttMessage(payload));
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to publish MQTT telemetry", exception);
@@ -58,7 +58,11 @@ public class MqttTelemetrySender implements TelemetrySender {
         if (client != null && client.isConnected()) {
             return client;
         }
-        client = new MqttClient(brokerUrl, "voltcanary-simulator-" + UUID.randomUUID(), new MemoryPersistence());
+        client = new MqttClient(
+            brokerUrl,
+            "voltcanary-simulator-" + UUID.randomUUID(),
+            new MemoryPersistence()
+        );
         MqttConnectOptions options = new MqttConnectOptions();
         options.setAutomaticReconnect(true);
         options.setCleanSession(true);

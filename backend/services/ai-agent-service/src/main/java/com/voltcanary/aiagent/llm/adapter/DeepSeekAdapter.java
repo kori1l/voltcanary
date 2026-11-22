@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class DeepSeekAdapter implements AiModelAdapter {
+
     private final OpenAiCompatibleAdapter delegate;
 
     @Override

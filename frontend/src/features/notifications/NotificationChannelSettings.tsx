@@ -45,7 +45,9 @@ export function NotificationChannelSettings() {
   const [error, setError] = useState<string | null>(null);
   const commands = useEntityCommands();
   const isBusy = commands.isBlocked("channel:create");
-  const uncertainCreate = useRef<{ name: string; type: string; previous: Set<string> } | null>(null);
+  const uncertainCreate = useRef<{ name: string; type: string; previous: Set<string> } | null>(
+    null,
+  );
   const [matchingRecords, setMatchingRecords] = useState<NotificationChannelResponse[]>([]);
   const [loaded, setLoaded] = useState(false);
   const confirmation = useActionConfirmation();
@@ -61,9 +63,17 @@ export function NotificationChannelSettings() {
       setChannels(records);
       setLoaded(true);
       const uncertain = uncertainCreate.current;
-      if (uncertain) setMatchingRecords(records.filter((item) => !uncertain.previous.has(item.id) && item.name === uncertain.name && item.channelType === uncertain.type));
+      if (uncertain)
+        setMatchingRecords(
+          records.filter(
+            (item) =>
+              !uncertain.previous.has(item.id) &&
+              item.name === uncertain.name &&
+              item.channelType === uncertain.type,
+          ),
+        );
       return true;
-    } catch (requestError) {
+    } catch {
       setError("Channel inventory unavailable. Retry the read to refresh current records.");
       return false;
     }
@@ -76,41 +86,102 @@ export function NotificationChannelSettings() {
   async function addChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     let submitted;
-    try { submitted = createNotificationChannelRequestFromDraft(draft); }
-    catch { setError("Review the channel fields. Provide its required destination and use a server credential reference."); return; }
-    uncertainCreate.current = { name: submitted.name, type: submitted.channelType, previous: new Set(channels.map((channel) => channel.id)) };
+    try {
+      submitted = createNotificationChannelRequestFromDraft(draft);
+    } catch {
+      setError(
+        "Review the channel fields. Provide its required destination and use a server credential reference.",
+      );
+      return;
+    }
+    uncertainCreate.current = {
+      name: submitted.name,
+      type: submitted.channelType,
+      previous: new Set(channels.map((channel) => channel.id)),
+    };
     await commands.run("channel:create", {
-      label: "Add notification channel", nonIdempotent: true,
+      label: "Add notification channel",
+      nonIdempotent: true,
       mutate: () => createNotificationChannel(submitted),
       onCommitted: (channel) => {
         uncertainCreate.current = null;
         setMatchingRecords([]);
         setChannels((current) => [channel, ...current.filter((item) => item.id !== channel.id)]);
         setMessage(`Notification channel added: ${channel.id}`);
-        setDraft((current) => ({ ...initialDraft, channelType: current.channelType, name: `${formatEnum(current.channelType)} channel` }));
+        setDraft((current) => ({
+          ...initialDraft,
+          channelType: current.channelType,
+          name: `${formatEnum(current.channelType)} channel`,
+        }));
         markWorkflowDraftSaved("notification-channel");
-      }, refresh: loadChannels,
+      },
+      refresh: loadChannels,
     });
   }
 
   async function setChannelEnabled(channel: NotificationChannelResponse, enabled: boolean) {
-    await commands.run(`channel:${channel.id}:toggle`, { label: `${channel.name} ${enabled ? "enable" : "disable"}`,
-      mutate: () => enabled ? enableNotificationChannel(channel.id) : disableNotificationChannel(channel.id),
-      onCommitted: (updated) => { setChannels((current) => current.map((item) => item.id === updated.id ? updated : item)); setMessage(`Notification channel ${enabled ? "enabled" : "disabled"}`); }, refresh: loadChannels });
+    await commands.run(`channel:${channel.id}:toggle`, {
+      label: `${channel.name} ${enabled ? "enable" : "disable"}`,
+      mutate: () =>
+        enabled ? enableNotificationChannel(channel.id) : disableNotificationChannel(channel.id),
+      onCommitted: (updated) => {
+        setChannels((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        setMessage(`Notification channel ${enabled ? "enabled" : "disabled"}`);
+      },
+      refresh: loadChannels,
+    });
   }
 
   async function removeChannel(channel: NotificationChannelResponse) {
-    await commands.run(`channel:${channel.id}:delete`, { label: `Delete ${channel.name}`,
-      review: async () => await confirmation.confirm({ title: "Delete notification channel", object: channel.name, impact: "Removes this delivery destination. Rules or preferences referencing it will no longer deliver through it." }) !== null,
+    await commands.run(`channel:${channel.id}:delete`, {
+      label: `Delete ${channel.name}`,
+      review: async () =>
+        (await confirmation.confirm({
+          title: "Delete notification channel",
+          object: channel.name,
+          impact:
+            "Removes this delivery destination. Rules or preferences referencing it will no longer deliver through it.",
+        })) !== null,
       mutate: () => deleteNotificationChannel(channel.id),
-      onCommitted: () => { setChannels((current) => current.filter((item) => item.id !== channel.id)); setMessage("Notification channel deleted"); }, refresh: loadChannels });
+      onCommitted: () => {
+        setChannels((current) => current.filter((item) => item.id !== channel.id));
+        setMessage("Notification channel deleted");
+      },
+      refresh: loadChannels,
+    });
   }
 
   return (
     <section className="panel notification-channel-panel">
       {confirmation.dialog}
       <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
-      {commands.outcomes["channel:create"]?.phase === "unknown-result" ? <div className="status-note"><p>Review matching records before creating another channel. A matching name does not prove which request created it.</p>{matchingRecords.map((record) => <div key={record.id}><span>{record.name} · {record.channelType} · {record.id}</span><button type="button" className="ghost-button" onClick={() => { commands.reconcile("channel:create", record); uncertainCreate.current = null; setMatchingRecords([]); setMessage(`Existing channel confirmed: ${record.id}`); }}>Use matching channel</button></div>)}</div> : null}
+      {commands.outcomes["channel:create"]?.phase === "unknown-result" ? (
+        <div className="status-note">
+          <p>
+            Review matching records before creating another channel. A matching name does not prove
+            which request created it.
+          </p>
+          {matchingRecords.map((record) => (
+            <div key={record.id}>
+              <span>
+                {record.name} · {record.channelType} · {record.id}
+              </span>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => {
+                  commands.reconcile("channel:create", record);
+                  uncertainCreate.current = null;
+                  setMatchingRecords([]);
+                  setMessage(`Existing channel confirmed: ${record.id}`);
+                }}
+              >
+                Use matching channel
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="section-header">
         <div>
           <h2>Notification Channels</h2>
@@ -122,77 +193,163 @@ export function NotificationChannelSettings() {
       </div>
       {message ? <div className="success-message account-message">{message}</div> : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
-      <form className="notification-channel-form notification-channel-form-wide" data-draft-id="notification-channel" onSubmit={addChannel}>
-        <label>Channel name<input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} placeholder="Channel name" /></label>
-        <label>Channel type<select
-          aria-label="Channel type"
-          value={draft.channelType}
-          onChange={(event) => updateDraft({
-            channelType: event.target.value as NotificationChannelType,
-            name: `${formatEnum(event.target.value)} channel`,
-          })}
-        >
-          {channelTypes.map((channelType) => (
-            <option key={channelType} value={channelType}>
-              {formatEnum(channelType)}
-            </option>
-          ))}
-        </select></label>
-        <label>Credentials ref<input value={draft.credentialsRef} onChange={(event) => updateDraft({ credentialsRef: event.target.value })} placeholder="Credentials ref" /></label>
-        <p className="field-hint">Reference the server's configured credential. Enter a reference, never a provider password or bot token. Creating or enabling a channel does not establish adapter availability; check health and send a test afterwards.</p>
+      <form
+        className="notification-channel-form notification-channel-form-wide"
+        data-draft-id="notification-channel"
+        onSubmit={addChannel}
+      >
+        <label>
+          Channel name
+          <input
+            value={draft.name}
+            onChange={(event) => updateDraft({ name: event.target.value })}
+            placeholder="Channel name"
+          />
+        </label>
+        <label>
+          Channel type
+          <select
+            aria-label="Channel type"
+            value={draft.channelType}
+            onChange={(event) =>
+              updateDraft({
+                channelType: event.target.value as NotificationChannelType,
+                name: `${formatEnum(event.target.value)} channel`,
+              })
+            }
+          >
+            {channelTypes.map((channelType) => (
+              <option key={channelType} value={channelType}>
+                {formatEnum(channelType)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Credentials ref
+          <input
+            value={draft.credentialsRef}
+            onChange={(event) => updateDraft({ credentialsRef: event.target.value })}
+            placeholder="Credentials ref"
+          />
+        </label>
+        <p className="field-hint">
+          Reference the server's configured credential. Enter a reference, never a provider password
+          or bot token. Creating or enabling a channel does not establish adapter availability;
+          check health and send a test afterwards.
+        </p>
         <label className="notification-attempt-row notification-enabled-toggle">
-          <input type="checkbox" checked={draft.enabled} onChange={(event) => updateDraft({ enabled: event.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => updateDraft({ enabled: event.target.checked })}
+          />
           <span>Enabled</span>
         </label>
         {draft.channelType === "WEBHOOK" ? (
-          <label>Webhook URL<input
-            className="notification-provider-field"
-            value={draft.webhookUrl}
-            onChange={(event) => updateDraft({ webhookUrl: event.target.value })}
-            placeholder="Webhook URL"
-          /></label>
+          <label>
+            Webhook URL
+            <input
+              className="notification-provider-field"
+              value={draft.webhookUrl}
+              onChange={(event) => updateDraft({ webhookUrl: event.target.value })}
+              placeholder="Webhook URL"
+            />
+          </label>
         ) : null}
         {draft.channelType === "EMAIL" ? (
           <>
-            <label>Recipients<input
-              className="notification-provider-field"
-              value={draft.emailRecipients}
-              onChange={(event) => updateDraft({ emailRecipients: event.target.value })}
-              placeholder="Recipients"
-            /></label>
-            <details className="notification-advanced"><summary>Advanced email options</summary><div className="form-grid-two"><label>Cc<input value={draft.emailCc} onChange={(event) => updateDraft({ emailCc: event.target.value })} placeholder="Cc" /></label>
-            <label>Bcc<input value={draft.emailBcc} onChange={(event) => updateDraft({ emailBcc: event.target.value })} placeholder="Bcc" /></label>
-            <label>From alias<input value={draft.emailFromAlias} onChange={(event) => updateDraft({ emailFromAlias: event.target.value })} placeholder="From alias" /></label>
-            <label>Subject prefix<input value={draft.emailSubjectPrefix} onChange={(event) => updateDraft({ emailSubjectPrefix: event.target.value })} placeholder="Subject prefix" /></label></div></details>
+            <label>
+              Recipients
+              <input
+                className="notification-provider-field"
+                value={draft.emailRecipients}
+                onChange={(event) => updateDraft({ emailRecipients: event.target.value })}
+                placeholder="Recipients"
+              />
+            </label>
+            <details className="notification-advanced">
+              <summary>Advanced email options</summary>
+              <div className="form-grid-two">
+                <label>
+                  Cc
+                  <input
+                    value={draft.emailCc}
+                    onChange={(event) => updateDraft({ emailCc: event.target.value })}
+                    placeholder="Cc"
+                  />
+                </label>
+                <label>
+                  Bcc
+                  <input
+                    value={draft.emailBcc}
+                    onChange={(event) => updateDraft({ emailBcc: event.target.value })}
+                    placeholder="Bcc"
+                  />
+                </label>
+                <label>
+                  From alias
+                  <input
+                    value={draft.emailFromAlias}
+                    onChange={(event) => updateDraft({ emailFromAlias: event.target.value })}
+                    placeholder="From alias"
+                  />
+                </label>
+                <label>
+                  Subject prefix
+                  <input
+                    value={draft.emailSubjectPrefix}
+                    onChange={(event) => updateDraft({ emailSubjectPrefix: event.target.value })}
+                    placeholder="Subject prefix"
+                  />
+                </label>
+              </div>
+            </details>
           </>
         ) : null}
         {draft.channelType === "TELEGRAM" ? (
           <>
-            <label>Telegram chat id<input
-              className="notification-provider-field"
-              value={draft.telegramChatId}
-              onChange={(event) => updateDraft({ telegramChatId: event.target.value })}
-              placeholder="Telegram chat id"
-            /></label>
-            <details className="notification-advanced"><summary>Advanced Telegram options</summary><label>Telegram parse mode<select
-              aria-label="Telegram parse mode"
-              value={draft.telegramParseMode}
-              onChange={(event) => updateDraft({ telegramParseMode: event.target.value as NotificationChannelDraft["telegramParseMode"] })}
-            >
-              {parseModes.map((parseMode) => (
-                <option key={parseMode || "none"} value={parseMode}>
-                  {parseMode || "Plain text"}
-                </option>
-              ))}
-            </select></label>
-            <label className="notification-attempt-row notification-enabled-toggle">
+            <label>
+              Telegram chat id
               <input
-                type="checkbox"
-                checked={draft.telegramDisableWebPagePreview}
-                onChange={(event) => updateDraft({ telegramDisableWebPagePreview: event.target.checked })}
+                className="notification-provider-field"
+                value={draft.telegramChatId}
+                onChange={(event) => updateDraft({ telegramChatId: event.target.value })}
+                placeholder="Telegram chat id"
               />
-              <span>Disable web preview</span>
-            </label></details>
+            </label>
+            <details className="notification-advanced">
+              <summary>Advanced Telegram options</summary>
+              <label>
+                Telegram parse mode
+                <select
+                  aria-label="Telegram parse mode"
+                  value={draft.telegramParseMode}
+                  onChange={(event) =>
+                    updateDraft({
+                      telegramParseMode: event.target
+                        .value as NotificationChannelDraft["telegramParseMode"],
+                    })
+                  }
+                >
+                  {parseModes.map((parseMode) => (
+                    <option key={parseMode || "none"} value={parseMode}>
+                      {parseMode || "Plain text"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="notification-attempt-row notification-enabled-toggle">
+                <input
+                  type="checkbox"
+                  checked={draft.telegramDisableWebPagePreview}
+                  onChange={(event) =>
+                    updateDraft({ telegramDisableWebPagePreview: event.target.checked })
+                  }
+                />
+                <span>Disable web preview</span>
+              </label>
+            </details>
           </>
         ) : null}
         <button className="primary-button" type="submit" disabled={isBusy}>
@@ -211,10 +368,20 @@ export function NotificationChannelSettings() {
                   </span>
                 </div>
                 <div className="action-row">
-                  <button className="ghost-button" type="button" onClick={() => void setChannelEnabled(channel, !channel.enabled)} disabled={commands.isPending(`channel:${channel.id}:toggle`)}>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => void setChannelEnabled(channel, !channel.enabled)}
+                    disabled={commands.isPending(`channel:${channel.id}:toggle`)}
+                  >
                     {channel.enabled ? "Disable" : "Enable"}
                   </button>
-                  <button className="ghost-button" type="button" onClick={() => void removeChannel(channel)} disabled={commands.isPending(`channel:${channel.id}:delete`)}>
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => void removeChannel(channel)}
+                    disabled={commands.isPending(`channel:${channel.id}:delete`)}
+                  >
                     Delete
                   </button>
                 </div>

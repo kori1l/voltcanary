@@ -12,25 +12,34 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface AlertAnalyticsEventInboxRepository extends JpaRepository<AlertAnalyticsEventInboxEntry, UUID> {
-
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+public interface AlertAnalyticsEventInboxRepository
+    extends JpaRepository<AlertAnalyticsEventInboxEntry, UUID>
+{
+    @org.springframework.data.jpa.repository.Lock(
+        jakarta.persistence.LockModeType.PESSIMISTIC_WRITE
+    )
     @Query("select entry from AlertAnalyticsEventInboxEntry entry where entry.id=:id")
     Optional<AlertAnalyticsEventInboxEntry> lockById(@Param("id") UUID id);
 
-    Optional<AlertAnalyticsEventInboxEntry> findBySourceNameAndEventId(String sourceName, UUID eventId);
+    Optional<AlertAnalyticsEventInboxEntry> findBySourceNameAndEventId(
+        String sourceName,
+        UUID eventId
+    );
 
-    @Query("""
-            select entry
-            from AlertAnalyticsEventInboxEntry entry
-            where (entry.status in :retryableStatuses and entry.nextAttemptAt <= :now)
-               or (entry.status = :processingStatus and entry.processingStartedAt <= :staleBefore)
-            order by entry.updatedAt
-            """)
+    @Query(
+        """
+        select entry
+        from AlertAnalyticsEventInboxEntry entry
+        where (entry.status in :retryableStatuses and entry.nextAttemptAt <= :now)
+           or (entry.status = :processingStatus and entry.processingStartedAt <= :staleBefore)
+        order by entry.updatedAt
+        """
+    )
     List<AlertAnalyticsEventInboxEntry> findDue(
-            @Param("retryableStatuses") Collection<AlertAnalyticsEventInboxStatus> retryableStatuses,
-            @Param("processingStatus") AlertAnalyticsEventInboxStatus processingStatus,
-            @Param("now") Instant now,
-            @Param("staleBefore") Instant staleBefore,
-            Pageable pageable);
+        @Param("retryableStatuses") Collection<AlertAnalyticsEventInboxStatus> retryableStatuses,
+        @Param("processingStatus") AlertAnalyticsEventInboxStatus processingStatus,
+        @Param("now") Instant now,
+        @Param("staleBefore") Instant staleBefore,
+        Pageable pageable
+    );
 }

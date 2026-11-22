@@ -15,18 +15,28 @@ public class OpenApiConfig {
     @Bean
     OpenAPI alertOpenApi() {
         return new OpenAPI()
-                .info(new Info()
-                        .title("VoltCanary Alert API")
-                        .version("v1")
-                        .description("Alert lifecycle, deduplication, escalation, notification channels, and delivery attempts."))
-                .schemaRequirement("bearerAuth", new SecurityScheme()
-                        .type(SecurityScheme.Type.HTTP)
-                        .scheme("bearer")
-                        .bearerFormat("JWT"))
-                .schemaRequirement("internalServiceToken", new SecurityScheme()
-                        .type(SecurityScheme.Type.APIKEY)
-                        .in(SecurityScheme.In.HEADER)
-                        .name(INTERNAL_SERVICE_TOKEN_HEADER))
-                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
+            .info(
+                new Info()
+                    .title("VoltCanary Alert API")
+                    .version("v1")
+                    .description(
+                        "Alert lifecycle, deduplication, escalation, notification channels, and delivery attempts."
+                    )
+            )
+            .schemaRequirement(
+                "bearerAuth",
+                new SecurityScheme()
+                    .type(SecurityScheme.Type.HTTP)
+                    .scheme("bearer")
+                    .bearerFormat("JWT")
+            )
+            .schemaRequirement(
+                "internalServiceToken",
+                new SecurityScheme()
+                    .type(SecurityScheme.Type.APIKEY)
+                    .in(SecurityScheme.In.HEADER)
+                    .name(INTERNAL_SERVICE_TOKEN_HEADER)
+            )
+            .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
     }
 }

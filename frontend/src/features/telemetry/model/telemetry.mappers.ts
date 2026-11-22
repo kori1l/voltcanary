@@ -12,7 +12,6 @@ import {
 import {
   MetricDetailResponse,
   TelemetryEvent,
-  TelemetryMetricOverview,
   TelemetryOverviewResponse,
   TelemetrySample,
 } from "./telemetry.types";
@@ -37,19 +36,34 @@ export function mapTelemetryOverview({
 }): TelemetryOverviewResponse {
   const metrics = Object.entries(charts)
     .map(([metricKey, chart]) => {
-      const definition = { ...getMetricDefinition(metricKey), ...(chart.unit ? { unit: chart.unit } : {}) };
+      const definition = {
+        ...getMetricDefinition(metricKey),
+        ...(chart.unit ? { unit: chart.unit } : {}),
+      };
       const series = chart.points.map((point): TelemetrySample => ({
         timestamp: point.timestamp,
         metricKey,
         value: point.value,
       }));
-      const threshold = thresholdFor(metricKey, metricKey === "activePowerW" && baseline ? {
-        warningMax: baseline.p90,
-        spikeThreshold: baseline.p90,
-      } : undefined);
-      const computedEvents = chart.aggregationMode ? [] : detectTelemetryEvents(definition, series, threshold);
+      const threshold = thresholdFor(
+        metricKey,
+        metricKey === "activePowerW" && baseline
+          ? {
+              warningMax: baseline.p90,
+              spikeThreshold: baseline.p90,
+            }
+          : undefined,
+      );
+      const computedEvents = chart.aggregationMode
+        ? []
+        : detectTelemetryEvents(definition, series, threshold);
       const analyticsEvents = (anomalies ?? [])
-        .filter((anomaly) => metricKey === "activePowerW" && Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to))
+        .filter(
+          (anomaly) =>
+            metricKey === "activePowerW" &&
+            Date.parse(anomaly.detectedAt) >= Date.parse(range.from) &&
+            Date.parse(anomaly.detectedAt) <= Date.parse(range.to),
+        )
         .map((anomaly): TelemetryEvent => ({
           id: anomaly.id,
           timestamp: anomaly.detectedAt,
@@ -62,12 +76,24 @@ export function mapTelemetryOverview({
           threshold: threshold?.spikeThreshold,
         }));
       const events = mergeEvents([...analyticsEvents, ...computedEvents]);
-      const statistics = chart.summary ? {
-        latest: chart.summary.lastValue, min: chart.summary.min, max: chart.summary.max, avg: chart.summary.average,
-        p95: chart.summary.p95, p99: chart.summary.p99, samplesCount: chart.summary.count,
-        anomaliesCount: analyticsEvents.length, alertsCount: analyticsEvents.filter((event) => event.severity !== "info").length,
-      } : calculateStatistics(series, events);
-      const status = determineMetricStatus(statistics, threshold, chart.summary?.lastAt ?? series[series.length - 1]?.timestamp ?? null);
+      const statistics = chart.summary
+        ? {
+            latest: chart.summary.lastValue,
+            min: chart.summary.min,
+            max: chart.summary.max,
+            avg: chart.summary.average,
+            p95: chart.summary.p95,
+            p99: chart.summary.p99,
+            samplesCount: chart.summary.count,
+            anomaliesCount: analyticsEvents.length,
+            alertsCount: analyticsEvents.filter((event) => event.severity !== "info").length,
+          }
+        : calculateStatistics(series, events);
+      const status = determineMetricStatus(
+        statistics,
+        threshold,
+        chart.summary?.lastAt ?? series[series.length - 1]?.timestamp ?? null,
+      );
       return {
         definition,
         status,
@@ -78,22 +104,58 @@ export function mapTelemetryOverview({
         evidence: chart,
       };
     })
-    .sort((first, second) => first.definition.order - second.definition.order || first.definition.name.localeCompare(second.definition.name));
+    .sort(
+      (first, second) =>
+        first.definition.order - second.definition.order ||
+        first.definition.name.localeCompare(second.definition.name),
+    );
 
-  const selectedMetrics = metrics.filter((metric) => selectedMetricKeys.includes(metric.definition.key));
-  const health = determineDeviceHealth(selectedMetrics.length > 0 ? selectedMetrics : metrics, latestTimestamp);
-  if (metrics.some((metric) => metric.evidence?.aggregationMode === "MIN_MAX_ENVELOPE")) health.reason = "Threshold comparison uses historical interval evidence; it does not establish current device state.";
-  const qualityCounts = metrics.flatMap((metric) => Object.entries(metric.evidence?.qualityCounts ?? {}));
-  if (metrics.length && !metrics.every((metric) => metric.evidence?.qualityCounts)) health.dataQuality = "unknown";
-  else if (qualityCounts.some(([flag, count]) => count > 0 && !["OK", "BACKFILL"].includes(flag))) health.dataQuality = "partial";
+  const selectedMetrics = metrics.filter((metric) =>
+    selectedMetricKeys.includes(metric.definition.key),
+  );
+  const health = determineDeviceHealth(
+    selectedMetrics.length > 0 ? selectedMetrics : metrics,
+    latestTimestamp,
+  );
+  if (metrics.some((metric) => metric.evidence?.aggregationMode === "MIN_MAX_ENVELOPE"))
+    health.reason =
+      "Threshold comparison uses historical interval evidence; it does not establish current device state.";
+  const qualityCounts = metrics.flatMap((metric) =>
+    Object.entries(metric.evidence?.qualityCounts ?? {}),
+  );
+  if (metrics.length && !metrics.every((metric) => metric.evidence?.qualityCounts))
+    health.dataQuality = "unknown";
+  else if (qualityCounts.some(([flag, count]) => count > 0 && !["OK", "BACKFILL"].includes(flag)))
+    health.dataQuality = "partial";
   return {
     deviceId,
     range,
     health,
     metrics,
-    events: mergeEvents([...(anomalies ?? []).filter((anomaly) => Date.parse(anomaly.detectedAt) >= Date.parse(range.from) && Date.parse(anomaly.detectedAt) <= Date.parse(range.to)).map((anomaly): TelemetryEvent => ({ id: anomaly.id, timestamp: anomaly.detectedAt, metricKey: "activePowerW", type: "custom", severity: normalizeSeverity(anomaly.severity), title: anomaly.type.replace(/_/g, " "), description: anomaly.description })), ...metrics.flatMap((metric) => metric.evidence?.aggregationMode ? [] : metric.statistics.alertsCount > 0 || metric.status !== "normal"
-      ? detectTelemetryEvents(metric.definition, metric.series, metric.threshold)
-      : detectTelemetryEvents(metric.definition, metric.series, metric.threshold).slice(0, 2))]),
+    events: mergeEvents([
+      ...(anomalies ?? [])
+        .filter(
+          (anomaly) =>
+            Date.parse(anomaly.detectedAt) >= Date.parse(range.from) &&
+            Date.parse(anomaly.detectedAt) <= Date.parse(range.to),
+        )
+        .map((anomaly): TelemetryEvent => ({
+          id: anomaly.id,
+          timestamp: anomaly.detectedAt,
+          metricKey: "activePowerW",
+          type: "custom",
+          severity: normalizeSeverity(anomaly.severity),
+          title: anomaly.type.replace(/_/g, " "),
+          description: anomaly.description,
+        })),
+      ...metrics.flatMap((metric) =>
+        metric.evidence?.aggregationMode
+          ? []
+          : metric.statistics.alertsCount > 0 || metric.status !== "normal"
+            ? detectTelemetryEvents(metric.definition, metric.series, metric.threshold)
+            : detectTelemetryEvents(metric.definition, metric.series, metric.threshold).slice(0, 2),
+      ),
+    ]),
   };
 }
 
@@ -106,8 +168,11 @@ export function mapMetricDetail(
   if (!metric) {
     return null;
   }
-  const metricEvents = overview.events.filter((event) => !event.metricKey || event.metricKey === metricKey);
-  const selectedEvent = overview.events.find((event) => event.id === selectedEventId) ?? metricEvents[0] ?? null;
+  const metricEvents = overview.events.filter(
+    (event) => !event.metricKey || event.metricKey === metricKey,
+  );
+  const selectedEvent =
+    overview.events.find((event) => event.id === selectedEventId) ?? metricEvents[0] ?? null;
   const analysis = analyzeRelatedSignals(selectedEvent, overview.metrics);
   return {
     deviceId: overview.deviceId,
@@ -137,7 +202,9 @@ function normalizeSeverity(value: string): TelemetryEvent["severity"] {
 function mergeEvents(events: TelemetryEvent[]) {
   const seen = new Set<string>();
   return events
-    .sort((first, second) => new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime())
+    .sort(
+      (first, second) => new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime(),
+    )
     .filter((event) => {
       const key = `${event.metricKey}-${event.type}-${event.timestamp}`;
       if (seen.has(key)) return false;

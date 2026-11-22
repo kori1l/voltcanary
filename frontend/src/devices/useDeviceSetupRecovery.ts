@@ -4,8 +4,13 @@ import { getDevice, listDataSources, type DeviceAccount } from "./devicesApi";
 import { readDeviceSetupCheckpoint, type DeviceSetupCheckpoint } from "./deviceSetupCheckpoint";
 import type { DeviceSetupProgress } from "./createDeviceFlow";
 
-export function useDeviceSetupRecovery(account: DeviceAccount | null, progress: MutableRefObject<DeviceSetupProgress>, onRestored: (saved: DeviceSetupCheckpoint, restored: DeviceSetupProgress) => void) {
-  const callback = useRef(onRestored); callback.current = onRestored;
+export function useDeviceSetupRecovery(
+  account: DeviceAccount | null,
+  progress: MutableRefObject<DeviceSetupProgress>,
+  onRestored: (saved: DeviceSetupCheckpoint, restored: DeviceSetupProgress) => void,
+) {
+  const callback = useRef(onRestored);
+  callback.current = onRestored;
   const [restoring, setRestoring] = useState(false);
   const [failed, setFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,28 +18,73 @@ export function useDeviceSetupRecovery(account: DeviceAccount | null, progress: 
   const [checkedAccount, setCheckedAccount] = useState<string | null>(null);
   useEffect(() => {
     const saved = readDeviceSetupCheckpoint(account);
-    if (!saved) { setCheckedAccount(account?.id ?? null); return; }
+    if (!saved) {
+      setCheckedAccount(account?.id ?? null);
+      return;
+    }
     let active = true;
     const controller = new AbortController();
-    setRestoring(true); setFailed(false); setError(null);
+    setRestoring(true);
+    setFailed(false);
+    setError(null);
     void (async () => {
       const restored: DeviceSetupProgress = { unknownStage: saved.pendingStage };
       if (saved.deviceId) {
         restored.device = await getDevice(saved.deviceId, controller.signal);
-        if (restored.device.id !== saved.deviceId || typeof restored.device.name !== "string") throw new Error("Invalid restored device");
+        if (restored.device.id !== saved.deviceId || typeof restored.device.name !== "string")
+          throw new Error("Invalid restored device");
         if (saved.sourceId) {
-          restored.dataSource = (await listDataSources(saved.deviceId)).find((source) => source.id === saved.sourceId && source.deviceId === saved.deviceId);
+          restored.dataSource = (await listDataSources(saved.deviceId)).find(
+            (source) => source.id === saved.sourceId && source.deviceId === saved.deviceId,
+          );
           if (!restored.dataSource) restored.unknownStage = "source";
         }
-        if (saved.configurationId) { const config = await getSimulationConfig(saved.deviceId); if (config.id === saved.configurationId && config.deviceId === saved.deviceId && config.dataSourceId === saved.sourceId) restored.simulationConfig = config; else restored.unknownStage = "configuration"; }
-        if (saved.runId) { const run = await getSimulationStatus(saved.deviceId, controller.signal); if (run.runId === saved.runId) restored.simulationRun = run; else restored.unknownStage = "run"; }
+        if (saved.configurationId) {
+          const config = await getSimulationConfig(saved.deviceId);
+          if (
+            config.id === saved.configurationId &&
+            config.deviceId === saved.deviceId &&
+            config.dataSourceId === saved.sourceId
+          )
+            restored.simulationConfig = config;
+          else restored.unknownStage = "configuration";
+        }
+        if (saved.runId) {
+          const run = await getSimulationStatus(saved.deviceId, controller.signal);
+          if (run.runId === saved.runId) restored.simulationRun = run;
+          else restored.unknownStage = "run";
+        }
       }
       if (!active) return;
       progress.current = restored;
       callback.current(saved, restored);
-    })().catch(() => { if (active) { setFailed(true); setError("Saved setup could not be authorized or loaded. Retry these reads before continuing; the device will not be recreated."); } }).finally(() => { if (active) {setCheckedAccount(account?.id ?? null);setRestoring(false);} });
-    return () => { active = false; controller.abort(); };
+    })()
+      .catch(() => {
+        if (active) {
+          setFailed(true);
+          setError(
+            "Saved setup could not be authorized or loaded. Retry these reads before continuing; the device will not be recreated.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCheckedAccount(account?.id ?? null);
+          setRestoring(false);
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [account?.id, attempt]);
-  const pending=Boolean(account && checkedAccount!==account.id && readDeviceSetupCheckpoint(account));
-  return { restoring:restoring || pending, failed, error, retry: () => setAttempt((value) => value + 1) };
+  const pending = Boolean(
+    account && checkedAccount !== account.id && readDeviceSetupCheckpoint(account),
+  );
+  return {
+    restoring: restoring || pending,
+    failed,
+    error,
+    retry: () => setAttempt((value) => value + 1),
+  };
 }

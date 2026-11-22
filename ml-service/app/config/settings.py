@@ -1,10 +1,12 @@
 import os
 
-from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(populate_by_name=True)
+
     service_name: str = "ml-service"
     model_registry_path: str = "./models"
     ml_runtime_profile: str = "local"
@@ -21,6 +23,26 @@ class Settings(BaseSettings):
     ml_allowed_source_services: str = "analytics-service"
     ml_max_request_bytes: int = 1_048_576
     ml_training_history_path: str | None = None
+    ml_training_postgres_host: str = Field(
+        default="localhost",
+        validation_alias=AliasChoices("ML_TRAINING_POSTGRES_HOST", "POSTGRES_HOST"),
+    )
+    ml_training_postgres_port: int = Field(
+        default=5432,
+        ge=1,
+        le=65535,
+        validation_alias=AliasChoices("ML_TRAINING_POSTGRES_PORT", "POSTGRES_PORT"),
+    )
+    ml_training_postgres_database: str = "voltcanary_ml"
+    ml_training_postgres_user: str = Field(
+        default="voltcanary",
+        validation_alias=AliasChoices("ML_TRAINING_POSTGRES_USER", "POSTGRES_USER"),
+    )
+    ml_training_postgres_password: str = Field(
+        default="",
+        repr=False,
+        validation_alias=AliasChoices("ML_TRAINING_POSTGRES_PASSWORD", "POSTGRES_PASSWORD"),
+    )
     ml_training_history_capacity: int = Field(default=1000, ge=1)
     ml_training_history_retention_seconds: float = Field(default=604800, gt=0)
     ml_training_fit_timeout_seconds: float = Field(default=600, gt=0)
@@ -29,11 +51,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_source_service_names(self) -> set[str]:
-        return {
-            item.strip()
-            for item in self.ml_allowed_source_services.split(",")
-            if item.strip()
-        }
+        return {item.strip() for item in self.ml_allowed_source_services.split(",") if item.strip()}
 
     @property
     def internal_service_token(self) -> str:

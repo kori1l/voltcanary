@@ -9,19 +9,26 @@ import org.springframework.stereotype.Component;
 class IngestionCorrectnessStateMetrics {
 
     IngestionCorrectnessStateMetrics(
-            IngestionProperties properties,
-            Environment environment,
-            MeterRegistry meterRegistry) {
+        IngestionProperties properties,
+        Environment environment,
+        MeterRegistry meterRegistry
+    ) {
         String mode = properties.isMultiReplicaMode() ? "multi-replica" : "local-only";
-        String idempotencyState = environment.getProperty("app.idempotency.redis-enabled", Boolean.class, true)
-                ? "shared-redis"
-                : "local-only";
-        String rateLimitState = properties.isRedisRateLimitEnabled() ? "shared-redis" : "local-only";
+        String idempotencyState = environment.getProperty(
+            "app.idempotency.redis-enabled",
+            Boolean.class,
+            true
+        )
+            ? "shared-redis"
+            : "local-only";
+        String rateLimitState = properties.isRedisRateLimitEnabled()
+            ? "shared-redis"
+            : "local-only";
         Gauge.builder("voltcanary.ingestion.correctness.state", () -> 1)
-                .description("Configured ingestion correctness-state mode")
-                .tag("mode", mode)
-                .tag("idempotency", idempotencyState)
-                .tag("rate_limit", rateLimitState)
-                .register(meterRegistry);
+            .description("Configured ingestion correctness-state mode")
+            .tag("mode", mode)
+            .tag("idempotency", idempotencyState)
+            .tag("rate_limit", rateLimitState)
+            .register(meterRegistry);
     }
 }

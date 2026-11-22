@@ -24,61 +24,69 @@ public class IngestionController {
     @PostMapping("/readings")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public IngestionAcceptedResponse ingest(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
-            @Valid @RequestBody TelemetryIngestionRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+        @Valid @RequestBody TelemetryIngestionRequest request
+    ) {
         return ingressOrchestrator.ingestHttp(
-                request,
-                bearerToken(authorization),
-                correlationId,
-                clientIp(forwardedFor),
-                false);
+            request,
+            bearerToken(authorization),
+            correlationId,
+            clientIp(forwardedFor),
+            false
+        );
     }
 
     @PostMapping("/imports/readings")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public IngestionAcceptedResponse ingestImport(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
-            @Valid @RequestBody TelemetryIngestionRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+        @Valid @RequestBody TelemetryIngestionRequest request
+    ) {
         return ingressOrchestrator.ingestHttp(
-                request,
-                bearerToken(authorization),
-                correlationId,
-                clientIp(forwardedFor),
-                true);
+            request,
+            bearerToken(authorization),
+            correlationId,
+            clientIp(forwardedFor),
+            true
+        );
     }
 
     @PostMapping("/readings/batch")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public IngestionAcceptedResponse ingestBatch(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
-            @Valid @RequestBody BatchTelemetryIngestionRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+        @Valid @RequestBody BatchTelemetryIngestionRequest request
+    ) {
         return ingressOrchestrator.ingestHttpBatch(
-                request.readings(),
-                bearerToken(authorization),
-                correlationId,
-                clientIp(forwardedFor),
-                false);
+            request.readings(),
+            bearerToken(authorization),
+            correlationId,
+            clientIp(forwardedFor),
+            false
+        );
     }
 
     @PostMapping("/imports/readings/batch")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public IngestionAcceptedResponse ingestImportBatch(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
-            @Valid @RequestBody BatchTelemetryIngestionRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestHeader(value = "X-Forwarded-For", required = false) String forwardedFor,
+        @Valid @RequestBody BatchTelemetryIngestionRequest request
+    ) {
         return ingressOrchestrator.ingestHttpBatch(
-                request.readings(),
-                bearerToken(authorization),
-                correlationId,
-                clientIp(forwardedFor),
-                true);
+            request.readings(),
+            bearerToken(authorization),
+            correlationId,
+            clientIp(forwardedFor),
+            true
+        );
     }
 
     private String bearerToken(String authorization) {

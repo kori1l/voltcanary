@@ -8,10 +8,13 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class SourceRegistryLookupConfig {
+
     @Bean
-    public SourceRegistryLookup sourceRegistryLookup(ObjectMapper mapper,
-            @Value("${app.device-service.base-url}") String baseUrl,
-            @Value("${app.internal.service-token}") String serviceToken) {
+    public SourceRegistryLookup sourceRegistryLookup(
+        ObjectMapper mapper,
+        @Value("${app.device-service.base-url}") String baseUrl,
+        @Value("${app.internal.service-token}") String serviceToken
+    ) {
         return new SourceRegistryLookup(mapper, baseUrl, serviceToken);
     }
 }

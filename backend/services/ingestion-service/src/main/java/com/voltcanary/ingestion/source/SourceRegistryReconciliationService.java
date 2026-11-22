@@ -24,11 +24,12 @@ public class SourceRegistryReconciliationService {
         ReconciliationResult result = reconcileCachedSources();
         if (result.total() > 0) {
             log.info(
-                    "sourceRegistryReconciliation refreshed={} evicted={} failed={} cacheSize={}",
-                    result.refreshed(),
-                    result.evicted(),
-                    result.failed(),
-                    cache.size());
+                "sourceRegistryReconciliation refreshed={} evicted={} failed={} cacheSize={}",
+                result.refreshed(),
+                result.evicted(),
+                result.failed(),
+                cache.size()
+            );
         }
     }
 
@@ -52,12 +53,13 @@ public class SourceRegistryReconciliationService {
 
     private void record(String outcome, int count) {
         if (count > 0) {
-            meterRegistry.counter("ingestion.source_registry.reconciled", "outcome", outcome).increment(count);
+            meterRegistry
+                .counter("ingestion.source_registry.reconciled", "outcome", outcome)
+                .increment(count);
         }
     }
 
     public record ReconciliationResult(int refreshed, int evicted, int failed) {
-
         int total() {
             return refreshed + evicted + failed;
         }

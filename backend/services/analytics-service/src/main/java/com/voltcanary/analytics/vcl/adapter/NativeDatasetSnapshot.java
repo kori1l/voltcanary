@@ -10,16 +10,24 @@ import java.util.function.Function;
 
 /** Immutable native dependency pins with fresh owner authorization at compiler scope fences. */
 public final class NativeDatasetSnapshot implements VclMetadata {
+
     private final Map<NativeDatasetSnapshots.Target, VclDatasetDescription> descriptions;
     private final Function<NativeDatasetSnapshots.Target, VclDatasetDescription> refresh;
     private final String scope;
 
-    NativeDatasetSnapshot(Map<NativeDatasetSnapshots.Target, VclDatasetDescription> descriptions,
-            Function<NativeDatasetSnapshots.Target, VclDatasetDescription> refresh) {
+    NativeDatasetSnapshot(
+        Map<NativeDatasetSnapshots.Target, VclDatasetDescription> descriptions,
+        Function<NativeDatasetSnapshots.Target, VclDatasetDescription> refresh
+    ) {
         this.descriptions = Map.copyOf(descriptions);
         this.refresh = refresh;
         scope = descriptions.values().iterator().next().accessScopeDigest();
-        if (descriptions.values().stream().anyMatch(value -> !scope.equals(value.accessScopeDigest()))) {
+        if (
+            descriptions
+                .values()
+                .stream()
+                .anyMatch(value -> !scope.equals(value.accessScopeDigest()))
+        ) {
             throw new VclException("ACCESS_SCOPE_CHANGED", "");
         }
     }
@@ -38,7 +46,10 @@ public final class NativeDatasetSnapshot implements VclMetadata {
     void reauthorizeSealedSchema() {
         descriptions.forEach((target, original) -> {
             var current = refresh.apply(target);
-            if (!scope.equals(current.accessScopeDigest())) throw new VclException("ACCESS_SCOPE_CHANGED", "");
+            if (!scope.equals(current.accessScopeDigest())) throw new VclException(
+                "ACCESS_SCOPE_CHANGED",
+                ""
+            );
             if (!original.schemaDigest().equals(current.schemaDigest())) {
                 throw new VclException("METADATA_SNAPSHOT_CHANGED", "");
             }
@@ -47,18 +58,25 @@ public final class NativeDatasetSnapshot implements VclMetadata {
 
     Optional<Snapshot> sealedSchema(UUID id, long schemaRevision) {
         var original = descriptions.get(new NativeDatasetSnapshots.Target(id, schemaRevision));
-        return Optional.ofNullable(original).map(value -> new Snapshot(id, schemaRevision, value.definition()));
+        return Optional.ofNullable(original).map(value ->
+            new Snapshot(id, schemaRevision, value.definition())
+        );
     }
 
     private void reauthorize(NativeDatasetSnapshots.Target target, VclDatasetDescription original) {
         var current = refresh.apply(target);
-        if (!scope.equals(current.accessScopeDigest())) throw new VclException("ACCESS_SCOPE_CHANGED", "");
+        if (!scope.equals(current.accessScopeDigest())) throw new VclException(
+            "ACCESS_SCOPE_CHANGED",
+            ""
+        );
         if (!original.equals(current)) throw new VclException("METADATA_SNAPSHOT_CHANGED", "");
     }
 
     @Override
     public Optional<Snapshot> dataset(UUID id, long schemaRevision) {
-        return description(id, schemaRevision).map(value -> new Snapshot(id, schemaRevision, value.definition()));
+        return description(id, schemaRevision).map(value ->
+            new Snapshot(id, schemaRevision, value.definition())
+        );
     }
 
     public Optional<VclDatasetDescription> description(UUID id, long schemaRevision) {
@@ -69,8 +87,18 @@ public final class NativeDatasetSnapshot implements VclMetadata {
     }
 
     // A native data description grants no binding, reference, execution or source authority.
-    @Override public Optional<Snapshot> binding(UUID id, long schemaRevision) { return Optional.empty(); }
-    @Override public boolean permits(Resource kind, UUID id) { return false; }
+    @Override
+    public Optional<Snapshot> binding(UUID id, long schemaRevision) {
+        return Optional.empty();
+    }
 
-    @Override public String toString() { return "NativeDatasetSnapshot[targets=" + descriptions.size() + "]"; }
+    @Override
+    public boolean permits(Resource kind, UUID id) {
+        return false;
+    }
+
+    @Override
+    public String toString() {
+        return "NativeDatasetSnapshot[targets=" + descriptions.size() + "]";
+    }
 }

@@ -6,11 +6,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record AdminUserResponse(
-        UUID id,
-        String email,
-        UserRole role,
-        UserStatus status,
-        boolean emailVerified,
-        Instant createdAt,
-        Instant updatedAt) {
-}
+    UUID id,
+    String email,
+    UserRole role,
+    UserStatus status,
+    boolean emailVerified,
+    Instant createdAt,
+    Instant updatedAt
+) {}

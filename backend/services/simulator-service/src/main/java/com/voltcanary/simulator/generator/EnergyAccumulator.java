@@ -11,7 +11,7 @@ public class EnergyAccumulator {
     private final Map<UUID, Double> energyByRun = new ConcurrentHashMap<>();
 
     public double add(SimulationContext context, double activePowerW) {
-        double deltaWh = activePowerW * context.config().interval().toSeconds() / 3600.0;
+        double deltaWh = (activePowerW * context.config().interval().toSeconds()) / 3600.0;
         return energyByRun.merge(context.runId(), deltaWh, Double::sum);
     }
 }

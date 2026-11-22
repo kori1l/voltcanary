@@ -47,7 +47,9 @@ class ArtifactReferenceSet:
             return False
         if reference == artifact_uri:
             return True
-        return artifact_uri.endswith("/manifest.json") and reference.startswith(self._artifact_prefix(artifact_uri))
+        return artifact_uri.endswith("/manifest.json") and reference.startswith(
+            self._artifact_prefix(artifact_uri)
+        )
 
     def _artifact_prefix(self, artifact_uri: str) -> str:
         return artifact_uri.rsplit("/", 1)[0].rstrip("/") + "/"

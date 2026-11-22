@@ -87,7 +87,8 @@ public class ConnectorSupervisor {
             if (nextAttemptAt.isAfter(now)) {
                 return;
             }
-            Optional<ConnectorLease> acquired = lease == null || !leaseManager.isCurrent(lease)
+            Optional<ConnectorLease> acquired =
+                lease == null || !leaseManager.isCurrent(lease)
                     ? leaseManager.acquire(config.dataSourceId())
                     : leaseManager.renew(lease);
             if (acquired.isEmpty()) {
@@ -103,7 +104,10 @@ public class ConnectorSupervisor {
             lease = renewed.get();
             Optional<TelemetryAdapter> resolved = adapterResolver.resolve(config);
             if (resolved.isEmpty()) {
-                fail(now, new IllegalStateException("No adapter registered for " + config.adapterType()));
+                fail(
+                    now,
+                    new IllegalStateException("No adapter registered for " + config.adapterType())
+                );
                 return;
             }
             TelemetryAdapter adapter = resolved.get();
@@ -113,7 +117,10 @@ public class ConnectorSupervisor {
                 } else if (adapter instanceof SubscriptionTelemetryAdapter subscriptionAdapter) {
                     runSubscription(subscriptionAdapter, now);
                 } else {
-                    fail(now, new IllegalStateException("Adapter does not support active connector work"));
+                    fail(
+                        now,
+                        new IllegalStateException("Adapter does not support active connector work")
+                    );
                 }
             } catch (RuntimeException exception) {
                 fail(now, exception);
@@ -156,12 +163,27 @@ public class ConnectorSupervisor {
 
         private void fail(Instant now, RuntimeException exception) {
             consecutiveFailures++;
-            state = consecutiveFailures > 2 ? ConnectorRuntimeState.FAILED : ConnectorRuntimeState.DEGRADED;
+            state =
+                consecutiveFailures > 2
+                    ? ConnectorRuntimeState.FAILED
+                    : ConnectorRuntimeState.DEGRADED;
             nextAttemptAt = now.plus(backoffPolicy.nextDelay(consecutiveFailures));
             if (state == ConnectorRuntimeState.FAILED) {
-                healthManager.failed(config.sourceId(), consecutiveFailures, now, nextAttemptAt, exception.getMessage());
+                healthManager.failed(
+                    config.sourceId(),
+                    consecutiveFailures,
+                    now,
+                    nextAttemptAt,
+                    exception.getMessage()
+                );
             } else {
-                healthManager.degraded(config.sourceId(), consecutiveFailures, now, nextAttemptAt, exception.getMessage());
+                healthManager.degraded(
+                    config.sourceId(),
+                    consecutiveFailures,
+                    now,
+                    nextAttemptAt,
+                    exception.getMessage()
+                );
             }
         }
 
@@ -191,16 +213,18 @@ public class ConnectorSupervisor {
             if (!subscriptionStarted) {
                 return;
             }
-            adapterResolver.resolve(config)
-                    .filter(SubscriptionTelemetryAdapter.class::isInstance)
-                    .map(SubscriptionTelemetryAdapter.class::cast)
-                    .ifPresent(adapter -> adapter.stopSubscription(config));
+            adapterResolver
+                .resolve(config)
+                .filter(SubscriptionTelemetryAdapter.class::isInstance)
+                .map(SubscriptionTelemetryAdapter.class::cast)
+                .ifPresent(adapter -> adapter.stopSubscription(config));
             subscriptionStarted = false;
         }
 
         @Override
         public void accept(IncomingTelemetryMessage message) {
-            Optional<ConnectorLease> renewed = lease == null ? Optional.empty() : leaseManager.renew(lease);
+            Optional<ConnectorLease> renewed =
+                lease == null ? Optional.empty() : leaseManager.renew(lease);
             if (renewed.isPresent()) {
                 lease = renewed.get();
                 pipeline.ingest(message);

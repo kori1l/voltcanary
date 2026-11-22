@@ -11,52 +11,112 @@ import java.util.TreeMap;
 
 /** Frozen pre-selection reference for all-field regression parity; do not migrate it with production optimizations. */
 public final class LegacyEnergyPeriodCalculator {
-    public enum Method { COUNTER_DELTA, POWER_INTEGRAL }
-    public enum EventKind { RESET, ROLLOVER, REPLACEMENT }
 
-    public record Reading(Instant measuredAt, double value, String unit, String sourceId, String quality) {
+    public enum Method {
+        COUNTER_DELTA,
+        POWER_INTEGRAL,
     }
 
-    public record CounterEvent(Instant at, EventKind kind, Double rolloverWh) {
+    public enum EventKind {
+        RESET,
+        ROLLOVER,
+        REPLACEMENT,
     }
 
-    public record Policy(Method method, String sourceId, long maxGapSeconds, List<CounterEvent> events) {
+    public record Reading(
+        Instant measuredAt,
+        double value,
+        String unit,
+        String sourceId,
+        String quality
+    ) {}
+
+    public record CounterEvent(Instant at, EventKind kind, Double rolloverWh) {}
+
+    public record Policy(
+        Method method,
+        String sourceId,
+        long maxGapSeconds,
+        List<CounterEvent> events
+    ) {
         public Policy {
-            if (method == null || sourceId == null || sourceId.isBlank() || maxGapSeconds < 1 || maxGapSeconds > 86400) {
-                throw new IllegalArgumentException("A canonical method/source and bounded gap tolerance are required");
+            if (
+                method == null ||
+                sourceId == null ||
+                sourceId.isBlank() ||
+                maxGapSeconds < 1 ||
+                maxGapSeconds > 86400
+            ) {
+                throw new IllegalArgumentException(
+                    "A canonical method/source and bounded gap tolerance are required"
+                );
             }
             events = events == null ? List.of() : List.copyOf(events);
             for (CounterEvent event : events) {
-                if (event == null || event.at() == null || event.kind() == null
-                        || (event.kind() == EventKind.ROLLOVER && (event.rolloverWh() == null
-                        || !Double.isFinite(event.rolloverWh()) || event.rolloverWh() <= 0))) {
-                    throw new IllegalArgumentException("Counter events require explicit time/kind and rollover modulus");
+                if (
+                    event == null ||
+                    event.at() == null ||
+                    event.kind() == null ||
+                    (event.kind() == EventKind.ROLLOVER &&
+                        (event.rolloverWh() == null ||
+                            !Double.isFinite(event.rolloverWh()) ||
+                            event.rolloverWh() <= 0))
+                ) {
+                    throw new IllegalArgumentException(
+                        "Counter events require explicit time/kind and rollover modulus"
+                    );
                 }
             }
         }
     }
 
-    public record Result(Double energyKWh, String coverage, double coveredSeconds, double intervalSeconds,
-            double coverageFraction, int acceptedSamples, int excludedSamples, int duplicateSamples,
-            int conflictingTimestamps, int excessiveGaps, int resetIntervals, int rolloverIntervals,
-            Double minimumPowerW, Double maximumPowerW, Instant maximumPowerAt, Instant measuredAt,
-            boolean estimate, String boundaryPolicy, String qualityPolicy, String maintenancePolicy) {
-    }
+    public record Result(
+        Double energyKWh,
+        String coverage,
+        double coveredSeconds,
+        double intervalSeconds,
+        double coverageFraction,
+        int acceptedSamples,
+        int excludedSamples,
+        int duplicateSamples,
+        int conflictingTimestamps,
+        int excessiveGaps,
+        int resetIntervals,
+        int rolloverIntervals,
+        Double minimumPowerW,
+        Double maximumPowerW,
+        Instant maximumPowerAt,
+        Instant measuredAt,
+        boolean estimate,
+        String boundaryPolicy,
+        String qualityPolicy,
+        String maintenancePolicy
+    ) {}
 
-    private record Point(Instant at, double value, boolean valid) {
-    }
+    private record Point(Instant at, double value, boolean valid) {}
 
     public Result calculate(List<Reading> readings, Instant from, Instant to, Policy policy) {
-        if (readings == null || from == null || to == null || !from.isBefore(to)
-                || Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0) {
-            throw new IllegalArgumentException("A half-open interval of at most31 days is required");
+        if (
+            readings == null ||
+            from == null ||
+            to == null ||
+            !from.isBefore(to) ||
+            Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0
+        ) {
+            throw new IllegalArgumentException(
+                "A half-open interval of at most31 days is required"
+            );
         }
         Map<Instant, Point> normalized = new TreeMap<>();
         int excluded = 0;
         int duplicates = 0;
         Set<Instant> conflicts = new HashSet<>();
         for (Reading reading : readings) {
-            if (reading == null || reading.measuredAt() == null || !policy.sourceId().equals(reading.sourceId())) {
+            if (
+                reading == null ||
+                reading.measuredAt() == null ||
+                !policy.sourceId().equals(reading.sourceId())
+            ) {
                 excluded++;
                 continue;
             }
@@ -119,12 +179,21 @@ public final class LegacyEnergyPeriodCalculator {
             double endFraction = seconds(left.at(), end) / span;
             double amount;
             if (policy.method() == Method.COUNTER_DELTA) {
-                List<CounterEvent> events = policy.events().stream().filter(event -> event.at().isAfter(left.at())
-                        && !event.at().isAfter(right.at())).toList();
+                List<CounterEvent> events = policy
+                    .events()
+                    .stream()
+                    .filter(
+                        event -> event.at().isAfter(left.at()) && !event.at().isAfter(right.at())
+                    )
+                    .toList();
                 double delta = right.value() - left.value();
-                if (events.size() == 1 && events.getFirst().kind() == EventKind.ROLLOVER
-                        && delta < 0 && left.value() < events.getFirst().rolloverWh()
-                        && right.value() < events.getFirst().rolloverWh()) {
+                if (
+                    events.size() == 1 &&
+                    events.getFirst().kind() == EventKind.ROLLOVER &&
+                    delta < 0 &&
+                    left.value() < events.getFirst().rolloverWh() &&
+                    right.value() < events.getFirst().rolloverWh()
+                ) {
                     delta += events.getFirst().rolloverWh();
                     rollovers++;
                 } else if (!events.isEmpty() || delta < 0) {
@@ -135,22 +204,40 @@ public final class LegacyEnergyPeriodCalculator {
             } else {
                 double startPower = left.value() + (right.value() - left.value()) * startFraction;
                 double endPower = left.value() + (right.value() - left.value()) * endFraction;
-                amount = (startPower / 2 + endPower / 2) * duration / 3600;
+                amount = ((startPower / 2 + endPower / 2) * duration) / 3600;
             }
             if (!Double.isFinite(amount) || !Double.isFinite(energyWh + amount)) {
                 throw new IllegalArgumentException("Energy calculation exceeds its numeric bounds");
             }
             energyWh += amount;
             covered += duration;
-            interpolatedBoundary |= startFraction>0 || endFraction<1;
+            interpolatedBoundary |= startFraction > 0 || endFraction < 1;
         }
         double interval = seconds(from, to);
-        String coverage = covered == 0 ? "UNKNOWN" : covered >= interval - 0.000001 ? "COMPLETE" : "PARTIAL";
-        return new Result(covered == 0 ? null : energyWh / 1000, coverage, covered, interval,
-                Math.min(1, covered / interval), accepted, excluded, duplicates, conflicts.size(), gaps, resets, rollovers,
-                minimum, maximum, maximumAt, measuredAt, policy.method() == Method.POWER_INTEGRAL || interpolatedBoundary,
-                "LINEAR_BRACKETING_WITHIN_MAX_GAP_HALF_OPEN_UTC", "OK_ONLY_CONFLICTS_ARE_BARRIERS",
-                "RAW_CONSUMPTION_INCLUDES_MAINTENANCE");
+        String coverage =
+            covered == 0 ? "UNKNOWN" : covered >= interval - 0.000001 ? "COMPLETE" : "PARTIAL";
+        return new Result(
+            covered == 0 ? null : energyWh / 1000,
+            coverage,
+            covered,
+            interval,
+            Math.min(1, covered / interval),
+            accepted,
+            excluded,
+            duplicates,
+            conflicts.size(),
+            gaps,
+            resets,
+            rollovers,
+            minimum,
+            maximum,
+            maximumAt,
+            measuredAt,
+            policy.method() == Method.POWER_INTEGRAL || interpolatedBoundary,
+            "LINEAR_BRACKETING_WITHIN_MAX_GAP_HALF_OPEN_UTC",
+            "OK_ONLY_CONFLICTS_ARE_BARRIERS",
+            "RAW_CONSUMPTION_INCLUDES_MAINTENANCE"
+        );
     }
 
     private Double canonical(Reading reading, Method method) {

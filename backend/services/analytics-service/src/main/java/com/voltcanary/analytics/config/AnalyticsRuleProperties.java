@@ -17,59 +17,71 @@ public class AnalyticsRuleProperties {
     private LongCycle longCycle = new LongCycle();
 
     public static class PowerSpike {
+
         @Getter
         @Setter
         private boolean enabled = true;
+
         @Getter
         @Setter
         private double medianMultiplier = 1.8;
+
         @Getter
         @Setter
         private double meanMultiplier = 1.2;
+
         @Getter
         @Setter
         private double score = 30;
+
         @Getter
         @Setter
         private String severity = "MEDIUM";
-
     }
 
     public static class ConsumptionGrowth {
+
         @Getter
         @Setter
         private boolean enabled = true;
+
         @Getter
         @Setter
         private int minPoints = 4;
+
         @Getter
         @Setter
         private double growthMultiplier = 1.15;
+
         @Getter
         @Setter
         private double score = 30;
+
         @Getter
         @Setter
         private String severity = "MEDIUM";
-
     }
 
     public static class LongCycle {
+
         @Getter
         @Setter
         private boolean enabled = true;
+
         @Getter
         @Setter
         private int minPoints = 8;
+
         @Getter
         @Setter
         private int minHighPoints = 4;
+
         @Getter
         @Setter
         private double score = 20;
+
         @Getter
         @Setter
         private String severity = "LOW";
-
     }
 }

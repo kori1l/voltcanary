@@ -3,8 +3,8 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from app.config.settings import Settings
-from app.services.artifact_names import relative_artifact_path
 from app.services.artifact_bundle import BundleFilePayload, ModelBundleBuilder, json_bytes
+from app.services.artifact_names import relative_artifact_path
 
 
 class ArtifactStoreHealthError(Exception):
@@ -12,6 +12,10 @@ class ArtifactStoreHealthError(Exception):
         super().__init__(payload.get("message", "artifact store is unhealthy"))
         self.status_code = status_code
         self.payload = payload
+
+
+class ArtifactConflictError(Exception):
+    """A reserved or published bundle cannot be replaced by a retry."""
 
 
 class LocalArtifactStoreProvider:
@@ -44,12 +48,26 @@ class LocalArtifactStoreProvider:
         artifact_id = relative_artifact_path(artifact_id)
         bundle = self.bundle_builder.prepare(model_payload, manifest_payload, supporting_files)
         bundle_dir = self._contained_path(relative_artifact_path(artifact_id))
-        bundle_dir.mkdir(parents=True, exist_ok=True)
-        for relative_path, payload in bundle.files.items():
-            target = self._contained_path(relative_artifact_path(artifact_id) + "/" + relative_artifact_path(relative_path))
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
-        (bundle_dir / "manifest.json").write_bytes(bundle.manifest_bytes)
+        bundle_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            bundle_dir.mkdir()
+        except FileExistsError as conflict:
+            raise ArtifactConflictError(
+                "Model bundle already exists; inspect the original training result"
+            ) from conflict
+        try:
+            for relative_path, payload in bundle.files.items():
+                target = self._contained_path(
+                    relative_artifact_path(artifact_id)
+                    + "/"
+                    + relative_artifact_path(relative_path)
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(payload)
+            (bundle_dir / "manifest.json").write_bytes(bundle.manifest_bytes)
+        except Exception:
+            self.delete_artifact_bundle(artifact_id)
+            raise
         return {
             "artifactUri": f"artifact://local/{artifact_id}/{bundle.artifact_file}",
             "manifestUri": f"artifact://local/{artifact_id}/manifest.json",
@@ -85,13 +103,17 @@ class LocalArtifactStoreProvider:
                 continue
             if item.is_dir():
                 files = [path for path in item.rglob("*") if path.is_file()]
-                child_uris = [f"artifact://local/{path.relative_to(self.root).as_posix()}" for path in files]
+                child_uris = [
+                    f"artifact://local/{path.relative_to(self.root).as_posix()}" for path in files
+                ]
                 manifest_uri = f"artifact://local/{item.name}/manifest.json"
                 artifacts.append(
                     {
                         "artifactId": item.name,
                         "artifactUri": manifest_uri,
-                        "kind": "model_bundle" if (item / "manifest.json").exists() else "directory",
+                        "kind": "model_bundle"
+                        if (item / "manifest.json").exists()
+                        else "directory",
                         "sizeBytes": sum(path.stat().st_size for path in files),
                         "fileCount": len(files),
                         "childUris": child_uris,
@@ -181,9 +203,26 @@ class S3ArtifactStoreProvider:
     ) -> dict[str, Any]:
         artifact_id = relative_artifact_path(artifact_id)
         bundle = self.bundle_builder.prepare(model_payload, manifest_payload, supporting_files)
+        existing = self.client_provider(True).list_objects_v2(
+            Bucket=self.bucket, Prefix=f"{artifact_id}/", MaxKeys=1
+        )
+        if existing.get("Contents"):
+            raise ArtifactConflictError(
+                "Model bundle already exists; inspect the original training result"
+            )
+        reservation = f"{artifact_id}/.reservation"
+        self._put_object(reservation, b"reserved", "application/octet-stream", create_only=True)
+        # Retain the reservation after an uncertain write: an ACK may be lost after S3 commits.
+        # A retry must inspect/reconcile that identity rather than overwrite or delete its files.
         for relative_path, payload in bundle.files.items():
-            self._put_object(f"{artifact_id}/{relative_path}", payload, self._content_type(relative_path))
-        self._put_object(f"{artifact_id}/manifest.json", bundle.manifest_bytes, "application/json")
+            key = f"{artifact_id}/{relative_path}"
+            self._put_object(key, payload, self._content_type(relative_path), create_only=True)
+        self._put_object(
+            f"{artifact_id}/manifest.json",
+            bundle.manifest_bytes,
+            "application/json",
+            create_only=True,
+        )
         return {
             "artifactUri": f"s3://{self.bucket}/{artifact_id}/{bundle.artifact_file}",
             "manifestUri": f"s3://{self.bucket}/{artifact_id}/manifest.json",
@@ -250,7 +289,9 @@ class S3ArtifactStoreProvider:
             {
                 "artifactId": Path(item["Key"]).stem,
                 "artifactUri": f"s3://{self.bucket}/{item['Key']}",
-                "kind": "feature_snapshot" if Path(item["Key"]).name.startswith("features-") else "file",
+                "kind": "feature_snapshot"
+                if Path(item["Key"]).name.startswith("features-")
+                else "file",
                 "sizeBytes": int(item.get("Size", 0)),
                 "fileCount": 1,
                 "childUris": [f"s3://{self.bucket}/{item['Key']}"],
@@ -262,7 +303,9 @@ class S3ArtifactStoreProvider:
     def delete_artifact_bundle(self, artifact_id: str) -> None:
         artifact_id = relative_artifact_path(artifact_id)
         client = self.client_provider(False)
-        for item in self._list_objects():
+        for item in sorted(
+            self._list_objects(), key=lambda item: item["Key"].endswith("/.reservation")
+        ):
             key = item["Key"]
             if key.startswith(f"{artifact_id}/"):
                 client.delete_object(Bucket=self.bucket, Key=key)
@@ -283,8 +326,27 @@ class S3ArtifactStoreProvider:
             raise ValueError("artifact uri is outside the configured bucket")
         return parsed.netloc, relative_artifact_path(parsed.path.lstrip("/"))
 
-    def _put_object(self, key: str, payload: bytes, content_type: str) -> None:
-        self.client_provider(True).put_object(Bucket=self.bucket, Key=key, Body=payload, ContentType=content_type)
+    def _put_object(
+        self, key: str, payload: bytes, content_type: str, *, create_only: bool = False
+    ) -> None:
+        from botocore.exceptions import ClientError
+
+        options = {"IfNoneMatch": "*"} if create_only else {}
+        try:
+            self.client_provider(True).put_object(
+                Bucket=self.bucket, Key=key, Body=payload, ContentType=content_type, **options
+            )
+        except ClientError as failure:
+            if failure.response.get("Error", {}).get("Code") in {
+                "PreconditionFailed",
+                "ConditionalRequestConflict",
+                "412",
+                "409",
+            }:
+                raise ArtifactConflictError(
+                    "Model bundle is already reserved or published"
+                ) from failure
+            raise
 
     def _list_objects(self) -> list[dict[str, Any]]:
         client = self.client_provider(False)

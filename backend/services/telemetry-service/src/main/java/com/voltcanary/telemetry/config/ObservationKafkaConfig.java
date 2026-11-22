@@ -11,8 +11,12 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 
 @Configuration
 public class ObservationKafkaConfig {
+
     @Bean
-    ConcurrentKafkaListenerContainerFactory<String, String> observationSchemaKafkaListenerContainerFactory(KafkaProperties kafka) {
+    ConcurrentKafkaListenerContainerFactory<
+        String,
+        String
+    > observationSchemaKafkaListenerContainerFactory(KafkaProperties kafka) {
         Map<String, Object> properties = kafka.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
@@ -20,8 +24,14 @@ public class ObservationKafkaConfig {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, String>();
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(properties));
         // Corrupt/missing schema must hold its partition for intervention, never silently advance readiness.
-        factory.setCommonErrorHandler(new org.springframework.kafka.listener.DefaultErrorHandler(
-                new org.springframework.util.backoff.FixedBackOff(5000, org.springframework.util.backoff.FixedBackOff.UNLIMITED_ATTEMPTS)));
+        factory.setCommonErrorHandler(
+            new org.springframework.kafka.listener.DefaultErrorHandler(
+                new org.springframework.util.backoff.FixedBackOff(
+                    5000,
+                    org.springframework.util.backoff.FixedBackOff.UNLIMITED_ATTEMPTS
+                )
+            )
+        );
         return factory;
     }
 }

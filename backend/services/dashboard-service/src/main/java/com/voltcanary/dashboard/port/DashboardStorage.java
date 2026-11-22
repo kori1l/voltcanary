@@ -14,31 +14,55 @@ import java.util.UUID;
 
 public interface DashboardStorage {
     void lockActor(DashboardActor actor);
-    default void lockDashboard(UUID id) { }
+
+    default void lockDashboard(UUID id) {}
+
     long activeCount(DashboardActor actor);
-    default int activeLimit(DashboardActor actor) { return 10; }
+
+    default int activeLimit(DashboardActor actor) {
+        return 10;
+    }
+
     Optional<Dashboard> findOwned(DashboardActor actor, UUID id);
+
     default Optional<Dashboard> findAny(UUID id) {
         return Optional.empty();
     }
+
     List<Dashboard> list(DashboardActor actor, String status, Cursor cursor, int limit);
     void insert(Dashboard dashboard);
     void update(Dashboard dashboard);
+
     default void markDeleted(UUID id, Instant at) {
-        throw new UnsupportedOperationException("Dashboard deletion is not supported by this storage");
+        throw new UnsupportedOperationException(
+            "Dashboard deletion is not supported by this storage"
+        );
     }
+
     Draft draft(UUID id);
-    default Draft draft(UUID id,UUID author) {
+
+    default Draft draft(UUID id, UUID author) {
         return draft(id);
     }
+
     void saveDraft(Draft draft);
     void appendRevision(Revision revision);
     Optional<Revision> revision(UUID id, int revision);
     List<Revision> revisions(UUID id, int before, int limit);
     Optional<Preferences> preferences(DashboardActor actor);
     void savePreferences(DashboardActor actor, Preferences preferences);
-    Optional<Idempotency> idempotency(DashboardActor actor, String route, String keyHash, Instant now);
-    Optional<Idempotency> readIdempotency(DashboardActor actor, String route, String keyHash, Instant now);
+    Optional<Idempotency> idempotency(
+        DashboardActor actor,
+        String route,
+        String keyHash,
+        Instant now
+    );
+    Optional<Idempotency> readIdempotency(
+        DashboardActor actor,
+        String route,
+        String keyHash,
+        Instant now
+    );
     void saveIdempotency(DashboardActor actor, String route, String keyHash, Idempotency outcome);
     void audit(DashboardActor actor, UUID id, int revision, String action, Instant at);
 }

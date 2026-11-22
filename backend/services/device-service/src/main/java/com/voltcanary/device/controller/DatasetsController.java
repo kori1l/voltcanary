@@ -17,19 +17,33 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/data/datasets")
 @RequiredArgsConstructor
 public class DatasetsController {
+
     private final DatasetDescriptions descriptions;
     private final AuthenticatedUserResolver users;
 
     @GetMapping("/{id}")
-    public VclDatasetDescription describe(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
-            @RequestParam(required = false) Long schemaRevision) {
-        if (schemaRevision != null && schemaRevision < 1) throw new com.voltcanary.vcl.VclException("TARGET_INVALID", "");
-        return descriptions.describe(users.resolve(headers), id, schemaRevision == null ? 0 : schemaRevision);
+    public VclDatasetDescription describe(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID id,
+        @RequestParam(required = false) Long schemaRevision
+    ) {
+        if (schemaRevision != null && schemaRevision < 1) throw new com.voltcanary.vcl.VclException(
+            "TARGET_INVALID",
+            ""
+        );
+        return descriptions.describe(
+            users.resolve(headers),
+            id,
+            schemaRevision == null ? 0 : schemaRevision
+        );
     }
 
     @GetMapping("/{id}/capabilities")
-    public DatasetDescriptions.Capabilities capabilities(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
-            jakarta.servlet.http.HttpServletResponse response) {
+    public DatasetDescriptions.Capabilities capabilities(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID id,
+        jakarta.servlet.http.HttpServletResponse response
+    ) {
         response.setHeader("Cache-Control", "no-store");
         return descriptions.capabilities(users.resolve(headers), id);
     }
@@ -40,7 +54,9 @@ public class DatasetsController {
     }
 
     @GetMapping("/archived")
-    public java.util.List<com.voltcanary.device.configurable.port.NativeDatasetCatalog.ArchivedTable> archived(@RequestHeader HttpHeaders headers) {
+    public java.util.List<com.voltcanary.device.configurable.port.NativeDatasetCatalog.ArchivedTable> archived(
+        @RequestHeader HttpHeaders headers
+    ) {
         return descriptions.archived(users.resolve(headers));
     }
 }

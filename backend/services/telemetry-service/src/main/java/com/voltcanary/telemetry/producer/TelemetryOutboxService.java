@@ -20,12 +20,41 @@ public class TelemetryOutboxService {
         enqueue(eventKey, topic, messageKey, payload, null);
     }
 
-    public void enqueue(String eventKey, String topic, String messageKey, Object payload, UUID readingId) {
+    public void enqueue(
+        String eventKey,
+        String topic,
+        String messageKey,
+        Object payload,
+        UUID readingId
+    ) {
         Instant now = Instant.now();
-        com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "telemetry_event_outbox",
-                java.util.List.of("id", "event_key", "topic", "message_key", "payload_json", "status", "attempts", "next_attempt_at", "created_at", "reading_id"), java.util.List.of("event_key"),
-                UUID.randomUUID(), eventKey, topic, messageKey, writeJson(payload), "PENDING", 0,
-                Timestamp.from(now), Timestamp.from(now), readingId);
+        com.voltcanary.common.web.JdbcInsertIfAbsent.insert(
+            jdbcTemplate,
+            "telemetry_event_outbox",
+            java.util.List.of(
+                "id",
+                "event_key",
+                "topic",
+                "message_key",
+                "payload_json",
+                "status",
+                "attempts",
+                "next_attempt_at",
+                "created_at",
+                "reading_id"
+            ),
+            java.util.List.of("event_key"),
+            UUID.randomUUID(),
+            eventKey,
+            topic,
+            messageKey,
+            writeJson(payload),
+            "PENDING",
+            0,
+            Timestamp.from(now),
+            Timestamp.from(now),
+            readingId
+        );
     }
 
     private String writeJson(Object payload) {

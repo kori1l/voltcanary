@@ -16,12 +16,16 @@ import org.springframework.web.server.ResponseStatusException;
 /** Machine-only grant inspection; the owner renews scope and grant state before returning. */
 @RestController
 public final class VclWorkerGrantController {
+
     private final AutomationGrantReviews grants;
     private final EvidencePolicyReviews policies;
     private final VclWorkerAssertion verifier;
 
-    public VclWorkerGrantController(AutomationGrantReviews grants, EvidencePolicyReviews policies,
-            VclWorkerIdentityProperties identity) {
+    public VclWorkerGrantController(
+        AutomationGrantReviews grants,
+        EvidencePolicyReviews policies,
+        VclWorkerIdentityProperties identity
+    ) {
         this.grants = grants;
         this.policies = policies;
         verifier = identity.forAudience("alert-service");
@@ -29,31 +33,49 @@ public final class VclWorkerGrantController {
 
     @GetMapping("/internal/vcl/evidence-policies/{id}")
     public EvidencePolicyReviews.PolicyView policy(
-            @RequestHeader(value = "X-VCL-Worker-Assertion", required = false) String assertion,
-            @PathVariable UUID id, @RequestParam long revision) {
+        @RequestHeader(value = "X-VCL-Worker-Assertion", required = false) String assertion,
+        @PathVariable UUID id,
+        @RequestParam long revision
+    ) {
         if (verifier == null || revision != 1) throw denied();
         var path = "/internal/vcl/evidence-policies/" + id + "?revision=" + revision;
         VclWorkerAssertion.Scope scope;
         try {
-            scope = verifier.verify(assertion, "EVIDENCE_POLICY", id,
-                    VclWorkerAssertion.requestDigest("GET", path, new byte[0]));
-        } catch (IllegalArgumentException invalid) { throw denied(); }
+            scope = verifier.verify(
+                assertion,
+                "EVIDENCE_POLICY",
+                id,
+                VclWorkerAssertion.requestDigest("GET", path, new byte[0])
+            );
+        } catch (IllegalArgumentException invalid) {
+            throw denied();
+        }
         return policies.machinePolicy(scope, id);
     }
 
     @GetMapping("/internal/vcl/grants/{id}")
     public AutomationGrantReviews.GrantView grant(
-            @RequestHeader(value = "X-VCL-Worker-Assertion", required = false) String assertion,
-            @PathVariable UUID id, @RequestParam long grantEpoch) {
+        @RequestHeader(value = "X-VCL-Worker-Assertion", required = false) String assertion,
+        @PathVariable UUID id,
+        @RequestParam long grantEpoch
+    ) {
         if (verifier == null) throw denied();
         var path = "/internal/vcl/grants/" + id + "?grantEpoch=" + grantEpoch;
         VclWorkerAssertion.Scope scope;
         try {
-            scope = verifier.verify(assertion, "GRANT_DESCRIPTION", id,
-                    VclWorkerAssertion.requestDigest("GET", path, new byte[0]));
-        } catch (IllegalArgumentException invalid) { throw denied(); }
+            scope = verifier.verify(
+                assertion,
+                "GRANT_DESCRIPTION",
+                id,
+                VclWorkerAssertion.requestDigest("GET", path, new byte[0])
+            );
+        } catch (IllegalArgumentException invalid) {
+            throw denied();
+        }
         return grants.machineGrant(scope, grantEpoch);
     }
 
-    private static ResponseStatusException denied() { return new ResponseStatusException(HttpStatus.UNAUTHORIZED); }
+    private static ResponseStatusException denied() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+    }
 }

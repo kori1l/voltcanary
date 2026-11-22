@@ -1,14 +1,14 @@
 package com.voltcanary.device.event;
 
-import java.util.Collections;
-import java.util.concurrent.TimeUnit;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.lang.management.ManagementFactory;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -19,7 +19,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
-@ConditionalOnProperty(name = "app.kafka.publish-enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+    name = "app.kafka.publish-enabled",
+    havingValue = "true",
+    matchIfMissing = true
+)
 @Slf4j
 public class DeviceOutboxPublisher {
 
@@ -32,13 +36,15 @@ public class DeviceOutboxPublisher {
     private final TransactionTemplate transactionTemplate;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final MeterRegistry meterRegistry;
-    private final String publisherId = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
+    private final String publisherId =
+        ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
 
     public DeviceOutboxPublisher(
-            JdbcTemplate jdbcTemplate,
-            TransactionTemplate transactionTemplate,
-            @Qualifier("deviceStringKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
-            MeterRegistry meterRegistry) {
+        JdbcTemplate jdbcTemplate,
+        TransactionTemplate transactionTemplate,
+        @Qualifier("deviceStringKafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
+        MeterRegistry meterRegistry
+    ) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionTemplate = transactionTemplate;
         this.kafkaTemplate = kafkaTemplate;
@@ -50,17 +56,21 @@ public class DeviceOutboxPublisher {
         for (OutboxMessage event : claimPending()) {
             if (!renewClaim(event)) continue;
             try {
-                kafkaTemplate.send(event.topic(), event.messageKey(), event.payloadJson()).get(30, TimeUnit.SECONDS);
+                kafkaTemplate
+                    .send(event.topic(), event.messageKey(), event.payloadJson())
+                    .get(30, TimeUnit.SECONDS);
                 markPublished(event);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 markFailed(event, interrupted);
                 return;
             } catch (Exception exception) {
-                log.warn("deviceOutboxPublishFailed outboxId={} topic={} reasonCode={}",
-                        event.id(),
-                        event.topic(),
-                        exception.getClass().getSimpleName());
+                log.warn(
+                    "deviceOutboxPublishFailed outboxId={} topic={} reasonCode={}",
+                    event.id(),
+                    event.topic(),
+                    exception.getClass().getSimpleName()
+                );
                 markFailed(event, exception);
             }
         }
@@ -80,80 +90,112 @@ public class DeviceOutboxPublisher {
     }
 
     private List<UUID> claimIds(Instant now, Instant staleBefore) {
-        String sql = """
-                select id
-                from device_event_outbox
-                where (
-                    status = 'PENDING'
-                    and (next_attempt_at is null or next_attempt_at <= ?)
-                ) or (
-                    status = 'PROCESSING'
-                    and locked_at < ?
-                )
-                order by created_at asc
-                limit ?
-                """ + " for update skip locked";
+        String sql =
+            """
+            select id
+            from device_event_outbox
+            where (
+                status = 'PENDING'
+                and (next_attempt_at is null or next_attempt_at <= ?)
+            ) or (
+                status = 'PROCESSING'
+                and locked_at < ?
+            )
+            order by created_at asc
+            limit ?
+            """ + " for update skip locked";
         return jdbcTemplate.query(
-                sql,
-                (rs, rowNum) -> rs.getObject("id", UUID.class),
-                Timestamp.from(now),
-                Timestamp.from(staleBefore),
-                BATCH_SIZE);
+            sql,
+            (rs, rowNum) -> rs.getObject("id", UUID.class),
+            Timestamp.from(now),
+            Timestamp.from(staleBefore),
+            BATCH_SIZE
+        );
     }
 
     private void updateClaim(List<UUID> ids, Instant now) {
-        jdbcTemplate.update("""
-                update device_event_outbox
-                set status = 'PROCESSING',
-                    locked_at = ?,
-                    locked_by = ?,
-                    attempts = attempts + 1,
-                    last_error = null
-                where id in (%s)
-                """.formatted(placeholders(ids.size())),
-                parameters(ids, Timestamp.from(now), publisherId));
+        jdbcTemplate.update(
+            """
+            update device_event_outbox
+            set status = 'PROCESSING',
+                locked_at = ?,
+                locked_by = ?,
+                attempts = attempts + 1,
+                last_error = null
+            where id in (%s)
+            """.formatted(placeholders(ids.size())),
+            parameters(ids, Timestamp.from(now), publisherId)
+        );
     }
 
     private List<OutboxMessage> loadMessages(List<UUID> ids) {
-        return jdbcTemplate.query("""
-                select id, topic, message_key, payload_json, attempts
-                from device_event_outbox
-                where id in (%s)
-                order by created_at asc
-                """.formatted(placeholders(ids.size())),
-                (rs, rowNum) -> new OutboxMessage(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("topic"),
-                        rs.getString("message_key"),
-                        rs.getString("payload_json"),
-                        rs.getInt("attempts")),
-                ids.toArray());
+        return jdbcTemplate.query(
+            """
+            select id, topic, message_key, payload_json, attempts
+            from device_event_outbox
+            where id in (%s)
+            order by created_at asc
+            """.formatted(placeholders(ids.size())),
+            (rs, rowNum) ->
+                new OutboxMessage(
+                    rs.getObject("id", UUID.class),
+                    rs.getString("topic"),
+                    rs.getString("message_key"),
+                    rs.getString("payload_json"),
+                    rs.getInt("attempts")
+                ),
+            ids.toArray()
+        );
     }
 
     private boolean renewClaim(OutboxMessage event) {
-        return Boolean.TRUE.equals(transactionTemplate.execute(status -> jdbcTemplate.update("""
-                update device_event_outbox set locked_at = ?
-                where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
-                """, Timestamp.from(Instant.now()), event.id(), publisherId, event.attempts()) == 1));
+        return Boolean.TRUE.equals(
+            transactionTemplate.execute(
+                status ->
+                    jdbcTemplate.update(
+                        """
+                        update device_event_outbox set locked_at = ?
+                        where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
+                        """,
+                        Timestamp.from(Instant.now()),
+                        event.id(),
+                        publisherId,
+                        event.attempts()
+                    ) == 1
+            )
+        );
     }
 
     private void markPublished(OutboxMessage event) {
-        Integer updated = transactionTemplate.execute(status -> jdbcTemplate.update("""
+        Integer updated = transactionTemplate.execute(status ->
+            jdbcTemplate.update(
+                """
                 update device_event_outbox
                 set status = 'PUBLISHED', published_at = ?, locked_at = null, locked_by = null, last_error = null
                 where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
-                """, Timestamp.from(Instant.now()), event.id(), publisherId, event.attempts()));
+                """,
+                Timestamp.from(Instant.now()),
+                event.id(),
+                publisherId,
+                event.attempts()
+            )
+        );
         if (Integer.valueOf(1).equals(updated)) {
-            meterRegistry.counter("device.events.published", "topic", event.topic(), "status", "published").increment();
+            meterRegistry
+                .counter("device.events.published", "topic", event.topic(), "status", "published")
+                .increment();
         }
     }
 
     private void markFailed(OutboxMessage event, Exception exception) {
         String nextStatus = event.attempts() >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
-        Instant nextAttemptAt = event.attempts() >= MAX_ATTEMPTS
+        Instant nextAttemptAt =
+            event.attempts() >= MAX_ATTEMPTS
                 ? null
                 : Instant.now().plus(RETRY_DELAY.multipliedBy(event.attempts()));
-        Integer updated = transactionTemplate.execute(status -> jdbcTemplate.update("""
+        Integer updated = transactionTemplate.execute(status ->
+            jdbcTemplate.update(
+                """
                 update device_event_outbox
                 set status = ?,
                     next_attempt_at = ?,
@@ -165,8 +207,14 @@ public class DeviceOutboxPublisher {
                 nextStatus,
                 nextAttemptAt == null ? null : Timestamp.from(nextAttemptAt),
                 message(exception),
-                event.id(), publisherId, event.attempts()));
-        if (Integer.valueOf(1).equals(updated)) meterRegistry.counter("device.events.published", "topic", event.topic(), "status", "failed").increment();
+                event.id(),
+                publisherId,
+                event.attempts()
+            )
+        );
+        if (Integer.valueOf(1).equals(updated)) meterRegistry
+            .counter("device.events.published", "topic", event.topic(), "status", "failed")
+            .increment();
     }
 
     private String placeholders(int size) {
@@ -191,10 +239,10 @@ public class DeviceOutboxPublisher {
     }
 
     private record OutboxMessage(
-            UUID id,
-            String topic,
-            String messageKey,
-            String payloadJson,
-            int attempts) {
-    }
+        UUID id,
+        String topic,
+        String messageKey,
+        String payloadJson,
+        int attempts
+    ) {}
 }

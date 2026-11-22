@@ -16,11 +16,15 @@ class DigitalPetriModbusTcpClientOperations implements ModbusTcpClientOperations
 
     @Override
     public List<ModbusReadResult> read(ModbusTcpAdapterConfig config) {
-        NettyTcpClientTransport transport = NettyTcpClientTransport.create(builder -> builder
+        NettyTcpClientTransport transport = NettyTcpClientTransport.create(builder ->
+            builder
                 .setHostname(config.host())
                 .setPort(config.port())
-                .setConnectTimeout(config.timeout()));
-        ModbusTcpClient client = ModbusTcpClient.create(transport, builder -> builder.setRequestTimeout(config.timeout()));
+                .setConnectTimeout(config.timeout())
+        );
+        ModbusTcpClient client = ModbusTcpClient.create(transport, builder ->
+            builder.setRequestTimeout(config.timeout())
+        );
         try (var ignored = client.open()) {
             List<ModbusReadResult> results = new ArrayList<>();
             for (ModbusReadRequest request : config.readRequests()) {
@@ -30,21 +34,35 @@ class DigitalPetriModbusTcpClientOperations implements ModbusTcpClientOperations
         } catch (ModbusTimeoutException exception) {
             throw new IllegalStateException("Modbus TCP operation timed out", exception);
         } catch (ModbusResponseException exception) {
-            throw new IllegalStateException("Modbus TCP endpoint returned an error response", exception);
+            throw new IllegalStateException(
+                "Modbus TCP endpoint returned an error response",
+                exception
+            );
         } catch (ModbusExecutionException exception) {
             throw new IllegalStateException("Modbus TCP connection or operation failed", exception);
         }
     }
 
     private ModbusReadResult read(ModbusTcpClient client, int unitId, ModbusReadRequest request)
-            throws ModbusExecutionException, ModbusResponseException, ModbusTimeoutException {
+        throws ModbusExecutionException, ModbusResponseException, ModbusTimeoutException
+    {
         int[] registers = switch (request.function()) {
-            case HOLDING_REGISTER -> toRegisters(client.readHoldingRegisters(
-                    unitId,
-                    new ReadHoldingRegistersRequest(request.address(), request.quantity())).registers());
-            case INPUT_REGISTER -> toRegisters(client.readInputRegisters(
-                    unitId,
-                    new ReadInputRegistersRequest(request.address(), request.quantity())).registers());
+            case HOLDING_REGISTER -> toRegisters(
+                client
+                    .readHoldingRegisters(
+                        unitId,
+                        new ReadHoldingRegistersRequest(request.address(), request.quantity())
+                    )
+                    .registers()
+            );
+            case INPUT_REGISTER -> toRegisters(
+                client
+                    .readInputRegisters(
+                        unitId,
+                        new ReadInputRegistersRequest(request.address(), request.quantity())
+                    )
+                    .registers()
+            );
         };
         return new ModbusReadResult(request, registers);
     }
@@ -55,7 +73,9 @@ class DigitalPetriModbusTcpClientOperations implements ModbusTcpClientOperations
         }
         int[] registers = new int[bytes.length / 2];
         for (int index = 0; index < registers.length; index++) {
-            registers[index] = Byte.toUnsignedInt(bytes[index * 2]) << 8 | Byte.toUnsignedInt(bytes[index * 2 + 1]);
+            registers[index] =
+                (Byte.toUnsignedInt(bytes[index * 2]) << 8) |
+                Byte.toUnsignedInt(bytes[index * 2 + 1]);
         }
         return registers;
     }

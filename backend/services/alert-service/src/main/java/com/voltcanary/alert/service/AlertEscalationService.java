@@ -14,24 +14,35 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertEscalationService {
+
     private static final String LOCK_NAME = "alert.escalation-scan";
     private static final Duration LOCK_LEASE = Duration.ofMinutes(5);
     private final AlertEscalationProperties properties;
     private final SchedulerLockService schedulerLockService;
     private final AlertEscalationWrites writes;
 
-    @Scheduled(initialDelayString = "${app.alert.escalation.initial-delay-ms:60000}",
-            fixedDelayString = "${app.alert.escalation.scan-interval-ms:60000}")
+    @Scheduled(
+        initialDelayString = "${app.alert.escalation.initial-delay-ms:60000}",
+        fixedDelayString = "${app.alert.escalation.scan-interval-ms:60000}"
+    )
     public void scheduledEscalationScan() {
         if (!properties.isEnabled()) return;
         try {
             if (!schedulerLockService.acquire(LOCK_NAME, LOCK_LEASE)) return;
-            try { escalateDueAlerts(Instant.now()); }
-            finally { schedulerLockService.release(LOCK_NAME); }
+            try {
+                escalateDueAlerts(Instant.now());
+            } finally {
+                schedulerLockService.release(LOCK_NAME);
+            }
         } catch (DataAccessException exception) {
-            log.warn("alertEscalationScanFailed reasonCode={}", exception.getClass().getSimpleName());
+            log.warn(
+                "alertEscalationScanFailed reasonCode={}",
+                exception.getClass().getSimpleName()
+            );
         }
     }
 
-    public int escalateDueAlerts(Instant now) { return writes.escalateDueAlerts(now); }
+    public int escalateDueAlerts(Instant now) {
+        return writes.escalateDueAlerts(now);
+    }
 }

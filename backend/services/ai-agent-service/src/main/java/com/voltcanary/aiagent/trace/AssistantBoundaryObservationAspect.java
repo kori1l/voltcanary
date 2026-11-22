@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class AssistantBoundaryObservationAspect {
+
     private static final String NAME = "voltcanary.assistant.boundary";
     private final ObservationRegistry observations;
 
@@ -24,8 +25,10 @@ public class AssistantBoundaryObservationAspect {
         Observation observation = Observation.NOOP;
         Observation.Scope scope = Observation.Scope.NOOP;
         try {
-            observation = Observation.createNotStarted(NAME, observations)
-                    .lowCardinalityKeyValue("operation", boundary.operation().name());
+            observation = Observation.createNotStarted(NAME, observations).lowCardinalityKeyValue(
+                "operation",
+                boundary.operation().name()
+            );
             observation.start();
             scope = observation.openScope();
         } catch (RuntimeException ignored) {

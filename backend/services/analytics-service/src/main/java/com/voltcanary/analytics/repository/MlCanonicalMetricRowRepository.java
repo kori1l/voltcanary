@@ -6,5 +6,9 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MlCanonicalMetricRowRepository extends JpaRepository<MlCanonicalMetricRow, UUID> {
+    List<MlCanonicalMetricRow> findByDatasetVersionIdOrderByTimestampAsc(
+        UUID datasetVersionId,
+        org.springframework.data.domain.Pageable page
+    );
     List<MlCanonicalMetricRow> findByDatasetVersionIdOrderByTimestampAsc(UUID datasetVersionId);
 }

@@ -1,5 +1,11 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.ingestion.adapter.api.AdapterType;
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.TransportType;
@@ -13,9 +19,9 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -24,23 +30,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.server.ResponseStatusException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.publish-enabled=false",
-                "app.idempotency.redis-enabled=false",
-                "app.ingestion.redis-rate-limit-enabled=false",
-                "app.ingestion.multi-replica-mode=false",
-                "app.ingestion.local-correctness-state-enabled=true",
-                "spring.kafka.bootstrap-servers=localhost:19092"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.publish-enabled=false",
+        "app.idempotency.redis-enabled=false",
+        "app.ingestion.redis-rate-limit-enabled=false",
+        "app.ingestion.multi-replica-mode=false",
+        "app.ingestion.local-correctness-state-enabled=true",
+        "spring.kafka.bootstrap-servers=localhost:19092",
+    }
+)
 class HttpAdapterRouteTest {
 
     @Autowired
@@ -54,14 +55,14 @@ class HttpAdapterRouteTest {
         UUID eventId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
         Instant timestamp = Instant.now().minusSeconds(30);
-        when(pipeline.ingest(any()))
-                .thenReturn(new IngestionResult(true, eventId, "accepted"));
+        when(pipeline.ingest(any())).thenReturn(new IngestionResult(true, eventId, "accepted"));
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/ingestion/readings",
-                HttpMethod.POST,
-                new HttpEntity<>(request(deviceId, "plug-001", timestamp), headers()),
-                String.class);
+            "/ingestion/readings",
+            HttpMethod.POST,
+            new HttpEntity<>(request(deviceId, "plug-001", timestamp), headers()),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).contains(eventId.toString());
@@ -74,14 +75,16 @@ class HttpAdapterRouteTest {
     void importReadingSetsCanonicalImportMode() {
         UUID deviceId = UUID.randomUUID();
         Instant timestamp = Instant.now().minusSeconds(7_200);
-        when(pipeline.ingest(any()))
-                .thenReturn(new IngestionResult(true, UUID.randomUUID(), "accepted"));
+        when(pipeline.ingest(any())).thenReturn(
+            new IngestionResult(true, UUID.randomUUID(), "accepted")
+        );
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/ingestion/imports/readings",
-                HttpMethod.POST,
-                new HttpEntity<>(request(deviceId, "plug-001", timestamp), headers()),
-                String.class);
+            "/ingestion/imports/readings",
+            HttpMethod.POST,
+            new HttpEntity<>(request(deviceId, "plug-001", timestamp), headers()),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         IncomingTelemetryMessage message = capturedMessages(1).getFirst();
@@ -95,18 +98,24 @@ class HttpAdapterRouteTest {
         Instant firstTimestamp = Instant.now().minusSeconds(30);
         Instant secondTimestamp = Instant.now().minusSeconds(31);
         when(pipeline.ingest(any()))
-                .thenReturn(new IngestionResult(true, UUID.randomUUID(), "accepted"))
-                .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "bad metric"));
+            .thenReturn(new IngestionResult(true, UUID.randomUUID(), "accepted"))
+            .thenThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "bad metric"));
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/ingestion/readings/batch",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("readings", List.of(
-                                request(deviceId, "plug-001", firstTimestamp),
-                                request(deviceId, "plug-001", secondTimestamp))),
-                        headers()),
-                String.class);
+            "/ingestion/readings/batch",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "readings",
+                    List.of(
+                        request(deviceId, "plug-001", firstTimestamp),
+                        request(deviceId, "plug-001", secondTimestamp)
+                    )
+                ),
+                headers()
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(response.getBody()).contains("\"status\":\"partial\"");
@@ -119,16 +128,19 @@ class HttpAdapterRouteTest {
     }
 
     private List<IncomingTelemetryMessage> capturedMessages(int expectedCount) {
-        ArgumentCaptor<IncomingTelemetryMessage> captor = ArgumentCaptor.forClass(IncomingTelemetryMessage.class);
+        ArgumentCaptor<IncomingTelemetryMessage> captor = ArgumentCaptor.forClass(
+            IncomingTelemetryMessage.class
+        );
         verify(pipeline, times(expectedCount)).ingest(captor.capture());
         return captor.getAllValues();
     }
 
     private void assertCanonicalHttpMessage(
-            IncomingTelemetryMessage message,
-            UUID deviceId,
-            String sourceId,
-            Instant timestamp) {
+        IncomingTelemetryMessage message,
+        UUID deviceId,
+        String sourceId,
+        Instant timestamp
+    ) {
         assertThat(message.sourceId()).isEqualTo(sourceId);
         assertThat(message.deviceId()).isEqualTo(deviceId);
         assertThat(message.occurredAt()).isEqualTo(timestamp);
@@ -152,9 +164,14 @@ class HttpAdapterRouteTest {
 
     private Map<String, Object> request(UUID deviceId, String sourceId, Instant timestamp) {
         return Map.of(
-                "deviceId", deviceId,
-                "sourceId", sourceId,
-                "timestamp", timestamp.toString(),
-                "metrics", Map.of("activePowerW", 840.2, "voltageV", 230.1));
+            "deviceId",
+            deviceId,
+            "sourceId",
+            sourceId,
+            "timestamp",
+            timestamp.toString(),
+            "metrics",
+            Map.of("activePowerW", 840.2, "voltageV", 230.1)
+        );
     }
 }

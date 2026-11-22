@@ -11,9 +11,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 /** Bounded preparation of pending evaluator ACKs under machine authority. */
 @Slf4j
 final class WorkerEvaluatorReadiness {
+
     private static final int PAGE_SIZE = 8;
     private final WorkerStartCheckpoints checkpoints;
-    private final VclCompiler compiler = new VclCompiler(new VclRegistry(new VclParser()), VclUnits.standard());
+    private final VclCompiler compiler = new VclCompiler(
+        new VclRegistry(new VclParser()),
+        VclUnits.standard()
+    );
     private int offset;
 
     WorkerEvaluatorReadiness(WorkerStartCheckpoints checkpoints) {

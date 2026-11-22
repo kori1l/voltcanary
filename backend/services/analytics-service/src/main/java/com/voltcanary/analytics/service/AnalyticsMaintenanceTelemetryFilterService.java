@@ -15,22 +15,37 @@ public class AnalyticsMaintenanceTelemetryFilterService {
     private final MeterRegistry meterRegistry;
 
     public TelemetryChartResponse filterChart(
-            TelemetryChartResponse chart,
-            List<MaintenanceWindowReadModel> analyticsExclusions) {
-        if (chart == null || chart.points() == null || chart.points().isEmpty() || analyticsExclusions.isEmpty()) {
+        TelemetryChartResponse chart,
+        List<MaintenanceWindowReadModel> analyticsExclusions
+    ) {
+        if (
+            chart == null ||
+            chart.points() == null ||
+            chart.points().isEmpty() ||
+            analyticsExclusions.isEmpty()
+        ) {
             return chart;
         }
         return new TelemetryChartResponse(
-                chart.deviceId(),
-                chart.metric(),
-                chart.points().stream()
-                        .filter(point -> !isInsideAny(point.timestamp(), analyticsExclusions))
-                        .toList());
+            chart.deviceId(),
+            chart.metric(),
+            chart
+                .points()
+                .stream()
+                .filter(point -> !isInsideAny(point.timestamp(), analyticsExclusions))
+                .toList()
+        );
     }
 
-    public int excludedSampleCount(TelemetryChartResponse rawChart, TelemetryChartResponse filteredChart) {
+    public int excludedSampleCount(
+        TelemetryChartResponse rawChart,
+        TelemetryChartResponse filteredChart
+    ) {
         int raw = rawChart == null || rawChart.points() == null ? 0 : rawChart.points().size();
-        int filtered = filteredChart == null || filteredChart.points() == null ? 0 : filteredChart.points().size();
+        int filtered =
+            filteredChart == null || filteredChart.points() == null
+                ? 0
+                : filteredChart.points().size();
         int excluded = raw - filtered;
         if (excluded > 0) {
             meterRegistry.counter("analytics.maintenance.samples_excluded").increment(excluded);
@@ -39,7 +54,12 @@ public class AnalyticsMaintenanceTelemetryFilterService {
     }
 
     private boolean isInsideAny(Instant timestamp, List<MaintenanceWindowReadModel> windows) {
-        return windows.stream().anyMatch(window ->
-                !timestamp.isBefore(window.getStartAt()) && timestamp.isBefore(window.getEndAt()));
+        return windows
+            .stream()
+            .anyMatch(
+                window ->
+                    !timestamp.isBefore(window.getStartAt()) &&
+                    timestamp.isBefore(window.getEndAt())
+            );
     }
 }

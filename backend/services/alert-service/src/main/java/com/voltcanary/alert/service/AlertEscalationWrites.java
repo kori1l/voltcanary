@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertEscalationWrites {
+
     private static final String ESCALATED = "ESCALATED";
     private final jakarta.persistence.EntityManager entityManager;
     private final AlertRepository alertRepository;
@@ -47,17 +48,27 @@ public class AlertEscalationWrites {
         }
         Instant effectiveNow = now == null ? Instant.now() : now;
         int escalated = 0;
-        escalated += escalateSeverity(AlertSeverity.WARNING, properties.getWarningAfter(), effectiveNow);
+        escalated += escalateSeverity(
+            AlertSeverity.WARNING,
+            properties.getWarningAfter(),
+            effectiveNow
+        );
         escalated += escalateSeverity(AlertSeverity.HIGH, properties.getHighAfter(), effectiveNow);
-        escalated += escalateSeverity(AlertSeverity.CRITICAL, properties.getCriticalAfter(), effectiveNow);
+        escalated += escalateSeverity(
+            AlertSeverity.CRITICAL,
+            properties.getCriticalAfter(),
+            effectiveNow
+        );
         return escalated;
     }
 
     private int escalateSeverity(AlertSeverity severity, Duration threshold, Instant now) {
-        List<Alert> candidates = alertRepository.findByStatusAndSeverityAndCreatedAtBeforeOrderByCreatedAtAsc(
+        List<Alert> candidates =
+            alertRepository.findByStatusAndSeverityAndCreatedAtBeforeOrderByCreatedAtAsc(
                 AlertStatus.OPEN,
                 severity,
-                now.minus(threshold));
+                now.minus(threshold)
+            );
         int escalated = 0;
         for (Alert candidate : candidates) {
             Alert alert = alertRepository.lockById(candidate.getId()).orElse(null);
@@ -71,27 +82,40 @@ public class AlertEscalationWrites {
             if (alertEventId.isEmpty()) {
                 continue;
             }
-            alertNotificationPort.alertEscalated(AlertNotificationRequest.fromAlert(
+            alertNotificationPort.alertEscalated(
+                AlertNotificationRequest.fromAlert(
                     alert,
                     alertEventId.get(),
                     "ALERT_ESCALATED",
-                    now));
-            meterRegistry.counter(
+                    now
+                )
+            );
+            meterRegistry
+                .counter(
                     "alert.escalations",
-                    "severity", severity.name(),
-                    "alertType", safeTag(alert.getAlertType())).increment();
+                    "severity",
+                    severity.name(),
+                    "alertType",
+                    safeTag(alert.getAlertType())
+                )
+                .increment();
             log.info(
-                    "alertEscalated alertId={} deviceId={} severity={} ageSeconds={}",
-                    alert.getId(),
-                    alert.getDeviceId(),
-                    severity,
-                    Duration.between(alert.getCreatedAt(), now).toSeconds());
+                "alertEscalated alertId={} deviceId={} severity={} ageSeconds={}",
+                alert.getId(),
+                alert.getDeviceId(),
+                severity,
+                Duration.between(alert.getCreatedAt(), now).toSeconds()
+            );
             escalated++;
         }
         return escalated;
     }
 
-    private java.util.Optional<UUID> saveEscalationEvent(Alert alert, Duration threshold, Instant now) {
+    private java.util.Optional<UUID> saveEscalationEvent(
+        Alert alert,
+        Duration threshold,
+        Instant now
+    ) {
         UUID eventId = UUID.randomUUID();
         AlertEvent event = new AlertEvent();
         event.setId(eventId);
@@ -105,7 +129,12 @@ public class AlertEscalationWrites {
         return java.util.Optional.of(eventId);
     }
 
-    private Map<String, Object> escalationPayload(UUID eventId, Alert alert, Duration threshold, Instant now) {
+    private Map<String, Object> escalationPayload(
+        UUID eventId,
+        Alert alert,
+        Duration threshold,
+        Instant now
+    ) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("deviceId", alert.getDeviceId());
         context.put("sourceEventId", alert.getSourceEventId());

@@ -14,7 +14,18 @@ dependencies = [
   "scikit-learn==1.7.1",
   "joblib==1.5.2",
   "boto3==1.43.62",
+  "psycopg[binary]==3.3.9",
 ]
 
 [tool.uvicorn]
 factory = false
+
+[project.optional-dependencies]
+dev = ["ruff==0.17.6"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

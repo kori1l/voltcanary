@@ -17,15 +17,17 @@ public class AnomalyDetectedConsumer {
     private final AnalyticsAlertEventHandler eventHandler;
 
     @KafkaListener(
-            topics = "anomaly.detected.v1",
-            groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "anomalyDetectedKafkaListenerContainerFactory")
+        topics = "anomaly.detected.v1",
+        groupId = "${spring.kafka.consumer.group-id}",
+        containerFactory = "anomalyDetectedKafkaListenerContainerFactory"
+    )
     public void consume(AnomalyDetectedEvent event) {
         boolean processed = eventHandler.handleAnomaly(event);
         log.info(
-                "anomalyDetectedConsumed eventId={} deviceId={} processed={}",
-                event.eventId(),
-                event.deviceId(),
-                processed);
+            "anomalyDetectedConsumed eventId={} deviceId={} processed={}",
+            event.eventId(),
+            event.deviceId(),
+            processed
+        );
     }
 }

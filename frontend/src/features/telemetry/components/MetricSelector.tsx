@@ -20,12 +20,20 @@ export function MetricSelector({
   onClear: () => void;
 }) {
   const query = search.trim().toLowerCase();
-  const filtered = metrics.filter((metric) => !query || metric.key.toLowerCase().includes(query) || metric.name.toLowerCase().includes(query));
+  const filtered = metrics.filter(
+    (metric) =>
+      !query ||
+      metric.key.toLowerCase().includes(query) ||
+      metric.name.toLowerCase().includes(query),
+  );
 
   return (
     <details className="metric-selector">
       <summary>
-        Metrics <strong>{metrics.filter((metric) => selectedMetricKeys.includes(metric.key)).length} shown</strong>
+        Metrics{" "}
+        <strong>
+          {metrics.filter((metric) => selectedMetricKeys.includes(metric.key)).length} shown
+        </strong>
       </summary>
       <div className="metric-selector-panel">
         <div className="chart-settings-actions">
@@ -51,7 +59,11 @@ export function MetricSelector({
           {!filtered.length ? <p>No metrics match this search.</p> : null}
           {filtered.map((metric) => (
             <label className="chart-metric-toggle" key={metric.key}>
-              <input type="checkbox" checked={selectedMetricKeys.includes(metric.key)} onChange={() => onToggleMetric(metric.key)} />
+              <input
+                type="checkbox"
+                checked={selectedMetricKeys.includes(metric.key)}
+                onChange={() => onToggleMetric(metric.key)}
+              />
               <span>{metric.name}</span>
             </label>
           ))}

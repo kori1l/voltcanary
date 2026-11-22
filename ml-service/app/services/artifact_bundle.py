@@ -1,24 +1,21 @@
-from app.services.artifact_names import relative_artifact_path
 import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.services.artifact_names import relative_artifact_path
+
 BundleFilePayload = dict[str, Any] | bytes
 
 
 class ArtifactBundleProvider(Protocol):
-    def load_json(self, artifact_uri: str) -> dict[str, Any]:
-        ...
+    def load_json(self, artifact_uri: str) -> dict[str, Any]: ...
 
-    def load_bytes(self, artifact_uri: str) -> bytes:
-        ...
+    def load_bytes(self, artifact_uri: str) -> bytes: ...
 
-    def artifact_dir(self, manifest_uri: str) -> str:
-        ...
+    def artifact_dir(self, manifest_uri: str) -> str: ...
 
-    def child_uri(self, artifact_dir: str, relative_path: str) -> str:
-        ...
+    def child_uri(self, artifact_dir: str, relative_path: str) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -107,7 +104,9 @@ class ArtifactBundleVerifier:
     def __init__(self, provider: ArtifactBundleProvider) -> None:
         self.provider = provider
 
-    def load_model_bundle(self, manifest_uri: str, expected_hash: str | None = None) -> dict[str, Any]:
+    def load_model_bundle(
+        self, manifest_uri: str, expected_hash: str | None = None
+    ) -> dict[str, Any]:
         manifest = self.provider.load_json(manifest_uri)
         if expected_hash and manifest.get("artifactHash") != expected_hash:
             raise ValueError("model artifact hash verification failed")
@@ -116,7 +115,11 @@ class ArtifactBundleVerifier:
         for entry in manifest.get("files", []):
             relative_path = relative_artifact_path(entry["path"])
             uri = self.provider.child_uri(artifact_dir, relative_path)
-            payload = self.provider.load_json(uri) if relative_path.endswith(".json") else self.provider.load_bytes(uri)
+            payload = (
+                self.provider.load_json(uri)
+                if relative_path.endswith(".json")
+                else self.provider.load_bytes(uri)
+            )
             serialized = json_bytes(payload) if isinstance(payload, dict) else payload
             if entry.get("sha256") != sha256_bytes(serialized):
                 raise ValueError(f"model artifact file hash verification failed: {relative_path}")

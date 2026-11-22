@@ -19,12 +19,40 @@ public class ConnectorHealthManager {
         update(sourceId, ConnectorRuntimeState.RUNNING, 0, now, null, null, "running");
     }
 
-    public void degraded(String sourceId, int failures, Instant lastFailureAt, Instant nextAttemptAt, String message) {
-        update(sourceId, ConnectorRuntimeState.DEGRADED, failures, null, lastFailureAt, nextAttemptAt, message);
+    public void degraded(
+        String sourceId,
+        int failures,
+        Instant lastFailureAt,
+        Instant nextAttemptAt,
+        String message
+    ) {
+        update(
+            sourceId,
+            ConnectorRuntimeState.DEGRADED,
+            failures,
+            null,
+            lastFailureAt,
+            nextAttemptAt,
+            message
+        );
     }
 
-    public void failed(String sourceId, int failures, Instant lastFailureAt, Instant nextAttemptAt, String message) {
-        update(sourceId, ConnectorRuntimeState.FAILED, failures, null, lastFailureAt, nextAttemptAt, message);
+    public void failed(
+        String sourceId,
+        int failures,
+        Instant lastFailureAt,
+        Instant nextAttemptAt,
+        String message
+    ) {
+        update(
+            sourceId,
+            ConnectorRuntimeState.FAILED,
+            failures,
+            null,
+            lastFailureAt,
+            nextAttemptAt,
+            message
+        );
     }
 
     public void leaseLost(String sourceId, Instant now) {
@@ -44,20 +72,28 @@ public class ConnectorHealthManager {
     }
 
     private void update(
-            String sourceId,
-            ConnectorRuntimeState state,
-            int failures,
-            Instant lastSuccessAt,
-            Instant lastFailureAt,
-            Instant nextAttemptAt,
-            String message) {
-        snapshots.compute(sourceId, (ignored, previous) -> new ConnectorHealthSnapshot(
+        String sourceId,
+        ConnectorRuntimeState state,
+        int failures,
+        Instant lastSuccessAt,
+        Instant lastFailureAt,
+        Instant nextAttemptAt,
+        String message
+    ) {
+        snapshots.compute(sourceId, (ignored, previous) ->
+            new ConnectorHealthSnapshot(
                 sourceId,
                 state,
                 failures,
-                lastSuccessAt == null && previous != null ? previous.lastSuccessAt() : lastSuccessAt,
-                lastFailureAt == null && previous != null ? previous.lastFailureAt() : lastFailureAt,
+                lastSuccessAt == null && previous != null
+                    ? previous.lastSuccessAt()
+                    : lastSuccessAt,
+                lastFailureAt == null && previous != null
+                    ? previous.lastFailureAt()
+                    : lastFailureAt,
                 nextAttemptAt,
-                message));
+                message
+            )
+        );
     }
 }

@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DashboardPreviewController {
-    public record Request(DashboardDefinition definition) { }
+
+    public record Request(DashboardDefinition definition) {}
+
     private final DashboardOwnership ownership;
     private final DefinitionValidation validation;
     private final TemplateDefinitionChecks checks;
@@ -28,15 +30,21 @@ public class DashboardPreviewController {
     private final ObjectMapper mapper;
 
     @PostMapping("/dashboards/preview/query")
-    public QueryTypes.Batch preview(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody JsonNode body, jakarta.servlet.http.HttpServletResponse response) {
+    public QueryTypes.Batch preview(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody JsonNode body,
+        jakarta.servlet.http.HttpServletResponse response
+    ) {
         response.setHeader("Cache-Control", "no-store");
         var actor = ownership.resolveReadOnly(authorization);
         validation.validatePayload(body);
         Request request;
         try {
-            request = mapper.readerFor(Request.class).with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                    .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT).readValue(body);
+            request = mapper
+                .readerFor(Request.class)
+                .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .without(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+                .readValue(body);
         } catch (java.io.IOException invalid) {
             throw new DashboardFailure("VALIDATION_ERROR", "Unsupported preview fields");
         }

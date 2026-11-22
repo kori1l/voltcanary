@@ -4,5 +4,5 @@ public enum DeviceStatus {
     ACTIVE,
     DISABLED,
     OFFLINE,
-    DECOMMISSIONED
+    DECOMMISSIONED,
 }

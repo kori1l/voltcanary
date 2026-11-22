@@ -6,6 +6,7 @@ import org.springframework.web.client.RestClient;
 
 @Configuration
 public class RestClientConfig {
+
     @Bean
     RestClient.Builder restClientBuilder() {
         return com.voltcanary.common.web.JacksonRestClients.builder();

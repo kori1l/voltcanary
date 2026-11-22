@@ -10,5 +10,5 @@ public enum AiModelProviderType {
     XAI,
     GROQ,
     OPENROUTER,
-    OLLAMA_LOCAL
+    OLLAMA_LOCAL,
 }

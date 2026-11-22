@@ -23,19 +23,21 @@ public class AnalyticsAlertEventHandler {
 
     public boolean handleAnomaly(AnomalyDetectedEvent event) {
         AlertAnalyticsEventInboxEntry entry = inboxService.recordReceived(
-                ANOMALY_TOPIC,
-                event.eventId(),
-                ANOMALY_EVENT_TYPE,
-                event);
+            ANOMALY_TOPIC,
+            event.eventId(),
+            ANOMALY_EVENT_TYPE,
+            event
+        );
         return entry != null && replayAnomaly(entry.getId(), event);
     }
 
     public boolean handleRiskScoreChanged(RiskScoreChangedEvent event) {
         AlertAnalyticsEventInboxEntry entry = inboxService.recordReceived(
-                RISK_TOPIC,
-                event.eventId(),
-                RISK_EVENT_TYPE,
-                event);
+            RISK_TOPIC,
+            event.eventId(),
+            RISK_EVENT_TYPE,
+            event
+        );
         return entry != null && replayRiskScoreChanged(entry.getId(), event);
     }
 
@@ -43,8 +45,13 @@ public class AnalyticsAlertEventHandler {
         var claim = inboxService.markProcessing(inboxEntryId);
         if (claim == null) return false;
         try {
-            Alert alert = variableAdmission.accepts(event) ? alertService.handleAnomaly(event) : null;
-            boolean firstProcessing = processedEventService.markIfNew(ANOMALY_TOPIC, event.eventId());
+            Alert alert = variableAdmission.accepts(event)
+                ? alertService.handleAnomaly(event)
+                : null;
+            boolean firstProcessing = processedEventService.markIfNew(
+                ANOMALY_TOPIC,
+                event.eventId()
+            );
             return inboxService.markProcessed(claim, alert) && firstProcessing;
         } catch (RuntimeException exception) {
             inboxService.markFailed(claim, exception);
@@ -52,7 +59,10 @@ public class AnalyticsAlertEventHandler {
         }
     }
 
-    public boolean replayRiskScoreChanged(java.util.UUID inboxEntryId, RiskScoreChangedEvent event) {
+    public boolean replayRiskScoreChanged(
+        java.util.UUID inboxEntryId,
+        RiskScoreChangedEvent event
+    ) {
         var claim = inboxService.markProcessing(inboxEntryId);
         if (claim == null) return false;
         try {

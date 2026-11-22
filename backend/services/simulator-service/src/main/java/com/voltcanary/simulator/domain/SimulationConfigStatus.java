@@ -4,5 +4,5 @@ public enum SimulationConfigStatus {
     DRAFT,
     ACTIVE,
     INVALID,
-    DISABLED
+    DISABLED,
 }

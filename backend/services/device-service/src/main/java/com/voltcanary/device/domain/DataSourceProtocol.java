@@ -9,5 +9,5 @@ public enum DataSourceProtocol {
     OPC_UA,
     WEBHOOK,
     HOME_ASSISTANT,
-    VENDOR_API
+    VENDOR_API,
 }

@@ -8,5 +8,5 @@ public enum ProtocolType {
     HTTP,
     MODBUS_TCP,
     OPC_UA,
-    CUSTOM
+    CUSTOM,
 }

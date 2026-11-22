@@ -1,11 +1,11 @@
 package com.voltcanary.telemetry.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class TelemetryIngestionRateLimiterTest {
 
@@ -13,7 +13,10 @@ class TelemetryIngestionRateLimiterTest {
     void limitsEventsPerDeviceWithinMinuteWindow() {
         TelemetryValidationProperties properties = new TelemetryValidationProperties();
         properties.setMaxEventsPerDevicePerMinute(2);
-        TelemetryIngestionRateLimiter limiter = new TelemetryIngestionRateLimiter(properties, Optional.empty());
+        TelemetryIngestionRateLimiter limiter = new TelemetryIngestionRateLimiter(
+            properties,
+            Optional.empty()
+        );
         UUID deviceId = UUID.randomUUID();
 
         assertThat(limiter.allow(deviceId)).isTrue();

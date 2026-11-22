@@ -17,21 +17,41 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequiredArgsConstructor
 public class VehicleFleetController {
+
     private final PositionReads reads;
     private final PositionSourceAccess sources;
 
-    public record Request(List<VehiclePositionTargets.Target> targets, Instant asOf) { }
+    public record Request(List<VehiclePositionTargets.Target> targets, Instant asOf) {}
 
     @PostMapping("/telemetry/vehicles/positions")
-    public List<PositionEvidence.Latest> latest(@RequestBody Request request,
-            @RequestHeader(value = "X-User-Id", required = false) String user,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlation) {
-        if (request.targets() == null || request.targets().isEmpty() || request.targets().size() > 100
-                || request.targets().stream().anyMatch(target -> target == null || target.deviceId() == null || target.sourceId() == null)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fleet requires 1–100 bound targets");
+    public List<PositionEvidence.Latest> latest(
+        @RequestBody Request request,
+        @RequestHeader(value = "X-User-Id", required = false) String user,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlation
+    ) {
+        if (
+            request.targets() == null ||
+            request.targets().isEmpty() ||
+            request.targets().size() > 100 ||
+            request
+                .targets()
+                .stream()
+                .anyMatch(
+                    target ->
+                        target == null || target.deviceId() == null || target.sourceId() == null
+                )
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Fleet requires 1–100 bound targets"
+            );
         }
         sources.requireFleet(user, request.targets());
         Instant asOf = request.asOf() == null ? Instant.now() : request.asOf();
-        return request.targets().stream().map(target -> reads.latest(target.deviceId(), target.sourceId(), asOf)).toList();
+        return request
+            .targets()
+            .stream()
+            .map(target -> reads.latest(target.deviceId(), target.sourceId(), asOf))
+            .toList();
     }
 }

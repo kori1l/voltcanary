@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MaintenanceWindowProjectionService {
+
     private final DeviceHistoryDeletion deletions;
 
     private static final String SOURCE_TOPIC = "maintenance-window.changed.v1";
@@ -22,9 +23,11 @@ public class MaintenanceWindowProjectionService {
     private final MeterRegistry meterRegistry;
 
     public MaintenanceWindowProjectionService(
-            ProcessedEventService processedEventService,
-            MaintenanceWindowReadModelRepository repository,
-            MeterRegistry meterRegistry, DeviceHistoryDeletion deletions) {
+        ProcessedEventService processedEventService,
+        MaintenanceWindowReadModelRepository repository,
+        MeterRegistry meterRegistry,
+        DeviceHistoryDeletion deletions
+    ) {
         this.deletions = deletions;
         this.processedEventService = processedEventService;
         this.repository = repository;
@@ -37,10 +40,13 @@ public class MaintenanceWindowProjectionService {
         if (!processedEventService.markIfNew(SOURCE_TOPIC, event.eventId())) {
             return false;
         }
-        MaintenanceWindowReadModel entity = repository.findById(event.maintenanceWindowId())
-                .orElseGet(MaintenanceWindowReadModel::new);
+        MaintenanceWindowReadModel entity = repository
+            .findById(event.maintenanceWindowId())
+            .orElseGet(MaintenanceWindowReadModel::new);
         if (entity.getMaintenanceWindowId() != null && entity.getVersion() >= event.version()) {
-            meterRegistry.counter("analytics.maintenance.events_projected", "status", "stale").increment();
+            meterRegistry
+                .counter("analytics.maintenance.events_projected", "status", "stale")
+                .increment();
             return true;
         }
         entity.setMaintenanceWindowId(event.maintenanceWindowId());
@@ -56,17 +62,22 @@ public class MaintenanceWindowProjectionService {
         entity.setVersion(event.version());
         entity.setUpdatedAt(event.occurredAt() == null ? Instant.now() : event.occurredAt());
         repository.save(entity);
-        meterRegistry.counter("analytics.maintenance.events_projected", "status", "applied").increment();
+        meterRegistry
+            .counter("analytics.maintenance.events_projected", "status", "applied")
+            .increment();
         return true;
     }
 
     @Transactional
     public boolean upsertSnapshot(MaintenanceWindowSnapshot snapshot) {
         if (!deletions.writable(snapshot.deviceId())) return false;
-        MaintenanceWindowReadModel entity = repository.findById(snapshot.id())
-                .orElseGet(MaintenanceWindowReadModel::new);
+        MaintenanceWindowReadModel entity = repository
+            .findById(snapshot.id())
+            .orElseGet(MaintenanceWindowReadModel::new);
         if (entity.getMaintenanceWindowId() != null && entity.getVersion() >= snapshot.version()) {
-            meterRegistry.counter("analytics.maintenance.reconciliation.projected", "status", "stale").increment();
+            meterRegistry
+                .counter("analytics.maintenance.reconciliation.projected", "status", "stale")
+                .increment();
             return false;
         }
         entity.setMaintenanceWindowId(snapshot.id());
@@ -82,18 +93,26 @@ public class MaintenanceWindowProjectionService {
         entity.setVersion(snapshot.version());
         entity.setUpdatedAt(snapshot.updatedAt() == null ? Instant.now() : snapshot.updatedAt());
         repository.save(entity);
-        meterRegistry.counter("analytics.maintenance.reconciliation.projected", "status", "applied").increment();
+        meterRegistry
+            .counter("analytics.maintenance.reconciliation.projected", "status", "applied")
+            .increment();
         return true;
     }
 
     @Transactional(readOnly = true)
-    public List<MaintenanceWindowReadModel> activeOverlapping(UUID deviceId, Instant from, Instant to) {
+    public List<MaintenanceWindowReadModel> activeOverlapping(
+        UUID deviceId,
+        Instant from,
+        Instant to
+    ) {
         return repository.findActiveOverlapping(deviceId, from, to);
     }
 
     @Transactional(readOnly = true)
     public boolean excludesAnalyticsAt(UUID deviceId, Instant timestamp) {
-        return repository.findActiveOverlapping(deviceId, timestamp, timestamp.plusMillis(1)).stream()
-                .anyMatch(MaintenanceWindowReadModel::isExcludeFromAnalytics);
+        return repository
+            .findActiveOverlapping(deviceId, timestamp, timestamp.plusMillis(1))
+            .stream()
+            .anyMatch(MaintenanceWindowReadModel::isExcludeFromAnalytics);
     }
 }

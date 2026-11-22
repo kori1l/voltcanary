@@ -3,7 +3,12 @@ from typing import Any
 
 import joblib
 
-from app.models.failure_target import EXCLUDED_OUTCOMES, NEGATIVE_OUTCOMES, POSITIVE_OUTCOMES, FailureTargetSample
+from app.models.failure_target import (
+    EXCLUDED_OUTCOMES,
+    NEGATIVE_OUTCOMES,
+    POSITIVE_OUTCOMES,
+    FailureTargetSample,
+)
 
 
 class FailurePredictionModel:
@@ -18,7 +23,9 @@ class FailurePredictionModel:
         resolved_algorithm = algorithm or self.LOGISTIC_REGRESSION_ALGORITHM
         if resolved_algorithm not in self.SUPPORTED_ALGORITHMS:
             supported = ", ".join(sorted(self.SUPPORTED_ALGORITHMS))
-            raise ValueError(f"Unsupported FAILURE_PREDICTION algorithm: {resolved_algorithm}. Supported: {supported}")
+            raise ValueError(
+                f"Unsupported FAILURE_PREDICTION algorithm: {resolved_algorithm}. Supported: {supported}"
+            )
         self.algorithm = resolved_algorithm
         self.pipeline: Any | None = None
         self.feature_columns: list[str] = []
@@ -32,19 +39,25 @@ class FailurePredictionModel:
         positives = sum(1 for sample in usable if sample.target == 1)
         negatives = sum(1 for sample in usable if sample.target == 0)
         if positives < 1:
-            raise ValueError("FAILURE_PREDICTION training requires at least one positive failure label")
+            raise ValueError(
+                "FAILURE_PREDICTION training requires at least one positive failure label"
+            )
         if negatives < 1:
-            raise ValueError("FAILURE_PREDICTION training requires at least one negative non-failure label")
+            raise ValueError(
+                "FAILURE_PREDICTION training requires at least one negative non-failure label"
+            )
 
         from sklearn.feature_extraction import DictVectorizer
         from sklearn.pipeline import Pipeline
 
         x = [sample.features for sample in usable]
         y = [int(sample.target) for sample in usable]
-        self.pipeline = Pipeline([
-            ("vectorizer", DictVectorizer(sparse=False, sort=True)),
-            *self._estimator_steps(),
-        ])
+        self.pipeline = Pipeline(
+            [
+                ("vectorizer", DictVectorizer(sparse=False, sort=True)),
+                *self._estimator_steps(),
+            ]
+        )
         self.pipeline.fit(x, y)
         vectorizer = self.pipeline.named_steps["vectorizer"]
         self.feature_columns = list(vectorizer.feature_names_)
@@ -81,7 +94,9 @@ class FailurePredictionModel:
                     "direction": self._driver_direction(contribution),
                 }
             )
-        return sorted(drivers, key=lambda item: abs(float(item["contribution"])), reverse=True)[:limit]
+        return sorted(drivers, key=lambda item: abs(float(item["contribution"])), reverse=True)[
+            :limit
+        ]
 
     def serialized_pipeline(self) -> bytes:
         if self.pipeline is None:
@@ -124,7 +139,9 @@ class FailurePredictionModel:
             "targetContract": self.target_contract_payload(),
         }
 
-    def preprocessor_payload(self, dataset_version_id: str, feature_schema_hash: str) -> dict[str, Any]:
+    def preprocessor_payload(
+        self, dataset_version_id: str, feature_schema_hash: str
+    ) -> dict[str, Any]:
         return {
             "artifactContractVersion": self.artifact_contract_version,
             "preprocessorType": "dict-vectorizer-standard-scaler-v1",

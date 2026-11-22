@@ -11,12 +11,6 @@ import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.DeviceTypeRepository;
 import com.voltcanary.device.repository.LocationRepository;
 import com.voltcanary.device.repository.MaintenanceWindowRepository;
-
-import lombok.RequiredArgsConstructor;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,10 +21,14 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class MaintenanceOperationViews {
+
     private final MaintenanceWindowRepository windows;
     private final DeviceRepository devices;
     private final DeviceTypeRepository types;
@@ -38,39 +36,40 @@ public class MaintenanceOperationViews {
 
     @Transactional(readOnly = true)
     public Map<UUID, List<MaintenanceOperationDeviceResponse>> devices(
-            Collection<MaintenanceOperation> operations) {
+        Collection<MaintenanceOperation> operations
+    ) {
         if (operations.isEmpty()) return Map.of();
-        var allWindows =
-                windows.findByOperationIdInOrderByStartAtAsc(
-                        operations.stream().map(MaintenanceOperation::getId).toList());
-        var deviceMap =
-                devices
-                        .findAllById(
-                                allWindows.stream()
-                                        .map(window -> window.getDeviceId())
-                                        .distinct()
-                                        .toList())
-                        .stream()
-                        .collect(Collectors.toMap(Device::getId, Function.identity()));
-        var typeMap =
-                types
-                        .findAllById(
-                                deviceMap.values().stream()
-                                        .map(Device::getDeviceTypeId)
-                                        .distinct()
-                                        .toList())
-                        .stream()
-                        .collect(Collectors.toMap(DeviceType::getId, Function.identity()));
-        var locationMap =
-                locations
-                        .findAllById(
-                                deviceMap.values().stream()
-                                        .map(Device::getLocationId)
-                                        .filter(Objects::nonNull)
-                                        .distinct()
-                                        .toList())
-                        .stream()
-                        .collect(Collectors.toMap(Location::getId, Function.identity()));
+        var allWindows = windows.findByOperationIdInOrderByStartAtAsc(
+            operations.stream().map(MaintenanceOperation::getId).toList()
+        );
+        var deviceMap = devices
+            .findAllById(
+                allWindows
+                    .stream()
+                    .map(window -> window.getDeviceId())
+                    .distinct()
+                    .toList()
+            )
+            .stream()
+            .collect(Collectors.toMap(Device::getId, Function.identity()));
+        var typeMap = types
+            .findAllById(
+                deviceMap.values().stream().map(Device::getDeviceTypeId).distinct().toList()
+            )
+            .stream()
+            .collect(Collectors.toMap(DeviceType::getId, Function.identity()));
+        var locationMap = locations
+            .findAllById(
+                deviceMap
+                    .values()
+                    .stream()
+                    .map(Device::getLocationId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList()
+            )
+            .stream()
+            .collect(Collectors.toMap(Location::getId, Function.identity()));
         Map<UUID, List<MaintenanceOperationDeviceResponse>> result = new HashMap<>();
         Instant now = Instant.now();
         for (var window : allWindows) {
@@ -79,20 +78,22 @@ public class MaintenanceOperationViews {
             var type = typeMap.get(device.getDeviceTypeId());
             var location = locationMap.get(device.getLocationId());
             String status =
-                    window.getCancelledAt() != null
-                            ? "CANCELLED"
-                            : now.isBefore(window.getStartAt())
-                                    ? "SCHEDULED"
-                                    : now.isBefore(window.getEndAt()) ? "ACTIVE" : "FINISHED";
-            var row =
-                    new MaintenanceOperationDeviceResponse(
-                            device.getId(),
-                            device.getName(),
-                            type == null ? null : type.getCode(),
-                            device.getLocationId(),
-                            location == null ? null : location.getName(),
-                            window.getId(),
-                            status);
+                window.getCancelledAt() != null
+                    ? "CANCELLED"
+                    : now.isBefore(window.getStartAt())
+                      ? "SCHEDULED"
+                      : now.isBefore(window.getEndAt())
+                        ? "ACTIVE"
+                        : "FINISHED";
+            var row = new MaintenanceOperationDeviceResponse(
+                device.getId(),
+                device.getName(),
+                type == null ? null : type.getCode(),
+                device.getLocationId(),
+                location == null ? null : location.getName(),
+                window.getId(),
+                status
+            );
             result.computeIfAbsent(window.getOperationId(), key -> new ArrayList<>()).add(row);
         }
         return result;
@@ -101,29 +102,34 @@ public class MaintenanceOperationViews {
     @Transactional(readOnly = true)
     public MaintenanceOperationResponse toResponse(MaintenanceOperation operation) {
         return toResponse(
-                operation, devices(List.of(operation)).getOrDefault(operation.getId(), List.of()));
+            operation,
+            devices(List.of(operation)).getOrDefault(operation.getId(), List.of())
+        );
     }
 
     public MaintenanceOperationResponse toResponse(
-            MaintenanceOperation operation, List<MaintenanceOperationDeviceResponse> devices) {
+        MaintenanceOperation operation,
+        List<MaintenanceOperationDeviceResponse> devices
+    ) {
         return new MaintenanceOperationResponse(
-                operation.getId(),
-                operation.getAccountId(),
-                operation.getTitle(),
-                operation.getDescription(),
-                operation.getStartAt(),
-                operation.getEndAt(),
-                MaintenanceValues.status(operation, Instant.now()),
-                operation.isSuppressAlerts(),
-                operation.isExcludeFromAnalytics(),
-                operation.isExcludeFromMl(),
-                operation.getCancelledAt(),
-                operation.getCancellationReason(),
-                devices,
-                operation.getCreatedBy(),
-                operation.getUpdatedBy(),
-                operation.getCreatedAt(),
-                operation.getUpdatedAt(),
-                operation.getVersion());
+            operation.getId(),
+            operation.getAccountId(),
+            operation.getTitle(),
+            operation.getDescription(),
+            operation.getStartAt(),
+            operation.getEndAt(),
+            MaintenanceValues.status(operation, Instant.now()),
+            operation.isSuppressAlerts(),
+            operation.isExcludeFromAnalytics(),
+            operation.isExcludeFromMl(),
+            operation.getCancelledAt(),
+            operation.getCancellationReason(),
+            devices,
+            operation.getCreatedBy(),
+            operation.getUpdatedBy(),
+            operation.getCreatedAt(),
+            operation.getUpdatedAt(),
+            operation.getVersion()
+        );
     }
 }

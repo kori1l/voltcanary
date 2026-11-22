@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class ConfigurableRuleReservations {
+
     private final RuleAccountAuthority access;
     private final RuleReservationStore store;
 
@@ -22,6 +23,10 @@ public class ConfigurableRuleReservations {
     }
 
     public RuleReservation inspect(String actorId, UUID reviewId) {
-        return store.inspect(access.account(UUID.fromString(actorId)), UUID.fromString(actorId), reviewId);
+        return store.inspect(
+            access.account(UUID.fromString(actorId)),
+            UUID.fromString(actorId),
+            reviewId
+        );
     }
 }

@@ -7,19 +7,39 @@ import java.util.regex.Pattern;
 
 /** Device choices are separate from dashboard review memory. */
 final class DeviceTaskContext {
-    private static final Pattern NAME = Pattern.compile("(?imu)^\\s*(?:название|имя|назови|name(?: it)?|named|call it)\\s*[:=]?\\s+([^\\r\\n]{1,255})$");
-    private static final Pattern QUOTED = Pattern.compile("(?iu)(?:устройств\\p{L}*|автобус|device|vehicle)\\s*(?:с\\s+(?:именем|названием)\\s*)?[«\"]([^»\"]{1,255})[»\"]");
 
-    private DeviceTaskContext() { }
+    private static final Pattern NAME = Pattern.compile(
+        "(?imu)^\\s*(?:название|имя|назови|name(?: it)?|named|call it)\\s*[:=]?\\s+([^\\r\\n]{1,255})$"
+    );
+    private static final Pattern QUOTED = Pattern.compile(
+        "(?iu)(?:устройств\\p{L}*|автобус|device|vehicle)\\s*(?:с\\s+(?:именем|названием)\\s*)?[«\"]([^»\"]{1,255})[»\"]"
+    );
+
+    private DeviceTaskContext() {}
 
     static boolean requested(String message) {
-        var request = Pattern.compile("(?iu)(?:созда[йт]|добав[ьи]|create|add)([^.!?\\r\\n]{0,80}?)(устройств\\p{L}*|автобус|холодильник|датчик|device|vehicle|bus|fridge|sensor|дашборд|dashboard|панель|источник|source|правил\\p{L}*|rule|симулятор|simulator|конфигурац\\p{L}*|config)").matcher(message);
-        if (!request.find() || request.group(2).matches("(?iu)дашборд|dashboard|панель|источник|source|правил\\p{L}*|rule|симулятор|simulator|конфигурац\\p{L}*|config")) return false;
-        if (request.group(1).matches("(?isu).*(demo|демо|simulat|симулир).*" )
-                || message.matches("(?isu).*(с\\s+симулятором|with\\s+(?:a\\s+)?simulator).*")) return false;
+        var request = Pattern.compile(
+            "(?iu)(?:созда[йт]|добав[ьи]|create|add)([^.!?\\r\\n]{0,80}?)(устройств\\p{L}*|автобус|холодильник|датчик|device|vehicle|bus|fridge|sensor|дашборд|dashboard|панель|источник|source|правил\\p{L}*|rule|симулятор|simulator|конфигурац\\p{L}*|config)"
+        ).matcher(message);
+        if (
+            !request.find() ||
+            request
+                .group(2)
+                .matches(
+                    "(?iu)дашборд|dashboard|панель|источник|source|правил\\p{L}*|rule|симулятор|simulator|конфигурац\\p{L}*|config"
+                )
+        ) return false;
+        if (
+            request.group(1).matches("(?isu).*(demo|демо|simulat|симулир).*") ||
+            message.matches("(?isu).*(с\\s+симулятором|with\\s+(?:a\\s+)?simulator).*")
+        ) return false;
         // In 'create for this bus a dashboard', the bus is a referent, not the object being created.
-        boolean referencedDevice = request.group(1).matches("(?isu).*(?<!\\p{L})(?:для|for)\\s+[^.!?]*");
-        boolean dashboardFollows = message.substring(request.end()).matches("(?isu)^[^.!?\\r\\n]*(?<!\\p{L})(?:дашборд|dashboard|панель).*?");
+        boolean referencedDevice = request
+            .group(1)
+            .matches("(?isu).*(?<!\\p{L})(?:для|for)\\s+[^.!?]*");
+        boolean dashboardFollows = message
+            .substring(request.end())
+            .matches("(?isu)^[^.!?\\r\\n]*(?<!\\p{L})(?:дашборд|dashboard|панель).*?");
         return !(referencedDevice && dashboardFollows);
     }
 
@@ -32,24 +52,43 @@ final class DeviceTaskContext {
             latest = String.valueOf(answers.getLast());
         }
         String name = explicitName(latest);
-        if (name == null && input.get("priorAssistantQuestion") instanceof String question
-                && ("name".equals(input.get("devicePendingField"))
-                    || question.matches("(?isu).*(как назвать устройство|имя.*устройств|название.*устройств|device name|name.*device).*"))) {
+        if (
+            name == null &&
+            input.get("priorAssistantQuestion") instanceof String question &&
+            ("name".equals(input.get("devicePendingField")) ||
+                question.matches(
+                    "(?isu).*(как назвать устройство|имя.*устройств|название.*устройств|device name|name.*device).*"
+                ))
+        ) {
             String literal = unquote(latest);
-            if (!literal.isBlank() && literal.length() <= 255 && !literal.contains("\n")
-                    && !literal.matches("(?iu)да|нет|yes|no|ок|ok")) name = literal;
+            if (
+                !literal.isBlank() &&
+                literal.length() <= 255 &&
+                !literal.contains("\n") &&
+                !literal.matches("(?iu)да|нет|yes|no|ок|ok")
+            ) name = literal;
         }
         if (name != null) values.put("name", name);
-        var field = Pattern.compile("(?imu)^\\s*(тип(?: устройства)?|device type|type|производитель|manufacturer|модель|model)\\s*[:=]\\s*([^\\r\\n]{1,255})$").matcher(latest);
+        var field = Pattern.compile(
+            "(?imu)^\\s*(тип(?: устройства)?|device type|type|производитель|manufacturer|модель|model)\\s*[:=]\\s*([^\\r\\n]{1,255})$"
+        ).matcher(latest);
         while (field.find()) {
             String key = field.group(1).toLowerCase(java.util.Locale.ROOT);
-            key = key.matches("тип.*|device type|type") ? "type" : key.matches("производитель|manufacturer") ? "manufacturer" : "model";
+            key = key.matches("тип.*|device type|type")
+                ? "type"
+                : key.matches("производитель|manufacturer")
+                  ? "manufacturer"
+                  : "model";
             values.put(key, unquote(field.group(2)));
         }
-        if (input.get("priorAssistantQuestion") instanceof String question
-                && question.matches("(?isu).*(тип устройства|device type).*")) {
+        if (
+            input.get("priorAssistantQuestion") instanceof String question &&
+            question.matches("(?isu).*(тип устройства|device type).*")
+        ) {
             String literal = unquote(latest);
-            if (!literal.isBlank() && literal.length() <= 100 && !literal.contains("\n")) values.put("type", literal);
+            if (
+                !literal.isBlank() && literal.length() <= 100 && !literal.contains("\n")
+            ) values.put("type", literal);
         }
         return values;
     }

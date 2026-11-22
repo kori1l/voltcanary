@@ -11,6 +11,7 @@ import java.util.Map;
 
 /** Compatibility facade for existing plan endpoints, backed by the same Spring AI engine. */
 public abstract class SpringAiPlanAdapter implements AiModelAdapter {
+
     private final ObjectMapper mapper;
     private final JsonPlanParser parser;
 
@@ -21,8 +22,14 @@ public abstract class SpringAiPlanAdapter implements AiModelAdapter {
 
     @Override
     public TestModelProviderResponse test(AiResolvedModel model) {
-        return new TestModelProviderResponse("READY", "Spring AI provider is configured.",
-                model.provider().getProviderType().name(), model.modelConfig().getModelId(), 0, Instant.now());
+        return new TestModelProviderResponse(
+            "READY",
+            "Spring AI provider is configured.",
+            model.provider().getProviderType().name(),
+            model.modelConfig().getModelId(),
+            0,
+            Instant.now()
+        );
     }
 
     @Override
@@ -34,15 +41,40 @@ public abstract class SpringAiPlanAdapter implements AiModelAdapter {
         input.put("context", context);
         JsonNode schema = null;
         if (selected.modelConfig().isSupportsJson()) {
-            if (com.voltcanary.aiagent.service.DashboardOperationProtocol.VERSION.equals(context.get("dashboardPlanningProtocol")))
-                schema = mapper.valueToTree(com.voltcanary.aiagent.service.DashboardOperationSchema.response(context));
-            else if (context.containsKey("originalDeviceRequest") && !context.containsKey("dashboardWidgetTypes"))
-                schema = mapper.valueToTree(com.voltcanary.aiagent.service.DeviceCreationSchema.response(context));
+            if (
+                com.voltcanary.aiagent.service.DashboardOperationProtocol.VERSION.equals(
+                    context.get("dashboardPlanningProtocol")
+                )
+            ) schema = mapper.valueToTree(
+                com.voltcanary.aiagent.service.DashboardOperationSchema.response(context)
+            );
+            else if (
+                context.containsKey("originalDeviceRequest") &&
+                !context.containsKey("dashboardWidgetTypes")
+            ) schema = mapper.valueToTree(
+                com.voltcanary.aiagent.service.DeviceCreationSchema.response(context)
+            );
         }
-        long timeout = selected.modelConfig().getTimeoutMs() == null ? 30_000 : selected.modelConfig().getTimeoutMs();
-        var result = new SpringAiExchange(mapper).call(selected, request.systemPrompt(), mapper.writeValueAsString(input), schema, false, timeout);
-        if ("PROVIDER_RESPONSE_INCOMPLETE".equals(result.failure())) throw new IncompleteModelResponseException();
+        long timeout =
+            selected.modelConfig().getTimeoutMs() == null
+                ? 30_000
+                : selected.modelConfig().getTimeoutMs();
+        var result = new SpringAiExchange(mapper).call(
+            selected,
+            request.systemPrompt(),
+            mapper.writeValueAsString(input),
+            schema,
+            false,
+            timeout
+        );
+        if (
+            "PROVIDER_RESPONSE_INCOMPLETE".equals(result.failure())
+        ) throw new IncompleteModelResponseException();
         if (result.failure() != null) throw new IllegalArgumentException(result.failure());
-        return parser.parse(selected.provider().getProviderType().name(), selected.modelConfig().getModelId(), result.text());
+        return parser.parse(
+            selected.provider().getProviderType().name(),
+            selected.modelConfig().getModelId(),
+            result.text()
+        );
     }
 }

@@ -8,5 +8,5 @@ public enum MaintenanceOutcomeType {
     FALSE_POSITIVE,
     SENSOR_FAULT,
     UNRESOLVED_ANOMALY,
-    UNKNOWN
+    UNKNOWN,
 }

@@ -7,6 +7,7 @@ import java.util.Set;
 
 /** Additive display settings; resource authorization is independent of the grid. */
 final class ScreenGridValidation {
+
     private static final Set<String> BREAKPOINTS = Set.of("desktop", "tablet", "mobile");
     private static final Set<String> FIELDS = Set.of("columns", "rowHeight", "gap");
 
@@ -16,8 +17,13 @@ final class ScreenGridValidation {
         grid.fields().forEachRemaining(entry -> {
             require(BREAKPOINTS.contains(entry.getKey()), "Unknown grid breakpoint");
             JsonNode profile = entry.getValue();
-            require(profile.isObject() && profile.size() == 3, "Grid profile requires columns, rowHeight and gap");
-            profile.fieldNames().forEachRemaining(field -> require(FIELDS.contains(field), "Unknown grid setting"));
+            require(
+                profile.isObject() && profile.size() == 3,
+                "Grid profile requires columns, rowHeight and gap"
+            );
+            profile
+                .fieldNames()
+                .forEachRemaining(field -> require(FIELDS.contains(field), "Unknown grid setting"));
             bounded(profile.path("columns"), 1, 48, "columns");
             bounded(profile.path("rowHeight"), 16, 160, "rowHeight");
             bounded(profile.path("gap"), 0, 32, "gap");
@@ -35,13 +41,22 @@ final class ScreenGridValidation {
             case "desktop" -> 12;
             case "tablet" -> 8; // Retain accepted legacy tablet coordinates.
             case "mobile" -> 1;
-            default -> throw new DashboardFailure("VALIDATION_ERROR", "Unknown layout breakpoint", "layouts");
+            default -> throw new DashboardFailure(
+                "VALIDATION_ERROR",
+                "Unknown layout breakpoint",
+                "layouts"
+            );
         };
     }
 
     private void bounded(JsonNode value, int min, int max, String field) {
-        require(value.isIntegralNumber() && value.canConvertToInt()
-                && value.asInt() >= min && value.asInt() <= max, "Grid " + field + " exceeds integer bounds");
+        require(
+            value.isIntegralNumber() &&
+                value.canConvertToInt() &&
+                value.asInt() >= min &&
+                value.asInt() <= max,
+            "Grid " + field + " exceeds integer bounds"
+        );
     }
 
     private void require(boolean valid, String message) {

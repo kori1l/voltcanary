@@ -22,5 +22,4 @@ public class DeviceType {
 
     @Column(nullable = false)
     private String displayName;
-
 }

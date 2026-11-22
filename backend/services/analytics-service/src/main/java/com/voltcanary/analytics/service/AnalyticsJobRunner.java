@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class AnalyticsJobRunner {
+
     private final AnalyticsJobState state;
     private final AnalyticsRecalculationService recalculationService;
     private final MeterRegistry meterRegistry;
@@ -33,22 +34,45 @@ public class AnalyticsJobRunner {
         MDC.put("jobId", job.getId().toString());
         MDC.put("deviceId", job.getDeviceId().toString());
         try {
-            log.info("analyticsJobStarted jobId={} deviceId={} jobType={}", job.getId(), job.getDeviceId(), job.getJobType());
-            AnalyticsRecalculationService.RecalculationResult result = recalculationService.recalculate(job.getDeviceId(),
-                    job.getWindowEnd() == null ? Instant.now() : job.getWindowEnd(), job);
+            log.info(
+                "analyticsJobStarted jobId={} deviceId={} jobType={}",
+                job.getId(),
+                job.getDeviceId(),
+                job.getJobType()
+            );
+            AnalyticsRecalculationService.RecalculationResult result =
+                recalculationService.recalculate(
+                    job.getDeviceId(),
+                    job.getWindowEnd() == null ? Instant.now() : job.getWindowEnd(),
+                    job
+                );
             state.finish(job, result, null);
             String terminalStatus = result.skipped() ? "skipped" : "completed";
             meterRegistry.counter("analytics.jobs.completed", "status", terminalStatus).increment();
             timer.stop(meterRegistry.timer("analytics.jobs.duration", "status", terminalStatus));
-            log.info("analyticsJobCompleted jobId={} deviceId={} status={}", job.getId(), job.getDeviceId(), terminalStatus);
+            log.info(
+                "analyticsJobCompleted jobId={} deviceId={} status={}",
+                job.getId(),
+                job.getDeviceId(),
+                terminalStatus
+            );
         } catch (Exception exception) {
             log.warn(
-                    "analyticsJobFailed jobId={} deviceId={} reasonCode={}",
-                    job.getId(),
-                    job.getDeviceId(),
-                    exception.getClass().getSimpleName());
+                "analyticsJobFailed jobId={} deviceId={} reasonCode={}",
+                job.getId(),
+                job.getDeviceId(),
+                exception.getClass().getSimpleName()
+            );
             state.finish(job, null, message(exception));
-            meterRegistry.counter("analytics.jobs.completed", "status", "failed", "reason", exception.getClass().getSimpleName()).increment();
+            meterRegistry
+                .counter(
+                    "analytics.jobs.completed",
+                    "status",
+                    "failed",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
             timer.stop(meterRegistry.timer("analytics.jobs.duration", "status", "failed"));
         } finally {
             MDC.remove("jobId");

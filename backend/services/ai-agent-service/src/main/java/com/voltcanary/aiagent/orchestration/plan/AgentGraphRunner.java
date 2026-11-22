@@ -23,7 +23,8 @@ public interface AgentGraphRunner {
     }
 
     /** In-turn subgraphs have no independent resume/dispatch authority. Durable task claims live in the plan store. */
-    record Subgraph(String id, Graph graph, String next) { }
+    record Subgraph(String id, Graph graph, String next) {}
+
     record Graph(String entry, List<Node> nodes, List<Subgraph> subgraphs) {
         public Graph {
             nodes = List.copyOf(nodes);
@@ -39,8 +40,11 @@ public interface AgentGraphRunner {
     /** In-turn graphs cannot resume independently; their model attempts remain in the shared ledger. */
     static Persistence inTurn() {
         return new Persistence() {
-            public Optional<Checkpoint> load() { return Optional.empty(); }
-            public void save(Checkpoint checkpoint) { }
+            public Optional<Checkpoint> load() {
+                return Optional.empty();
+            }
+
+            public void save(Checkpoint checkpoint) {}
         };
     }
 
@@ -49,7 +53,9 @@ public interface AgentGraphRunner {
     void run(String entry, List<Node> nodes, String threadId, Persistence persistence);
 
     default void runTurn(Graph graph, String threadId) {
-        if (!graph.subgraphs().isEmpty()) throw new UnsupportedOperationException("SUBGRAPHS_UNAVAILABLE");
+        if (!graph.subgraphs().isEmpty()) throw new UnsupportedOperationException(
+            "SUBGRAPHS_UNAVAILABLE"
+        );
         run(graph.entry(), graph.nodes(), threadId, inTurn());
     }
 }

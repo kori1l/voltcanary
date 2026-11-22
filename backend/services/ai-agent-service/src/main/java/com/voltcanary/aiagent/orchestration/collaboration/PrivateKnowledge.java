@@ -1,8 +1,8 @@
 package com.voltcanary.aiagent.orchestration.collaboration;
 
 import com.voltcanary.aiagent.orchestration.plan.IntentPlans.Token;
-import java.util.HashMap;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +12,10 @@ import java.util.UUID;
 
 /** Application boundary for private knowledge. Ranking never returns document text. */
 public final class PrivateKnowledge {
+
     private static final int CHANNEL_LIMIT = 40;
     private static final int RANK_OFFSET = 60;
+
     public record Scope(UUID accountId, UUID principalId, Set<UUID> corpusIds) {
         public Scope {
             Objects.requireNonNull(accountId);
@@ -22,12 +24,13 @@ public final class PrivateKnowledge {
         }
     }
 
-    public record Hit(UUID corpusId, UUID sourceId, String sourceVersion, UUID chunkId) { }
+    public record Hit(UUID corpusId, UUID sourceId, String sourceVersion, UUID chunkId) {}
 
-    public record Evidence(Hit hit, String text) { }
+    public record Evidence(Hit hit, String text) {}
 
     /** Server-held search result. Only the ordered hit metadata is projected to a caller. */
     public static final class Selection {
+
         private final UUID planId;
         private final Scope scope;
         private final long requirementsRevision;
@@ -40,40 +43,69 @@ public final class PrivateKnowledge {
             this.hits = List.copyOf(hits);
         }
 
-        public List<Hit> hits() { return hits; }
+        public List<Hit> hits() {
+            return hits;
+        }
     }
 
-    public Selection select(CollaborationStore store, Token turn, long requirementsRevision,
-            Set<UUID> corpusRefs, java.util.function.Function<Scope, List<Hit>> search) {
+    public Selection select(
+        CollaborationStore store,
+        Token turn,
+        long requirementsRevision,
+        Set<UUID> corpusRefs,
+        java.util.function.Function<Scope, List<Hit>> search
+    ) {
         var scope = planScope(store, turn, requirementsRevision, corpusRefs);
         var hits = search.apply(scope);
         planScope(store, turn, requirementsRevision, corpusRefs);
         return new Selection(turn.planId(), scope, requirementsRevision, hits);
     }
 
-    public List<Evidence> resolve(CollaborationStore store, Token turn, Selection selection, List<Hit> requested) {
-        if (!selection.planId.equals(turn.planId())
-                || !selection.scope.accountId().equals(turn.owner().accountId())
-                || !selection.scope.principalId().equals(turn.owner().userId())
-                || !selection.hits.containsAll(requested)) {
+    public List<Evidence> resolve(
+        CollaborationStore store,
+        Token turn,
+        Selection selection,
+        List<Hit> requested
+    ) {
+        if (
+            !selection.planId.equals(turn.planId()) ||
+            !selection.scope.accountId().equals(turn.owner().accountId()) ||
+            !selection.scope.principalId().equals(turn.owner().userId()) ||
+            !selection.hits.containsAll(requested)
+        ) {
             throw Requirements.conflict("KNOWLEDGE_SELECTION_MISMATCH");
         }
-        return resolve(store, turn, selection.requirementsRevision, selection.scope.corpusIds(), requested);
+        return resolve(
+            store,
+            turn,
+            selection.requirementsRevision,
+            selection.scope.corpusIds(),
+            requested
+        );
     }
 
     /** Bind the requested subset to the current, owner-evidenced plan scope. */
-    public static Scope planScope(CollaborationStore store, Token turn,
-            long requirementsRevision, Set<UUID> requested) {
+    public static Scope planScope(
+        CollaborationStore store,
+        Token turn,
+        long requirementsRevision,
+        Set<UUID> requested
+    ) {
         var requirements = store.read(turn.owner(), turn.planId()).requirements();
         if (requirements.revision() != requirementsRevision) {
             throw Requirements.conflict("KNOWLEDGE_REQUIREMENTS_CHANGED");
         }
         var allowed = new java.util.HashSet<UUID>();
         for (var slot : requirements.slots().values()) {
-            if (!"/knowledge/corpusRefs".equals(slot.path()) || slot.origin() != Requirements.Origin.OWNER_EVIDENCE
-                    || slot.status() != Requirements.Status.CONFIRMED) continue;
+            if (
+                !"/knowledge/corpusRefs".equals(slot.path()) ||
+                slot.origin() != Requirements.Origin.OWNER_EVIDENCE ||
+                slot.status() != Requirements.Status.CONFIRMED
+            ) continue;
             var value = slot.value();
-            if (!value.isArray() || value.size() > 32) throw Requirements.invalid("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+            if (!value.isArray() || value.size() > 32) throw Requirements.invalid(
+                "INVALID_KNOWLEDGE_CORPUS_SCOPE"
+            );
             for (var item : value) {
                 try {
                     allowed.add(UUID.fromString(item.asText()));
@@ -92,7 +124,12 @@ public final class PrivateKnowledge {
     public interface CandidateIndex {
         List<Hit> searchIds(Scope scope, String query, int limit);
 
-        default List<Hit> searchVectorIds(Scope scope, UUID generationId, float[] embedding, int limit) {
+        default List<Hit> searchVectorIds(
+            Scope scope,
+            UUID generationId,
+            float[] embedding,
+            int limit
+        ) {
             throw new UnsupportedOperationException("KNOWLEDGE_VECTOR_UNAVAILABLE");
         }
     }
@@ -122,7 +159,9 @@ public final class PrivateKnowledge {
     }
 
     public Set<UUID> authorizeCorpora(Scope requested) {
-        if (requested.corpusIds().size() > 32) throw Requirements.invalid("INVALID_KNOWLEDGE_CORPUS_SCOPE");
+        if (requested.corpusIds().size() > 32) throw Requirements.invalid(
+            "INVALID_KNOWLEDGE_CORPUS_SCOPE"
+        );
         if (requested.corpusIds().isEmpty()) return Set.of();
         var authorized = Set.copyOf(access.authorizeCorpora(requested));
         if (!requested.corpusIds().containsAll(authorized)) {
@@ -140,22 +179,40 @@ public final class PrivateKnowledge {
     }
 
     /** The caller supplies an embedding from its reserved, generation-pinned exchange. */
-    public List<Hit> searchHybrid(Scope scope, String query, UUID generationId, float[] embedding, int limit) {
+    public List<Hit> searchHybrid(
+        Scope scope,
+        String query,
+        UUID generationId,
+        float[] embedding,
+        int limit
+    ) {
         if (query.isBlank() || limit < 1 || limit > 80) {
             throw Requirements.invalid("INVALID_KNOWLEDGE_SEARCH");
         }
         if (scope.corpusIds().isEmpty()) return List.of();
         var lexical = channel(index.searchIds(scope, query, CHANNEL_LIMIT));
         var vector = channel(index.searchVectorIds(scope, generationId, embedding, CHANNEL_LIMIT));
-        var allowed = Set.copyOf(authorized(scope, java.util.stream.Stream.concat(lexical.stream(), vector.stream())
-                .toList(), 2 * CHANNEL_LIMIT));
+        var allowed = Set.copyOf(
+            authorized(
+                scope,
+                java.util.stream.Stream.concat(lexical.stream(), vector.stream()).toList(),
+                2 * CHANNEL_LIMIT
+            )
+        );
         var scores = new LinkedHashMap<Hit, Double>();
         addRanks(scores, lexical, allowed);
         addRanks(scores, vector, allowed);
-        return scores.keySet().stream()
-                .sorted(Comparator.comparing((Hit hit) -> !exactIdentity(hit, query))
-                        .thenComparing(scores::get, Comparator.reverseOrder()))
-                .limit(limit).toList();
+        return scores
+            .keySet()
+            .stream()
+            .sorted(
+                Comparator.comparing((Hit hit) -> !exactIdentity(hit, query)).thenComparing(
+                    scores::get,
+                    Comparator.reverseOrder()
+                )
+            )
+            .limit(limit)
+            .toList();
     }
 
     private static boolean exactIdentity(Hit hit, String query) {
@@ -174,8 +231,13 @@ public final class PrivateKnowledge {
         }
     }
 
-    public List<Evidence> resolve(CollaborationStore store, Token turn, long requirementsRevision,
-            Set<UUID> corpusRefs, List<Hit> candidates) {
+    public List<Evidence> resolve(
+        CollaborationStore store,
+        Token turn,
+        long requirementsRevision,
+        Set<UUID> corpusRefs,
+        List<Hit> candidates
+    ) {
         var scope = planScope(store, turn, requirementsRevision, corpusRefs);
         var evidence = resolve(scope, candidates);
         planScope(store, turn, requirementsRevision, corpusRefs);
@@ -186,11 +248,22 @@ public final class PrivateKnowledge {
         verifyCurrent(store, turn, revision, hits, 8);
     }
 
-    public void verifyCandidates(CollaborationStore store, Token turn, long revision, List<Hit> hits) {
+    public void verifyCandidates(
+        CollaborationStore store,
+        Token turn,
+        long revision,
+        List<Hit> hits
+    ) {
         verifyCurrent(store, turn, revision, hits, CHANNEL_LIMIT);
     }
 
-    private void verifyCurrent(CollaborationStore store, Token turn, long revision, List<Hit> hits, int limit) {
+    private void verifyCurrent(
+        CollaborationStore store,
+        Token turn,
+        long revision,
+        List<Hit> hits,
+        int limit
+    ) {
         var corpora = hits.stream().map(Hit::corpusId).collect(java.util.stream.Collectors.toSet());
         var scope = planScope(store, turn, revision, corpora);
         if (!authorized(scope, hits, limit).containsAll(hits)) {
@@ -204,7 +277,10 @@ public final class PrivateKnowledge {
         var permitted = Set.copyOf(authorized);
         Map<Hit, Evidence> hydrated = new HashMap<>();
         for (var evidence : resolver.hydrate(scope, authorized)) {
-            if (!permitted.contains(evidence.hit()) || hydrated.putIfAbsent(evidence.hit(), evidence) != null) {
+            if (
+                !permitted.contains(evidence.hit()) ||
+                hydrated.putIfAbsent(evidence.hit(), evidence) != null
+            ) {
                 throw Requirements.conflict("KNOWLEDGE_EVIDENCE_MISMATCH");
             }
         }
@@ -214,7 +290,11 @@ public final class PrivateKnowledge {
 
     private List<Hit> authorized(Scope scope, List<Hit> candidates, int limit) {
         if (candidates.size() > limit) throw Requirements.invalid("KNOWLEDGE_CANDIDATE_LIMIT");
-        var scoped = candidates.stream().filter(hit -> scope.corpusIds().contains(hit.corpusId())).distinct().toList();
+        var scoped = candidates
+            .stream()
+            .filter(hit -> scope.corpusIds().contains(hit.corpusId()))
+            .distinct()
+            .toList();
         if (scoped.isEmpty()) return List.of();
         var allowed = access.authorizeCurrent(scope, scoped);
         return scoped.stream().filter(allowed::contains).toList();

@@ -20,15 +20,19 @@ public class TelemetryValidatedPublisher {
 
     public void publish(TelemetryValidatedEvent event, UUID readingId) {
         log.info(
-                "Publishing validated telemetry topic={} eventId={} deviceId={}",
-                TelemetryTopics.TELEMETRY_VALIDATED_V1,
-                event.eventId(),
-                event.deviceId());
+            "Publishing validated telemetry topic={} eventId={} deviceId={}",
+            TelemetryTopics.TELEMETRY_VALIDATED_V1,
+            event.eventId(),
+            event.deviceId()
+        );
         outboxService.enqueue(
-                readingId == null ? "telemetry-validated:" + event.eventId() : "telemetry-validated-reading:" + readingId,
-                TelemetryTopics.TELEMETRY_VALIDATED_V1,
-                event.deviceId().toString(),
-                event,
-                readingId);
+            readingId == null
+                ? "telemetry-validated:" + event.eventId()
+                : "telemetry-validated-reading:" + readingId,
+            TelemetryTopics.TELEMETRY_VALIDATED_V1,
+            event.deviceId().toString(),
+            event,
+            readingId
+        );
     }
 }

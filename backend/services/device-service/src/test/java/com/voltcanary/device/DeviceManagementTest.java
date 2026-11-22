@@ -27,9 +27,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -39,13 +39,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "spring.jpa.hibernate.ddl-auto=validate",
-                "spring.jpa.open-in-view=false",
-                "app.kafka.publish-enabled=false"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "spring.jpa.open-in-view=false",
+        "app.kafka.publish-enabled=false",
+    }
+)
 class DeviceManagementTest extends SignedUserTest {
+
     @Autowired
     private jakarta.persistence.EntityManagerFactory entityManagerFactory;
 
@@ -55,13 +57,26 @@ class DeviceManagementTest extends SignedUserTest {
         var a = createLocation(user, "Cycle A");
         var b = createLocation(user, "Cycle B");
         var headers = headersFor(user, "cycle@example.com");
-        var first = restTemplate.exchange("/locations/" + a.id(), HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("name", "Cycle A", "parentId", b.id().toString()), headers), LocationResponse.class);
+        var first = restTemplate.exchange(
+            "/locations/" + a.id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("name", "Cycle A", "parentId", b.id().toString()), headers),
+            LocationResponse.class
+        );
         assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
-        var cycle = restTemplate.exchange("/locations/" + b.id(), HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("name", "Cycle B", "parentId", a.id().toString()), headers), String.class);
+        var cycle = restTemplate.exchange(
+            "/locations/" + b.id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("name", "Cycle B", "parentId", a.id().toString()), headers),
+            String.class
+        );
         assertThat(cycle.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        var unchanged = restTemplate.exchange("/locations/" + b.id(), HttpMethod.GET, new HttpEntity<>(headers), LocationResponse.class);
+        var unchanged = restTemplate.exchange(
+            "/locations/" + b.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            LocationResponse.class
+        );
         assertThat(unchanged.getBody().parentId()).isNull();
     }
 
@@ -74,12 +89,24 @@ class DeviceManagementTest extends SignedUserTest {
         var older = createAuditWindow(user, device.id(), now.minusSeconds(7200));
         var newer = createAuditWindow(user, device.id(), now.minusSeconds(3600));
         createAuditWindow(user, device.id(), now.plusSeconds(3600));
-        var first = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=0",
-                HttpMethod.GET, new HttpEntity<>(headersFor(user, "paging@example.com")), MaintenanceWindowResponse[].class);
-        var second = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=1",
-                HttpMethod.GET, new HttpEntity<>(headersFor(user, "paging@example.com")), MaintenanceWindowResponse[].class);
-        assertThat(first.getBody()).extracting(MaintenanceWindowResponse::id).containsExactly(newer.id());
-        assertThat(second.getBody()).extracting(MaintenanceWindowResponse::id).containsExactly(older.id());
+        var first = restTemplate.exchange(
+            "/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=0",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(user, "paging@example.com")),
+            MaintenanceWindowResponse[].class
+        );
+        var second = restTemplate.exchange(
+            "/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=1",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(user, "paging@example.com")),
+            MaintenanceWindowResponse[].class
+        );
+        assertThat(first.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .containsExactly(newer.id());
+        assertThat(second.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .containsExactly(older.id());
     }
 
     @Test
@@ -93,21 +120,32 @@ class DeviceManagementTest extends SignedUserTest {
         try {
             first.getTransaction().begin();
             second.getTransaction().begin();
-            var winner = first.find(com.voltcanary.device.domain.MaintenanceWindow.class, window.id());
-            var stale = second.find(com.voltcanary.device.domain.MaintenanceWindow.class, window.id());
+            var winner = first.find(
+                com.voltcanary.device.domain.MaintenanceWindow.class,
+                window.id()
+            );
+            var stale = second.find(
+                com.voltcanary.device.domain.MaintenanceWindow.class,
+                window.id()
+            );
             winner.setTitle("Committed maintenance edit");
             first.getTransaction().commit();
             stale.setTitle("Lost update");
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.getTransaction().commit())
-                    .hasRootCauseInstanceOf(org.hibernate.StaleStateException.class);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                second.getTransaction().commit()
+            ).hasRootCauseInstanceOf(org.hibernate.StaleStateException.class);
         } finally {
             if (first.getTransaction().isActive()) first.getTransaction().rollback();
             if (second.getTransaction().isActive()) second.getTransaction().rollback();
             first.close();
             second.close();
         }
-        var actual = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows/" + window.id(), HttpMethod.GET,
-                new HttpEntity<>(headersFor(user, "optimistic@example.com")), MaintenanceWindowResponse.class);
+        var actual = restTemplate.exchange(
+            "/devices/" + device.id() + "/maintenance-windows/" + window.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(user, "optimistic@example.com")),
+            MaintenanceWindowResponse.class
+        );
         assertThat(actual.getBody().title()).isEqualTo("Committed maintenance edit");
     }
 
@@ -120,25 +158,52 @@ class DeviceManagementTest extends SignedUserTest {
         var headers = headersFor(user, "batch@example.com");
         for (int index = 0; index < 8; index++) {
             var start = Instant.now().plusSeconds(3600 + 3600L * index);
-            var created = restTemplate.exchange("/maintenance-operations", HttpMethod.POST, new HttpEntity<>(Map.of(
-                    "title", "Batch " + index, "deviceIds", List.of(first.id(), second.id()),
-                    "startAt", start.toString(), "endAt", start.plusSeconds(600).toString()), headers), MaintenanceOperationResponse.class);
+            var created = restTemplate.exchange(
+                "/maintenance-operations",
+                HttpMethod.POST,
+                new HttpEntity<>(
+                    Map.of(
+                        "title",
+                        "Batch " + index,
+                        "deviceIds",
+                        List.of(first.id(), second.id()),
+                        "startAt",
+                        start.toString(),
+                        "endAt",
+                        start.plusSeconds(600).toString()
+                    ),
+                    headers
+                ),
+                MaintenanceOperationResponse.class
+            );
             assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         }
-        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        var statistics = entityManagerFactory
+            .unwrap(org.hibernate.SessionFactory.class)
+            .getStatistics();
         boolean enabled = statistics.isStatisticsEnabled();
         statistics.setStatisticsEnabled(true);
         try {
             statistics.clear();
-            var one = restTemplate.exchange("/maintenance-operations?limit=1", HttpMethod.GET,
-                    new HttpEntity<>(headers), MaintenanceOperationResponse[].class);
+            var one = restTemplate.exchange(
+                "/maintenance-operations?limit=1",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                MaintenanceOperationResponse[].class
+            );
             long singleQueries = statistics.getPrepareStatementCount();
             statistics.clear();
-            var many = restTemplate.exchange("/maintenance-operations?limit=8", HttpMethod.GET,
-                    new HttpEntity<>(headers), MaintenanceOperationResponse[].class);
+            var many = restTemplate.exchange(
+                "/maintenance-operations?limit=8",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                MaintenanceOperationResponse[].class
+            );
             long batchQueries = statistics.getPrepareStatementCount();
             assertThat(one.getBody()).hasSize(1);
-            assertThat(many.getBody()).hasSize(8).allSatisfy(operation -> assertThat(operation.devices()).hasSize(2));
+            assertThat(many.getBody())
+                .hasSize(8)
+                .allSatisfy(operation -> assertThat(operation.devices()).hasSize(2));
             assertThat(batchQueries).isLessThanOrEqualTo(singleQueries + 1);
         } finally {
             statistics.setStatisticsEnabled(enabled);
@@ -146,9 +211,22 @@ class DeviceManagementTest extends SignedUserTest {
     }
 
     private MaintenanceWindowResponse createAuditWindow(UUID user, UUID device, Instant start) {
-        var created = restTemplate.exchange("/devices/" + device + "/maintenance-windows", HttpMethod.POST,
-                new HttpEntity<>(Map.of("title", "Audit maintenance", "startAt", start.toString(), "endAt", start.plusSeconds(600).toString()),
-                        headersFor(user, "maintenance-audit@example.com")), MaintenanceWindowResponse.class);
+        var created = restTemplate.exchange(
+            "/devices/" + device + "/maintenance-windows",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Audit maintenance",
+                    "startAt",
+                    start.toString(),
+                    "endAt",
+                    start.plusSeconds(600).toString()
+                ),
+                headersFor(user, "maintenance-audit@example.com")
+            ),
+            MaintenanceWindowResponse.class
+        );
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         return created.getBody();
     }
@@ -163,25 +241,43 @@ class DeviceManagementTest extends SignedUserTest {
         spoofed.set("X-User-Role", "ADMIN");
         spoofed.set("X-Internal-Service-Token", "dev-internal-token");
         for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.POST)) {
-            var rejected = restTemplate.exchange("/devices", method,
-                    new HttpEntity<>(Map.of("name", "Spoofed", "type", "FRIDGE"), spoofed), String.class);
+            var rejected = restTemplate.exchange(
+                "/devices",
+                method,
+                new HttpEntity<>(Map.of("name", "Spoofed", "type", "FRIDGE"), spoofed),
+                String.class
+            );
             assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         }
         HttpHeaders verified = headersFor(owner, "owner@example.invalid");
-        AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,
-                new HttpEntity<>(verified), AccountResponse.class).getBody();
+        AccountResponse account = restTemplate
+            .exchange(
+                "/accounts/current",
+                HttpMethod.GET,
+                new HttpEntity<>(verified),
+                AccountResponse.class
+            )
+            .getBody();
         verified.set("X-User-Id", foreign.toString());
         verified.set("X-User-Role", "ADMIN");
         verified.set("X-Account-Id", UUID.randomUUID().toString());
         verified.set("X-Workspace-Role", "OWNER");
-        var actual = restTemplate.exchange("/accounts/current", HttpMethod.GET,
-                new HttpEntity<>(verified), AccountResponse.class);
+        var actual = restTemplate.exchange(
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(verified),
+            AccountResponse.class
+        );
         assertThat(actual.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(actual.getBody().id()).isEqualTo(account.id());
         assertThat(actual.getBody().userId()).isEqualTo(owner);
         verified.setBearerAuth("invalid");
-        var invalid = restTemplate.exchange("/accounts/current", HttpMethod.GET,
-                new HttpEntity<>(verified), String.class);
+        var invalid = restTemplate.exchange(
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(verified),
+            String.class
+        );
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
@@ -215,28 +311,90 @@ class DeviceManagementTest extends SignedUserTest {
         var second = createDevice(owner, location.id(), "Template second");
         var firstSource = createDataSource(owner, first.id(), "template-first-" + owner);
         var secondSource = createDataSource(owner, second.id(), "template-second-" + owner);
-        var field = Map.of("path", "temperatureC", "key", "temperatureC", "label", "Temperature", "type", "number", "unit", "C", "store", true, "display", true);
-        var edit = Map.of("name", "Fridge readings", "deviceType", "FRIDGE", "policy", Map.of("fields", List.of(field)));
-        var created = restTemplate.exchange("/devices/telemetry-templates", HttpMethod.POST, new HttpEntity<>(edit, headersFor(owner, "template@example.com")), com.voltcanary.device.telemetry.TelemetryTemplates.Template.class);
+        var field = Map.of(
+            "path",
+            "temperatureC",
+            "key",
+            "temperatureC",
+            "label",
+            "Temperature",
+            "type",
+            "number",
+            "unit",
+            "C",
+            "store",
+            true,
+            "display",
+            true
+        );
+        var edit = Map.of(
+            "name",
+            "Fridge readings",
+            "deviceType",
+            "FRIDGE",
+            "policy",
+            Map.of("fields", List.of(field))
+        );
+        var created = restTemplate.exchange(
+            "/devices/telemetry-templates",
+            HttpMethod.POST,
+            new HttpEntity<>(edit, headersFor(owner, "template@example.com")),
+            com.voltcanary.device.telemetry.TelemetryTemplates.Template.class
+        );
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         var template = created.getBody();
-        var foreignResult = restTemplate.exchange("/devices/telemetry-templates/assign", HttpMethod.POST,
-                new HttpEntity<>(Map.of("templateId", template.id(), "deviceType", "FRIDGE"), headersFor(foreign, "foreign@example.com")), String.class);
+        var foreignResult = restTemplate.exchange(
+            "/devices/telemetry-templates/assign",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("templateId", template.id(), "deviceType", "FRIDGE"),
+                headersFor(foreign, "foreign@example.com")
+            ),
+            String.class
+        );
         assertThat(foreignResult.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        var assignment = restTemplate.exchange("/devices/telemetry-templates/assign", HttpMethod.POST,
-                new HttpEntity<>(Map.of("templateId", template.id(), "deviceType", "FRIDGE"), headersFor(owner, "template@example.com")), String.class);
+        var assignment = restTemplate.exchange(
+            "/devices/telemetry-templates/assign",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("templateId", template.id(), "deviceType", "FRIDGE"),
+                headersFor(owner, "template@example.com")
+            ),
+            String.class
+        );
         assertThat(assignment.getStatusCode()).as(assignment.getBody()).isEqualTo(HttpStatus.OK);
         assertThat(assignment.getBody()).contains("2");
-        var editedField = new java.util.HashMap<String,Object>(field);
+        var editedField = new java.util.HashMap<String, Object>(field);
         editedField.put("store", false);
-        var update = Map.of("name", "Fridge readings", "deviceType", "FRIDGE", "version", 1, "policy", Map.of("fields", List.of(editedField)));
-        var saved = restTemplate.exchange("/devices/telemetry-templates/" + template.id(), HttpMethod.PUT,
-                new HttpEntity<>(update, headersFor(owner, "template@example.com")), String.class);
+        var update = Map.of(
+            "name",
+            "Fridge readings",
+            "deviceType",
+            "FRIDGE",
+            "version",
+            1,
+            "policy",
+            Map.of("fields", List.of(editedField))
+        );
+        var saved = restTemplate.exchange(
+            "/devices/telemetry-templates/" + template.id(),
+            HttpMethod.PUT,
+            new HttpEntity<>(update, headersFor(owner, "template@example.com")),
+            String.class
+        );
         assertThat(saved.getStatusCode()).as(saved.getBody()).isEqualTo(HttpStatus.OK);
-        assertThat(dataSourceRepository.findById(firstSource.id()).orElseThrow().getMappingJson()).contains("telemetryPolicy", "\"store\":false");
-        assertThat(dataSourceRepository.findById(secondSource.id()).orElseThrow().getMappingJson()).contains("telemetryPolicy", "\"store\":false");
-        var stale = restTemplate.exchange("/devices/telemetry-templates/" + template.id(), HttpMethod.PUT,
-                new HttpEntity<>(update, headersFor(owner, "template@example.com")), String.class);
+        assertThat(
+            dataSourceRepository.findById(firstSource.id()).orElseThrow().getMappingJson()
+        ).contains("telemetryPolicy", "\"store\":false");
+        assertThat(
+            dataSourceRepository.findById(secondSource.id()).orElseThrow().getMappingJson()
+        ).contains("telemetryPolicy", "\"store\":false");
+        var stale = restTemplate.exchange(
+            "/devices/telemetry-templates/" + template.id(),
+            HttpMethod.PUT,
+            new HttpEntity<>(update, headersFor(owner, "template@example.com")),
+            String.class
+        );
         assertThat(stale.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
@@ -252,42 +410,98 @@ class DeviceManagementTest extends SignedUserTest {
     @Test
     void irreversibleDeletionIsOwnerScopedIdempotentAndRevokesSources() {
         UUID owner = UUID.randomUUID();
-        var device = createDevice(owner, createLocation(owner, "Delete location").id(), "Delete fixture");
+        var device = createDevice(
+            owner,
+            createLocation(owner, "Delete location").id(),
+            "Delete fixture"
+        );
         var source = createDataSource(owner, device.id(), "deletion-" + owner);
         clearInvocations(runtimeEvents);
-        var foreign = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
-                new HttpEntity<>(Map.of("deleteHistory", false), headersFor(UUID.randomUUID(), "foreign@example.invalid")), String.class);
+        var foreign = restTemplate.exchange(
+            "/devices/" + device.id() + "/deletion",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("deleteHistory", false),
+                headersFor(UUID.randomUUID(), "foreign@example.invalid")
+            ),
+            String.class
+        );
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        var request = new HttpEntity<>(Map.of("deleteHistory", false), headersFor(owner, "owner@example.invalid"));
+        var request = new HttpEntity<>(
+            Map.of("deleteHistory", false),
+            headersFor(owner, "owner@example.invalid")
+        );
         for (int attempt = 0; attempt < 2; attempt++) {
-            var result = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST, request, String.class);
+            var result = restTemplate.exchange(
+                "/devices/" + device.id() + "/deletion",
+                HttpMethod.POST,
+                request,
+                String.class
+            );
             assertThat(result.getStatusCode()).as(result.getBody()).isEqualTo(HttpStatus.ACCEPTED);
         }
         assertThat(deviceRepository.findById(device.id())).isEmpty();
         assertThat(dataSourceRepository.findById(source.id()).orElseThrow().isEnabled()).isFalse();
-        assertThat(dataSourceRepository.findById(source.id()).orElseThrow().getIngestionTokenHash()).isNull();
-        verify(runtimeEvents).publish(any(UUID.class), org.mockito.ArgumentMatchers.argThat(value -> value.getId().equals(source.id())
-                && value.getStatus() == com.voltcanary.device.domain.SourceStatus.REVOKED && value.getIngestionTokenHash() == null));
+        assertThat(
+            dataSourceRepository.findById(source.id()).orElseThrow().getIngestionTokenHash()
+        ).isNull();
+        verify(runtimeEvents).publish(
+            any(UUID.class),
+            org.mockito.ArgumentMatchers.argThat(
+                value ->
+                    value.getId().equals(source.id()) &&
+                    value.getStatus() == com.voltcanary.device.domain.SourceStatus.REVOKED &&
+                    value.getIngestionTokenHash() == null
+            )
+        );
         assertThat(deletions.retainedAccess(device.id(), owner)).isTrue();
         assertThat(deletions.retainedAccess(device.id(), UUID.randomUUID())).isFalse();
-        var changed = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
-                new HttpEntity<>(Map.of("deleteHistory", true), headersFor(owner, "owner@example.invalid")), String.class);
+        var changed = restTemplate.exchange(
+            "/devices/" + device.id() + "/deletion",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("deleteHistory", true),
+                headersFor(owner, "owner@example.invalid")
+            ),
+            String.class
+        );
         assertThat(changed.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        var enable = restTemplate.exchange("/devices/" + device.id() + "/enable", HttpMethod.POST,
-                new HttpEntity<>(headersFor(owner, "owner@example.invalid")), String.class);
+        var enable = restTemplate.exchange(
+            "/devices/" + device.id() + "/enable",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(owner, "owner@example.invalid")),
+            String.class
+        );
         assertThat(enable.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
     void purgeFinalizationPhysicallyRemovesRegistryAndSources() {
         UUID owner = UUID.randomUUID();
-        var device = createDevice(owner, createLocation(owner, "Purge location").id(), "Purge fixture");
+        var device = createDevice(
+            owner,
+            createLocation(owner, "Purge location").id(),
+            "Purge fixture"
+        );
         var source = createDataSource(owner, device.id(), "purge-" + owner);
-        var result = restTemplate.exchange("/devices/" + device.id() + "/deletion", HttpMethod.POST,
-                new HttpEntity<>(Map.of("deleteHistory", true), headersFor(owner, "owner@example.invalid")), String.class);
+        var result = restTemplate.exchange(
+            "/devices/" + device.id() + "/deletion",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("deleteHistory", true),
+                headersFor(owner, "owner@example.invalid")
+            ),
+            String.class
+        );
         assertThat(result.getStatusCode()).as(result.getBody()).isEqualTo(HttpStatus.ACCEPTED);
         finalization.complete(device.id());
-        assertThat(deletionJdbc.queryForObject("select count(*) from devices where id=?", Integer.class, device.id())).isZero();
+        assertThat(
+            deletionJdbc.queryForObject(
+                "select count(*) from devices where id=?",
+                Integer.class,
+                device.id()
+            )
+        ).isZero();
         assertThat(dataSourceRepository.findById(source.id())).isEmpty();
         assertThat(deletions.retainedAccess(device.id(), owner)).isFalse();
     }
@@ -295,10 +509,11 @@ class DeviceManagementTest extends SignedUserTest {
     @Test
     void createsAccountImplicitly() {
         ResponseEntity<AccountResponse> response = restTemplate.exchange(
-                "/accounts/current",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(UUID.randomUUID(), "account@example.com")),
-                AccountResponse.class);
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(UUID.randomUUID(), "account@example.com")),
+            AccountResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -311,35 +526,42 @@ class DeviceManagementTest extends SignedUserTest {
     void syncsAccountLifecycleFromInternalContract() {
         UUID userId = UUID.randomUUID();
         ResponseEntity<AccountResponse> created = restTemplate.exchange(
-                "/accounts/current",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
-                AccountResponse.class);
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
+            AccountResponse.class
+        );
 
         ResponseEntity<String> disabled = restTemplate.exchange(
-                "/internal/accounts/users/" + userId + "/lifecycle",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("email", "lifecycle-account@example.com", "status", "DISABLED"),
-                        internalHeaders()),
-                String.class);
+            "/internal/accounts/users/" + userId + "/lifecycle",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", "lifecycle-account@example.com", "status", "DISABLED"),
+                internalHeaders()
+            ),
+            String.class
+        );
         ResponseEntity<String> currentWhileDisabled = restTemplate.exchange(
-                "/accounts/current",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
-                String.class);
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
+            String.class
+        );
         ResponseEntity<String> reactivated = restTemplate.exchange(
-                "/internal/accounts/users/" + userId + "/lifecycle",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("email", "lifecycle-account@example.com", "status", "ACTIVE"),
-                        internalHeaders()),
-                String.class);
+            "/internal/accounts/users/" + userId + "/lifecycle",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", "lifecycle-account@example.com", "status", "ACTIVE"),
+                internalHeaders()
+            ),
+            String.class
+        );
         ResponseEntity<AccountResponse> currentAfterReactivate = restTemplate.exchange(
-                "/accounts/current",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
-                AccountResponse.class);
+            "/accounts/current",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "lifecycle-account@example.com")),
+            AccountResponse.class
+        );
 
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(disabled.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -357,10 +579,11 @@ class DeviceManagementTest extends SignedUserTest {
         LocationResponse created = createLocation(userId, "Kitchen");
 
         ResponseEntity<LocationResponse[]> response = restTemplate.exchange(
-                "/locations",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "locations@example.com")),
-                LocationResponse[].class);
+            "/locations",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "locations@example.com")),
+            LocationResponse[].class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).extracting(LocationResponse::id).contains(created.id());
@@ -373,10 +596,11 @@ class DeviceManagementTest extends SignedUserTest {
         createLocation(userId, "Garage");
 
         ResponseEntity<LocationResponse[]> response = restTemplate.exchange(
-                "/locations?search=kitchen&limit=1&offset=0",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "location-filter@example.com")),
-                LocationResponse[].class);
+            "/locations?search=kitchen&limit=1&offset=0",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "location-filter@example.com")),
+            LocationResponse[].class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);
@@ -389,20 +613,31 @@ class DeviceManagementTest extends SignedUserTest {
         LocationResponse building = createLocation(userId, "HQ");
 
         ResponseEntity<LocationResponse> response = restTemplate.exchange(
-                "/locations",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "parentId", building.id().toString(),
-                                "name", "Lab 1",
-                                "description", "Test lab",
-                                "building", "HQ",
-                                "floor", "2",
-                                "room", "204",
-                                "zone", "north",
-                                "tags", java.util.List.of("hvac", "critical")),
-                        headersFor(userId, "location-hierarchy@example.com")),
-                LocationResponse.class);
+            "/locations",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "parentId",
+                    building.id().toString(),
+                    "name",
+                    "Lab 1",
+                    "description",
+                    "Test lab",
+                    "building",
+                    "HQ",
+                    "floor",
+                    "2",
+                    "room",
+                    "204",
+                    "zone",
+                    "north",
+                    "tags",
+                    java.util.List.of("hvac", "critical")
+                ),
+                headersFor(userId, "location-hierarchy@example.com")
+            ),
+            LocationResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().parentId()).isEqualTo(building.id());
@@ -420,21 +655,25 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse created = createDevice(userId, location.id(), "Kitchen fridge");
 
         ResponseEntity<DeviceResponse[]> listResponse = restTemplate.exchange(
-                "/devices",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "devices@example.com")),
-                DeviceResponse[].class);
+            "/devices",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "devices@example.com")),
+            DeviceResponse[].class
+        );
         ResponseEntity<String> getResponse = restTemplate.exchange(
-                "/devices/" + created.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "devices@example.com")),
-                String.class);
+            "/devices/" + created.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "devices@example.com")),
+            String.class
+        );
 
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listResponse.getBody()).extracting(DeviceResponse::id).contains(created.id());
         assertThat(getResponse.getStatusCode()).as(getResponse.getBody()).isEqualTo(HttpStatus.OK);
         try {
-            assertThat(objectMapper.readValue(getResponse.getBody(), DeviceResponse.class).type()).isEqualTo("FRIDGE");
+            assertThat(
+                objectMapper.readValue(getResponse.getBody(), DeviceResponse.class).type()
+            ).isEqualTo("FRIDGE");
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to parse get device response", exception);
         }
@@ -449,10 +688,13 @@ class DeviceManagementTest extends SignedUserTest {
         createDevice(userId, garage.id(), "Garage freezer");
 
         ResponseEntity<DeviceResponse[]> response = restTemplate.exchange(
-                "/devices?locationId=" + kitchen.id() + "&type=FRIDGE&status=ACTIVE&search=fridge&limit=1&offset=0",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "device-filter@example.com")),
-                DeviceResponse[].class);
+            "/devices?locationId=" +
+                kitchen.id() +
+                "&type=FRIDGE&status=ACTIVE&search=fridge&limit=1&offset=0",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "device-filter@example.com")),
+            DeviceResponse[].class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).hasSize(1);
@@ -465,29 +707,45 @@ class DeviceManagementTest extends SignedUserTest {
         LocationResponse location = createLocation(userId, "Metadata kitchen");
 
         ResponseEntity<DeviceResponse> created = restTemplate.exchange(
-                "/devices",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "locationId", location.id().toString(),
-                                "name", "Metadata fridge",
-                                "type", "FRIDGE",
-                                "manufacturer", "Bosch",
-                                "model", "Unknown",
-                                "metadata", Map.of("vendorSerial", "VC-123")),
-                        headersFor(userId, "metadata@example.com")),
-                DeviceResponse.class);
+            "/devices",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "locationId",
+                    location.id().toString(),
+                    "name",
+                    "Metadata fridge",
+                    "type",
+                    "FRIDGE",
+                    "manufacturer",
+                    "Bosch",
+                    "model",
+                    "Unknown",
+                    "metadata",
+                    Map.of("vendorSerial", "VC-123")
+                ),
+                headersFor(userId, "metadata@example.com")
+            ),
+            DeviceResponse.class
+        );
         ResponseEntity<String> secretMetadata = restTemplate.exchange(
-                "/devices",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "locationId", location.id().toString(),
-                                "name", "Secret fridge",
-                                "type", "FRIDGE",
-                                "metadata", Map.of("token", "do-not-store")),
-                        headersFor(userId, "metadata@example.com")),
-                String.class);
+            "/devices",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "locationId",
+                    location.id().toString(),
+                    "name",
+                    "Secret fridge",
+                    "type",
+                    "FRIDGE",
+                    "metadata",
+                    Map.of("token", "do-not-store")
+                ),
+                headersFor(userId, "metadata@example.com")
+            ),
+            String.class
+        );
 
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created.getBody().metadata()).containsEntry("vendorSerial", "VC-123");
@@ -499,25 +757,34 @@ class DeviceManagementTest extends SignedUserTest {
     void importsAndExportsDevicesAsCsv() {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Import kitchen");
-        String csv = "name,type,locationId,manufacturer,model\n"
-                + "Imported fridge,FRIDGE," + location.id() + ",Bosch,X1\n"
-                + "Imported heater,HEATER,,Acme,H2\n";
+        String csv =
+            "name,type,locationId,manufacturer,model\n" +
+            "Imported fridge,FRIDGE," +
+            location.id() +
+            ",Bosch,X1\n" +
+            "Imported heater,HEATER,,Acme,H2\n";
 
         ResponseEntity<String> importResponse = restTemplate.exchange(
-                "/devices/imports/csv",
-                HttpMethod.POST,
-                new HttpEntity<>(csv, textHeadersFor(userId, "import@example.com")),
-                String.class);
+            "/devices/imports/csv",
+            HttpMethod.POST,
+            new HttpEntity<>(csv, textHeadersFor(userId, "import@example.com")),
+            String.class
+        );
         ResponseEntity<String> exportResponse = restTemplate.exchange(
-                "/devices/export.csv",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "import@example.com")),
-                String.class);
+            "/devices/export.csv",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "import@example.com")),
+            String.class
+        );
         ResponseEntity<String> invalidImport = restTemplate.exchange(
-                "/devices/imports/csv",
-                HttpMethod.POST,
-                new HttpEntity<>("name,type\nBroken,NOPE\n", textHeadersFor(userId, "import@example.com")),
-                String.class);
+            "/devices/imports/csv",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                "name,type\nBroken,NOPE\n",
+                textHeadersFor(userId, "import@example.com")
+            ),
+            String.class
+        );
 
         assertThat(importResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(importResponse.getBody()).contains("\"importedCount\":2");
@@ -533,26 +800,32 @@ class DeviceManagementTest extends SignedUserTest {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Source import lab");
         DeviceResponse device = createDevice(userId, location.id(), "Source import device");
-        String csv = "externalId,sourceType,protocol\n"
-                + "plug-import-001,SMART_PLUG,REST\n"
-                + "mqtt-import-001,MQTT,MQTT\n";
+        String csv =
+            "externalId,sourceType,protocol\n" +
+            "plug-import-001,SMART_PLUG,REST\n" +
+            "mqtt-import-001,MQTT,MQTT\n";
 
         ResponseEntity<String> importResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/imports/csv",
-                HttpMethod.POST,
-                new HttpEntity<>(csv, textHeadersFor(userId, "source-import@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/data-sources/imports/csv",
+            HttpMethod.POST,
+            new HttpEntity<>(csv, textHeadersFor(userId, "source-import@example.com")),
+            String.class
+        );
         ResponseEntity<String> exportResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/export.csv",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "source-import@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/data-sources/export.csv",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "source-import@example.com")),
+            String.class
+        );
         ResponseEntity<String> invalidImport = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/imports/csv",
-                HttpMethod.POST,
-                new HttpEntity<>("externalId,sourceType,protocol\nbad source,NOPE,REST\n",
-                        textHeadersFor(userId, "source-import@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/data-sources/imports/csv",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                "externalId,sourceType,protocol\nbad source,NOPE,REST\n",
+                textHeadersFor(userId, "source-import@example.com")
+            ),
+            String.class
+        );
 
         assertThat(importResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(importResponse.getBody()).contains("\"importedCount\":2");
@@ -571,10 +844,11 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(ownerId, location.id(), "Owner fridge");
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/devices/" + device.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(foreignUserId, "foreign@example.com")),
-                String.class);
+            "/devices/" + device.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(foreignUserId, "foreign@example.com")),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).contains("not_found");
@@ -588,35 +862,41 @@ class DeviceManagementTest extends SignedUserTest {
         createDataSource(userId, device.id(), "plug-lifecycle-001");
 
         ResponseEntity<String> activeLookup = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/data-sources/plug-lifecycle-001/exists",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/data-sources/plug-lifecycle-001/exists",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         ResponseEntity<DeviceResponse> disabled = restTemplate.exchange(
-                "/devices/" + device.id() + "/disable",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
-                DeviceResponse.class);
+            "/devices/" + device.id() + "/disable",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
+            DeviceResponse.class
+        );
         ResponseEntity<String> disabledLookup = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/data-sources/plug-lifecycle-001/exists",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/data-sources/plug-lifecycle-001/exists",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         ResponseEntity<DeviceResponse> enabled = restTemplate.exchange(
-                "/devices/" + device.id() + "/enable",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
-                DeviceResponse.class);
+            "/devices/" + device.id() + "/enable",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
+            DeviceResponse.class
+        );
         ResponseEntity<DeviceResponse> decommissioned = restTemplate.exchange(
-                "/devices/" + device.id() + "/decommission",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
-                DeviceResponse.class);
+            "/devices/" + device.id() + "/decommission",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
+            DeviceResponse.class
+        );
         ResponseEntity<String> enableAfterDecommission = restTemplate.exchange(
-                "/devices/" + device.id() + "/enable",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/enable",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "lifecycle@example.com")),
+            String.class
+        );
 
         assertThat(activeLookup.getBody()).contains("\"exists\":true");
         assertThat(disabled.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -638,19 +918,29 @@ class DeviceManagementTest extends SignedUserTest {
         Instant endAt = startAt.plusSeconds(7200);
 
         ResponseEntity<MaintenanceWindowResponse> created = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Sensor replacement",
-                                "description", "Technician visit",
-                                "startAt", startAt.toString(),
-                                "endAt", endAt.toString(),
-                                "suppressAlerts", true,
-                                "excludeFromAnalytics", true,
-                                "excludeFromMl", true),
-                        headersFor(userId, "maintenance@example.com")),
-                MaintenanceWindowResponse.class);
+            "/devices/" + device.id() + "/maintenance-windows",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Sensor replacement",
+                    "description",
+                    "Technician visit",
+                    "startAt",
+                    startAt.toString(),
+                    "endAt",
+                    endAt.toString(),
+                    "suppressAlerts",
+                    true,
+                    "excludeFromAnalytics",
+                    true,
+                    "excludeFromMl",
+                    true
+                ),
+                headersFor(userId, "maintenance@example.com")
+            ),
+            MaintenanceWindowResponse.class
+        );
 
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created.getBody()).isNotNull();
@@ -658,89 +948,141 @@ class DeviceManagementTest extends SignedUserTest {
         assertThat(created.getBody().version()).isEqualTo(1);
 
         ResponseEntity<MaintenanceWindowResponse[]> list = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows?from=" + startAt.minusSeconds(60) + "&to=" + endAt.plusSeconds(60),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
-                MaintenanceWindowResponse[].class);
+            "/devices/" +
+                device.id() +
+                "/maintenance-windows?from=" +
+                startAt.minusSeconds(60) +
+                "&to=" +
+                endAt.plusSeconds(60),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
+            MaintenanceWindowResponse[].class
+        );
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(list.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+        assertThat(list.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceWindowResponse[]> unboundedList = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
-                MaintenanceWindowResponse[].class);
+            "/devices/" + device.id() + "/maintenance-windows",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "maintenance@example.com")),
+            MaintenanceWindowResponse[].class
+        );
         assertThat(unboundedList.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(unboundedList.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+        assertThat(unboundedList.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceWindowResponse> updated = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows/" + created.getBody().id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Sensor and cable replacement",
-                                "startAt", startAt.plusSeconds(300).toString(),
-                                "endAt", endAt.plusSeconds(300).toString(),
-                                "suppressAlerts", false,
-                                "excludeFromAnalytics", true,
-                                "excludeFromMl", true),
-                        headersFor(userId, "maintenance@example.com")),
-                MaintenanceWindowResponse.class);
+            "/devices/" + device.id() + "/maintenance-windows/" + created.getBody().id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Sensor and cable replacement",
+                    "startAt",
+                    startAt.plusSeconds(300).toString(),
+                    "endAt",
+                    endAt.plusSeconds(300).toString(),
+                    "suppressAlerts",
+                    false,
+                    "excludeFromAnalytics",
+                    true,
+                    "excludeFromMl",
+                    true
+                ),
+                headersFor(userId, "maintenance@example.com")
+            ),
+            MaintenanceWindowResponse.class
+        );
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updated.getBody().title()).isEqualTo("Sensor and cable replacement");
         assertThat(updated.getBody().suppressAlerts()).isFalse();
         assertThat(updated.getBody().version()).isEqualTo(2);
 
         ResponseEntity<MaintenanceWindowResponse[]> internalList = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/maintenance-windows?from=" + startAt + "&to=" + endAt.plusSeconds(600),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                MaintenanceWindowResponse[].class);
+            "/internal/devices/" +
+                device.id() +
+                "/maintenance-windows?from=" +
+                startAt +
+                "&to=" +
+                endAt.plusSeconds(600),
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            MaintenanceWindowResponse[].class
+        );
         assertThat(internalList.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(internalList.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+        assertThat(internalList.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceWindowResponse> cancelled = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows/" + created.getBody().id() + "/cancel",
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("reason", "Work postponed"), headersFor(userId, "maintenance@example.com")),
-                MaintenanceWindowResponse.class);
+            "/devices/" +
+                device.id() +
+                "/maintenance-windows/" +
+                created.getBody().id() +
+                "/cancel",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("reason", "Work postponed"),
+                headersFor(userId, "maintenance@example.com")
+            ),
+            MaintenanceWindowResponse.class
+        );
         assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(cancelled.getBody().status()).isEqualTo("CANCELLED");
         assertThat(cancelled.getBody().version()).isEqualTo(3);
 
         ResponseEntity<MaintenanceWindowResponse[]> changes = restTemplate.exchange(
-                "/internal/maintenance-windows/changes?updatedAfter=1970-01-01T00:00:00Z",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                MaintenanceWindowResponse[].class);
+            "/internal/maintenance-windows/changes?updatedAfter=1970-01-01T00:00:00Z",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            MaintenanceWindowResponse[].class
+        );
         assertThat(changes.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(changes.getBody()).extracting(MaintenanceWindowResponse::id).contains(created.getBody().id());
+        assertThat(changes.getBody())
+            .extracting(MaintenanceWindowResponse::id)
+            .contains(created.getBody().id());
     }
 
     @Test
     void rejectsMaintenanceWindowForDecommissionedDevice() {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Decommissioned maintenance lab");
-        DeviceResponse device = createDevice(userId, location.id(), "Decommissioned maintenance fridge");
+        DeviceResponse device = createDevice(
+            userId,
+            location.id(),
+            "Decommissioned maintenance fridge"
+        );
         restTemplate.exchange(
-                "/devices/" + device.id() + "/decommission",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "maintenance-decommissioned@example.com")),
-                DeviceResponse.class);
+            "/devices/" + device.id() + "/decommission",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "maintenance-decommissioned@example.com")),
+            DeviceResponse.class
+        );
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/devices/" + device.id() + "/maintenance-windows",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Invalid work",
-                                "startAt", Instant.now().plusSeconds(60).toString(),
-                                "endAt", Instant.now().plusSeconds(3600).toString()),
-                        headersFor(userId, "maintenance-decommissioned@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/maintenance-windows",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Invalid work",
+                    "startAt",
+                    Instant.now().plusSeconds(60).toString(),
+                    "endAt",
+                    Instant.now().plusSeconds(3600).toString()
+                ),
+                headersFor(userId, "maintenance-decommissioned@example.com")
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).contains("Decommissioned devices cannot receive maintenance windows");
+        assertThat(response.getBody()).contains(
+            "Decommissioned devices cannot receive maintenance windows"
+        );
     }
 
     @Test
@@ -753,92 +1095,141 @@ class DeviceManagementTest extends SignedUserTest {
         Instant endAt = startAt.plusSeconds(7200);
 
         ResponseEntity<MaintenanceOperationResponse> created = restTemplate.exchange(
-                "/maintenance-operations",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Batch firmware upgrade",
-                                "description", "Calendar operation",
-                                "deviceIds", List.of(firstDevice.id().toString(), secondDevice.id().toString()),
-                                "startAt", startAt.toString(),
-                                "endAt", endAt.toString(),
-                                "suppressAlerts", true,
-                                "excludeFromAnalytics", true,
-                                "excludeFromMl", true),
-                        headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Batch firmware upgrade",
+                    "description",
+                    "Calendar operation",
+                    "deviceIds",
+                    List.of(firstDevice.id().toString(), secondDevice.id().toString()),
+                    "startAt",
+                    startAt.toString(),
+                    "endAt",
+                    endAt.toString(),
+                    "suppressAlerts",
+                    true,
+                    "excludeFromAnalytics",
+                    true,
+                    "excludeFromMl",
+                    true
+                ),
+                headersFor(userId, "maintenance-calendar@example.com")
+            ),
+            MaintenanceOperationResponse.class
+        );
 
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created.getBody()).isNotNull();
         assertThat(created.getBody().status()).isEqualTo("SCHEDULED");
         assertThat(created.getBody().devices()).hasSize(2);
-        assertThat(created.getBody().devices()).extracting(device -> device.deviceId())
-                .containsExactlyInAnyOrder(firstDevice.id(), secondDevice.id());
+        assertThat(created.getBody().devices())
+            .extracting(device -> device.deviceId())
+            .containsExactlyInAnyOrder(firstDevice.id(), secondDevice.id());
 
         ResponseEntity<MaintenanceOperationResponse[]> list = restTemplate.exchange(
-                "/maintenance-operations?from=" + startAt.minusSeconds(60) + "&to=" + endAt.plusSeconds(60),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse[].class);
+            "/maintenance-operations?from=" +
+                startAt.minusSeconds(60) +
+                "&to=" +
+                endAt.plusSeconds(60),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+            MaintenanceOperationResponse[].class
+        );
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(list.getBody()).extracting(MaintenanceOperationResponse::id).contains(created.getBody().id());
+        assertThat(list.getBody())
+            .extracting(MaintenanceOperationResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceWindowResponse[]> firstWindows = restTemplate.exchange(
-                "/devices/" + firstDevice.id() + "/maintenance-windows",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceWindowResponse[].class);
+            "/devices/" + firstDevice.id() + "/maintenance-windows",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+            MaintenanceWindowResponse[].class
+        );
         assertThat(firstWindows.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(firstWindows.getBody()).extracting(MaintenanceWindowResponse::operationId).contains(created.getBody().id());
+        assertThat(firstWindows.getBody())
+            .extracting(MaintenanceWindowResponse::operationId)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceOperationResponse> updated = restTemplate.exchange(
-                "/maintenance-operations/" + created.getBody().id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Updated batch firmware upgrade",
-                                "description", "Calendar operation updated",
-                                "deviceIds", List.of(firstDevice.id().toString()),
-                                "startAt", startAt.plusSeconds(300).toString(),
-                                "endAt", endAt.plusSeconds(300).toString(),
-                                "suppressAlerts", true,
-                                "excludeFromAnalytics", false,
-                                "excludeFromMl", true),
-                        headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations/" + created.getBody().id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Updated batch firmware upgrade",
+                    "description",
+                    "Calendar operation updated",
+                    "deviceIds",
+                    List.of(firstDevice.id().toString()),
+                    "startAt",
+                    startAt.plusSeconds(300).toString(),
+                    "endAt",
+                    endAt.plusSeconds(300).toString(),
+                    "suppressAlerts",
+                    true,
+                    "excludeFromAnalytics",
+                    false,
+                    "excludeFromMl",
+                    true
+                ),
+                headersFor(userId, "maintenance-calendar@example.com")
+            ),
+            MaintenanceOperationResponse.class
+        );
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(updated.getBody().devices()).extracting(device -> device.deviceId()).contains(firstDevice.id());
+        assertThat(updated.getBody().devices())
+            .extracting(device -> device.deviceId())
+            .contains(firstDevice.id());
         assertThat(updated.getBody().version()).isEqualTo(2);
 
         ResponseEntity<MaintenanceOperationResponse> cancelled = restTemplate.exchange(
-                "/maintenance-operations/" + created.getBody().id() + "/cancel",
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("reason", "Calendar operation cancelled"), headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations/" + created.getBody().id() + "/cancel",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("reason", "Calendar operation cancelled"),
+                headersFor(userId, "maintenance-calendar@example.com")
+            ),
+            MaintenanceOperationResponse.class
+        );
         assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(cancelled.getBody().status()).isEqualTo("CANCELLED");
 
         ResponseEntity<MaintenanceOperationResponse> active = restTemplate.exchange(
-                "/maintenance-operations",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Active operation",
-                                "deviceIds", List.of(firstDevice.id().toString(), secondDevice.id().toString()),
-                                "startAt", Instant.now().minusSeconds(60).toString(),
-                                "endAt", Instant.now().plusSeconds(3600).toString(),
-                                "suppressAlerts", true,
-                                "excludeFromAnalytics", true,
-                                "excludeFromMl", true),
-                        headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Active operation",
+                    "deviceIds",
+                    List.of(firstDevice.id().toString(), secondDevice.id().toString()),
+                    "startAt",
+                    Instant.now().minusSeconds(60).toString(),
+                    "endAt",
+                    Instant.now().plusSeconds(3600).toString(),
+                    "suppressAlerts",
+                    true,
+                    "excludeFromAnalytics",
+                    true,
+                    "excludeFromMl",
+                    true
+                ),
+                headersFor(userId, "maintenance-calendar@example.com")
+            ),
+            MaintenanceOperationResponse.class
+        );
         assertThat(active.getBody().status()).isEqualTo("ACTIVE");
 
         ResponseEntity<MaintenanceOperationResponse> finished = restTemplate.exchange(
-                "/maintenance-operations/" + active.getBody().id() + "/finish-now",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations/" + active.getBody().id() + "/finish-now",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "maintenance-calendar@example.com")),
+            MaintenanceOperationResponse.class
+        );
         assertThat(finished.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(finished.getBody().status()).isEqualTo("FINISHED");
     }
@@ -853,39 +1244,49 @@ class DeviceManagementTest extends SignedUserTest {
         Instant endAt = Instant.now().plusSeconds(3600);
 
         ResponseEntity<MaintenanceOperationResponse> operation = restTemplate.exchange(
-                "/maintenance-operations",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "title", "Compressor repair",
-                                "deviceIds", List.of(device.id().toString()),
-                                "startAt", startAt.toString(),
-                                "endAt", endAt.toString()),
-                        headersFor(userId, "maintenance-outcome@example.com")),
-                MaintenanceOperationResponse.class);
+            "/maintenance-operations",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "title",
+                    "Compressor repair",
+                    "deviceIds",
+                    List.of(device.id().toString()),
+                    "startAt",
+                    startAt.toString(),
+                    "endAt",
+                    endAt.toString()
+                ),
+                headersFor(userId, "maintenance-outcome@example.com")
+            ),
+            MaintenanceOperationResponse.class
+        );
         assertThat(operation.getStatusCode()).isEqualTo(HttpStatus.OK);
         UUID operationId = operation.getBody().id();
         UUID windowId = operation.getBody().devices().get(0).windowId();
 
         ResponseEntity<MaintenanceOutcomeResponse> created = restTemplate.exchange(
-                "/maintenance-operations/" + operationId + "/outcomes",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.ofEntries(
-                                Map.entry("deviceId", device.id().toString()),
-                                Map.entry("maintenanceWindowId", windowId.toString()),
-                                Map.entry("observedAt", startAt.plusSeconds(1200).toString()),
-                                Map.entry("resolvedAt", startAt.plusSeconds(2400).toString()),
-                                Map.entry("outcomeType", "CONFIRMED_FAILURE"),
-                                Map.entry("failureMode", "COMPRESSOR_OVERHEAT"),
-                                Map.entry("component", "compressor"),
-                                Map.entry("severity", "HIGH"),
-                                Map.entry("downtimeMinutes", 45),
-                                Map.entry("technicianNotes", "Compressor replaced"),
-                                Map.entry("source", "TECHNICIAN"),
-                                Map.entry("confidence", 0.95)),
-                        headersFor(userId, "maintenance-outcome@example.com")),
-                MaintenanceOutcomeResponse.class);
+            "/maintenance-operations/" + operationId + "/outcomes",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.ofEntries(
+                    Map.entry("deviceId", device.id().toString()),
+                    Map.entry("maintenanceWindowId", windowId.toString()),
+                    Map.entry("observedAt", startAt.plusSeconds(1200).toString()),
+                    Map.entry("resolvedAt", startAt.plusSeconds(2400).toString()),
+                    Map.entry("outcomeType", "CONFIRMED_FAILURE"),
+                    Map.entry("failureMode", "COMPRESSOR_OVERHEAT"),
+                    Map.entry("component", "compressor"),
+                    Map.entry("severity", "HIGH"),
+                    Map.entry("downtimeMinutes", 45),
+                    Map.entry("technicianNotes", "Compressor replaced"),
+                    Map.entry("source", "TECHNICIAN"),
+                    Map.entry("confidence", 0.95)
+                ),
+                headersFor(userId, "maintenance-outcome@example.com")
+            ),
+            MaintenanceOutcomeResponse.class
+        );
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created.getBody()).isNotNull();
         assertThat(created.getBody().operationId()).isEqualTo(operationId);
@@ -897,60 +1298,87 @@ class DeviceManagementTest extends SignedUserTest {
         assertThat(created.getBody().version()).isEqualTo(1);
 
         ResponseEntity<MaintenanceOutcomeResponse[]> listed = restTemplate.exchange(
-                "/maintenance-operations/" + operationId + "/outcomes",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "maintenance-outcome@example.com")),
-                MaintenanceOutcomeResponse[].class);
+            "/maintenance-operations/" + operationId + "/outcomes",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "maintenance-outcome@example.com")),
+            MaintenanceOutcomeResponse[].class
+        );
         assertThat(listed.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(listed.getBody()).extracting(MaintenanceOutcomeResponse::id).contains(created.getBody().id());
+        assertThat(listed.getBody())
+            .extracting(MaintenanceOutcomeResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<MaintenanceOutcomeResponse> updated = restTemplate.exchange(
-                "/maintenance-outcomes/" + created.getBody().id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of(
-                                "deviceId", device.id().toString(),
-                                "maintenanceWindowId", windowId.toString(),
-                                "observedAt", startAt.plusSeconds(1200).toString(),
-                                "resolvedAt", startAt.plusSeconds(2500).toString(),
-                                "outcomeType", "CORRECTIVE_MAINTENANCE",
-                                "component", "compressor",
-                                "severity", "MEDIUM",
-                                "downtimeMinutes", 50,
-                                "source", "OPERATOR",
-                                "confidence", 0.9),
-                        headersFor(userId, "maintenance-outcome@example.com")),
-                MaintenanceOutcomeResponse.class);
+            "/maintenance-outcomes/" + created.getBody().id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "deviceId",
+                    device.id().toString(),
+                    "maintenanceWindowId",
+                    windowId.toString(),
+                    "observedAt",
+                    startAt.plusSeconds(1200).toString(),
+                    "resolvedAt",
+                    startAt.plusSeconds(2500).toString(),
+                    "outcomeType",
+                    "CORRECTIVE_MAINTENANCE",
+                    "component",
+                    "compressor",
+                    "severity",
+                    "MEDIUM",
+                    "downtimeMinutes",
+                    50,
+                    "source",
+                    "OPERATOR",
+                    "confidence",
+                    0.9
+                ),
+                headersFor(userId, "maintenance-outcome@example.com")
+            ),
+            MaintenanceOutcomeResponse.class
+        );
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updated.getBody().outcomeType().name()).isEqualTo("CORRECTIVE_MAINTENANCE");
         assertThat(updated.getBody().version()).isEqualTo(2);
 
         ResponseEntity<MaintenanceOutcomeResponse[]> changes = restTemplate.exchange(
-                "/internal/maintenance-outcomes/changes?updatedAfter=1970-01-01T00:00:00Z",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                MaintenanceOutcomeResponse[].class);
+            "/internal/maintenance-outcomes/changes?updatedAfter=1970-01-01T00:00:00Z",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            MaintenanceOutcomeResponse[].class
+        );
         assertThat(changes.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(changes.getBody()).extracting(MaintenanceOutcomeResponse::id).contains(created.getBody().id());
+        assertThat(changes.getBody())
+            .extracting(MaintenanceOutcomeResponse::id)
+            .contains(created.getBody().id());
 
         ResponseEntity<String> invalid = restTemplate.exchange(
-                "/maintenance-operations/" + operationId + "/outcomes",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "deviceId", device.id().toString(),
-                                "observedAt", endAt.toString(),
-                                "resolvedAt", startAt.toString(),
-                                "outcomeType", "INSPECTION_NORMAL"),
-                        headersFor(userId, "maintenance-outcome@example.com")),
-                String.class);
+            "/maintenance-operations/" + operationId + "/outcomes",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "deviceId",
+                    device.id().toString(),
+                    "observedAt",
+                    endAt.toString(),
+                    "resolvedAt",
+                    startAt.toString(),
+                    "outcomeType",
+                    "INSPECTION_NORMAL"
+                ),
+                headersFor(userId, "maintenance-outcome@example.com")
+            ),
+            String.class
+        );
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
         ResponseEntity<String> foreign = restTemplate.exchange(
-                "/maintenance-outcomes/" + created.getBody().id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(foreignUserId, "foreign-outcome@example.com")),
-                String.class);
+            "/maintenance-outcomes/" + created.getBody().id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(foreignUserId, "foreign-outcome@example.com")),
+            String.class
+        );
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
@@ -959,43 +1387,54 @@ class DeviceManagementTest extends SignedUserTest {
         UUID userId = UUID.randomUUID();
         LocationResponse location = createLocation(userId, "Account lifecycle kitchen");
         DeviceResponse device = createDevice(userId, location.id(), "Account lifecycle fridge");
-        DataSourceResponse dataSource = createDataSource(userId, device.id(), "plug-account-lifecycle-001");
+        DataSourceResponse dataSource = createDataSource(
+            userId,
+            device.id(),
+            "plug-account-lifecycle-001"
+        );
         restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id() + "/token",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "account-lifecycle@example.com")),
-                SourceTokenResponse.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id() + "/token",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "account-lifecycle@example.com")),
+            SourceTokenResponse.class
+        );
 
         ResponseEntity<String> activeLookup = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         ResponseEntity<String> deletedAccount = restTemplate.exchange(
-                "/internal/accounts/users/" + userId + "/lifecycle",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("email", "account-lifecycle@example.com", "status", "DELETED"),
-                        internalHeaders()),
-                String.class);
+            "/internal/accounts/users/" + userId + "/lifecycle",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", "account-lifecycle@example.com", "status", "DELETED"),
+                internalHeaders()
+            ),
+            String.class
+        );
         ResponseEntity<String> deletedLookup = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/data-sources/plug-account-lifecycle-001/exists",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
 
         assertThat(activeLookup.getBody()).contains("\"exists\":true");
         assertThat(deletedAccount.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(deletedAccount.getBody()).contains("\"status\":\"DELETED\"");
         assertThat(deletedLookup.getBody()).contains("\"exists\":false");
-        assertThat(deviceRepository.findById(device.id()).orElseThrow().getStatus().name())
-                .isEqualTo("DECOMMISSIONED");
-        assertThat(dataSourceRepository.findById(dataSource.id()).orElseThrow())
-                .satisfies(source -> {
-                    assertThat(source.isEnabled()).isFalse();
-                    assertThat(source.getStatus().name()).isEqualTo("REVOKED");
-                    assertThat(source.getTokenRevokedAt()).isNotNull();
-                });
+        assertThat(
+            deviceRepository.findById(device.id()).orElseThrow().getStatus().name()
+        ).isEqualTo("DECOMMISSIONED");
+        assertThat(dataSourceRepository.findById(dataSource.id()).orElseThrow()).satisfies(
+            source -> {
+                assertThat(source.isEnabled()).isFalse();
+                assertThat(source.getStatus().name()).isEqualTo("REVOKED");
+                assertThat(source.getTokenRevokedAt()).isNotNull();
+            }
+        );
     }
 
     @Test
@@ -1008,44 +1447,128 @@ class DeviceManagementTest extends SignedUserTest {
         clearInvocations(auditService);
 
         restTemplate.exchange(
-                "/locations/" + location.id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("name", "Event kitchen updated"), headersFor(userId, "events@example.com")),
-                LocationResponse.class);
+            "/locations/" + location.id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("name", "Event kitchen updated"),
+                headersFor(userId, "events@example.com")
+            ),
+            LocationResponse.class
+        );
         restTemplate.exchange(
-                "/devices/" + device.id() + "/disable",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "events@example.com")),
-                DeviceResponse.class);
+            "/devices/" + device.id() + "/disable",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "events@example.com")),
+            DeviceResponse.class
+        );
         restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
-                HttpMethod.DELETE,
-                new HttpEntity<>(headersFor(userId, "events@example.com")),
-                Void.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
+            HttpMethod.DELETE,
+            new HttpEntity<>(headersFor(userId, "events@example.com")),
+            Void.class
+        );
         ResponseEntity<SensorResponse> sensor = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("name", "Event sensor", "type", "TEMPERATURE", "metricMapping", "temperature"),
-                        headersFor(userId, "events@example.com")),
-                SensorResponse.class);
+            "/devices/" + device.id() + "/sensors",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "name",
+                    "Event sensor",
+                    "type",
+                    "TEMPERATURE",
+                    "metricMapping",
+                    "temperature"
+                ),
+                headersFor(userId, "events@example.com")
+            ),
+            SensorResponse.class
+        );
         restTemplate.exchange(
-                "/devices/" + device.id() + "/analytics-config",
-                HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("enabled", false, "config", Map.of()), headersFor(userId, "events@example.com")),
-                DeviceAnalyticsConfigResponse.class);
+            "/devices/" + device.id() + "/analytics-config",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("enabled", false, "config", Map.of()),
+                headersFor(userId, "events@example.com")
+            ),
+            DeviceAnalyticsConfigResponse.class
+        );
 
         assertThat(sensor.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(eventPublisher).publish(eq("LOCATION"), eq("UPDATED"), any(), eq(null), eq(location.id()), eq(null));
-        verify(eventPublisher).publish(eq("DEVICE"), eq("STATUS_CHANGED"), any(), eq(device.id()), eq(device.id()), eq("DISABLED"));
-        verify(eventPublisher).publish(eq("DATA_SOURCE"), eq("DISABLED"), any(), eq(device.id()), eq(dataSource.id()), eq("DISABLED"));
-        verify(eventPublisher).publish(eq("SENSOR"), eq("CREATED"), any(), eq(device.id()), eq(sensor.getBody().id()), eq(null));
-        verify(eventPublisher).publish(eq("ANALYTICS_CONFIG"), eq("UPDATED"), any(), eq(device.id()), any(), eq("DISABLED"));
-        verify(auditService).record(any(), any(), eq("LOCATION_UPDATED"), eq("LOCATION"), eq(location.id()));
-        verify(auditService).record(any(), any(), eq("DEVICE_STATUS_CHANGED"), eq("DEVICE"), eq(device.id()));
-        verify(auditService).record(any(), any(), eq("DATA_SOURCE_DISABLED"), eq("DATA_SOURCE"), eq(dataSource.id()));
-        verify(auditService).record(any(), any(), eq("SENSOR_CREATED"), eq("SENSOR"), eq(sensor.getBody().id()));
-        verify(auditService).record(any(), any(), eq("ANALYTICS_CONFIG_UPDATED"), eq("ANALYTICS_CONFIG"), any());
+        verify(eventPublisher).publish(
+            eq("LOCATION"),
+            eq("UPDATED"),
+            any(),
+            eq(null),
+            eq(location.id()),
+            eq(null)
+        );
+        verify(eventPublisher).publish(
+            eq("DEVICE"),
+            eq("STATUS_CHANGED"),
+            any(),
+            eq(device.id()),
+            eq(device.id()),
+            eq("DISABLED")
+        );
+        verify(eventPublisher).publish(
+            eq("DATA_SOURCE"),
+            eq("DISABLED"),
+            any(),
+            eq(device.id()),
+            eq(dataSource.id()),
+            eq("DISABLED")
+        );
+        verify(eventPublisher).publish(
+            eq("SENSOR"),
+            eq("CREATED"),
+            any(),
+            eq(device.id()),
+            eq(sensor.getBody().id()),
+            eq(null)
+        );
+        verify(eventPublisher).publish(
+            eq("ANALYTICS_CONFIG"),
+            eq("UPDATED"),
+            any(),
+            eq(device.id()),
+            any(),
+            eq("DISABLED")
+        );
+        verify(auditService).record(
+            any(),
+            any(),
+            eq("LOCATION_UPDATED"),
+            eq("LOCATION"),
+            eq(location.id())
+        );
+        verify(auditService).record(
+            any(),
+            any(),
+            eq("DEVICE_STATUS_CHANGED"),
+            eq("DEVICE"),
+            eq(device.id())
+        );
+        verify(auditService).record(
+            any(),
+            any(),
+            eq("DATA_SOURCE_DISABLED"),
+            eq("DATA_SOURCE"),
+            eq(dataSource.id())
+        );
+        verify(auditService).record(
+            any(),
+            any(),
+            eq("SENSOR_CREATED"),
+            eq("SENSOR"),
+            eq(sensor.getBody().id())
+        );
+        verify(auditService).record(
+            any(),
+            any(),
+            eq("ANALYTICS_CONFIG_UPDATED"),
+            eq("ANALYTICS_CONFIG"),
+            any()
+        );
     }
 
     @Test
@@ -1055,12 +1578,14 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(userId, location.id(), "Kitchen fridge");
 
         ResponseEntity<DataSourceResponse> response = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("sourceType", "SMART_PLUG", "protocol", "REST", "externalId", "plug-001"),
-                        headersFor(userId, "datasource@example.com")),
-                DataSourceResponse.class);
+            "/devices/" + device.id() + "/data-sources",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("sourceType", "SMART_PLUG", "protocol", "REST", "externalId", "plug-001"),
+                headersFor(userId, "datasource@example.com")
+            ),
+            DataSourceResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -1075,12 +1600,21 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(userId, location.id(), "Validation fridge");
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("sourceType", "SMART_PLUG", "protocol", "REST", "externalId", "bad source id"),
-                        headersFor(userId, "validation@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/data-sources",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "sourceType",
+                    "SMART_PLUG",
+                    "protocol",
+                    "REST",
+                    "externalId",
+                    "bad source id"
+                ),
+                headersFor(userId, "validation@example.com")
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).contains("validation_failed");
@@ -1095,40 +1629,49 @@ class DeviceManagementTest extends SignedUserTest {
         DataSourceResponse dataSource = createDataSource(ownerId, device.id(), "plug-api-001");
 
         ResponseEntity<DataSourceResponse[]> listResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
-                DataSourceResponse[].class);
+            "/devices/" + device.id() + "/data-sources",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
+            DataSourceResponse[].class
+        );
         ResponseEntity<DataSourceResponse> getResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
-                DataSourceResponse.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
+            DataSourceResponse.class
+        );
         ResponseEntity<DataSourceResponse> updateResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of("sourceType", "SENSOR", "protocol", "MQTT", "externalId", "plug-api-002"),
-                        headersFor(ownerId, "owner-source@example.com")),
-                DataSourceResponse.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("sourceType", "SENSOR", "protocol", "MQTT", "externalId", "plug-api-002"),
+                headersFor(ownerId, "owner-source@example.com")
+            ),
+            DataSourceResponse.class
+        );
         ResponseEntity<String> foreignGet = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(foreignId, "foreign-source@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(foreignId, "foreign-source@example.com")),
+            String.class
+        );
         ResponseEntity<Void> disableResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
-                HttpMethod.DELETE,
-                new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
-                Void.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id(),
+            HttpMethod.DELETE,
+            new HttpEntity<>(headersFor(ownerId, "owner-source@example.com")),
+            Void.class
+        );
         ResponseEntity<String> internalResponse = restTemplate.exchange(
-                "/internal/data-sources/" + dataSource.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/data-sources/" + dataSource.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
 
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(listResponse.getBody()).extracting(DataSourceResponse::id).contains(dataSource.id());
+        assertThat(listResponse.getBody())
+            .extracting(DataSourceResponse::id)
+            .contains(dataSource.id());
         assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(getResponse.getBody().externalId()).isEqualTo("plug-api-001");
         assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -1148,33 +1691,37 @@ class DeviceManagementTest extends SignedUserTest {
         DataSourceResponse dataSource = createDataSource(userId, device.id(), "plug-secure-001");
 
         ResponseEntity<SourceTokenResponse> tokenResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/data-sources/" + dataSource.id() + "/token",
-                HttpMethod.POST,
-                new HttpEntity<>(headersFor(userId, "datasource-token@example.com")),
-                SourceTokenResponse.class);
+            "/devices/" + device.id() + "/data-sources/" + dataSource.id() + "/token",
+            HttpMethod.POST,
+            new HttpEntity<>(headersFor(userId, "datasource-token@example.com")),
+            SourceTokenResponse.class
+        );
         assertThat(tokenResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(tokenResponse.getBody()).isNotNull();
 
         ResponseEntity<String> unauthorized = restTemplate.getForEntity(
-                "/internal/devices/{deviceId}/data-sources/{sourceId}/exists",
-                String.class,
-                device.id(),
-                "plug-secure-001");
+            "/internal/devices/{deviceId}/data-sources/{sourceId}/exists",
+            String.class,
+            device.id(),
+            "plug-secure-001"
+        );
         assertThat(unauthorized.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
         ResponseEntity<String> exists = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/data-sources/plug-secure-001/exists",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/data-sources/plug-secure-001/exists",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         assertThat(exists.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(exists.getBody()).contains("\"exists\":true");
 
         ResponseEntity<String> byTokenPrefix = restTemplate.exchange(
-                "/internal/data-sources/by-token-prefix/" + tokenResponse.getBody().tokenPrefix(),
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/data-sources/by-token-prefix/" + tokenResponse.getBody().tokenPrefix(),
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         assertThat(byTokenPrefix.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(byTokenPrefix.getBody()).contains("\"tokenHash\"");
         assertThat(byTokenPrefix.getBody()).doesNotContain(tokenResponse.getBody().token());
@@ -1188,15 +1735,17 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(ownerId, location.id(), "Owner fridge");
 
         ResponseEntity<String> ownerAccess = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/access?userId=" + ownerId,
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/access?userId=" + ownerId,
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
         ResponseEntity<String> foreignAccess = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/access?userId=" + foreignId,
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/access?userId=" + foreignId,
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
 
         assertThat(ownerAccess.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ownerAccess.getBody()).contains("\"allowed\":true");
@@ -1211,15 +1760,17 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(ownerId, location.id(), "Lookup fridge");
 
         ResponseEntity<String> ownerLookup = restTemplate.exchange(
-                "/internal/devices/" + device.id() + "/owner",
-                HttpMethod.GET,
-                new HttpEntity<>(internalHeaders()),
-                String.class);
+            "/internal/devices/" + device.id() + "/owner",
+            HttpMethod.GET,
+            new HttpEntity<>(internalHeaders()),
+            String.class
+        );
 
         assertThat(ownerLookup.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ownerLookup.getBody()).contains("\"deviceId\":\"" + device.id());
-        assertThat(ownerLookup.getBody()).contains("\"accountId\":\""
-                + deviceRepository.findById(device.id()).orElseThrow().getAccountId());
+        assertThat(ownerLookup.getBody()).contains(
+            "\"accountId\":\"" + deviceRepository.findById(device.id()).orElseThrow().getAccountId()
+        );
     }
 
     @Test
@@ -1229,22 +1780,27 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(userId, location.id(), "Analytics fridge");
 
         ResponseEntity<DeviceAnalyticsConfigResponse> defaultResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/analytics-config",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(userId, "analytics@example.com")),
-                DeviceAnalyticsConfigResponse.class);
+            "/devices/" + device.id() + "/analytics-config",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(userId, "analytics@example.com")),
+            DeviceAnalyticsConfigResponse.class
+        );
         ResponseEntity<String> updateResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/analytics-config",
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of("enabled", false, "config", Map.of("baselineWindowDays", 14)),
-                        headersFor(userId, "analytics@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/analytics-config",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("enabled", false, "config", Map.of("baselineWindowDays", 14)),
+                headersFor(userId, "analytics@example.com")
+            ),
+            String.class
+        );
 
         assertThat(defaultResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(defaultResponse.getBody()).isNotNull();
         assertThat(defaultResponse.getBody().enabled()).isTrue();
-        assertThat(updateResponse.getStatusCode()).as(updateResponse.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(updateResponse.getStatusCode())
+            .as(updateResponse.getBody())
+            .isEqualTo(HttpStatus.OK);
         assertThat(updateResponse.getBody()).contains("\"enabled\":false");
         assertThat(updateResponse.getBody()).contains("baselineWindowDays");
     }
@@ -1257,50 +1813,70 @@ class DeviceManagementTest extends SignedUserTest {
         DeviceResponse device = createDevice(ownerId, location.id(), "Sensor fridge");
 
         ResponseEntity<SensorResponse> createResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "name", "Compressor temperature",
-                                "type", "TEMPERATURE",
-                                "unit", "C",
-                                "metricMapping", "temperature",
-                                "metadata", Map.of("placement", "compressor")),
-                        headersFor(ownerId, "sensor-owner@example.com")),
-                SensorResponse.class);
+            "/devices/" + device.id() + "/sensors",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "name",
+                    "Compressor temperature",
+                    "type",
+                    "TEMPERATURE",
+                    "unit",
+                    "C",
+                    "metricMapping",
+                    "temperature",
+                    "metadata",
+                    Map.of("placement", "compressor")
+                ),
+                headersFor(ownerId, "sensor-owner@example.com")
+            ),
+            SensorResponse.class
+        );
         SensorResponse created = createResponse.getBody();
         ResponseEntity<SensorResponse[]> listResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors",
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
-                SensorResponse[].class);
+            "/devices/" + device.id() + "/sensors",
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
+            SensorResponse[].class
+        );
         ResponseEntity<SensorResponse> updateResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors/" + created.id(),
-                HttpMethod.PATCH,
-                new HttpEntity<>(
-                        Map.of(
-                                "name", "Door switch",
-                                "type", "CONTACT",
-                                "unit", "state",
-                                "metricMapping", "door_open",
-                                "metadata", Map.of("normallyOpen", true)),
-                        headersFor(ownerId, "sensor-owner@example.com")),
-                SensorResponse.class);
+            "/devices/" + device.id() + "/sensors/" + created.id(),
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "name",
+                    "Door switch",
+                    "type",
+                    "CONTACT",
+                    "unit",
+                    "state",
+                    "metricMapping",
+                    "door_open",
+                    "metadata",
+                    Map.of("normallyOpen", true)
+                ),
+                headersFor(ownerId, "sensor-owner@example.com")
+            ),
+            SensorResponse.class
+        );
         ResponseEntity<String> foreignGet = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors/" + created.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(foreignId, "sensor-foreign@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/sensors/" + created.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(foreignId, "sensor-foreign@example.com")),
+            String.class
+        );
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors/" + created.id(),
-                HttpMethod.DELETE,
-                new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
-                Void.class);
+            "/devices/" + device.id() + "/sensors/" + created.id(),
+            HttpMethod.DELETE,
+            new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
+            Void.class
+        );
         ResponseEntity<String> getAfterDelete = restTemplate.exchange(
-                "/devices/" + device.id() + "/sensors/" + created.id(),
-                HttpMethod.GET,
-                new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
-                String.class);
+            "/devices/" + device.id() + "/sensors/" + created.id(),
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ownerId, "sensor-owner@example.com")),
+            String.class
+        );
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(created).isNotNull();
@@ -1318,10 +1894,14 @@ class DeviceManagementTest extends SignedUserTest {
 
     private LocationResponse createLocation(UUID userId, String name) {
         ResponseEntity<LocationResponse> response = restTemplate.exchange(
-                "/locations",
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("name", name, "description", "Test location"), headersFor(userId, "user@example.com")),
-                LocationResponse.class);
+            "/locations",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("name", name, "description", "Test location"),
+                headersFor(userId, "user@example.com")
+            ),
+            LocationResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         return response.getBody();
@@ -1329,17 +1909,25 @@ class DeviceManagementTest extends SignedUserTest {
 
     private DeviceResponse createDevice(UUID userId, UUID locationId, String name) {
         ResponseEntity<String> response = restTemplate.exchange(
-                "/devices",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of(
-                                "locationId", locationId.toString(),
-                                "name", name,
-                                "type", "FRIDGE",
-                                "manufacturer", "Bosch",
-                                "model", "Unknown"),
-                        headersFor(userId, "user@example.com")),
-                String.class);
+            "/devices",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "locationId",
+                    locationId.toString(),
+                    "name",
+                    name,
+                    "type",
+                    "FRIDGE",
+                    "manufacturer",
+                    "Bosch",
+                    "model",
+                    "Unknown"
+                ),
+                headersFor(userId, "user@example.com")
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).as(response.getBody()).isEqualTo(HttpStatus.OK);
         try {
@@ -1351,19 +1939,23 @@ class DeviceManagementTest extends SignedUserTest {
 
     private DataSourceResponse createDataSource(UUID userId, UUID deviceId, String sourceId) {
         ResponseEntity<DataSourceResponse> response = restTemplate.exchange(
-                "/devices/" + deviceId + "/data-sources",
-                HttpMethod.POST,
-                new HttpEntity<>(
-                        Map.of("sourceType", "SMART_PLUG", "protocol", "REST", "externalId", sourceId),
-                        headersFor(userId, "datasource@example.com")),
-                DataSourceResponse.class);
+            "/devices/" + deviceId + "/data-sources",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("sourceType", "SMART_PLUG", "protocol", "REST", "externalId", sourceId),
+                headersFor(userId, "datasource@example.com")
+            ),
+            DataSourceResponse.class
+        );
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         return response.getBody();
     }
 
     private HttpHeaders headersFor(UUID userId, String email) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(userId, email, "USER"));
+        headers.setBearerAuth(
+            com.voltcanary.common.test.SignedUserTokens.create(userId, email, "USER")
+        );
         headers.set("X-User-Email", email);
         headers.set("X-User-Role", "USER");
         return headers;
@@ -1380,5 +1972,4 @@ class DeviceManagementTest extends SignedUserTest {
         headers.set("X-Internal-Service-Token", "dev-internal-token");
         return headers;
     }
-
 }

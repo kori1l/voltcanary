@@ -10,42 +10,66 @@ import javax.sql.DataSource;
 
 interface NativeDataTransactions {
     @FunctionalInterface
-    interface Work<T> { T run(Connection connection, NativeReadScope scope) throws SQLException; }
+    interface Work<T> {
+        T run(Connection connection, NativeReadScope scope) throws SQLException;
+    }
 
     <T> T run(UUID account, UUID actor, Work<T> work);
 
     static NativeDataTransactions owner(DataSource source) {
         return new NativeDataTransactions() {
             public <T> T run(UUID account, UUID actor, Work<T> work) {
-                return NativeRowUnitOfWork.run(source, account, actor,
-                        (connection, scope) -> work.run(connection, NativeReadScope.owner(scope)));
+                return NativeRowUnitOfWork.run(source, account, actor, (connection, scope) ->
+                    work.run(connection, NativeReadScope.owner(scope))
+                );
             }
         };
     }
 
-    static NativeDataTransactions shared(DataSource source, NativeWorkspaceIdentity identity, NativeSharedAccess access) {
+    static NativeDataTransactions shared(
+        DataSource source,
+        NativeWorkspaceIdentity identity,
+        NativeSharedAccess access
+    ) {
         return shared(source, identity, access, false);
     }
 
-    static NativeDataTransactions shared(DataSource source, NativeWorkspaceIdentity identity, NativeSharedAccess access, boolean writes) {
+    static NativeDataTransactions shared(
+        DataSource source,
+        NativeWorkspaceIdentity identity,
+        NativeSharedAccess access,
+        boolean writes
+    ) {
         return new NativeDataTransactions() {
             public <T> T run(UUID account, UUID actor, Work<T> work) {
-                if (!access.account().equals(account) || !access.actor().equals(actor)) throw new VclException("DATA_ACCESS_DENIED", "");
+                if (
+                    !access.account().equals(account) || !access.actor().equals(actor)
+                ) throw new VclException("DATA_ACCESS_DENIED", "");
                 var membership = identity.membership(access.workspace(), actor);
-                var resources = writes ? identity.resources(access.workspace(), account, actor) : null;
-                record Result<T>(T value, String scope) { }
+                var resources = writes
+                    ? identity.resources(access.workspace(), account, actor)
+                    : null;
+                record Result<T>(T value, String scope) {}
                 Result<T> result = transaction(connection -> {
                     var scope = NativeWorkspaceGrantScope.load(connection, access, membership);
                     if (resources != null) scope = scope.withResources(resources);
                     return new Result<>(work.run(connection, scope), scope.digest());
                 });
                 var renewed = identity.membership(access.workspace(), actor);
-                var freshResources = writes ? identity.resources(access.workspace(), account, actor) : null;
-                if (!membership.digest().equals(renewed.digest())) throw new VclException("ACCESS_SCOPE_CHANGED", "");
+                var freshResources = writes
+                    ? identity.resources(access.workspace(), account, actor)
+                    : null;
+                if (!membership.digest().equals(renewed.digest())) throw new VclException(
+                    "ACCESS_SCOPE_CHANGED",
+                    ""
+                );
                 transaction(connection -> {
                     var scope = NativeWorkspaceGrantScope.load(connection, access, renewed);
                     if (freshResources != null) scope = scope.withResources(freshResources);
-                    if (!result.scope().equals(scope.digest())) throw new VclException("ACCESS_SCOPE_CHANGED", "");
+                    if (!result.scope().equals(scope.digest())) throw new VclException(
+                        "ACCESS_SCOPE_CHANGED",
+                        ""
+                    );
                     return null;
                 });
                 return result.value();
@@ -63,11 +87,15 @@ interface NativeDataTransactions {
                         connection.rollback();
                         throw failure;
                     }
-                } catch (SQLException failure) { throw NativeRowTransactions.failure(failure); }
+                } catch (SQLException failure) {
+                    throw NativeRowTransactions.failure(failure);
+                }
             }
         };
     }
 
     @FunctionalInterface
-    interface SqlWork<T> { T run(Connection connection) throws SQLException; }
+    interface SqlWork<T> {
+        T run(Connection connection) throws SQLException;
+    }
 }

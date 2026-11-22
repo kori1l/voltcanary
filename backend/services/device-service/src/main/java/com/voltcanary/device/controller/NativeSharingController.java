@@ -18,21 +18,35 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/data/datasets/{dataset}")
 @RequiredArgsConstructor
 public class NativeSharingController {
+
     private final AuthenticatedUserResolver users;
     private final NativeSharingWorkflows sharing;
 
     @PostMapping("/sharing-reviews")
-    public JsonNode prepare(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @RequestBody byte[] body) {
+    public JsonNode prepare(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @RequestBody byte[] body
+    ) {
         return sharing.prepare(users.resolve(headers), dataset, body);
     }
 
     @GetMapping("/sharing-reviews/{review}")
-    public JsonNode inspect(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID review) {
+    public JsonNode inspect(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID review
+    ) {
         return sharing.inspect(users.resolve(headers), dataset, review);
     }
 
     @PostMapping("/sharing-reviews/{review}/apply")
-    public JsonNode apply(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID review, @RequestBody byte[] body) {
+    public JsonNode apply(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID review,
+        @RequestBody byte[] body
+    ) {
         return sharing.apply(users.resolve(headers), dataset, review, body);
     }
 
@@ -42,7 +56,12 @@ public class NativeSharingController {
     }
 
     @PostMapping("/sharing/{grant}/revoke")
-    public JsonNode revoke(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID grant, @RequestBody byte[] body) {
+    public JsonNode revoke(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID grant,
+        @RequestBody byte[] body
+    ) {
         return sharing.revoke(users.resolve(headers), dataset, grant, body);
     }
 }

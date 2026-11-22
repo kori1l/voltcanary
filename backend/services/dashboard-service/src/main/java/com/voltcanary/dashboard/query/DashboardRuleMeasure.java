@@ -18,12 +18,20 @@ public record DashboardRuleMeasure(UUID epoch, UUID measure) {
     }
 
     public void project(ObjectNode output, JsonNode response) {
-        if (response == null || !epoch.toString().equals(response.path("epoch").asText())
-                || !measure.toString().equals(response.path("measure").asText())
-                || !response.path("status").isTextual() || !response.path("from").isTextual()
-                || !response.path("until").isTextual() || !response.path("evidence").isArray()
-                || response.path("evidence").size() > 100) {
-            throw new DashboardFailure("INVALID_READ_RESPONSE", "Analytics returned an unexpected measure");
+        if (
+            response == null ||
+            !epoch.toString().equals(response.path("epoch").asText()) ||
+            !measure.toString().equals(response.path("measure").asText()) ||
+            !response.path("status").isTextual() ||
+            !response.path("from").isTextual() ||
+            !response.path("until").isTextual() ||
+            !response.path("evidence").isArray() ||
+            response.path("evidence").size() > 100
+        ) {
+            throw new DashboardFailure(
+                "INVALID_READ_RESPONSE",
+                "Analytics returned an unexpected measure"
+            );
         }
         output.set("ruleWindowResult", response);
     }

@@ -11,20 +11,34 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 
-record PreparedManifestAdvisor(List<Message> messages, ChatOptions options, ReviewedProposalTool tool) implements CallAdvisor {
+record PreparedManifestAdvisor(
+    List<Message> messages,
+    ChatOptions options,
+    ReviewedProposalTool tool
+) implements CallAdvisor {
     PreparedManifestAdvisor {
         messages = List.copyOf(messages);
     }
 
-    @Override public String getName() { return "PreparedManifestAdvisor"; }
-    @Override public int getOrder() { return 0; }
+    @Override
+    public String getName() {
+        return "PreparedManifestAdvisor";
+    }
+
+    @Override
+    public int getOrder() {
+        return 0;
+    }
 
     @Override
     public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
-        if (!messages.equals(request.prompt().getInstructions())) throw new ModelRouting.Stop("PREPARED_MESSAGES_CHANGED");
+        if (!messages.equals(request.prompt().getInstructions())) throw new ModelRouting.Stop(
+            "PREPARED_MESSAGES_CHANGED"
+        );
         var actual = request.prompt().getOptions();
         if (actual instanceof ToolCallingChatOptions toolOptions) {
-            var callbacks = toolOptions.getToolCallbacks() == null ? List.of() : toolOptions.getToolCallbacks();
+            var callbacks =
+                toolOptions.getToolCallbacks() == null ? List.of() : toolOptions.getToolCallbacks();
             if (!Objects.equals(callbacks, tool == null ? List.of() : List.of(tool))) {
                 throw new ModelRouting.Stop("PREPARED_TOOLS_CHANGED");
             }
@@ -32,9 +46,13 @@ record PreparedManifestAdvisor(List<Message> messages, ChatOptions options, Revi
         } else if (tool != null) {
             throw new ModelRouting.Stop("PREPARED_TOOLS_CHANGED");
         }
-        var expected = options instanceof ToolCallingChatOptions defaults
-                ? defaults.mutate().toolCallbacks(List.of()).build() : options;
-        if (!Objects.equals(expected, actual)) throw new ModelRouting.Stop("PREPARED_OPTIONS_CHANGED");
+        var expected =
+            options instanceof ToolCallingChatOptions defaults
+                ? defaults.mutate().toolCallbacks(List.of()).build()
+                : options;
+        if (!Objects.equals(expected, actual)) throw new ModelRouting.Stop(
+            "PREPARED_OPTIONS_CHANGED"
+        );
         return chain.nextCall(request);
     }
 }

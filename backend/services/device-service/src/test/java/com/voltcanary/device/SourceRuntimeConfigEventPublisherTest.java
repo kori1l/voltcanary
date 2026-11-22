@@ -1,5 +1,11 @@
 package com.voltcanary.device;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.common.events.device.SourceRuntimeConfigEvent;
 import com.voltcanary.device.config.DeviceKafkaProperties;
@@ -14,20 +20,17 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-
 class SourceRuntimeConfigEventPublisherTest {
 
     private final DeviceOutboxService outboxService = mock(DeviceOutboxService.class);
-    private final SourceRuntimeConfigEventPublisher publisher = new SourceRuntimeConfigEventPublisher(
+    private final SourceRuntimeConfigEventPublisher publisher =
+        new SourceRuntimeConfigEventPublisher(
             outboxService,
             new DeviceKafkaProperties(),
-            new ObjectMapper(), mock(org.springframework.jdbc.core.JdbcTemplate.class),
-            mock(com.voltcanary.device.configurable.port.SourceBindingCatalog.class));
+            new ObjectMapper(),
+            mock(org.springframework.jdbc.core.JdbcTemplate.class),
+            mock(com.voltcanary.device.configurable.port.SourceBindingCatalog.class)
+        );
 
     @Test
     void publishesSourceRuntimeConfigWithoutRawToken() {
@@ -37,13 +40,15 @@ class SourceRuntimeConfigEventPublisherTest {
 
         publisher.publish(accountId, source);
 
-        ArgumentCaptor<SourceRuntimeConfigEvent> eventCaptor =
-                ArgumentCaptor.forClass(SourceRuntimeConfigEvent.class);
+        ArgumentCaptor<SourceRuntimeConfigEvent> eventCaptor = ArgumentCaptor.forClass(
+            SourceRuntimeConfigEvent.class
+        );
         verify(outboxService).enqueue(
-                anyString(),
-                eq(SourceRuntimeConfigEventPublisher.TOPIC),
-                eq(dataSourceId.toString()),
-                eventCaptor.capture());
+            anyString(),
+            eq(SourceRuntimeConfigEventPublisher.TOPIC),
+            eq(dataSourceId.toString()),
+            eventCaptor.capture()
+        );
         SourceRuntimeConfigEvent event = eventCaptor.getValue();
         assertThat(event.sourceId()).isEqualTo("sim-fridge-001");
         assertThat(event.dataSourceId()).isEqualTo(dataSourceId);
@@ -61,15 +66,21 @@ class SourceRuntimeConfigEventPublisherTest {
         UUID dataSourceId = UUID.randomUUID();
         DataSource source = source(dataSourceId);
         source.setProtocol(DataSourceProtocol.MODBUS_TCP);
-        source.setMappingJson("""
-                {"registers":[{"metric":"voltageV","address":0,"function":"HOLDING_REGISTER"}]}
-                """);
-        source.setAdapterConfigJson("""
-                {"host":"plc-1.internal","port":502,"unitId":1}
-                """);
-        source.setCredentialReferencesJson("""
-                {"basicAuth":"vault://sources/modbus-1/basic"}
-                """);
+        source.setMappingJson(
+            """
+            {"registers":[{"metric":"voltageV","address":0,"function":"HOLDING_REGISTER"}]}
+            """
+        );
+        source.setAdapterConfigJson(
+            """
+            {"host":"plc-1.internal","port":502,"unitId":1}
+            """
+        );
+        source.setCredentialReferencesJson(
+            """
+            {"basicAuth":"vault://sources/modbus-1/basic"}
+            """
+        );
         source.setHomeRegion("eu-west-1");
 
         publisher.publish(accountId, source);
@@ -80,7 +91,10 @@ class SourceRuntimeConfigEventPublisherTest {
         assertThat(event.transport()).isEqualTo("TCP");
         assertThat(event.mapping()).containsKey("registers");
         assertThat(event.adapterConfig()).containsEntry("host", "plc-1.internal");
-        assertThat(event.credentialReferences()).containsEntry("basicAuth", "vault://sources/modbus-1/basic");
+        assertThat(event.credentialReferences()).containsEntry(
+            "basicAuth",
+            "vault://sources/modbus-1/basic"
+        );
         assertThat(event.homeRegion()).isEqualTo("eu-west-1");
         assertThat(event.adapterConfig()).doesNotContainKeys("password", "secret", "token");
     }
@@ -91,15 +105,21 @@ class SourceRuntimeConfigEventPublisherTest {
         UUID dataSourceId = UUID.randomUUID();
         DataSource source = source(dataSourceId);
         source.setProtocol(DataSourceProtocol.OPC_UA);
-        source.setMappingJson("""
-                {"nodes":[{"metric":"temperatureC","nodeId":"ns=2;s=Line1.Temp"}]}
-                """);
-        source.setAdapterConfigJson("""
-                {"endpointUrl":"opc.tcp://plc-1.internal:4840","securityPolicy":"BASIC256SHA256"}
-                """);
-        source.setCredentialReferencesJson("""
-                {"certificate":"vault://sources/opcua-1/cert"}
-                """);
+        source.setMappingJson(
+            """
+            {"nodes":[{"metric":"temperatureC","nodeId":"ns=2;s=Line1.Temp"}]}
+            """
+        );
+        source.setAdapterConfigJson(
+            """
+            {"endpointUrl":"opc.tcp://plc-1.internal:4840","securityPolicy":"BASIC256SHA256"}
+            """
+        );
+        source.setCredentialReferencesJson(
+            """
+            {"certificate":"vault://sources/opcua-1/cert"}
+            """
+        );
 
         publisher.publish(accountId, source);
 
@@ -108,20 +128,28 @@ class SourceRuntimeConfigEventPublisherTest {
         assertThat(event.protocol()).isEqualTo("OPC_UA");
         assertThat(event.transport()).isEqualTo("TCP");
         assertThat(event.mapping()).containsKey("nodes");
-        assertThat(event.adapterConfig()).containsEntry("endpointUrl", "opc.tcp://plc-1.internal:4840");
-        assertThat(event.credentialReferences()).containsEntry("certificate", "vault://sources/opcua-1/cert");
+        assertThat(event.adapterConfig()).containsEntry(
+            "endpointUrl",
+            "opc.tcp://plc-1.internal:4840"
+        );
+        assertThat(event.credentialReferences()).containsEntry(
+            "certificate",
+            "vault://sources/opcua-1/cert"
+        );
         assertThat(event.mapping().toString()).doesNotContain("password", "secret");
         assertThat(event.adapterConfig().toString()).doesNotContain("password", "secret");
     }
 
     private SourceRuntimeConfigEvent publishedEvent(UUID dataSourceId) {
-        ArgumentCaptor<SourceRuntimeConfigEvent> eventCaptor =
-                ArgumentCaptor.forClass(SourceRuntimeConfigEvent.class);
+        ArgumentCaptor<SourceRuntimeConfigEvent> eventCaptor = ArgumentCaptor.forClass(
+            SourceRuntimeConfigEvent.class
+        );
         verify(outboxService).enqueue(
-                anyString(),
-                eq(SourceRuntimeConfigEventPublisher.TOPIC),
-                eq(dataSourceId.toString()),
-                eventCaptor.capture());
+            anyString(),
+            eq(SourceRuntimeConfigEventPublisher.TOPIC),
+            eq(dataSourceId.toString()),
+            eventCaptor.capture()
+        );
         return eventCaptor.getValue();
     }
 

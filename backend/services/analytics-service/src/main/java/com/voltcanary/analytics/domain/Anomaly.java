@@ -59,5 +59,4 @@ public class Anomaly {
 
     @Column(name = "superseded_at")
     private Instant supersededAt;
-
 }

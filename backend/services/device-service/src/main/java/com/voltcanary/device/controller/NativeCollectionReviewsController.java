@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/data")
 @RequiredArgsConstructor
 public class NativeCollectionReviewsController {
+
     private final NativeCollectionReviews reviews;
     private final AuthenticatedUserResolver users;
     private final NativeRowWorkflows rows;
@@ -30,11 +31,16 @@ public class NativeCollectionReviewsController {
     public Object reserve(@RequestHeader HttpHeaders headers, @RequestBody byte[] body) {
         var actor = users.resolve(headers);
         var envelope = new com.voltcanary.vcl.VclParser().readJson(body);
-        return envelope.path("kind").asText().equals("MUTATION") ? rows.reserve(actor, body) : reviews.reserve(actor, NativeReviewRequests.reservation(body));
+        return envelope.path("kind").asText().equals("MUTATION")
+            ? rows.reserve(actor, body)
+            : reviews.reserve(actor, NativeReviewRequests.reservation(body));
     }
 
     @PostMapping("/dataset-reviews")
-    public NativeCollectionReviews.View prepare(@RequestHeader HttpHeaders headers, @RequestBody byte[] body) {
+    public NativeCollectionReviews.View prepare(
+        @RequestHeader HttpHeaders headers,
+        @RequestBody byte[] body
+    ) {
         return reviews.prepare(users.resolve(headers), NativeReviewRequests.preparation(body));
     }
 
@@ -45,26 +51,45 @@ public class NativeCollectionReviewsController {
     }
 
     @PostMapping("/reviews/{id}/apply")
-    public ResponseEntity<?> apply(@RequestHeader HttpHeaders headers, @PathVariable UUID id, @RequestBody byte[] body) {
+    public ResponseEntity<?> apply(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID id,
+        @RequestBody byte[] body
+    ) {
         var actor = users.resolve(headers);
         var request = NativeReviewRequests.application(body);
-        return routing.row(actor, id) ? rowOutcome(rows.apply(actor, id, request)) : outcome(reviews.apply(actor, id, request));
+        return routing.row(actor, id)
+            ? rowOutcome(rows.apply(actor, id, request))
+            : outcome(reviews.apply(actor, id, request));
     }
 
     @PostMapping("/reviews/{id}/reconcile")
-    public ResponseEntity<?> reconcile(@RequestHeader HttpHeaders headers, @PathVariable UUID id,
-            @RequestBody(required = false) byte[] body) {
+    public ResponseEntity<?> reconcile(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID id,
+        @RequestBody(required = false) byte[] body
+    ) {
         var actor = users.resolve(headers);
         NativeReviewRequests.reconciliation(body);
-        return routing.row(actor, id) ? rowOutcome(rows.reconcile(actor, id)) : outcome(reviews.reconcile(actor, id));
+        return routing.row(actor, id)
+            ? rowOutcome(rows.reconcile(actor, id))
+            : outcome(reviews.reconcile(actor, id));
     }
 
-    private static ResponseEntity<NativeCollectionReviews.View> outcome(NativeCollectionReviews.View result) {
-        return result.status().equals("SUCCEEDED") ? ResponseEntity.ok(result) : ResponseEntity.accepted().header("Retry-After", "2").body(result);
+    private static ResponseEntity<NativeCollectionReviews.View> outcome(
+        NativeCollectionReviews.View result
+    ) {
+        return result.status().equals("SUCCEEDED")
+            ? ResponseEntity.ok(result)
+            : ResponseEntity.accepted().header("Retry-After", "2").body(result);
     }
 
-    private static ResponseEntity<NativeRowWorkflows.View> rowOutcome(NativeRowWorkflows.View result) {
+    private static ResponseEntity<NativeRowWorkflows.View> rowOutcome(
+        NativeRowWorkflows.View result
+    ) {
         if (result.status().equals("FAILED")) return ResponseEntity.status(409).body(result);
-        return result.status().equals("SUCCEEDED") ? ResponseEntity.ok(result) : ResponseEntity.accepted().header("Retry-After", "2").body(result);
+        return result.status().equals("SUCCEEDED")
+            ? ResponseEntity.ok(result)
+            : ResponseEntity.accepted().header("Retry-After", "2").body(result);
     }
 }

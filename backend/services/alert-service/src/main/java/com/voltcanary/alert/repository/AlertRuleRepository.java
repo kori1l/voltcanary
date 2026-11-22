@@ -7,14 +7,21 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-public interface AlertRuleRepository extends JpaRepository<AlertRule, UUID>, JpaSpecificationExecutor<AlertRule> {
-
+public interface AlertRuleRepository
+    extends JpaRepository<AlertRule, UUID>, JpaSpecificationExecutor<AlertRule>
+{
     List<AlertRule> findByAccountIdOrderByUpdatedAtDesc(UUID accountId);
 
     Optional<AlertRule> findByIdAndAccountId(UUID id, UUID accountId);
 
-    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-    @org.springframework.data.jpa.repository.Query("select rule from AlertRule rule where rule.id=:id and rule.accountId=:accountId")
-    Optional<AlertRule> lockOwned(@org.springframework.data.repository.query.Param("id") UUID id,
-            @org.springframework.data.repository.query.Param("accountId") UUID accountId);
+    @org.springframework.data.jpa.repository.Lock(
+        jakarta.persistence.LockModeType.PESSIMISTIC_WRITE
+    )
+    @org.springframework.data.jpa.repository.Query(
+        "select rule from AlertRule rule where rule.id=:id and rule.accountId=:accountId"
+    )
+    Optional<AlertRule> lockOwned(
+        @org.springframework.data.repository.query.Param("id") UUID id,
+        @org.springframework.data.repository.query.Param("accountId") UUID accountId
+    );
 }

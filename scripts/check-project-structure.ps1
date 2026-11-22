@@ -15,12 +15,15 @@ function Get-LineCount([string]$Path) {
 }
 
 function Get-RelativePath([System.IO.FileSystemInfo]$Item) {
-    return $Item.FullName.Substring($Root.Length + 1)
+    return $Item.FullName.Substring($Root.Length + 1).Replace("\", "/")
 }
 
 function Get-ConstructorDependencyCount([string]$Content, [string]$ClassName) {
     $match = [regex]::Match($Content, "public\s+$ClassName\s*\((?<params>[\s\S]*?)\)\s*\{")
     if (-not $match.Success) {
+        if ($Content -match "@RequiredArgsConstructor") {
+            return ([regex]::Matches($Content, "(?m)^\s*private\s+final\s+[^;=]+;\s*$").Count)
+        }
         return 0
     }
 
@@ -33,15 +36,15 @@ function Get-ConstructorDependencyCount([string]$Content, [string]$ClassName) {
 }
 
 $mainFiles = Get-ChildItem "$Root\backend\services" -Recurse -Filter *.java |
-    Where-Object { $_.FullName -match "\\src\\main\\java\\" }
+    Where-Object { $_.FullName.Replace("\", "/") -match "/src/main/java/" }
 
 foreach ($file in $mainFiles) {
     $relativePath = Get-RelativePath $file
     $content = Get-Content -Raw $file.FullName
 
     if ($content -match "(?m)^\s*package\s+([a-zA-Z0-9_.]+)\s*;") {
-        $packagePath = $Matches[1].Replace(".", "\")
-        $expectedSuffix = "src\main\java\$packagePath\$($file.Name)"
+        $packagePath = $Matches[1].Replace(".", "/")
+        $expectedSuffix = "src/main/java/$packagePath/$($file.Name)"
 
         if (-not $relativePath.EndsWith($expectedSuffix)) {
             $violations.Add("Package declaration does not match path: $relativePath")
@@ -49,16 +52,16 @@ foreach ($file in $mainFiles) {
     }
 
     if ($content -match "@RestController|@Controller") {
-        if ($content -notmatch "@RestControllerAdvice|@ControllerAdvice" -and $relativePath -notmatch "\\controller\\") {
+        if ($content -notmatch "@RestControllerAdvice|@ControllerAdvice" -and $relativePath -notmatch "/controller/") {
             $violations.Add("Controller outside controller package: $relativePath")
         }
     }
 
-    if ($content -match "@Entity" -and $relativePath -notmatch "\\domain\\") {
+    if ($content -match "@Entity" -and $relativePath -notmatch "/domain/") {
         $violations.Add("JPA entity outside domain package: $relativePath")
     }
 
-    if ($content -match "extends\s+(JpaRepository|CrudRepository|PagingAndSortingRepository)" -and $relativePath -notmatch "\\repository\\") {
+    if ($content -match "extends\s+(JpaRepository|CrudRepository|PagingAndSortingRepository)" -and $relativePath -notmatch "/repository/") {
         $violations.Add("Repository outside repository package: $relativePath")
     }
 
@@ -66,11 +69,11 @@ foreach ($file in $mainFiles) {
         $violations.Add("Production Spring injection annotation found: $relativePath")
     }
 
-    if ($content -match "@Value" -and $relativePath -notmatch "\\config\\") {
+    if ($content -match "@Value" -and $relativePath -notmatch "/config/") {
         $violations.Add("Direct @Value outside config package: $relativePath")
     }
 
-    if ($relativePath -match "\\service\\" -and $file.Name -match "(ConfigService|SettingsService)\.java$") {
+    if ($relativePath -match "/service/" -and $file.Name -match "(ConfigService|SettingsService)\.java$") {
         $violations.Add("Generic configuration/settings service name in service package: $relativePath")
     }
 
@@ -78,7 +81,7 @@ foreach ($file in $mainFiles) {
         $riskReports.Add("Wildcard import in production Java file: $relativePath")
     }
 
-    if ($relativePath -match "\\service\\" -and $content -match "@Service") {
+    if ($content -match "@Service") {
         $lineCount = Get-LineCount $file.FullName
         if ($lineCount -gt $javaServiceLineThreshold) {
             $riskReports.Add("Oversized Java service class ($lineCount lines > $javaServiceLineThreshold): $relativePath")
@@ -94,7 +97,7 @@ foreach ($file in $mainFiles) {
 
 $emptySourcePackageDirs = Get-ChildItem "$Root\backend\services" -Recurse -Directory |
     Where-Object {
-        $_.FullName -match "\\src\\main\\java\\" -and
+        $_.FullName.Replace("\", "/") -match "/src/main/java/" -and
         (Get-ChildItem $_.FullName -Recurse -File | Measure-Object).Count -eq 0
     }
 
@@ -104,7 +107,7 @@ foreach ($dir in $emptySourcePackageDirs) {
 }
 
 $sourcePackagePlaceholders = Get-ChildItem "$Root\backend\services" -Recurse -Force -Filter .gitkeep |
-    Where-Object { $_.FullName -match "\\src\\main\\java\\" }
+    Where-Object { $_.FullName.Replace("\", "/") -match "/src/main/java/" }
 
 foreach ($file in $sourcePackagePlaceholders) {
     $relativePath = Get-RelativePath $file
@@ -112,7 +115,7 @@ foreach ($file in $sourcePackagePlaceholders) {
 }
 
 $frontendPageFiles = Get-ChildItem "$Root\frontend\src" -Recurse -File -Filter *Page.tsx -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch "\.test\.tsx$" }
+    Where-Object { $_.FullName.Replace("\", "/") -notmatch "\.test\.tsx$" }
 
 foreach ($file in $frontendPageFiles) {
     $lineCount = Get-LineCount $file.FullName
@@ -122,7 +125,7 @@ foreach ($file in $frontendPageFiles) {
 }
 
 $pythonServiceModules = Get-ChildItem "$Root\ml-service\app\services" -Recurse -File -Filter *.py -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch "\\tests\\" }
+    Where-Object { $_.FullName.Replace("\", "/") -notmatch "/tests/" }
 
 foreach ($file in $pythonServiceModules) {
     $lineCount = Get-LineCount $file.FullName

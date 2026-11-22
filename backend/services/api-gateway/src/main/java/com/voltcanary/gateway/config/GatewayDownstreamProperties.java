@@ -13,15 +13,26 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class GatewayDownstreamProperties {
-    private Duration timeout = Duration.ofSeconds(2);
-    private Map<String, String> services = new LinkedHashMap<>(Map.of(
-            "identity-service", "http://localhost:8081",
-            "device-service", "http://localhost:8082",
-            "ingestion-service", "http://localhost:8083",
-            "telemetry-service", "http://localhost:8084",
-            "analytics-service", "http://localhost:8085",
-            "alert-service", "http://localhost:8086",
-            "simulator-service", "http://localhost:8087",
-            "ai-agent-service", "http://localhost:8088"));
 
+    private Duration timeout = Duration.ofSeconds(2);
+    private Map<String, String> services = new LinkedHashMap<>(
+        Map.of(
+            "identity-service",
+            "http://localhost:8081",
+            "device-service",
+            "http://localhost:8082",
+            "ingestion-service",
+            "http://localhost:8083",
+            "telemetry-service",
+            "http://localhost:8084",
+            "analytics-service",
+            "http://localhost:8085",
+            "alert-service",
+            "http://localhost:8086",
+            "simulator-service",
+            "http://localhost:8087",
+            "ai-agent-service",
+            "http://localhost:8088"
+        )
+    );
 }

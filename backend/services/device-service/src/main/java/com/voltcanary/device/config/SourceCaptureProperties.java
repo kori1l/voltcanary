@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class SourceCaptureProperties {
+
     private String telemetryServiceBaseUrl = "http://localhost:8084";
     private String internalServiceToken = "";
     private Duration timeout = Duration.ofSeconds(2);
-
 }

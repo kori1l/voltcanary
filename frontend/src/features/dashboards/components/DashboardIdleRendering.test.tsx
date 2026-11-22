@@ -1,21 +1,67 @@
-import {act,fireEvent,render,screen} from "@testing-library/react";
-import {afterEach,expect,it,vi} from "vitest";
-import {DashboardWidgetPanel} from "./DashboardWidgetPanel";
-import type {DashboardWidget} from "../../../dashboards/dashboardsApi";
-import type {WidgetQueryPanel} from "../../../dashboards/dashboardQueriesApi";
-const {chart}=vi.hoisted(()=>({chart:vi.fn()}));
-vi.mock("./DashboardBusinessEvidence",()=>({DashboardBusinessEvidence:()=>{chart();return <svg aria-label="Chart"/>;}}));
-afterEach(()=>{vi.useRealTimers();chart.mockClear();});
-it("keeps24 graphs idle while only open information age updates",()=>{
-  vi.useFakeTimers();vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
-  const widget:DashboardWidget={id:"chart",type:"time-series",typeVersion:1,title:"Chart",binding:{},query:{},presentation:{},navigation:{},payload:{}};
-  const panel:WidgetQueryPanel={widgetId:"chart",status:"ready",data:{series:[]},contextHash:"context",time:null,requestedCount:1,evaluatedCount:1,receivedAt:"2026-10-11T12:00:00Z",measuredAt:null,provenance:{},errorCode:null,explanation:null};
-  render(<>{Array.from({length:24},(_,i)=><DashboardWidgetPanel key={i} widget={widget} panel={panel} stale={false} onRetry={()=>{}}/>)}</>);
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { DashboardWidgetPanel } from "./DashboardWidgetPanel";
+import type { DashboardWidget } from "../../../dashboards/dashboardsApi";
+import type { WidgetQueryPanel } from "../../../dashboards/dashboardQueriesApi";
+const { chart } = vi.hoisted(() => ({ chart: vi.fn() }));
+vi.mock("./DashboardBusinessEvidence", () => ({
+  DashboardBusinessEvidence: () => {
+    chart();
+    return <svg aria-label="Chart" />;
+  },
+}));
+afterEach(() => {
+  vi.useRealTimers();
+  chart.mockClear();
+});
+it("keeps24 graphs idle while only open information age updates", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
+  const widget: DashboardWidget = {
+    id: "chart",
+    type: "time-series",
+    typeVersion: 1,
+    title: "Chart",
+    binding: {},
+    query: {},
+    presentation: {},
+    navigation: {},
+    payload: {},
+  };
+  const panel: WidgetQueryPanel = {
+    widgetId: "chart",
+    status: "ready",
+    data: { series: [] },
+    contextHash: "context",
+    time: null,
+    requestedCount: 1,
+    evaluatedCount: 1,
+    receivedAt: "2026-10-11T12:00:00Z",
+    measuredAt: null,
+    provenance: {},
+    errorCode: null,
+    explanation: null,
+  };
+  render(
+    <>
+      {Array.from({ length: 24 }, (_, i) => (
+        <DashboardWidgetPanel
+          key={i}
+          widget={widget}
+          panel={panel}
+          stale={false}
+          onRetry={() => {}}
+        />
+      ))}
+    </>,
+  );
   expect(chart).toHaveBeenCalledTimes(24);
-  act(()=>vi.advanceTimersByTime(3000));expect(chart).toHaveBeenCalledTimes(24);
-  fireEvent.click(screen.getAllByRole("button",{name:"Information for Chart"})[0]);
-  const afterOpen=chart.mock.calls.length;
+  act(() => vi.advanceTimersByTime(3000));
+  expect(chart).toHaveBeenCalledTimes(24);
+  fireEvent.click(screen.getAllByRole("button", { name: "Information for Chart" })[0]);
+  const afterOpen = chart.mock.calls.length;
   expect(screen.getByText("3 s")).toBeInTheDocument();
-  act(()=>vi.advanceTimersByTime(2000));expect(screen.getByText("5 s")).toBeInTheDocument();
+  act(() => vi.advanceTimersByTime(2000));
+  expect(screen.getByText("5 s")).toBeInTheDocument();
   expect(chart).toHaveBeenCalledTimes(afterOpen);
 });

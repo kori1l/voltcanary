@@ -1,12 +1,12 @@
 from app.schemas.inference import InferenceRequest, InferenceResponse
-from app.services.artifact_store import ArtifactStore
 from app.services.anomaly_scoring import AnomalyModelScorer
+from app.services.artifact_store import ArtifactStore
 from app.services.baseline_scoring import BaselineHeuristicScorer
 from app.services.failure_scoring import FailureModelScorer
 from app.services.inference_responses import InferenceResponseFactory
 from app.services.inference_values import MetricValueExtractor
-from app.services.trained_model_resolution import TrainedModelResolver
 from app.services.serving_cache import ServingArtifactCache
+from app.services.trained_model_resolution import TrainedModelResolver
 
 
 class InferenceService:
@@ -52,5 +52,9 @@ class InferenceService:
         artifact = runtime.artifact
         self.model_resolver.apply_runtime_metadata(model, artifact, runtime.model_type)
         if model["modelType"] == "trained_failure_prediction":
-            return self.failure_scorer.predict(request, model, artifact, runtime.pipeline, metric_values)
-        return self.anomaly_scorer.predict(request, model, artifact, runtime.pipeline, metric_values)
+            return self.failure_scorer.predict(
+                request, model, artifact, runtime.pipeline, metric_values
+            )
+        return self.anomaly_scorer.predict(
+            request, model, artifact, runtime.pipeline, metric_values
+        )

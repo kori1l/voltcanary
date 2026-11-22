@@ -25,7 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AnalyticsResultStore {
-    public enum Outcome { SAVED, DEVICE_DELETED, JOB_LEASE_LOST }
+
+    public enum Outcome {
+        SAVED,
+        DEVICE_DELETED,
+        JOB_LEASE_LOST,
+    }
+
     private final DeviceHistoryDeletion deletions;
     private final AnalyticsJobRepository jobs;
     private final EntityManager entityManager;
@@ -35,22 +41,35 @@ public class AnalyticsResultStore {
     private final AnalyticsOutboxService outbox;
 
     @Transactional
-    public Outcome save(UUID deviceId, AnalyticsJob expected, Instant calculatedAt, List<DeviceBaseline> newBaselines,
-            List<FeatureSet> newFeatures, List<Anomaly> newAnomalies, RiskScore risk,
-            List<PredictionResult> newPredictions, List<Recommendation> newRecommendations) {
+    public Outcome save(
+        UUID deviceId,
+        AnalyticsJob expected,
+        Instant calculatedAt,
+        List<DeviceBaseline> newBaselines,
+        List<FeatureSet> newFeatures,
+        List<Anomaly> newAnomalies,
+        RiskScore risk,
+        List<PredictionResult> newPredictions,
+        List<Recommendation> newRecommendations
+    ) {
         if (!deletions.writable(deviceId)) return Outcome.DEVICE_DELETED;
         AnalyticsJob actual = null;
         if (expected != null) {
             actual = jobs.lockById(expected.getId()).orElse(null);
             if (actual == null) return Outcome.JOB_LEASE_LOST;
             entityManager.refresh(actual);
-            if (!"RUNNING".equals(actual.getStatus())
-                    || !Objects.equals(actual.getLockedBy(), expected.getLockedBy())
-                    || !Objects.equals(actual.getLockedAt(), expected.getLockedAt())
-                    || actual.getLockedAt() == null || actual.getLockedAt().isBefore(Instant.now().minusSeconds(900))) return Outcome.JOB_LEASE_LOST;
+            if (
+                !"RUNNING".equals(actual.getStatus()) ||
+                !Objects.equals(actual.getLockedBy(), expected.getLockedBy()) ||
+                !Objects.equals(actual.getLockedAt(), expected.getLockedAt()) ||
+                actual.getLockedAt() == null ||
+                actual.getLockedAt().isBefore(Instant.now().minusSeconds(900))
+            ) return Outcome.JOB_LEASE_LOST;
         }
-        double previousRisk = risks.findFirstByDeviceIdOrderByCalculatedAtDesc(deviceId)
-                .map(RiskScore::getScore).orElse(0.0);
+        double previousRisk = risks
+            .findFirstByDeviceIdOrderByCalculatedAtDesc(deviceId)
+            .map(RiskScore::getScore)
+            .orElse(0.0);
         newBaselines.forEach(entityManager::persist);
         newFeatures.forEach(entityManager::persist);
         anomalies.supersedeActiveByDeviceId(deviceId, calculatedAt);

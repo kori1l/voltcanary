@@ -100,11 +100,31 @@ overwrite artifact metadata.
 ML-service checks cooperative cancellation and timeout budgets before major
 training phases and again before final artifact promotion. A canceled or timed
 out run returns a terminal non-success response without a candidate-ready
-manifest. If artifact persistence or verification fails after partial files are
-written, ML-service removes the deterministic final bundle before surfacing the
-failure; operators should investigate object-store write/credential errors and
-retry the analytics-owned run rather than manually registering partial
-artifacts.
+manifest. Artifact bundles are immutable. Local storage creates the bundle directory
+exclusively; S3 creates a conditional `.reservation` and conditional members,
+then publishes the manifest last. An existing bundle returns 409 instead of
+being overwritten. Cleanup removes only a bundle successfully returned to the
+current publisher. An uncertain S3 write keeps its reservation and partial objects
+for inspection; a retry must not delete another execution's bundle. Inspect the
+manifest and owning run before operator-approved cleanup of an abandoned prefix.
+
+Production-like ML replicas use the same PostgreSQL database for training
+reservations and immutable outcomes. Configure `ML_TRAINING_POSTGRES_DATABASE`
+(default `voltcanary_ml`) plus host, port, user and password. `POSTGRES_HOST`,
+`POSTGRES_PORT`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` are supported fallbacks.
+Compose and Kubernetes database init create the database on first initialization.
+For an existing persistent PostgreSQL volume, an operator must create
+`voltcanary_ml` (or the configured name) with the ML connection role as owner
+before deploying this runtime; init scripts are not rerun on existing volumes.
+No history fallback to local storage is allowed in production-like profiles.
+
+Local runtime uses SQLite and OS file locks in the history directory; processes
+must share that directory to coordinate. Production replicas use PostgreSQL
+session advisory locks, recheck retained results after acquiring ownership, and
+persist outcomes before releasing ownership. A process exit releases its lock;
+a lock wait timeout returns 503 with `Retry-After: 5`. History retention and
+capacity bound replay protection, while immutable artifacts remain protected
+from replacement after history expiry.
 
 Before training, confirm the feature snapshot shows a nonzero row count,
 `featureSchemaHash`, `featureDataHash`, `featureConfigHash`, artifact URI,

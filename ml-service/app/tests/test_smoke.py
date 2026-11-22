@@ -88,7 +88,9 @@ class MlServiceSmokeTest(unittest.TestCase):
         self.assertEqual(response.json()["predictionStatus"], "INSUFFICIENT_DATA")
         self.assertLess(response.json()["confidence"], 0.5)
 
-    def test_model_only_inference_returns_features_unavailable_when_online_features_are_missing(self) -> None:
+    def test_model_only_inference_returns_features_unavailable_when_online_features_are_missing(
+        self,
+    ) -> None:
         response = self.client.post(
             "/inference",
             json={
@@ -104,7 +106,9 @@ class MlServiceSmokeTest(unittest.TestCase):
         self.assertEqual(response.json()["predictionStatus"], "FEATURES_UNAVAILABLE")
         self.assertIn("MISSING_REQUIRED_FEATURE: metricName", response.json()["explanations"])
 
-    def test_model_only_inference_returns_schema_mismatch_for_incompatible_online_features(self) -> None:
+    def test_model_only_inference_returns_schema_mismatch_for_incompatible_online_features(
+        self,
+    ) -> None:
         response = self.client.post(
             "/inference",
             json={
@@ -147,7 +151,9 @@ class MlServiceSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotEqual(response.json()["predictionStatus"], "FEATURE_SCHEMA_MISMATCH")
 
-    def test_model_only_inference_returns_schema_mismatch_for_contract_metadata_hash_mismatch(self) -> None:
+    def test_model_only_inference_returns_schema_mismatch_for_contract_metadata_hash_mismatch(
+        self,
+    ) -> None:
         response = self.client.post(
             "/inference",
             json={

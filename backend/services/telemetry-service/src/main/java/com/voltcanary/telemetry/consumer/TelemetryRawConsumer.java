@@ -19,10 +19,11 @@ public class TelemetryRawConsumer {
     @KafkaListener(topics = "telemetry.raw.v1", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(TelemetryReceivedEvent event) {
         log.info(
-                "Consumed raw telemetry eventId={} deviceId={} metricCount={}",
-                event.eventId(),
-                event.deviceId(),
-                event.metrics().size());
+            "Consumed raw telemetry eventId={} deviceId={} metricCount={}",
+            event.eventId(),
+            event.deviceId(),
+            event.metrics().size()
+        );
         telemetryEventProcessor.process(event);
     }
 }

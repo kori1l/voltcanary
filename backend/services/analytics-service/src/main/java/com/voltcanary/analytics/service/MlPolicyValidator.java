@@ -12,11 +12,15 @@ public class MlPolicyValidator {
     public void validate(MlSettingsRequest value) {
         if (value.confidenceWarningThreshold() < 0 || value.confidenceWarningThreshold() > 1) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Confidence warning threshold must be between 0 and 1");
+                HttpStatus.BAD_REQUEST,
+                "Confidence warning threshold must be between 0 and 1"
+            );
         }
         if (!value.mlEnabled() && value.predictionMode() != PredictionMode.RULE_BASED_ONLY) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Disabled ML requires RULE_BASED_ONLY mode");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Disabled ML requires RULE_BASED_ONLY mode"
+            );
         }
     }
 }

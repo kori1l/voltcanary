@@ -11,8 +11,21 @@ describe("console dialog workflows", () => {
   it("keeps scrolling locked until the last dialog closes even when the first dialog closes first", () => {
     const original = document.body.style.overflow;
     document.body.style.overflow = "auto";
-    const view = render(<><Dialog key="first" title="First" onClose={() => {}}>First</Dialog><Dialog key="second" title="Second" onClose={() => {}}>Second</Dialog></>);
-    view.rerender(<Dialog key="second" title="Second" onClose={() => {}}>Second</Dialog>);
+    const view = render(
+      <>
+        <Dialog key="first" title="First" onClose={() => {}}>
+          First
+        </Dialog>
+        <Dialog key="second" title="Second" onClose={() => {}}>
+          Second
+        </Dialog>
+      </>,
+    );
+    view.rerender(
+      <Dialog key="second" title="Second" onClose={() => {}}>
+        Second
+      </Dialog>,
+    );
     const whileSecondOpen = document.body.style.overflow;
     view.unmount();
     const afterClosingAll = document.body.style.overflow;
@@ -22,7 +35,12 @@ describe("console dialog workflows", () => {
   });
   it("preserves a dirty draft on Escape until discard is explicitly selected", async () => {
     const close = vi.fn();
-    render(<Dialog title="Edit device" dirty onClose={close}><input aria-label="Name" defaultValue="Kitchen fridge" /><DialogClose /></Dialog>);
+    render(
+      <Dialog title="Edit device" dirty onClose={close}>
+        <input aria-label="Name" defaultValue="Kitchen fridge" />
+        <DialogClose />
+      </Dialog>,
+    );
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
     expect(close).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
@@ -34,7 +52,16 @@ describe("console dialog workflows", () => {
 
   it("requires a reason and passes the reviewed value to the action", async () => {
     const confirm = vi.fn();
-    render(<ConfirmDialog title="Cancel operation" object="Kitchen inspection" impact="Alert suppression will end." reasonRequired onCancel={vi.fn()} onConfirm={confirm} />);
+    render(
+      <ConfirmDialog
+        title="Cancel operation"
+        object="Kitchen inspection"
+        impact="Alert suppression will end."
+        reasonRequired
+        onCancel={vi.fn()}
+        onConfirm={confirm}
+      />,
+    );
     expect(screen.getByRole("button", { name: "Cancel operation" })).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/Reason/), "  Rescheduled  ");
     await userEvent.click(screen.getByRole("button", { name: "Cancel operation" }));
@@ -43,7 +70,17 @@ describe("console dialog workflows", () => {
 
   it("searches readable identities and returns only canonical IDs", async () => {
     const change = vi.fn();
-    render(<EntitySelector label="Location" options={[{ id: "uuid-kitchen", name: "Kitchen" }, { id: "uuid-office", name: "Office" }]} value="" onChange={change} />);
+    render(
+      <EntitySelector
+        label="Location"
+        options={[
+          { id: "uuid-kitchen", name: "Kitchen" },
+          { id: "uuid-office", name: "Office" },
+        ]}
+        value=""
+        onChange={change}
+      />,
+    );
     await userEvent.type(screen.getByLabelText("Search location"), "kitchen");
     expect(screen.queryByRole("option", { name: "Office" })).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText("Location"), "uuid-kitchen");

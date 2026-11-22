@@ -60,7 +60,9 @@ public class SourceRegistryCache {
     }
 
     public void evictByTokenPrefix(String tokenPrefix) {
-        getByTokenPrefix(tokenPrefix).map(InternalDataSourceResponse::dataSourceId).ifPresent(this::remove);
+        getByTokenPrefix(tokenPrefix)
+            .map(InternalDataSourceResponse::dataSourceId)
+            .ifPresent(this::remove);
     }
 
     public void remove(UUID dataSourceId) {
@@ -81,32 +83,34 @@ public class SourceRegistryCache {
         if (maxEntries <= 0) {
             return List.of();
         }
-        return byDataSourceId.values().stream()
-                .limit(maxEntries)
-                .map(entry -> new CachedSource(entry.source().tokenPrefix(), entry.source()))
-                .toList();
+        return byDataSourceId
+            .values()
+            .stream()
+            .limit(maxEntries)
+            .map(entry -> new CachedSource(entry.source().tokenPrefix(), entry.source()))
+            .toList();
     }
 
     public int size() {
         return byDataSourceId.size();
     }
 
-    public record CachedSource(String tokenPrefix, InternalDataSourceResponse source) {
-    }
+    public record CachedSource(String tokenPrefix, InternalDataSourceResponse source) {}
 
     private InternalDataSourceResponse toSource(SourceRuntimeConfigEvent event) {
         return new InternalDataSourceResponse(
-                event.accountId(),
-                event.deviceId(),
-                event.dataSourceId(),
-                event.sourceId(),
-                event.adapterType(),
-                event.protocol(),
-                event.status(),
-                event.tokenPrefix(),
-                event.tokenHash(), event.mapping());
+            event.accountId(),
+            event.deviceId(),
+            event.dataSourceId(),
+            event.sourceId(),
+            event.adapterType(),
+            event.protocol(),
+            event.status(),
+            event.tokenPrefix(),
+            event.tokenHash(),
+            event.mapping()
+        );
     }
 
-    private record Entry(InternalDataSourceResponse source, long configVersion) {
-    }
+    private record Entry(InternalDataSourceResponse source, long configVersion) {}
 }

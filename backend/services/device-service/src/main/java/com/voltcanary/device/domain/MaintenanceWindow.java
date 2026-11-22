@@ -71,5 +71,4 @@ public class MaintenanceWindow {
 
     @Column(nullable = false)
     private long version;
-
 }

@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
-
 @Component
 public class AiModelAdapterRegistry {
-    private final Map<AiModelProviderType, AiModelAdapter> adapters = new EnumMap<>(AiModelProviderType.class);
+
+    private final Map<AiModelProviderType, AiModelAdapter> adapters = new EnumMap<>(
+        AiModelProviderType.class
+    );
 
     public AiModelAdapterRegistry(List<AiModelAdapter> adapters) {
         for (AiModelAdapter adapter : adapters) {

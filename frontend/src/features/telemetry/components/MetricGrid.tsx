@@ -1,4 +1,8 @@
-import { TelemetryEvent, TelemetryMetricOverview, TelemetryOverviewResponse } from "../model/telemetry.types";
+import {
+  TelemetryEvent,
+  TelemetryMetricOverview,
+  TelemetryOverviewResponse,
+} from "../model/telemetry.types";
 import { MetricCard } from "./MetricCard";
 
 export function MetricGrid({

@@ -20,7 +20,12 @@ public class TelemetryValidatedEventHandler {
         if (!processedEventService.markIfNew(SOURCE_TOPIC, event.eventId())) {
             return false;
         }
-        if (maintenanceWindowProjectionService.excludesAnalyticsAt(event.deviceId(), event.timestamp())) {
+        if (
+            maintenanceWindowProjectionService.excludesAnalyticsAt(
+                event.deviceId(),
+                event.timestamp()
+            )
+        ) {
             return true;
         }
         jobService.enqueueRecalculation(event.deviceId(), event.timestamp());

@@ -23,15 +23,17 @@ public class MlDatasetService {
     private final MlDatasetLifecycleService lifecycleService;
 
     public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
-            UUID accountId,
-            MlDatasetWorkbenchPreviewRequest request) {
+        UUID accountId,
+        MlDatasetWorkbenchPreviewRequest request
+    ) {
         return previewService.previewInternalTelemetryDataset(accountId, request);
     }
 
     public MlInternalDatasetResponse createFromInternalTelemetry(
-            UUID accountId,
-            UUID userId,
-            MlInternalDatasetRequest request) {
+        UUID accountId,
+        UUID userId,
+        MlInternalDatasetRequest request
+    ) {
         return materializationService.createFromInternalTelemetry(accountId, userId, request);
     }
 
@@ -51,11 +53,21 @@ public class MlDatasetService {
         return lifecycleService.impact(accountId, datasetVersionId, action);
     }
 
-    public MlDatasetSummaryDto archive(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+    public MlDatasetSummaryDto archive(
+        UUID accountId,
+        UUID actorId,
+        UUID datasetVersionId,
+        MlLifecycleActionRequest request
+    ) {
         return lifecycleService.archive(accountId, actorId, datasetVersionId, request);
     }
 
-    public MlDatasetSummaryDto delete(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+    public MlDatasetSummaryDto delete(
+        UUID accountId,
+        UUID actorId,
+        UUID datasetVersionId,
+        MlLifecycleActionRequest request
+    ) {
         return lifecycleService.delete(accountId, actorId, datasetVersionId, request);
     }
 }

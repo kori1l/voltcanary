@@ -17,15 +17,15 @@ public class AnalyticsAccessService {
     private final AnalyticsAuthorizationProperties properties;
     private final RestClient restClient;
     private final String internalServiceToken;
+
     public AnalyticsAccessService(
-            AnalyticsAuthorizationProperties properties,
-            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
-            AnalyticsInternalProperties internalProperties) {
+        AnalyticsAuthorizationProperties properties,
+        @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
+        AnalyticsInternalProperties internalProperties
+    ) {
         this.properties = properties;
         this.internalServiceToken = internalProperties.getServiceToken();
-        this.restClient = restClientBuilder
-                .baseUrl(properties.getDeviceServiceBaseUrl())
-                .build();
+        this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
     }
 
     public void requireReadAccess(UUID deviceId, String userId, String role, String correlationId) {
@@ -33,15 +33,19 @@ public class AnalyticsAccessService {
             return;
         }
         if (userId == null || userId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
         try {
-            DeviceAccessResponse response = restClient.get()
-                    .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(DeviceAccessResponse.class);
+            DeviceAccessResponse response = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(DeviceAccessResponse.class);
             if (response == null || !response.allowed()) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Device access denied");
             }
@@ -49,23 +53,28 @@ public class AnalyticsAccessService {
             throw exception;
         } catch (Exception exception) {
             log.warn(
-                    "analyticsAccessCheckFailed deviceId={} userId={} reason={}",
-                    deviceId,
-                    userId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
+                "analyticsAccessCheckFailed deviceId={} userId={} reason={}",
+                deviceId,
+                userId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device authorization unavailable"
+            );
         }
     }
 
     public UUID accountIdForUser(String userId, String correlationId) {
         UUID parsedUserId = parseUserId(userId);
         try {
-            AccountLifecycleResponse response = restClient.get()
-                    .uri("/internal/accounts/users/{userId}/lifecycle", parsedUserId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(AccountLifecycleResponse.class);
+            AccountLifecycleResponse response = restClient
+                .get()
+                .uri("/internal/accounts/users/{userId}/lifecycle", parsedUserId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(AccountLifecycleResponse.class);
             if (response == null || response.accountId() == null) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account access denied");
             }
@@ -74,21 +83,26 @@ public class AnalyticsAccessService {
             throw exception;
         } catch (Exception exception) {
             log.warn(
-                    "analyticsAccountLookupFailed userId={} reason={}",
-                    userId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Account authorization unavailable");
+                "analyticsAccountLookupFailed userId={} reason={}",
+                userId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Account authorization unavailable"
+            );
         }
     }
 
     public UUID accountIdForDevice(UUID deviceId, String correlationId) {
         try {
-            DeviceOwnerResponse response = restClient.get()
-                    .uri("/internal/devices/{deviceId}/owner", deviceId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(DeviceOwnerResponse.class);
+            DeviceOwnerResponse response = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/owner", deviceId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(DeviceOwnerResponse.class);
             if (response == null || response.accountId() == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
             }
@@ -97,10 +111,14 @@ public class AnalyticsAccessService {
             throw exception;
         } catch (Exception exception) {
             log.warn(
-                    "analyticsDeviceOwnerLookupFailed deviceId={} reason={}",
-                    deviceId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device ownership unavailable");
+                "analyticsDeviceOwnerLookupFailed deviceId={} reason={}",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device ownership unavailable"
+            );
         }
     }
 
@@ -108,16 +126,16 @@ public class AnalyticsAccessService {
         try {
             return UUID.fromString(userId);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 
-    private record DeviceAccessResponse(boolean allowed) {
-    }
+    private record DeviceAccessResponse(boolean allowed) {}
 
-    private record DeviceOwnerResponse(UUID deviceId, UUID accountId) {
-    }
+    private record DeviceOwnerResponse(UUID deviceId, UUID accountId) {}
 
-    private record AccountLifecycleResponse(UUID userId, UUID accountId, String status) {
-    }
+    private record AccountLifecycleResponse(UUID userId, UUID accountId, String status) {}
 }

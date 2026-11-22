@@ -13,5 +13,4 @@ public class AnalyticsInternalProperties {
 
     private String serviceToken = "dev-internal-token";
     private String serviceName = "analytics-service";
-
 }

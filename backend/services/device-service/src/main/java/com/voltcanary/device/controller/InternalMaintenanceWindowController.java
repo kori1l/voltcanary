@@ -24,21 +24,23 @@ public class InternalMaintenanceWindowController {
 
     @GetMapping("/devices/{deviceId}/maintenance-windows")
     public List<MaintenanceWindowResponse> listForDevice(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam(value = "from", required = false) Instant from,
-            @RequestParam(value = "to", required = false) Instant to,
-            @RequestParam(value = "includeCancelled", defaultValue = "false") boolean includeCancelled) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam(value = "from", required = false) Instant from,
+        @RequestParam(value = "to", required = false) Instant to,
+        @RequestParam(value = "includeCancelled", defaultValue = "false") boolean includeCancelled
+    ) {
         internalServiceAuth.require(internalToken);
         return service.listInternal(deviceId, from, to, includeCancelled);
     }
 
     @GetMapping("/maintenance-windows/changes")
     public List<MaintenanceWindowResponse> changes(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @RequestParam(value = "updatedAfter", required = false) Instant updatedAfter,
-            @RequestParam(value = "afterId", required = false) UUID afterId,
-            @RequestParam(value = "limit", required = false) Integer limit) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @RequestParam(value = "updatedAfter", required = false) Instant updatedAfter,
+        @RequestParam(value = "afterId", required = false) UUID afterId,
+        @RequestParam(value = "limit", required = false) Integer limit
+    ) {
         internalServiceAuth.require(internalToken);
         return service.changes(updatedAfter, afterId, limit);
     }

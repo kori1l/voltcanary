@@ -31,10 +31,16 @@ public class TelemetryReading {
     @Column(name = "metrics_json", nullable = false, columnDefinition = "text")
     private String metricsJson;
 
-    protected TelemetryReading() {
-    }
+    protected TelemetryReading() {}
 
-    public TelemetryReading(UUID id, UUID deviceId, String sourceId, Instant recordedAt, Instant receivedAt, String metricsJson) {
+    public TelemetryReading(
+        UUID id,
+        UUID deviceId,
+        String sourceId,
+        Instant recordedAt,
+        Instant receivedAt,
+        String metricsJson
+    ) {
         this.id = id;
         this.deviceId = deviceId;
         this.sourceId = sourceId;
@@ -42,5 +48,4 @@ public class TelemetryReading {
         this.receivedAt = receivedAt;
         this.metricsJson = metricsJson;
     }
-
 }

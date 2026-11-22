@@ -17,16 +17,18 @@ public class MaintenanceWindowChangedConsumer {
     private final MaintenanceWindowProjectionService projectionService;
 
     @KafkaListener(
-            topics = "maintenance-window.changed.v1",
-            groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "maintenanceWindowChangedKafkaListenerContainerFactory")
+        topics = "maintenance-window.changed.v1",
+        groupId = "${spring.kafka.consumer.group-id}",
+        containerFactory = "maintenanceWindowChangedKafkaListenerContainerFactory"
+    )
     public void consume(MaintenanceWindowChangedEvent event) {
         boolean projected = projectionService.project(event);
         log.info(
-                "maintenanceWindowChangedConsumed eventId={} maintenanceWindowId={} deviceId={} projected={}",
-                event.eventId(),
-                event.maintenanceWindowId(),
-                event.deviceId(),
-                projected);
+            "maintenanceWindowChangedConsumed eventId={} maintenanceWindowId={} deviceId={} projected={}",
+            event.eventId(),
+            event.maintenanceWindowId(),
+            event.deviceId(),
+            projected
+        );
     }
 }

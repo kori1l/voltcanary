@@ -1,9 +1,5 @@
-
-
 import { KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-
-
 
 import { Device } from "../devices/devicesApi";
 import { MaintenanceOperation } from "./maintenanceApi";
@@ -38,8 +34,14 @@ export function MaintenanceTimelineGrid({
   onFinish: (operation: MaintenanceOperation) => void;
   isBusy: boolean;
 }) {
-  const [selection, setSelection] = useState<{ deviceId: string; startIndex: number; endIndex: number } | null>(null);
-  const selectionRef = useRef<{ deviceId: string; startIndex: number; endIndex: number } | null>(null);
+  const [selection, setSelection] = useState<{
+    deviceId: string;
+    startIndex: number;
+    endIndex: number;
+  } | null>(null);
+  const selectionRef = useRef<{ deviceId: string; startIndex: number; endIndex: number } | null>(
+    null,
+  );
   const operationsByDevice = new Map<string, MaintenanceOperation[]>();
   operations.forEach((operation) => {
     operation.devices.forEach((device) => {
@@ -70,7 +72,12 @@ export function MaintenanceTimelineGrid({
   }
 
   return (
-    <div className="maintenance-week-grid maintenance-timeline-grid" style={{ gridTemplateColumns: `250px repeat(${slots.length}, minmax(${columnMinWidth(slots.length)}px, 1fr))` }}>
+    <div
+      className="maintenance-week-grid maintenance-timeline-grid"
+      style={{
+        gridTemplateColumns: `250px repeat(${slots.length}, minmax(${columnMinWidth(slots.length)}px, 1fr))`,
+      }}
+    >
       <div className="maintenance-grid-header maintenance-device-heading">Device</div>
       {slots.map((slot) => (
         <div className="maintenance-grid-header" key={slot.start.toISOString()}>
@@ -85,32 +92,41 @@ export function MaintenanceTimelineGrid({
             <Link className="maintenance-device-cell" to={`/devices/${device.id}?tab=maintenance`}>
               <strong>{device.name}</strong>
               <span>{typeByCode.get(device.type) ?? formatEnum(device.type)}</span>
-              <small>{device.locationId ? locationById.get(device.locationId) ?? "Unknown location" : "No location"}</small>
+              <small>
+                {device.locationId
+                  ? (locationById.get(device.locationId) ?? "Unknown location")
+                  : "No location"}
+              </small>
             </Link>
             <div
               className="maintenance-row-timeline"
-              style={{ gridTemplateColumns: `repeat(${slots.length}, minmax(${columnMinWidth(slots.length)}px, 1fr))` }}
+              style={{
+                gridTemplateColumns: `repeat(${slots.length}, minmax(${columnMinWidth(slots.length)}px, 1fr))`,
+              }}
               onMouseDown={(event) => beginSelection(event, device.id)}
               onMouseMove={(event) => updateSelection(event, device.id)}
               onMouseUp={(event) => finishSelection(event, device.id)}
             >
               {slots.map((slot, slotIndex) => {
-                const isSelected = selection?.deviceId === device.id && slotIndex >= Math.min(selection.startIndex, selection.endIndex) && slotIndex <= Math.max(selection.startIndex, selection.endIndex);
+                const isSelected =
+                  selection?.deviceId === device.id &&
+                  slotIndex >= Math.min(selection.startIndex, selection.endIndex) &&
+                  slotIndex <= Math.max(selection.startIndex, selection.endIndex);
                 return (
-                <button
-                  className={`maintenance-day-lane${isSelected ? " maintenance-day-lane-selected" : ""}`}
-                  key={slot.start.toISOString()}
-                  type="button"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onCreate(device.id, slot.start, slot.end);
-                    }
-                  }}
-                  aria-label={`Select maintenance range for ${device.name} from ${slot.start.toLocaleDateString()}`}
-                >
-                  <span>+</span>
-                </button>
+                  <button
+                    className={`maintenance-day-lane${isSelected ? " maintenance-day-lane-selected" : ""}`}
+                    key={slot.start.toISOString()}
+                    type="button"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onCreate(device.id, slot.start, slot.end);
+                      }
+                    }}
+                    aria-label={`Select maintenance range for ${device.name} from ${slot.start.toLocaleDateString()}`}
+                  >
+                    <span>+</span>
+                  </button>
                 );
               })}
               {rowOperations.map((operation) => (
@@ -239,17 +255,35 @@ function MaintenanceOperationBlock({
       <div className="maintenance-operation-content">
         <strong>{operation.title}</strong>
         <span>{formatTimeRange(start, end)}</span>
-        <span>{operation.devices.length} device{operation.devices.length === 1 ? "" : "s"}</span>
+        <span>
+          {operation.devices.length} device{operation.devices.length === 1 ? "" : "s"}
+        </span>
       </div>
       <div className="maintenance-operation-actions">
-        <span className={`status-pill status-pill-${operation.status.toLowerCase()}`}>{formatEnum(operation.status)}</span>
+        <span className={`status-pill status-pill-${operation.status.toLowerCase()}`}>
+          {formatEnum(operation.status)}
+        </span>
         {operation.status === "ACTIVE" ? (
-          <button type="button" onClick={(event) => { event.stopPropagation(); void onFinish(operation); }} disabled={isBusy}>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void onFinish(operation);
+            }}
+            disabled={isBusy}
+          >
             Finish
           </button>
         ) : null}
         {operation.status === "ACTIVE" || operation.status === "SCHEDULED" ? (
-          <button type="button" onClick={(event) => { event.stopPropagation(); void onCancel(operation); }} disabled={isBusy}>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void onCancel(operation);
+            }}
+            disabled={isBusy}
+          >
             Cancel
           </button>
         ) : null}
@@ -257,4 +291,3 @@ function MaintenanceOperationBlock({
     </article>
   );
 }
-

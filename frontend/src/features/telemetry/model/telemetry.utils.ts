@@ -1,27 +1,43 @@
 import { DEFAULT_METRIC_DEFINITIONS } from "./telemetry.constants";
 import { MetricDefinition } from "./telemetry.types";
 
-const DEFINITION_BY_KEY = new Map(DEFAULT_METRIC_DEFINITIONS.map((definition) => [definition.key, definition]));
+const DEFINITION_BY_KEY = new Map(
+  DEFAULT_METRIC_DEFINITIONS.map((definition) => [definition.key, definition]),
+);
 
 export function getMetricDefinition(key: string): MetricDefinition {
-  return DEFINITION_BY_KEY.get(key) ?? {
-    id: key,
-    key,
-    name: humanizeMetricKey(key),
-    unit: inferMetricUnit(key),
-    kind: inferMetricKind(key),
-    defaultVisible: false,
-    order: 1000,
-  };
+  return (
+    DEFINITION_BY_KEY.get(key) ?? {
+      id: key,
+      key,
+      name: humanizeMetricKey(key),
+      unit: inferMetricUnit(key),
+      kind: inferMetricKind(key),
+      defaultVisible: false,
+      order: 1000,
+    }
+  );
 }
 
-export function formatMetricValue(value: number | null | undefined, unit: string, metricKey?:string) {
+export function formatMetricValue(
+  value: number | null | undefined,
+  unit: string,
+  metricKey?: string,
+) {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "No data";
   }
   if (unit === "boolean") {
-    const doors=metricKey?.endsWith("doorsOpen");
-    return value===0?(doors?"Closed":"False"):value===1?(doors?"Open":"True"):"Mixed states";
+    const doors = metricKey?.endsWith("doorsOpen");
+    return value === 0
+      ? doors
+        ? "Closed"
+        : "False"
+      : value === 1
+        ? doors
+          ? "Open"
+          : "True"
+        : "Mixed states";
   }
   return `${formatCompactNumber(value)}${unit ? ` ${unit}` : ""}`;
 }
@@ -70,7 +86,8 @@ export function inferMetricUnit(key: string) {
 
 function inferMetricKind(key: string): MetricDefinition["kind"] {
   const normalized = key.toLowerCase();
-  if (normalized.includes("energy") || normalized.endsWith("wh") || normalized.includes("runtime")) return "accumulator";
+  if (normalized.includes("energy") || normalized.endsWith("wh") || normalized.includes("runtime"))
+    return "accumulator";
   if (normalized.includes("rssi") || normalized.includes("signal")) return "signal";
   if (normalized.includes("count") || normalized.includes("total")) return "counter";
   return "gauge";

@@ -22,8 +22,20 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class NativeCollectionReviews {
-    public record View(UUID reviewId, long revision, String status, Instant expiresAt, UUID resourceId,
-            Map<String, UUID> fieldIdsByKey, String semanticDigest, String reviewDigest, JsonNode typedDiff, UUID receiptId, String outcomeCode) { }
+
+    public record View(
+        UUID reviewId,
+        long revision,
+        String status,
+        Instant expiresAt,
+        UUID resourceId,
+        Map<String, UUID> fieldIdsByKey,
+        String semanticDigest,
+        String reviewDigest,
+        JsonNode typedDiff,
+        UUID receiptId,
+        String outcomeCode
+    ) {}
 
     private final AccountService accounts;
     private final NativeCollectionReviewStore reviews;
@@ -32,33 +44,56 @@ public class NativeCollectionReviews {
     private final Clock clock;
 
     public View reserve(AuthenticatedUser actor, NativeReviewRequests.Reservation request) {
-        return view(reviews.reserve(account(actor), actor.id(), request.fieldKeys(), request.idempotencyKey()));
+        return view(
+            reviews.reserve(
+                account(actor),
+                actor.id(),
+                request.fieldKeys(),
+                request.idempotencyKey()
+            )
+        );
     }
 
     public View prepare(AuthenticatedUser actor, NativeReviewRequests.Preparation request) {
         UUID account = account(actor);
-        var schema = NativeSchema.compile(request.document(), new NativeDatasetMetadata(source, catalog, account, actor.id()));
+        var schema = NativeSchema.compile(
+            request.document(),
+            new NativeDatasetMetadata(source, catalog, account, actor.id())
+        );
         for (var field : schema.fields()) {
             if (field.at("/target/kind").asText().equals("DATASET")) {
                 UUID target = UUID.fromString(field.at("/target/datasetId").asText());
-                if (!target.equals(schema.id()) && catalog.ready(account, target, 1).isEmpty()) throw new VclException("REFERENCE_TARGET_UNAVAILABLE", "");
+                if (
+                    !target.equals(schema.id()) && catalog.ready(account, target, 1).isEmpty()
+                ) throw new VclException("REFERENCE_TARGET_UNAVAILABLE", "");
             }
         }
         return view(reviews.prepare(account, actor.id(), request.reservationId(), schema));
     }
 
-    public View inspect(AuthenticatedUser actor, UUID id) { return view(reviews.inspect(account(actor), actor.id(), id)); }
+    public View inspect(AuthenticatedUser actor, UUID id) {
+        return view(reviews.inspect(account(actor), actor.id(), id));
+    }
 
     public View apply(AuthenticatedUser actor, UUID id, NativeReviewRequests.Application request) {
         UUID account = account(actor);
-        var review = reviews.begin(account, actor.id(), id, request.reviewRevision(), request.reviewDigest(), request.idempotencyKey());
+        var review = reviews.begin(
+            account,
+            actor.id(),
+            id,
+            request.reviewRevision(),
+            request.reviewDigest(),
+            request.idempotencyKey()
+        );
         return dispatch(account, actor.id(), review);
     }
 
     public View reconcile(AuthenticatedUser actor, UUID id) {
         UUID account = account(actor);
         var review = reviews.inspect(account, actor.id(), id);
-        if (!java.util.List.of("APPLYING", "UNKNOWN", "SUCCEEDED").contains(review.status())) throw new VclException("REVIEW_STATE_CONFLICT", "");
+        if (
+            !java.util.List.of("APPLYING", "UNKNOWN", "SUCCEEDED").contains(review.status())
+        ) throw new VclException("REVIEW_STATE_CONFLICT", "");
         return dispatch(account, actor.id(), review);
     }
 
@@ -66,11 +101,17 @@ public class NativeCollectionReviews {
         if (review.status().equals("SUCCEEDED")) return view(review);
         try {
             var existing = catalog.ready(account, review.resourceId(), 1);
-            if (existing.isPresent()) return view(reviews.complete(account, actor, review.id(), existing.get()));
+            if (existing.isPresent()) return view(
+                reviews.complete(account, actor, review.id(), existing.get())
+            );
             // Reconciliation may inspect a committed outcome after expiry, but cannot authorize fresh DDL.
-            if (!clock.instant().isBefore(review.expiresAt())) return view(reviews.unknown(account, actor, review.id(), "REVIEW_EXPIRED"));
+            if (!clock.instant().isBefore(review.expiresAt())) return view(
+                reviews.unknown(account, actor, review.id(), "REVIEW_EXPIRED")
+            );
             var metadata = new NativeDatasetMetadata(source, catalog, account, actor);
-            if (!metadata.accessScopeDigest().equals(review.scopeDigest())) return view(reviews.unknown(account, actor, review.id(), "ACCESS_SCOPE_CHANGED"));
+            if (!metadata.accessScopeDigest().equals(review.scopeDigest())) return view(
+                reviews.unknown(account, actor, review.id(), "ACCESS_SCOPE_CHANGED")
+            );
             var schema = NativeSchema.compile(review.canonicalDocument(), metadata);
             catalog.register(account, actor, review.generation(), review.recordIdFieldId(), schema);
             var result = catalog.provision(account, review.resourceId());
@@ -82,14 +123,33 @@ public class NativeCollectionReviews {
     }
 
     private UUID account(AuthenticatedUser actor) {
-        var account = accounts.findByUserId(actor.id()).orElseThrow(() -> new VclException("ACCOUNT_SETUP_REQUIRED", ""));
-        if (account.getStatus() != AccountStatus.ACTIVE) throw new VclException("ACCOUNT_ACCESS_REVOKED", "");
+        var account = accounts
+            .findByUserId(actor.id())
+            .orElseThrow(() -> new VclException("ACCOUNT_SETUP_REQUIRED", ""));
+        if (account.getStatus() != AccountStatus.ACTIVE) throw new VclException(
+            "ACCOUNT_ACCESS_REVOKED",
+            ""
+        );
         return account.getId();
     }
 
     private static View view(NativeCollectionReview review) {
-        JsonNode diff = review.canonicalDocument() == null ? null : new com.voltcanary.vcl.VclParser().parse(review.canonicalDocument()).spec();
-        return new View(review.id(), review.revision(), review.status(), review.expiresAt(), review.resourceId(), review.fieldIdsByKey(),
-                review.semanticDigest(), review.reviewDigest(), diff, review.receiptId(), review.outcomeCode());
+        JsonNode diff =
+            review.canonicalDocument() == null
+                ? null
+                : new com.voltcanary.vcl.VclParser().parse(review.canonicalDocument()).spec();
+        return new View(
+            review.id(),
+            review.revision(),
+            review.status(),
+            review.expiresAt(),
+            review.resourceId(),
+            review.fieldIdsByKey(),
+            review.semanticDigest(),
+            review.reviewDigest(),
+            diff,
+            review.receiptId(),
+            review.outcomeCode()
+        );
     }
 }

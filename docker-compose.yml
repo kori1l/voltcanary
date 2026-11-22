@@ -5,6 +5,7 @@ x-postgres-env: &postgres-env
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
   POSTGRES_DB: ${POSTGRES_DB:-voltcanary}
   DASHBOARD_POSTGRES_DB: ${DASHBOARD_POSTGRES_DB:-voltcanary_dashboard}
+  ML_TRAINING_POSTGRES_DATABASE: ${ML_TRAINING_POSTGRES_DATABASE:-voltcanary_ml}
   POSTGRES_ADDITIONAL_DATABASES: ${POSTGRES_ADDITIONAL_DATABASES:-voltcanary_identity voltcanary_device voltcanary_analytics voltcanary_alerts voltcanary_simulator voltcanary_ai_agent}
 
 x-timescale-env: &timescale-env
@@ -643,6 +644,11 @@ services:
       ML_INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token}
       ML_ALLOWED_SOURCE_SERVICES: ${ML_ALLOWED_SOURCE_SERVICES:-analytics-service}
       ML_MAX_REQUEST_BYTES: ${ML_MAX_REQUEST_BYTES:-1048576}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-voltcanary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      ML_TRAINING_POSTGRES_DATABASE: ${ML_TRAINING_POSTGRES_DATABASE:-voltcanary_ml}
     volumes:
       - ./ml-service:/workspace/ml-service
     depends_on:
@@ -650,6 +656,8 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
 
   frontend:
     image: node:22-alpine

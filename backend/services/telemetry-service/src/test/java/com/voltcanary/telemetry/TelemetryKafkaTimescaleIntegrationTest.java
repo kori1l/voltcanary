@@ -1,28 +1,30 @@
 package com.voltcanary.telemetry;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
+import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
+import com.voltcanary.telemetry.dto.TelemetryExportResponse;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.ArrayList;
-import java.util.List;
-import java.sql.Timestamp;
-import org.springframework.jdbc.core.JdbcTemplate;
-import com.voltcanary.telemetry.dto.TelemetryEnvelopeResponse;
-import com.voltcanary.telemetry.dto.TelemetryExportResponse;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -32,39 +34,54 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.redpanda.RedpandaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Testcontainers
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=true",
-                "app.telemetry.authorization.enabled=false",
-                "app.telemetry.validation.redis-rate-limit-enabled=false",
-                "app.telemetry.validation.max-past-age=30d",
-                "management.health.redis.enabled=false",
-                "spring.kafka.consumer.group-id=telemetry-integration-test",
-                "spring.jpa.hibernate.ddl-auto=none"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=true",
+        "app.telemetry.authorization.enabled=false",
+        "app.telemetry.validation.redis-rate-limit-enabled=false",
+        "app.telemetry.validation.max-past-age=30d",
+        "management.health.redis.enabled=false",
+        "spring.kafka.consumer.group-id=telemetry-integration-test",
+        "spring.jpa.hibernate.ddl-auto=none",
+    }
+)
+@org.junit.jupiter.api.Tag("docker")
 class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
+
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
-        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
-            if (request.getURI().getPath().startsWith("/telemetry/")) {
-                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
-            }
-            return execution.execute(request, body);
-        }));
+        restTemplate.getRestTemplate().setInterceptors(
+            java.util.List.of((request, body, execution) -> {
+                if (request.getURI().getPath().startsWith("/telemetry/")) {
+                    request
+                        .getHeaders()
+                        .setBearerAuth(
+                            com.voltcanary.common.test.SignedUserTokens.create(
+                                java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                                "actor@example.invalid",
+                                "USER"
+                            )
+                        );
+                }
+                return execution.execute(request, body);
+            })
+        );
     }
 
     @Container
-    static final RedpandaContainer kafka = new RedpandaContainer(DockerImageName.parse("redpandadata/redpanda:v24.2.18"));
+    static final RedpandaContainer kafka = new RedpandaContainer(
+        DockerImageName.parse("redpandadata/redpanda:v24.2.18")
+    );
 
     @Container
     static final PostgreSQLContainer<?> timescale = new PostgreSQLContainer<>(
-            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"));
+        DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor(
+            "postgres"
+        )
+    );
 
     @DynamicPropertySource
     static void infrastructureProperties(DynamicPropertyRegistry registry) {
@@ -77,57 +94,205 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
-    @Autowired private JdbcTemplate jdbc;
-    @Autowired private com.voltcanary.telemetry.repository.DashboardTelemetryRepository dashboardReads;
-    @Autowired private com.voltcanary.telemetry.service.EnergyPeriodReadService energyReads;
-    @Autowired private com.fasterxml.jackson.databind.ObjectMapper energyMapper;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @Autowired
+    private com.voltcanary.telemetry.repository.DashboardTelemetryRepository dashboardReads;
+
+    @Autowired
+    private com.voltcanary.telemetry.service.EnergyPeriodReadService energyReads;
+
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper energyMapper;
 
     @Test
     void booleanHistoryMigrationUsesStoredTrueFalseAndPreservesRejectedRowsAndSourceTime() throws Exception {
         UUID device = UUID.randomUUID();
-        Instant start = Instant.now().minusSeconds(100).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        Instant start = Instant.now()
+            .minusSeconds(100)
+            .truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
         for (int index = 0; index < 3; index++) {
             UUID reading = UUID.randomUUID();
-            String json = "{\"configuredFields\":{\"transport.doorsOpen\":{\"value\":" + (index == 0 ? "false" : "true") + ",\"type\":\"boolean\",\"label\":\"Doors\",\"unit\":\"\",\"display\":true}}}";
-            jdbc.update("insert into telemetry_readings(id,device_id,source_id,recorded_at,received_at,metrics_json) values(?,?,?,?,?,?)", reading, device, "history", Timestamp.from(start.plusSeconds(index)), Timestamp.from(start.plusSeconds(index)), json);
-            if (index == 2) jdbc.update("insert into telemetry_quality_flags(id,reading_id,device_id,flag,created_at) values(?,?,?,?,?)", UUID.randomUUID(), reading, device, "INVALID_VALUE", Timestamp.from(start));
+            String json =
+                "{\"configuredFields\":{\"transport.doorsOpen\":{\"value\":" +
+                (index == 0 ? "false" : "true") +
+                ",\"type\":\"boolean\",\"label\":\"Doors\",\"unit\":\"\",\"display\":true}}}";
+            jdbc.update(
+                "insert into telemetry_readings(id,device_id,source_id,recorded_at,received_at,metrics_json) values(?,?,?,?,?,?)",
+                reading,
+                device,
+                "history",
+                Timestamp.from(start.plusSeconds(index)),
+                Timestamp.from(start.plusSeconds(index)),
+                json
+            );
+            if (index == 2) jdbc.update(
+                "insert into telemetry_quality_flags(id,reading_id,device_id,flag,created_at) values(?,?,?,?,?)",
+                UUID.randomUUID(),
+                reading,
+                device,
+                "INVALID_VALUE",
+                Timestamp.from(start)
+            );
         }
-        String migration = new org.springframework.core.io.ClassPathResource("db/vendor/postgresql/V014__configured_boolean_state_history.sql").getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        String migration = new org.springframework.core.io.ClassPathResource(
+            "db/vendor/postgresql/V014__configured_boolean_state_history.sql"
+        ).getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         jdbc.execute(migration);
         jdbc.execute(migration);
-        assertThat(jdbc.queryForList("select metric_value from telemetry.measurements where device_id=? and metric_name='transport.doorsOpen' order by recorded_at", Double.class, device)).containsExactly(0.0,1.0);
-        assertThat(jdbc.queryForObject("select metrics_json from telemetry_readings where device_id=? and recorded_at=?", String.class, device, Timestamp.from(start))).contains("false");
+        assertThat(
+            jdbc.queryForList(
+                "select metric_value from telemetry.measurements where device_id=? and metric_name='transport.doorsOpen' order by recorded_at",
+                Double.class,
+                device
+            )
+        ).containsExactly(0.0, 1.0);
+        assertThat(
+            jdbc.queryForObject(
+                "select metrics_json from telemetry_readings where device_id=? and recorded_at=?",
+                String.class,
+                device,
+                Timestamp.from(start)
+            )
+        ).contains("false");
     }
 
     @Test
     void rawEnergyUsesCanonicalSourcesFullBoundaryReadingsAndAccountIsolation() {
-        UUID account=UUID.randomUUID(),foreign=UUID.randomUUID(),counter=UUID.randomUUID(),power=UUID.randomUUID();
-        Instant from=Instant.now().minusSeconds(7200).truncatedTo(java.time.temporal.ChronoUnit.MILLIS),to=from.plusSeconds(7200);
-        List<Object[]> values=List.of(
-                new Object[]{account,counter,"source",Timestamp.from(from),"energyWh",10000,"Wh","OK",Timestamp.from(from),Timestamp.from(from)},
-                new Object[]{account,counter,"source",Timestamp.from(to),"energyWh",10500,"Wh","OK",Timestamp.from(to),Timestamp.from(to)},
-                new Object[]{foreign,counter,"source",Timestamp.from(from.plusSeconds(3600)),"energyWh",999999,"Wh","OK",Timestamp.from(to),Timestamp.from(to)},
-                new Object[]{account,power,"source",Timestamp.from(from),"activePowerW",1000,"W","OK",Timestamp.from(from),Timestamp.from(from)},
-                new Object[]{account,power,"source",Timestamp.from(to),"activePowerW",1000,"W","OK",Timestamp.from(to),Timestamp.from(to)});
-        jdbc.batchUpdate("INSERT INTO telemetry.measurements(account_id,device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",values);
-        var scope=energyMapper.createObjectNode();
-        var devices=scope.putArray("devices");
-        for(UUID id:List.of(counter,power)) {
-            var definition=new com.voltcanary.common.web.EnergyMeterDefinition(1,UUID.randomUUID(),null,"source",id.equals(counter)?"COUNTER_DELTA":"POWER_INTEGRAL",7200,from,null,List.of());
-            var device=devices.addObject().put("id",id.toString()).put("name","DEMO energy meter");
-            device.set("energyMeters",energyMapper.valueToTree(List.of(definition)));
+        UUID account = UUID.randomUUID(),
+            foreign = UUID.randomUUID(),
+            counter = UUID.randomUUID(),
+            power = UUID.randomUUID();
+        Instant from = Instant.now()
+                .minusSeconds(7200)
+                .truncatedTo(java.time.temporal.ChronoUnit.MILLIS),
+            to = from.plusSeconds(7200);
+        List<Object[]> values = List.of(
+            new Object[] {
+                account,
+                counter,
+                "source",
+                Timestamp.from(from),
+                "energyWh",
+                10000,
+                "Wh",
+                "OK",
+                Timestamp.from(from),
+                Timestamp.from(from),
+            },
+            new Object[] {
+                account,
+                counter,
+                "source",
+                Timestamp.from(to),
+                "energyWh",
+                10500,
+                "Wh",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            },
+            new Object[] {
+                foreign,
+                counter,
+                "source",
+                Timestamp.from(from.plusSeconds(3600)),
+                "energyWh",
+                999999,
+                "Wh",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            },
+            new Object[] {
+                account,
+                power,
+                "source",
+                Timestamp.from(from),
+                "activePowerW",
+                1000,
+                "W",
+                "OK",
+                Timestamp.from(from),
+                Timestamp.from(from),
+            },
+            new Object[] {
+                account,
+                power,
+                "source",
+                Timestamp.from(to),
+                "activePowerW",
+                1000,
+                "W",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            }
+        );
+        jdbc.batchUpdate(
+            "INSERT INTO telemetry.measurements(account_id,device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            values
+        );
+        var scope = energyMapper.createObjectNode();
+        var devices = scope.putArray("devices");
+        for (UUID id : List.of(counter, power)) {
+            var definition = new com.voltcanary.common.business.EnergyMeterDefinition(
+                1,
+                UUID.randomUUID(),
+                null,
+                "source",
+                id.equals(counter) ? "COUNTER_DELTA" : "POWER_INTEGRAL",
+                7200,
+                from,
+                null,
+                List.of()
+            );
+            var device = devices
+                .addObject()
+                .put("id", id.toString())
+                .put("name", "DEMO energy meter");
+            device.set("energyMeters", energyMapper.valueToTree(List.of(definition)));
         }
-        var frame=new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(from,to,to.plusSeconds(1),null,null);
-        var base=new com.voltcanary.common.web.DashboardOwnerReadRequest(UUID.randomUUID(),account,List.of(counter,power),frame,java.util.Set.of(),List.of(),20,0,"ACTIVE",List.of());
-        var request=new com.voltcanary.common.web.DashboardEnergyReadRequest(base,true);
-        var result=energyReads.read(request,scope);
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(
+            from,
+            to,
+            to.plusSeconds(1),
+            null,
+            null
+        );
+        var base = new com.voltcanary.common.web.DashboardOwnerReadRequest(
+            UUID.randomUUID(),
+            account,
+            List.of(counter, power),
+            frame,
+            java.util.Set.of(),
+            List.of(),
+            20,
+            0,
+            "ACTIVE",
+            List.of()
+        );
+        var request = new com.voltcanary.common.web.DashboardEnergyReadRequest(base, true);
+        var result = energyReads.read(request, scope);
         assertThat(result.path("period").path("energyKWh").asDouble()).isEqualTo(2.5);
         assertThat(result.path("period").path("coverage").asText()).isEqualTo("COMPLETE");
         assertThat(result.path("authorizedDeviceIds")).hasSize(2);
-        assertThat(result.path("maintenancePolicy").asText()).isEqualTo("RAW_CONSUMPTION_INCLUDES_MAINTENANCE");
+        assertThat(result.path("maintenancePolicy").asText()).isEqualTo(
+            "RAW_CONSUMPTION_INCLUDES_MAINTENANCE"
+        );
         assertThat(result.toString()).doesNotContain("999999");
-        assertThat(restTemplate.postForEntity("/internal/dashboard/energy",request,String.class).getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
-        assertThat(restTemplate.postForEntity("/internal/dashboard/energy-validation",request,String.class).getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        assertThat(
+            restTemplate
+                .postForEntity("/internal/dashboard/energy", request, String.class)
+                .getStatusCode()
+        ).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+        assertThat(
+            restTemplate
+                .postForEntity("/internal/dashboard/energy-validation", request, String.class)
+                .getStatusCode()
+        ).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -139,16 +304,73 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
         List<UUID> devices = new ArrayList<>();
         List<Object[]> rows = new ArrayList<>();
         for (int index = 0; index < 250; index++) {
-            UUID device = UUID.randomUUID(); devices.add(device);
-            rows.add(new Object[]{account, device, "fixture", Timestamp.from(from), "activePowerW", 0, "W", "BACKFILL", Timestamp.from(to), Timestamp.from(to)});
-            rows.add(new Object[]{account, device, "fixture", Timestamp.from(to.minusSeconds(1)), "activePowerW", index == 249 ? 1000 : 0, "W", "OK", Timestamp.from(to), Timestamp.from(to)});
-            rows.add(new Object[]{account, device, "fixture", Timestamp.from(to), "activePowerW", 9999, "W", "OK", Timestamp.from(to), Timestamp.from(to)});
+            UUID device = UUID.randomUUID();
+            devices.add(device);
+            rows.add(new Object[] {
+                account,
+                device,
+                "fixture",
+                Timestamp.from(from),
+                "activePowerW",
+                0,
+                "W",
+                "BACKFILL",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            });
+            rows.add(new Object[] {
+                account,
+                device,
+                "fixture",
+                Timestamp.from(to.minusSeconds(1)),
+                "activePowerW",
+                index == 249 ? 1000 : 0,
+                "W",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            });
+            rows.add(new Object[] {
+                account,
+                device,
+                "fixture",
+                Timestamp.from(to),
+                "activePowerW",
+                9999,
+                "W",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to),
+            });
         }
-        jdbc.batchUpdate("insert into telemetry.measurements(account_id,device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) values(?,?,?,?,?,?,?,?,?,?)", rows);
-        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(from, to, to, null, null);
-        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(user, account, devices, frame,
-                java.util.Set.of("activePowerW"), List.of(devices.getLast()), 20, 0, "ACTIVE",
-                List.of(new com.voltcanary.common.web.DashboardOwnerReadRequest.Series(devices.getLast(), "activePowerW")));
+        jdbc.batchUpdate(
+            "insert into telemetry.measurements(account_id,device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) values(?,?,?,?,?,?,?,?,?,?)",
+            rows
+        );
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(
+            from,
+            to,
+            to,
+            null,
+            null
+        );
+        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(
+            user,
+            account,
+            devices,
+            frame,
+            java.util.Set.of("activePowerW"),
+            List.of(devices.getLast()),
+            20,
+            0,
+            "ACTIVE",
+            List.of(
+                new com.voltcanary.common.web.DashboardOwnerReadRequest.Series(
+                    devices.getLast(),
+                    "activePowerW"
+                )
+            )
+        );
         var result = dashboardReads.read(request, devices);
         var summary = result.path("summaries").get(0);
         assertThat(summary.path("sampleCount").asLong()).isEqualTo(500);
@@ -161,24 +383,55 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
         assertThat(result.path("measurementQualityCounts").path("BACKFILL").asInt()).isEqualTo(250);
         assertThat(result.path("series").get(0).path("buckets").toString()).contains("1000.0");
         assertThat(result.path("latest").get(0).path("value").asDouble()).isEqualTo(9999);
-        assertThat(restTemplate.postForEntity("/internal/dashboard/telemetry", request, String.class).getStatusCode().is4xxClientError()).isTrue();
+        assertThat(
+            restTemplate
+                .postForEntity("/internal/dashboard/telemetry", request, String.class)
+                .getStatusCode()
+                .is4xxClientError()
+        ).isTrue();
     }
 
     @Test
     void simultaneousSourcesDoNotTurnNormalCadenceIntoMissingDataGaps() {
         UUID device = UUID.randomUUID();
-        Instant from = Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        Instant from = Instant.now()
+            .minusSeconds(3600)
+            .truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
         List<Object[]> rows = new ArrayList<>();
-        for (int index = 0; index < 7; index++) for (String source : List.of("source-A", "source-B", "source-C")) {
+        for (int index = 0; index < 7; index++) for (String source : List.of(
+            "source-A",
+            "source-B",
+            "source-C"
+        )) {
             Instant at = from.plusSeconds(index * 300L);
-            rows.add(new Object[]{device, source, Timestamp.from(at), "temperatureC", source.equals("source-A") ? 0 : source.equals("source-B") ? 1 : 2, "C", "OK", Timestamp.from(at), Timestamp.from(at)});
+            rows.add(new Object[] {
+                device,
+                source,
+                Timestamp.from(at),
+                "temperatureC",
+                source.equals("source-A") ? 0 : source.equals("source-B") ? 1 : 2,
+                "C",
+                "OK",
+                Timestamp.from(at),
+                Timestamp.from(at),
+            });
         }
-        jdbc.batchUpdate("""
-                insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
-                values(?,?,?,?,?,?,?,?,?)
-                """, rows);
-        TelemetryEnvelopeResponse result = restTemplate.getForObject("/telemetry/devices/" + device
-                + "/readings/envelope?metric=temperatureC&from=" + from + "&to=" + from.plusSeconds(1800), TelemetryEnvelopeResponse.class);
+        jdbc.batchUpdate(
+            """
+            insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
+            values(?,?,?,?,?,?,?,?,?)
+            """,
+            rows
+        );
+        TelemetryEnvelopeResponse result = restTemplate.getForObject(
+            "/telemetry/devices/" +
+                device +
+                "/readings/envelope?metric=temperatureC&from=" +
+                from +
+                "&to=" +
+                from.plusSeconds(1800),
+            TelemetryEnvelopeResponse.class
+        );
         assertThat(result.rawPointCount()).isEqualTo(21);
         assertThat(result.summary().gapCount()).isZero();
         assertThat(result.summary().lastValue()).isEqualTo(2.0);
@@ -187,50 +440,129 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
     @Test
     void intervalDiscoveryAndEnvelopeCoverLateExtremaWithoutLoadingAllValues() {
         UUID device = UUID.randomUUID();
-        Instant to = Instant.now().minusSeconds(1).truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        Instant to = Instant.now()
+            .minusSeconds(1)
+            .truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
         Instant from = to.minus(Duration.ofDays(30));
         List<Object[]> rows = new ArrayList<>();
         for (int i = 0; i < 2400; i++) {
             double value = i == 1500 ? 90 : i == 1800 ? -20 : i == 2300 ? 100 : 0;
-            Instant at = from.plusMillis((Duration.ofDays(30).toMillis() - 7_201_000) * i / 2399 + (i >= 1200 ? 7_200_000 : 0));
-            rows.add(new Object[]{device, "import-fixture", Timestamp.from(at), "temperatureC", value, "C", "BACKFILL", Timestamp.from(at), Timestamp.from(at)});
+            Instant at = from.plusMillis(
+                ((Duration.ofDays(30).toMillis() - 7_201_000) * i) / 2399 +
+                    (i >= 1200 ? 7_200_000 : 0)
+            );
+            rows.add(new Object[] {
+                device,
+                "import-fixture",
+                Timestamp.from(at),
+                "temperatureC",
+                value,
+                "C",
+                "BACKFILL",
+                Timestamp.from(at),
+                Timestamp.from(at),
+            });
         }
-        jdbc.batchUpdate("""
-                insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
-                values(?,?,?,?,?,?,?,?,?)
-                """, rows);
-        jdbc.update("""
-                insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
-                values(?,?,?,?,?,?,?,?,?)
-                """, device, "fixture", Timestamp.from(to), "activePowerW", 10, "W", "OK", Timestamp.from(to), Timestamp.from(to));
+        jdbc.batchUpdate(
+            """
+            insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
+            values(?,?,?,?,?,?,?,?,?)
+            """,
+            rows
+        );
+        jdbc.update(
+            """
+            insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
+            values(?,?,?,?,?,?,?,?,?)
+            """,
+            device,
+            "fixture",
+            Timestamp.from(to),
+            "activePowerW",
+            10,
+            "W",
+            "OK",
+            Timestamp.from(to),
+            Timestamp.from(to)
+        );
         String base = "/telemetry/devices/" + device;
-        assertThat(restTemplate.getForObject(base + "/latest", String.class)).doesNotContain("temperatureC");
+        assertThat(restTemplate.getForObject(base + "/latest", String.class)).doesNotContain(
+            "temperatureC"
+        );
         String range = "?from=" + from + "&to=" + to;
-        assertThat(restTemplate.getForObject(base + "/metrics" + range, String.class)).contains("temperatureC");
-        TelemetryEnvelopeResponse response = restTemplate.getForObject(base + "/readings/envelope" + range + "&metric=temperatureC&buckets=24", TelemetryEnvelopeResponse.class);
+        assertThat(restTemplate.getForObject(base + "/metrics" + range, String.class)).contains(
+            "temperatureC"
+        );
+        TelemetryEnvelopeResponse response = restTemplate.getForObject(
+            base + "/readings/envelope" + range + "&metric=temperatureC&buckets=24",
+            TelemetryEnvelopeResponse.class
+        );
         assertThat(response.rawPointCount()).isEqualTo(2400);
         assertThat(response.points()).hasSizeLessThanOrEqualTo(96);
-        assertThat(response.points().stream().map(point -> point.value())).contains(90.0, -20.0, 100.0, 0.0);
+        assertThat(
+            response
+                .points()
+                .stream()
+                .map(point -> point.value())
+        ).contains(90.0, -20.0, 100.0, 0.0);
         assertThat(response.summary().min()).isEqualTo(-20);
         assertThat(response.summary().max()).isEqualTo(100);
-        assertThat(response.summary().average()).isCloseTo(170.0 / 2400, org.assertj.core.data.Offset.offset(0.000001));
+        assertThat(response.summary().average()).isCloseTo(
+            170.0 / 2400,
+            org.assertj.core.data.Offset.offset(0.000001)
+        );
         assertThat(response.summary().gapCount()).isEqualTo(1);
         assertThat(response.qualityCounts()).containsEntry("BACKFILL", 2400L);
-        assertThat(restTemplate.getForObject(base + "/metrics?from=" + to.plusSeconds(1) + "&to=" + to.plusSeconds(60), String.class)).isEqualTo("[]");
-        assertThat(restTemplate.getForEntity(base + "/readings/envelope" + range + "&metric=temperatureC&buckets=251", String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(restTemplate.getForEntity(base + "/metrics?from=" + from + "&to=" + from.plus(Duration.ofDays(31)), String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        for (String source : List.of("alpha", "omega")) jdbc.update("""
+        assertThat(
+            restTemplate.getForObject(
+                base + "/metrics?from=" + to.plusSeconds(1) + "&to=" + to.plusSeconds(60),
+                String.class
+            )
+        ).isEqualTo("[]");
+        assertThat(
+            restTemplate
+                .getForEntity(
+                    base + "/readings/envelope" + range + "&metric=temperatureC&buckets=251",
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(
+            restTemplate
+                .getForEntity(
+                    base + "/metrics?from=" + from + "&to=" + from.plus(Duration.ofDays(31)),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.BAD_REQUEST);
+        for (String source : List.of("alpha", "omega"))
+            jdbc.update(
+                """
                 insert into telemetry.measurements(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at)
                 values(?,?,?,?,?,?,?,?,?)
-                """, device, source, Timestamp.from(to), "activePowerW", source.equals("alpha") ? 0 : 20, "W", "OK", Timestamp.from(to), Timestamp.from(to));
+                """,
+                device,
+                source,
+                Timestamp.from(to),
+                "activePowerW",
+                source.equals("alpha") ? 0 : 20,
+                "W",
+                "OK",
+                Timestamp.from(to),
+                Timestamp.from(to)
+            );
         String next = "";
         List<Double> exported = new ArrayList<>();
         for (int page = 0; page < 3; page++) {
-            TelemetryExportResponse values = restTemplate.getForObject(base + "/readings/export" + range + "&metric=activePowerW&limit=1" + next, TelemetryExportResponse.class);
+            TelemetryExportResponse values = restTemplate.getForObject(
+                base + "/readings/export" + range + "&metric=activePowerW&limit=1" + next,
+                TelemetryExportResponse.class
+            );
             exported.add(values.points().getFirst().value());
             assertThat(values.points().getFirst().sourceId()).isNotBlank();
             assertThat(values.points().getFirst().quality()).isEqualTo("OK");
-            next = "&cursor=" + values.nextCursor() + "&cursorSourceId=" + values.nextCursorSourceId();
+            next =
+                "&cursor=" + values.nextCursor() + "&cursorSourceId=" + values.nextCursorSourceId();
             if (page == 2) assertThat(values.nextCursor()).isNull();
         }
         assertThat(exported).containsExactly(0.0, 10.0, 20.0);
@@ -240,13 +572,16 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
     void consumesKafkaEventSavesTimescaleRowsAndReturnsLatestReading() throws Exception {
         UUID deviceId = UUID.randomUUID();
         Instant timestamp = Instant.now().minusSeconds(60);
-        publish(new TelemetryReceivedEvent(
+        publish(
+            new TelemetryReceivedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 "plug-001",
                 timestamp,
                 Map.of("activePowerW", 840.2, "voltageV", 230.1),
-                Instant.now()));
+                Instant.now()
+            )
+        );
 
         ResponseEntity<String> latest = waitForLatest(deviceId);
 
@@ -260,8 +595,12 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
         properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        try (KafkaProducer<String, TelemetryReceivedEvent> producer = new KafkaProducer<>(properties)) {
-            producer.send(new ProducerRecord<>("telemetry.raw.v1", event.deviceId().toString(), event)).get();
+        try (
+            KafkaProducer<String, TelemetryReceivedEvent> producer = new KafkaProducer<>(properties)
+        ) {
+            producer
+                .send(new ProducerRecord<>("telemetry.raw.v1", event.deviceId().toString(), event))
+                .get();
         }
     }
 
@@ -269,8 +608,16 @@ class TelemetryKafkaTimescaleIntegrationTest extends SignedUserTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         ResponseEntity<String> latest = null;
         while (System.nanoTime() < deadline) {
-            latest = restTemplate.getForEntity("/telemetry/devices/{deviceId}/latest", String.class, deviceId);
-            if (latest.getStatusCode() == HttpStatus.OK && latest.getBody() != null && latest.getBody().contains("activePowerW")) {
+            latest = restTemplate.getForEntity(
+                "/telemetry/devices/{deviceId}/latest",
+                String.class,
+                deviceId
+            );
+            if (
+                latest.getStatusCode() == HttpStatus.OK &&
+                latest.getBody() != null &&
+                latest.getBody().contains("activePowerW")
+            ) {
                 return latest;
             }
             Thread.sleep(500);

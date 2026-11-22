@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.UUID;
 
 public record TelemetryDeadLetterEvent(
-        UUID deadLetterId,
-        String reason,
-        List<String> qualityFlags,
-        TelemetryReceivedEvent originalEvent,
-        Instant failedAt) {
-}
+    UUID deadLetterId,
+    String reason,
+    List<String> qualityFlags,
+    TelemetryReceivedEvent originalEvent,
+    Instant failedAt
+) {}

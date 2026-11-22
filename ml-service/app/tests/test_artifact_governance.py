@@ -5,7 +5,11 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.artifact_store import ArtifactReferenceSet, ArtifactStore, ArtifactStoreHealthError
+from app.services.artifact_store import (
+    ArtifactReferenceSet,
+    ArtifactStore,
+    ArtifactStoreHealthError,
+)
 from app.tests.settings_helpers import SettingsOverride
 
 
@@ -29,21 +33,33 @@ class _FakeS3Client:
         if Bucket not in self.buckets:
             raise RuntimeError("bucket unavailable")
 
-    def put_object(self, Bucket: str, Key: str, Body: bytes, ContentType: str) -> None:
+    def put_object(
+        self, Bucket: str, Key: str, Body: bytes, ContentType: str, IfNoneMatch: str | None = None
+    ) -> None:
+        if IfNoneMatch == "*" and (Bucket, Key) in self.objects:
+            from botocore.exceptions import ClientError
+
+            raise ClientError({"Error": {"Code": "PreconditionFailed"}}, "PutObject")
         self.buckets.add(Bucket)
         self.objects[(Bucket, Key)] = Body
 
     def get_object(self, Bucket: str, Key: str) -> dict:
         return {"Body": _FakeBody(self.objects[(Bucket, Key)])}
 
-    def list_objects_v2(self, Bucket: str, ContinuationToken: str | None = None) -> dict:
+    def list_objects_v2(
+        self,
+        Bucket: str,
+        ContinuationToken: str | None = None,
+        Prefix: str = "",
+        MaxKeys: int = 1000,
+    ) -> dict:
         self.head_bucket(Bucket)
         return {
             "IsTruncated": False,
             "Contents": [
                 {"Key": key, "Size": len(body)}
                 for bucket, key in sorted(self.objects)
-                if bucket == Bucket
+                if bucket == Bucket and key.startswith(Prefix)
                 for body in [self.objects[(bucket, key)]]
             ],
         }
@@ -148,8 +164,12 @@ class ArtifactGovernanceTest(unittest.TestCase):
     def test_s3_cleanup_preview_groups_bundles_and_blocks_referenced_children(self) -> None:
         fake = _FakeS3Client()
         fake.create_bucket("model-artifacts")
-        fake.put_object("model-artifacts", "model-referenced/manifest.json", b"{}", "application/json")
-        fake.put_object("model-artifacts", "model-referenced/model.joblib", b"model", "application/octet-stream")
+        fake.put_object(
+            "model-artifacts", "model-referenced/manifest.json", b"{}", "application/json"
+        )
+        fake.put_object(
+            "model-artifacts", "model-referenced/model.joblib", b"model", "application/octet-stream"
+        )
         fake.put_object("model-artifacts", "features-orphan.json", b"{}", "application/json")
         store = ArtifactStore(self._tempdir.name)
         store.store = "s3"

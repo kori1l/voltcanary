@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class ObservationOwnerProperties {
+
     private String serviceToken = "";
     private String coverageAttestorToken = "";
-
 }

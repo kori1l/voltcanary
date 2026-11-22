@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class PositionProjection {
+
     private final PositionRepository repository;
 
     public boolean valid(TelemetryReceivedEvent event) {
@@ -18,9 +19,13 @@ public class PositionProjection {
     }
 
     public void accepted(TelemetryReceivedEvent event, UUID readingId, List<String> quality) {
-        if (GpsMetrics.hasPosition(event.metrics()) && valid(event)
-                && !quality.contains("INVALID_VALUE") && !quality.contains("OUT_OF_RANGE")
-                && !quality.contains("DUPLICATE")) {
+        if (
+            GpsMetrics.hasPosition(event.metrics()) &&
+            valid(event) &&
+            !quality.contains("INVALID_VALUE") &&
+            !quality.contains("OUT_OF_RANGE") &&
+            !quality.contains("DUPLICATE")
+        ) {
             repository.insert(event, readingId, quality);
         }
     }

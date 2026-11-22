@@ -6,5 +6,9 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MlImportedMetricRowRepository extends JpaRepository<MlImportedMetricRow, UUID> {
+    List<MlImportedMetricRow> findByImportedFileIdOrderBySourceRowNumber(
+        UUID importedFileId,
+        org.springframework.data.domain.Pageable page
+    );
     List<MlImportedMetricRow> findByImportedFileIdOrderBySourceRowNumber(UUID importedFileId);
 }

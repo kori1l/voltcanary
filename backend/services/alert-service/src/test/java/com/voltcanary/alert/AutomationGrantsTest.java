@@ -1,3 +1,3 @@
 package com.voltcanary.alert;
 
-class AutomationGrantsTest extends AutomationGrantsContract { }
+class AutomationGrantsTest extends AutomationGrantsContract {}

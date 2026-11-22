@@ -19,9 +19,7 @@ class MlLifecycleApiTest(unittest.TestCase):
     test_api_rejects_conflicting_retry_for_same_idempotency_key = (
         lifecycle_cases.MlLifecycleTest.test_api_rejects_conflicting_retry_for_same_idempotency_key
     )
-    test_api_trains_external_dataset_and_routes_inference_to_trained_model = (
-        lifecycle_cases.MlLifecycleTest.test_api_trains_external_dataset_and_routes_inference_to_trained_model
-    )
+    test_api_trains_external_dataset_and_routes_inference_to_trained_model = lifecycle_cases.MlLifecycleTest.test_api_trains_external_dataset_and_routes_inference_to_trained_model
     test_api_training_run_lookup_returns_created_run = (
         lifecycle_cases.MlLifecycleTest.test_api_training_run_lookup_returns_created_run
     )

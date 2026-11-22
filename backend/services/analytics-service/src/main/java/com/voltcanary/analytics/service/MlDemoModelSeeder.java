@@ -23,7 +23,8 @@ public class MlDemoModelSeeder {
             return;
         }
         Instant now = Instant.now();
-        modelVersionRepository.save(demoModel(
+        modelVersionRepository.save(
+            demoModel(
                 accountId,
                 "anomaly-baseline",
                 1,
@@ -33,8 +34,11 @@ public class MlDemoModelSeeder {
                 List.of("GENERIC_APPLIANCE", "AIR_CONDITIONER", "FRIDGE"),
                 List.of("voltage", "current", "activePowerW", "energyGrowth"),
                 Map.of("precision", 0.86, "recall", 0.78, "f1", 0.82, "trainingRows", 12480),
-                now.minusSeconds(180)));
-        modelVersionRepository.save(demoModel(
+                now.minusSeconds(180)
+            )
+        );
+        modelVersionRepository.save(
+            demoModel(
                 accountId,
                 "degradation-score",
                 1,
@@ -44,8 +48,11 @@ public class MlDemoModelSeeder {
                 List.of("GENERIC_APPLIANCE", "PUMP", "HEATER"),
                 List.of("activePowerW", "current", "temperatureC", "runtimeHours"),
                 Map.of("mae", 0.11, "precision", 0.81, "recall", 0.74, "trainingRows", 9180),
-                now.minusSeconds(120)));
-        modelVersionRepository.save(demoModel(
+                now.minusSeconds(120)
+            )
+        );
+        modelVersionRepository.save(
+            demoModel(
                 accountId,
                 "energy-forecast",
                 1,
@@ -55,20 +62,23 @@ public class MlDemoModelSeeder {
                 List.of("GENERIC_APPLIANCE", "FRIDGE", "SERVER_NAS"),
                 List.of("activePowerW", "energyDelta", "temperatureC"),
                 Map.of("mape", 0.09, "rmse", 0.18, "trainingRows", 20160),
-                now.minusSeconds(60)));
+                now.minusSeconds(60)
+            )
+        );
     }
 
     private MlModelVersion demoModel(
-            UUID accountId,
-            String modelKeySuffix,
-            int version,
-            MlModelFamily family,
-            String algorithm,
-            MlModelStatus status,
-            List<String> compatibleDeviceTypes,
-            List<String> supportedMetrics,
-            Map<String, Object> evaluationMetrics,
-            Instant createdAt) {
+        UUID accountId,
+        String modelKeySuffix,
+        int version,
+        MlModelFamily family,
+        String algorithm,
+        MlModelStatus status,
+        List<String> compatibleDeviceTypes,
+        List<String> supportedMetrics,
+        Map<String, Object> evaluationMetrics,
+        Instant createdAt
+    ) {
         MlModelVersion model = new MlModelVersion();
         model.setId(UUID.randomUUID());
         model.setAccountId(accountId);
@@ -81,7 +91,12 @@ public class MlDemoModelSeeder {
         model.setArtifactUri("artifact://demo/" + modelKeySuffix + "/model.json");
         model.setArtifactManifestUri("artifact://demo/" + modelKeySuffix + "/manifest.json");
         model.setArtifactHash("sha256:demo-artifact-" + modelKeySuffix);
-        model.setArtifactSizeBytes((long) auditWriter.writeJson(evaluationMetrics).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        model.setArtifactSizeBytes(
+            (long) auditWriter
+                .writeJson(evaluationMetrics)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                .length
+        );
         model.setCompatibleDeviceTypesJson(auditWriter.writeJson(compatibleDeviceTypes));
         model.setSupportedMetricsJson(auditWriter.writeJson(supportedMetrics));
         model.setEvaluationMetricsJson(auditWriter.writeJson(evaluationMetrics));

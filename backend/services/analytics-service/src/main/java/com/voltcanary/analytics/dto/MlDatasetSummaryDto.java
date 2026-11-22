@@ -7,23 +7,23 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MlDatasetSummaryDto(
-        UUID datasetId,
-        UUID datasetVersionId,
-        String name,
-        String description,
-        MlDatasetSourceType sourceType,
-        int version,
-        MlDatasetStatus status,
-        MlTrainingSplitStrategy splitStrategy,
-        String featureConfigVersion,
-        Instant sourceWindowStart,
-        Instant sourceWindowEnd,
-        Instant createdAt,
-        Instant readyAt,
-        String failureReason,
-        String artifactUri,
-        String artifactHash,
-        String immutableRowReference,
-        String dataHash,
-        UUID accountId) {
-}
+    UUID datasetId,
+    UUID datasetVersionId,
+    String name,
+    String description,
+    MlDatasetSourceType sourceType,
+    int version,
+    MlDatasetStatus status,
+    MlTrainingSplitStrategy splitStrategy,
+    String featureConfigVersion,
+    Instant sourceWindowStart,
+    Instant sourceWindowEnd,
+    Instant createdAt,
+    Instant readyAt,
+    String failureReason,
+    String artifactUri,
+    String artifactHash,
+    String immutableRowReference,
+    String dataHash,
+    UUID accountId
+) {}

@@ -10,9 +10,19 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class AiAgentModelRunRecorder {
+
     private final AiAgentModelRunRepository repository;
 
-    public void record(UUID accountId, UUID userId, AiResolvedModel model, String status, long latencyMs, String errorCode, String errorMessage, UUID planId) {
+    public void record(
+        UUID accountId,
+        UUID userId,
+        AiResolvedModel model,
+        String status,
+        long latencyMs,
+        String errorCode,
+        String errorMessage,
+        UUID planId
+    ) {
         AiAgentModelRun run = new AiAgentModelRun();
         run.setId(UUID.randomUUID());
         run.setAccountId(accountId);
@@ -25,7 +35,11 @@ public class AiAgentModelRunRecorder {
         run.setStatus(status);
         run.setLatencyMs((int) Math.min(Integer.MAX_VALUE, latencyMs));
         run.setErrorCode(errorCode);
-        run.setErrorMessage(errorMessage == null ? null : errorMessage.substring(0, Math.min(1024, errorMessage.length())));
+        run.setErrorMessage(
+            errorMessage == null
+                ? null
+                : errorMessage.substring(0, Math.min(1024, errorMessage.length()))
+        );
         run.setCreatedAt(Instant.now());
         repository.save(run);
         var trace = new java.util.LinkedHashMap<String, Object>();
@@ -33,6 +47,11 @@ public class AiAgentModelRunRecorder {
         trace.put("reviewId", planId);
         trace.put("providerOutcome", status);
         trace.put("latencyMs", latencyMs);
-        com.voltcanary.aiagent.trace.AssistantTrace.event("MODEL_RUN", "OBSERVED", errorCode, trace);
+        com.voltcanary.aiagent.trace.AssistantTrace.event(
+            "MODEL_RUN",
+            "OBSERVED",
+            errorCode,
+            trace
+        );
     }
 }

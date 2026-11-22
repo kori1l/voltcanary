@@ -27,9 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/alert-rules")
 @ApiResponses({
-        @ApiResponse(responseCode = "400", description = "Invalid alert rule request or filter"),
-        @ApiResponse(responseCode = "401", description = "Missing authenticated user context"),
-        @ApiResponse(responseCode = "404", description = "Alert rule was not found in the caller account scope")
+    @ApiResponse(responseCode = "400", description = "Invalid alert rule request or filter"),
+    @ApiResponse(responseCode = "401", description = "Missing authenticated user context"),
+    @ApiResponse(
+        responseCode = "404",
+        description = "Alert rule was not found in the caller account scope"
+    ),
 })
 @RequiredArgsConstructor
 public class AlertRuleController {
@@ -38,81 +41,90 @@ public class AlertRuleController {
 
     @GetMapping
     public List<AlertRuleResponse> list(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @RequestParam(value = "enabled", required = false) Boolean enabled,
-            @RequestParam(value = "ruleType", required = false) String ruleType,
-            @RequestParam(value = "scopeType", required = false) String scopeType,
-            @RequestParam(value = "metric", required = false) String metric) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @RequestParam(value = "enabled", required = false) Boolean enabled,
+        @RequestParam(value = "ruleType", required = false) String ruleType,
+        @RequestParam(value = "scopeType", required = false) String scopeType,
+        @RequestParam(value = "metric", required = false) String metric
+    ) {
         return service.list(userId, accountId, enabled, ruleType, scopeType, metric);
     }
 
     @GetMapping("/effective")
     public List<AlertRuleResponse> effective(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("deviceId") UUID deviceId) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("deviceId") UUID deviceId
+    ) {
         return service.effectiveForDevice(userId, accountId, deviceId, correlationId);
     }
 
     @PostMapping("/test")
     public AlertRuleTestResponse test(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) AlertRuleTestRequest request) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) AlertRuleTestRequest request
+    ) {
         return service.test(userId, accountId, correlationId, request);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AlertRuleResponse create(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @RequestBody(required = false) CreateAlertRuleRequest request) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @RequestBody(required = false) CreateAlertRuleRequest request
+    ) {
         return service.create(userId, accountId, request);
     }
 
     @GetMapping("/{id}")
     public AlertRuleResponse get(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @PathVariable("id") UUID id) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @PathVariable("id") UUID id
+    ) {
         return service.get(id, userId, accountId);
     }
 
     @PutMapping("/{id}")
     public AlertRuleResponse update(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @PathVariable("id") UUID id,
-            @RequestBody(required = false) UpdateAlertRuleRequest request) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @PathVariable("id") UUID id,
+        @RequestBody(required = false) UpdateAlertRuleRequest request
+    ) {
         return service.update(id, userId, accountId, request);
     }
 
     @PostMapping("/{id}/enable")
     public AlertRuleResponse enable(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @PathVariable("id") UUID id) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @PathVariable("id") UUID id
+    ) {
         return service.setEnabled(id, userId, accountId, true);
     }
 
     @PostMapping("/{id}/disable")
     public AlertRuleResponse disable(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @PathVariable("id") UUID id) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @PathVariable("id") UUID id
+    ) {
         return service.setEnabled(id, userId, accountId, false);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Account-Id", required = false) String accountId,
-            @PathVariable("id") UUID id) {
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Account-Id", required = false) String accountId,
+        @PathVariable("id") UUID id
+    ) {
         service.delete(id, userId, accountId);
     }
 }

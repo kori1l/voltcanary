@@ -4,5 +4,5 @@ public enum NotificationDeliveryStatus {
     SENT,
     RETRYABLE_FAILURE,
     PERMANENT_FAILURE,
-    DISABLED
+    DISABLED,
 }

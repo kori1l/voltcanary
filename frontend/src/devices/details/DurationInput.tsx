@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 
-export function DurationInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function DurationInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const parsed = parseDurationInput(value);
   const [amount, setAmount] = useState(parsed.amount);
   const [unit, setUnit] = useState(parsed.unit);

@@ -34,7 +34,9 @@ class AlertAccessServiceTest {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/internal/devices/" + deviceId + "/access", exchange -> {
             assertThat(exchange.getRequestURI().getQuery()).isEqualTo("userId=" + userId);
-            assertThat(exchange.getRequestHeaders().getFirst("X-Internal-Service-Token")).isEqualTo("internal-token");
+            assertThat(exchange.getRequestHeaders().getFirst("X-Internal-Service-Token")).isEqualTo(
+                "internal-token"
+            );
             byte[] response = "{\"allowed\":true}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -44,9 +46,13 @@ class AlertAccessServiceTest {
         });
         server.start();
 
-        AlertAccessService accessService = accessService("http://localhost:" + server.getAddress().getPort());
+        AlertAccessService accessService = accessService(
+            "http://localhost:" + server.getAddress().getPort()
+        );
 
-        assertThat(accessService.canReadDevice(deviceId, userId.toString(), "USER", "corr-1")).isTrue();
+        assertThat(
+            accessService.canReadDevice(deviceId, userId.toString(), "USER", "corr-1")
+        ).isTrue();
     }
 
     @Test
@@ -55,9 +61,16 @@ class AlertAccessServiceTest {
         UUID accountId = UUID.randomUUID();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/internal/devices/" + deviceId + "/owner", exchange -> {
-            assertThat(exchange.getRequestHeaders().getFirst("X-Internal-Service-Token")).isEqualTo("internal-token");
-            byte[] response = ("{\"deviceId\":\"" + deviceId + "\",\"accountId\":\"" + accountId + "\"}")
-                    .getBytes(StandardCharsets.UTF_8);
+            assertThat(exchange.getRequestHeaders().getFirst("X-Internal-Service-Token")).isEqualTo(
+                "internal-token"
+            );
+            byte[] response = (
+                "{\"deviceId\":\"" +
+                deviceId +
+                "\",\"accountId\":\"" +
+                accountId +
+                "\"}"
+            ).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
             try (OutputStream body = exchange.getResponseBody()) {
@@ -66,7 +79,9 @@ class AlertAccessServiceTest {
         });
         server.start();
 
-        AlertAccessService accessService = accessService("http://localhost:" + server.getAddress().getPort());
+        AlertAccessService accessService = accessService(
+            "http://localhost:" + server.getAddress().getPort()
+        );
 
         assertThat(accessService.resolveDeviceAccountId(deviceId, "corr-1")).isEqualTo(accountId);
     }
@@ -75,9 +90,11 @@ class AlertAccessServiceTest {
     void requiresAuthenticatedUserForProtectedAccess() {
         AlertAccessService accessService = accessService("http://localhost:1");
 
-        assertThatThrownBy(() -> accessService.requireReadAccess(UUID.randomUUID(), null, "USER", "corr-1"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("401 UNAUTHORIZED");
+        assertThatThrownBy(() ->
+            accessService.requireReadAccess(UUID.randomUUID(), null, "USER", "corr-1")
+        )
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("401 UNAUTHORIZED");
     }
 
     private AlertAccessService accessService(String baseUrl) {
@@ -86,6 +103,10 @@ class AlertAccessServiceTest {
         authorizationProperties.setDeviceServiceBaseUrl(baseUrl);
         AlertInternalProperties internalProperties = new AlertInternalProperties();
         internalProperties.setServiceToken("internal-token");
-        return new AlertAccessService(authorizationProperties, com.voltcanary.common.web.JacksonRestClients.builder(), internalProperties);
+        return new AlertAccessService(
+            authorizationProperties,
+            com.voltcanary.common.web.JacksonRestClients.builder(),
+            internalProperties
+        );
     }
 }

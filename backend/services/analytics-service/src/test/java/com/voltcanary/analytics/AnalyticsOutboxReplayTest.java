@@ -1,5 +1,11 @@
 package com.voltcanary.analytics;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import com.voltcanary.analytics.ml.MlClient;
 import com.voltcanary.analytics.producer.AnalyticsOutboxPublisher;
@@ -16,21 +22,17 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-@SpringBootTest(properties = {
+@SpringBootTest(
+    properties = {
         "app.kafka.consume-enabled=false",
         "app.kafka.publish-enabled=false",
         "app.analytics.authorization.enabled=false",
         "app.analytics.outbox.reconciliation.enabled=false",
         "spring.datasource.url=jdbc:h2:mem:analytics-outbox-replay;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
         "spring.jpa.hibernate.ddl-auto=none",
-        "spring.flyway.enabled=true"
-})
+        "spring.flyway.enabled=true",
+    }
+)
 class AnalyticsOutboxReplayTest {
 
     @Autowired
@@ -46,20 +48,30 @@ class AnalyticsOutboxReplayTest {
     void pendingRowCommittedBeforeCrashIsPublishedOnReplay() {
         UUID id = insertOutbox("PENDING", null);
         KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
-        when(kafkaTemplate.send(eq("anomaly.detected.v1"), eq("device-1"), eq("{\"eventId\":\"" + id + "\"}")))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(
+            kafkaTemplate.send(
+                eq("anomaly.detected.v1"),
+                eq("device-1"),
+                eq("{\"eventId\":\"" + id + "\"}")
+            )
+        ).thenReturn(CompletableFuture.completedFuture(null));
         AnalyticsKafkaProperties kafkaProperties = new AnalyticsKafkaProperties();
         kafkaProperties.setPublishEnabled(true);
         AnalyticsOutboxPublisher publisher = new AnalyticsOutboxPublisher(
-                jdbcTemplate,
-                transactionTemplate,
-                kafkaTemplate,
-                kafkaProperties,
-                new SimpleMeterRegistry());
+            jdbcTemplate,
+            transactionTemplate,
+            kafkaTemplate,
+            kafkaProperties,
+            new SimpleMeterRegistry()
+        );
 
         publisher.publishPending();
 
-        verify(kafkaTemplate).send("anomaly.detected.v1", "device-1", "{\"eventId\":\"" + id + "\"}");
+        verify(kafkaTemplate).send(
+            "anomaly.detected.v1",
+            "device-1",
+            "{\"eventId\":\"" + id + "\"}"
+        );
         assertThat(status(id)).isEqualTo("PUBLISHED");
         assertThat(attempts(id)).isEqualTo(2);
         assertThat(publishedAt(id)).isNotNull();
@@ -69,20 +81,30 @@ class AnalyticsOutboxReplayTest {
     void staleProcessingRowIsRepublishedAndMarkedPublished() {
         UUID id = insertOutbox("PROCESSING", Instant.now().minusSeconds(600));
         KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
-        when(kafkaTemplate.send(eq("anomaly.detected.v1"), eq("device-1"), eq("{\"eventId\":\"" + id + "\"}")))
-                .thenReturn(CompletableFuture.completedFuture(null));
+        when(
+            kafkaTemplate.send(
+                eq("anomaly.detected.v1"),
+                eq("device-1"),
+                eq("{\"eventId\":\"" + id + "\"}")
+            )
+        ).thenReturn(CompletableFuture.completedFuture(null));
         AnalyticsKafkaProperties kafkaProperties = new AnalyticsKafkaProperties();
         kafkaProperties.setPublishEnabled(true);
         AnalyticsOutboxPublisher publisher = new AnalyticsOutboxPublisher(
-                jdbcTemplate,
-                transactionTemplate,
-                kafkaTemplate,
-                kafkaProperties,
-                new SimpleMeterRegistry());
+            jdbcTemplate,
+            transactionTemplate,
+            kafkaTemplate,
+            kafkaProperties,
+            new SimpleMeterRegistry()
+        );
 
         publisher.publishPending();
 
-        verify(kafkaTemplate).send("anomaly.detected.v1", "device-1", "{\"eventId\":\"" + id + "\"}");
+        verify(kafkaTemplate).send(
+            "anomaly.detected.v1",
+            "device-1",
+            "{\"eventId\":\"" + id + "\"}"
+        );
         assertThat(status(id)).isEqualTo("PUBLISHED");
         assertThat(attempts(id)).isEqualTo(2);
         assertThat(lockedAt(id)).isNull();
@@ -91,58 +113,70 @@ class AnalyticsOutboxReplayTest {
 
     private UUID insertOutbox(String status, Instant lockedAt) {
         UUID id = UUID.randomUUID();
-        jdbcTemplate.update("""
-                insert into analytics_event_outbox (
-                    id,
-                    event_key,
-                    topic,
-                    message_key,
-                    payload_json,
-                    status,
-                    attempts,
-                    last_error,
-                    created_at,
-                    published_at,
-                    next_attempt_at,
-                    locked_at,
-                    locked_by
-                ) values (?, ?, ?, ?, ?, ?, ?, null, ?, null, ?, ?, ?)
-                """,
+        jdbcTemplate.update(
+            """
+            insert into analytics_event_outbox (
                 id,
-                "analytics:" + id,
-                "anomaly.detected.v1",
-                "device-1",
-                "{\"eventId\":\"" + id + "\"}",
+                event_key,
+                topic,
+                message_key,
+                payload_json,
                 status,
-                1,
-                Timestamp.from(Instant.now().minusSeconds(900)),
-                Timestamp.from(Instant.now().minusSeconds(600)),
-                lockedAt == null ? null : Timestamp.from(lockedAt),
-                lockedAt == null ? null : "crashed-worker");
+                attempts,
+                last_error,
+                created_at,
+                published_at,
+                next_attempt_at,
+                locked_at,
+                locked_by
+            ) values (?, ?, ?, ?, ?, ?, ?, null, ?, null, ?, ?, ?)
+            """,
+            id,
+            "analytics:" + id,
+            "anomaly.detected.v1",
+            "device-1",
+            "{\"eventId\":\"" + id + "\"}",
+            status,
+            1,
+            Timestamp.from(Instant.now().minusSeconds(900)),
+            Timestamp.from(Instant.now().minusSeconds(600)),
+            lockedAt == null ? null : Timestamp.from(lockedAt),
+            lockedAt == null ? null : "crashed-worker"
+        );
         return id;
     }
 
     private String status(UUID id) {
-        return jdbcTemplate.queryForObject("select status from analytics_event_outbox where id = ?", String.class, id);
+        return jdbcTemplate.queryForObject(
+            "select status from analytics_event_outbox where id = ?",
+            String.class,
+            id
+        );
     }
 
     private int attempts(UUID id) {
-        return jdbcTemplate.queryForObject("select attempts from analytics_event_outbox where id = ?", Integer.class, id);
+        return jdbcTemplate.queryForObject(
+            "select attempts from analytics_event_outbox where id = ?",
+            Integer.class,
+            id
+        );
     }
 
     private Instant lockedAt(UUID id) {
         Timestamp timestamp = jdbcTemplate.queryForObject(
-                "select locked_at from analytics_event_outbox where id = ?",
-                Timestamp.class,
-                id);
+            "select locked_at from analytics_event_outbox where id = ?",
+            Timestamp.class,
+            id
+        );
         return timestamp == null ? null : timestamp.toInstant();
     }
 
     private Instant publishedAt(UUID id) {
         Timestamp timestamp = jdbcTemplate.queryForObject(
-                "select published_at from analytics_event_outbox where id = ?",
-                Timestamp.class,
-                id);
+            "select published_at from analytics_event_outbox where id = ?",
+            Timestamp.class,
+            id
+        );
         return timestamp == null ? null : timestamp.toInstant();
     }
 }

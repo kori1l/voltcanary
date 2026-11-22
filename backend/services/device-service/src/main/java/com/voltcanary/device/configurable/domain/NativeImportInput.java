@@ -25,13 +25,16 @@ import java.util.List;
 
 /** Bounded, strict CSV/JSONL parsing and explicitly declared conversions, without target writes. */
 public final class NativeImportInput {
+
     @FunctionalInterface
     public interface ReferenceResolver {
         JsonNode resolve(JsonNode literal, JsonNode conversion);
     }
+
     private static final VclParser PARSER = new VclParser();
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
-    private NativeImportInput() { }
+
+    private NativeImportInput() {}
 
     public static List<JsonNode> read(byte[] bytes, JsonNode spec) {
         var parsed = readPrefix(bytes, spec);
@@ -40,16 +43,23 @@ public final class NativeImportInput {
     }
 
     public record Prefix(List<JsonNode> rows, boolean complete) {
-        public Prefix { rows = List.copyOf(rows); }
+        public Prefix {
+            rows = List.copyOf(rows);
+        }
     }
 
     public static Prefix readPrefix(byte[] bytes, JsonNode spec) {
         require(bytes.length <= spec.at("/limits/maxBytes").longValue(), "LIMIT_EXCEEDED");
         String text;
         try {
-            text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
-        } catch (java.nio.charset.CharacterCodingException invalid) { throw new VclException("INVALID_UTF8", ""); }
+            text = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString();
+        } catch (java.nio.charset.CharacterCodingException invalid) {
+            throw new VclException("INVALID_UTF8", "");
+        }
         if (text.startsWith("\uFEFF")) text = text.substring(1);
         return spec.at("/format/kind").asText().equals("CSV") ? csv(text, spec) : jsonl(text, spec);
     }
@@ -83,23 +93,39 @@ public final class NativeImportInput {
         var result = new ArrayList<JsonNode>();
         var cells = new ArrayList<String>();
         var cell = new StringBuilder();
-        boolean quoted = false, closed = false, first = true;
+        boolean quoted = false,
+            closed = false,
+            first = true;
         int rowStart = 0;
         long maximum = spec.at("/limits/maxRows").longValue();
         for (int i = 0; i < text.length(); i++) {
-            if (!first && result.size() >= maximum && i == rowStart) return new Prefix(result, false);
+            if (!first && result.size() >= maximum && i == rowStart) return new Prefix(
+                result,
+                false
+            );
             char c = text.charAt(i);
             if (quoted) {
                 if (c == '"') {
-                    if (i + 1 < text.length() && text.charAt(i + 1) == '"') { cell.append('"'); i++; }
-                    else { quoted = false; closed = true; }
+                    if (i + 1 < text.length() && text.charAt(i + 1) == '"') {
+                        cell.append('"');
+                        i++;
+                    } else {
+                        quoted = false;
+                        closed = true;
+                    }
                 } else cell.append(c);
             } else if (c == delimiter || c == '\n' || c == '\r') {
                 cells.add(cell.toString());
                 cell.setLength(0);
                 closed = false;
                 if (c != delimiter) {
-                    if (c == '\r') { require(i + 1 < text.length() && text.charAt(i + 1) == '\n', "FORMAT_INVALID"); i++; }
+                    if (c == '\r') {
+                        require(
+                            i + 1 < text.length() && text.charAt(i + 1) == '\n',
+                            "FORMAT_INVALID"
+                        );
+                        i++;
+                    }
                     rowLimit(text.substring(rowStart, i + 1), spec);
                     first = csvRow(result, cells, header, first);
                     cells.clear();
@@ -123,7 +149,12 @@ public final class NativeImportInput {
         return new Prefix(result, true);
     }
 
-    private static boolean csvRow(List<JsonNode> rows, List<String> cells, List<String> header, boolean first) {
+    private static boolean csvRow(
+        List<JsonNode> rows,
+        List<String> cells,
+        List<String> header,
+        boolean first
+    ) {
         require(cells.size() == header.size(), "FORMAT_INVALID");
         if (first) require(cells.equals(header), "FORMAT_INVALID");
         else {
@@ -135,11 +166,17 @@ public final class NativeImportInput {
     }
 
     private static void rowLimit(String row, JsonNode spec) {
-        require(row.getBytes(StandardCharsets.UTF_8).length <= spec.at("/limits/maxRowBytes").longValue(), "LIMIT_EXCEEDED");
+        require(
+            row.getBytes(StandardCharsets.UTF_8).length <=
+                spec.at("/limits/maxRowBytes").longValue(),
+            "LIMIT_EXCEEDED"
+        );
     }
 
     public static JsonNode convert(JsonNode row, JsonNode column) {
-        return convert(row, column, (literal, conversion) -> { throw new VclException("IMPORT_CONVERSION_UNSUPPORTED", ""); });
+        return convert(row, column, (literal, conversion) -> {
+            throw new VclException("IMPORT_CONVERSION_UNSUPPORTED", "");
+        });
     }
 
     public static JsonNode convert(JsonNode row, JsonNode column, ReferenceResolver references) {
@@ -149,25 +186,39 @@ public final class NativeImportInput {
             switch (column.path("emptyValue").asText()) {
                 case "AS_NULL" -> value = JSON.nullNode();
                 case "REJECT" -> throw new VclException("TYPE_MISMATCH", "");
-                default -> { }
+                default -> {
+                }
             }
         }
         if (value.isNull()) return JSON.objectNode().put("type", "NULL").putNull("value");
         var literal = JSON.objectNode().put("type", column.path("sourceType").asText());
         literal.set("value", value);
         boolean numeric = List.of("INT64", "DECIMAL").contains(column.path("sourceType").asText());
-        if (numeric && !column.path("sourceUnit").isNull() && !column.path("sourceUnit").asText().equals("1")) literal.set("unit", column.path("sourceUnit"));
+        if (
+            numeric &&
+            !column.path("sourceUnit").isNull() &&
+            !column.path("sourceUnit").asText().equals("1")
+        ) literal.set("unit", column.path("sourceUnit"));
         JsonNode current = PARSER.literal(literal.toString());
         // TEXT's source unit belongs to the mapping, not to the closed TEXT wire literal.
         // Retain it internally until the declared numeric parser consumes that text.
-        if (!numeric && !column.path("sourceUnit").isNull() && !column.path("sourceUnit").asText().equals("1")) {
+        if (
+            !numeric &&
+            !column.path("sourceUnit").isNull() &&
+            !column.path("sourceUnit").asText().equals("1")
+        ) {
             ((ObjectNode) current).set("unit", column.path("sourceUnit"));
         }
-        for (var conversion : column.path("conversions")) current = conversion(current, conversion, references);
+        for (var conversion : column.path("conversions"))
+            current = conversion(current, conversion, references);
         return current;
     }
 
-    private static JsonNode conversion(JsonNode literal, JsonNode conversion, ReferenceResolver references) {
+    private static JsonNode conversion(
+        JsonNode literal,
+        JsonNode conversion,
+        ReferenceResolver references
+    ) {
         String method = conversion.path("method").asText();
         if (method.equals("identity")) return literal;
         if (method.equals("resolve_ref")) return references.resolve(literal, conversion);
@@ -182,14 +233,31 @@ public final class NativeImportInput {
                 }
                 case "parse_decimal" -> {
                     String separator = conversion.path("decimalSeparator").asText();
-                    require(text.matches("-?(0|[1-9][0-9]*)(" + java.util.regex.Pattern.quote(separator) + "[0-9]+)?"), "TYPE_MISMATCH");
-                    var number = new BigDecimal(text.replace(separator, ".")).setScale(conversion.path("scale").intValue(),
-                            conversion.path("rounding").asText().equals("REJECT") ? RoundingMode.UNNECESSARY : RoundingMode.HALF_EVEN);
+                    require(
+                        text.matches(
+                            "-?(0|[1-9][0-9]*)(" +
+                                java.util.regex.Pattern.quote(separator) +
+                                "[0-9]+)?"
+                        ),
+                        "TYPE_MISMATCH"
+                    );
+                    var number = new BigDecimal(text.replace(separator, ".")).setScale(
+                        conversion.path("scale").intValue(),
+                        conversion.path("rounding").asText().equals("REJECT")
+                            ? RoundingMode.UNNECESSARY
+                            : RoundingMode.HALF_EVEN
+                    );
                     result.put("type", "DECIMAL").put("value", number.toPlainString());
                 }
-                case "parse_boolean" -> result.put("type", "BOOLEAN").put("value", VclBooleanTokens.parse(conversion, "").evaluate(text, ""));
-                case "parse_date" -> result.put("type", "DATE").put("value", LocalDate.parse(text).toString());
-                case "parse_instant" -> result.put("type", "INSTANT").put("value", instant(text, conversion));
+                case "parse_boolean" -> result
+                    .put("type", "BOOLEAN")
+                    .put("value", VclBooleanTokens.parse(conversion, "").evaluate(text, ""));
+                case "parse_date" -> result
+                    .put("type", "DATE")
+                    .put("value", LocalDate.parse(text).toString());
+                case "parse_instant" -> result
+                    .put("type", "INSTANT")
+                    .put("value", instant(text, conversion));
                 case "parse_duration" -> {
                     require(text.matches("-?(0|[1-9][0-9]*)(\\.[0-9]+)?"), "TYPE_MISMATCH");
                     BigDecimal factor = switch (conversion.path("sourceUnit").asText()) {
@@ -201,29 +269,63 @@ public final class NativeImportInput {
                         default -> throw new VclException("UNIT_MISMATCH", "");
                     };
                     BigDecimal micros = new BigDecimal(text).multiply(factor);
-                    result.put("type", "DURATION").put("value", Long.toString(micros.longValueExact()));
+                    result
+                        .put("type", "DURATION")
+                        .put("value", Long.toString(micros.longValueExact()));
                 }
                 case "convert_unit" -> {
-                    BigDecimal number = VclUnits.standard().convert(new BigDecimal(text), conversion.path("sourceUnit").asText(),
-                            conversion.path("targetUnit").asText(), MathContext.UNLIMITED);
-                    result.put("type", "DECIMAL").put("value", number.toPlainString()).put("unit", conversion.path("targetUnit").asText());
+                    BigDecimal number = VclUnits.standard().convert(
+                        new BigDecimal(text),
+                        conversion.path("sourceUnit").asText(),
+                        conversion.path("targetUnit").asText(),
+                        MathContext.UNLIMITED
+                    );
+                    result
+                        .put("type", "DECIMAL")
+                        .put("value", number.toPlainString())
+                        .put("unit", conversion.path("targetUnit").asText());
                 }
                 default -> throw new VclException("IMPORT_CONVERSION_UNSUPPORTED", "");
             }
-            if (List.of("parse_int64", "parse_decimal").contains(method) && literal.has("unit")) result.set("unit", literal.path("unit"));
+            if (
+                List.of("parse_int64", "parse_decimal").contains(method) && literal.has("unit")
+            ) result.set("unit", literal.path("unit"));
             return PARSER.literal(result.toString());
-        } catch (NumberFormatException | java.time.DateTimeException invalid) { throw new VclException("TYPE_MISMATCH", ""); }
-        catch (ArithmeticException loss) { throw new VclException("PRECISION_LOSS", ""); }
+        } catch (NumberFormatException | java.time.DateTimeException invalid) {
+            throw new VclException("TYPE_MISMATCH", "");
+        } catch (ArithmeticException loss) {
+            throw new VclException("PRECISION_LOSS", "");
+        }
     }
 
     private static String instant(String text, JsonNode config) {
-        if (config.path("format").asText().equals("RFC3339_OFFSET")) return OffsetDateTime.parse(text).toInstant().toString();
-        var local = LocalDateTime.parse(text, DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(ResolverStyle.STRICT));
+        if (config.path("format").asText().equals("RFC3339_OFFSET")) return OffsetDateTime.parse(
+            text
+        )
+            .toInstant()
+            .toString();
+        var local = LocalDateTime.parse(
+            text,
+            DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss").withResolverStyle(
+                ResolverStyle.STRICT
+            )
+        );
         var offsets = ZoneId.of(config.path("timezone").asText()).getRules().getValidOffsets(local);
         require(!offsets.isEmpty(), "DST_GAP");
-        require(offsets.size() == 1 || !config.path("dstPolicy").asText().equals("REJECT"), "DST_AMBIGUOUS");
-        return local.toInstant(config.path("dstPolicy").asText().equals("LATER") ? offsets.getLast() : offsets.getFirst()).toString();
+        require(
+            offsets.size() == 1 || !config.path("dstPolicy").asText().equals("REJECT"),
+            "DST_AMBIGUOUS"
+        );
+        return local
+            .toInstant(
+                config.path("dstPolicy").asText().equals("LATER")
+                    ? offsets.getLast()
+                    : offsets.getFirst()
+            )
+            .toString();
     }
 
-    private static void require(boolean condition, String code) { if (!condition) throw new VclException(code, ""); }
+    private static void require(boolean condition, String code) {
+        if (!condition) throw new VclException(code, "");
+    }
 }

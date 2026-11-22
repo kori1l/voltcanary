@@ -15,8 +15,6 @@ public class IngestionRuntimeConfiguration {
 
     @Bean
     public HttpClient ingestionHttpClient() {
-        return HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
+        return HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
     }
 }

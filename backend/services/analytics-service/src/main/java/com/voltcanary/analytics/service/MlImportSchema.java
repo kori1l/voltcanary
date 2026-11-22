@@ -2,17 +2,16 @@ package com.voltcanary.analytics.service;
 
 import com.voltcanary.analytics.domain.MlLabelType;
 import com.voltcanary.analytics.dto.MlCsvSchemaMapping;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 final class MlImportSchema {
+
     private MlImportSchema() {}
 
     static MlLabelType parseLabel(String value) {
@@ -55,14 +54,18 @@ final class MlImportSchema {
     static void validateMapping(MlCsvSchemaMapping mapping) {
         if (mapping == null) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "CSV schema mapping is required");
+                HttpStatus.BAD_REQUEST,
+                "CSV schema mapping is required"
+            );
         }
         rejectCredentialLikeColumns(
-                List.of(
-                        mapping.timestampColumn(),
-                        mapping.deviceKeyColumn(),
-                        mapping.metricNameColumn(),
-                        mapping.metricValueColumn()));
+            List.of(
+                mapping.timestampColumn(),
+                mapping.deviceKeyColumn(),
+                mapping.metricNameColumn(),
+                mapping.metricValueColumn()
+            )
+        );
         if (mapping.metadataColumns() != null) {
             rejectCredentialLikeColumns(mapping.metadataColumns());
         }
@@ -73,15 +76,17 @@ final class MlImportSchema {
     }
 
     static void requireMappedColumns(Map<String, Integer> indexes, MlCsvSchemaMapping mapping) {
-        for (String column :
-                List.of(
-                        mapping.timestampColumn(),
-                        mapping.deviceKeyColumn(),
-                        mapping.metricNameColumn(),
-                        mapping.metricValueColumn())) {
+        for (String column : List.of(
+            mapping.timestampColumn(),
+            mapping.deviceKeyColumn(),
+            mapping.metricNameColumn(),
+            mapping.metricValueColumn()
+        )) {
             if (!indexes.containsKey(column)) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "CSV column is missing: " + column);
+                    HttpStatus.BAD_REQUEST,
+                    "CSV column is missing: " + column
+                );
             }
         }
     }
@@ -92,13 +97,17 @@ final class MlImportSchema {
                 continue;
             }
             String normalized = column.toLowerCase(Locale.ROOT);
-            if (normalized.contains("password")
-                    || normalized.contains("secret")
-                    || normalized.contains("token")
-                    || normalized.contains("credential")
-                    || normalized.contains("api_key")) {
+            if (
+                normalized.contains("password") ||
+                normalized.contains("secret") ||
+                normalized.contains("token") ||
+                normalized.contains("credential") ||
+                normalized.contains("api_key")
+            ) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "CSV mapping rejects credential-like fields");
+                    HttpStatus.BAD_REQUEST,
+                    "CSV mapping rejects credential-like fields"
+                );
             }
         }
     }

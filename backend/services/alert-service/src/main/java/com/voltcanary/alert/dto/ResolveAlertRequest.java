@@ -1,4 +1,3 @@
 package com.voltcanary.alert.dto;
 
-public record ResolveAlertRequest(String reason) {
-}
+public record ResolveAlertRequest(String reason) {}

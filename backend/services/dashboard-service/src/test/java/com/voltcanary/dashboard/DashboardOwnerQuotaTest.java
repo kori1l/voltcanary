@@ -1,17 +1,20 @@
 package com.voltcanary.dashboard;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.voltcanary.dashboard.application.DashboardAccess;
 import com.voltcanary.dashboard.domain.DashboardActor;
 import com.voltcanary.dashboard.domain.DashboardFailure;
 import com.voltcanary.dashboard.port.DashboardStorage;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class DashboardOwnerQuotaTest {
-    @Test void ownerOverrideDoesNotRaiseOtherOwnersAndStopsAtNewLimit() {
+
+    @Test
+    void ownerOverrideDoesNotRaiseOtherOwnersAndStopsAtNewLimit() {
         var storage = mock(DashboardStorage.class);
         var owner = new DashboardActor(UUID.randomUUID(), UUID.randomUUID());
         var other = new DashboardActor(UUID.randomUUID(), owner.accountId());

@@ -14,12 +14,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class NativeDatasetDependenciesController {
+
     private final NativeDatasetDependencies dependencies;
     private final AlertInternalServiceAuth auth;
 
     @GetMapping("/internal/native-datasets/{dataset}/dependencies")
-    public JsonNode inspect(@RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
-            @PathVariable UUID dataset, @RequestParam UUID accountId, @RequestParam long schemaRevision) {
+    public JsonNode inspect(
+        @RequestHeader(value = "X-Internal-Service-Token", required = false) String token,
+        @PathVariable UUID dataset,
+        @RequestParam UUID accountId,
+        @RequestParam long schemaRevision
+    ) {
         auth.require(token);
         return dependencies.inspect(accountId, dataset, schemaRevision);
     }

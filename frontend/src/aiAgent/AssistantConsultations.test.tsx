@@ -1,8 +1,8 @@
-import {render, screen, waitFor} from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {expect, it, vi} from "vitest";
-import {AssistantConsultations} from "./AssistantConsultations";
-import {cancelAssistantConsultation, listAssistantConsultations} from "./conversationApi";
+import { expect, it, vi } from "vitest";
+import { AssistantConsultations } from "./AssistantConsultations";
+import { cancelAssistantConsultation, listAssistantConsultations } from "./conversationApi";
 
 vi.mock("./conversationApi", () => ({
   cancelAssistantConsultation: vi.fn(),
@@ -10,16 +10,19 @@ vi.mock("./conversationApi", () => ({
 }));
 
 it("recovers task status and reuses the cancellation key after a lost response", async () => {
-  const task = {id: "task", revision: 7, status: "WAITING_USER"} as const;
-  const cancelled = {...task, revision: 8, status: "CANCELLED"} as const;
-  vi.mocked(listAssistantConsultations).mockResolvedValueOnce([task]).mockResolvedValueOnce([task])
+  const task = { id: "task", revision: 7, status: "WAITING_USER" } as const;
+  const cancelled = { ...task, revision: 8, status: "CANCELLED" } as const;
+  vi.mocked(listAssistantConsultations)
+    .mockResolvedValueOnce([task])
+    .mockResolvedValueOnce([task])
     .mockResolvedValueOnce([cancelled]);
-  vi.mocked(cancelAssistantConsultation).mockRejectedValueOnce(new Error("Lost response"))
+  vi.mocked(cancelAssistantConsultation)
+    .mockRejectedValueOnce(new Error("Lost response"))
     .mockResolvedValueOnce(cancelled);
   const user = userEvent.setup();
-  render(<AssistantConsultations planId="plan" revision={5}/>);
+  render(<AssistantConsultations planId="plan" revision={5} />);
   expect(await screen.findByText("Ожидает ответа")).toBeInTheDocument();
-  const button = screen.getByRole("button", {name: "Отменить консультацию"});
+  const button = screen.getByRole("button", { name: "Отменить консультацию" });
   await user.click(button);
   await screen.findByText(/Ответ на запрос отмены недоступен/);
   await waitFor(() => expect(button).toBeEnabled());

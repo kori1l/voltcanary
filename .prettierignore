@@ -1,0 +1,7 @@
+**/node_modules/
+**/target/
+**/dist/
+**/.venv/
+**/artifacts/
+openspec/
+**/package-lock.json

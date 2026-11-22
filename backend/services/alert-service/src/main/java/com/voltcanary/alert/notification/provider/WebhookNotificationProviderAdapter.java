@@ -17,11 +17,10 @@ public class WebhookNotificationProviderAdapter implements NotificationProviderA
     private final RestClient restClient;
 
     public WebhookNotificationProviderAdapter(
-            AlertNotificationProperties properties,
-            RestClient.Builder restClientBuilder) {
-        this.restClient = restClientBuilder
-                .requestFactory(requestFactory(properties))
-                .build();
+        AlertNotificationProperties properties,
+        RestClient.Builder restClientBuilder
+    ) {
+        this.restClient = restClientBuilder.requestFactory(requestFactory(properties)).build();
     }
 
     @Override
@@ -34,29 +33,38 @@ public class WebhookNotificationProviderAdapter implements NotificationProviderA
         String url = deliveryUrl(command.channelConfig());
         if (url == null) {
             return NotificationDeliveryResult.permanentFailure(
-                    "CONFIG_MISSING_URL",
-                    command.channelType() + " channel requires config.url");
+                "CONFIG_MISSING_URL",
+                command.channelType() + " channel requires config.url"
+            );
         }
         try {
-            HttpStatusCode status = restClient.post()
-                    .uri(URI.create(url))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("Idempotency-Key", command.idempotencyKey())
-                    .body(AlertNotificationMessage.from(command).payload())
-                    .retrieve()
-                    .toBodilessEntity()
-                    .getStatusCode();
+            HttpStatusCode status = restClient
+                .post()
+                .uri(URI.create(url))
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", command.idempotencyKey())
+                .body(AlertNotificationMessage.from(command).payload())
+                .retrieve()
+                .toBodilessEntity()
+                .getStatusCode();
             return NotificationDeliveryResult.sent("HTTP " + status.value(), null);
         } catch (RestClientResponseException exception) {
             String errorCode = "HTTP_" + exception.getStatusCode().value();
             if (exception.getStatusCode().is5xxServerError()) {
-                return NotificationDeliveryResult.retryableFailure(errorCode, responseSummary(exception));
+                return NotificationDeliveryResult.retryableFailure(
+                    errorCode,
+                    responseSummary(exception)
+                );
             }
-            return NotificationDeliveryResult.permanentFailure(errorCode, responseSummary(exception));
+            return NotificationDeliveryResult.permanentFailure(
+                errorCode,
+                responseSummary(exception)
+            );
         } catch (Exception exception) {
             return NotificationDeliveryResult.retryableFailure(
-                    exception.getClass().getSimpleName(),
-                    exception.getMessage());
+                exception.getClass().getSimpleName(),
+                exception.getMessage()
+            );
         }
     }
 

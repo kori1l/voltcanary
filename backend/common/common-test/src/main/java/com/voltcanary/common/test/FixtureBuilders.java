@@ -11,49 +11,52 @@ import java.util.UUID;
 
 public final class FixtureBuilders {
 
-    private FixtureBuilders() {
-    }
+    private FixtureBuilders() {}
 
     public static TelemetryReceivedEvent telemetryReceivedEvent() {
         return new TelemetryReceivedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "test-source",
-                Instant.now(),
-                Map.of("power", 42.0),
-                Instant.now());
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "test-source",
+            Instant.now(),
+            Map.of("power", 42.0),
+            Instant.now()
+        );
     }
 
     public static TelemetryValidatedEvent telemetryValidatedEvent() {
         return new TelemetryValidatedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "test-source",
-                Instant.now(),
-                Map.of("power", 42.0),
-                List.of("VALID"),
-                Instant.now());
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "test-source",
+            Instant.now(),
+            Map.of("power", 42.0),
+            List.of("VALID"),
+            Instant.now()
+        );
     }
 
     public static AnomalyDetectedEvent anomalyDetectedEvent() {
         return new AnomalyDetectedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                "POWER_SPIKE",
-                "WARNING",
-                0.72,
-                "Test anomaly",
-                Instant.now());
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "POWER_SPIKE",
+            "WARNING",
+            0.72,
+            "Test anomaly",
+            Instant.now()
+        );
     }
 
     public static RiskScoreChangedEvent riskScoreChangedEvent() {
         return new RiskScoreChangedEvent(
-                UUID.randomUUID(),
-                UUID.randomUUID(),
-                0.2,
-                0.7,
-                "HIGH",
-                Instant.now());
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            0.2,
+            0.7,
+            "HIGH",
+            Instant.now()
+        );
     }
 }

@@ -5,9 +5,9 @@ import java.util.Map;
 import java.util.UUID;
 
 public record FeatureSetResponse(
-        UUID id,
-        UUID deviceId,
-        Instant windowStart,
-        Instant windowEnd,
-        Map<String, Object> features) {
-}
+    UUID id,
+    UUID deviceId,
+    Instant windowStart,
+    Instant windowEnd,
+    Map<String, Object> features
+) {}

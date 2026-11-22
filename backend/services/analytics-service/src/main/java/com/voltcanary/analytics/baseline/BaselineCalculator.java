@@ -12,12 +12,13 @@ public class BaselineCalculator {
         }
         double sum = sortedValues.stream().mapToDouble(Double::doubleValue).sum();
         return new BaselineStats(
-                sum / sortedValues.size(),
-                percentile(sortedValues, 0.5),
-                percentile(sortedValues, 0.9),
-                sortedValues.get(0),
-                sortedValues.get(sortedValues.size() - 1),
-                sortedValues.size());
+            sum / sortedValues.size(),
+            percentile(sortedValues, 0.5),
+            percentile(sortedValues, 0.9),
+            sortedValues.get(0),
+            sortedValues.get(sortedValues.size() - 1),
+            sortedValues.size()
+        );
     }
 
     private double percentile(List<Double> sortedValues, double percentile) {

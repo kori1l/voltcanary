@@ -19,24 +19,35 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/devices/{deviceId}/data-sources/{sourceId}/variable-bindings")
 @RequiredArgsConstructor
 public class VariableBindingsController {
+
     private final VariableBindings bindings;
     private final AuthenticatedUserResolver users;
 
     @GetMapping
-    public List<VariableBinding> list(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId, @PathVariable("sourceId") UUID sourceId) {
+    public List<VariableBinding> list(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sourceId") UUID sourceId
+    ) {
         return bindings.list(users.resolve(headers), deviceId, sourceId);
     }
 
     @PutMapping
-    public List<VariableBinding> save(@RequestHeader HttpHeaders headers, @PathVariable("deviceId") UUID deviceId,
-            @PathVariable("sourceId") UUID sourceId, @RequestBody VariableBindings.Edit edit) {
+    public List<VariableBinding> save(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sourceId") UUID sourceId,
+        @RequestBody VariableBindings.Edit edit
+    ) {
         return bindings.save(users.resolve(headers), deviceId, sourceId, edit);
     }
 
     @GetMapping("/status")
-    public java.util.Map<String, Object> status(@RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId, @PathVariable("sourceId") UUID sourceId) {
+    public java.util.Map<String, Object> status(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sourceId") UUID sourceId
+    ) {
         return bindings.status(users.resolve(headers), deviceId, sourceId);
     }
 }

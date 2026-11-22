@@ -53,7 +53,12 @@ export function SettingsPage() {
           <h1>Settings</h1>
           <p>Account, security, and notification routing.</p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void load()} disabled={isBusy}>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => void load()}
+          disabled={isBusy}
+        >
           Refresh
         </button>
       </header>
@@ -67,7 +72,13 @@ export function SettingsPage() {
           <div className="section-header">
             <div>
               <h2>Profile</h2>
-              <p>{profile ? `${profile.email} / ${profile.role}` : profileSection.status === "loading" ? "Loading profile" : "Profile unavailable"}</p>
+              <p>
+                {profile
+                  ? `${profile.email} / ${profile.role}`
+                  : profileSection.status === "loading"
+                    ? "Loading profile"
+                    : "Profile unavailable"}
+              </p>
             </div>
           </div>
           <dl className="detail-list">
@@ -85,11 +96,18 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Email verification</dt>
-              <dd>{profile ? profile.emailVerified ? "Verified" : "Not verified" : "Unavailable"}</dd>
+              <dd>
+                {profile ? (profile.emailVerified ? "Verified" : "Not verified") : "Unavailable"}
+              </dd>
             </div>
           </dl>
           <div className="action-row action-row-start">
-            <button className="ghost-button" type="button" onClick={() => void verifyEmail()} disabled={isBusy || !profile || profile.emailVerified}>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => void verifyEmail()}
+              disabled={isBusy || !profile || profile.emailVerified}
+            >
               Verify email
             </button>
             {profile?.role === "ADMIN" ? (
@@ -115,7 +133,10 @@ export function SettingsPage() {
           <div className="section-header">
             <div>
               <h2>Machine Learning</h2>
-              <p>Datasets, imports, labels, training runs, model registry, deployment policies, and monitoring.</p>
+              <p>
+                Datasets, imports, labels, training runs, model registry, deployment policies, and
+                monitoring.
+              </p>
             </div>
           </div>
           <div className="detail-list">

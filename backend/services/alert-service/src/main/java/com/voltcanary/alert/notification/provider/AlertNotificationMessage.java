@@ -4,25 +4,25 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public record AlertNotificationMessage(
-        String subject,
-        String text,
-        Map<String, Object> payload) {
-
+public record AlertNotificationMessage(String subject, String text, Map<String, Object> payload) {
     public static AlertNotificationMessage from(NotificationDeliveryCommand command) {
         String severity = valueOrUnknown(command.alert().severity());
         String title = valueOrUnknown(command.alert().title());
-        String subject = command.alert().alertId() == null
+        String subject =
+            command.alert().alertId() == null
                 ? "Notification test: " + title
                 : severity + " alert: " + title;
         StringBuilder text = new StringBuilder()
-                .append(subject)
-                .append('\n')
-                .append("Type: ").append(valueOrUnknown(command.alert().alertType()))
-                .append('\n')
-                .append("Status: ").append(valueOrUnknown(command.alert().status()))
-                .append('\n')
-                .append("Device: ").append(command.alert().deviceId());
+            .append(subject)
+            .append('\n')
+            .append("Type: ")
+            .append(valueOrUnknown(command.alert().alertType()))
+            .append('\n')
+            .append("Status: ")
+            .append(valueOrUnknown(command.alert().status()))
+            .append('\n')
+            .append("Device: ")
+            .append(command.alert().deviceId());
         if (command.alert().alertId() != null) {
             text.append('\n').append("Alert: ").append(command.alert().alertId());
         }

@@ -18,8 +18,12 @@ import java.util.UUID;
 
 /** Closed, statically checked native collection schema. Labels never become SQL identifiers. */
 public final class NativeSchema {
+
     private static final VclParser PARSER = new VclParser();
-    private static final VclCompiler COMPILER = new VclCompiler(new VclRegistry(PARSER), VclUnits.standard());
+    private static final VclCompiler COMPILER = new VclCompiler(
+        new VclRegistry(PARSER),
+        VclUnits.standard()
+    );
     private final JsonNode definition;
     private final String canonical;
     private final String digest;
@@ -53,32 +57,65 @@ public final class NativeSchema {
 
     public static NativeSchema compile(String json, VclMetadata metadata) {
         var schema = compileRevision(json, metadata);
-        if (schema.revision() != 1) throw new VclException("SCHEMA_MIGRATION_REQUIRED", "/spec/revision");
+        if (schema.revision() != 1) throw new VclException(
+            "SCHEMA_MIGRATION_REQUIRED",
+            "/spec/revision"
+        );
         return schema;
     }
 
     public static NativeSchema compileRevision(String json, VclMetadata metadata) {
         var document = PARSER.parse(json);
-        if (document.kind() != VclDocument.Kind.COLLECTION || !document.spec().at("/storage/mode").asText().equals("NATIVE")) {
+        if (
+            document.kind() != VclDocument.Kind.COLLECTION ||
+            !document.spec().at("/storage/mode").asText().equals("NATIVE")
+        ) {
             throw new VclException("NATIVE_COLLECTION_REQUIRED", "");
         }
         var result = COMPILER.compile(document, metadata);
-        return new NativeSchema(PARSER.parse(result.canonicalDocument()), result.canonicalDocument());
+        return new NativeSchema(
+            PARSER.parse(result.canonicalDocument()),
+            result.canonicalDocument()
+        );
     }
 
-    public UUID id() { return id; }
-    public long revision() { return revision; }
-    public String canonical() { return canonical; }
-    public String digest() { return digest; }
-    public JsonNode definition() { return definition.deepCopy(); }
-    public boolean history() { return history; }
+    public UUID id() {
+        return id;
+    }
+
+    public long revision() {
+        return revision;
+    }
+
+    public String canonical() {
+        return canonical;
+    }
+
+    public String digest() {
+        return digest;
+    }
+
+    public JsonNode definition() {
+        return definition.deepCopy();
+    }
+
+    public boolean history() {
+        return history;
+    }
+
     public List<JsonNode> fields() {
         var result = new ArrayList<JsonNode>();
         fields.values().forEach(field -> result.add(field.deepCopy()));
         return List.copyOf(result);
     }
-    public List<UUID> keys() { return keys; }
-    public List<UUID> indexes() { return indexes; }
+
+    public List<UUID> keys() {
+        return keys;
+    }
+
+    public List<UUID> indexes() {
+        return indexes;
+    }
 
     public JsonNode field(UUID id) {
         var field = fields.get(id);
@@ -98,5 +135,8 @@ public final class NativeSchema {
         return List.copyOf(result);
     }
 
-    @Override public String toString() { return "NativeSchema[id=" + id() + ", digest=" + digest + "]"; }
+    @Override
+    public String toString() {
+        return "NativeSchema[id=" + id() + ", digest=" + digest + "]";
+    }
 }

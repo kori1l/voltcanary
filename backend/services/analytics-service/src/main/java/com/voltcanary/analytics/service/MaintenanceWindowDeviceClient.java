@@ -25,11 +25,14 @@ public class MaintenanceWindowDeviceClient {
     private final MeterRegistry meterRegistry;
 
     public MaintenanceWindowDeviceClient(
-            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
-            AnalyticsDownstreamProperties downstreamProperties,
-            AnalyticsInternalProperties internalProperties,
-            MeterRegistry meterRegistry) {
-        this.restClient = restClientBuilder.baseUrl(downstreamProperties.getDeviceService().getBaseUrl()).build();
+        @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
+        AnalyticsDownstreamProperties downstreamProperties,
+        AnalyticsInternalProperties internalProperties,
+        MeterRegistry meterRegistry
+    ) {
+        this.restClient = restClientBuilder
+            .baseUrl(downstreamProperties.getDeviceService().getBaseUrl())
+            .build();
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
         this.meterRegistry = meterRegistry;
@@ -42,26 +45,47 @@ public class MaintenanceWindowDeviceClient {
     public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, UUID afterId, int limit) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            MaintenanceWindowSnapshot[] response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/internal/maintenance-windows/changes")
-                            .queryParam("updatedAfter", updatedAfter)
-                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
-                            .queryParam("limit", limit)
-                            .build())
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .retrieve()
-                    .body(MaintenanceWindowSnapshot[].class);
-            sample.stop(meterRegistry.timer("analytics.maintenance.reconciliation.fetch.duration", "status", "success"));
+            MaintenanceWindowSnapshot[] response = restClient
+                .get()
+                .uri(uriBuilder ->
+                    uriBuilder
+                        .path("/internal/maintenance-windows/changes")
+                        .queryParam("updatedAfter", updatedAfter)
+                        .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
+                        .queryParam("limit", limit)
+                        .build()
+                )
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .retrieve()
+                .body(MaintenanceWindowSnapshot[].class);
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.maintenance.reconciliation.fetch.duration",
+                    "status",
+                    "success"
+                )
+            );
             return response == null ? List.of() : Arrays.asList(response);
         } catch (RestClientException exception) {
-            meterRegistry.counter("analytics.maintenance.reconciliation.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.maintenance.reconciliation.fetch.duration", "status", "failure"));
+            meterRegistry
+                .counter(
+                    "analytics.maintenance.reconciliation.fetch.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.maintenance.reconciliation.fetch.duration",
+                    "status",
+                    "failure"
+                )
+            );
             return List.of();
         }
     }
@@ -70,29 +94,54 @@ public class MaintenanceWindowDeviceClient {
         return outcomeChanges(updatedAfter, null, limit);
     }
 
-    public List<MaintenanceOutcomeSnapshot> outcomeChanges(Instant updatedAfter, UUID afterId, int limit) {
+    public List<MaintenanceOutcomeSnapshot> outcomeChanges(
+        Instant updatedAfter,
+        UUID afterId,
+        int limit
+    ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            MaintenanceOutcomeSnapshot[] response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/internal/maintenance-outcomes/changes")
-                            .queryParam("updatedAfter", updatedAfter)
-                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
-                            .queryParam("limit", limit)
-                            .build())
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .retrieve()
-                    .body(MaintenanceOutcomeSnapshot[].class);
-            sample.stop(meterRegistry.timer("analytics.maintenance.outcome.reconciliation.fetch.duration", "status", "success"));
+            MaintenanceOutcomeSnapshot[] response = restClient
+                .get()
+                .uri(uriBuilder ->
+                    uriBuilder
+                        .path("/internal/maintenance-outcomes/changes")
+                        .queryParam("updatedAfter", updatedAfter)
+                        .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
+                        .queryParam("limit", limit)
+                        .build()
+                )
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .retrieve()
+                .body(MaintenanceOutcomeSnapshot[].class);
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.maintenance.outcome.reconciliation.fetch.duration",
+                    "status",
+                    "success"
+                )
+            );
             return response == null ? List.of() : Arrays.asList(response);
         } catch (RestClientException exception) {
-            meterRegistry.counter("analytics.maintenance.outcome.reconciliation.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.maintenance.outcome.reconciliation.fetch.duration", "status", "failure"));
+            meterRegistry
+                .counter(
+                    "analytics.maintenance.outcome.reconciliation.fetch.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "analytics.maintenance.outcome.reconciliation.fetch.duration",
+                    "status",
+                    "failure"
+                )
+            );
             return List.of();
         }
     }

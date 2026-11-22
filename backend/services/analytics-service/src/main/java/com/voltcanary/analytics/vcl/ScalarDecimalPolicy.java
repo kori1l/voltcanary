@@ -5,7 +5,10 @@ import java.math.RoundingMode;
 
 /** Pinned VCL decimal policy: overflow rejects; only scale rounding may be approved. */
 public record ScalarDecimalPolicy(int precision, int scale, Rounding rounding) {
-    public enum Rounding { REJECT, HALF_EVEN }
+    public enum Rounding {
+        REJECT,
+        HALF_EVEN,
+    }
 
     public ScalarDecimalPolicy {
         if (precision != 38 || scale < 0 || scale > 12 || rounding == null) {
@@ -13,7 +16,9 @@ public record ScalarDecimalPolicy(int precision, int scale, Rounding rounding) {
         }
     }
 
-    public RoundingMode mode() { return rounding == Rounding.REJECT ? RoundingMode.UNNECESSARY : RoundingMode.HALF_EVEN; }
+    public RoundingMode mode() {
+        return rounding == Rounding.REJECT ? RoundingMode.UNNECESSARY : RoundingMode.HALF_EVEN;
+    }
 
     BigDecimal apply(BigDecimal value) {
         var result = value.setScale(scale, mode());

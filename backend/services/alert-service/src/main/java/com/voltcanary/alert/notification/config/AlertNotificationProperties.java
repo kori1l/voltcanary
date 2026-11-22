@@ -11,28 +11,40 @@ public class AlertNotificationProperties {
     @Getter
     @Setter
     private boolean enabled = true;
+
     @Getter
     @Setter
     private boolean workerEnabled = true;
+
     @Getter
     private int maxAttempts = 3;
+
     @Getter
     private Duration retryInterval = Duration.ofSeconds(1);
+
     @Getter
     private double retryMultiplier = 1.0d;
+
     private Duration maxRetryDelay = Duration.ofSeconds(1);
+
     @Getter
     private double retryJitterPercent = 0.0d;
+
     @Getter
     private Duration leaseDuration = Duration.ofSeconds(30);
+
     @Getter
     private int claimBatchSize = 25;
+
     @Getter
     private int connectTimeoutMillis = 2000;
+
     @Getter
     private int readTimeoutMillis = 5000;
+
     @Getter
     private final Email email = new Email();
+
     @Getter
     private final Telegram telegram = new Telegram();
 
@@ -56,9 +68,8 @@ public class AlertNotificationProperties {
     }
 
     public void setMaxRetryDelay(Duration maxRetryDelay) {
-        this.maxRetryDelay = maxRetryDelay == null || maxRetryDelay.isNegative()
-                ? retryInterval
-                : maxRetryDelay;
+        this.maxRetryDelay =
+            maxRetryDelay == null || maxRetryDelay.isNegative() ? retryInterval : maxRetryDelay;
     }
 
     public void setRetryJitterPercent(double retryJitterPercent) {
@@ -66,7 +77,8 @@ public class AlertNotificationProperties {
     }
 
     public void setLeaseDuration(Duration leaseDuration) {
-        this.leaseDuration = leaseDuration == null || leaseDuration.isNegative() || leaseDuration.isZero()
+        this.leaseDuration =
+            leaseDuration == null || leaseDuration.isNegative() || leaseDuration.isZero()
                 ? Duration.ofSeconds(30)
                 : leaseDuration;
     }
@@ -89,7 +101,8 @@ public class AlertNotificationProperties {
         private String fromAddress;
 
         public void setFromAddress(String fromAddress) {
-            this.fromAddress = fromAddress == null || fromAddress.isBlank() ? null : fromAddress.trim();
+            this.fromAddress =
+                fromAddress == null || fromAddress.isBlank() ? null : fromAddress.trim();
         }
     }
 
@@ -97,11 +110,13 @@ public class AlertNotificationProperties {
 
         @Getter
         private String apiBaseUrl = "https://api.telegram.org";
+
         @Getter
         private String botToken;
 
         public void setApiBaseUrl(String apiBaseUrl) {
-            this.apiBaseUrl = apiBaseUrl == null || apiBaseUrl.isBlank()
+            this.apiBaseUrl =
+                apiBaseUrl == null || apiBaseUrl.isBlank()
                     ? "https://api.telegram.org"
                     : apiBaseUrl.trim();
         }

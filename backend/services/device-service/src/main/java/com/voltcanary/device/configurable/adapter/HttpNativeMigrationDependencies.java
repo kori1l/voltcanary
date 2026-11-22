@@ -18,16 +18,27 @@ import org.springframework.web.client.RestClient;
 
 /** Separate owner cuts, with fresh caller scope around I/O. No distributed-transaction claim. */
 public final class HttpNativeMigrationDependencies implements NativeMigrationDependencies {
+
     private static final VclParser PARSER = new VclParser();
     private static final int MAX_BYTES = 262_144;
     private final DataSource source;
     private final String token;
     private final Map<String, RestClient> owners;
 
-    public HttpNativeMigrationDependencies(DataSource source, NativeDependencyProperties properties, String token) {
+    public HttpNativeMigrationDependencies(
+        DataSource source,
+        NativeDependencyProperties properties,
+        String token
+    ) {
         this.source = source;
-        if (token == null || token.isBlank() || properties.timeout() == null || properties.timeout().isNegative()
-                || properties.timeout().isZero() || properties.timeout().compareTo(java.time.Duration.ofSeconds(10)) > 0) {
+        if (
+            token == null ||
+            token.isBlank() ||
+            properties.timeout() == null ||
+            properties.timeout().isNegative() ||
+            properties.timeout().isZero() ||
+            properties.timeout().compareTo(java.time.Duration.ofSeconds(10)) > 0
+        ) {
             throw new IllegalArgumentException("Native dependency owner configuration is invalid");
         }
         this.token = token;
@@ -39,13 +50,22 @@ public final class HttpNativeMigrationDependencies implements NativeMigrationDep
     }
 
     private static RestClient client(URI base, NativeDependencyProperties properties) {
-        if (base == null || base.getHost() == null || base.getUserInfo() != null
-                || !java.util.List.of("http", "https").contains(base.getScheme())) {
+        if (
+            base == null ||
+            base.getHost() == null ||
+            base.getUserInfo() != null ||
+            !java.util.List.of("http", "https").contains(base.getScheme())
+        ) {
             throw new IllegalArgumentException("Native dependency owner URI is invalid");
         }
-        var factory = new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(properties.timeout()).build());
+        var factory = new JdkClientHttpRequestFactory(
+            HttpClient.newBuilder().connectTimeout(properties.timeout()).build()
+        );
         factory.setReadTimeout(properties.timeout());
-        return JacksonRestClients.builder().baseUrl(base.toString()).requestFactory(factory).build();
+        return JacksonRestClients.builder()
+            .baseUrl(base.toString())
+            .requestFactory(factory)
+            .build();
     }
 
     @Override
@@ -58,13 +78,28 @@ public final class HttpNativeMigrationDependencies implements NativeMigrationDep
         for (var owner : owners.entrySet()) {
             JsonNode value;
             try {
-                value = owner.getValue().get().uri("/internal/native-datasets/{id}/dependencies?accountId={account}&schemaRevision={revision}", dataset, account, revision)
-                        .header("X-Internal-Service-Token", token).exchange((request, response) -> {
-                            if (!response.getStatusCode().is2xxSuccessful()) throw new VclException("DEPENDENCY_OWNER_UNAVAILABLE", "");
-                            byte[] bytes = response.getBody().readNBytes(MAX_BYTES + 1);
-                            if (bytes.length > MAX_BYTES) throw new VclException("DEPENDENCY_OWNER_UNAVAILABLE", "");
-                            return PARSER.readJson(bytes);
-                        });
+                value = owner
+                    .getValue()
+                    .get()
+                    .uri(
+                        "/internal/native-datasets/{id}/dependencies?accountId={account}&schemaRevision={revision}",
+                        dataset,
+                        account,
+                        revision
+                    )
+                    .header("X-Internal-Service-Token", token)
+                    .exchange((request, response) -> {
+                        if (!response.getStatusCode().is2xxSuccessful()) throw new VclException(
+                            "DEPENDENCY_OWNER_UNAVAILABLE",
+                            ""
+                        );
+                        byte[] bytes = response.getBody().readNBytes(MAX_BYTES + 1);
+                        if (bytes.length > MAX_BYTES) throw new VclException(
+                            "DEPENDENCY_OWNER_UNAVAILABLE",
+                            ""
+                        );
+                        return PARSER.readJson(bytes);
+                    });
             } catch (RuntimeException unavailable) {
                 throw new VclException("DEPENDENCY_OWNER_UNAVAILABLE", "");
             }

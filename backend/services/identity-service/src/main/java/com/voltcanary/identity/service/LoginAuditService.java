@@ -18,13 +18,14 @@ public class LoginAuditService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(
-            User user,
-            String email,
-            boolean successful,
-            String failureReason,
-            String ipAddress,
-            String userAgent,
-            String correlationId) {
+        User user,
+        String email,
+        boolean successful,
+        String failureReason,
+        String ipAddress,
+        String userAgent,
+        String correlationId
+    ) {
         LoginAudit audit = new LoginAudit();
         audit.setId(UUID.randomUUID());
         audit.setUser(user);

@@ -15,12 +15,19 @@ public class AnalyticsMlRecommendationService {
 
     private final AnalyticsPredictionTraceService traceService;
 
-    public List<Recommendation> mlRecommendations(UUID deviceId, PredictionResult prediction, Instant now) {
+    public List<Recommendation> mlRecommendations(
+        UUID deviceId,
+        PredictionResult prediction,
+        Instant now
+    ) {
         if (prediction == null || prediction.getPredictionJson() == null) {
             return List.of();
         }
         Map<String, Object> values = traceService.readJson(prediction.getPredictionJson());
-        String riskLevel = prediction.getRiskLevel() == null ? string(values.get("riskLevel")) : prediction.getRiskLevel();
+        String riskLevel =
+            prediction.getRiskLevel() == null
+                ? string(values.get("riskLevel"))
+                : prediction.getRiskLevel();
         if (!List.of("MEDIUM", "HIGH", "CRITICAL").contains(riskLevel)) {
             return List.of();
         }
@@ -29,33 +36,37 @@ public class AnalyticsMlRecommendationService {
             return List.of();
         }
         Object signals = values.get("signals");
-        List<String> signalDescriptions = signals instanceof List<?> signalList
-                ? signalList.stream()
-                        .map(Object::toString)
-                        .limit(3)
-                        .toList()
+        List<String> signalDescriptions =
+            signals instanceof List<?> signalList
+                ? signalList.stream().map(Object::toString).limit(3).toList()
                 : List.of();
-        return actionList.stream()
-                .map(Object::toString)
-                .filter(action -> !action.isBlank())
-                .map(action -> mlRecommendation(deviceId, action, signalDescriptions, riskLevel, now))
-                .toList();
+        return actionList
+            .stream()
+            .map(Object::toString)
+            .filter(action -> !action.isBlank())
+            .map(action -> mlRecommendation(deviceId, action, signalDescriptions, riskLevel, now))
+            .toList();
     }
 
     private Recommendation mlRecommendation(
-            UUID deviceId,
-            String action,
-            List<String> signalDescriptions,
-            String riskLevel,
-            Instant now) {
+        UUID deviceId,
+        String action,
+        List<String> signalDescriptions,
+        String riskLevel,
+        Instant now
+    ) {
         Recommendation recommendation = new Recommendation();
         recommendation.setId(UUID.randomUUID());
         recommendation.setDeviceId(deviceId);
         recommendation.setTitle("Review ML prediction signal");
-        recommendation.setDescription(signalDescriptions.isEmpty()
+        recommendation.setDescription(
+            signalDescriptions.isEmpty()
                 ? action
-                : action + " Signals: " + String.join("; ", signalDescriptions));
-        recommendation.setPriority("CRITICAL".equals(riskLevel) || "HIGH".equals(riskLevel) ? "HIGH" : "MEDIUM");
+                : action + " Signals: " + String.join("; ", signalDescriptions)
+        );
+        recommendation.setPriority(
+            "CRITICAL".equals(riskLevel) || "HIGH".equals(riskLevel) ? "HIGH" : "MEDIUM"
+        );
         recommendation.setStatus("ACTIVE");
         recommendation.setCreatedAt(now);
         return recommendation;

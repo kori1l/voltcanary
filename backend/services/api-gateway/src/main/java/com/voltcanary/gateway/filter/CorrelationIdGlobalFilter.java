@@ -23,17 +23,21 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
         String correlationId = getOrCreateCorrelationId(exchange);
         long startedAt = System.currentTimeMillis();
 
-        ServerWebExchange mutatedExchange = exchange.mutate()
-                .request(request -> request.headers(headers -> headers.set(CORRELATION_ID_HEADER, correlationId)))
-                .build();
+        ServerWebExchange mutatedExchange = exchange
+            .mutate()
+            .request(request ->
+                request.headers(headers -> headers.set(CORRELATION_ID_HEADER, correlationId))
+            )
+            .build();
 
         mutatedExchange.getResponse().beforeCommit(() -> {
             mutatedExchange.getResponse().getHeaders().set(CORRELATION_ID_HEADER, correlationId);
             return Mono.empty();
         });
 
-        return chain.filter(mutatedExchange)
-                .doFinally(signalType -> logRequest(mutatedExchange, correlationId, startedAt));
+        return chain
+            .filter(mutatedExchange)
+            .doFinally(signalType -> logRequest(mutatedExchange, correlationId, startedAt));
     }
 
     @Override
@@ -42,7 +46,10 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private String getOrCreateCorrelationId(ServerWebExchange exchange) {
-        String existingCorrelationId = exchange.getRequest().getHeaders().getFirst(CORRELATION_ID_HEADER);
+        String existingCorrelationId = exchange
+            .getRequest()
+            .getHeaders()
+            .getFirst(CORRELATION_ID_HEADER);
         if (existingCorrelationId == null || existingCorrelationId.isBlank()) {
             return UUID.randomUUID().toString();
         }
@@ -56,13 +63,14 @@ public class CorrelationIdGlobalFilter implements GlobalFilter, Ordered {
         Route route = exchange.getAttribute(ServerWebExchangeUtils.GATEWAY_ROUTE_ATTR);
 
         log.info(
-                "correlationId={} method={} path={} status={} durationMs={} routeId={} downstreamUri={}",
-                correlationId,
-                exchange.getRequest().getMethod(),
-                exchange.getRequest().getURI().getPath(),
-                statusCode == null ? "UNKNOWN" : statusCode.value(),
-                durationMs,
-                route == null ? "unmatched" : route.getId(),
-                route == null ? "unmatched" : route.getUri());
+            "correlationId={} method={} path={} status={} durationMs={} routeId={} downstreamUri={}",
+            correlationId,
+            exchange.getRequest().getMethod(),
+            exchange.getRequest().getURI().getPath(),
+            statusCode == null ? "UNKNOWN" : statusCode.value(),
+            durationMs,
+            route == null ? "unmatched" : route.getId(),
+            route == null ? "unmatched" : route.getUri()
+        );
     }
 }

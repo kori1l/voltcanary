@@ -7,7 +7,16 @@ import java.util.UUID;
 
 /** Explicit outcome; unknown evidence never occupies a user literal or becomes false. */
 public final class ScalarValue {
-    public enum Status { OK, UNKNOWN, INVALID_INPUT, SCHEMA_UNAVAILABLE, ACCESS_REVOKED, STATE_LIMIT, OPERATOR_ERROR }
+
+    public enum Status {
+        OK,
+        UNKNOWN,
+        INVALID_INPUT,
+        SCHEMA_UNAVAILABLE,
+        ACCESS_REVOKED,
+        STATE_LIMIT,
+        OPERATOR_ERROR,
+    }
 
     private final Status status;
     private final JsonNode literal;
@@ -37,18 +46,43 @@ public final class ScalarValue {
     }
 
     public static ScalarValue failure(Status status, String reason) {
-        if (status == Status.OK || status == Status.UNKNOWN || reason == null || !reason.matches("[A-Z][A-Z0-9_]{0,63}")) {
+        if (
+            status == Status.OK ||
+            status == Status.UNKNOWN ||
+            reason == null ||
+            !reason.matches("[A-Z][A-Z0-9_]{0,63}")
+        ) {
             throw new IllegalArgumentException("Invalid failure diagnostic");
         }
         return new ScalarValue(status, null, reason, List.of());
     }
 
-    public Status status() { return status; }
-    public JsonNode literal() { return literal == null ? null : literal.deepCopy(); }
-    public String reason() { return reason; }
-    public List<UUID> evidence() { return evidence; }
-    public boolean isNull() { return status == Status.OK && literal.path("type").asText().equals("NULL"); }
-    public boolean isFailure() { return status != Status.OK && status != Status.UNKNOWN; }
+    public Status status() {
+        return status;
+    }
 
-    @Override public String toString() { return "ScalarValue[status=" + status + ", reason=" + reason + "]"; }
+    public JsonNode literal() {
+        return literal == null ? null : literal.deepCopy();
+    }
+
+    public String reason() {
+        return reason;
+    }
+
+    public List<UUID> evidence() {
+        return evidence;
+    }
+
+    public boolean isNull() {
+        return status == Status.OK && literal.path("type").asText().equals("NULL");
+    }
+
+    public boolean isFailure() {
+        return status != Status.OK && status != Status.UNKNOWN;
+    }
+
+    @Override
+    public String toString() {
+        return "ScalarValue[status=" + status + ", reason=" + reason + "]";
+    }
 }

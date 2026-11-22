@@ -22,15 +22,18 @@ class IngestionCorrectnessStateGuard implements SmartInitializingSingleton {
         }
         if (!idempotencyRedisEnabled()) {
             throw new IllegalStateException(
-                    "Multi-replica ingestion requires app.idempotency.redis-enabled=true");
+                "Multi-replica ingestion requires app.idempotency.redis-enabled=true"
+            );
         }
         if (!properties.isRedisRateLimitEnabled()) {
             throw new IllegalStateException(
-                    "Multi-replica ingestion requires app.ingestion.redis-rate-limit-enabled=true");
+                "Multi-replica ingestion requires app.ingestion.redis-rate-limit-enabled=true"
+            );
         }
         if (properties.isLocalCorrectnessStateEnabled()) {
             throw new IllegalStateException(
-                    "app.ingestion.local-correctness-state-enabled is only valid when multi-replica mode is disabled");
+                "app.ingestion.local-correctness-state-enabled is only valid when multi-replica mode is disabled"
+            );
         }
     }
 

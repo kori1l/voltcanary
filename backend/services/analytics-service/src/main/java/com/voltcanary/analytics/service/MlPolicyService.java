@@ -21,18 +21,20 @@ public class MlPolicyService {
     private final MlPolicyValidator validator;
 
     public MlSettingsResponse account(UUID accountId) {
-        return repository.findByAccountIdAndDeviceIdIsNull(accountId)
-                .map(value -> mapper.response(value, "ACCOUNT"))
-                .orElseGet(() -> mapper.defaults(accountId, null, "DEFAULT"));
+        return repository
+            .findByAccountIdAndDeviceIdIsNull(accountId)
+            .map(value -> mapper.response(value, "ACCOUNT"))
+            .orElseGet(() -> mapper.defaults(accountId, null, "DEFAULT"));
     }
 
     public MlSettingsResponse device(UUID accountId, UUID deviceId) {
-        return repository.findByDeviceId(deviceId)
-                .map(value -> {
-                    requireAccount(value, accountId);
-                    return mapper.response(value, "DEVICE_OVERRIDE");
-                })
-                .orElseGet(() -> mapper.inherited(account(accountId), deviceId));
+        return repository
+            .findByDeviceId(deviceId)
+            .map(value -> {
+                requireAccount(value, accountId);
+                return mapper.response(value, "DEVICE_OVERRIDE");
+            })
+            .orElseGet(() -> mapper.inherited(account(accountId), deviceId));
     }
 
     public MlSettingsResponse effective(UUID deviceId, UUID accountId) {
@@ -40,23 +42,33 @@ public class MlPolicyService {
     }
 
     public MlSettingsResponse effectiveForAnalytics(UUID deviceId, UUID accountId) {
-        return repository.findByDeviceId(deviceId)
-                .map(value -> mapper.response(value, "DEVICE_OVERRIDE"))
-                .orElseGet(() -> accountId == null
-                        ? mapper.defaults(null, deviceId, "DEFAULT")
-                        : device(accountId, deviceId));
+        return repository
+            .findByDeviceId(deviceId)
+            .map(value -> mapper.response(value, "DEVICE_OVERRIDE"))
+            .orElseGet(() ->
+                accountId == null
+                    ? mapper.defaults(null, deviceId, "DEFAULT")
+                    : device(accountId, deviceId)
+            );
     }
 
     @Transactional
     public MlSettingsResponse saveAccount(UUID accountId, UUID userId, MlSettingsRequest request) {
         validator.validate(request);
-        MlSettings value = repository.findByAccountIdAndDeviceIdIsNull(accountId).orElseGet(MlSettings::new);
+        MlSettings value = repository
+            .findByAccountIdAndDeviceIdIsNull(accountId)
+            .orElseGet(MlSettings::new);
         apply(value, accountId, null, userId, request);
         return mapper.response(repository.save(value), "ACCOUNT");
     }
 
     @Transactional
-    public MlSettingsResponse saveDevice(UUID accountId, UUID deviceId, UUID userId, MlSettingsRequest request) {
+    public MlSettingsResponse saveDevice(
+        UUID accountId,
+        UUID deviceId,
+        UUID userId,
+        MlSettingsRequest request
+    ) {
         validator.validate(request);
         MlSettings value = repository.findByDeviceId(deviceId).orElseGet(MlSettings::new);
         if (value.getAccountId() != null) {
@@ -74,7 +86,13 @@ public class MlPolicyService {
         });
     }
 
-    private void apply(MlSettings value, UUID accountId, UUID deviceId, UUID userId, MlSettingsRequest request) {
+    private void apply(
+        MlSettings value,
+        UUID accountId,
+        UUID deviceId,
+        UUID userId,
+        MlSettingsRequest request
+    ) {
         if (value.getId() == null) {
             value.setId(UUID.randomUUID());
         }

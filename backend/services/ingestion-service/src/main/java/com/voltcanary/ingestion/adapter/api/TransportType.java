@@ -8,5 +8,5 @@ public enum TransportType {
     SERIAL,
     WEBSOCKET,
     FILE,
-    INTERNAL
+    INTERNAL,
 }

@@ -20,7 +20,10 @@ public class KafkaBackpressureService {
             return;
         }
         if (Instant.now().isBefore(rejectUntil.get())) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Telemetry broker is under backpressure; retry later");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Telemetry broker is under backpressure; retry later"
+            );
         }
     }
 

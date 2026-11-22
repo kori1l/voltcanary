@@ -19,14 +19,13 @@ public class AlertAccessService {
     private final String internalServiceToken;
 
     public AlertAccessService(
-            AlertAuthorizationProperties properties,
-            RestClient.Builder restClientBuilder,
-            AlertInternalProperties internalProperties) {
+        AlertAuthorizationProperties properties,
+        RestClient.Builder restClientBuilder,
+        AlertInternalProperties internalProperties
+    ) {
         this.properties = properties;
         this.internalServiceToken = internalProperties.getServiceToken();
-        this.restClient = restClientBuilder
-                .baseUrl(properties.getDeviceServiceBaseUrl())
-                .build();
+        this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
     }
 
     public boolean canReadDevice(UUID deviceId, String userId, String role, String correlationId) {
@@ -37,20 +36,25 @@ public class AlertAccessService {
             return false;
         }
         try {
-            DeviceAccessResponse response = restClient.get()
-                    .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(DeviceAccessResponse.class);
+            DeviceAccessResponse response = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/access?userId={userId}", deviceId, userId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(DeviceAccessResponse.class);
             return response != null && response.allowed();
         } catch (Exception exception) {
             log.warn(
-                    "alertAccessCheckFailed deviceId={} userId={} reason={}",
-                    deviceId,
-                    userId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device authorization unavailable");
+                "alertAccessCheckFailed deviceId={} userId={} reason={}",
+                deviceId,
+                userId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device authorization unavailable"
+            );
         }
     }
 
@@ -59,22 +63,30 @@ public class AlertAccessService {
             return null;
         }
         try {
-            DeviceOwnerResponse response = restClient.get()
-                    .uri("/internal/devices/{deviceId}/owner", deviceId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(DeviceOwnerResponse.class);
+            DeviceOwnerResponse response = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/owner", deviceId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(DeviceOwnerResponse.class);
             if (response == null || response.accountId() == null) {
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device owner snapshot unavailable");
+                throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Device owner snapshot unavailable"
+                );
             }
             return response.accountId();
         } catch (Exception exception) {
             log.warn(
-                    "alertDeviceOwnerLookupFailed deviceId={} reason={}",
-                    deviceId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device owner lookup unavailable");
+                "alertDeviceOwnerLookupFailed deviceId={} reason={}",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device owner lookup unavailable"
+            );
         }
     }
 
@@ -83,28 +95,37 @@ public class AlertAccessService {
             return new DeviceRuleContext(deviceId, null, null, null, null);
         }
         try {
-            return restClient.get()
-                    .uri("/internal/devices/{deviceId}/metadata", deviceId)
-                    .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                    .header("X-Internal-Service-Token", internalServiceToken)
-                    .retrieve()
-                    .body(DeviceRuleContext.class);
+            return restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/metadata", deviceId)
+                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(DeviceRuleContext.class);
         } catch (RestClientResponseException exception) {
             if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
             }
             log.warn(
-                    "alertDeviceRuleContextLookupFailed deviceId={} status={} reason={}",
-                    deviceId,
-                    exception.getStatusCode().value(),
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device metadata unavailable");
+                "alertDeviceRuleContextLookupFailed deviceId={} status={} reason={}",
+                deviceId,
+                exception.getStatusCode().value(),
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device metadata unavailable"
+            );
         } catch (Exception exception) {
             log.warn(
-                    "alertDeviceRuleContextLookupFailed deviceId={} reason={}",
-                    deviceId,
-                    exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device metadata unavailable");
+                "alertDeviceRuleContextLookupFailed deviceId={} reason={}",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device metadata unavailable"
+            );
         }
     }
 
@@ -113,7 +134,10 @@ public class AlertAccessService {
             return;
         }
         if (userId == null || userId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
         if (!canReadDevice(deviceId, userId, role, correlationId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found");
@@ -122,16 +146,23 @@ public class AlertAccessService {
 
     public void requireAuthenticated(String userId) {
         if (properties.isEnabled() && (userId == null || userId.isBlank())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 
     public void requirePrivileged(String userId, String role) {
         requireAuthenticated(userId);
         if (!isPrivileged(role)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Support or admin role is required");
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Support or admin role is required"
+            );
         }
     }
+
     public UUID accountScope(String userId) {
         requireAuthenticated(userId);
         return properties.isEnabled() ? ownAccount(userId) : null;
@@ -140,19 +171,52 @@ public class AlertAccessService {
     public UUID ownAccount(String userId) {
         requireAuthenticated(userId);
         try {
-            var response=restClient.get().uri("/internal/accounts/users/{id}/lifecycle",userId)
-                .header("X-Internal-Service-Token",internalServiceToken).retrieve().body(com.fasterxml.jackson.databind.JsonNode.class);
-            if(response==null || !"ACTIVE".equals(response.path("status").asText()) || !userId.equals(response.path("userId").asText()))
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Active owned account required");
+            var response = restClient
+                .get()
+                .uri("/internal/accounts/users/{id}/lifecycle", userId)
+                .header("X-Internal-Service-Token", internalServiceToken)
+                .retrieve()
+                .body(com.fasterxml.jackson.databind.JsonNode.class);
+            if (
+                response == null ||
+                !"ACTIVE".equals(response.path("status").asText()) ||
+                !userId.equals(response.path("userId").asText())
+            ) throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Active owned account required"
+            );
             return UUID.fromString(response.path("accountId").asText());
-        } catch(ResponseStatusException denied) {throw denied;} catch(Exception unavailable) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Account authorization unavailable");
+        } catch (ResponseStatusException denied) {
+            throw denied;
+        } catch (Exception unavailable) {
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Account authorization unavailable"
+            );
         }
     }
-    public void workspaceAction(String authorization,UUID workspace,UUID account,UUID user,UUID device,String action) {
-        var client=new com.voltcanary.common.web.WorkspaceGrantClient(restClient,internalServiceToken);
-        if (!client.require(authorization,workspace,account,user,action,java.util.Set.of(device)).contains(device)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Explicit incident action grant required");
+
+    public void workspaceAction(
+        String authorization,
+        UUID workspace,
+        UUID account,
+        UUID user,
+        UUID device,
+        String action
+    ) {
+        var client = new com.voltcanary.alert.client.WorkspaceGrantClient(
+            restClient,
+            internalServiceToken
+        );
+        if (
+            !client
+                .require(authorization, workspace, account, user, action, java.util.Set.of(device))
+                .contains(device)
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Explicit incident action grant required"
+            );
         }
     }
 
@@ -160,12 +224,15 @@ public class AlertAccessService {
         return "ADMIN".equals(role) || "SUPPORT".equals(role);
     }
 
-    private record DeviceAccessResponse(boolean allowed) {
-    }
+    private record DeviceAccessResponse(boolean allowed) {}
 
-    private record DeviceOwnerResponse(UUID accountId) {
-    }
+    private record DeviceOwnerResponse(UUID accountId) {}
 
-    public record DeviceRuleContext(UUID deviceId, UUID accountId, UUID locationId, String type, String status) {
-    }
+    public record DeviceRuleContext(
+        UUID deviceId,
+        UUID accountId,
+        UUID locationId,
+        String type,
+        String status
+    ) {}
 }

@@ -15,14 +15,17 @@ import lombok.Setter;
 @Getter
 @Setter
 public class AiModelProviderSecret {
+
     @Id
     private UUID id;
+
     private UUID providerId;
+
     @Enumerated(EnumType.STRING)
     private AiModelSecretType secretType;
+
     private String encryptedValue;
     private String encryptionKeyVersion;
     private Instant createdAt;
     private Instant rotatedAt;
-
 }

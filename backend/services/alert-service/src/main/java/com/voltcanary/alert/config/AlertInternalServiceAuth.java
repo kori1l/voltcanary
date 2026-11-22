@@ -15,7 +15,10 @@ public class AlertInternalServiceAuth {
 
     public void require(String token) {
         if (token == null || !token.equals(properties.getServiceToken())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid internal service token");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Invalid internal service token"
+            );
         }
     }
 }

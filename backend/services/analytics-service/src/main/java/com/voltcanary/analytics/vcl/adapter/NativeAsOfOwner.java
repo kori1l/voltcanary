@@ -23,11 +23,17 @@ import org.springframework.web.client.RestClient;
 /** Signed event-time reads against a prepared native snapshot. */
 @Component
 public final class NativeAsOfOwner {
+
     interface Transport {
         byte[] manifest(UUID dataset, byte[] body, long deadline);
         byte[] rows(UUID dataset, byte[] body, long deadline, boolean split);
     }
-    private static final Set<String> UNKNOWN_REASONS = Set.of("ASOF_MISSING", "ASOF_AMBIGUOUS", "ASOF_INTERVAL_UNKNOWN");
+
+    private static final Set<String> UNKNOWN_REASONS = Set.of(
+        "ASOF_MISSING",
+        "ASOF_AMBIGUOUS",
+        "ASOF_INTERVAL_UNKNOWN"
+    );
     private final ConfigurableOwnerReads reads;
     private final VclParser parser = new VclParser();
 
@@ -36,18 +42,36 @@ public final class NativeAsOfOwner {
         reads = new ConfigurableOwnerReads(builder, settings.getBaseUrl(), settings.getTimeout());
     }
 
-    public JsonNode inspect(String authorization, VclDocument query, UUID intervalField, List<UUID> keyFields, long deadline) {
+    public JsonNode inspect(
+        String authorization,
+        VclDocument query,
+        UUID intervalField,
+        List<UUID> keyFields,
+        long deadline
+    ) {
         return inspect(user(authorization), query, intervalField, keyFields, deadline);
     }
 
-    JsonNode inspect(Transport transport, VclDocument query, UUID intervalField, List<UUID> keyFields, long deadline) {
+    JsonNode inspect(
+        Transport transport,
+        VclDocument query,
+        UUID intervalField,
+        List<UUID> keyFields,
+        long deadline
+    ) {
         var spec = query.spec();
         requireSnapshot(query);
-        if (keyFields.isEmpty() || keyFields.size() > 8 || Set.copyOf(keyFields).size() != keyFields.size()) {
+        if (
+            keyFields.isEmpty() ||
+            keyFields.size() > 8 ||
+            Set.copyOf(keyFields).size() != keyFields.size()
+        ) {
             throw new VclException("ASOF_FIELDS_INVALID", "");
         }
         UUID dataset = UUID.fromString(spec.at("/target/datasetId").textValue());
-        var request = JsonNodeFactory.instance.objectNode().put("intervalFieldId", intervalField.toString());
+        var request = JsonNodeFactory.instance
+            .objectNode()
+            .put("intervalFieldId", intervalField.toString());
         request.set("document", query.json());
         var fields = request.putArray("keyFieldIds");
         keyFields.forEach(field -> fields.add(field.toString()));
@@ -55,9 +79,14 @@ public final class NativeAsOfOwner {
             var body = VclCanonical.encode(request).getBytes(StandardCharsets.UTF_8);
             var manifest = parser.readJson(transport.manifest(dataset, body, deadline));
             verifyIdentity(spec, dataset, manifest);
-            if (manifest.size() != 9 || !manifest.path("dataVersion").isIntegralNumber()
-                    || manifest.path("dataVersion").longValue() < 0 || !digest(manifest, "schemaDigest")
-                    || !digest(manifest, "accessScopeDigest") || !digest(manifest, "queryDigest")) throw invalid();
+            if (
+                manifest.size() != 9 ||
+                !manifest.path("dataVersion").isIntegralNumber() ||
+                manifest.path("dataVersion").longValue() < 0 ||
+                !digest(manifest, "schemaDigest") ||
+                !digest(manifest, "accessScopeDigest") ||
+                !digest(manifest, "queryDigest")
+            ) throw invalid();
             var generation = manifest.path("generation").asText();
             try {
                 if (!UUID.fromString(generation).toString().equals(generation)) throw invalid();
@@ -71,35 +100,78 @@ public final class NativeAsOfOwner {
     }
 
     private static boolean digest(JsonNode value, String field) {
-        return value.path(field).isTextual() && value.path(field).textValue().matches("[0-9a-f]{64}");
+        return (
+            value.path(field).isTextual() && value.path(field).textValue().matches("[0-9a-f]{64}")
+        );
     }
 
     private static void requireSnapshot(VclDocument query) {
-        if (query.kind() != VclDocument.Kind.QUERY || !"SNAPSHOT".equals(query.spec().at("/read/mode").textValue())
-                || !query.spec().path("cursor").isNull()) throw new VclException("ASOF_SNAPSHOT_REQUIRED", "");
+        if (
+            query.kind() != VclDocument.Kind.QUERY ||
+            !"SNAPSHOT".equals(query.spec().at("/read/mode").textValue()) ||
+            !query.spec().path("cursor").isNull()
+        ) throw new VclException("ASOF_SNAPSHOT_REQUIRED", "");
     }
 
     private static void verifyIdentity(JsonNode spec, UUID dataset, JsonNode manifest) {
-        if (!manifest.isObject() || !"SNAPSHOT".equals(manifest.path("consistency").textValue())
-                || !dataset.toString().equals(manifest.path("datasetId").textValue())
-                || !spec.at("/read/snapshotId").textValue().equals(manifest.path("snapshotId").textValue())
-                || !manifest.path("schemaRevision").isIntegralNumber()
-                || spec.at("/target/schemaRevision").longValue() != manifest.path("schemaRevision").longValue()) {
+        if (
+            !manifest.isObject() ||
+            !"SNAPSHOT".equals(manifest.path("consistency").textValue()) ||
+            !dataset.toString().equals(manifest.path("datasetId").textValue()) ||
+            !spec
+                .at("/read/snapshotId")
+                .textValue()
+                .equals(manifest.path("snapshotId").textValue()) ||
+            !manifest.path("schemaRevision").isIntegralNumber() ||
+            spec.at("/target/schemaRevision").longValue() !=
+                manifest.path("schemaRevision").longValue()
+        ) {
             throw new VclException("METADATA_SNAPSHOT_CHANGED", "");
         }
     }
 
-    public JsonNode lookup(String authorization, VclCompilation.Node node, VclDocument query, UUID intervalField,
-            Map<UUID, JsonNode> eventFields, Instant eventTime, JsonNode expectedManifest, long deadline) {
-        return lookup(user(authorization), node, query, intervalField, eventFields, eventTime, expectedManifest, deadline);
+    public JsonNode lookup(
+        String authorization,
+        VclCompilation.Node node,
+        VclDocument query,
+        UUID intervalField,
+        Map<UUID, JsonNode> eventFields,
+        Instant eventTime,
+        JsonNode expectedManifest,
+        long deadline
+    ) {
+        return lookup(
+            user(authorization),
+            node,
+            query,
+            intervalField,
+            eventFields,
+            eventTime,
+            expectedManifest,
+            deadline
+        );
     }
 
-    JsonNode lookup(Transport transport, VclCompilation.Node node, VclDocument query, UUID intervalField,
-            Map<UUID, JsonNode> eventFields, Instant eventTime, JsonNode expectedManifest, long deadline) {
-        if (!"lookup_asof".equals(node.method())) throw new VclException("ASOF_OPERATOR_REQUIRED", "");
+    JsonNode lookup(
+        Transport transport,
+        VclCompilation.Node node,
+        VclDocument query,
+        UUID intervalField,
+        Map<UUID, JsonNode> eventFields,
+        Instant eventTime,
+        JsonNode expectedManifest,
+        long deadline
+    ) {
+        if (!"lookup_asof".equals(node.method())) throw new VclException(
+            "ASOF_OPERATOR_REQUIRED",
+            ""
+        );
         var config = node.config();
         var spec = query.spec();
-        if (!config.path("target").equals(spec.path("target"))) throw new VclException("ASOF_PROJECTION_CONFLICT", "");
+        if (!config.path("target").equals(spec.path("target"))) throw new VclException(
+            "ASOF_PROJECTION_CONFLICT",
+            ""
+        );
         var keys = new LinkedHashMap<UUID, JsonNode>();
         var projection = new java.util.HashSet<String>();
         config.path("select").forEach(field -> projection.add(field.textValue()));
@@ -131,24 +203,57 @@ public final class NativeAsOfOwner {
         return timestamp(value.path("value"));
     }
 
-    public JsonNode read(String authorization, VclDocument query, UUID intervalField, Map<UUID, JsonNode> keys,
-            Instant start, Instant end, JsonNode expectedManifest, long deadline) {
-        return read(user(authorization), query, intervalField, keys, start, end, expectedManifest, deadline);
+    public JsonNode read(
+        String authorization,
+        VclDocument query,
+        UUID intervalField,
+        Map<UUID, JsonNode> keys,
+        Instant start,
+        Instant end,
+        JsonNode expectedManifest,
+        long deadline
+    ) {
+        return read(
+            user(authorization),
+            query,
+            intervalField,
+            keys,
+            start,
+            end,
+            expectedManifest,
+            deadline
+        );
     }
 
-    JsonNode read(Transport transport, VclDocument query, UUID intervalField, Map<UUID, JsonNode> keys,
-            Instant start, Instant end, JsonNode expectedManifest, long deadline) {
+    JsonNode read(
+        Transport transport,
+        VclDocument query,
+        UUID intervalField,
+        Map<UUID, JsonNode> keys,
+        Instant start,
+        Instant end,
+        JsonNode expectedManifest,
+        long deadline
+    ) {
         var spec = query.spec();
         requireSnapshot(query);
-        if (keys.isEmpty() || keys.size() > 8 || start == null
-                || end != null && !start.isBefore(end)) {
+        if (
+            keys.isEmpty() ||
+            keys.size() > 8 ||
+            start == null ||
+            (end != null && !start.isBefore(end))
+        ) {
             throw new VclException("ASOF_SNAPSHOT_REQUIRED", "");
         }
         UUID dataset = UUID.fromString(spec.at("/target/datasetId").textValue());
-        var request = JsonNodeFactory.instance.objectNode().put("intervalFieldId", intervalField.toString());
+        var request = JsonNodeFactory.instance
+            .objectNode()
+            .put("intervalFieldId", intervalField.toString());
         request.set("document", query.json());
         var keyArray = request.putArray("keys");
-        keys.forEach((id, value) -> keyArray.addObject().put("fieldId", id.toString()).set("literal", value));
+        keys.forEach((id, value) ->
+            keyArray.addObject().put("fieldId", id.toString()).set("literal", value)
+        );
         if (end == null) request.put("eventTime", start.toString());
         else request.put("start", start.toString()).put("end", end.toString());
         try {
@@ -172,6 +277,7 @@ public final class NativeAsOfOwner {
             public byte[] manifest(UUID dataset, byte[] body, long deadline) {
                 return reads.datasetAsOfManifest(authorization, dataset, body, deadline);
             }
+
             public byte[] rows(UUID dataset, byte[] body, long deadline, boolean split) {
                 return reads.datasetAsOf(authorization, dataset, body, deadline, split);
             }
@@ -195,7 +301,9 @@ public final class NativeAsOfOwner {
         if (!value.isTextual()) throw invalid();
         try {
             var time = Instant.parse(value.textValue());
-            if (time.getNano() % 1000 != 0 || !time.toString().equals(value.textValue())) throw invalid();
+            if (
+                time.getNano() % 1000 != 0 || !time.toString().equals(value.textValue())
+            ) throw invalid();
             return time;
         } catch (DateTimeParseException failure) {
             throw invalid();
@@ -205,9 +313,15 @@ public final class NativeAsOfOwner {
     private static void validateOutcome(JsonNode value) {
         var row = value.path("row");
         var reason = value.path("reason");
-        if ("KNOWN".equals(value.path("status").textValue()) && row.isObject() && reason.isNull()) return;
-        if ("UNKNOWN".equals(value.path("status").textValue()) && row.isNull() && reason.isTextual()
-                && UNKNOWN_REASONS.contains(reason.textValue())) return;
+        if (
+            "KNOWN".equals(value.path("status").textValue()) && row.isObject() && reason.isNull()
+        ) return;
+        if (
+            "UNKNOWN".equals(value.path("status").textValue()) &&
+            row.isNull() &&
+            reason.isTextual() &&
+            UNKNOWN_REASONS.contains(reason.textValue())
+        ) return;
         throw invalid();
     }
 

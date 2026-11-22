@@ -1,5 +1,10 @@
 package com.voltcanary.identity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.UserRole;
 import com.voltcanary.identity.domain.UserStatus;
@@ -17,26 +22,41 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
-@SpringBootTest(properties = {"spring.jpa.open-in-view=false", "app.auth.mail-encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
+@SpringBootTest(
+    properties = {
+        "spring.jpa.open-in-view=false",
+        "app.auth.mail-encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    }
+)
 class RecoveryDeliveryBoundaryTest {
-    @Autowired private AuthService auth;
-    @Autowired private RecoveryMail mail;
-    @Autowired private UserRepository users;
-    @Autowired private TransactionTemplate transactions;
-    @MockitoBean private JavaMailSender sender;
+
+    @Autowired
+    private AuthService auth;
+
+    @Autowired
+    private RecoveryMail mail;
+
+    @Autowired
+    private UserRepository users;
+
+    @Autowired
+    private TransactionTemplate transactions;
+
+    @MockitoBean
+    private JavaMailSender sender;
 
     @Test
     void resetCodeGoesOnlyToTheAccountMailbox() {
         String email = "recovery-" + UUID.randomUUID() + "@example.test";
         var user = new User();
-        user.setId(UUID.randomUUID()); user.setEmail(email); user.setPasswordHash("unused-in-this-test");
-        user.setRole(UserRole.USER); user.setStatus(UserStatus.ACTIVE);
-        user.setCreatedAt(Instant.now()); user.setUpdatedAt(Instant.now());
+        user.setId(UUID.randomUUID());
+        user.setEmail(email);
+        user.setPasswordHash("unused-in-this-test");
+        user.setRole(UserRole.USER);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setCreatedAt(Instant.now());
+        user.setUpdatedAt(Instant.now());
         users.save(user);
         var response = auth.forgotPassword(new ForgotPasswordRequest(email));
         var delivered = ArgumentCaptor.forClass(SimpleMailMessage.class);
@@ -57,7 +77,12 @@ class RecoveryDeliveryBoundaryTest {
 
     @Test
     void recoveryEventDiagnosticDoesNotContainTheCodeOrRecipient() {
-        assertThat(new RecoveryMail.Message("private@example.test", "password reset", "private-code").toString())
-                .doesNotContain("private-code", "private@example.test");
+        assertThat(
+            new RecoveryMail.Message(
+                "private@example.test",
+                "password reset",
+                "private-code"
+            ).toString()
+        ).doesNotContain("private-code", "private@example.test");
     }
 }

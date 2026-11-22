@@ -1,5 +1,10 @@
 package com.voltcanary.analytics.vcl.adapter;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpServer;
@@ -19,12 +24,9 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SourceBindingSnapshotsTest {
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final UUID ID = UUID.randomUUID();
     private static final UUID ACTOR = UUID.randomUUID();
@@ -53,17 +55,23 @@ class SourceBindingSnapshotsTest {
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.getResponseHeaders().set("Location", "/redirected");
             exchange.sendResponseHeaders(status, bytes.length);
-            try (var output = exchange.getResponseBody()) { output.write(bytes); }
+            try (var output = exchange.getResponseBody()) {
+                output.write(bytes);
+            }
         });
         server.start();
         var properties = new AnalyticsDownstreamProperties();
-        properties.getDeviceService().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+        properties
+            .getDeviceService()
+            .setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
         properties.getDeviceService().setTimeout(Duration.ofSeconds(2));
         snapshots = new SourceBindingSnapshots(JacksonRestClients.builder(), properties);
     }
 
     @AfterEach
-    void stop() { server.stop(0); }
+    void stop() {
+        server.stop(0);
+    }
 
     @Test
     void signedPinnedBindingMetadataNeverConfersRuntimeOrGrantAuthority() {
@@ -81,16 +89,18 @@ class SourceBindingSnapshotsTest {
     @Test
     void responseCannotReplaceRequestedActorAccountResourceOrRevision() {
         for (Consumer<ObjectNode> change : List.<Consumer<ObjectNode>>of(
-                json -> json.put("actorId", UUID.randomUUID().toString()),
-                json -> json.put("accountId", UUID.randomUUID().toString()),
-                json -> json.put("id", UUID.randomUUID().toString()),
-                json -> json.put("schemaRevision", 2),
-                json -> json.put("schemaRevision", 1.5),
-                json -> json.put("currentSchemaRevision", 1.5),
-                json -> json.put("ruleExecutionReady", true),
-                json -> ((ObjectNode) json.path("captureCapabilities")).put("negativeEvidenceReady", true),
-                json -> json.put("approved", true),
-                json -> json.put("definitionDigest", "b".repeat(64)))) {
+            json -> json.put("actorId", UUID.randomUUID().toString()),
+            json -> json.put("accountId", UUID.randomUUID().toString()),
+            json -> json.put("id", UUID.randomUUID().toString()),
+            json -> json.put("schemaRevision", 2),
+            json -> json.put("schemaRevision", 1.5),
+            json -> json.put("currentSchemaRevision", 1.5),
+            json -> json.put("ruleExecutionReady", true),
+            json ->
+                ((ObjectNode) json.path("captureCapabilities")).put("negativeEvidenceReady", true),
+            json -> json.put("approved", true),
+            json -> json.put("definitionDigest", "b".repeat(64))
+        )) {
             var value = description();
             change.accept(value);
             body = value.toString();
@@ -120,7 +130,9 @@ class SourceBindingSnapshotsTest {
 
     @Test
     void strictOwnerCodecRejectsDuplicatesMissingFieldsOversizedAndUnsafeJson() {
-        body = description().toString().replace("\"sourceActive\":true", "\"sourceActive\":true,\"sourceActive\":true");
+        body = description()
+            .toString()
+            .replace("\"sourceActive\":true", "\"sourceActive\":true,\"sourceActive\":true");
         code("OWNER_SNAPSHOT_INVALID", this::capture);
         var missing = description();
         missing.remove("captureCapabilities");
@@ -141,23 +153,42 @@ class SourceBindingSnapshotsTest {
             var failure = assertThrows(VclException.class, this::capture);
             assertEquals(before + 1, requests.get());
             assertFalse(failure.getMessage().contains("private"));
-            assertEquals(responseStatus == 401 || responseStatus == 403 ? "OWNER_ACCESS_REVOKED"
-                    : responseStatus == 404 ? "SOURCE_BINDING_UNAVAILABLE" : "SOURCE_BINDING_OWNER_UNAVAILABLE", failure.code());
+            assertEquals(
+                responseStatus == 401 || responseStatus == 403
+                    ? "OWNER_ACCESS_REVOKED"
+                    : responseStatus == 404
+                      ? "SOURCE_BINDING_UNAVAILABLE"
+                      : "SOURCE_BINDING_OWNER_UNAVAILABLE",
+                failure.code()
+            );
         }
     }
 
     @Test
     void untrustedTargetsAndMissingIdentityFailBeforeOwnerIo() {
         var target = new SourceBindingSnapshots.Target(ID, 1);
-        code("OWNER_AUTHENTICATION_REQUIRED", () -> snapshots.capture(null, ACTOR, ACCOUNT, List.of(target)));
-        code("OWNER_AUTHENTICATION_REQUIRED", () -> snapshots.capture(AUTHORIZATION, null, ACCOUNT, List.of(target)));
-        code("OWNER_TARGET_LIMIT", () -> snapshots.capture(AUTHORIZATION, ACTOR, ACCOUNT, List.of()));
-        code("OWNER_TARGET_LIMIT", () -> snapshots.capture(AUTHORIZATION, ACTOR, ACCOUNT, List.of(target, target)));
+        code("OWNER_AUTHENTICATION_REQUIRED", () ->
+            snapshots.capture(null, ACTOR, ACCOUNT, List.of(target))
+        );
+        code("OWNER_AUTHENTICATION_REQUIRED", () ->
+            snapshots.capture(AUTHORIZATION, null, ACCOUNT, List.of(target))
+        );
+        code("OWNER_TARGET_LIMIT", () ->
+            snapshots.capture(AUTHORIZATION, ACTOR, ACCOUNT, List.of())
+        );
+        code("OWNER_TARGET_LIMIT", () ->
+            snapshots.capture(AUTHORIZATION, ACTOR, ACCOUNT, List.of(target, target))
+        );
         assertEquals(0, requests.get());
     }
 
     private SourceBindingSnapshot capture() {
-        return snapshots.capture(AUTHORIZATION, ACTOR, ACCOUNT, List.of(new SourceBindingSnapshots.Target(ID, 1)));
+        return snapshots.capture(
+            AUTHORIZATION,
+            ACTOR,
+            ACCOUNT,
+            List.of(new SourceBindingSnapshots.Target(ID, 1))
+        );
     }
 
     private void code(String code, org.junit.jupiter.api.function.Executable action) {
@@ -165,16 +196,31 @@ class SourceBindingSnapshotsTest {
     }
 
     private ObjectNode description() {
-        var definition = MAPPER.createObjectNode().put("id", ID.toString()).put("schemaRevision", 1)
-                .put("profile", VclSourceBindingProfile.VERSION).put("configurationDigest", "a".repeat(64));
-        definition.putArray("fields").addObject().put("id", UUID.nameUUIDFromBytes(new byte[]{1}).toString())
-                .put("label", "Door").put("type", "BOOLEAN").put("nullable", true);
-        var value = MAPPER.createObjectNode().put("id", ID.toString()).put("accountId", ACCOUNT.toString())
-                .put("actorId", ACTOR.toString()).put("deviceId", DEVICE.toString()).put("schemaRevision", 1)
-                .put("currentSchemaRevision", 1).put("snapshotId", SNAPSHOT.toString())
-                .put("definitionDigest", VclCanonical.sha256(VclCanonical.encode(definition)))
-                .put("accessScopeDigest", "a".repeat(64)).put("sourceStateDigest", "a".repeat(64))
-                .put("sourceActive", true).put("ruleExecutionReady", false);
+        var definition = MAPPER.createObjectNode()
+            .put("id", ID.toString())
+            .put("schemaRevision", 1)
+            .put("profile", VclSourceBindingProfile.VERSION)
+            .put("configurationDigest", "a".repeat(64));
+        definition
+            .putArray("fields")
+            .addObject()
+            .put("id", UUID.nameUUIDFromBytes(new byte[] { 1 }).toString())
+            .put("label", "Door")
+            .put("type", "BOOLEAN")
+            .put("nullable", true);
+        var value = MAPPER.createObjectNode()
+            .put("id", ID.toString())
+            .put("accountId", ACCOUNT.toString())
+            .put("actorId", ACTOR.toString())
+            .put("deviceId", DEVICE.toString())
+            .put("schemaRevision", 1)
+            .put("currentSchemaRevision", 1)
+            .put("snapshotId", SNAPSHOT.toString())
+            .put("definitionDigest", VclCanonical.sha256(VclCanonical.encode(definition)))
+            .put("accessScopeDigest", "a".repeat(64))
+            .put("sourceStateDigest", "a".repeat(64))
+            .put("sourceActive", true)
+            .put("ruleExecutionReady", false);
         value.set("definition", definition);
         value.set("captureCapabilities", VclSourceBindingProfile.capabilities());
         return value;

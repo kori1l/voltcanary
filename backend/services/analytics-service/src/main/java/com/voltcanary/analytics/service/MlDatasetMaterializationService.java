@@ -1,8 +1,5 @@
 package com.voltcanary.analytics.service;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.web.server.ResponseStatusException;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetLineage;
@@ -25,8 +22,11 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -46,9 +46,10 @@ public class MlDatasetMaterializationService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MlInternalDatasetResponse createFromInternalTelemetry(
-            UUID accountId,
-            UUID userId,
-            MlInternalDatasetRequest request) {
+        UUID accountId,
+        UUID userId,
+        MlInternalDatasetRequest request
+    ) {
         validationService.validateCreateRequest(request);
         MlDatasetValidationResult validation = validationService.validateTelemetry(request);
         assertPreviewFresh(accountId, request, validation);
@@ -56,8 +57,12 @@ public class MlDatasetMaterializationService {
         return writes.commit(() -> persist(accountId, userId, request, validation));
     }
 
-    private MlInternalDatasetResponse persist(UUID accountId, UUID userId, MlInternalDatasetRequest request,
-            MlDatasetValidationResult validation) {
+    private MlInternalDatasetResponse persist(
+        UUID accountId,
+        UUID userId,
+        MlInternalDatasetRequest request,
+        MlDatasetValidationResult validation
+    ) {
         Instant now = Instant.now();
         MlDataset dataset = new MlDataset();
         dataset.setId(UUID.randomUUID());
@@ -78,17 +83,28 @@ public class MlDatasetMaterializationService {
         version.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
         version.setStatus(validation.ready() ? MlDatasetStatus.VALIDATING : MlDatasetStatus.FAILED);
         version.setSplitStrategy(support.normalizedSplitStrategy(request.splitStrategy()));
-        version.setSplitConfigJson(support.blankToDefault(request.splitConfigJson(), MlDatasetSupportService.DEFAULT_SPLIT_CONFIG));
-        version.setFeatureConfigVersion(support.blankToDefault(request.featureConfigVersion(), "feature-config-v1"));
+        version.setSplitConfigJson(
+            support.blankToDefault(
+                request.splitConfigJson(),
+                MlDatasetSupportService.DEFAULT_SPLIT_CONFIG
+            )
+        );
+        version.setFeatureConfigVersion(
+            support.blankToDefault(request.featureConfigVersion(), "feature-config-v1")
+        );
         version.setSourceWindowStart(request.from());
         version.setSourceWindowEnd(request.to());
         version.setCreatedBy(userId);
         version.setCreatedAt(now);
         version.setReadyAt(null);
-        version.setFailureReason(validation.ready() ? null : String.join("; ", validation.messages()));
+        version.setFailureReason(
+            validation.ready() ? null : String.join("; ", validation.messages())
+        );
         datasetVersionRepository.save(version);
         if (validation.ready()) {
-            canonicalMetricRowRepository.saveAll(canonicalRows(accountId, version.getId(), request, validation.extractedRows(), now));
+            canonicalMetricRowRepository.saveAll(
+                canonicalRows(accountId, version.getId(), request, validation.extractedRows(), now)
+            );
             version.setStatus(MlDatasetStatus.READY);
             version.setReadyAt(now);
             version.setImmutableRowReference(immutableRowReference(version.getId()));
@@ -104,10 +120,14 @@ public class MlDatasetMaterializationService {
         report.setWarningCount(validation.warningCount());
         report.setRejectedReasonsJson(support.writeJson(validation.rejectedReasons()));
         report.setMappingStatsJson(support.writeJson(validation.mappingStats()));
-        report.setQualityProfileJson(support.writeJson(qualityProfileWithPreview(accountId, request, validation)));
-        report.setSummary(version.getStatus() == MlDatasetStatus.READY
+        report.setQualityProfileJson(
+            support.writeJson(qualityProfileWithPreview(accountId, request, validation))
+        );
+        report.setSummary(
+            version.getStatus() == MlDatasetStatus.READY
                 ? "Telemetry selection is ready for training."
-                : "Telemetry selection failed validation.");
+                : "Telemetry selection failed validation."
+        );
         report.setCreatedAt(now);
         validationReportRepository.save(report);
 
@@ -121,49 +141,80 @@ public class MlDatasetMaterializationService {
         lineage.setSelectedMetricsJson(support.writeJson(request.metrics()));
         lineage.setSourceWindowStart(request.from());
         lineage.setSourceWindowEnd(request.to());
-        lineage.setContentHash(support.sha256(lineage.getFilterJson() + lineage.getSelectedDevicesJson() + lineage.getSelectedMetricsJson()));
+        lineage.setContentHash(
+            support.sha256(
+                lineage.getFilterJson() +
+                    lineage.getSelectedDevicesJson() +
+                    lineage.getSelectedMetricsJson()
+            )
+        );
         lineage.setCreatedAt(now);
         lineageRepository.save(lineage);
-        log.info("mlDatasetCreated datasetId={} datasetVersionId={} accountId={} sourceType={} status={} acceptedRows={} rejectedRows={} warningCount={}",
-                dataset.getId(), version.getId(), accountId, version.getSourceType(), version.getStatus(),
-                report.getAcceptedRows(), report.getRejectedRows(), report.getWarningCount());
+        log.info(
+            "mlDatasetCreated datasetId={} datasetVersionId={} accountId={} sourceType={} status={} acceptedRows={} rejectedRows={} warningCount={}",
+            dataset.getId(),
+            version.getId(),
+            accountId,
+            version.getSourceType(),
+            version.getStatus(),
+            report.getAcceptedRows(),
+            report.getRejectedRows(),
+            report.getWarningCount()
+        );
 
         return new MlInternalDatasetResponse(
-                dataset.getId(),
-                version.getId(),
-                accountId,
-                version.getVersion(),
-                version.getStatus(),
-                version.getSplitStrategy(),
-                report.getAcceptedRows(),
-                report.getRejectedRows(),
-                report.getWarningCount(),
-                validation.messages(),
-                version.getCreatedAt(),
-                version.getReadyAt());
+            dataset.getId(),
+            version.getId(),
+            accountId,
+            version.getVersion(),
+            version.getStatus(),
+            version.getSplitStrategy(),
+            report.getAcceptedRows(),
+            report.getRejectedRows(),
+            report.getWarningCount(),
+            validation.messages(),
+            version.getCreatedAt(),
+            version.getReadyAt()
+        );
     }
 
-    private void assertPreviewFresh(UUID accountId, MlInternalDatasetRequest request, MlDatasetValidationResult validation) {
+    private void assertPreviewFresh(
+        UUID accountId,
+        MlInternalDatasetRequest request,
+        MlDatasetValidationResult validation
+    ) {
         if (support.isBlank(request.previewHash()) && support.isBlank(request.previewId())) {
             return;
         }
         if (support.isBlank(request.previewHash())) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "previewHash is required when previewId is supplied");
+                HttpStatus.BAD_REQUEST,
+                "previewHash is required when previewId is supplied"
+            );
         }
         MlDatasetLabelReadinessDto labelReadiness = labelReadinessService.labelReadiness(
-                accountId,
-                support.normalizedModelFamily(request.modelFamily()),
-                request.horizonDays(),
-                request.from(),
-                request.to(),
-                validation);
-        String currentHash = previewService.previewHash(accountId, request, validation, labelReadiness);
+            accountId,
+            support.normalizedModelFamily(request.modelFamily()),
+            request.horizonDays(),
+            request.from(),
+            request.to(),
+            validation
+        );
+        String currentHash = previewService.previewHash(
+            accountId,
+            request,
+            validation,
+            labelReadiness
+        );
         if (!request.previewHash().equals(currentHash)) {
             Map<String, Object> dependency = new LinkedHashMap<>();
             dependency.put("type", "preview");
-            dependency.put("id", support.isBlank(request.previewId()) ? support.previewId(request.previewHash()) : request.previewId());
+            dependency.put(
+                "id",
+                support.isBlank(request.previewId())
+                    ? support.previewId(request.previewHash())
+                    : request.previewId()
+            );
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("code", "PREVIEW_STALE");
             details.put("submittedPreviewHash", request.previewHash());
@@ -171,35 +222,49 @@ public class MlDatasetMaterializationService {
             details.put("validationMessages", validation.messages());
             dependency.put("details", details);
             throw new MlLifecycleConflictException(
-                    "PREVIEW_STALE",
-                    "Dataset preview is stale; request a fresh preview before creating.",
-                    dependency);
+                "PREVIEW_STALE",
+                "Dataset preview is stale; request a fresh preview before creating.",
+                dependency
+            );
         }
     }
 
     private Map<String, Object> qualityProfileWithPreview(
-            UUID accountId,
-            MlInternalDatasetRequest request,
-            MlDatasetValidationResult validation) {
+        UUID accountId,
+        MlInternalDatasetRequest request,
+        MlDatasetValidationResult validation
+    ) {
         Map<String, Object> qualityProfile = new LinkedHashMap<>(validation.qualityProfile());
         MlDatasetLabelReadinessDto labelReadiness = labelReadinessService.labelReadiness(
-                accountId,
-                support.normalizedModelFamily(request.modelFamily()),
-                request.horizonDays(),
-                request.from(),
-                request.to(),
-                validation);
+            accountId,
+            support.normalizedModelFamily(request.modelFamily()),
+            request.horizonDays(),
+            request.from(),
+            request.to(),
+            validation
+        );
         if (labelReadiness != null) {
             qualityProfile.put("labelCoverage", support.labelReadinessMap(labelReadiness));
         }
         if (!support.isBlank(request.previewHash()) || !support.isBlank(request.previewId())) {
             Map<String, Object> preview = new LinkedHashMap<>();
-            preview.put("previewId", support.isBlank(request.previewId()) ? support.previewId(request.previewHash()) : request.previewId());
+            preview.put(
+                "previewId",
+                support.isBlank(request.previewId())
+                    ? support.previewId(request.previewHash())
+                    : request.previewId()
+            );
             preview.put("previewHash", request.previewHash());
-            preview.put("currentPreviewHash", previewService.previewHash(accountId, request, validation, labelReadiness));
+            preview.put(
+                "currentPreviewHash",
+                previewService.previewHash(accountId, request, validation, labelReadiness)
+            );
             preview.put("modelFamily", support.normalizedModelFamily(request.modelFamily()).name());
             preview.put("horizonDays", request.horizonDays());
-            preview.put("metricSelectionMode", support.normalizedMetricSelectionMode(request.metricSelectionMode()).name());
+            preview.put(
+                "metricSelectionMode",
+                support.normalizedMetricSelectionMode(request.metricSelectionMode()).name()
+            );
             preview.put("expiresMatchedAtCreate", true);
             if (labelReadiness != null) {
                 preview.put("labelReadiness", support.labelReadinessMap(labelReadiness));
@@ -209,71 +274,115 @@ public class MlDatasetMaterializationService {
         return qualityProfile;
     }
 
-    private Map<String, Object> lineageFilter(MlInternalDatasetRequest request, MlDatasetValidationResult validation) {
+    private Map<String, Object> lineageFilter(
+        MlInternalDatasetRequest request,
+        MlDatasetValidationResult validation
+    ) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("from", request.from().toString());
         value.put("to", request.to().toString());
         value.put("deviceType", request.deviceType());
-        value.put("deviceMetadata", request.deviceMetadata() == null ? Map.of() : request.deviceMetadata());
+        value.put(
+            "deviceMetadata",
+            request.deviceMetadata() == null ? Map.of() : request.deviceMetadata()
+        );
         value.put("maintenanceWindowIdsByDevice", validation.maintenanceWindowIdsByDevice());
-        value.put("minSamplesPerMetric", support.minSamplesPerMetric(request.minSamplesPerMetric()));
-        value.put("maxSamplingGapSeconds", support.maxSamplingGapSeconds(request.maxSamplingGapSeconds()));
+        value.put(
+            "minSamplesPerMetric",
+            support.minSamplesPerMetric(request.minSamplesPerMetric())
+        );
+        value.put(
+            "maxSamplingGapSeconds",
+            support.maxSamplingGapSeconds(request.maxSamplingGapSeconds())
+        );
         value.put("previewId", request.previewId());
         value.put("previewHash", request.previewHash());
         value.put("modelFamily", support.normalizedModelFamily(request.modelFamily()).name());
         value.put("horizonDays", request.horizonDays());
-        value.put("metricSelectionMode", support.normalizedMetricSelectionMode(request.metricSelectionMode()).name());
+        value.put(
+            "metricSelectionMode",
+            support.normalizedMetricSelectionMode(request.metricSelectionMode()).name()
+        );
         value.put("validationMessages", validation.messages());
         value.put("materializedRowCount", validation.extractedRows().size());
-        value.put("materializedRowPreview", validation.extractedRows().stream()
+        value.put(
+            "materializedRowPreview",
+            validation
+                .extractedRows()
+                .stream()
                 .limit(10)
-                .map(row -> Map.of(
-                        "deviceId", row.deviceId().toString(),
-                        "metricName", row.metricName(),
-                        "canonicalMetricName", row.canonicalMetricName(),
-                        "rawUnit", row.rawUnit() == null ? "" : row.rawUnit(),
-                        "canonicalUnit", row.canonicalUnit() == null ? "" : row.canonicalUnit(),
-                        "timestamp", row.timestamp().toString()))
-                .toList());
+                .map(row ->
+                    Map.of(
+                        "deviceId",
+                        row.deviceId().toString(),
+                        "metricName",
+                        row.metricName(),
+                        "canonicalMetricName",
+                        row.canonicalMetricName(),
+                        "rawUnit",
+                        row.rawUnit() == null ? "" : row.rawUnit(),
+                        "canonicalUnit",
+                        row.canonicalUnit() == null ? "" : row.canonicalUnit(),
+                        "timestamp",
+                        row.timestamp().toString()
+                    )
+                )
+                .toList()
+        );
         return value;
     }
 
     private List<MlCanonicalMetricRow> canonicalRows(
-            UUID accountId,
-            UUID datasetVersionId,
-            MlInternalDatasetRequest request,
-            List<MlDatasetTelemetryRow> rows,
-            Instant now) {
-        return rows.stream()
-                .map(row -> {
-                    MlCanonicalMetricRow canonical = new MlCanonicalMetricRow();
-                    canonical.setId(UUID.randomUUID());
-                    canonical.setAccountId(accountId);
-                    canonical.setDatasetVersionId(datasetVersionId);
-                    canonical.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
-                    canonical.setDeviceId(row.deviceId());
-                    canonical.setExternalDeviceKey(null);
-                    canonical.setVirtualDeviceKey("internal:" + accountId + ":" + row.deviceId());
-                    canonical.setDeviceType(request.deviceType());
-                    canonical.setSourceId("telemetry-service");
-                    canonical.setSensorId(row.metricName());
-                    canonical.setTimestamp(row.timestamp());
-                    canonical.setMetricName(row.metricName());
-                    canonical.setCanonicalMetricName(row.canonicalMetricName());
-                    canonical.setNumericValue(row.numericValue());
-                    canonical.setRawUnit(row.rawUnit());
-                    canonical.setCanonicalUnit(row.canonicalUnit());
-                    canonical.setQualityFlags("[]");
-                    canonical.setMetadataJson(support.writeJson(request.deviceMetadata() == null ? Map.of() : request.deviceMetadata()));
-                    canonical.setSourceLineage(support.writeJson(Map.of(
-                            "source", "internal_telemetry",
-                            "deviceId", row.deviceId().toString(),
-                            "metricName", row.metricName(),
-                            "timestamp", row.timestamp().toString())));
-                    canonical.setCreatedAt(now);
-                    return canonical;
-                })
-                .toList();
+        UUID accountId,
+        UUID datasetVersionId,
+        MlInternalDatasetRequest request,
+        List<MlDatasetTelemetryRow> rows,
+        Instant now
+    ) {
+        return rows
+            .stream()
+            .map(row -> {
+                MlCanonicalMetricRow canonical = new MlCanonicalMetricRow();
+                canonical.setId(UUID.randomUUID());
+                canonical.setAccountId(accountId);
+                canonical.setDatasetVersionId(datasetVersionId);
+                canonical.setSourceType(MlDatasetSourceType.INTERNAL_TELEMETRY);
+                canonical.setDeviceId(row.deviceId());
+                canonical.setExternalDeviceKey(null);
+                canonical.setVirtualDeviceKey("internal:" + accountId + ":" + row.deviceId());
+                canonical.setDeviceType(request.deviceType());
+                canonical.setSourceId("telemetry-service");
+                canonical.setSensorId(row.metricName());
+                canonical.setTimestamp(row.timestamp());
+                canonical.setMetricName(row.metricName());
+                canonical.setCanonicalMetricName(row.canonicalMetricName());
+                canonical.setNumericValue(row.numericValue());
+                canonical.setRawUnit(row.rawUnit());
+                canonical.setCanonicalUnit(row.canonicalUnit());
+                canonical.setQualityFlags("[]");
+                canonical.setMetadataJson(
+                    support.writeJson(
+                        request.deviceMetadata() == null ? Map.of() : request.deviceMetadata()
+                    )
+                );
+                canonical.setSourceLineage(
+                    support.writeJson(
+                        Map.of(
+                            "source",
+                            "internal_telemetry",
+                            "deviceId",
+                            row.deviceId().toString(),
+                            "metricName",
+                            row.metricName(),
+                            "timestamp",
+                            row.timestamp().toString()
+                        )
+                    )
+                );
+                canonical.setCreatedAt(now);
+                return canonical;
+            })
+            .toList();
     }
 
     private String immutableRowReference(UUID datasetVersionId) {
@@ -283,14 +392,21 @@ public class MlDatasetMaterializationService {
     private String dataHash(List<MlDatasetTelemetryRow> rows) {
         StringBuilder builder = new StringBuilder();
         for (MlDatasetTelemetryRow row : rows) {
-            builder.append(row.deviceId()).append('|')
-                    .append(row.metricName()).append('|')
-                    .append(row.canonicalMetricName()).append('|')
-                    .append(row.rawUnit() == null ? "" : row.rawUnit()).append('|')
-                    .append(row.canonicalUnit() == null ? "" : row.canonicalUnit()).append('|')
-                    .append(row.timestamp()).append('|')
-                    .append(Double.toString(row.numericValue()))
-                    .append('\n');
+            builder
+                .append(row.deviceId())
+                .append('|')
+                .append(row.metricName())
+                .append('|')
+                .append(row.canonicalMetricName())
+                .append('|')
+                .append(row.rawUnit() == null ? "" : row.rawUnit())
+                .append('|')
+                .append(row.canonicalUnit() == null ? "" : row.canonicalUnit())
+                .append('|')
+                .append(row.timestamp())
+                .append('|')
+                .append(Double.toString(row.numericValue()))
+                .append('\n');
         }
         return support.sha256(builder.toString());
     }

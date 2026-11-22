@@ -17,16 +17,18 @@ public class IdentityAccountLifecycleConsumer {
     private final IdentityAccountLifecycleEventHandler eventHandler;
 
     @KafkaListener(
-            topics = "identity.account-lifecycle.v1",
-            groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "identityAccountLifecycleKafkaListenerContainerFactory")
+        topics = "identity.account-lifecycle.v1",
+        groupId = "${spring.kafka.consumer.group-id}",
+        containerFactory = "identityAccountLifecycleKafkaListenerContainerFactory"
+    )
     public void consume(IdentityAccountLifecycleEvent event) {
         boolean processed = eventHandler.handle(event);
         log.info(
-                "identityAccountLifecycleConsumed eventId={} userId={} status={} processed={}",
-                event.eventId(),
-                event.userId(),
-                event.status(),
-                processed);
+            "identityAccountLifecycleConsumed eventId={} userId={} status={} processed={}",
+            event.eventId(),
+            event.userId(),
+            event.status(),
+            processed
+        );
     }
 }

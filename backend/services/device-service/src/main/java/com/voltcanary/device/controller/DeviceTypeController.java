@@ -1,6 +1,6 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.repository.DeviceTypeRepository;
+import com.voltcanary.device.service.DeviceTypeCatalog;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -13,12 +13,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class DeviceTypeController {
 
-    private final DeviceTypeRepository deviceTypeRepository;
+    private final DeviceTypeCatalog catalog;
 
     @GetMapping
     public List<Map<String, String>> list() {
-        return deviceTypeRepository.findAll().stream()
-                .map(type -> Map.of("code", type.getCode(), "displayName", type.getDisplayName()))
-                .toList();
+        return catalog.list();
     }
 }

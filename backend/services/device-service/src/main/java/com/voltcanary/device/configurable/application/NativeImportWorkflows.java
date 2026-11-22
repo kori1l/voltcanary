@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class NativeImportWorkflows {
+
     private static final VclParser PARSER = new VclParser();
     private final NativeRowWorkflows rows;
     private final NativeImports imports;
@@ -22,8 +23,13 @@ public class NativeImportWorkflows {
 
     public NativeImport validate(AuthenticatedUser actor, UUID dataset, byte[] body) {
         var request = NativeReviewRequests.closed(body, Set.of("idempotencyKey", "document"));
-        return imports.validate(rows.account(actor), actor.id(), dataset, NativeReviewRequests.key(request.path("idempotencyKey")),
-                PARSER.parse(request.path("document").toString()));
+        return imports.validate(
+            rows.account(actor),
+            actor.id(),
+            dataset,
+            NativeReviewRequests.key(request.path("idempotencyKey")),
+            PARSER.parse(request.path("document").toString())
+        );
     }
 
     public NativeImport inspect(AuthenticatedUser actor, UUID dataset, UUID id) {
@@ -32,8 +38,18 @@ public class NativeImportWorkflows {
 
     public NativeImport apply(AuthenticatedUser actor, UUID dataset, UUID id, byte[] body) {
         var request = NativeReviewRequests.application(body);
-        if (request.reviewRevision() != 1) throw new com.voltcanary.vcl.VclException("REVIEW_CONFLICT", "");
-        return imports.apply(rows.account(actor), actor.id(), dataset, id, request.reviewDigest(), request.idempotencyKey());
+        if (request.reviewRevision() != 1) throw new com.voltcanary.vcl.VclException(
+            "REVIEW_CONFLICT",
+            ""
+        );
+        return imports.apply(
+            rows.account(actor),
+            actor.id(),
+            dataset,
+            id,
+            request.reviewDigest(),
+            request.idempotencyKey()
+        );
     }
 
     public NativeImport inspectJob(AuthenticatedUser actor, UUID id) {
@@ -43,7 +59,9 @@ public class NativeImportWorkflows {
     public NativeImport advance(AuthenticatedUser actor, UUID id, byte[] body) {
         var request = NativeReviewRequests.closed(body, Set.of("expectedRevision"));
         var revision = request.path("expectedRevision");
-        if (!revision.isIntegralNumber() || !revision.canConvertToLong() || revision.longValue() < 1) {
+        if (
+            !revision.isIntegralNumber() || !revision.canConvertToLong() || revision.longValue() < 1
+        ) {
             throw new com.voltcanary.vcl.VclException("JOB_REVISION_INVALID", "");
         }
         return imports.advance(rows.account(actor), actor.id(), id, revision.longValue());
@@ -54,7 +72,12 @@ public class NativeImportWorkflows {
         return imports.cancel(rows.account(actor), actor.id(), id);
     }
 
-    public com.fasterxml.jackson.databind.JsonNode chunks(AuthenticatedUser actor, UUID id, int afterChunk, int limit) {
+    public com.fasterxml.jackson.databind.JsonNode chunks(
+        AuthenticatedUser actor,
+        UUID id,
+        int afterChunk,
+        int limit
+    ) {
         return imports.chunks(rows.account(actor), actor.id(), id, afterChunk, limit);
     }
 }

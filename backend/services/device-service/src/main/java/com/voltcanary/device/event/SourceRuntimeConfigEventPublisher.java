@@ -19,10 +19,8 @@ public class SourceRuntimeConfigEventPublisher {
     public static final String TOPIC = "source.runtime-config.v1";
     public static final String BINDING_SCHEMA_TOPIC = "source.binding-schema.v1";
     private static final String VERSION = "v1";
-    private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {
-    };
-    private static final TypeReference<Map<String, String>> STRING_MAP = new TypeReference<>() {
-    };
+    private static final TypeReference<Map<String, Object>> OBJECT_MAP = new TypeReference<>() {};
+    private static final TypeReference<Map<String, String>> STRING_MAP = new TypeReference<>() {};
 
     private final DeviceOutboxService outboxService;
     private final boolean publishEnabled;
@@ -31,11 +29,12 @@ public class SourceRuntimeConfigEventPublisher {
     private final com.voltcanary.device.configurable.port.SourceBindingCatalog bindings;
 
     public SourceRuntimeConfigEventPublisher(
-            DeviceOutboxService outboxService,
-            DeviceKafkaProperties kafkaProperties,
-            ObjectMapper objectMapper,
-            org.springframework.jdbc.core.JdbcTemplate jdbc,
-            com.voltcanary.device.configurable.port.SourceBindingCatalog bindings) {
+        DeviceOutboxService outboxService,
+        DeviceKafkaProperties kafkaProperties,
+        ObjectMapper objectMapper,
+        org.springframework.jdbc.core.JdbcTemplate jdbc,
+        com.voltcanary.device.configurable.port.SourceBindingCatalog bindings
+    ) {
         this.outboxService = outboxService;
         this.publishEnabled = kafkaProperties.isPublishEnabled();
         this.objectMapper = objectMapper;
@@ -51,38 +50,46 @@ public class SourceRuntimeConfigEventPublisher {
         Instant occurredAt = Instant.now();
         var publication = bindings.publication(accountId, source.getId());
         SourceRuntimeConfigEvent event = new SourceRuntimeConfigEvent(
-                UUID.randomUUID(),
-                VERSION,
-                source.getSourceId(),
-                source.getId(),
-                accountId,
-                source.getDeviceId(),
-                adapterType(source.getProtocol()),
-                protocol(source.getProtocol()),
-                transport(source.getProtocol()),
-                source.getStatus().name(),
-                "v1",
-                "v1",
-                processingMapping(source, publication),
-                objectMap(source.getAdapterConfigJson()),
-                credentialReferences(source),
-                source.getTokenPrefix(),
-                source.getIngestionTokenHash(),
-                homeRegion(source),
-                configVersion(source),
-                occurredAt,
-                null,
-                "device-service");
+            UUID.randomUUID(),
+            VERSION,
+            source.getSourceId(),
+            source.getId(),
+            accountId,
+            source.getDeviceId(),
+            adapterType(source.getProtocol()),
+            protocol(source.getProtocol()),
+            transport(source.getProtocol()),
+            source.getStatus().name(),
+            "v1",
+            "v1",
+            processingMapping(source, publication),
+            objectMap(source.getAdapterConfigJson()),
+            credentialReferences(source),
+            source.getTokenPrefix(),
+            source.getIngestionTokenHash(),
+            homeRegion(source),
+            configVersion(source),
+            occurredAt,
+            null,
+            "device-service"
+        );
         log.info(
-                "Publishing {} dataSourceId={} sourceId={} status={} version={}",
-                TOPIC,
-                source.getId(),
-                source.getSourceId(),
-                source.getStatus(),
-                event.configVersion());
+            "Publishing {} dataSourceId={} sourceId={} status={} version={}",
+            TOPIC,
+            source.getId(),
+            source.getSourceId(),
+            source.getStatus(),
+            event.configVersion()
+        );
         outboxService.enqueue(event.eventId().toString(), TOPIC, source.getId().toString(), event);
-        publication.ifPresent(schema -> outboxService.enqueue(schema.eventId().toString(), BINDING_SCHEMA_TOPIC,
-                source.getId() + ":" + schema.pin().schemaRevision(), schema.envelope()));
+        publication.ifPresent(schema ->
+            outboxService.enqueue(
+                schema.eventId().toString(),
+                BINDING_SCHEMA_TOPIC,
+                source.getId() + ":" + schema.pin().schemaRevision(),
+                schema.envelope()
+            )
+        );
     }
 
     private Map<String, String> credentialReferences(DataSource source) {
@@ -90,31 +97,47 @@ public class SourceRuntimeConfigEventPublisher {
         if (source.getCredentialsRef() == null || source.getCredentialsRef().isBlank()) {
             return configuredReferences;
         }
-        java.util.LinkedHashMap<String, String> references = new java.util.LinkedHashMap<>(configuredReferences);
+        java.util.LinkedHashMap<String, String> references = new java.util.LinkedHashMap<>(
+            configuredReferences
+        );
         references.putIfAbsent("ingestionToken", source.getCredentialsRef());
         return Map.copyOf(references);
     }
 
     public Map<String, Object> processingMapping(DataSource source) {
-        var account = jdbc.queryForList("SELECT account_id FROM devices WHERE id=?", UUID.class, source.getDeviceId());
-        var publication = account.isEmpty() ? java.util.Optional.<com.voltcanary.common.events.device.SourceBindingSchemaEvent>empty()
-                : bindings.publication(account.getFirst(), source.getId());
+        var account = jdbc.queryForList(
+            "SELECT account_id FROM devices WHERE id=?",
+            UUID.class,
+            source.getDeviceId()
+        );
+        var publication = account.isEmpty()
+            ? java.util.Optional.<com.voltcanary.common.events.device.SourceBindingSchemaEvent>empty()
+            : bindings.publication(account.getFirst(), source.getId());
         return processingMapping(source, publication);
     }
 
-    private Map<String, Object> processingMapping(DataSource source,
-            java.util.Optional<com.voltcanary.common.events.device.SourceBindingSchemaEvent> publication) {
-        var mapping = new java.util.LinkedHashMap<String, Object>(objectMap(source.getMappingJson()));
+    private Map<String, Object> processingMapping(
+        DataSource source,
+        java.util.Optional<com.voltcanary.common.events.device.SourceBindingSchemaEvent> publication
+    ) {
+        var mapping = new java.util.LinkedHashMap<String, Object>(
+            objectMap(source.getMappingJson())
+        );
         mapping.remove("processingGeneration");
         mapping.remove("processingDigest");
         mapping.remove("bindingSchemaPin");
-        publication.ifPresent(schema -> mapping.put("bindingSchemaPin", objectMapper.convertValue(schema.pin(), OBJECT_MAP)));
-        jdbc.query("select generation,digest from source_processing_bundles where data_source_id=? order by generation desc limit 1",
-                (row, index) -> {
-                    mapping.put("processingGeneration", row.getLong("generation"));
-                    mapping.put("processingDigest", row.getString("digest"));
-                    return row.getLong("generation");
-                }, source.getId());
+        publication.ifPresent(schema ->
+            mapping.put("bindingSchemaPin", objectMapper.convertValue(schema.pin(), OBJECT_MAP))
+        );
+        jdbc.query(
+            "select generation,digest from source_processing_bundles where data_source_id=? order by generation desc limit 1",
+            (row, index) -> {
+                mapping.put("processingGeneration", row.getLong("generation"));
+                mapping.put("processingDigest", row.getString("digest"));
+                return row.getLong("generation");
+            },
+            source.getId()
+        );
         return Map.copyOf(mapping);
     }
 
@@ -152,7 +175,10 @@ public class SourceRuntimeConfigEventPublisher {
         if (updatedAt == null) {
             return 0L;
         }
-        return Math.addExact(Math.multiplyExact(updatedAt.getEpochSecond(), 1_000_000_000L), updatedAt.getNano());
+        return Math.addExact(
+            Math.multiplyExact(updatedAt.getEpochSecond(), 1_000_000_000L),
+            updatedAt.getNano()
+        );
     }
 
     private String adapterType(DataSourceProtocol protocol) {

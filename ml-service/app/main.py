@@ -1,9 +1,11 @@
-from app.api import health, inference, models, training
-from app.internal_boundary import InternalBoundaryMiddleware
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-import logging
+
+from app.api import health, inference, models, training
+from app.internal_boundary import InternalBoundaryMiddleware
 
 app = FastAPI(title="VoltCanary ML Service")
 app.add_middleware(InternalBoundaryMiddleware)
@@ -11,7 +13,9 @@ logger = logging.getLogger("voltcanary.ml.requests")
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     logger.warning(
         "mlRequestValidationRejected path=%s errors=%s",
         request.url.path,
@@ -30,6 +34,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             ]
         },
     )
+
 
 app.include_router(health.router)
 app.include_router(inference.router)

@@ -12,24 +12,30 @@ import org.springframework.stereotype.Component;
 @Setter
 public class AlertDownstreamProperties {
 
-    private DownstreamService analyticsService = new DownstreamService("http://localhost:8085", Duration.ofSeconds(3));
-    private DownstreamService deviceService = new DownstreamService("http://localhost:8082", Duration.ofSeconds(3));
+    private DownstreamService analyticsService = new DownstreamService(
+        "http://localhost:8085",
+        Duration.ofSeconds(3)
+    );
+    private DownstreamService deviceService = new DownstreamService(
+        "http://localhost:8082",
+        Duration.ofSeconds(3)
+    );
 
     public static class DownstreamService {
+
         @Getter
         @Setter
         private String baseUrl;
+
         @Getter
         @Setter
         private Duration timeout;
 
-        public DownstreamService() {
-        }
+        public DownstreamService() {}
 
         public DownstreamService(String baseUrl, Duration timeout) {
             this.baseUrl = baseUrl;
             this.timeout = timeout;
         }
-
     }
 }

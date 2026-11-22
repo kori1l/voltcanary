@@ -1,4 +1,8 @@
-import { TelemetryEvent, TelemetryMetricOverview, TelemetryOverviewResponse } from "../model/telemetry.types";
+import {
+  TelemetryEvent,
+  TelemetryMetricOverview,
+  TelemetryOverviewResponse,
+} from "../model/telemetry.types";
 import { formatMetricValue } from "../model/telemetry.utils";
 import { StatusBadge } from "./StatusBadge";
 import { TelemetryChart } from "./TelemetryChart";
@@ -29,7 +33,8 @@ export function MetricCard({
       </div>
       <div className="telemetry-card-stats">
         <span>
-          Latest in range <strong>{formatMetricValue(metric.statistics.latest, metric.definition.unit)}</strong>
+          Latest in range{" "}
+          <strong>{formatMetricValue(metric.statistics.latest, metric.definition.unit)}</strong>
         </span>
         <span>
           Avg <strong>{formatMetricValue(metric.statistics.avg, metric.definition.unit)}</strong>

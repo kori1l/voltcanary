@@ -11,8 +11,9 @@ public class ConnectorLeaseConfiguration {
 
     @Bean
     public ConnectorLeaseManager connectorLeaseManager(
-            ConnectorRuntimeProperties properties,
-            ObjectProvider<StringRedisTemplate> redisTemplate) {
+        ConnectorRuntimeProperties properties,
+        ObjectProvider<StringRedisTemplate> redisTemplate
+    ) {
         StringRedisTemplate template = redisTemplate.getIfAvailable();
         if (template != null) {
             return new RedisConnectorLeaseManager(template, properties);

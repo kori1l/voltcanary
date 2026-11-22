@@ -21,5 +21,4 @@ public class ConnectorRuntimeProperties {
     private Duration initialBackoff = Duration.ofSeconds(1);
     private Duration maxBackoff = Duration.ofMinutes(1);
     private double jitterRatio = 0.2;
-
 }

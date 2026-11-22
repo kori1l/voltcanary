@@ -27,24 +27,36 @@ public class TelemetryValidatedConsumer {
     public void consume(String eventPayload) {
         TelemetryValidatedEvent event = readEvent(eventPayload);
         if (event.deviceId() == null) {
-            deadLetterPublisher.publish(SOURCE_TOPIC, eventPayload, "TelemetryValidatedEvent deviceId is required");
+            deadLetterPublisher.publish(
+                SOURCE_TOPIC,
+                eventPayload,
+                "TelemetryValidatedEvent deviceId is required"
+            );
             throw new IllegalArgumentException("TelemetryValidatedEvent deviceId is required");
         }
         boolean processed = eventHandler.handle(event);
         log.info(
-                "analyticsTelemetryValidatedReceived eventId={} deviceId={} timestamp={} processed={}",
-                event.eventId(),
-                event.deviceId(),
-                event.timestamp(),
-                processed);
+            "analyticsTelemetryValidatedReceived eventId={} deviceId={} timestamp={} processed={}",
+            event.eventId(),
+            event.deviceId(),
+            event.timestamp(),
+            processed
+        );
     }
 
     private TelemetryValidatedEvent readEvent(String eventPayload) {
         try {
             return objectMapper.readValue(eventPayload, TelemetryValidatedEvent.class);
         } catch (JsonProcessingException exception) {
-            deadLetterPublisher.publish(SOURCE_TOPIC, eventPayload, "Invalid TelemetryValidatedEvent payload");
-            throw new IllegalArgumentException("Invalid TelemetryValidatedEvent payload", exception);
+            deadLetterPublisher.publish(
+                SOURCE_TOPIC,
+                eventPayload,
+                "Invalid TelemetryValidatedEvent payload"
+            );
+            throw new IllegalArgumentException(
+                "Invalid TelemetryValidatedEvent payload",
+                exception
+            );
         }
     }
 }

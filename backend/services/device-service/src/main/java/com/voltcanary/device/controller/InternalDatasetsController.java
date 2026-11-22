@@ -16,12 +16,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/internal/data/datasets")
 @RequiredArgsConstructor
 public class InternalDatasetsController {
+
     private final DatasetDescriptions descriptions;
     private final InternalServiceAuth auth;
 
     @GetMapping("/{id}/schemas/{revision}")
-    public VclDatasetDescription describe(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,
-            @PathVariable UUID id, @PathVariable long revision, @RequestParam UUID userId) {
+    public VclDatasetDescription describe(
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,
+        @PathVariable UUID id,
+        @PathVariable long revision,
+        @RequestParam UUID userId
+    ) {
         auth.require(token);
         return descriptions.describe(userId, id, revision);
     }

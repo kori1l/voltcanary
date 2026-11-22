@@ -23,21 +23,31 @@ public class AccountService {
 
     @Transactional
     public Account currentAccount(AuthenticatedUser user) {
-        Account account = accountRepository.findByUserId(user.id()).orElseGet(() -> createAccount(user));
+        Account account = accountRepository
+            .findByUserId(user.id())
+            .orElseGet(() -> createAccount(user));
         if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new AccountInactiveException("Device account is " + account.getStatus().name().toLowerCase());
+            throw new AccountInactiveException(
+                "Device account is " + account.getStatus().name().toLowerCase()
+            );
         }
         return account;
     }
 
     public AccountResponse toResponse(Account account) {
-        return new AccountResponse(account.getId(), account.getUserId(), account.getName(), account.getStatus().name());
+        return new AccountResponse(
+            account.getId(),
+            account.getUserId(),
+            account.getName(),
+            account.getStatus().name()
+        );
     }
 
     @Transactional
     public Account syncUser(UUID userId, String email, AccountStatus status) {
-        Account account = accountRepository.findByUserId(userId)
-                .orElseGet(() -> createAccount(userId, email));
+        Account account = accountRepository
+            .findByUserId(userId)
+            .orElseGet(() -> createAccount(userId, email));
         Instant now = Instant.now();
         account.setStatus(status);
         account.setUpdatedAt(now);

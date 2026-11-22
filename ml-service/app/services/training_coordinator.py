@@ -2,12 +2,15 @@ import hashlib
 import json
 import time
 from concurrent.futures import Future
+from contextvars import ContextVar
 from threading import RLock
 from typing import Callable
 from uuid import uuid4
 
 from app.schemas.training import TrainingRequest, TrainingRunResponse
-from app.services.training_history import TrainingHistory, HistoryConflictError
+from app.services.postgres_training_history import PostgresTrainingHistory
+from app.services.training_execution_lock import TrainingBusyError
+from app.services.training_history import HistoryConflictError, TrainingHistory
 
 
 class IdempotencyConflictError(Exception):
@@ -23,14 +26,26 @@ class TrainingTimeoutError(Exception):
 
 
 class TrainingRunCoordinator:
-    def __init__(self, history: TrainingHistory | None = None, maximum_seconds: float = 600) -> None:
+    def __init__(
+        self,
+        history: TrainingHistory | PostgresTrainingHistory | None = None,
+        maximum_seconds: float = 600,
+    ) -> None:
         self._lock = RLock()
         self._pending: dict[str, tuple[str, Future[TrainingRunResponse]]] = {}
         self.history = history or TrainingHistory()
         self.maximum_seconds = maximum_seconds
+        self._ownership_check = ContextVar("training_ownership_check", default=None)
 
-    def singleflight(self, request: TrainingRequest, fingerprint: str, operation: Callable[[], TrainingRunResponse]) -> TrainingRunResponse:
-        key = request.idempotency_key or ("run:" + request.training_run_id if request.training_run_id else None)
+    def singleflight(
+        self,
+        request: TrainingRequest,
+        fingerprint: str,
+        operation: Callable[[], TrainingRunResponse],
+    ) -> TrainingRunResponse:
+        key = request.idempotency_key or (
+            "run:" + request.training_run_id if request.training_run_id else None
+        )
         if key is None:
             return operation()
         with self._lock:
@@ -45,11 +60,25 @@ class TrainingRunCoordinator:
             else:
                 active_fingerprint, future = active
                 if active_fingerprint != fingerprint:
-                    raise IdempotencyConflictError("training idempotency key was reused with different request metadata")
+                    raise IdempotencyConflictError(
+                        "training idempotency key was reused with different request metadata"
+                    )
         if not owner:
-            return future.result()
+            try:
+                return future.result(timeout=self.maximum_seconds + 30)
+            except TimeoutError as failure:
+                raise TrainingBusyError(
+                    "Training execution is already owned by another worker"
+                ) from failure
         try:
-            result = operation()
+            with self.history.execution_lock(key, self.maximum_seconds + 30) as check:
+                token = self._ownership_check.set(check)
+                try:
+                    result = self.idempotent_result(request, fingerprint)
+                    if result is None:
+                        result = self.record_result(request, operation(), fingerprint)
+                finally:
+                    self._ownership_check.reset(token)
             future.set_result(result)
             return result
         except Exception as failure:
@@ -69,8 +98,12 @@ class TrainingRunCoordinator:
         serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
-    def idempotent_result(self, request: TrainingRequest, fingerprint: str) -> TrainingRunResponse | None:
-        key = request.idempotency_key or ("run:" + request.training_run_id if request.training_run_id else None)
+    def idempotent_result(
+        self, request: TrainingRequest, fingerprint: str
+    ) -> TrainingRunResponse | None:
+        key = request.idempotency_key or (
+            "run:" + request.training_run_id if request.training_run_id else None
+        )
         if key is None:
             return None
         try:
@@ -78,8 +111,13 @@ class TrainingRunCoordinator:
         except HistoryConflictError as failure:
             raise IdempotencyConflictError(str(failure)) from failure
 
-    def record_result(self, request: TrainingRequest, run: TrainingRunResponse, fingerprint: str) -> TrainingRunResponse:
-        key = request.idempotency_key or ("run:" + request.training_run_id if request.training_run_id else None)
+    def record_result(
+        self, request: TrainingRequest, run: TrainingRunResponse, fingerprint: str
+    ) -> TrainingRunResponse:
+        self._check_ownership()
+        key = request.idempotency_key or (
+            "run:" + request.training_run_id if request.training_run_id else None
+        )
         try:
             return self.history.put(run, key, fingerprint)
         except HistoryConflictError as failure:
@@ -87,15 +125,24 @@ class TrainingRunCoordinator:
 
     def get_run(self, run_id: str) -> TrainingRunResponse:
         return self.history.by_run(run_id) or TrainingRunResponse(
-            runId=run_id, status="NOT_FOUND", datasetVersionId="unknown", failureReason="training run was not found")
+            runId=run_id,
+            status="NOT_FOUND",
+            datasetVersionId="unknown",
+            failureReason="training run was not found",
+        )
 
     def artifact_bundle_id(self, run_id: str, request: TrainingRequest) -> str:
         return request.artifact_bundle_id or f"model-{run_id}"
 
     def remaining_seconds(self, request: TrainingRequest, started_at: float) -> float:
+        self._check_ownership()
         if request.cancellation_requested:
             raise TrainingCanceledError()
-        budget = min(self.maximum_seconds, request.training_timeout_seconds) if request.training_timeout_seconds is not None else self.maximum_seconds
+        budget = (
+            min(self.maximum_seconds, request.training_timeout_seconds)
+            if request.training_timeout_seconds is not None
+            else self.maximum_seconds
+        )
         remaining = budget - (time.monotonic() - started_at)
         if remaining <= 0:
             raise TrainingTimeoutError()
@@ -103,6 +150,14 @@ class TrainingRunCoordinator:
 
     def checkpoint(self, request: TrainingRequest, started_at: float) -> None:
         self.remaining_seconds(request, started_at)
+
+    def _check_ownership(self) -> None:
+        check = self._ownership_check.get()
+        if check is not None:
+            try:
+                check()
+            except Exception as failure:
+                raise TrainingBusyError("Training reservation is no longer available") from failure
 
     def empty_dataset_response(self, run_id: str, request: TrainingRequest) -> TrainingRunResponse:
         return TrainingRunResponse(
@@ -137,7 +192,7 @@ class TrainingRunCoordinator:
             idempotencyKey=request.idempotency_key,
             artifactBundleId=self.artifact_bundle_id(run_id, request),
             failureReason="training timeout exceeded before artifact promotion",
-            logsSummary=["Training stopped before artifact promotion because the timeout budget was exceeded."],
+            logsSummary=[
+                "Training stopped before artifact promotion because the timeout budget was exceeded."
+            ],
         )
-
-

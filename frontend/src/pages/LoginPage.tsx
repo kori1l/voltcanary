@@ -22,7 +22,9 @@ export function LoginPage() {
     try {
       const tokens = await login({ email, password });
       setTokens(tokens.accessToken, tokens.refreshToken);
-      navigate(params.has("returnTo") ? safeReturnTo(params.get("returnTo")) : "/dashboard", { replace: true });
+      navigate(params.has("returnTo") ? safeReturnTo(params.get("returnTo")) : "/dashboard", {
+        replace: true,
+      });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Login failed");
     } finally {
@@ -32,24 +34,41 @@ export function LoginPage() {
 
   return (
     <AuthShell title="Sign in" description="Access your devices and operational console.">
-        {params.get("reason") === "expired" ? <p role="status">Your session expired. Sign in to return to your task.</p> : null}
-        <form className="form-stack" onSubmit={onSubmit}>
-          <label>
-            Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" required />
-          </label>
-          <PasswordField label="Password" value={password} onChange={setPassword} disabled={isSubmitting} />
-          {error ? <div className="error-message" role="alert">{error}</div> : null}
-          <button className="primary-button" type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
-        <Link className="auth-link" to="/register">
-          Register
-        </Link>
-        <Link className="auth-link auth-link-secondary" to="/forgot-password">
-          Forgot password
-        </Link>
+      {params.get("reason") === "expired" ? (
+        <p role="status">Your session expired. Sign in to return to your task.</p>
+      ) : null}
+      <form className="form-stack" onSubmit={onSubmit}>
+        <label>
+          Email
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            type="email"
+            autoComplete="email"
+            required
+          />
+        </label>
+        <PasswordField
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          disabled={isSubmitting}
+        />
+        {error ? (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <button className="primary-button" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
+      <Link className="auth-link" to="/register">
+        Register
+      </Link>
+      <Link className="auth-link auth-link-secondary" to="/forgot-password">
+        Forgot password
+      </Link>
     </AuthShell>
   );
 }

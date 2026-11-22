@@ -9,16 +9,18 @@ import java.util.Map;
 import org.springframework.boot.convert.DurationStyle;
 
 record HttpPollingAdapterConfig(
-        String method,
-        URI endpoint,
-        Duration interval,
-        Duration timeout,
-        Map<String, String> headers,
-        Map<String, String> credentialHeaders) {
-
+    String method,
+    URI endpoint,
+    Duration interval,
+    Duration timeout,
+    Map<String, String> headers,
+    Map<String, String> credentialHeaders
+) {
     static HttpPollingAdapterConfig from(SourceRuntimeConfig sourceRuntimeConfig) {
         if (!"v1".equalsIgnoreCase(sourceRuntimeConfig.adapterConfigSchemaVersion())) {
-            throw new IllegalArgumentException("Unsupported HTTP polling adapter config schema version");
+            throw new IllegalArgumentException(
+                "Unsupported HTTP polling adapter config schema version"
+            );
         }
         Map<String, Object> config = sourceRuntimeConfig.adapterConfig();
         String method = string(config, "method", "GET").toUpperCase(Locale.ROOT);
@@ -33,7 +35,9 @@ record HttpPollingAdapterConfig(
             throw new IllegalArgumentException("HTTP polling endpoint is required");
         }
         URI uri = URI.create(endpoint.trim());
-        if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+        if (
+            !"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())
+        ) {
             throw new IllegalArgumentException("HTTP polling endpoint must use http or https");
         }
         Duration interval = duration(config, "pollingInterval", null);
@@ -48,12 +52,13 @@ record HttpPollingAdapterConfig(
             throw new IllegalArgumentException("HTTP polling timeout must be positive");
         }
         return new HttpPollingAdapterConfig(
-                method,
-                uri,
-                interval,
-                timeout,
-                stringMap(config.get("headers"), "headers"),
-                stringMap(config.get("credentialHeaders"), "credentialHeaders"));
+            method,
+            uri,
+            interval,
+            timeout,
+            stringMap(config.get("headers"), "headers"),
+            stringMap(config.get("credentialHeaders"), "credentialHeaders")
+        );
     }
 
     private static String string(Map<String, Object> config, String key, String fallback) {
@@ -91,10 +96,14 @@ record HttpPollingAdapterConfig(
         Map<String, String> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
             if (!(entry.getKey() instanceof String name) || name.isBlank()) {
-                throw new IllegalArgumentException("HTTP polling " + key + " names must be strings");
+                throw new IllegalArgumentException(
+                    "HTTP polling " + key + " names must be strings"
+                );
             }
             if (!(entry.getValue() instanceof String text)) {
-                throw new IllegalArgumentException("HTTP polling " + key + " values must be strings");
+                throw new IllegalArgumentException(
+                    "HTTP polling " + key + " values must be strings"
+                );
             }
             result.put(name, text);
         }

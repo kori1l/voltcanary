@@ -6,15 +6,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MlDeploymentPolicyDto(
-        UUID id,
-        UUID accountId,
-        MlDeploymentScope scope,
-        UUID deviceId,
-        String deviceType,
-        UUID modelVersionId,
-        MlDeploymentMode mode,
-        Integer canaryPercent,
-        boolean fallbackEnabled,
-        UUID updatedBy,
-        Instant updatedAt) {
-}
+    UUID id,
+    UUID accountId,
+    MlDeploymentScope scope,
+    UUID deviceId,
+    String deviceType,
+    UUID modelVersionId,
+    MlDeploymentMode mode,
+    Integer canaryPercent,
+    boolean fallbackEnabled,
+    UUID updatedBy,
+    Instant updatedAt
+) {}

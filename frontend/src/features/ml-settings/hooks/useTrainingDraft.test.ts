@@ -25,10 +25,38 @@ const failureSnapshot: MlFeatureSnapshotResponse = {
 
 describe("trainingBlockReason", () => {
   it("requires dataset, snapshot, family, and positive failure horizon before training", () => {
-    expect(trainingBlockReason("", "", undefined, "ANOMALY_DETECTION", 14)).toMatch(/READY dataset/);
-    expect(trainingBlockReason("dataset-version-1", "", undefined, "ANOMALY_DETECTION", 14)).toMatch(/feature snapshot/);
-    expect(trainingBlockReason("dataset-version-1", "snapshot-1", failureSnapshot, "ANOMALY_DETECTION", 14)).toMatch(/must match training family/);
-    expect(trainingBlockReason("dataset-version-1", "snapshot-1", failureSnapshot, "FAILURE_PREDICTION", 14)).toMatch(/must match training horizon/);
-    expect(trainingBlockReason("dataset-version-1", "snapshot-1", failureSnapshot, "FAILURE_PREDICTION", 30)).toBeNull();
+    expect(trainingBlockReason("", "", undefined, "ANOMALY_DETECTION", 14)).toMatch(
+      /READY dataset/,
+    );
+    expect(
+      trainingBlockReason("dataset-version-1", "", undefined, "ANOMALY_DETECTION", 14),
+    ).toMatch(/feature snapshot/);
+    expect(
+      trainingBlockReason(
+        "dataset-version-1",
+        "snapshot-1",
+        failureSnapshot,
+        "ANOMALY_DETECTION",
+        14,
+      ),
+    ).toMatch(/must match training family/);
+    expect(
+      trainingBlockReason(
+        "dataset-version-1",
+        "snapshot-1",
+        failureSnapshot,
+        "FAILURE_PREDICTION",
+        14,
+      ),
+    ).toMatch(/must match training horizon/);
+    expect(
+      trainingBlockReason(
+        "dataset-version-1",
+        "snapshot-1",
+        failureSnapshot,
+        "FAILURE_PREDICTION",
+        30,
+      ),
+    ).toBeNull();
   });
 });

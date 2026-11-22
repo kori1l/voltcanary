@@ -24,10 +24,11 @@ public class RequestSizeLimitWebFilter implements WebFilter {
         long contentLength = exchange.getRequest().getHeaders().getContentLength();
         if (contentLength >= 0 && contentLength > maxBytes(exchange)) {
             return GatewayErrorResponseWriter.write(
-                    exchange,
-                    HttpStatus.CONTENT_TOO_LARGE,
-                    "payload_too_large",
-                    "Request body is too large");
+                exchange,
+                HttpStatus.CONTENT_TOO_LARGE,
+                "payload_too_large",
+                "Request body is too large"
+            );
         }
         return chain.filter(exchange);
     }

@@ -16,15 +16,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/alert-rules/configurable")
 @RequiredArgsConstructor
 public class ConfigurableRuleReservationsController {
+
     private final ConfigurableRuleReservations reservations;
 
     @PostMapping("/review-reservations")
-    public RuleReservation reserve(@RequestHeader("X-User-Id") String actor, @RequestBody byte[] body) {
+    public RuleReservation reserve(
+        @RequestHeader("X-User-Id") String actor,
+        @RequestBody byte[] body
+    ) {
         return reservations.reserve(actor, body);
     }
 
     @GetMapping("/reviews/{id}")
-    public RuleReservation inspect(@RequestHeader("X-User-Id") String actor, @PathVariable UUID id) {
+    public RuleReservation inspect(
+        @RequestHeader("X-User-Id") String actor,
+        @PathVariable UUID id
+    ) {
         return reservations.inspect(actor, id);
     }
 }

@@ -17,8 +17,10 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class QueryTimeResolver {
+
     public Frame resolve(Time inherited, Time override, Compare comparison, Instant asOf) {
-        boolean local = override != null && override.mode() != null && override.mode() != TimeMode.INHERITED;
+        boolean local =
+            override != null && override.mode() != null && override.mode() != TimeMode.INHERITED;
         Time selected = local ? override : inherited == null ? Time.defaultTime() : inherited;
         ZoneId zone;
         try {
@@ -41,7 +43,10 @@ public class QueryTimeResolver {
                 case LAST_7_DAYS -> asOf.minus(Duration.ofDays(7));
                 case LAST_30_DAYS -> asOf.minus(Duration.ofDays(30));
                 case TODAY -> today.atStartOfDay(zone).toInstant();
-                case WEEK_TO_DATE -> today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay(zone).toInstant();
+                case WEEK_TO_DATE -> today
+                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                    .atStartOfDay(zone)
+                    .toInstant();
                 case MONTH_TO_DATE -> today.withDayOfMonth(1).atStartOfDay(zone).toInstant();
                 case NEXT_7_DAYS, NEXT_30_DAYS -> asOf;
             };
@@ -53,7 +58,9 @@ public class QueryTimeResolver {
         Instant compareFrom = null;
         Instant compareTo = null;
         String basis = "NONE";
-        if (comparison != null && comparison.mode() != null && comparison.mode() != CompareMode.NONE) {
+        if (
+            comparison != null && comparison.mode() != null && comparison.mode() != CompareMode.NONE
+        ) {
             if (comparison.mode() == CompareMode.PREVIOUS) {
                 compareTo = from;
                 compareFrom = from.minus(Duration.between(from, to));
@@ -69,7 +76,12 @@ public class QueryTimeResolver {
     }
 
     private void requireRange(Instant from, Instant to) {
-        if (from == null || to == null || !from.isBefore(to) || Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0) {
+        if (
+            from == null ||
+            to == null ||
+            !from.isBefore(to) ||
+            Duration.between(from, to).compareTo(Duration.ofDays(31)) > 0
+        ) {
             throw invalid("Expected a positive half-open interval of at most31 days");
         }
     }

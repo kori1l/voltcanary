@@ -30,7 +30,13 @@ export interface AgentPlan {
   expiresAt?: string;
   planningStatus?: "READY" | "NEEDS_INPUT" | "FAILED";
   questions?: string[];
-  clarification?: {missingFields:string[];suggestedReply:string;suggestionLabel:string;suggestedValues:Record<string,string|number|boolean>;requiresExplicitChoice?:boolean}|null;
+  clarification?: {
+    missingFields: string[];
+    suggestedReply: string;
+    suggestionLabel: string;
+    suggestedValues: Record<string, string | number | boolean>;
+    requiresExplicitChoice?: boolean;
+  } | null;
   executionStatus?: string;
   execution?: ExecutePlanResponse | null;
 }
@@ -47,7 +53,12 @@ export interface DashboardTaskSummary {
   failureCategory: string | null;
   expiresAt: string;
   selectionStatus?: "UNVERIFIED" | "AVAILABLE" | "UNAVAILABLE";
-  pending: {changeId:string;turnId:string;request:string;disposition:"PENDING"|"APPLIED"|"FAILED"|"SUPERSEDED"}[];
+  pending: {
+    changeId: string;
+    turnId: string;
+    request: string;
+    disposition: "PENDING" | "APPLIED" | "FAILED" | "SUPERSEDED";
+  }[];
 }
 export interface DashboardTurnMetadata {
   requestId: string;
@@ -57,10 +68,16 @@ export interface DashboardTurnMetadata {
   baseReviewId?: string;
   acceptedSuggestion?: boolean;
 }
-export async function getDashboardTask(taskId:string, branchId?:string) {
-  const result=await apiRequest<{task:DashboardTaskSummary;lastReview:AgentPlan|null}>(
-    `/ai-agent/dashboard-tasks/${encodeURIComponent(taskId)}${branchId?`?branchId=${encodeURIComponent(branchId)}`:""}`);
-  if(!result?.task||typeof result.task.taskId!=="string"||typeof result.task.branchId!=="string"||!Number.isInteger(result.task.revision)){
+export async function getDashboardTask(taskId: string, branchId?: string) {
+  const result = await apiRequest<{ task: DashboardTaskSummary; lastReview: AgentPlan | null }>(
+    `/ai-agent/dashboard-tasks/${encodeURIComponent(taskId)}${branchId ? `?branchId=${encodeURIComponent(branchId)}` : ""}`,
+  );
+  if (
+    !result?.task ||
+    typeof result.task.taskId !== "string" ||
+    typeof result.task.branchId !== "string" ||
+    !Number.isInteger(result.task.revision)
+  ) {
     throw new Error("Не удалось восстановить состояние задачи. Повторите восстановление.");
   }
   return result;
@@ -198,22 +215,38 @@ export interface TestModelProviderResponse {
   testedAt: string;
 }
 
-export async function clarifyAgentPlan(planId: string, message: string, metadata?: DashboardTurnMetadata) {
+export async function clarifyAgentPlan(
+  planId: string,
+  message: string,
+  metadata?: DashboardTurnMetadata,
+) {
   await prepareAiSession();
   return apiRequest<AgentPlan>(`/ai-agent/plans/${encodeURIComponent(planId)}/clarifications`, {
-    method: "POST", body: JSON.stringify({message,...metadata}),
+    method: "POST",
+    body: JSON.stringify({ message, ...metadata }),
   });
 }
 
-export async function createAgentPlan(message: string, context: Record<string, unknown> = {}, providerId?: string, modelConfigId?: string, metadata?:DashboardTurnMetadata) {
+export async function createAgentPlan(
+  message: string,
+  context: Record<string, unknown> = {},
+  providerId?: string,
+  modelConfigId?: string,
+  metadata?: DashboardTurnMetadata,
+) {
   await prepareAiSession();
   return apiRequest<AgentPlan>("/ai-agent/plans", {
     method: "POST",
-    body: JSON.stringify({ message, context, providerId, modelConfigId,...metadata }),
+    body: JSON.stringify({ message, context, providerId, modelConfigId, ...metadata }),
   });
 }
 
-export function executeAgentPlan(planId: string, confirmed: boolean, expectedVersion?: number, payloadDigest?: string) {
+export function executeAgentPlan(
+  planId: string,
+  confirmed: boolean,
+  expectedVersion?: number,
+  payloadDigest?: string,
+) {
   return apiRequest<ExecutePlanResponse>(`/ai-agent/plans/${planId}/execute`, {
     method: "POST",
     body: JSON.stringify({ confirmed, expectedVersion, payloadDigest }),
@@ -263,11 +296,15 @@ export function deleteModelProvider(providerId: string) {
 }
 
 export function setDefaultModelProvider(providerId: string) {
-  return apiRequest<ModelProvider>(`/ai-agent/model-providers/${providerId}/set-default`, { method: "POST" });
+  return apiRequest<ModelProvider>(`/ai-agent/model-providers/${providerId}/set-default`, {
+    method: "POST",
+  });
 }
 
 export function testModelProvider(providerId: string) {
-  return apiRequest<TestModelProviderResponse>(`/ai-agent/model-providers/${providerId}/test`, { method: "POST" });
+  return apiRequest<TestModelProviderResponse>(`/ai-agent/model-providers/${providerId}/test`, {
+    method: "POST",
+  });
 }
 
 export function rotateModelProviderSecret(providerId: string, apiKey: string) {
@@ -288,17 +325,29 @@ export function createModelConfig(providerId: string, request: CreateModelConfig
   });
 }
 
-export function updateModelConfig(providerId: string, modelConfigId: string, request: UpdateModelConfigRequest) {
-  return apiRequest<ModelConfig>(`/ai-agent/model-providers/${providerId}/models/${modelConfigId}`, {
-    method: "PUT",
-    body: JSON.stringify(request),
-  });
+export function updateModelConfig(
+  providerId: string,
+  modelConfigId: string,
+  request: UpdateModelConfigRequest,
+) {
+  return apiRequest<ModelConfig>(
+    `/ai-agent/model-providers/${providerId}/models/${modelConfigId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    },
+  );
 }
 
 export function deleteModelConfig(providerId: string, modelConfigId: string) {
-  return apiRequest<void>(`/ai-agent/model-providers/${providerId}/models/${modelConfigId}`, { method: "DELETE" });
+  return apiRequest<void>(`/ai-agent/model-providers/${providerId}/models/${modelConfigId}`, {
+    method: "DELETE",
+  });
 }
 
 export function setDefaultModelConfig(providerId: string, modelConfigId: string) {
-  return apiRequest<ModelConfig>(`/ai-agent/model-providers/${providerId}/models/${modelConfigId}/set-default`, { method: "POST" });
+  return apiRequest<ModelConfig>(
+    `/ai-agent/model-providers/${providerId}/models/${modelConfigId}/set-default`,
+    { method: "POST" },
+  );
 }

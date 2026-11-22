@@ -1,11 +1,24 @@
-import { AnomalyResponse, PredictionResponse, RecommendationResponse, RiskResponse } from "../../analytics/analyticsApi";
+import {
+  AnomalyResponse,
+  PredictionResponse,
+  RecommendationResponse,
+  RiskResponse,
+} from "../../analytics/analyticsApi";
 import { TelemetryOverviewResponse } from "../../features/telemetry/model/telemetry.types";
 import { formatMetricValue as formatTelemetryMetricValue } from "../../features/telemetry/model/telemetry.utils";
 import { DeviceDetailsTab } from "./DeviceTabs";
 import { ChartTimeRange } from "./deviceTelemetryModel";
 import { formatEnum } from "./deviceDetailsFormatting";
 export function normalizeDeviceTab(value: string | null): DeviceDetailsTab {
-  if (value === "telemetry" || value === "analytics" || value === "alerts" || value === "maintenance" || value === "configuration" || value === "simulation" || value === "movement") {
+  if (
+    value === "telemetry" ||
+    value === "analytics" ||
+    value === "alerts" ||
+    value === "maintenance" ||
+    value === "configuration" ||
+    value === "simulation" ||
+    value === "movement"
+  ) {
     return value;
   }
   if (value === "registry" || value === "config") {
@@ -14,14 +27,24 @@ export function normalizeDeviceTab(value: string | null): DeviceDetailsTab {
   return "overview";
 }
 
-export function buildIncidentSummary(overview: TelemetryOverviewResponse, riskLevel: string | null, range: ChartTimeRange) {
+export function buildIncidentSummary(
+  overview: TelemetryOverviewResponse,
+  riskLevel: string | null,
+  range: ChartTimeRange,
+) {
   const problemMetric =
     overview.metrics.find((metric) => ["critical", "warning", "stale"].includes(metric.status)) ??
     overview.metrics.find((metric) => metric.definition.key === "activePowerW") ??
     overview.metrics[0];
-  const riskLabel = riskLevel ? `${formatEnum(riskLevel)} risk` : `${overview.health.status.replace("_", " ")} health`;
-  const currentValue = problemMetric ? formatTelemetryMetricValue(problemMetric.statistics.latest, problemMetric.definition.unit) : "No data";
-  const peakValue = problemMetric ? formatTelemetryMetricValue(problemMetric.statistics.max, problemMetric.definition.unit) : "No data";
+  const riskLabel = riskLevel
+    ? `${formatEnum(riskLevel)} risk`
+    : `${overview.health.status.replace("_", " ")} health`;
+  const currentValue = problemMetric
+    ? formatTelemetryMetricValue(problemMetric.statistics.latest, problemMetric.definition.unit)
+    : "No data";
+  const peakValue = problemMetric
+    ? formatTelemetryMetricValue(problemMetric.statistics.max, problemMetric.definition.unit)
+    : "No data";
   const title = problemMetric
     ? problemMetric.status === "normal"
       ? `${problemMetric.definition.name} stable`
@@ -44,7 +67,11 @@ export function buildIncidentSummary(overview: TelemetryOverviewResponse, riskLe
 export function buildIncidentConclusion(overview: TelemetryOverviewResponse, metricKey?: string) {
   const voltage = overview.metrics.find((metric) => metric.definition.key === "voltageV");
   const current = overview.metrics.find((metric) => metric.definition.key === "currentA");
-  if (metricKey === "activePowerW" && current?.status !== "no_data" && voltage?.status === "normal") {
+  if (
+    metricKey === "activePowerW" &&
+    current?.status !== "no_data" &&
+    voltage?.status === "normal"
+  ) {
     return "Power changed with current while voltage stayed stable, so this is likely load-related.";
   }
   const problem = overview.metrics.find((metric) => metric.definition.key === metricKey);
@@ -59,7 +86,9 @@ export function buildWhyBullets(overview: TelemetryOverviewResponse, fallback: s
   if (!problem) {
     return fallback.slice(0, 4);
   }
-  const eventCount = overview.events.filter((event) => !event.metricKey || event.metricKey === problem.definition.key).length;
+  const eventCount = overview.events.filter(
+    (event) => !event.metricKey || event.metricKey === problem.definition.key,
+  ).length;
   const bullets = [
     eventCount > 0
       ? `${problem.definition.name} crossed monitoring rules ${eventCount} times in the selected range.`
@@ -84,10 +113,13 @@ export function buildAnalyticsSummary(overview: TelemetryOverviewResponse) {
     peak: formatTelemetryMetricValue(metric.statistics.max, metric.definition.unit),
     events: overview.events.filter((event) => event.metricKey === metric.definition.key).length,
   }));
-  const warningCount = overview.metrics.filter((metric) => metric.status === "warning" || metric.status === "stale").length;
+  const warningCount = overview.metrics.filter(
+    (metric) => metric.status === "warning" || metric.status === "stale",
+  ).length;
   const criticalCount = overview.metrics.filter((metric) => metric.status === "critical").length;
-  const noDataCount = overview.metrics.filter((metric) => metric.status === "no_data").length;
-  const worst = overview.metrics.find((metric) => metric.status === "critical") ??
+
+  const worst =
+    overview.metrics.find((metric) => metric.status === "critical") ??
     overview.metrics.find((metric) => metric.status === "warning" || metric.status === "stale") ??
     overview.metrics[0];
   return {
@@ -105,22 +137,50 @@ export function buildAnalyticsSummary(overview: TelemetryOverviewResponse) {
   };
 }
 
-export function buildPredictionInsight(prediction: PredictionResponse | null, analytics: NonNullable<ReturnType<typeof buildAnalyticsSummary>>) {
-  if (!prediction || /DISABLED|INSUFFICIENT|UNAVAILABLE|ERROR|FAILED|NO_DATA/i.test(prediction.predictionStatus)) {
-    return { tone: "neutral", title: "Prediction evidence unavailable", summary: prediction ? `Prediction status: ${prediction.predictionStatus}` : "No prediction was returned. Configure ML and collect sufficient telemetry before assessing model risk.", confidence: "Unavailable", anomalyScore: "Unavailable", degradationScore: "Unavailable", primarySignal: "Unknown", modelVersion: prediction?.modelVersion ?? "Unavailable", evidence: prediction?.explanations ?? ["Telemetry observations alone are not a model prediction."], nextCheck: "Check ML settings, data coverage and the latest prediction status." };
+export function buildPredictionInsight(
+  prediction: PredictionResponse | null,
+  analytics: NonNullable<ReturnType<typeof buildAnalyticsSummary>>,
+) {
+  if (
+    !prediction ||
+    /DISABLED|INSUFFICIENT|UNAVAILABLE|ERROR|FAILED|NO_DATA/i.test(prediction.predictionStatus)
+  ) {
+    return {
+      tone: "neutral",
+      title: "Prediction evidence unavailable",
+      summary: prediction
+        ? `Prediction status: ${prediction.predictionStatus}`
+        : "No prediction was returned. Configure ML and collect sufficient telemetry before assessing model risk.",
+      confidence: "Unavailable",
+      anomalyScore: "Unavailable",
+      degradationScore: "Unavailable",
+      primarySignal: "Unknown",
+      modelVersion: prediction?.modelVersion ?? "Unavailable",
+      evidence: prediction?.explanations ?? [
+        "Telemetry observations alone are not a model prediction.",
+      ],
+      nextCheck: "Check ML settings, data coverage and the latest prediction status.",
+    };
   }
-  const primary = analytics.metrics
-    .filter((metric) => metric.status !== "normal")
-    .sort((left, right) => right.events - left.events)[0] ?? analytics.metrics[0];
+  const primary =
+    analytics.metrics
+      .filter((metric) => metric.status !== "normal")
+      .sort((left, right) => right.events - left.events)[0] ?? analytics.metrics[0];
   const anomalyScore = prediction.anomalyScore;
   const degradationScore = prediction.degradationScore;
   const confidence = prediction.confidence;
-  const tone = anomalyScore >= 0.75 || analytics.criticalCount > 0 ? "critical" : anomalyScore >= 0.35 || analytics.warningCount > 0 ? "warning" : "normal";
-  const title = tone === "critical"
-    ? "High anomaly risk predicted"
-    : tone === "warning"
-      ? "Anomaly risk is elevated"
-      : "No near-term anomaly pattern detected";
+  const tone =
+    anomalyScore >= 0.75 || analytics.criticalCount > 0
+      ? "critical"
+      : anomalyScore >= 0.35 || analytics.warningCount > 0
+        ? "warning"
+        : "normal";
+  const title =
+    tone === "critical"
+      ? "High anomaly risk predicted"
+      : tone === "warning"
+        ? "Anomaly risk is elevated"
+        : "No near-term anomaly pattern detected";
   const modelEvidence = prediction?.explanations?.filter(Boolean) ?? [];
   return {
     tone,
@@ -135,13 +195,16 @@ export function buildPredictionInsight(prediction: PredictionResponse | null, an
       ...modelEvidence,
       `${analytics.eventCount} events detected in the selected telemetry window.`,
       `${analytics.warningCount} warning metrics and ${analytics.criticalCount} critical metrics are active.`,
-      primary ? `${primary.name}: latest ${primary.latest}, peak ${primary.peak}.` : "No metric samples are available.",
+      primary
+        ? `${primary.name}: latest ${primary.latest}, peak ${primary.peak}.`
+        : "No metric samples are available.",
     ].slice(0, 5),
-    nextCheck: tone === "normal"
-      ? "Keep monitoring. No immediate intervention is suggested by the current telemetry."
-      : primary?.key === "activePowerW"
-        ? "Check load changes, operating mode, and current draw. If voltage stays stable, focus on the connected load."
-        : "Inspect the primary signal and compare it with related metrics in the detail view.",
+    nextCheck:
+      tone === "normal"
+        ? "Keep monitoring. No immediate intervention is suggested by the current telemetry."
+        : primary?.key === "activePowerW"
+          ? "Check load changes, operating mode, and current draw. If voltage stays stable, focus on the connected load."
+          : "Inspect the primary signal and compare it with related metrics in the detail view.",
   };
 }
 
@@ -177,7 +240,9 @@ export function getRiskInsight(
       : anomalies.length > 0
         ? anomalies.slice(0, 3).map((anomaly) => formatInsightText(anomaly.type))
         : ["No current anomaly explanation was returned by analytics."];
-  const title = topAnomaly ? `${level} risk - ${formatInsightText(topAnomaly.type)}` : `${level} risk detected`;
+  const title = topAnomaly
+    ? `${level} risk - ${formatInsightText(topAnomaly.type)}`
+    : `${level} risk detected`;
   const description = topAnomaly
     ? `${topAnomaly.description} If this repeats, check the device load, power socket, or operating mode.`
     : `Risk score is ${Math.round(risk.score)} out of 100. Review recent power behavior and confirm the device is operating normally.`;

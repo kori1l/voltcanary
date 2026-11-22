@@ -6,6 +6,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration(proxyBeanMethods = false)
 public class RecoveryMailConfiguration {
+
     @Bean
     ThreadPoolTaskExecutor recoveryMailExecutor() {
         var executor = new ThreadPoolTaskExecutor();

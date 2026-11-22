@@ -13,19 +13,29 @@ public class DeviceAuditService {
 
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
 
-    public void record(AuthenticatedUser user, UUID accountId, String action, String targetType, UUID targetId) {
+    public void record(
+        AuthenticatedUser user,
+        UUID accountId,
+        String action,
+        String targetType,
+        UUID targetId
+    ) {
         log.info(
-                "deviceAudit action={} targetType={} targetId={} userId={} accountId={} correlationId={}",
-                action,
-                targetType,
-                targetId,
-                user == null ? null : user.id(),
-                accountId,
-                correlationId());
+            "deviceAudit action={} targetType={} targetId={} userId={} accountId={} correlationId={}",
+            action,
+            targetType,
+            targetId,
+            user == null ? null : user.id(),
+            accountId,
+            correlationId()
+        );
     }
 
     private String correlationId() {
-        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)) {
+        if (
+            !(RequestContextHolder.getRequestAttributes() instanceof
+                ServletRequestAttributes attributes)
+        ) {
             return null;
         }
         return attributes.getRequest().getHeader(CORRELATION_ID_HEADER);

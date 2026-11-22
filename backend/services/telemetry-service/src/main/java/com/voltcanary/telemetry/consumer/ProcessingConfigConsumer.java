@@ -11,11 +11,16 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class ProcessingConfigConsumer {
+
     private final ProcessingBundles bundles;
     private final ObjectMapper mapper;
 
-    @KafkaListener(topics = "source.processing-config.v1", groupId = "${spring.kafka.consumer.group-id}-processing",
-            containerFactory = "processingKafkaListenerContainerFactory", autoStartup = "${app.variables.consume-enabled:false}")
+    @KafkaListener(
+        topics = "source.processing-config.v1",
+        groupId = "${spring.kafka.consumer.group-id}-processing",
+        containerFactory = "processingKafkaListenerContainerFactory",
+        autoStartup = "${app.variables.consume-enabled:false}"
+    )
     public void consume(String json) throws JsonProcessingException {
         bundles.apply(mapper.readValue(json, SourceProcessingConfigEvent.class));
     }

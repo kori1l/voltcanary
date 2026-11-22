@@ -15,45 +15,88 @@ import java.util.UUID;
 
 /** Arithmetic over an already scoped/partitioned batch; no completeness, finalization or effect authority. */
 public final class VclIntervalUnionKernel {
+
     public static final String VERSION = "vcl-interval-union-1";
     public static final int MAX_INPUTS = 4096;
     private static final VclParser PARSER = new VclParser();
     private static final long MAX_WINDOW_US = 32L * 86_400_000_000L;
 
     /** Predicates have already been checked/evaluated by the shared scalar compiler/evaluator. */
-    public record Input(UUID observationId, ScalarValue interval, ScalarValue included, ScalarValue excluded) {
+    public record Input(
+        UUID observationId,
+        ScalarValue interval,
+        ScalarValue included,
+        ScalarValue excluded
+    ) {
         public Input {
             Objects.requireNonNull(observationId);
             Objects.requireNonNull(interval);
             Objects.requireNonNull(included);
             Objects.requireNonNull(excluded);
         }
-        @Override public String toString() { return "IntervalUnionInput[]"; }
+
+        @Override
+        public String toString() {
+            return "IntervalUnionInput[]";
+        }
     }
 
     public record Context(String kernelVersion, String scopeDigest, VclWindowPlan.Window window) {
         public Context {
-            if (kernelVersion == null || !kernelVersion.matches("[A-Za-z0-9._/-]{1,128}")) throw new IllegalArgumentException("Invalid interval kernel version");
-            if (scopeDigest == null || !scopeDigest.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Invalid interval scope");
+            if (
+                kernelVersion == null || !kernelVersion.matches("[A-Za-z0-9._/-]{1,128}")
+            ) throw new IllegalArgumentException("Invalid interval kernel version");
+            if (
+                scopeDigest == null || !scopeDigest.matches("[0-9a-f]{64}")
+            ) throw new IllegalArgumentException("Invalid interval scope");
             Objects.requireNonNull(window);
-            if (micros(window.startInclusive(), window.endExclusive()) > MAX_WINDOW_US) throw new IllegalArgumentException("Interval window limit");
+            if (
+                micros(window.startInclusive(), window.endExclusive()) > MAX_WINDOW_US
+            ) throw new IllegalArgumentException("Interval window limit");
         }
-        @Override public String toString() { return "IntervalUnionContext[kernelVersion=" + kernelVersion + "]"; }
+
+        @Override
+        public String toString() {
+            return "IntervalUnionContext[kernelVersion=" + kernelVersion + "]";
+        }
     }
 
-    private record Span(Instant start, Instant end) { }
-    private enum Truth { TRUE, FALSE, UNKNOWN }
+    private record Span(Instant start, Instant end) {}
+
+    private enum Truth {
+        TRUE,
+        FALSE,
+        UNKNOWN,
+    }
 
     public ScalarValue evaluate(Context context, List<Input> inputs, String authorizedScopeDigest) {
-        if (!context.scopeDigest().equals(authorizedScopeDigest)) return failure(ScalarValue.Status.ACCESS_REVOKED, "ACCESS_SCOPE_CHANGED");
-        if (!VERSION.equals(context.kernelVersion())) return failure(ScalarValue.Status.SCHEMA_UNAVAILABLE, "INTERVAL_KERNEL_UNAVAILABLE");
-        if (inputs == null) return failure(ScalarValue.Status.INVALID_INPUT, "INTERVAL_INPUT_REQUIRED");
-        if (inputs.size() > MAX_INPUTS) return failure(ScalarValue.Status.STATE_LIMIT, "INTERVAL_INPUT_LIMIT");
+        if (!context.scopeDigest().equals(authorizedScopeDigest)) return failure(
+            ScalarValue.Status.ACCESS_REVOKED,
+            "ACCESS_SCOPE_CHANGED"
+        );
+        if (!VERSION.equals(context.kernelVersion())) return failure(
+            ScalarValue.Status.SCHEMA_UNAVAILABLE,
+            "INTERVAL_KERNEL_UNAVAILABLE"
+        );
+        if (inputs == null) return failure(
+            ScalarValue.Status.INVALID_INPUT,
+            "INTERVAL_INPUT_REQUIRED"
+        );
+        if (inputs.size() > MAX_INPUTS) return failure(
+            ScalarValue.Status.STATE_LIMIT,
+            "INTERVAL_INPUT_LIMIT"
+        );
         var snapshot = new ArrayList<Input>(inputs.size());
         var ids = new HashSet<UUID>();
         for (var input : inputs) {
-            if (input == null) return failure(ScalarValue.Status.INVALID_INPUT, "INTERVAL_INPUT_REQUIRED");
-            if (!ids.add(input.observationId())) return failure(ScalarValue.Status.INVALID_INPUT, "INTERVAL_INPUT_DUPLICATE");
+            if (input == null) return failure(
+                ScalarValue.Status.INVALID_INPUT,
+                "INTERVAL_INPUT_REQUIRED"
+            );
+            if (!ids.add(input.observationId())) return failure(
+                ScalarValue.Status.INVALID_INPUT,
+                "INTERVAL_INPUT_DUPLICATE"
+            );
             snapshot.add(input);
         }
         snapshot.sort(Comparator.comparing(input -> input.observationId().toString()));
@@ -74,12 +117,17 @@ public final class VclIntervalUnionKernel {
                 // Validate known interval values even if neither predicate selects this row.
                 Span span = interval(input.interval());
                 if (include == Truth.FALSE && exclude == Truth.FALSE) continue;
-                boolean unresolved = include == Truth.UNKNOWN || exclude == Truth.UNKNOWN || span == null;
+                boolean unresolved =
+                    include == Truth.UNKNOWN || exclude == Truth.UNKNOWN || span == null;
                 if (unresolved) {
                     unknown = true;
                     evidence.add(input.observationId());
-                    for (var value : List.of(input.interval(), input.included(), input.excluded())) evidence.addAll(value.evidence());
-                    if (evidence.size() > 128) return failure(ScalarValue.Status.STATE_LIMIT, "EVIDENCE_LIMIT");
+                    for (var value : List.of(input.interval(), input.included(), input.excluded()))
+                        evidence.addAll(value.evidence());
+                    if (evidence.size() > 128) return failure(
+                        ScalarValue.Status.STATE_LIMIT,
+                        "EVIDENCE_LIMIT"
+                    );
                     continue;
                 }
                 Span clipped = clip(span, context.window());
@@ -97,22 +145,38 @@ public final class VclIntervalUnionKernel {
         int firstBreak = 0;
         for (var span : work) {
             durationUs += micros(span.start(), span.end());
-            while (firstBreak < breaks.size() && !breaks.get(firstBreak).end().isAfter(span.start())) firstBreak++;
-            for (int i = firstBreak; i < breaks.size() && breaks.get(i).start().isBefore(span.end()); i++) {
+            while (
+                    firstBreak < breaks.size() &&
+                    !breaks.get(firstBreak).end().isAfter(span.start())
+                )
+                firstBreak++;
+            for (
+                int i = firstBreak;
+                i < breaks.size() && breaks.get(i).start().isBefore(span.end());
+                i++
+            ) {
                 var pause = breaks.get(i);
                 Instant start = later(span.start(), pause.start());
                 Instant end = earlier(span.end(), pause.end());
                 if (start.isBefore(end)) durationUs -= micros(start, end);
             }
         }
-        return ScalarValue.known(JsonNodeFactory.instance.objectNode().put("type", "DURATION").put("value", Long.toString(durationUs)));
+        return ScalarValue.known(
+            JsonNodeFactory.instance
+                .objectNode()
+                .put("type", "DURATION")
+                .put("value", Long.toString(durationUs))
+        );
     }
 
     private static Truth truth(ScalarValue value) {
         if (value.status() == ScalarValue.Status.UNKNOWN) return Truth.UNKNOWN;
         var literal = PARSER.literal(value.literal().toString());
         if (literal.path("type").asText().equals("NULL")) return Truth.UNKNOWN;
-        if (!literal.path("type").asText().equals("BOOLEAN")) throw new VclException("TYPE_MISMATCH", "");
+        if (!literal.path("type").asText().equals("BOOLEAN")) throw new VclException(
+            "TYPE_MISMATCH",
+            ""
+        );
         return literal.path("value").booleanValue() ? Truth.TRUE : Truth.FALSE;
     }
 
@@ -121,7 +185,10 @@ public final class VclIntervalUnionKernel {
         if (value.status() == ScalarValue.Status.UNKNOWN) return null;
         var literal = PARSER.literal(value.literal().toString());
         if (literal.path("type").asText().equals("NULL")) return null;
-        if (!literal.path("type").asText().equals("INTERVAL")) throw new VclException("TYPE_MISMATCH", "");
+        if (!literal.path("type").asText().equals("INTERVAL")) throw new VclException(
+            "TYPE_MISMATCH",
+            ""
+        );
         var bounds = literal.path("value");
         Instant start = Instant.parse(bounds.path("start").asText());
         VclWindowPlan.micros(start);
@@ -150,11 +217,21 @@ public final class VclIntervalUnionKernel {
         }
         return result;
     }
+
     private static long micros(Instant start, Instant end) {
         var duration = Duration.between(start, end);
         return duration.getSeconds() * 1_000_000L + duration.getNano() / 1000;
     }
-    private static Instant later(Instant a, Instant b) { return a.isAfter(b) ? a : b; }
-    private static Instant earlier(Instant a, Instant b) { return a.isBefore(b) ? a : b; }
-    private static ScalarValue failure(ScalarValue.Status status, String reason) { return ScalarValue.failure(status, reason); }
+
+    private static Instant later(Instant a, Instant b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static Instant earlier(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
+    }
+
+    private static ScalarValue failure(ScalarValue.Status status, String reason) {
+        return ScalarValue.failure(status, reason);
+    }
 }

@@ -15,82 +15,122 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @Slf4j
 public class IdentityExceptionHandler {
 
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    ResponseEntity<ApiErrorResponse> handleConcurrentUpdate(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            error("concurrent_update", "User changed concurrently; reload before retrying", request)
+        );
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
-    ResponseEntity<ApiErrorResponse> handleDuplicateEmail(DuplicateEmailException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.CONFLICT)
-                .body(error("duplicate_email", "Email is already registered", request));
+    ResponseEntity<ApiErrorResponse> handleDuplicateEmail(
+        DuplicateEmailException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+            error("duplicate_email", "Email is already registered", request)
+        );
     }
 
     @ExceptionHandler(AuthenticationFailedException.class)
-    ResponseEntity<ApiErrorResponse> handleAuthenticationFailed(AuthenticationFailedException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.UNAUTHORIZED)
-                .body(error("authentication_failed", exception.getMessage(), request));
+    ResponseEntity<ApiErrorResponse> handleAuthenticationFailed(
+        AuthenticationFailedException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            error("authentication_failed", exception.getMessage(), request)
+        );
     }
 
     @ExceptionHandler(AuthorizationFailedException.class)
-    ResponseEntity<ApiErrorResponse> handleAuthorizationFailed(AuthorizationFailedException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.FORBIDDEN)
-                .body(error("authorization_failed", exception.getMessage(), request));
+    ResponseEntity<ApiErrorResponse> handleAuthorizationFailed(
+        AuthorizationFailedException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            error("authorization_failed", exception.getMessage(), request)
+        );
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
-        String message = exception.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .orElse("request validation failed");
+    ResponseEntity<ApiErrorResponse> handleValidation(
+        MethodArgumentNotValidException exception,
+        HttpServletRequest request
+    ) {
+        String message = exception
+            .getBindingResult()
+            .getFieldErrors()
+            .stream()
+            .findFirst()
+            .map(error -> error.getField() + ": " + error.getDefaultMessage())
+            .orElse("request validation failed");
 
-        return ResponseEntity
-                .badRequest()
-                .body(error("validation_failed", message, request));
+        return ResponseEntity.badRequest().body(error("validation_failed", message, request));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    ResponseEntity<ApiErrorResponse> handleUnreadableMessage(HttpMessageNotReadableException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .badRequest()
-                .body(error("bad_request", "Request body is invalid", request));
+    ResponseEntity<ApiErrorResponse> handleUnreadableMessage(
+        HttpMessageNotReadableException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.badRequest().body(
+            error("bad_request", "Request body is invalid", request)
+        );
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    ResponseEntity<ApiErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.METHOD_NOT_ALLOWED)
-                .body(error("method_not_allowed", "HTTP method is not supported for this path", request));
+    ResponseEntity<ApiErrorResponse> handleMethodNotSupported(
+        HttpRequestMethodNotSupportedException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(
+            error("method_not_allowed", "HTTP method is not supported for this path", request)
+        );
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    ResponseEntity<ApiErrorResponse> handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(error("not_found", "Resource not found", request));
+    ResponseEntity<ApiErrorResponse> handleNoResourceFound(
+        NoResourceFoundException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+            error("not_found", "Resource not found", request)
+        );
     }
 
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
-    ResponseEntity<ApiErrorResponse> handleResponseStatus(org.springframework.web.server.ResponseStatusException exception, HttpServletRequest request) {
-        return ResponseEntity
-                .status(exception.getStatusCode())
-                .body(error("downstream_unavailable", exception.getReason() == null ? "Request failed" : exception.getReason(), request));
+    ResponseEntity<ApiErrorResponse> handleResponseStatus(
+        org.springframework.web.server.ResponseStatusException exception,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(exception.getStatusCode()).body(
+            error(
+                "downstream_unavailable",
+                exception.getReason() == null ? "Request failed" : exception.getReason(),
+                request
+            )
+        );
     }
 
     @ExceptionHandler(Exception.class)
-    ResponseEntity<ApiErrorResponse> handleUnexpected(Exception exception, HttpServletRequest request) {
+    ResponseEntity<ApiErrorResponse> handleUnexpected(
+        Exception exception,
+        HttpServletRequest request
+    ) {
         log.error("Unhandled identity-service exception", exception);
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(error("internal_error", "Internal server error", request));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            error("internal_error", "Internal server error", request)
+        );
     }
 
     private ApiErrorResponse error(String code, String message, HttpServletRequest request) {
         return new ApiErrorResponse(
-                code,
-                message,
-                request.getRequestURI(),
-                correlationId(request),
-                java.time.Instant.now());
+            code,
+            message,
+            request.getRequestURI(),
+            correlationId(request),
+            java.time.Instant.now()
+        );
     }
 
     private String correlationId(HttpServletRequest request) {

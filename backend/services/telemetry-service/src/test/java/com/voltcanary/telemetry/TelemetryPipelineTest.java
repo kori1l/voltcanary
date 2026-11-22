@@ -1,5 +1,11 @@
 package com.voltcanary.telemetry;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.telemetry.producer.TelemetryDeadLetterPublisher;
 import com.voltcanary.telemetry.producer.TelemetryValidatedPublisher;
@@ -10,43 +16,48 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.never;
-
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=false",
-                "app.kafka.publish-enabled=false",
-                "app.telemetry.authorization.enabled=false",
-                "app.telemetry.validation.redis-rate-limit-enabled=false",
-                "app.telemetry.reconciliation.enabled=false",
-                "app.telemetry.validation.max-past-age=30d",
-                "management.health.redis.enabled=false",
-                "spring.kafka.bootstrap-servers=localhost:19092"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=false",
+        "app.kafka.publish-enabled=false",
+        "app.telemetry.authorization.enabled=false",
+        "app.telemetry.validation.redis-rate-limit-enabled=false",
+        "app.telemetry.reconciliation.enabled=false",
+        "app.telemetry.validation.max-past-age=30d",
+        "management.health.redis.enabled=false",
+        "spring.kafka.bootstrap-servers=localhost:19092",
+    }
+)
 class TelemetryPipelineTest extends SignedUserTest {
+
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
-        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
-            if (request.getURI().getPath().startsWith("/telemetry/")) {
-                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
-            }
-            return execution.execute(request, body);
-        }));
+        restTemplate.getRestTemplate().setInterceptors(
+            java.util.List.of((request, body, execution) -> {
+                if (request.getURI().getPath().startsWith("/telemetry/")) {
+                    request
+                        .getHeaders()
+                        .setBearerAuth(
+                            com.voltcanary.common.test.SignedUserTokens.create(
+                                java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                                "actor@example.invalid",
+                                "USER"
+                            )
+                        );
+                }
+                return execution.execute(request, body);
+            })
+        );
     }
 
     @Autowired
@@ -73,11 +84,25 @@ class TelemetryPipelineTest extends SignedUserTest {
         var first = event(device, "delete-source", recentTimestamp(300));
         assertThat(telemetryEventProcessor.process(first)).isPositive();
         historyDeletion.close(device, true);
-        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry.measurements where device_id=?", Long.class, device)).isZero();
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from telemetry.measurements where device_id=?",
+                Long.class,
+                device
+            )
+        ).isZero();
         assertThat(telemetryEventProcessor.process(first)).isZero();
-        assertThat(telemetryEventProcessor.process(event(device, "delete-source", recentTimestamp(30)))).isZero();
+        assertThat(
+            telemetryEventProcessor.process(event(device, "delete-source", recentTimestamp(30)))
+        ).isZero();
         historyDeletion.close(device, true);
-        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry_readings where device_id=?", Long.class, device)).isZero();
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from telemetry_readings where device_id=?",
+                Long.class,
+                device
+            )
+        ).isZero();
     }
 
     @Test
@@ -85,8 +110,16 @@ class TelemetryPipelineTest extends SignedUserTest {
         UUID device = UUID.randomUUID();
         telemetryEventProcessor.process(event(device, "keep-source", recentTimestamp(300)));
         historyDeletion.close(device, false);
-        assertThat(telemetryEventProcessor.process(event(device, "keep-source", recentTimestamp(30)))).isZero();
-        assertThat(jdbcTemplate.queryForObject("select count(*) from telemetry.measurements where device_id=?", Long.class, device)).isPositive();
+        assertThat(
+            telemetryEventProcessor.process(event(device, "keep-source", recentTimestamp(30)))
+        ).isZero();
+        assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from telemetry.measurements where device_id=?",
+                Long.class,
+                device
+            )
+        ).isPositive();
     }
 
     @Test
@@ -100,53 +133,59 @@ class TelemetryPipelineTest extends SignedUserTest {
 
         assertThat(inserted).isEqualTo(5);
         Long rowCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry.measurements where device_id = ?",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry.measurements where device_id = ?",
+            Long.class,
+            deviceId
+        );
         assertThat(rowCount).isEqualTo(5);
         verify(telemetryValidatedPublisher).publish(any(), any());
 
         ResponseEntity<String> latest = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/latest",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/latest",
+            String.class,
+            deviceId
+        );
         assertThat(latest.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(latest.getBody()).contains("\"activePowerW\":840.2");
         assertThat(latest.getBody()).contains("\"timestamp\":\"" + timestamp + "\"");
 
         ResponseEntity<String> chart = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}",
-                String.class,
-                deviceId,
-                from,
-                to);
+            "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}",
+            String.class,
+            deviceId,
+            from,
+            to
+        );
         assertThat(chart.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(chart.getBody()).contains("\"metric\":\"activePowerW\"");
         assertThat(chart.getBody()).contains("\"value\":840.2");
 
         ResponseEntity<String> aggregatedChart = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}&interval=1m",
-                String.class,
-                deviceId,
-                from,
-                to);
+            "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from={from}&to={to}&interval=1m",
+            String.class,
+            deviceId,
+            from,
+            to
+        );
         assertThat(aggregatedChart.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(aggregatedChart.getBody()).contains("\"metric\":\"activePowerW\"");
 
         ResponseEntity<String> metrics = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/metrics",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/metrics",
+            String.class,
+            deviceId
+        );
         assertThat(metrics.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(metrics.getBody()).contains("\"name\":\"activePowerW\"");
         assertThat(metrics.getBody()).contains("\"unit\":\"W\"");
 
         ResponseEntity<String> export = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings/export?metric=activePowerW&from={from}&to={to}&limit=1",
-                String.class,
-                deviceId,
-                from,
-                to);
+            "/telemetry/devices/{deviceId}/readings/export?metric=activePowerW&from={from}&to={to}&limit=1",
+            String.class,
+            deviceId,
+            from,
+            to
+        );
         assertThat(export.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(export.getBody()).contains("\"points\"");
         assertThat(export.getBody()).contains("\"value\":840.2");
@@ -157,9 +196,10 @@ class TelemetryPipelineTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
 
         ResponseEntity<String> chart = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from=2026-01-01T00:00:00Z&to=2026-05-12T13:00:00Z",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/readings?metric=activePowerW&from=2026-01-01T00:00:00Z&to=2026-05-12T13:00:00Z",
+            String.class,
+            deviceId
+        );
 
         assertThat(chart.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
@@ -176,20 +216,23 @@ class TelemetryPipelineTest extends SignedUserTest {
         assertThat(firstInsert).isEqualTo(5);
         assertThat(duplicateInsert).isZero();
         Long rowCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry.measurements where device_id = ?",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry.measurements where device_id = ?",
+            Long.class,
+            deviceId
+        );
         assertThat(rowCount).isEqualTo(5);
         verify(telemetryValidatedPublisher, times(1)).publish(any(), any());
         Long readingCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry_readings where device_id = ?",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry_readings where device_id = ?",
+            Long.class,
+            deviceId
+        );
         assertThat(readingCount).isEqualTo(1);
         Long processedCount = jdbcTemplate.queryForObject(
-                "select count(*) from processed_events where source_name = 'telemetry.raw.v1' and event_id = ?",
-                Long.class,
-                event.eventId());
+            "select count(*) from processed_events where source_name = 'telemetry.raw.v1' and event_id = ?",
+            Long.class,
+            event.eventId()
+        );
         assertThat(processedCount).isEqualTo(1);
     }
 
@@ -197,27 +240,30 @@ class TelemetryPipelineTest extends SignedUserTest {
     void invalidMetricsArePersistedAsQualityAndSentToDlq() {
         UUID deviceId = UUID.randomUUID();
         TelemetryReceivedEvent event = new TelemetryReceivedEvent(
-                UUID.randomUUID(),
-                deviceId,
-                "plug-001",
-                recentTimestamp(180),
-                Map.of("voltageV", 5000.0, "relayState", "ON"),
-                Instant.now());
+            UUID.randomUUID(),
+            deviceId,
+            "plug-001",
+            recentTimestamp(180),
+            Map.of("voltageV", 5000.0, "relayState", "ON"),
+            Instant.now()
+        );
 
         int inserted = telemetryEventProcessor.process(event);
 
         assertThat(inserted).isZero();
         Long rowCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry.measurements where device_id = ?",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry.measurements where device_id = ?",
+            Long.class,
+            deviceId
+        );
         assertThat(rowCount).isZero();
         verify(telemetryDeadLetterPublisher).publish(any(), any(), any());
 
         ResponseEntity<String> quality = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/quality",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/quality",
+            String.class,
+            deviceId
+        );
         assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(quality.getBody()).contains("OUT_OF_RANGE");
         assertThat(quality.getBody()).contains("INVALID_VALUE");
@@ -227,27 +273,30 @@ class TelemetryPipelineTest extends SignedUserTest {
     void partiallyInvalidMetricsStillPersistValidMeasurements() {
         UUID deviceId = UUID.randomUUID();
         TelemetryReceivedEvent event = new TelemetryReceivedEvent(
-                UUID.randomUUID(),
-                deviceId,
-                "plug-001",
-                recentTimestamp(120),
-                Map.of("activePowerW", 120.0, "voltageV", 230.0, "relayState", "ON"),
-                Instant.now());
+            UUID.randomUUID(),
+            deviceId,
+            "plug-001",
+            recentTimestamp(120),
+            Map.of("activePowerW", 120.0, "voltageV", 230.0, "relayState", "ON"),
+            Instant.now()
+        );
 
         int inserted = telemetryEventProcessor.process(event);
 
         assertThat(inserted).isEqualTo(2);
         Long rowCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry.measurements where device_id = ?",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry.measurements where device_id = ?",
+            Long.class,
+            deviceId
+        );
         assertThat(rowCount).isEqualTo(2);
         verify(telemetryValidatedPublisher).publish(any(), any());
 
         ResponseEntity<String> quality = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/quality",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/quality",
+            String.class,
+            deviceId
+        );
         assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(quality.getBody()).contains("INVALID_VALUE");
     }
@@ -258,13 +307,16 @@ class TelemetryPipelineTest extends SignedUserTest {
         Instant latest = recentTimestamp(60);
         telemetryEventProcessor.process(event(deviceId, "plug-001", latest));
 
-        int inserted = telemetryEventProcessor.process(event(deviceId, "plug-001", latest.minusSeconds(60)));
+        int inserted = telemetryEventProcessor.process(
+            event(deviceId, "plug-001", latest.minusSeconds(60))
+        );
 
         assertThat(inserted).isEqualTo(5);
         ResponseEntity<String> quality = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/quality",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/quality",
+            String.class,
+            deviceId
+        );
         assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(quality.getBody()).contains("OUT_OF_ORDER");
     }
@@ -274,20 +326,24 @@ class TelemetryPipelineTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         Instant recordedAt = Instant.parse("2026-01-12T12:30:00Z");
 
-        int inserted = telemetryEventProcessor.process(event(deviceId, "backfill-csv-001", recordedAt));
+        int inserted = telemetryEventProcessor.process(
+            event(deviceId, "backfill-csv-001", recordedAt)
+        );
 
         assertThat(inserted).isEqualTo(5);
         Long rowCount = jdbcTemplate.queryForObject(
-                "select count(*) from telemetry.measurements where device_id = ? and received_at is not null",
-                Long.class,
-                deviceId);
+            "select count(*) from telemetry.measurements where device_id = ? and received_at is not null",
+            Long.class,
+            deviceId
+        );
         assertThat(rowCount).isEqualTo(5);
         verify(telemetryValidatedPublisher, never()).publish(any(), any());
 
         ResponseEntity<String> quality = restTemplate.getForEntity(
-                "/telemetry/devices/{deviceId}/quality",
-                String.class,
-                deviceId);
+            "/telemetry/devices/{deviceId}/quality",
+            String.class,
+            deviceId
+        );
         assertThat(quality.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(quality.getBody()).contains("BACKFILL");
     }
@@ -295,35 +351,46 @@ class TelemetryPipelineTest extends SignedUserTest {
     @Test
     void storedReadingPayloadKeepsOnlySupportedTelemetryMetrics() {
         UUID deviceId = UUID.randomUUID();
-        telemetryEventProcessor.process(new TelemetryReceivedEvent(
+        telemetryEventProcessor.process(
+            new TelemetryReceivedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 "plug-001",
                 recentTimestamp(30),
                 Map.of("activePowerW", 840.2, "vendorSecret", "do-not-store"),
-                Instant.now()));
+                Instant.now()
+            )
+        );
 
         String metricsJson = jdbcTemplate.queryForObject(
-                "select metrics_json from telemetry_readings where device_id = ?",
-                String.class,
-                deviceId);
+            "select metrics_json from telemetry_readings where device_id = ?",
+            String.class,
+            deviceId
+        );
         assertThat(metricsJson).contains("activePowerW");
         assertThat(metricsJson).doesNotContain("vendorSecret");
     }
 
     private TelemetryReceivedEvent event(UUID deviceId, String sourceId, Instant timestamp) {
         return new TelemetryReceivedEvent(
-                UUID.randomUUID(),
-                deviceId,
-                sourceId,
-                timestamp,
-                Map.of(
-                        "activePowerW", 840.2,
-                        "voltageV", 230.1,
-                        "currentA", 3.65,
-                        "energyWh", 12450.7,
-                        "rssi", -61),
-                Instant.now());
+            UUID.randomUUID(),
+            deviceId,
+            sourceId,
+            timestamp,
+            Map.of(
+                "activePowerW",
+                840.2,
+                "voltageV",
+                230.1,
+                "currentA",
+                3.65,
+                "energyWh",
+                12450.7,
+                "rssi",
+                -61
+            ),
+            Instant.now()
+        );
     }
 
     private Instant recentTimestamp(long secondsAgo) {

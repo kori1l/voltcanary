@@ -1,5 +1,7 @@
 package com.voltcanary.identity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -7,6 +9,7 @@ import com.voltcanary.common.security.JwtAccessTokenService;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.UserRole;
 import com.voltcanary.identity.domain.UserStatus;
+import com.voltcanary.identity.dto.AdminUserResponse;
 import com.voltcanary.identity.dto.AuthTokenResponse;
 import com.voltcanary.identity.dto.MeResponse;
 import com.voltcanary.identity.dto.RegisterResponse;
@@ -32,18 +35,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import static org.assertj.core.api.Assertions.assertThat;
 
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "spring.jpa.hibernate.ddl-auto=validate",
-                "spring.jpa.open-in-view=false",
-                "app.auth.login.max-attempts-per-email=100",
-                "app.auth.login.max-attempts-per-ip=1000"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "spring.jpa.open-in-view=false",
+        "app.auth.login.max-attempts-per-email=100",
+        "app.auth.login.max-attempts-per-ip=1000",
+    }
+)
 class AuthRegistrationTest {
+
     @Autowired
     private com.voltcanary.identity.service.RecoveryTokenCleanup recoveryTokenCleanup;
 
@@ -59,18 +63,47 @@ class AuthRegistrationTest {
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
         var now = Instant.now();
-        for (String table : java.util.List.of("password_reset_tokens", "email_verification_tokens")) {
+        for (String table : java.util.List.of(
+            "password_reset_tokens",
+            "email_verification_tokens"
+        )) {
             for (int index = 0; index < 3; index++) {
-                jdbc.update("insert into " + table + "(id,user_id,token_hash,created_at,expires_at,used_at) values(?,?,?,?,?,?)",
-                        UUID.randomUUID(), user.getId(), UUID.randomUUID().toString(), java.sql.Timestamp.from(now.minusSeconds(120)),
-                        java.sql.Timestamp.from(index < 2 ? now.minusSeconds(60) : now.plusSeconds(600)),
-                        index == 0 ? null : java.sql.Timestamp.from(now.minusSeconds(90)));
+                jdbc.update(
+                    "insert into " +
+                        table +
+                        "(id,user_id,token_hash,created_at,expires_at,used_at) values(?,?,?,?,?,?)",
+                    UUID.randomUUID(),
+                    user.getId(),
+                    UUID.randomUUID().toString(),
+                    java.sql.Timestamp.from(now.minusSeconds(120)),
+                    java.sql.Timestamp.from(
+                        index < 2 ? now.minusSeconds(60) : now.plusSeconds(600)
+                    ),
+                    index == 0 ? null : java.sql.Timestamp.from(now.minusSeconds(90))
+                );
             }
         }
         recoveryTokenCleanup.deleteExpired();
-        for (String table : java.util.List.of("password_reset_tokens", "email_verification_tokens")) {
-            assertThat(jdbc.queryForObject("select count(*) from " + table + " where user_id=?", Integer.class, user.getId())).isEqualTo(1);
-            assertThat(jdbc.queryForObject("select expires_at from " + table + " where user_id=?", java.sql.Timestamp.class, user.getId()).toInstant()).isAfter(now);
+        for (String table : java.util.List.of(
+            "password_reset_tokens",
+            "email_verification_tokens"
+        )) {
+            assertThat(
+                jdbc.queryForObject(
+                    "select count(*) from " + table + " where user_id=?",
+                    Integer.class,
+                    user.getId()
+                )
+            ).isEqualTo(1);
+            assertThat(
+                jdbc
+                    .queryForObject(
+                        "select expires_at from " + table + " where user_id=?",
+                        java.sql.Timestamp.class,
+                        user.getId()
+                    )
+                    .toInstant()
+            ).isAfter(now);
         }
     }
 
@@ -79,10 +112,13 @@ class AuthRegistrationTest {
 
     private String deliveredCode(String email, String purpose) {
         var code = org.mockito.ArgumentCaptor.forClass(String.class);
-        org.mockito.Mockito.verify(recoveryMail).queue(org.mockito.ArgumentMatchers.eq(email), org.mockito.ArgumentMatchers.eq(purpose), code.capture());
+        org.mockito.Mockito.verify(recoveryMail).queue(
+            org.mockito.ArgumentMatchers.eq(email),
+            org.mockito.ArgumentMatchers.eq(purpose),
+            code.capture()
+        );
         return code.getValue();
     }
-
 
     @Autowired
     private TestRestTemplate restTemplate;
@@ -112,17 +148,173 @@ class AuthRegistrationTest {
     private PasswordEncoder passwordEncoder;
 
     private void assertLifecycleOutbox(UUID userId, String status) {
-        var payloads = jdbc.queryForList("select payload_json from identity_event_outbox where message_key=?", String.class, userId.toString());
-        assertThat(payloads).anySatisfy(payload -> assertThat(payload).contains("\"status\":\"" + status + "\""));
+        var payloads = jdbc.queryForList(
+            "select payload_json from identity_event_outbox where message_key=?",
+            String.class,
+            userId.toString()
+        );
+        assertThat(payloads).anySatisfy(payload ->
+            assertThat(payload).contains("\"status\":\"" + status + "\"")
+        );
         org.mockito.Mockito.verifyNoInteractions(deviceLifecycle);
+    }
+
+    @Test
+    void staleAdminTokenCannotAuthorizeAfterRoleOrStatusRevocation() {
+        String email = "authority-" + UUID.randomUUID() + "@example.test";
+        register(email, "Password123!");
+        User admin = userRepository.findByEmail(email).orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        userRepository.saveAndFlush(admin);
+        var tokens = login(email, "Password123!").getBody();
+        var headers = new HttpHeaders();
+        headers.setBearerAuth(tokens.accessToken());
+        admin = userRepository.findByEmail(email).orElseThrow();
+        admin.setRole(UserRole.USER);
+        userRepository.saveAndFlush(admin);
+        assertThat(
+            restTemplate
+                .exchange(
+                    "/auth/admin/users",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.FORBIDDEN);
+        admin = userRepository.findByEmail(email).orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        admin.setStatus(UserStatus.DISABLED);
+        userRepository.saveAndFlush(admin);
+        assertThat(
+            restTemplate
+                .exchange(
+                    "/auth/admin/users",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void staleUserWriteCannotUndoAnAccountBlock() {
+        String email = "version-" + UUID.randomUUID() + "@example.test";
+        UUID id = register(email, "Password123!").userId();
+        User passwordChange = userRepository.findById(id).orElseThrow();
+        User block = userRepository.findById(id).orElseThrow();
+        block.setStatus(UserStatus.DISABLED);
+        userRepository.saveAndFlush(block);
+        passwordChange.setPasswordHash("stale-password-hash");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+            userRepository.saveAndFlush(passwordChange)
+        ).isInstanceOf(org.springframework.dao.OptimisticLockingFailureException.class);
+        assertThat(userRepository.findById(id).orElseThrow().getStatus()).isEqualTo(
+            UserStatus.DISABLED
+        );
+    }
+
+    @Test
+    void adminPaginationUsesLiteralSearchAndRejectsInvalidBounds() {
+        String prefix = "paging-" + UUID.randomUUID();
+        register(prefix + "-admin@example.test", "Password123!");
+        User admin = userRepository.findByEmail(prefix + "-admin@example.test").orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        userRepository.saveAndFlush(admin);
+        register(prefix + "-a_b@example.test", "Password123!");
+        register(prefix + "-acb@example.test", "Password123!");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(
+            login(prefix + "-admin@example.test", "Password123!")
+                .getBody()
+                .accessToken()
+        );
+        var literal = restTemplate.exchange(
+            "/auth/admin/users?search={search}&size=1",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            AdminUserResponse[].class,
+            prefix + "-a_b"
+        );
+        assertThat(literal.getBody())
+            .extracting(AdminUserResponse::email)
+            .containsExactly(prefix + "-a_b@example.test");
+        var first = restTemplate.exchange(
+            "/auth/admin/users?search={search}&size=1&page=0",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            AdminUserResponse[].class,
+            prefix
+        );
+        var second = restTemplate.exchange(
+            "/auth/admin/users?search={search}&size=1&page=1",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            AdminUserResponse[].class,
+            prefix
+        );
+        assertThat(first.getBody()).hasSize(1);
+        assertThat(second.getBody()).hasSize(1);
+        assertThat(first.getBody()[0].id()).isNotEqualTo(second.getBody()[0].id());
+        assertThat(
+            restTemplate
+                .exchange(
+                    "/auth/admin/users?page=-1",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(
+            restTemplate
+                .exchange(
+                    "/auth/admin/users?size=201",
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void simultaneousRegistrationsReturnOneSuccessAndOneConflict() throws Exception {
+        String email = "registration-race-" + UUID.randomUUID() + "@example.test";
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<HttpStatus> registration = () -> {
+                barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                return HttpStatus.valueOf(
+                    restTemplate
+                        .postForEntity(
+                            "/auth/register",
+                            Map.of("email", email, "password", "Password123!"),
+                            String.class
+                        )
+                        .getStatusCode()
+                        .value()
+                );
+            };
+            var first = executor.submit(registration);
+            var second = executor.submit(registration);
+            assertThat(
+                java.util.List.of(
+                    first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(15, java.util.concurrent.TimeUnit.SECONDS)
+                )
+            ).containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.CONFLICT);
+        }
     }
 
     @Test
     void registerCreatesUserWithHashedPassword() {
         ResponseEntity<RegisterResponse> response = restTemplate.postForEntity(
-                "/auth/register",
-                Map.of("email", "User@example.com", "password", "Password123!"),
-                RegisterResponse.class);
+            "/auth/register",
+            Map.of("email", "User@example.com", "password", "Password123!"),
+            RegisterResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -140,16 +332,23 @@ class AuthRegistrationTest {
 
     @Test
     void registerRejectsDuplicateEmail() {
-        Map<String, String> request = Map.of("email", "duplicate@example.com", "password", "Password123!");
+        Map<String, String> request = Map.of(
+            "email",
+            "duplicate@example.com",
+            "password",
+            "Password123!"
+        );
 
         ResponseEntity<RegisterResponse> first = restTemplate.postForEntity(
-                "/auth/register",
-                request,
-                RegisterResponse.class);
+            "/auth/register",
+            request,
+            RegisterResponse.class
+        );
         ResponseEntity<String> second = restTemplate.postForEntity(
-                "/auth/register",
-                request,
-                String.class);
+            "/auth/register",
+            request,
+            String.class
+        );
 
         assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -159,9 +358,10 @@ class AuthRegistrationTest {
     @Test
     void registerRejectsWeakPassword() {
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/auth/register",
-                Map.of("email", "weak@example.com", "password", "password"),
-                String.class);
+            "/auth/register",
+            Map.of("email", "weak@example.com", "password", "password"),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(response.getBody()).contains("validation_failed");
@@ -191,22 +391,25 @@ class AuthRegistrationTest {
         headers.set("X-Correlation-Id", "audit-correlation-id");
 
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/auth/login",
-                new HttpEntity<>(Map.of("email", "wrong-password@example.com", "password", "Wrong123!"), headers),
-                String.class);
+            "/auth/login",
+            new HttpEntity<>(
+                Map.of("email", "wrong-password@example.com", "password", "Wrong123!"),
+                headers
+            ),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
-        assertThat(loginAuditRepository.findAll())
-                .anySatisfy(audit -> {
-                    assertThat(audit.getEmail()).isEqualTo("wrong-password@example.com");
-                    assertThat(audit.isSuccessful()).isFalse();
-                    assertThat(audit.getFailureReason()).isEqualTo("wrong_password");
-                    assertThat(audit.getFailureCategory()).isEqualTo("wrong_password");
-                    assertThat(audit.getIpAddress()).isEqualTo("203.0.113.10");
-                    assertThat(audit.getUserAgent()).isEqualTo("VoltCanary-Test/1.0");
-                    assertThat(audit.getCorrelationId()).isEqualTo("audit-correlation-id");
-                });
+        assertThat(loginAuditRepository.findAll()).anySatisfy(audit -> {
+            assertThat(audit.getEmail()).isEqualTo("wrong-password@example.com");
+            assertThat(audit.isSuccessful()).isFalse();
+            assertThat(audit.getFailureReason()).isEqualTo("wrong_password");
+            assertThat(audit.getFailureCategory()).isEqualTo("wrong_password");
+            assertThat(audit.getIpAddress()).isEqualTo("203.0.113.10");
+            assertThat(audit.getUserAgent()).isEqualTo("VoltCanary-Test/1.0");
+            assertThat(audit.getCorrelationId()).isEqualTo("audit-correlation-id");
+        });
     }
 
     @Test
@@ -215,18 +418,20 @@ class AuthRegistrationTest {
 
         for (int attempt = 0; attempt < 5; attempt++) {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    "/auth/login",
-                    Map.of("email", "locked-login@example.com", "password", "Wrong123!"),
-                    String.class);
+                "/auth/login",
+                Map.of("email", "locked-login@example.com", "password", "Wrong123!"),
+                String.class
+            );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
             assertThat(response.getBody()).contains("authentication_failed");
         }
 
         ResponseEntity<String> lockedResponse = restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", "locked-login@example.com", "password", "Password123!"),
-                String.class);
+            "/auth/login",
+            Map.of("email", "locked-login@example.com", "password", "Password123!"),
+            String.class
+        );
 
         assertThat(lockedResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(lockedResponse.getBody()).contains("authentication_failed");
@@ -241,9 +446,10 @@ class AuthRegistrationTest {
         userRepository.save(user);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", "disabled-login@example.com", "password", "Password123!"),
-                String.class);
+            "/auth/login",
+            Map.of("email", "disabled-login@example.com", "password", "Password123!"),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -257,10 +463,11 @@ class AuthRegistrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(tokens.accessToken());
         ResponseEntity<MeResponse> response = restTemplate.exchange(
-                "/auth/me",
-                org.springframework.http.HttpMethod.GET,
-                new HttpEntity<>(headers),
-                MeResponse.class);
+            "/auth/me",
+            org.springframework.http.HttpMethod.GET,
+            new HttpEntity<>(headers),
+            MeResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -285,34 +492,51 @@ class AuthRegistrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(adminTokens.accessToken());
         ResponseEntity<String> listedUsers = restTemplate.exchange(
-                "/auth/admin/users",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/admin/users",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
         ResponseEntity<String> roleUpdate = restTemplate.exchange(
-                "/auth/admin/users/" + managed.getId() + "/role",
-                HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("role", "SUPPORT"), headers),
-                String.class);
+            "/auth/admin/users/" + managed.getId() + "/role",
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("role", "SUPPORT"), headers),
+            String.class
+        );
+        assertThat(
+            restTemplate
+                .postForEntity(
+                    "/auth/refresh",
+                    Map.of("refreshToken", managedTokens.refreshToken()),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.UNAUTHORIZED);
+        managedTokens = login("managed@example.com", "Password123!").getBody();
         ResponseEntity<String> sessions = restTemplate.exchange(
-                "/auth/admin/users/" + managed.getId() + "/sessions",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/admin/users/" + managed.getId() + "/sessions",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
         ResponseEntity<String> revoke = restTemplate.exchange(
-                "/auth/admin/users/" + managed.getId() + "/sessions/revoke",
-                HttpMethod.POST,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/admin/users/" + managed.getId() + "/sessions/revoke",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            String.class
+        );
         ResponseEntity<String> refreshAfterRevoke = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", managedTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", managedTokens.refreshToken()),
+            String.class
+        );
 
         assertThat(listedUsers.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listedUsers.getBody()).contains("admin@example.com", "managed@example.com");
         assertThat(roleUpdate.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(userRepository.findById(managed.getId()).orElseThrow().getRole()).isEqualTo(UserRole.SUPPORT);
+        assertThat(userRepository.findById(managed.getId()).orElseThrow().getRole()).isEqualTo(
+            UserRole.SUPPORT
+        );
         assertThat(sessions.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(sessions.getBody()).contains(managed.getId().toString(), "\"active\":true");
         assertThat(revoke.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -329,32 +553,41 @@ class AuthRegistrationTest {
         userRepository.save(admin);
         User managed = userRepository.findByEmail("delete-managed@example.com").orElseThrow();
         AuthTokenResponse adminTokens = login("delete-admin@example.com", "Password123!").getBody();
-        AuthTokenResponse managedTokens = login("delete-managed@example.com", "Password123!").getBody();
+        AuthTokenResponse managedTokens = login(
+            "delete-managed@example.com",
+            "Password123!"
+        ).getBody();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(adminTokens.accessToken());
         ResponseEntity<String> deleted = restTemplate.exchange(
-                "/auth/admin/users/" + managed.getId(),
-                HttpMethod.DELETE,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/admin/users/" + managed.getId(),
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            String.class
+        );
         ResponseEntity<String> loginAfterDelete = restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", "delete-managed@example.com", "password", "Password123!"),
-                String.class);
+            "/auth/login",
+            Map.of("email", "delete-managed@example.com", "password", "Password123!"),
+            String.class
+        );
         ResponseEntity<String> refreshAfterDelete = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", managedTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", managedTokens.refreshToken()),
+            String.class
+        );
 
         assertLifecycleOutbox(managed.getId(), "DELETED");
         assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(deleted.getBody()).contains("\"status\":\"DELETED\"");
-        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.DELETED);
+        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(
+            UserStatus.DELETED
+        );
         assertThat(loginAfterDelete.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(refreshAfterDelete.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        assertThat(refreshTokenRepository.findByUserId(managed.getId()))
-                .allSatisfy(token -> assertThat(token.getRevokedAt()).isNotNull());
+        assertThat(refreshTokenRepository.findByUserId(managed.getId())).allSatisfy(token ->
+            assertThat(token.getRevokedAt()).isNotNull()
+        );
     }
 
     @Test
@@ -366,19 +599,24 @@ class AuthRegistrationTest {
         userRepository.save(admin);
         User managed = userRepository.findByEmail("status-managed@example.com").orElseThrow();
         AuthTokenResponse adminTokens = login("status-admin@example.com", "Password123!").getBody();
-        AuthTokenResponse managedTokens = login("status-managed@example.com", "Password123!").getBody();
+        AuthTokenResponse managedTokens = login(
+            "status-managed@example.com",
+            "Password123!"
+        ).getBody();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(adminTokens.accessToken());
         ResponseEntity<String> disabled = restTemplate.exchange(
-                "/auth/admin/users/" + managed.getId() + "/status",
-                HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("status", "DISABLED"), headers),
-                String.class);
+            "/auth/admin/users/" + managed.getId() + "/status",
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("status", "DISABLED"), headers),
+            String.class
+        );
         ResponseEntity<String> refreshAfterDisable = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", managedTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", managedTokens.refreshToken()),
+            String.class
+        );
 
         assertLifecycleOutbox(managed.getId(), "DISABLED");
         assertThat(disabled.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -397,32 +635,51 @@ class AuthRegistrationTest {
         var adminTokens = login(admin.getEmail(), "Password123!").getBody();
         var managedTokens = login(managed.getEmail(), "Password123!").getBody();
         org.mockito.Mockito.doThrow(new IllegalStateException("outbox unavailable"))
-                .when(lifecycleOutbox).enqueueAccountLifecycle(org.mockito.ArgumentMatchers.any());
+            .when(lifecycleOutbox)
+            .enqueueAccountLifecycle(org.mockito.ArgumentMatchers.any());
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(adminTokens.accessToken());
-        var response = restTemplate.exchange("/auth/admin/users/" + managed.getId() + "/status", HttpMethod.PATCH,
-                new HttpEntity<>(Map.of("status", "DISABLED"), headers), String.class);
+        var response = restTemplate.exchange(
+            "/auth/admin/users/" + managed.getId() + "/status",
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("status", "DISABLED"), headers),
+            String.class
+        );
         assertThat(response.getStatusCode().is5xxServerError()).isTrue();
-        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.ACTIVE);
-        assertThat(refreshTokenRepository.findByUserId(managed.getId()))
-                .anySatisfy(token -> assertThat(token.getRevokedAt()).isNull());
-        assertThat(restTemplate.postForEntity("/auth/refresh", Map.of("refreshToken", managedTokens.refreshToken()), String.class)
-                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(
+            UserStatus.ACTIVE
+        );
+        assertThat(refreshTokenRepository.findByUserId(managed.getId())).anySatisfy(token ->
+            assertThat(token.getRevokedAt()).isNull()
+        );
+        assertThat(
+            restTemplate
+                .postForEntity(
+                    "/auth/refresh",
+                    Map.of("refreshToken", managedTokens.refreshToken()),
+                    String.class
+                )
+                .getStatusCode()
+        ).isEqualTo(HttpStatus.OK);
         org.mockito.Mockito.verifyNoInteractions(deviceLifecycle);
     }
 
     @Test
     void adminEndpointsRejectRegularUsers() {
         register("regular-admin-check@example.com", "Password123!");
-        AuthTokenResponse tokens = login("regular-admin-check@example.com", "Password123!").getBody();
+        AuthTokenResponse tokens = login(
+            "regular-admin-check@example.com",
+            "Password123!"
+        ).getBody();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(tokens.accessToken());
         ResponseEntity<String> response = restTemplate.exchange(
-                "/auth/admin/users",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/admin/users",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).contains("authorization_failed");
@@ -434,10 +691,11 @@ class AuthRegistrationTest {
         headers.setBearerAuth("not-a-jwt");
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/auth/me",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -449,10 +707,11 @@ class AuthRegistrationTest {
         headers.setBearerAuth(expiredAccessToken());
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/auth/me",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -464,10 +723,11 @@ class AuthRegistrationTest {
         headers.setBearerAuth(signedAccessTokenWithType("refresh", Instant.now().plusSeconds(900)));
 
         ResponseEntity<String> response = restTemplate.exchange(
-                "/auth/me",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -479,9 +739,10 @@ class AuthRegistrationTest {
         AuthTokenResponse tokens = login("refresh@example.com", "Password123!").getBody();
 
         ResponseEntity<AuthTokenResponse> response = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                AuthTokenResponse.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            AuthTokenResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -497,13 +758,15 @@ class AuthRegistrationTest {
         AuthTokenResponse tokens = login("revoked@example.com", "Password123!").getBody();
 
         ResponseEntity<AuthTokenResponse> firstRefresh = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                AuthTokenResponse.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            AuthTokenResponse.class
+        );
         ResponseEntity<String> secondRefresh = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
 
         assertThat(firstRefresh.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(secondRefresh.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -514,31 +777,40 @@ class AuthRegistrationTest {
     void refreshTokenReuseRevokesAllUserRefreshTokens() {
         register("reuse@example.com", "Password123!");
         AuthTokenResponse originalTokens = login("reuse@example.com", "Password123!").getBody();
-        AuthTokenResponse secondSessionTokens = login("reuse@example.com", "Password123!").getBody();
+        AuthTokenResponse secondSessionTokens = login(
+            "reuse@example.com",
+            "Password123!"
+        ).getBody();
         ResponseEntity<AuthTokenResponse> rotated = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", originalTokens.refreshToken()),
-                AuthTokenResponse.class);
+            "/auth/refresh",
+            Map.of("refreshToken", originalTokens.refreshToken()),
+            AuthTokenResponse.class
+        );
 
         ResponseEntity<String> reusedOriginalRefresh = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", originalTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", originalTokens.refreshToken()),
+            String.class
+        );
         ResponseEntity<String> rotatedRefreshAfterReuse = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", rotated.getBody().refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", rotated.getBody().refreshToken()),
+            String.class
+        );
         ResponseEntity<String> secondSessionRefreshAfterReuse = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", secondSessionTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", secondSessionTokens.refreshToken()),
+            String.class
+        );
 
         assertThat(rotated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(reusedOriginalRefresh.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(reusedOriginalRefresh.getBody()).contains("authentication_failed");
         assertThat(rotatedRefreshAfterReuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(rotatedRefreshAfterReuse.getBody()).contains("authentication_failed");
-        assertThat(secondSessionRefreshAfterReuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(secondSessionRefreshAfterReuse.getStatusCode()).isEqualTo(
+            HttpStatus.UNAUTHORIZED
+        );
         assertThat(secondSessionRefreshAfterReuse.getBody()).contains("authentication_failed");
     }
 
@@ -546,15 +818,17 @@ class AuthRegistrationTest {
     void refreshRejectsExpiredToken() {
         register("expired-refresh@example.com", "Password123!");
         AuthTokenResponse tokens = login("expired-refresh@example.com", "Password123!").getBody();
-        var refreshToken = refreshTokenRepository.findByTokenHash(refreshTokenService.hash(tokens.refreshToken()))
-                .orElseThrow();
+        var refreshToken = refreshTokenRepository
+            .findByTokenHash(refreshTokenService.hash(tokens.refreshToken()))
+            .orElseThrow();
         refreshToken.setExpiresAt(Instant.now().minusSeconds(1));
         refreshTokenRepository.save(refreshToken);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -569,9 +843,10 @@ class AuthRegistrationTest {
         userRepository.save(user);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).contains("authentication_failed");
@@ -583,13 +858,15 @@ class AuthRegistrationTest {
         AuthTokenResponse tokens = login("logout@example.com", "Password123!").getBody();
 
         ResponseEntity<String> logout = restTemplate.postForEntity(
-                "/auth/logout",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/logout",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
         ResponseEntity<String> refreshAfterLogout = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
 
         assertThat(logout.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(logout.getBody()).contains("logout successful");
@@ -606,18 +883,21 @@ class AuthRegistrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(firstTokens.accessToken());
         ResponseEntity<String> logoutAll = restTemplate.exchange(
-                "/auth/logout-all",
-                HttpMethod.POST,
-                new HttpEntity<>(headers),
-                String.class);
+            "/auth/logout-all",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            String.class
+        );
         ResponseEntity<String> firstRefreshAfterLogoutAll = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", firstTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", firstTokens.refreshToken()),
+            String.class
+        );
         ResponseEntity<String> secondRefreshAfterLogoutAll = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", secondTokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", secondTokens.refreshToken()),
+            String.class
+        );
 
         assertThat(logoutAll.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(logoutAll.getBody()).contains("logout-all successful");
@@ -635,31 +915,38 @@ class AuthRegistrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(tokens.accessToken());
         ResponseEntity<String> wrongCurrentPassword = restTemplate.exchange(
-                "/auth/change-password",
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of(
-                        "currentPassword", "Wrong123!",
-                        "newPassword", "NewPassword123!"), headers),
-                String.class);
+            "/auth/change-password",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("currentPassword", "Wrong123!", "newPassword", "NewPassword123!"),
+                headers
+            ),
+            String.class
+        );
         ResponseEntity<String> changedPassword = restTemplate.exchange(
-                "/auth/change-password",
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of(
-                        "currentPassword", "Password123!",
-                        "newPassword", "NewPassword123!"), headers),
-                String.class);
+            "/auth/change-password",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("currentPassword", "Password123!", "newPassword", "NewPassword123!"),
+                headers
+            ),
+            String.class
+        );
         ResponseEntity<String> refreshAfterPasswordChange = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
         ResponseEntity<AuthTokenResponse> oldPasswordLogin = restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", "change-password@example.com", "password", "Password123!"),
-                AuthTokenResponse.class);
+            "/auth/login",
+            Map.of("email", "change-password@example.com", "password", "Password123!"),
+            AuthTokenResponse.class
+        );
         ResponseEntity<AuthTokenResponse> newPasswordLogin = restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", "change-password@example.com", "password", "NewPassword123!"),
-                AuthTokenResponse.class);
+            "/auth/login",
+            Map.of("email", "change-password@example.com", "password", "NewPassword123!"),
+            AuthTokenResponse.class
+        );
 
         assertThat(wrongCurrentPassword.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(changedPassword.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -678,13 +965,21 @@ class AuthRegistrationTest {
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
             java.util.concurrent.Callable<HttpStatus> refresh = () -> {
                 barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
-                var response = restTemplate.postForEntity("/auth/refresh", Map.of("refreshToken", original.refreshToken()), String.class);
+                var response = restTemplate.postForEntity(
+                    "/auth/refresh",
+                    Map.of("refreshToken", original.refreshToken()),
+                    String.class
+                );
                 return HttpStatus.valueOf(response.getStatusCode().value());
             };
             var first = executor.submit(refresh);
             var second = executor.submit(refresh);
-            assertThat(java.util.List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS), second.get(15, java.util.concurrent.TimeUnit.SECONDS)))
-                    .containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.UNAUTHORIZED);
+            assertThat(
+                java.util.List.of(
+                    first.get(15, java.util.concurrent.TimeUnit.SECONDS),
+                    second.get(15, java.util.concurrent.TimeUnit.SECONDS)
+                )
+            ).containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.UNAUTHORIZED);
         }
     }
 
@@ -693,26 +988,36 @@ class AuthRegistrationTest {
         register("reset@example.com", "Password123!");
         AuthTokenResponse tokens = login("reset@example.com", "Password123!").getBody();
         ResponseEntity<String> resetRequest = restTemplate.postForEntity(
-                "/auth/forgot-password",
-                Map.of("email", "reset@example.com"),
-                String.class);
+            "/auth/forgot-password",
+            Map.of("email", "reset@example.com"),
+            String.class
+        );
         String resetToken = deliveredCode("reset@example.com", "password reset");
         assertThat(resetRequest.getBody()).doesNotContain(resetToken);
 
         ResponseEntity<String> reset = restTemplate.postForEntity(
-                "/auth/reset-password",
-                Map.of("token", resetToken, "newPassword", "ResetPassword123!"),
-                String.class);
+            "/auth/reset-password",
+            Map.of("token", resetToken, "newPassword", "ResetPassword123!"),
+            String.class
+        );
         ResponseEntity<String> reusedReset = restTemplate.postForEntity(
-                "/auth/reset-password",
-                Map.of("token", resetToken, "newPassword", "AnotherReset123!"),
-                String.class);
+            "/auth/reset-password",
+            Map.of("token", resetToken, "newPassword", "AnotherReset123!"),
+            String.class
+        );
         ResponseEntity<String> refreshAfterReset = restTemplate.postForEntity(
-                "/auth/refresh",
-                Map.of("refreshToken", tokens.refreshToken()),
-                String.class);
-        ResponseEntity<AuthTokenResponse> oldPasswordLogin = login("reset@example.com", "Password123!");
-        ResponseEntity<AuthTokenResponse> newPasswordLogin = login("reset@example.com", "ResetPassword123!");
+            "/auth/refresh",
+            Map.of("refreshToken", tokens.refreshToken()),
+            String.class
+        );
+        ResponseEntity<AuthTokenResponse> oldPasswordLogin = login(
+            "reset@example.com",
+            "Password123!"
+        );
+        ResponseEntity<AuthTokenResponse> newPasswordLogin = login(
+            "reset@example.com",
+            "ResetPassword123!"
+        );
 
         assertThat(resetRequest.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -727,20 +1032,23 @@ class AuthRegistrationTest {
     void emailVerificationMarksUserVerifiedAndRejectsTokenReuse() {
         register("verify@example.com", "Password123!");
         ResponseEntity<String> verificationRequest = restTemplate.postForEntity(
-                "/auth/email-verification/request",
-                Map.of("email", "verify@example.com"),
-                String.class);
+            "/auth/email-verification/request",
+            Map.of("email", "verify@example.com"),
+            String.class
+        );
         String verificationToken = deliveredCode("verify@example.com", "email verification");
         assertThat(verificationRequest.getBody()).doesNotContain(verificationToken);
 
         ResponseEntity<String> verified = restTemplate.postForEntity(
-                "/auth/email-verification/confirm",
-                Map.of("token", verificationToken),
-                String.class);
+            "/auth/email-verification/confirm",
+            Map.of("token", verificationToken),
+            String.class
+        );
         ResponseEntity<String> reusedVerification = restTemplate.postForEntity(
-                "/auth/email-verification/confirm",
-                Map.of("token", verificationToken),
-                String.class);
+            "/auth/email-verification/confirm",
+            Map.of("token", verificationToken),
+            String.class
+        );
 
         User user = userRepository.findByEmail("verify@example.com").orElseThrow();
         assertThat(verificationRequest.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -755,10 +1063,12 @@ class AuthRegistrationTest {
         register("cleanup@example.com", "Password123!");
         AuthTokenResponse expiredTokens = login("cleanup@example.com", "Password123!").getBody();
         AuthTokenResponse activeTokens = login("cleanup@example.com", "Password123!").getBody();
-        var expiredRefreshToken = refreshTokenRepository.findByTokenHash(refreshTokenService.hash(expiredTokens.refreshToken()))
-                .orElseThrow();
-        var activeRefreshToken = refreshTokenRepository.findByTokenHash(refreshTokenService.hash(activeTokens.refreshToken()))
-                .orElseThrow();
+        var expiredRefreshToken = refreshTokenRepository
+            .findByTokenHash(refreshTokenService.hash(expiredTokens.refreshToken()))
+            .orElseThrow();
+        var activeRefreshToken = refreshTokenRepository
+            .findByTokenHash(refreshTokenService.hash(activeTokens.refreshToken()))
+            .orElseThrow();
         expiredRefreshToken.setExpiresAt(Instant.now().minusSeconds(1));
         refreshTokenRepository.save(expiredRefreshToken);
 
@@ -770,18 +1080,21 @@ class AuthRegistrationTest {
     }
 
     private RegisterResponse register(String email, String password) {
-        return restTemplate.postForEntity(
-                        "/auth/register",
-                        Map.of("email", email, "password", password),
-                        RegisterResponse.class)
-                .getBody();
+        return restTemplate
+            .postForEntity(
+                "/auth/register",
+                Map.of("email", email, "password", password),
+                RegisterResponse.class
+            )
+            .getBody();
     }
 
     private ResponseEntity<AuthTokenResponse> login(String email, String password) {
         return restTemplate.postForEntity(
-                "/auth/login",
-                Map.of("email", email, "password", password),
-                AuthTokenResponse.class);
+            "/auth/login",
+            Map.of("email", email, "password", password),
+            AuthTokenResponse.class
+        );
     }
 
     private String tokenFromMessage(String body) {
@@ -795,8 +1108,17 @@ class AuthRegistrationTest {
 
     private String signedAccessTokenWithType(String tokenType, Instant expiresAt) {
         long ttlSeconds = expiresAt.getEpochSecond() - Instant.now().getEpochSecond();
-        return new JwtAccessTokenService("change_me", "voltcanary-identity", "voltcanary-api")
-                .create(UUID.randomUUID().toString(), "expired@example.com", "USER", ttlSeconds, tokenType);
+        return new JwtAccessTokenService(
+            "change_me",
+            "voltcanary-identity",
+            "voltcanary-api"
+        ).create(
+            UUID.randomUUID().toString(),
+            "expired@example.com",
+            "USER",
+            ttlSeconds,
+            tokenType
+        );
     }
 
     private void assertAccessTokenClaims(String token) {
@@ -807,8 +1129,12 @@ class AuthRegistrationTest {
             assertThat(claims.getAudience()).contains("voltcanary-api");
             assertThat(claims.getJWTID()).isNotBlank();
             assertThat(claims.getStringClaim("typ")).isEqualTo("access");
-            assertThat(SignedJWT.parse(token).getHeader().getAlgorithm()).isEqualTo(JWSAlgorithm.RS256);
-            assertThat(SignedJWT.parse(token).getHeader().getKeyID()).isEqualTo(JwtAccessTokenService.DEV_KEY_ID);
+            assertThat(SignedJWT.parse(token).getHeader().getAlgorithm()).isEqualTo(
+                JWSAlgorithm.RS256
+            );
+            assertThat(SignedJWT.parse(token).getHeader().getKeyID()).isEqualTo(
+                JwtAccessTokenService.DEV_KEY_ID
+            );
         } catch (Exception exception) {
             throw new AssertionError("Failed to parse access token", exception);
         }

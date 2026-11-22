@@ -9,7 +9,13 @@ import java.util.UUID;
 public interface GrantReviewStore {
     GrantReview reserve(UUID account, UUID actor, UUID ruleReviewId, String key);
     GrantReview inspect(UUID account, UUID actor, UUID id);
-    GrantReview prepare(UUID account, UUID actor, UUID id, AutomationGrantScope scope, JsonNode pins);
+    GrantReview prepare(
+        UUID account,
+        UUID actor,
+        UUID id,
+        AutomationGrantScope scope,
+        JsonNode pins
+    );
     GrantReview begin(UUID account, UUID actor, UUID id, long revision, String digest, String key);
     GrantReview complete(UUID account, UUID actor, UUID id);
     GrantReview unknown(UUID account, UUID actor, UUID id, String code);

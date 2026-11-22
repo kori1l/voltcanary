@@ -15,13 +15,20 @@ import lombok.RequiredArgsConstructor;
 /** Same reviewed CAS/receipt engine, using actual workspace actors and fresh scoped reference authority. */
 @RequiredArgsConstructor
 public final class JdbcNativeSharedRowChanges implements NativeSharedRowChanges {
+
     private final DataSource source;
     private final Clock clock;
     private final NativeWorkspaceIdentity identity;
 
     @Override
     public NativeRowReview reserve(NativeSharedAccess access, long schemaRevision, String key) {
-        return reviews(access).reserve(access.account(), access.actor(), access.dataset(), schemaRevision, key);
+        return reviews(access).reserve(
+            access.account(),
+            access.actor(),
+            access.dataset(),
+            schemaRevision,
+            key
+        );
     }
 
     @Override
@@ -35,16 +42,46 @@ public final class JdbcNativeSharedRowChanges implements NativeSharedRowChanges 
     }
 
     @Override
-    public NativeRowReview apply(NativeSharedAccess access, UUID review, long revision, String digest, String key) {
+    public NativeRowReview apply(
+        NativeSharedAccess access,
+        UUID review,
+        long revision,
+        String digest,
+        String key
+    ) {
         var reviews = reviews(access);
-        var prepared = reviews.begin(access.account(), access.actor(), review, revision, digest, key);
+        var prepared = reviews.begin(
+            access.account(),
+            access.actor(),
+            review,
+            revision,
+            digest,
+            key
+        );
         if (Set.of("SUCCEEDED", "FAILED").contains(prepared.status())) return prepared;
         try {
-            return new JdbcNativeRowMutations(clock, transactions(access)).apply(access.account(), access.actor(), review);
+            return new JdbcNativeRowMutations(clock, transactions(access)).apply(
+                access.account(),
+                access.actor(),
+                review
+            );
         } catch (VclException failure) {
-            if (Set.of("DATA_ACCESS_DENIED", "ACCESS_SCOPE_CHANGED", "ACCOUNT_ACCESS_REVOKED", "WORKSPACE_AUTHORITY_UNAVAILABLE", "NATIVE_GRANT_INTEGRITY").contains(failure.code())) throw failure;
-            return reviews.outcome(access.account(), access.actor(), review,
-                    failure.code().equals("ROW_COMMIT_UNCERTAIN") ? "UNKNOWN" : "FAILED", failure.code());
+            if (
+                Set.of(
+                    "DATA_ACCESS_DENIED",
+                    "ACCESS_SCOPE_CHANGED",
+                    "ACCOUNT_ACCESS_REVOKED",
+                    "WORKSPACE_AUTHORITY_UNAVAILABLE",
+                    "NATIVE_GRANT_INTEGRITY"
+                ).contains(failure.code())
+            ) throw failure;
+            return reviews.outcome(
+                access.account(),
+                access.actor(),
+                review,
+                failure.code().equals("ROW_COMMIT_UNCERTAIN") ? "UNKNOWN" : "FAILED",
+                failure.code()
+            );
         }
     }
 

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record ExecutePlanResponse(
-        UUID planId,
-        String status,
-        List<ActionExecutionResponse> actions) {
-}
+    UUID planId,
+    String status,
+    List<ActionExecutionResponse> actions
+) {}

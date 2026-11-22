@@ -8,6 +8,8 @@ import {
   listMlLabels,
   listMlModels,
   listTrainingRuns,
+  getTrainingRun,
+  trainingPageSize,
   MlDatasetDetail,
   MlDatasetSummary,
   MlDeploymentPolicy,
@@ -29,7 +31,13 @@ import {
   saveAccountMlSettings,
   saveDeviceMlSettings,
 } from "../../../analytics/mlSettingsApi";
-import { Device, DeviceType, getDevice, listDevices, listDeviceTypes } from "../../../devices/devicesApi";
+import {
+  Device,
+  DeviceType,
+  getDevice,
+  listDevices,
+  listDeviceTypes,
+} from "../../../devices/devicesApi";
 import { useSectionResource } from "../../../components/useSectionResource";
 import { initialResource } from "../../../components/useSectionResource";
 import { useEntityResources } from "../../../components/useEntityResources";
@@ -52,17 +60,27 @@ export function useMlWorkspaceData({
   trainingStatusFilter,
   modelStatusFilter,
   policyStatusFilter,
+  selectedTrainingRunId = "",
 }: {
   datasetStatusFilter: MlLifecycleStatusFilter;
   trainingStatusFilter: MlLifecycleStatusFilter;
   modelStatusFilter: MlLifecycleStatusFilter;
   policyStatusFilter: MlLifecycleStatusFilter;
+  selectedTrainingRunId?: string;
 }) {
   const scopeGeneration = useRef(0);
   const detailGeneration = useRef(0);
   const labelsGeneration = useRef(0);
   const auditGeneration = useRef(0);
-  useEffect(() => () => { scopeGeneration.current++; detailGeneration.current++; labelsGeneration.current++; auditGeneration.current++; }, []);
+  useEffect(
+    () => () => {
+      scopeGeneration.current++;
+      detailGeneration.current++;
+      labelsGeneration.current++;
+      auditGeneration.current++;
+    },
+    [],
+  );
   const [values, setValues] = useState(initial);
   const [effective, setEffective] = useState<MlSettingsResponse | null>(null);
   const [deviceId, setDeviceId] = useState("");
@@ -76,8 +94,34 @@ export function useMlWorkspaceData({
   const datasets = datasetSection.data ?? [];
   const setDatasets = datasetSection.setData;
   const [datasetDetail, setDatasetDetail] = useState<MlDatasetDetail | null>(null);
-  const trainingSection = useSectionResource<MlTrainingRun[]>(trainingStatusFilter);
-  const trainingRuns = trainingSection.data ?? [];
+  const [trainingPaging, setTrainingPaging] = useState({ filter: trainingStatusFilter, page: 0 });
+  const trainingPage = trainingPaging.filter === trainingStatusFilter ? trainingPaging.page : 0;
+  const setTrainingPage = (page: number) =>
+    setTrainingPaging({ filter: trainingStatusFilter, page });
+  const trainingSection = useSectionResource<MlTrainingRun[]>(
+    `${trainingStatusFilter}:${trainingPage}`,
+  );
+  const trainingPageRuns = trainingSection.data ?? [];
+  const selectedRun = useSectionResource<MlTrainingRun>(
+    `${trainingStatusFilter}:${trainingPage}:${selectedTrainingRunId}`,
+  );
+  const trainingRuns =
+    selectedRun.data && !trainingPageRuns.some((run) => run.id === selectedRun.data?.id)
+      ? [...trainingPageRuns, selectedRun.data]
+      : trainingPageRuns;
+  useEffect(() => {
+    if (
+      trainingSection.data === null ||
+      !selectedTrainingRunId ||
+      trainingPageRuns.some((run) => run.id === selectedTrainingRunId)
+    )
+      return;
+    void selectedRun.load(async () => {
+      const run = await getTrainingRun(selectedTrainingRunId);
+      if (run.id !== selectedTrainingRunId) throw new Error("Selected training run unavailable");
+      return run;
+    });
+  }, [selectedTrainingRunId, trainingSection.data]);
   const setTrainingRuns = trainingSection.setData;
   const modelSection = useSectionResource<MlModelVersion[]>(modelStatusFilter);
   const models = modelSection.data ?? [];
@@ -92,7 +136,8 @@ export function useMlWorkspaceData({
   const setFeatureSnapshots = snapshotSection.setData;
   const labelResources = useEntityResources<MlLabel[]>("ml-labels");
   const [labelsDatasetVersionId, setLabelsDatasetVersionId] = useState("");
-  const labelResource = labelResources.items[labelsDatasetVersionId] ?? initialResource<MlLabel[]>();
+  const labelResource =
+    labelResources.items[labelsDatasetVersionId] ?? initialResource<MlLabel[]>();
   const labels = labelResource.data ?? [];
   const setLabels = (data: MlLabel[]) => labelResources.setData(labelsDatasetVersionId, data);
   const [labelAudit, setLabelAudit] = useState<MlLabelAudit[]>([]);
@@ -102,7 +147,15 @@ export function useMlWorkspaceData({
     void loadSelectors();
   }, []);
 
-  useEffect(() => { void refreshMlWorkspace(); }, [datasetStatusFilter, trainingStatusFilter, modelStatusFilter, policyStatusFilter]);
+  useEffect(() => {
+    void refreshMlWorkspace();
+  }, [
+    datasetStatusFilter,
+    trainingStatusFilter,
+    modelStatusFilter,
+    policyStatusFilter,
+    trainingPage,
+  ]);
 
   function adopt(v: MlSettingsResponse) {
     setEffective(v);
@@ -154,9 +207,19 @@ export function useMlWorkspaceData({
       if (generation !== scopeGeneration.current) return;
       adopt(response);
       setDeviceMode(true);
-      if (!devices.some((device) => device.id === requestedDeviceId)) void getDevice(requestedDeviceId).then((device) => { if (generation === scopeGeneration.current && device.id === requestedDeviceId) setDevices((current) => [...current.filter((item) => item.id !== device.id), device]); }).catch(() => { /* Ownership/settings evidence remains separate from unavailable device names/type. */ });
+      if (!devices.some((device) => device.id === requestedDeviceId))
+        void getDevice(requestedDeviceId)
+          .then((device) => {
+            if (generation === scopeGeneration.current && device.id === requestedDeviceId)
+              setDevices((current) => [...current.filter((item) => item.id !== device.id), device]);
+          })
+          .catch(() => {
+            /* Ownership/settings evidence remains separate from unavailable device names/type. */
+          });
       getLatestPrediction(requestedDeviceId)
-        .then((response) => { if (generation === scopeGeneration.current) setPrediction(response); })
+        .then((response) => {
+          if (generation === scopeGeneration.current) setPrediction(response);
+        })
         .catch((e) => {
           if (generation !== scopeGeneration.current) return;
           setPrediction(null);
@@ -175,10 +238,11 @@ export function useMlWorkspaceData({
       datasetSection.load(() => listMlDatasets(datasetStatusFilter), isEmptyList),
       snapshotSection.load(async () => {
         const response = await listFeatureSnapshots();
-        if (!Array.isArray(response)) throw new Error("Feature snapshot list is unavailable: invalid response");
+        if (!Array.isArray(response))
+          throw new Error("Feature snapshot list is unavailable: invalid response");
         return response;
       }, isEmptyList),
-      trainingSection.load(() => listTrainingRuns(trainingStatusFilter), isEmptyList),
+      trainingSection.load(() => listTrainingRuns(trainingStatusFilter, trainingPage), isEmptyList),
       modelSection.load(() => listMlModels(modelStatusFilter), isEmptyList),
       policySection.load(() => listDeploymentPolicies(policyStatusFilter), isEmptyList),
     ]);
@@ -200,7 +264,10 @@ export function useMlWorkspaceData({
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (busy || !effective || (deviceMode && effective.deviceId !== deviceId.trim())) { setError("Load the selected scope before saving its settings."); return; }
+    if (busy || !effective || (deviceMode && effective.deviceId !== deviceId.trim())) {
+      setError("Load the selected scope before saving its settings.");
+      return;
+    }
     if (values.confidenceWarningThreshold < 0 || values.confidenceWarningThreshold > 1) {
       setError("Confidence threshold must be between 0 and 1");
       return;
@@ -212,7 +279,11 @@ export function useMlWorkspaceData({
     setBusy(true);
     setError(null);
     try {
-      adopt(deviceMode ? await saveDeviceMlSettings(deviceId, values) : await saveAccountMlSettings(values));
+      adopt(
+        deviceMode
+          ? await saveDeviceMlSettings(deviceId, values)
+          : await saveAccountMlSettings(values),
+      );
       setMessage("ML settings saved");
     } catch (x) {
       setError(safeMlError(x));
@@ -242,7 +313,12 @@ export function useMlWorkspaceData({
     setError(null);
     try {
       const response = await getMlDatasetVersion(datasetVersionId);
-      if (!response?.dataset || response.dataset.datasetVersionId !== datasetVersionId || !Array.isArray(response.lineage)) throw new Error("Selected dataset detail unavailable: invalid lineage response");
+      if (
+        !response?.dataset ||
+        response.dataset.datasetVersionId !== datasetVersionId ||
+        !Array.isArray(response.lineage)
+      )
+        throw new Error("Selected dataset detail unavailable: invalid lineage response");
       if (generation === detailGeneration.current) setDatasetDetail(response);
     } catch (e) {
       if (generation === detailGeneration.current) setError(safeMlError(e));
@@ -276,13 +352,48 @@ export function useMlWorkspaceData({
     labelResource,
     labelsDatasetVersionId,
     sections: [
-      { label: "datasets", id: "dataset", resource: datasetSection, retry: () => datasetSection.load(() => listMlDatasets(datasetStatusFilter), isEmptyList) },
-      { label: "snapshots", id: "snapshot", resource: snapshotSection, retry: () => snapshotSection.load(listFeatureSnapshots, isEmptyList) },
-      { label: "training runs", id: "training", resource: trainingSection, retry: () => trainingSection.load(() => listTrainingRuns(trainingStatusFilter), isEmptyList) },
-      { label: "models", id: "model", resource: modelSection, retry: () => modelSection.load(() => listMlModels(modelStatusFilter), isEmptyList) },
-      { label: "policies", id: "policy", resource: policySection, retry: () => policySection.load(() => listDeploymentPolicies(policyStatusFilter), isEmptyList) },
+      {
+        label: "datasets",
+        id: "dataset",
+        resource: datasetSection,
+        retry: () => datasetSection.load(() => listMlDatasets(datasetStatusFilter), isEmptyList),
+      },
+      {
+        label: "snapshots",
+        id: "snapshot",
+        resource: snapshotSection,
+        retry: () => snapshotSection.load(listFeatureSnapshots, isEmptyList),
+      },
+      {
+        label: "training runs",
+        id: "training",
+        resource: trainingSection,
+        retry: () =>
+          trainingSection.load(
+            () => listTrainingRuns(trainingStatusFilter, trainingPage),
+            isEmptyList,
+          ),
+      },
+      {
+        label: "models",
+        id: "model",
+        resource: modelSection,
+        retry: () => modelSection.load(() => listMlModels(modelStatusFilter), isEmptyList),
+      },
+      {
+        label: "policies",
+        id: "policy",
+        resource: policySection,
+        retry: () =>
+          policySection.load(() => listDeploymentPolicies(policyStatusFilter), isEmptyList),
+      },
     ],
-    dataAvailable: { datasets: datasetSection.data !== null, models: modelSection.data !== null, trainingRuns: trainingSection.data !== null, policies: policySection.data !== null },
+    dataAvailable: {
+      datasets: datasetSection.data !== null,
+      models: modelSection.data !== null,
+      trainingRuns: trainingSection.data !== null,
+      policies: policySection.data !== null,
+    },
     values,
     setValues,
     effective,
@@ -302,6 +413,11 @@ export function useMlWorkspaceData({
     datasetDetail,
     setDatasetDetail,
     trainingRuns,
+    trainingPageRuns,
+    trainingPage,
+    setTrainingPage,
+    trainingHasMore: trainingPageRuns.length === trainingPageSize,
+    trainingLoading: trainingSection.status === "loading" || trainingSection.refreshing,
     setTrainingRuns,
     models,
     setModels,

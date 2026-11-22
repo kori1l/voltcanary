@@ -18,7 +18,10 @@ public class MetricValueGenerator {
     public Map<String, Object> metrics(SimulationContext context) {
         Map<String, Object> metrics = new LinkedHashMap<>();
         double voltage = constantMetricGenerator.value(230, 1.5);
-        double activePower = anomalyInjector.activePower(context, cycleMetricGenerator.activePower(context));
+        double activePower = anomalyInjector.activePower(
+            context,
+            cycleMetricGenerator.activePower(context)
+        );
         metrics.put("activePowerW", round(activePower));
         metrics.put("voltageV", round(voltage));
         metrics.put("currentA", round(derivedMetricCalculator.currentA(metrics)));

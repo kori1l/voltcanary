@@ -1,4 +1,3 @@
 package com.voltcanary.simulator.yaml;
 
-public record TargetConfig(String sourceId) {
-}
+public record TargetConfig(String sourceId) {}

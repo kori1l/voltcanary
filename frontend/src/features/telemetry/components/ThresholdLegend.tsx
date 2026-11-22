@@ -1,7 +1,13 @@
 import { MetricThreshold } from "../model/telemetry.types";
 import { formatCompactNumber } from "../model/telemetry.utils";
 
-export function ThresholdLegend({ threshold, unit }: { threshold?: MetricThreshold; unit: string }) {
+export function ThresholdLegend({
+  threshold,
+  unit,
+}: {
+  threshold?: MetricThreshold;
+  unit: string;
+}) {
   if (!threshold) {
     return (
       <section className="analysis-panel">
@@ -45,7 +51,8 @@ export function ThresholdLegend({ threshold, unit }: { threshold?: MetricThresho
 }
 
 function formatRange(min: number | undefined, max: number | undefined, unit: string) {
-  if (min !== undefined && max !== undefined) return `${formatCompactNumber(min)}-${formatCompactNumber(max)} ${unit}`;
+  if (min !== undefined && max !== undefined)
+    return `${formatCompactNumber(min)}-${formatCompactNumber(max)} ${unit}`;
   if (min !== undefined) return `Above ${formatCompactNumber(min)} ${unit}`;
   if (max !== undefined) return `Below ${formatCompactNumber(max)} ${unit}`;
   return "Not configured";

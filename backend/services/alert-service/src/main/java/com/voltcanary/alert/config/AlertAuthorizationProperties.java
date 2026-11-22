@@ -15,5 +15,4 @@ public class AlertAuthorizationProperties {
     private boolean enabled = true;
     private String deviceServiceBaseUrl = "http://localhost:8082";
     private Duration timeout = Duration.ofSeconds(2);
-
 }

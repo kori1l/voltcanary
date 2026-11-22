@@ -25,27 +25,30 @@ public class IdentityLifecycleOutboxService {
         Instant now = Instant.now();
         UUID eventId = UUID.randomUUID();
         IdentityAccountLifecycleEvent event = new IdentityAccountLifecycleEvent(
-                eventId,
-                "v1",
-                user.getId(),
-                user.getEmail(),
-                accountStatus(user.getStatus()),
-                now,
-                null,
-                "identity-service",
-                user.getId());
-        jdbcTemplate.update("""
-                insert into identity_event_outbox
-                    (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at)
-                values (?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
-                """,
-                eventId,
-                TOPIC + ":" + eventId,
-                TOPIC,
-                user.getId().toString(),
-                payload(event),
-                Timestamp.from(now),
-                Timestamp.from(now));
+            eventId,
+            "v1",
+            user.getId(),
+            user.getEmail(),
+            accountStatus(user.getStatus()),
+            now,
+            null,
+            "identity-service",
+            user.getId()
+        );
+        jdbcTemplate.update(
+            """
+            insert into identity_event_outbox
+                (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at)
+            values (?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
+            """,
+            eventId,
+            TOPIC + ":" + eventId,
+            TOPIC,
+            user.getId().toString(),
+            payload(event),
+            Timestamp.from(now),
+            Timestamp.from(now)
+        );
     }
 
     private String accountStatus(UserStatus userStatus) {
@@ -62,7 +65,10 @@ public class IdentityLifecycleOutboxService {
         try {
             return objectMapper.writeValueAsString(event);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to serialize identity lifecycle event", exception);
+            throw new IllegalStateException(
+                "Failed to serialize identity lifecycle event",
+                exception
+            );
         }
     }
 }

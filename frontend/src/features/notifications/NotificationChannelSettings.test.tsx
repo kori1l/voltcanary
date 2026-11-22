@@ -1,14 +1,34 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import * as api from "../../alerts/alertsApi";
 import { NotificationChannelSettings } from "./NotificationChannelSettings";
 vi.mock("./NotificationChannelOperations", () => ({ NotificationChannelOperations: () => null }));
-vi.mock("../../alerts/alertsApi", async () => ({ ...await vi.importActual<typeof api>("../../alerts/alertsApi"), listNotificationChannels: vi.fn(), createNotificationChannel: vi.fn(), disableNotificationChannel: vi.fn() }));
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
-const channel = (id: string, name = "Ops webhook"): api.NotificationChannelResponse => ({ id, name, accountId: "account-1", channelType: "WEBHOOK", config: {}, enabled: true, createdAt: "2026-10-08", updatedAt: "2026-10-08" });
+vi.mock("../../alerts/alertsApi", async () => ({
+  ...(await vi.importActual<typeof api>("../../alerts/alertsApi")),
+  listNotificationChannels: vi.fn(),
+  createNotificationChannel: vi.fn(),
+  disableNotificationChannel: vi.fn(),
+}));
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+});
+const channel = (id: string, name = "Ops webhook"): api.NotificationChannelResponse => ({
+  id,
+  name,
+  accountId: "account-1",
+  channelType: "WEBHOOK",
+  config: {},
+  enabled: true,
+  createdAt: "2026-10-08",
+  updatedAt: "2026-10-08",
+});
 it("retains a created canonical channel after list failure and retries only reads", async () => {
-  vi.mocked(api.listNotificationChannels).mockResolvedValueOnce([]).mockRejectedValueOnce(new Error("offline")).mockResolvedValue([channel("created-1")]);
+  vi.mocked(api.listNotificationChannels)
+    .mockResolvedValueOnce([])
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValue([channel("created-1")]);
   vi.mocked(api.createNotificationChannel).mockResolvedValue(channel("created-1"));
   render(<NotificationChannelSettings />);
   await screen.findByText("No notification channels configured.");
@@ -21,7 +41,9 @@ it("retains a created canonical channel after list failure and retries only read
   expect(api.listNotificationChannels).toHaveBeenCalledTimes(3);
 });
 it("blocks ambiguous create until the operator reviews a matching canonical record", async () => {
-  vi.mocked(api.listNotificationChannels).mockResolvedValueOnce([]).mockResolvedValue([channel("existing-1")]);
+  vi.mocked(api.listNotificationChannels)
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([channel("existing-1")]);
   vi.mocked(api.createNotificationChannel).mockRejectedValue(new TypeError("response lost"));
   render(<NotificationChannelSettings />);
   await screen.findByText("No notification channels configured.");
@@ -34,9 +56,18 @@ it("blocks ambiguous create until the operator reviews a matching canonical reco
   expect(api.createNotificationChannel).toHaveBeenCalledTimes(1);
 });
 it("guards one channel row while another channel remains operable", async () => {
-  vi.mocked(api.listNotificationChannels).mockResolvedValue([channel("A", "Channel A"), channel("B", "Channel B")]);
+  vi.mocked(api.listNotificationChannels).mockResolvedValue([
+    channel("A", "Channel A"),
+    channel("B", "Channel B"),
+  ]);
   let release!: (value: api.NotificationChannelResponse) => void;
-  vi.mocked(api.disableNotificationChannel).mockImplementation((id) => id === "A" ? new Promise((resolve) => { release = resolve; }) : Promise.resolve({ ...channel("B", "Channel B"), enabled: false }));
+  vi.mocked(api.disableNotificationChannel).mockImplementation((id) =>
+    id === "A"
+      ? new Promise((resolve) => {
+          release = resolve;
+        })
+      : Promise.resolve({ ...channel("B", "Channel B"), enabled: false }),
+  );
   render(<NotificationChannelSettings />);
   const a = (await screen.findByText("Channel A")).closest("article")!;
   const b = screen.getByText("Channel B").closest("article")!;
@@ -45,5 +76,7 @@ it("guards one channel row while another channel remains operable", async () => 
   expect(within(b).getByText("Disable")).toBeEnabled();
   await userEvent.click(within(b).getByText("Disable"));
   expect(api.disableNotificationChannel).toHaveBeenCalledTimes(2);
-  release({ ...channel("A", "Channel A"), enabled: false });
+  await act(async () => {
+    release({ ...channel("A", "Channel A"), enabled: false });
+  });
 });

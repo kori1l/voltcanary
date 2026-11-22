@@ -27,16 +27,20 @@ public class AnalyticsOutboxReconciliationService {
 
     @Scheduled(fixedDelayString = "#{@analyticsOutboxReconciliationProperties.interval.toMillis()}")
     public void reconcile() {
-        if (!properties.isEnabled() || !schedulerLockService.acquire(LOCK_NAME, properties.getLockLease())) {
+        if (
+            !properties.isEnabled() ||
+            !schedulerLockService.acquire(LOCK_NAME, properties.getLockLease())
+        ) {
             return;
         }
         try {
             ReconciliationResult result = reconcileDueRows(Instant.now());
             if (result.total() > 0) {
                 log.info(
-                        "analyticsOutboxReconciliation failedReset={} processingReset={}",
-                        result.failedReset(),
-                        result.processingReset());
+                    "analyticsOutboxReconciliation failedReset={} processingReset={}",
+                    result.failedReset(),
+                    result.processingReset()
+                );
             }
         } finally {
             schedulerLockService.release(LOCK_NAME);
@@ -45,49 +49,57 @@ public class AnalyticsOutboxReconciliationService {
 
     public ReconciliationResult reconcileDueRows(Instant now) {
         return transactionTemplate.execute(status -> {
-            int failedReset = jdbcTemplate.update("""
-                    update analytics_event_outbox
-                    set status = 'PENDING',
-                        next_attempt_at = ?,
-                        locked_at = null,
-                        locked_by = null,
-                        last_error = null
-                    where id in (
-                        select id
-                        from analytics_event_outbox
-                        where status = 'FAILED'
-                          and created_at <= ?
-                        order by created_at asc
-                        limit ?
-                    )
-                    """,
-                    Timestamp.from(now.plus(properties.getRetryDelay())),
-                    Timestamp.from(now.minus(properties.getFailedAfter())),
-                    Math.max(1, properties.getBatchSize()));
-            int processingReset = jdbcTemplate.update("""
-                    update analytics_event_outbox
-                    set status = 'PENDING',
-                        next_attempt_at = ?,
-                        locked_at = null,
-                        locked_by = null,
-                        last_error = null
-                    where id in (
-                        select id
-                        from analytics_event_outbox
-                        where status = 'PROCESSING'
-                          and locked_at <= ?
-                        order by created_at asc
-                        limit ?
-                    )
-                    """,
-                    Timestamp.from(now.plus(properties.getRetryDelay())),
-                    Timestamp.from(now.minus(properties.getProcessingTimeout())),
-                    Math.max(1, properties.getBatchSize()));
+            int failedReset = jdbcTemplate.update(
+                """
+                update analytics_event_outbox
+                set status = 'PENDING',
+                    next_attempt_at = ?,
+                    locked_at = null,
+                    locked_by = null,
+                    last_error = null
+                where id in (
+                    select id
+                    from analytics_event_outbox
+                    where status = 'FAILED'
+                      and created_at <= ?
+                    order by created_at asc
+                    limit ?
+                )
+                """,
+                Timestamp.from(now.plus(properties.getRetryDelay())),
+                Timestamp.from(now.minus(properties.getFailedAfter())),
+                Math.max(1, properties.getBatchSize())
+            );
+            int processingReset = jdbcTemplate.update(
+                """
+                update analytics_event_outbox
+                set status = 'PENDING',
+                    next_attempt_at = ?,
+                    locked_at = null,
+                    locked_by = null,
+                    last_error = null
+                where id in (
+                    select id
+                    from analytics_event_outbox
+                    where status = 'PROCESSING'
+                      and locked_at <= ?
+                    order by created_at asc
+                    limit ?
+                )
+                """,
+                Timestamp.from(now.plus(properties.getRetryDelay())),
+                Timestamp.from(now.minus(properties.getProcessingTimeout())),
+                Math.max(1, properties.getBatchSize())
+            );
             if (failedReset > 0) {
-                meterRegistry.counter("analytics.outbox.reconciled", "status", "FAILED").increment(failedReset);
+                meterRegistry
+                    .counter("analytics.outbox.reconciled", "status", "FAILED")
+                    .increment(failedReset);
             }
             if (processingReset > 0) {
-                meterRegistry.counter("analytics.outbox.reconciled", "status", "PROCESSING").increment(processingReset);
+                meterRegistry
+                    .counter("analytics.outbox.reconciled", "status", "PROCESSING")
+                    .increment(processingReset);
             }
             return new ReconciliationResult(failedReset, processingReset);
         });

@@ -1,5 +1,13 @@
 package com.voltcanary.simulator;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
 import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.domain.SimulationProtocol;
 import com.voltcanary.simulator.domain.SimulationRun;
@@ -21,14 +29,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.server.ResponseStatusException;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 class SimulationPersistenceTest {
@@ -67,16 +67,39 @@ class SimulationPersistenceTest {
         UUID secondSource = UUID.randomUUID();
         profileService.save(userId, deviceId, request(firstSource, "sim-first", "original"));
 
-        var sameSource = profileService.save(userId, deviceId, new SaveSimulationConfigRequest(
-                firstSource, "rename", SimulationProfile.FRIDGE, SimulationProtocol.HTTP, yaml("sim-first", "rename"), null));
+        var sameSource = profileService.save(
+            userId,
+            deviceId,
+            new SaveSimulationConfigRequest(
+                firstSource,
+                "rename",
+                SimulationProfile.FRIDGE,
+                SimulationProtocol.HTTP,
+                yaml("sim-first", "rename"),
+                null
+            )
+        );
         assertThat(sameSource.hasSourceToken()).isTrue();
 
-        var changedSource = profileService.save(userId, deviceId, new SaveSimulationConfigRequest(
-                secondSource, "rebind", SimulationProfile.FRIDGE, SimulationProtocol.HTTP, yaml("sim-second", "rebind"), null));
+        var changedSource = profileService.save(
+            userId,
+            deviceId,
+            new SaveSimulationConfigRequest(
+                secondSource,
+                "rebind",
+                SimulationProfile.FRIDGE,
+                SimulationProtocol.HTTP,
+                yaml("sim-second", "rebind"),
+                null
+            )
+        );
         assertThat(changedSource.hasSourceToken()).isFalse();
-        assertThat(configRepository.findByDeviceId(deviceId).orElseThrow().getSourceToken()).isNull();
+        assertThat(
+            configRepository.findByDeviceId(deviceId).orElseThrow().getSourceToken()
+        ).isNull();
         assertThatThrownBy(() -> runManager.start(userId, deviceId))
-                .isInstanceOf(ResponseStatusException.class).hasMessageContaining("Simulation source token is missing");
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("Simulation source token is missing");
     }
 
     @Test
@@ -88,9 +111,7 @@ class SimulationPersistenceTest {
         profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v1"));
         profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-001", "v2"));
 
-        assertThat(profileService.versions(deviceId))
-                .extracting("version")
-                .containsExactly(2, 1);
+        assertThat(profileService.versions(deviceId)).extracting("version").containsExactly(2, 1);
 
         var started = runManager.start(userId, deviceId);
         assertThat(started.status()).isEqualTo(SimulationRunStatus.RUNNING);
@@ -101,8 +122,8 @@ class SimulationPersistenceTest {
 
         var detail = runManager.run(started.runId());
         assertThat(detail.events())
-                .extracting("eventType")
-                .containsExactly("STARTING", "RUNNING", "STOPPING", "STOPPED");
+            .extracting("eventType")
+            .containsExactly("STARTING", "RUNNING", "STOPPING", "STOPPED");
         assertThat(runEventRepository.findByRunIdOrderByCreatedAtAsc(started.runId())).hasSize(4);
     }
 
@@ -112,15 +133,24 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
 
-        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-active-lease", "active-lease"));
+        profileService.save(
+            userId,
+            deviceId,
+            request(dataSourceId, "sim-fridge-active-lease", "active-lease")
+        );
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
-        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        SimulationRun run = activeRun(
+            config.getId(),
+            config.getAccountId(),
+            deviceId,
+            dataSourceId
+        );
         run.setLeaseUntil(Instant.now().plusSeconds(300));
         runRepository.saveAndFlush(run);
 
         assertThatThrownBy(() -> runManager.start(userId, deviceId))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("409 CONFLICT");
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("409 CONFLICT");
     }
 
     @Test
@@ -129,17 +159,27 @@ class SimulationPersistenceTest {
         UUID deviceId = UUID.randomUUID();
         UUID dataSourceId = UUID.randomUUID();
 
-        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-expired-lease", "expired-lease"));
+        profileService.save(
+            userId,
+            deviceId,
+            request(dataSourceId, "sim-fridge-expired-lease", "expired-lease")
+        );
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
-        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        SimulationRun run = activeRun(
+            config.getId(),
+            config.getAccountId(),
+            deviceId,
+            dataSourceId
+        );
         run.setLeaseUntil(Instant.now().minusSeconds(1));
         runRepository.saveAndFlush(run);
 
         var started = runManager.start(userId, deviceId);
 
         assertThat(started.status()).isEqualTo(SimulationRunStatus.RUNNING);
-        assertThat(runRepository.findById(run.getId()).orElseThrow().getStatus())
-                .isEqualTo(SimulationRunStatus.STOPPED);
+        assertThat(runRepository.findById(run.getId()).orElseThrow().getStatus()).isEqualTo(
+            SimulationRunStatus.STOPPED
+        );
     }
 
     @Test
@@ -150,9 +190,18 @@ class SimulationPersistenceTest {
         UUID runId = UUID.randomUUID();
         Instant leaseUntil = Instant.now().plusSeconds(120).truncatedTo(ChronoUnit.MICROS);
 
-        profileService.save(userId, deviceId, request(dataSourceId, "sim-fridge-lease-extension", "lease-extension"));
+        profileService.save(
+            userId,
+            deviceId,
+            request(dataSourceId, "sim-fridge-lease-extension", "lease-extension")
+        );
         var config = configRepository.findByDeviceId(deviceId).orElseThrow();
-        SimulationRun run = activeRun(config.getId(), config.getAccountId(), deviceId, dataSourceId);
+        SimulationRun run = activeRun(
+            config.getId(),
+            config.getAccountId(),
+            deviceId,
+            dataSourceId
+        );
         run.setId(runId);
         run.setLeaseOwner("simulator-test-replica");
         runRepository.saveAndFlush(run);
@@ -160,10 +209,17 @@ class SimulationPersistenceTest {
         int updated = runRepository.extendLease(runId, "simulator-test-replica", leaseUntil);
 
         assertThat(updated).isEqualTo(1);
-        assertThat(runRepository.findById(runId).orElseThrow().getLeaseUntil()).isEqualTo(leaseUntil);
+        assertThat(runRepository.findById(runId).orElseThrow().getLeaseUntil()).isEqualTo(
+            leaseUntil
+        );
     }
 
-    private SimulationRun activeRun(UUID configId, UUID accountId, UUID deviceId, UUID dataSourceId) {
+    private SimulationRun activeRun(
+        UUID configId,
+        UUID accountId,
+        UUID deviceId,
+        UUID dataSourceId
+    ) {
         SimulationRun run = new SimulationRun();
         run.setId(UUID.randomUUID());
         run.setConfigId(configId);
@@ -180,33 +236,34 @@ class SimulationPersistenceTest {
 
     private SaveSimulationConfigRequest request(UUID dataSourceId, String sourceId, String name) {
         return new SaveSimulationConfigRequest(
-                dataSourceId,
-                name,
-                SimulationProfile.FRIDGE,
-                SimulationProtocol.HTTP,
-                yaml(sourceId, name),
-                "vc_src_live_test_token");
+            dataSourceId,
+            name,
+            SimulationProfile.FRIDGE,
+            SimulationProtocol.HTTP,
+            yaml(sourceId, name),
+            "vc_src_live_test_token"
+        );
     }
 
     private String yaml(String sourceId, String name) {
         return """
-                schemaVersion: 1
-                simulator:
-                  name: %s
-                  profile: FRIDGE
-                  protocol: HTTP
-                target:
-                  sourceId: %s
-                schedule:
-                  interval: 1h
-                  duration: 1h
-                metrics:
-                  activePowerW:
-                    type: constant
-                    value: 120.0
-                  voltageV:
-                    type: constant
-                    value: 230.0
-                """.formatted(name, sourceId);
+        schemaVersion: 1
+        simulator:
+          name: %s
+          profile: FRIDGE
+          protocol: HTTP
+        target:
+          sourceId: %s
+        schedule:
+          interval: 1h
+          duration: 1h
+        metrics:
+          activePowerW:
+            type: constant
+            value: 120.0
+          voltageV:
+            type: constant
+            value: 230.0
+        """.formatted(name, sourceId);
     }
 }

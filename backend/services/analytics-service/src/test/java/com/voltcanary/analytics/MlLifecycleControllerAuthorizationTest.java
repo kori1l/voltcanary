@@ -30,67 +30,93 @@ class MlLifecycleControllerAuthorizationTest {
     private static final UUID ACCOUNT_ID = UUID.randomUUID();
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID TARGET_ID = UUID.randomUUID();
-    private static final MlLifecycleActionRequest REQUEST = new MlLifecycleActionRequest("cleanup", false);
+    private static final MlLifecycleActionRequest REQUEST = new MlLifecycleActionRequest(
+        "cleanup",
+        false
+    );
 
     @Test
     void datasetLifecycleWritesRejectViewerRole() {
         MlDatasetController controller = new MlDatasetController(
-                mock(MlDatasetService.class),
-                mock(MlExternalDatasetImportService.class),
-                mock(MlFeaturePipelineService.class),
-                mock(MlHorizonLabelGenerationService.class),
-                mock(AnalyticsAccessService.class),
-                new ObjectMapper());
+            mock(MlDatasetService.class),
+            mock(MlExternalDatasetImportService.class),
+            mock(MlFeaturePipelineService.class),
+            mock(MlHorizonLabelGenerationService.class),
+            mock(AnalyticsAccessService.class),
+            new ObjectMapper()
+        );
 
-        assertForbidden(() -> controller.deleteDatasetVersion(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
+        assertForbidden(() ->
+            controller.deleteDatasetVersion(
+                TARGET_ID,
+                ACCOUNT_ID,
+                USER_ID.toString(),
+                "VIEWER",
+                "corr",
+                REQUEST
+            )
+        );
     }
 
     @Test
     void featureSnapshotLifecycleWritesRejectViewerRole() {
         MlDatasetController controller = new MlDatasetController(
-                mock(MlDatasetService.class),
-                mock(MlExternalDatasetImportService.class),
-                mock(MlFeaturePipelineService.class),
-                mock(MlHorizonLabelGenerationService.class),
-                mock(AnalyticsAccessService.class),
-                new ObjectMapper());
+            mock(MlDatasetService.class),
+            mock(MlExternalDatasetImportService.class),
+            mock(MlFeaturePipelineService.class),
+            mock(MlHorizonLabelGenerationService.class),
+            mock(AnalyticsAccessService.class),
+            new ObjectMapper()
+        );
 
-        assertForbidden(() -> controller.deleteFeatureSnapshot(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
+        assertForbidden(() ->
+            controller.deleteFeatureSnapshot(
+                TARGET_ID,
+                ACCOUNT_ID,
+                USER_ID.toString(),
+                "VIEWER",
+                "corr",
+                REQUEST
+            )
+        );
     }
 
     @Test
     void datasetPreviewRequiresReadAccessForSelectedDevices() {
         AnalyticsAccessService accessService = mock(AnalyticsAccessService.class);
         MlDatasetController controller = new MlDatasetController(
-                mock(MlDatasetService.class),
-                mock(MlExternalDatasetImportService.class),
-                mock(MlFeaturePipelineService.class),
-                mock(MlHorizonLabelGenerationService.class),
-                accessService,
-                new ObjectMapper());
+            mock(MlDatasetService.class),
+            mock(MlExternalDatasetImportService.class),
+            mock(MlFeaturePipelineService.class),
+            mock(MlHorizonLabelGenerationService.class),
+            accessService,
+            new ObjectMapper()
+        );
 
         controller.previewInternalTelemetryDataset(
-                ACCOUNT_ID,
-                USER_ID.toString(),
-                "VIEWER",
-                "corr",
-                new MlDatasetWorkbenchPreviewRequest(
-                        null,
-                        List.of(TARGET_ID),
-                        null,
-                        null,
-                        null,
-                        List.of("activePowerW"),
-                        Instant.parse("2026-07-01T00:00:00Z"),
-                        Instant.parse("2026-07-02T00:00:00Z"),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        24,
-                        21600L,
-                        1));
+            ACCOUNT_ID,
+            USER_ID.toString(),
+            "VIEWER",
+            "corr",
+            new MlDatasetWorkbenchPreviewRequest(
+                null,
+                List.of(TARGET_ID),
+                null,
+                null,
+                null,
+                List.of("activePowerW"),
+                Instant.parse("2026-07-01T00:00:00Z"),
+                Instant.parse("2026-07-02T00:00:00Z"),
+                null,
+                null,
+                null,
+                null,
+                null,
+                24,
+                21600L,
+                1
+            )
+        );
 
         verify(accessService).requireReadAccess(TARGET_ID, USER_ID.toString(), "VIEWER", "corr");
     }
@@ -98,34 +124,59 @@ class MlLifecycleControllerAuthorizationTest {
     @Test
     void trainingLifecycleWritesRejectViewerRole() {
         MlTrainingController controller = new MlTrainingController(
-                mock(MlTrainingService.class),
-                mock(AnalyticsAccessService.class));
+            mock(MlTrainingService.class),
+            mock(AnalyticsAccessService.class)
+        );
 
-        assertForbidden(() -> controller.delete(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
+        assertForbidden(() ->
+            controller.delete(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST)
+        );
     }
 
     @Test
     void modelAndPolicyLifecycleWritesRejectViewerRole() {
         MlModelRegistryController controller = new MlModelRegistryController(
-                mock(MlModelRegistryService.class),
-                mock(AnalyticsAccessService.class));
+            mock(MlModelRegistryService.class),
+            mock(AnalyticsAccessService.class)
+        );
 
-        assertForbidden(() -> controller.deleteModel(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
-        assertForbidden(() -> controller.deletePolicy(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
+        assertForbidden(() ->
+            controller.deleteModel(
+                TARGET_ID,
+                ACCOUNT_ID,
+                USER_ID.toString(),
+                "VIEWER",
+                "corr",
+                REQUEST
+            )
+        );
+        assertForbidden(() ->
+            controller.deletePolicy(
+                TARGET_ID,
+                ACCOUNT_ID,
+                USER_ID.toString(),
+                "VIEWER",
+                "corr",
+                REQUEST
+            )
+        );
     }
 
     @Test
     void labelLifecycleWritesRejectViewerRole() {
         MlLabelController controller = new MlLabelController(
-                mock(MlLabelService.class),
-                mock(AnalyticsAccessService.class));
+            mock(MlLabelService.class),
+            mock(AnalyticsAccessService.class)
+        );
 
-        assertForbidden(() -> controller.delete(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST));
+        assertForbidden(() ->
+            controller.delete(TARGET_ID, ACCOUNT_ID, USER_ID.toString(), "VIEWER", "corr", REQUEST)
+        );
     }
 
     private void assertForbidden(Runnable action) {
         assertThatThrownBy(action::run)
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("403");
+            .isInstanceOf(ResponseStatusException.class)
+            .hasMessageContaining("403");
     }
 }

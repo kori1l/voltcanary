@@ -27,48 +27,86 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertReadQueries {
+
     private final AlertRepository alertRepository;
     private final jakarta.persistence.EntityManager entityManager;
 
     private Specification<Alert> specification(AlertListFilters filters) {
         return Specification.allOf(
-                equalsIfPresent("deviceId", filters.deviceId()),
-                equalsIfPresent("status", filters.status()),
-                equalsIfPresent("severity", filters.severity()),
-                equalsIfPresent("alertType", filters.alertType()),
-                equalsIfPresent("ruleId", filters.ruleId()),
-                createdAtFrom(filters.from()),
-                createdAtTo(filters.to()));
+            equalsIfPresent("deviceId", filters.deviceId()),
+            equalsIfPresent("status", filters.status()),
+            equalsIfPresent("severity", filters.severity()),
+            equalsIfPresent("alertType", filters.alertType()),
+            equalsIfPresent("ruleId", filters.ruleId()),
+            createdAtFrom(filters.from()),
+            createdAtTo(filters.to())
+        );
     }
+
     private <T> Specification<Alert> equalsIfPresent(String field, T value) {
-        return value == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
+        return value == null
+            ? Specification.unrestricted()
+            : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
     }
+
     private Specification<Alert> createdAtFrom(Instant from) {
-        return from == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), from);
+        return from == null
+            ? Specification.unrestricted()
+            : (root, query, criteriaBuilder) ->
+                  criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), from);
     }
+
     private Specification<Alert> createdAtTo(Instant to) {
-        return to == null ? Specification.unrestricted() : (root, query, criteriaBuilder) -> criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), to);
+        return to == null
+            ? Specification.unrestricted()
+            : (root, query, criteriaBuilder) ->
+                  criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), to);
     }
+
     private Specification<Alert> scoped(UUID account, AlertListFilters filters) {
         return Specification.allOf(specification(filters), equalsIfPresent("accountId", account));
     }
 
     @Transactional(readOnly = true)
     public Alert snapshot(UUID id) {
-        return alertRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found"));
+        return alertRepository
+            .findById(id)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found")
+            );
     }
 
     @Transactional(readOnly = true)
     public List<AlertResponse> list(UUID account, AlertListFilters filters) {
-        return alertRepository.findAll(scoped(account, filters), PageRequest.of(0, filters.normalizedLimit(),
-                Sort.by(Sort.Direction.DESC, "createdAt", "id"))).getContent().stream().map(AlertViews::response).toList();
+        return alertRepository
+            .findAll(
+                scoped(account, filters),
+                PageRequest.of(
+                    0,
+                    filters.normalizedLimit(),
+                    Sort.by(Sort.Direction.DESC, "createdAt", "id")
+                )
+            )
+            .getContent()
+            .stream()
+            .map(AlertViews::response)
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public AlertPageResponse page(UUID account, AlertListFilters filters, int page, int size) {
-        var found = alertRepository.findAll(scoped(account, filters), PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id")));
-        return new AlertPageResponse(found.getContent().stream().map(AlertViews::response).toList(), page, size,
-                found.getTotalElements(), found.getTotalPages(), found.hasNext());
+        var found = alertRepository.findAll(
+            scoped(account, filters),
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id"))
+        );
+        return new AlertPageResponse(
+            found.getContent().stream().map(AlertViews::response).toList(),
+            page,
+            size,
+            found.getTotalElements(),
+            found.getTotalPages(),
+            found.hasNext()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -78,17 +116,26 @@ public class AlertReadQueries {
         long total = statuses.values().stream().mapToLong(Long::longValue).sum();
         for (var status : AlertStatus.values()) statuses.putIfAbsent(status.name(), 0L);
         for (var severity : AlertSeverity.values()) severities.putIfAbsent(severity.name(), 0L);
-        return new AlertSummaryResponse(total, statuses, severities, grouped(account, filters, "deviceId"), Instant.now());
+        return new AlertSummaryResponse(
+            total,
+            statuses,
+            severities,
+            grouped(account, filters, "deviceId"),
+            Instant.now()
+        );
     }
 
     private Map<String, Long> grouped(UUID account, AlertListFilters filters, String field) {
         var cb = entityManager.getCriteriaBuilder();
         var query = cb.createQuery(Object[].class);
         var root = query.from(Alert.class);
-        query.multiselect(root.get(field), cb.count(root)).where(scoped(account, filters).toPredicate(root, query, cb)).groupBy(root.get(field));
+        query
+            .multiselect(root.get(field), cb.count(root))
+            .where(scoped(account, filters).toPredicate(root, query, cb))
+            .groupBy(root.get(field));
         Map<String, Long> result = new LinkedHashMap<>();
-        for (var row : entityManager.createQuery(query).getResultList()) result.put(row[0].toString(), ((Number) row[1]).longValue());
+        for (var row : entityManager.createQuery(query).getResultList())
+            result.put(row[0].toString(), ((Number) row[1]).longValue());
         return result;
     }
-
 }

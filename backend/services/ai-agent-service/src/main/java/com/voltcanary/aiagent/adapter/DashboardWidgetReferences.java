@@ -9,13 +9,16 @@ import java.util.Map;
 
 /** Short references are scoped to the accepted widget inventory for this request. */
 final class DashboardWidgetReferences {
+
     private final Map<String, String> aliases = new LinkedHashMap<>();
 
     DashboardWidgetReferences(JsonNode request) {
         for (var load : request.path("loadResults")) {
             if (!"review.base".equals(load.path("loaderId").asText())) continue;
-            if (!request.at("/context/baseReviewId").isTextual()
-                    || !request.at("/context/baseReviewId").equals(load.at("/data/reviewId"))) continue;
+            if (
+                !request.at("/context/baseReviewId").isTextual() ||
+                !request.at("/context/baseReviewId").equals(load.at("/data/reviewId"))
+            ) continue;
             for (var action : load.at("/data/actions")) {
                 var widgets = action.at("/currentWidgetInventory/widgets");
                 if (!widgets.isArray() || widgets.isEmpty()) continue;
@@ -27,7 +30,7 @@ final class DashboardWidgetReferences {
                 for (String key : keys) {
                     String alias;
                     do {
-                        alias = "widget:" + (++index);
+                        alias = "widget:" + ++index;
                     } while (keys.contains(alias));
                     aliases.put(alias, key);
                 }
@@ -36,7 +39,9 @@ final class DashboardWidgetReferences {
         }
     }
 
-    boolean available() { return !aliases.isEmpty(); }
+    boolean available() {
+        return !aliases.isEmpty();
+    }
 
     void describe(ObjectNode request) {
         var refs = request.withObject("/changeRequest").putObject("widgetRefs");
@@ -44,7 +49,9 @@ final class DashboardWidgetReferences {
     }
 
     void project(JsonNode schema) {
-        for (var operation : schema.at("/$defs/command/properties/payload/properties/operations/items/anyOf")) {
+        for (var operation : schema.at(
+            "/$defs/command/properties/payload/properties/operations/items/anyOf"
+        )) {
             for (String field : List.of("targets", "anchor", "widgetKey", "target")) {
                 addAliases(operation.path("properties").path(field));
             }
@@ -54,8 +61,11 @@ final class DashboardWidgetReferences {
     private void addAliases(JsonNode schema) {
         if (schema.path("enum") instanceof ArrayNode values) {
             for (var entry : aliases.entrySet()) {
-                if (java.util.stream.StreamSupport.stream(values.spliterator(), false)
-                        .anyMatch(value -> entry.getValue().equals(value.asText()))) values.add(entry.getKey());
+                if (
+                    java.util.stream.StreamSupport.stream(values.spliterator(), false).anyMatch(
+                        value -> entry.getValue().equals(value.asText())
+                    )
+                ) values.add(entry.getKey());
             }
         }
         addNestedAliases(schema);

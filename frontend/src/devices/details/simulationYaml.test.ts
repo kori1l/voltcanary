@@ -57,7 +57,11 @@ describe("simulationYaml", () => {
   });
 
   it("updates scalar and anomaly fields without rebuilding the YAML", () => {
-    const updated = updateSimulationYaml(updateSimulationYaml(yaml, "sourceId", "plug-002"), "powerSpikeEnabled", true);
+    const updated = updateSimulationYaml(
+      updateSimulationYaml(yaml, "sourceId", "plug-002"),
+      "powerSpikeEnabled",
+      true,
+    );
 
     expect(updated).toContain('sourceId: "plug-002"');
     expect(updated).toContain("enabled: true");

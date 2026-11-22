@@ -11,5 +11,4 @@ public record RecalculateResponse(
     double riskScore,
     String riskLevel,
     int recommendationCount
-) {
-}
+) {}

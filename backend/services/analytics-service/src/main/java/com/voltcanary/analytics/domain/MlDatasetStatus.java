@@ -6,5 +6,5 @@ public enum MlDatasetStatus {
     READY,
     FAILED,
     ARCHIVED,
-    DELETED
+    DELETED,
 }

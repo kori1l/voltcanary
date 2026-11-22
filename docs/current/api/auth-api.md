@@ -117,7 +117,16 @@ sessions for the current user. `POST /auth/change-password` accepts:
 
 ## Admin User Endpoints
 
-The gateway requires the `ADMIN` role for `/auth/admin/**`.
+The gateway requires the `ADMIN` role for `/auth/admin/**`. Identity-service also
+verifies the bearer token and current persisted ACTIVE status and ADMIN role on
+every admin operation, so an old token does not retain revoked admin authority.
+Role and status changes revoke refresh sessions. User writes use an optimistic
+revision; competing updates return 409 `concurrent_update`.
+
+`GET /auth/admin/users` accepts `page` (zero-based, default 0), `size` (default 100,
+range 1..200), and `search` (email, role or status). Invalid pagination returns
+400. Filtering, literal wildcard escaping, and `createdAt DESC, id DESC` ordering
+execute in the database; the response remains an array.
 
 ```http
 GET /auth/admin/users
@@ -167,3 +176,16 @@ Device-service applies the existing Kafka lifecycle event asynchronously; these
 endpoints do not call device-service while the identity transaction is open.
 The existing reconciliation job repairs projection drift through the same outbox.
 The former synchronous lifecycle-delivery toggle is no longer used.
+
+### Registration and login concurrency
+
+Registration normalizes email and relies on the database unique constraint for
+concurrent duplicates. A duplicate email returns 409 `duplicate_email`; unrelated
+database errors are not translated to duplicate email. Login admission and
+failure windows are persisted in shared bounded database counters across identity
+replicas and restarts. Keys are hashed; expiry pruning and capacity checks execute
+under a short database guard transaction. `app.auth.login.tracked-key-limit` defaults
+to 20,000. Password verification runs outside the session issuance transaction;
+issuance reloads the user and verifies ACTIVE status and the authenticated user
+revision before committing tokens. API error codes preserve lowercase spelling
+in the console.

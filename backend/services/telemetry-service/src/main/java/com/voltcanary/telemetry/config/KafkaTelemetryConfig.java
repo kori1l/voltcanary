@@ -24,7 +24,9 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 public class KafkaTelemetryConfig {
 
     @Bean
-    ConsumerFactory<String, TelemetryReceivedEvent> telemetryConsumerFactory(KafkaProperties kafkaProperties) {
+    ConsumerFactory<String, TelemetryReceivedEvent> telemetryConsumerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildConsumerProperties();
         properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
@@ -35,16 +37,26 @@ public class KafkaTelemetryConfig {
     }
 
     @Bean
-    ConcurrentKafkaListenerContainerFactory<String, TelemetryReceivedEvent> kafkaListenerContainerFactory(
-            ConsumerFactory<String, TelemetryReceivedEvent> telemetryConsumerFactory) {
+    ConcurrentKafkaListenerContainerFactory<
+        String,
+        TelemetryReceivedEvent
+    > kafkaListenerContainerFactory(
+        ConsumerFactory<String, TelemetryReceivedEvent> telemetryConsumerFactory
+    ) {
         var factory = new ConcurrentKafkaListenerContainerFactory<String, TelemetryReceivedEvent>();
         factory.setConsumerFactory(telemetryConsumerFactory);
         var errors = new org.springframework.kafka.listener.DefaultErrorHandler();
         errors.setBackOffFunction((record, exception) -> {
             Throwable cause = exception;
             while (cause != null) {
-                if (cause instanceof com.voltcanary.telemetry.observation.ObservationCaptureUnavailable) {
-                    return new org.springframework.util.backoff.FixedBackOff(5000, org.springframework.util.backoff.FixedBackOff.UNLIMITED_ATTEMPTS);
+                if (
+                    cause instanceof
+                        com.voltcanary.telemetry.observation.ObservationCaptureUnavailable
+                ) {
+                    return new org.springframework.util.backoff.FixedBackOff(
+                        5000,
+                        org.springframework.util.backoff.FixedBackOff.UNLIMITED_ATTEMPTS
+                    );
                 }
                 cause = cause.getCause();
             }
@@ -55,7 +67,9 @@ public class KafkaTelemetryConfig {
     }
 
     @Bean
-    ProducerFactory<String, TelemetryValidatedEvent> telemetryValidatedProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, TelemetryValidatedEvent> telemetryValidatedProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
@@ -64,12 +78,15 @@ public class KafkaTelemetryConfig {
 
     @Bean
     KafkaTemplate<String, TelemetryValidatedEvent> telemetryValidatedKafkaTemplate(
-            ProducerFactory<String, TelemetryValidatedEvent> telemetryValidatedProducerFactory) {
+        ProducerFactory<String, TelemetryValidatedEvent> telemetryValidatedProducerFactory
+    ) {
         return new KafkaTemplate<>(telemetryValidatedProducerFactory);
     }
 
     @Bean
-    ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
@@ -78,12 +95,15 @@ public class KafkaTelemetryConfig {
 
     @Bean
     KafkaTemplate<String, TelemetryDeadLetterEvent> telemetryDeadLetterKafkaTemplate(
-            ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory) {
+        ProducerFactory<String, TelemetryDeadLetterEvent> telemetryDeadLetterProducerFactory
+    ) {
         return new KafkaTemplate<>(telemetryDeadLetterProducerFactory);
     }
 
     @Bean
-    ProducerFactory<String, String> telemetryStringProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, String> telemetryStringProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
@@ -92,7 +112,8 @@ public class KafkaTelemetryConfig {
 
     @Bean
     KafkaTemplate<String, String> telemetryStringKafkaTemplate(
-            ProducerFactory<String, String> telemetryStringProducerFactory) {
+        ProducerFactory<String, String> telemetryStringProducerFactory
+    ) {
         return new KafkaTemplate<>(telemetryStringProducerFactory);
     }
 }

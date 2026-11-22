@@ -25,16 +25,28 @@ public class MlModelApprovalGateVerifier {
 
     private void verifyArtifactMetadata(MlModelVersion model) {
         if (model.getArtifactUri() == null || model.getArtifactUri().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact URI is required before approval");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Model artifact URI is required before approval"
+            );
         }
         if (model.getArtifactManifestUri() == null || model.getArtifactManifestUri().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact manifest URI is required before approval");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Model artifact manifest URI is required before approval"
+            );
         }
         if (model.getArtifactHash() == null || !model.getArtifactHash().startsWith("sha256:")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact hash must be a sha256 value before approval");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Model artifact hash must be a sha256 value before approval"
+            );
         }
         if (model.getArtifactSizeBytes() == null || model.getArtifactSizeBytes() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Model artifact size must be recorded before approval");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Model artifact size must be recorded before approval"
+            );
         }
     }
 
@@ -46,20 +58,25 @@ public class MlModelApprovalGateVerifier {
         Object approval = metrics.get("approvalGates");
         if (!(approval instanceof Map<?, ?> gates)) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Failure model approval gates are missing; retrain or repair the model with auditable gate metadata");
+                HttpStatus.BAD_REQUEST,
+                "Failure model approval gates are missing; retrain or repair the model with auditable gate metadata"
+            );
         }
         Object profileId = gates.get("profileId");
         Object profileVersion = gates.get("profileVersion");
         Object thresholdSource = gates.get("thresholdSource");
         if (isBlank(profileId) || isBlank(profileVersion) || isBlank(thresholdSource)) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Failure model approval gate profile metadata is missing; retrain or repair the model with auditable gate metadata");
+                HttpStatus.BAD_REQUEST,
+                "Failure model approval gate profile metadata is missing; retrain or repair the model with auditable gate metadata"
+            );
         }
         Object criteria = gates.get("criteria");
         if (!(criteria instanceof List<?> items) || items.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Failure model approval gates are empty");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Failure model approval gates are empty"
+            );
         }
         List<String> failed = new ArrayList<>();
         for (Object item : items) {
@@ -71,15 +88,20 @@ public class MlModelApprovalGateVerifier {
                 Object rawName = gate.get("name");
                 Object rawReason = gate.get("reason");
                 String name = rawName == null ? "approval_gate" : String.valueOf(rawName);
-                String reason = rawReason == null ? "Approval gate failed" : String.valueOf(rawReason);
+                String reason =
+                    rawReason == null ? "Approval gate failed" : String.valueOf(rawReason);
                 failed.add(name + ": " + reason);
             }
         }
         if (!failed.isEmpty() || !Boolean.TRUE.equals(gates.get("promotionEligible"))) {
             String source = String.valueOf(thresholdSource);
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Failure model approval blocked by " + source + " gates: " + String.join("; ", failed));
+                HttpStatus.BAD_REQUEST,
+                "Failure model approval blocked by " +
+                    source +
+                    " gates: " +
+                    String.join("; ", failed)
+            );
         }
     }
 
@@ -92,7 +114,10 @@ public class MlModelApprovalGateVerifier {
             Object parsed = objectMapper.readValue(value, Object.class);
             return parsed instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not parse ML model evaluation metrics");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Could not parse ML model evaluation metrics"
+            );
         }
     }
 

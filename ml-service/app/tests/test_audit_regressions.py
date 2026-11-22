@@ -8,8 +8,16 @@ from app.services.anomaly_evaluation import AnomalyEvaluation
 
 class AuditRegressionsTest(unittest.TestCase):
     def rows(self, count=100):
-        return [MetricRow(timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=i),
-                          deviceId="device", metric="power", value=float(i), label="NORMAL") for i in range(count)]
+        return [
+            MetricRow(
+                timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=i),
+                deviceId="device",
+                metric="power",
+                value=float(i),
+                label="NORMAL",
+            )
+            for i in range(count)
+        ]
 
     def test_fit_preserves_every_observation_and_normal_labels_do_not_set_anomaly_fraction(self):
         model = TabularAnomalyModel()
@@ -22,7 +30,9 @@ class AuditRegressionsTest(unittest.TestCase):
         evaluation = AnomalyEvaluation()
         rows = self.rows(10)
         train, validation = evaluation.split(rows + rows)
-        self.assertLess(max(row.timestamp for row in train), min(row.timestamp for row in validation))
+        self.assertLess(
+            max(row.timestamp for row in train), min(row.timestamp for row in validation)
+        )
         model = TabularAnomalyModel()
         model.fit(train, {"features": {}, "featureSchemaHash": "test"})
         metrics = evaluation.evaluate(model, train, validation)
@@ -41,7 +51,9 @@ class AuditRegressionsTest(unittest.TestCase):
     def test_explicit_partitions_control_fit_and_test_rows_are_not_validation(self):
         rows = self.rows(12)
         for index, row in enumerate(rows):
-            row.metadata["splitAssignment"] = "TRAIN" if index < 6 else "VALIDATION" if index < 9 else "TEST"
+            row.metadata["splitAssignment"] = (
+                "TRAIN" if index < 6 else "VALIDATION" if index < 9 else "TEST"
+            )
         train, validation = AnomalyEvaluation().split(list(reversed(rows)))
         self.assertEqual(train, rows[:6])
         self.assertEqual(validation, rows[6:9])

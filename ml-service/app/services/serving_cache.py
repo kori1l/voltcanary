@@ -1,16 +1,15 @@
 import logging
 import time
-from threading import RLock
-from concurrent.futures import Future
 from collections import OrderedDict
+from concurrent.futures import Future
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any
 
 from app.config.settings import settings
 from app.models.failure_prediction_model import FailurePredictionModel
 from app.models.tabular_anomaly_model import TabularAnomalyModel
 from app.services.artifact_store import ArtifactStore
-
 
 ARTIFACT_CONTRACT_VERSION = "voltcanary-model-bundle-v1"
 
@@ -46,8 +45,16 @@ class ServingArtifactCache:
         ttl_seconds: float | None = None,
     ) -> None:
         self.artifact_store = artifact_store
-        self.max_entries = max(1, int(max_entries if max_entries is not None else settings.ml_serving_cache_max_entries))
-        self.ttl_seconds = max(0.0, float(ttl_seconds if ttl_seconds is not None else settings.ml_serving_cache_ttl_seconds))
+        self.max_entries = max(
+            1,
+            int(max_entries if max_entries is not None else settings.ml_serving_cache_max_entries),
+        )
+        self.ttl_seconds = max(
+            0.0,
+            float(
+                ttl_seconds if ttl_seconds is not None else settings.ml_serving_cache_ttl_seconds
+            ),
+        )
         self._entries: OrderedDict[ServingCacheKey, ServingRuntimeArtifact] = OrderedDict()
         self._lock = RLock()
         self._loading: dict[ServingCacheKey, Future[ServingRuntimeArtifact]] = {}
@@ -93,13 +100,22 @@ class ServingArtifactCache:
                     self._entries.move_to_end(key)
                     self._evict_capacity()
                 pending.set_result(runtime)
-                self._log("load_success", key, load_duration_ms=round((time.monotonic() - started) * 1000, 3), cache_size=len(self._entries))
+                self._log(
+                    "load_success",
+                    key,
+                    load_duration_ms=round((time.monotonic() - started) * 1000, 3),
+                    cache_size=len(self._entries),
+                )
             return runtime
         except Exception as failure:
             with self._lock:
                 self.load_failures += 1
                 pending.set_exception(failure)
-                self._log("load_failure", key, load_duration_ms=round((time.monotonic() - started) * 1000, 3))
+                self._log(
+                    "load_failure",
+                    key,
+                    load_duration_ms=round((time.monotonic() - started) * 1000, 3),
+                )
             raise
         finally:
             with self._lock:
@@ -122,7 +138,9 @@ class ServingArtifactCache:
                 "cacheSize": len(self._entries),
             }
 
-    def _load(self, key: ServingCacheKey, model: dict[str, Any], loaded_at: float) -> ServingRuntimeArtifact:
+    def _load(
+        self, key: ServingCacheKey, model: dict[str, Any], loaded_at: float
+    ) -> ServingRuntimeArtifact:
         bundle = self.artifact_store.load_model_bundle(key.manifest_uri, key.artifact_hash or None)
         manifest = bundle["manifest"]
         manifest_model_version_id = str(manifest.get("modelVersionId") or "")
@@ -154,11 +172,16 @@ class ServingArtifactCache:
             model_version_id=str(model.get("modelVersionId") or ""),
             manifest_uri=str(model.get("manifestUri") or ""),
             artifact_hash=str(model.get("artifactHash") or ""),
-            artifact_contract_version=str(model.get("artifactContractVersion") or ARTIFACT_CONTRACT_VERSION),
+            artifact_contract_version=str(
+                model.get("artifactContractVersion") or ARTIFACT_CONTRACT_VERSION
+            ),
         )
 
     def _model_type(self, model: dict[str, Any], artifact: dict[str, Any]) -> str:
-        if model.get("modelType") == "trained_failure_prediction" or artifact.get("modelType") == "trained_failure_prediction":
+        if (
+            model.get("modelType") == "trained_failure_prediction"
+            or artifact.get("modelType") == "trained_failure_prediction"
+        ):
             return "trained_failure_prediction"
         return str(artifact.get("modelType") or model.get("modelType") or "trained_tabular_anomaly")
 

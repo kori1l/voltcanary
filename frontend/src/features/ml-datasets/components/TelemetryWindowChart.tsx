@@ -1,6 +1,9 @@
 import { type PointerEvent, useState } from "react";
 import type { MlDatasetWorkbenchPreviewResponse } from "../../../analytics/mlModuleApi";
-import type { DatasetWorkbenchDraft, DatasetWorkbenchPreviewStatus } from "../model/datasetWorkbench.types";
+import type {
+  DatasetWorkbenchDraft,
+  DatasetWorkbenchPreviewStatus,
+} from "../model/datasetWorkbench.types";
 import {
   dateTimeLocalToIso,
   formatDateTime,
@@ -30,8 +33,13 @@ export function TelemetryWindowChart({
   const padding = { top: 34, right: 32, bottom: 72, left: 64 };
   const fromMs = new Date(dateTimeLocalToIso(draft.from)).getTime();
   const toMs = new Date(dateTimeLocalToIso(draft.to)).getTime();
-  const rangeStart = Number.isFinite(fromMs) ? fromMs : new Date(preview?.selectedWindow.from ?? Date.now()).getTime();
-  const rangeEnd = Number.isFinite(toMs) && toMs > rangeStart ? toMs : new Date(preview?.selectedWindow.to ?? Date.now()).getTime();
+  const rangeStart = Number.isFinite(fromMs)
+    ? fromMs
+    : new Date(preview?.selectedWindow.from ?? Date.now()).getTime();
+  const rangeEnd =
+    Number.isFinite(toMs) && toMs > rangeStart
+      ? toMs
+      : new Date(preview?.selectedWindow.to ?? Date.now()).getTime();
   const rangeSpan = Math.max(rangeEnd - rangeStart, 1);
   const chartLeft = padding.left;
   const chartRight = width - padding.right;
@@ -45,7 +53,8 @@ export function TelemetryWindowChart({
     return chartLeft + ((ms - rangeStart) / rangeSpan) * (chartRight - chartLeft);
   };
   const clampX = (x: number) => Math.min(chartRight, Math.max(chartLeft, x));
-  const timeForX = (x: number) => rangeStart + ((clampX(x) - chartLeft) / Math.max(chartRight - chartLeft, 1)) * rangeSpan;
+  const timeForX = (x: number) =>
+    rangeStart + ((clampX(x) - chartLeft) / Math.max(chartRight - chartLeft, 1)) * rangeSpan;
   const xFromPointer = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const scale = width / Math.max(bounds.width, 1);
@@ -78,18 +87,23 @@ export function TelemetryWindowChart({
   };
   const selectedX1 = xForTime(dateTimeLocalToIso(draft.from));
   const selectedX2 = xForTime(dateTimeLocalToIso(draft.to));
-  const points = timeline.map((bucket) => {
-    const x = (xForTime(bucket.bucketStart) + xForTime(bucket.bucketEnd)) / 2;
-    const y = chartBottom - Math.max(0, Math.min(1, bucket.coverageRatio)) * (chartBottom - chartTop);
-    return `${x},${y}`;
-  }).join(" ");
+  const points = timeline
+    .map((bucket) => {
+      const x = (xForTime(bucket.bucketStart) + xForTime(bucket.bucketEnd)) / 2;
+      const y =
+        chartBottom - Math.max(0, Math.min(1, bucket.coverageRatio)) * (chartBottom - chartTop);
+      return `${x},${y}`;
+    })
+    .join(" ");
 
   return (
     <section className="workbench-section" aria-labelledby="workbench-timeline-title">
       <div className="workbench-section-header">
         <div>
           <h3 id="workbench-timeline-title">Telemetry timeline</h3>
-          <span>{timeline.length} buckets / {candidates.length} candidate windows</span>
+          <span>
+            {timeline.length} buckets / {candidates.length} candidate windows
+          </span>
         </div>
       </div>
       <div className="workbench-range-controls">
@@ -99,7 +113,9 @@ export function TelemetryWindowChart({
             aria-label="Workbench range from"
             type="datetime-local"
             value={draft.from}
-            onChange={(event) => onPatch({ from: event.target.value, quickRange: "custom", selectedCandidateId: null })}
+            onChange={(event) =>
+              onPatch({ from: event.target.value, quickRange: "custom", selectedCandidateId: null })
+            }
           />
         </label>
         <label>
@@ -108,12 +124,21 @@ export function TelemetryWindowChart({
             aria-label="Workbench range to"
             type="datetime-local"
             value={draft.to}
-            onChange={(event) => onPatch({ to: event.target.value, quickRange: "custom", selectedCandidateId: null })}
+            onChange={(event) =>
+              onPatch({ to: event.target.value, quickRange: "custom", selectedCandidateId: null })
+            }
           />
         </label>
       </div>
-      {!preview && previewStatus !== "loading" ? <div className="empty-state">Select a valid device scope and range to start automatic preview. Use refresh if dependencies need another attempt.</div> : null}
-      {previewStatus === "loading" ? <div className="empty-state">Loading telemetry preview...</div> : null}
+      {!preview && previewStatus !== "loading" ? (
+        <div className="empty-state">
+          Select a valid device scope and range to start automatic preview. Use refresh if
+          dependencies need another attempt.
+        </div>
+      ) : null}
+      {previewStatus === "loading" ? (
+        <div className="empty-state">Loading telemetry preview...</div>
+      ) : null}
       {preview ? (
         <div className="workbench-chart-wrap">
           <svg
@@ -130,16 +155,45 @@ export function TelemetryWindowChart({
               const y = chartBottom - tick * (chartBottom - chartTop);
               return (
                 <g key={tick}>
-                  <line className="workbench-chart-grid" x1={chartLeft} x2={chartRight} y1={y} y2={y} />
-                  <text className="workbench-chart-label" x={chartLeft - 10} y={y + 4} textAnchor="end">
+                  <line
+                    className="workbench-chart-grid"
+                    x1={chartLeft}
+                    x2={chartRight}
+                    y1={y}
+                    y2={y}
+                  />
+                  <text
+                    className="workbench-chart-label"
+                    x={chartLeft - 10}
+                    y={y + 4}
+                    textAnchor="end"
+                  >
                     {formatPercent(tick)}
                   </text>
                 </g>
               );
             })}
-            <line className="workbench-chart-axis" x1={chartLeft} x2={chartRight} y1={chartBottom} y2={chartBottom} />
-            <line className="workbench-chart-axis" x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} />
-            <rect className="workbench-selected-window" x={Math.min(selectedX1, selectedX2)} y={chartTop} width={Math.abs(selectedX2 - selectedX1)} height={chartBottom - chartTop} />
+            <line
+              className="workbench-chart-axis"
+              x1={chartLeft}
+              x2={chartRight}
+              y1={chartBottom}
+              y2={chartBottom}
+            />
+            <line
+              className="workbench-chart-axis"
+              x1={chartLeft}
+              x2={chartLeft}
+              y1={chartTop}
+              y2={chartBottom}
+            />
+            <rect
+              className="workbench-selected-window"
+              x={Math.min(selectedX1, selectedX2)}
+              y={chartTop}
+              width={Math.abs(selectedX2 - selectedX1)}
+              height={chartBottom - chartTop}
+            />
             {candidates.map((candidate) => {
               const x = xForTime(candidate.from);
               const x2 = xForTime(candidate.to);
@@ -161,7 +215,12 @@ export function TelemetryWindowChart({
                   role="button"
                   tabIndex={0}
                 >
-                  <rect x={Math.min(x, x2)} y={chartTop} width={Math.max(Math.abs(x2 - x), 2)} height={chartBottom - chartTop} />
+                  <rect
+                    x={Math.min(x, x2)}
+                    y={chartTop}
+                    width={Math.max(Math.abs(x2 - x), 2)}
+                    height={chartBottom - chartTop}
+                  />
                   <title>{`${statusLabel(candidate.status)} - ${candidate.explanation}`}</title>
                 </g>
               );
@@ -184,10 +243,21 @@ export function TelemetryWindowChart({
                     <title>{`${formatDateTime(bucket.bucketStart)} - ${formatDateTime(bucket.bucketEnd)} / ${formatNumber(bucket.sampleCount)} samples / ${formatPercent(bucket.coverageRatio)} / ${statusLabel(bucket.status)}`}</title>
                   </rect>
                   {(bucket.status === "NO_DATA" || bucket.coverageRatio < 0.65) && (
-                    <line className="workbench-gap-marker" x1={(x + x2) / 2} x2={(x + x2) / 2} y1={chartTop} y2={chartBottom} />
+                    <line
+                      className="workbench-gap-marker"
+                      x1={(x + x2) / 2}
+                      x2={(x + x2) / 2}
+                      y1={chartTop}
+                      y2={chartBottom}
+                    />
                   )}
                   {eventKind && (
-                    <circle className={`workbench-event-marker workbench-event-${eventKind}`} cx={(x + x2) / 2} cy={chartTop + 15} r={5}>
+                    <circle
+                      className={`workbench-event-marker workbench-event-${eventKind}`}
+                      cx={(x + x2) / 2}
+                      cy={chartTop + 15}
+                      r={5}
+                    >
                       <title>{bucket.events.join(", ")}</title>
                     </circle>
                   )}
@@ -204,15 +274,34 @@ export function TelemetryWindowChart({
                 height={chartBottom - chartTop}
               />
             ) : null}
-            <text className="workbench-chart-label" x={chartLeft} y={height - 28}>{formatDateTime(dateTimeLocalToIso(draft.from))}</text>
-            <text className="workbench-chart-label" x={chartRight} y={height - 28} textAnchor="end">{formatDateTime(dateTimeLocalToIso(draft.to))}</text>
+            <text className="workbench-chart-label" x={chartLeft} y={height - 28}>
+              {formatDateTime(dateTimeLocalToIso(draft.from))}
+            </text>
+            <text className="workbench-chart-label" x={chartRight} y={height - 28} textAnchor="end">
+              {formatDateTime(dateTimeLocalToIso(draft.to))}
+            </text>
           </svg>
           <div className="workbench-chart-legend" aria-label="Telemetry timeline legend">
-            <span><i className="legend-selected" />Selected range</span>
-            <span><i className="legend-candidate" />Candidate window</span>
-            <span><i className="legend-gap" />Gap or low coverage</span>
-            <span><i className="legend-maintenance" />Maintenance</span>
-            <span><i className="legend-failure" />Failure evidence</span>
+            <span>
+              <i className="legend-selected" />
+              Selected range
+            </span>
+            <span>
+              <i className="legend-candidate" />
+              Candidate window
+            </span>
+            <span>
+              <i className="legend-gap" />
+              Gap or low coverage
+            </span>
+            <span>
+              <i className="legend-maintenance" />
+              Maintenance
+            </span>
+            <span>
+              <i className="legend-failure" />
+              Failure evidence
+            </span>
           </div>
         </div>
       ) : null}

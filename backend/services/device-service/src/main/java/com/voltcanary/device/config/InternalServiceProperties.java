@@ -12,5 +12,4 @@ import org.springframework.stereotype.Component;
 public class InternalServiceProperties {
 
     private String serviceToken = "dev-internal-token";
-
 }

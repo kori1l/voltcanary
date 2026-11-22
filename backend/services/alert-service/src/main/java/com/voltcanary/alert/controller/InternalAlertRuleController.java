@@ -22,9 +22,13 @@ public class InternalAlertRuleController {
 
     @GetMapping("/effective")
     public List<AlertRuleSnapshotResponse> effective(
-            @RequestHeader(value = AlertInternalServiceAuth.HEADER, required = false) String internalToken,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("deviceId") UUID deviceId) {
+        @RequestHeader(
+            value = AlertInternalServiceAuth.HEADER,
+            required = false
+        ) String internalToken,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("deviceId") UUID deviceId
+    ) {
         internalServiceAuth.require(internalToken);
         return service.effectiveRuleSnapshotsForDevice(deviceId, correlationId);
     }

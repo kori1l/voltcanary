@@ -8,6 +8,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** The materialization commit starts only after remote telemetry has been collected and validated. */
 @Service
 public class MlDatasetWrites {
+
     private final TransactionTemplate transaction;
 
     public MlDatasetWrites(PlatformTransactionManager manager) {

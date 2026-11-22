@@ -57,5 +57,4 @@ public class NotificationPreference {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
 }

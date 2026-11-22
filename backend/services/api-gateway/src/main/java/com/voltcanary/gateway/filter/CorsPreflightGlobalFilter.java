@@ -23,8 +23,15 @@ public class CorsPreflightGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String origin = exchange.getRequest().getHeaders().getFirst(HttpHeaders.ORIGIN);
-        String requestedMethod = exchange.getRequest().getHeaders().getFirst(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD);
-        if (exchange.getRequest().getMethod() != HttpMethod.OPTIONS || origin == null || requestedMethod == null) {
+        String requestedMethod = exchange
+            .getRequest()
+            .getHeaders()
+            .getFirst(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD);
+        if (
+            exchange.getRequest().getMethod() != HttpMethod.OPTIONS ||
+            origin == null ||
+            requestedMethod == null
+        ) {
             return chain.filter(exchange);
         }
         if (!isAllowedOrigin(origin)) {
@@ -34,10 +41,22 @@ public class CorsPreflightGlobalFilter implements GlobalFilter, Ordered {
 
         HttpHeaders headers = exchange.getResponse().getHeaders();
         headers.set(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, origin);
-        headers.set(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, String.valueOf(properties.isAllowCredentials()));
-        headers.set(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, String.join(",", properties.getAllowedMethods()));
-        headers.set(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS, String.join(",", properties.getAllowedHeaders()));
-        headers.set(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, String.join(",", properties.getExposedHeaders()));
+        headers.set(
+            HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS,
+            String.valueOf(properties.isAllowCredentials())
+        );
+        headers.set(
+            HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS,
+            String.join(",", properties.getAllowedMethods())
+        );
+        headers.set(
+            HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+            String.join(",", properties.getAllowedHeaders())
+        );
+        headers.set(
+            HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+            String.join(",", properties.getExposedHeaders())
+        );
         exchange.getResponse().setStatusCode(HttpStatus.OK);
         return exchange.getResponse().setComplete();
     }
@@ -49,6 +68,10 @@ public class CorsPreflightGlobalFilter implements GlobalFilter, Ordered {
 
     private boolean isAllowedOrigin(String origin) {
         List<String> patterns = properties.getAllowedOriginPatterns();
-        return patterns.stream().anyMatch(pattern -> "*".equals(pattern) || PatternMatchUtils.simpleMatch(pattern, origin));
+        return patterns
+            .stream()
+            .anyMatch(
+                pattern -> "*".equals(pattern) || PatternMatchUtils.simpleMatch(pattern, origin)
+            );
     }
 }

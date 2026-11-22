@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
-import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
+import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.domain.MlDeploymentMode;
 import com.voltcanary.analytics.domain.MlDeploymentScope;
@@ -38,20 +38,28 @@ class MlMetadataPersistenceTest {
 
     @Autowired
     private MlDatasetRepository datasetRepository;
+
     @Autowired
     private MlDatasetVersionRepository datasetVersionRepository;
+
     @Autowired
     private MlTrainingRunRepository trainingRunRepository;
+
     @Autowired
     private MlModelVersionRepository modelVersionRepository;
+
     @Autowired
     private MlDeploymentPolicyRepository deploymentPolicyRepository;
+
     @Autowired
     private MlFeatureSnapshotRepository featureSnapshotRepository;
+
     @Autowired
     private MlCanonicalMetricRowRepository canonicalMetricRowRepository;
+
     @Autowired
     private MlLabelRepository labelRepository;
+
     @Autowired
     private MlLabelAuditRepository labelAuditRepository;
 
@@ -67,36 +75,59 @@ class MlMetadataPersistenceTest {
 
     @Test
     void contractEnumsExposeOpenSpecValues() {
-        assertThat(MlDatasetStatus.values()).extracting(Enum::name)
-                .containsExactly("DRAFT", "VALIDATING", "READY", "FAILED", "ARCHIVED", "DELETED");
-        assertThat(MlLabelType.values()).extracting(Enum::name)
-                .containsExactly(
-                        "NORMAL",
-                        "ANOMALY",
-                        "DEGRADATION",
-                        "MAINTENANCE",
-                        "CONFIRMED_FAILURE",
-                        "CORRECTIVE_MAINTENANCE",
-                        "PREVENTIVE_MAINTENANCE",
-                        "INSPECTION_NORMAL",
-                        "FALSE_POSITIVE",
-                        "SENSOR_FAULT",
-                        "UNRESOLVED_ANOMALY",
-                        "UNKNOWN");
-        assertThat(MlLabelSource.values()).extracting(Enum::name)
-                .containsExactly("MANUAL", "ALERT_OUTCOME", "MAINTENANCE_OUTCOME", "IMPORTED");
-        assertThat(MlTrainingSplitStrategy.values()).extracting(Enum::name)
-                .containsExactly("TIME_BASED", "DEVICE_BASED", "RANDOM");
-        assertThat(MlModelFamily.values()).extracting(Enum::name)
-                .containsExactly("ANOMALY_DETECTION", "DEGRADATION_SCORING", "FAILURE_PREDICTION", "FORECASTING");
-        assertThat(MlTrainingRunStatus.values()).extracting(Enum::name)
-                .containsExactly("QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED", "ARCHIVED", "DELETED");
-        assertThat(MlModelStatus.values()).extracting(Enum::name)
-                .containsExactly("CANDIDATE", "APPROVED", "ACTIVE", "REJECTED", "ARCHIVED", "DELETED");
-        assertThat(MlDeploymentMode.values()).extracting(Enum::name)
-                .containsExactly("SHADOW", "CANARY", "ACTIVE", "DISABLED");
-        assertThat(MlDeploymentScope.values()).extracting(Enum::name)
-                .containsExactly("SYSTEM", "ACCOUNT", "DEVICE_TYPE", "DEVICE");
+        assertThat(MlDatasetStatus.values())
+            .extracting(Enum::name)
+            .containsExactly("DRAFT", "VALIDATING", "READY", "FAILED", "ARCHIVED", "DELETED");
+        assertThat(MlLabelType.values())
+            .extracting(Enum::name)
+            .containsExactly(
+                "NORMAL",
+                "ANOMALY",
+                "DEGRADATION",
+                "MAINTENANCE",
+                "CONFIRMED_FAILURE",
+                "CORRECTIVE_MAINTENANCE",
+                "PREVENTIVE_MAINTENANCE",
+                "INSPECTION_NORMAL",
+                "FALSE_POSITIVE",
+                "SENSOR_FAULT",
+                "UNRESOLVED_ANOMALY",
+                "UNKNOWN"
+            );
+        assertThat(MlLabelSource.values())
+            .extracting(Enum::name)
+            .containsExactly("MANUAL", "ALERT_OUTCOME", "MAINTENANCE_OUTCOME", "IMPORTED");
+        assertThat(MlTrainingSplitStrategy.values())
+            .extracting(Enum::name)
+            .containsExactly("TIME_BASED", "DEVICE_BASED", "RANDOM");
+        assertThat(MlModelFamily.values())
+            .extracting(Enum::name)
+            .containsExactly(
+                "ANOMALY_DETECTION",
+                "DEGRADATION_SCORING",
+                "FAILURE_PREDICTION",
+                "FORECASTING"
+            );
+        assertThat(MlTrainingRunStatus.values())
+            .extracting(Enum::name)
+            .containsExactly(
+                "QUEUED",
+                "RUNNING",
+                "SUCCEEDED",
+                "FAILED",
+                "CANCELED",
+                "ARCHIVED",
+                "DELETED"
+            );
+        assertThat(MlModelStatus.values())
+            .extracting(Enum::name)
+            .containsExactly("CANDIDATE", "APPROVED", "ACTIVE", "REJECTED", "ARCHIVED", "DELETED");
+        assertThat(MlDeploymentMode.values())
+            .extracting(Enum::name)
+            .containsExactly("SHADOW", "CANARY", "ACTIVE", "DISABLED");
+        assertThat(MlDeploymentScope.values())
+            .extracting(Enum::name)
+            .containsExactly("SYSTEM", "ACCOUNT", "DEVICE_TYPE", "DEVICE");
     }
 
     @Test
@@ -107,7 +138,9 @@ class MlMetadataPersistenceTest {
         version.setImmutableRowReference("ml_canonical_metric_rows:dataset_version_id=version-1");
         version.setDataHash("sha256:data");
 
-        assertThat(version.getArtifactUri()).isEqualTo("s3://voltcanary-ml/datasets/version-1/rows.jsonl");
+        assertThat(version.getArtifactUri()).isEqualTo(
+            "s3://voltcanary-ml/datasets/version-1/rows.jsonl"
+        );
         assertThat(version.getArtifactHash()).isEqualTo("sha256:artifact");
         assertThat(version.getImmutableRowReference()).contains("ml_canonical_metric_rows");
         assertThat(version.getDataHash()).isEqualTo("sha256:data");

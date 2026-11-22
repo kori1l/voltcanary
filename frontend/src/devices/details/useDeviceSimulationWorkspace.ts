@@ -19,11 +19,7 @@ import {
 } from "../../simulation/simulationApi";
 import { useDeviceSimulationPresets } from "../useDeviceSimulationPresets";
 import { DeviceDetailsTab } from "./DeviceTabs";
-import {
-  readSimulationSettings,
-  SimulationSettings,
-  updateSimulationYaml,
-} from "./simulationYaml";
+import { readSimulationSettings, SimulationSettings, updateSimulationYaml } from "./simulationYaml";
 import { useActionConfirmation } from "../../components/useActionConfirmation";
 import { useSectionResource } from "../../components/useSectionResource";
 import { useSimulationDraft } from "./useSimulationDraft";
@@ -33,9 +29,7 @@ interface SimulationRuntime {
   runs: SimulationRun[];
 }
 
-function validationMessage(
-  result: Awaited<ReturnType<typeof validateSimulationConfig>>,
-) {
+function validationMessage(result: Awaited<ReturnType<typeof validateSimulationConfig>>) {
   return result.valid
     ? "YAML is valid"
     : result.errors.map((item) => `${item.path}: ${item.message}`).join("; ");
@@ -54,33 +48,24 @@ export function useDeviceSimulationWorkspace({
   const runtime = useSectionResource<SimulationRuntime>(deviceId);
   const templates = useSectionResource<{ yamlConfig: string }>(deviceId);
   const validation =
-    useSectionResource<Awaited<ReturnType<typeof validateSimulationConfig>>>(
-      deviceId,
-    );
+    useSectionResource<Awaited<ReturnType<typeof validateSimulationConfig>>>(deviceId);
   const draft = useSimulationDraft(deviceId);
   const { yaml, profile, protocol, preset, message } = draft.value;
   const simulationConfig = config.data;
   const simulationStatus = runtime.data?.status ?? null;
   const presetResource = useDeviceSimulationPresets(activeTab === "simulation");
   const simulationPresets = (presetResource.data ?? []).filter((item) =>
-    item.compatibleProfiles
-      ? item.compatibleProfiles.includes(profile)
-      : profile !== "VEHICLE_GPS",
+    item.compatibleProfiles ? item.compatibleProfiles.includes(profile) : profile !== "VEHICLE_GPS",
   );
   const confirmation = useActionConfirmation();
-  const simulationSettings = useMemo(
-    () => readSimulationSettings(yaml),
-    [yaml],
-  );
+  const simulationSettings = useMemo(() => readSimulationSettings(yaml), [yaml]);
   const simulationSourceId =
-    simulationSettings.sourceId ||
-    readDeviceSourcePreference(deviceId) ||
-    "plug-001";
+    simulationSettings.sourceId || readDeviceSourcePreference(deviceId) || "plug-001";
   const hasUnsavedSimulation = Boolean(
     simulationConfig &&
-      (yaml !== simulationConfig.yamlConfig ||
-        profile !== simulationConfig.profile ||
-        protocol !== simulationConfig.protocol),
+    (yaml !== simulationConfig.yamlConfig ||
+      profile !== simulationConfig.profile ||
+      protocol !== simulationConfig.protocol),
   );
 
   function setSimulationYaml(value: string | ((previous: string) => string)) {
@@ -98,16 +83,13 @@ export function useDeviceSimulationWorkspace({
     if (!currentDeviceId || currentDeviceId !== deviceId) return;
     const current = draft.unchanged();
     const inScope = draft.ticket();
-    const loaded = await config.load(() =>
-      getSimulationConfig(currentDeviceId),
-    );
+    const loaded = await config.load(() => getSimulationConfig(currentDeviceId));
     if (loaded && current())
       draft.edit({
         yaml: loaded.yamlConfig,
         profile: loaded.profile,
         protocol: loaded.protocol,
-        preset:
-          loaded.profile === "VEHICLE_GPS" ? "CITY_LOOP" : "NORMAL_OPERATION",
+        preset: loaded.profile === "VEHICLE_GPS" ? "CITY_LOOP" : "NORMAL_OPERATION",
       });
     if (inScope()) await refreshSimulationRuntime(currentDeviceId);
   }
@@ -131,10 +113,7 @@ export function useDeviceSimulationWorkspace({
 
   useEffect(() => {
     if (!deviceId || simulationStatus?.status !== "RUNNING") return;
-    const interval = window.setInterval(
-      () => void refreshSimulationRuntime(),
-      5000,
-    );
+    const interval = window.setInterval(() => void refreshSimulationRuntime(), 5000);
     return () => window.clearInterval(interval);
   }, [deviceId, simulationStatus?.status, runtime.load]);
 
@@ -142,9 +121,7 @@ export function useDeviceSimulationWorkspace({
     if (!deviceId || !simulationConfig || !yaml) return;
     const current = draft.unchanged();
     const timer = window.setTimeout(async () => {
-      const result = await validation.load(() =>
-        validateSimulationConfig(deviceId, yaml),
-      );
+      const result = await validation.load(() => validateSimulationConfig(deviceId, yaml));
       if (result && current())
         draft.update({
           validation: {
@@ -173,12 +150,8 @@ export function useDeviceSimulationWorkspace({
     });
   }
 
-  async function saveCurrentSimulationConfig(
-    rotateToken: boolean,
-    current: () => boolean,
-  ) {
-    if (!deviceId || !simulationConfig)
-      throw new Error("Simulation config is not loaded");
+  async function saveCurrentSimulationConfig(rotateToken: boolean, current: () => boolean) {
+    if (!deviceId || !simulationConfig) throw new Error("Simulation config is not loaded");
     const yamlConfig = updateSimulationYaml(
       yaml.replace(/protocol:\s*(HTTP|MQTT)/, `protocol: ${protocol}`),
       "sourceId",
@@ -223,19 +196,11 @@ export function useDeviceSimulationWorkspace({
     });
   }
 
-  function updateSimulationField(
-    field: keyof SimulationSettings,
-    value: string | boolean,
-  ) {
-    setSimulationYaml((previous) =>
-      updateSimulationYaml(previous, field, value),
-    );
+  function updateSimulationField(field: keyof SimulationSettings, value: string | boolean) {
+    setSimulationYaml((previous) => updateSimulationYaml(previous, field, value));
   }
 
-  async function loadTemplate(
-    loader: () => Promise<{ yamlConfig: string }>,
-    success: string,
-  ) {
+  async function loadTemplate(loader: () => Promise<{ yamlConfig: string }>, success: string) {
     const current = draft.unchanged();
     const template = await templates.load(loader);
     if (template && current())
@@ -250,8 +215,7 @@ export function useDeviceSimulationWorkspace({
   }
 
   function changeSimulationProfile(nextProfile: string) {
-    const nextPreset =
-      nextProfile === "VEHICLE_GPS" ? "CITY_LOOP" : "NORMAL_OPERATION";
+    const nextPreset = nextProfile === "VEHICLE_GPS" ? "CITY_LOOP" : "NORMAL_OPERATION";
     draft.edit({
       profile: nextProfile,
       preset: nextPreset,
@@ -286,10 +250,7 @@ export function useDeviceSimulationWorkspace({
           impact: `${hasUnsavedSimulation ? "Saves the current draft, then starts" : "Starts"} telemetry generation. HTTP start rotates the source credential; external senders sharing this source must be updated.`,
         });
         if (confirmed === null || !current() || !unchanged()) return;
-        const saved = await saveCurrentSimulationConfig(
-          protocol === "HTTP",
-          current,
-        );
+        const saved = await saveCurrentSimulationConfig(protocol === "HTTP", current);
         if (!saved || !current()) return;
         config.setData(saved);
         await startSimulation(deviceId);
@@ -312,11 +273,7 @@ export function useDeviceSimulationWorkspace({
         if (confirmed === null || !current() || !unchanged()) return;
       }
       await loadTemplate(async () => {
-        const template = await resetSimulationTemplate(
-          deviceId,
-          profile,
-          simulationSourceId,
-        );
+        const template = await resetSimulationTemplate(deviceId, profile, simulationSourceId);
         return {
           yamlConfig: template.yamlConfig.replace(
             /protocol:\s*(HTTP|MQTT)/,
@@ -385,11 +342,7 @@ export function useDeviceSimulationWorkspace({
     simulationProfile: profile,
     simulationProtocol: protocol,
     simulationMessage:
-      message ??
-      templates.error ??
-      validation.error ??
-      config.error ??
-      runtime.error,
+      message ?? templates.error ?? validation.error ?? config.error ?? runtime.error,
     simulationValidation: validation.error
       ? { valid: false, message: validation.error }
       : draft.value.validation,

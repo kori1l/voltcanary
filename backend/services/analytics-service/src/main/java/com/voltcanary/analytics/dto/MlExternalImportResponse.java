@@ -5,14 +5,14 @@ import java.util.List;
 import java.util.UUID;
 
 public record MlExternalImportResponse(
-        UUID datasetId,
-        UUID datasetVersionId,
-        UUID importedFileId,
-        UUID validationReportId,
-        String contentHash,
-        long acceptedRows,
-        long rejectedRows,
-        long warningCount,
-        List<String> validationMessages,
-        Instant importedAt) {
-}
+    UUID datasetId,
+    UUID datasetVersionId,
+    UUID importedFileId,
+    UUID validationReportId,
+    String contentHash,
+    long acceptedRows,
+    long rejectedRows,
+    long warningCount,
+    List<String> validationMessages,
+    Instant importedAt
+) {}

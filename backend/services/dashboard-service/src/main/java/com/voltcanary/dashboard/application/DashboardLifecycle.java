@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class DashboardLifecycle {
+
     private final DashboardStorage storage;
     private final DashboardAccess access;
     private final PersonalDashboardPreferences preferences;
@@ -22,8 +23,9 @@ public class DashboardLifecycle {
     public void delete(DashboardActor actor, UUID id, String ifMatch) {
         storage.lockActor(actor);
         storage.lockDashboard(id);
-        Dashboard current = storage.findOwned(actor, id)
-                .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Dashboard not found"));
+        Dashboard current = storage
+            .findOwned(actor, id)
+            .orElseThrow(() -> new DashboardFailure("NOT_FOUND", "Dashboard not found"));
         Draft draft = storage.draft(id, actor.userId());
         access.match(ifMatch, draft.etag());
         Instant now = Instant.now();
@@ -35,8 +37,8 @@ public class DashboardLifecycle {
     @Transactional
     public Dashboard transition(DashboardActor actor, UUID id, String ifMatch, boolean archive) {
         storage.lockActor(actor);
-        Dashboard current = access.capability(actor,id,"ARCHIVE");
-        Draft draft = storage.draft(id,actor.userId());
+        Dashboard current = access.capability(actor, id, "ARCHIVE");
+        Draft draft = storage.draft(id, actor.userId());
         access.match(ifMatch, draft.etag());
         String nextStatus = archive ? "ARCHIVED" : "ACTIVE";
         if (nextStatus.equals(current.status())) {
@@ -46,14 +48,39 @@ public class DashboardLifecycle {
             access.quota(actor);
         }
         Instant now = Instant.now();
-        Dashboard updated = new Dashboard(id, current.ownerUserId(), current.accountId(), current.name(),
-                current.description(), nextStatus, current.publishedRevision(), current.schemaVersion(), current.createdAt(), now);
+        Dashboard updated = new Dashboard(
+            id,
+            current.ownerUserId(),
+            current.accountId(),
+            current.name(),
+            current.description(),
+            nextStatus,
+            current.publishedRevision(),
+            current.schemaVersion(),
+            current.createdAt(),
+            now
+        );
         storage.update(updated);
-        storage.saveDraft(new Draft(id, draft.authorUserId(), draft.baseRevision(), UUID.randomUUID(), draft.definition(), now));
+        storage.saveDraft(
+            new Draft(
+                id,
+                draft.authorUserId(),
+                draft.baseRevision(),
+                UUID.randomUUID(),
+                draft.definition(),
+                now
+            )
+        );
         if (archive) {
             preferences.archived(actor, id, now);
         }
-        storage.audit(actor, id, current.publishedRevision(), archive ? "ARCHIVED" : "RESTORED", now);
+        storage.audit(
+            actor,
+            id,
+            current.publishedRevision(),
+            archive ? "ARCHIVED" : "RESTORED",
+            now
+        );
         return updated;
     }
 }

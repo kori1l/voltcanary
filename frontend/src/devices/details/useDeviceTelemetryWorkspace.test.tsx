@@ -1,31 +1,84 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client";
-import { getLatestTelemetry, getTelemetryMetrics, getTelemetryEnvelope } from "../../telemetry/telemetryApi";
+import {
+  getLatestTelemetry,
+  getTelemetryMetrics,
+  getTelemetryEnvelope,
+} from "../../telemetry/telemetryApi";
 import { useDeviceTelemetryWorkspace } from "./useDeviceTelemetryWorkspace";
-vi.mock("../../telemetry/telemetryApi", () => ({ getLatestTelemetry: vi.fn(), getTelemetryMetrics: vi.fn(), getTelemetryEnvelope: vi.fn() }));
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
-const metrics = [{ name: "temperatureC", unit: "C", type: "number", min: -50, max: 150, displayName: "Temperature" }];
+vi.mock("../../telemetry/telemetryApi", () => ({
+  getLatestTelemetry: vi.fn(),
+  getTelemetryMetrics: vi.fn(),
+  getTelemetryEnvelope: vi.fn(),
+}));
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+});
+const metrics = [
+  {
+    name: "temperatureC",
+    unit: "C",
+    type: "number",
+    min: -50,
+    max: 150,
+    displayName: "Temperature",
+  },
+];
 it("loads historical temperature independently when latest fails or no longer contains it", async () => {
   vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("Latest unavailable", 503));
   vi.mocked(getTelemetryMetrics).mockResolvedValue(metrics);
-  vi.mocked(getTelemetryEnvelope).mockResolvedValue({ deviceId: "device-A", metric: "temperatureC", points: [{ timestamp: "2026-10-07T12:00:00Z", value: 0 }] });
-  const view = renderHook(() => useDeviceTelemetryWorkspace({ deviceId: "device-A", activeTab: "telemetry", searchParams: new URLSearchParams() }));
+  vi.mocked(getTelemetryEnvelope).mockResolvedValue({
+    deviceId: "device-A",
+    metric: "temperatureC",
+    points: [{ timestamp: "2026-10-07T12:00:00Z", value: 0 }],
+  });
+  const view = renderHook(() =>
+    useDeviceTelemetryWorkspace({
+      deviceId: "device-A",
+      activeTab: "telemetry",
+      searchParams: new URLSearchParams(),
+    }),
+  );
   await waitFor(() => expect(view.result.current.resource.status).toBe("ready"));
-  expect(view.result.current.availableChartMetrics).toEqual([{ key: "temperatureC", unit: "C", label: "Temperature" }]);
+  expect(view.result.current.availableChartMetrics).toEqual([
+    { key: "temperatureC", unit: "C", label: "Temperature" },
+  ]);
   expect(view.result.current.charts.temperatureC.points[0].value).toBe(0);
   expect(view.result.current.latest).toBeNull();
   expect(view.result.current.telemetryFailures).toEqual(["Latest reading: Latest unavailable"]);
-  vi.mocked(getLatestTelemetry).mockResolvedValue({ deviceId: "device-A", timestamp: "2026-10-08T12:00:00Z", readings: { activePowerW: 10 } });
-  await act(async () => { await view.result.current.loadTelemetry(); });
+  vi.mocked(getLatestTelemetry).mockResolvedValue({
+    deviceId: "device-A",
+    timestamp: "2026-10-08T12:00:00Z",
+    readings: { activePowerW: 10 },
+  });
+  await act(async () => {
+    await view.result.current.loadTelemetry();
+  });
   expect(view.result.current.availableChartMetrics[0].key).toBe("temperatureC");
   expect(view.result.current.latest?.readings).not.toHaveProperty("temperatureC");
 });
 it("aborts obsolete history and refuses to replace another device with its late response", async () => {
   vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("Empty", 404));
   let resolve!: (value: typeof metrics) => void;
-  vi.mocked(getTelemetryMetrics).mockImplementationOnce(() => new Promise((done) => { resolve = done; })).mockResolvedValue([]);
-  const view = renderHook(({ deviceId }) => useDeviceTelemetryWorkspace({ deviceId, activeTab: "telemetry", searchParams: new URLSearchParams() }), { initialProps: { deviceId: "device-A" } });
+  vi.mocked(getTelemetryMetrics)
+    .mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    )
+    .mockResolvedValue([]);
+  const view = renderHook(
+    ({ deviceId }) =>
+      useDeviceTelemetryWorkspace({
+        deviceId,
+        activeTab: "telemetry",
+        searchParams: new URLSearchParams(),
+      }),
+    { initialProps: { deviceId: "device-A" } },
+  );
   const signal = vi.mocked(getTelemetryMetrics).mock.calls[0][3]!;
   view.rerender({ deviceId: "device-B" });
   await waitFor(() => expect(view.result.current.resource.status).toBe("empty"));
@@ -37,21 +90,52 @@ it("aborts obsolete history and refuses to replace another device with its late 
 it("uses the current interval when an earlier parent workflow resumes after loading other dependencies", async () => {
   vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("Empty", 404));
   vi.mocked(getTelemetryMetrics).mockResolvedValue([]);
-  const view = renderHook(() => useDeviceTelemetryWorkspace({ deviceId: "device-A", activeTab: "telemetry", searchParams: new URLSearchParams() }));
+  const view = renderHook(() =>
+    useDeviceTelemetryWorkspace({
+      deviceId: "device-A",
+      activeTab: "telemetry",
+      searchParams: new URLSearchParams(),
+    }),
+  );
   const earlierLoader = view.result.current.loadTelemetry;
   await act(async () => view.result.current.setChartTimeRange("7d"));
-  await act(async () => { await earlierLoader("device-A"); });
+  await act(async () => {
+    await earlierLoader("device-A");
+  });
   const calls = vi.mocked(getTelemetryMetrics).mock.calls;
   const last = calls[calls.length - 1];
   expect(Date.parse(last[2]) - Date.parse(last[1])).toBe(7 * 86400000);
 });
 
-it("offers configured boolean graphs with zero preserved",async()=>{
- vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("No latest",404));
- vi.mocked(getTelemetryMetrics).mockResolvedValue([{name:"transport.doorsOpen",unit:"boolean",type:"boolean",min:0,max:1,displayName:"Doors open"}]);
- vi.mocked(getTelemetryEnvelope).mockResolvedValue({deviceId:"device-A",metric:"transport.doorsOpen",points:[{timestamp:"2026-10-07T12:00:00Z",value:0}]});
- const view=renderHook(()=>useDeviceTelemetryWorkspace({deviceId:"device-A",activeTab:"telemetry",searchParams:new URLSearchParams()}));
- await waitFor(()=>expect(view.result.current.availableChartMetrics).toHaveLength(1));
- expect(view.result.current.availableChartMetrics[0]).toEqual({key:"transport.doorsOpen",unit:"boolean",label:"Doors open"});
- expect(view.result.current.charts["transport.doorsOpen"].points[0].value).toBe(0);
+it("offers configured boolean graphs with zero preserved", async () => {
+  vi.mocked(getLatestTelemetry).mockRejectedValue(new ApiError("No latest", 404));
+  vi.mocked(getTelemetryMetrics).mockResolvedValue([
+    {
+      name: "transport.doorsOpen",
+      unit: "boolean",
+      type: "boolean",
+      min: 0,
+      max: 1,
+      displayName: "Doors open",
+    },
+  ]);
+  vi.mocked(getTelemetryEnvelope).mockResolvedValue({
+    deviceId: "device-A",
+    metric: "transport.doorsOpen",
+    points: [{ timestamp: "2026-10-07T12:00:00Z", value: 0 }],
+  });
+  const view = renderHook(() =>
+    useDeviceTelemetryWorkspace({
+      deviceId: "device-A",
+      activeTab: "telemetry",
+      searchParams: new URLSearchParams(),
+    }),
+  );
+  await waitFor(() => expect(view.result.current.availableChartMetrics).toHaveLength(1));
+  expect(view.result.current.availableChartMetrics[0]).toEqual({
+    key: "transport.doorsOpen",
+    unit: "boolean",
+    label: "Doors open",
+  });
+  expect(view.result.current.charts["transport.doorsOpen"].points[0].value).toBe(0);
 });

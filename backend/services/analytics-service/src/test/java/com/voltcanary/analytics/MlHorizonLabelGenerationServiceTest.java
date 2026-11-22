@@ -7,14 +7,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.voltcanary.analytics.domain.MlHorizonLabelGenerationJob;
-import com.voltcanary.analytics.domain.MlHorizonLabelGenerationStatus;
 import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDatasetSourceType;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
+import com.voltcanary.analytics.domain.MlHorizonLabelGenerationJob;
+import com.voltcanary.analytics.domain.MlHorizonLabelGenerationStatus;
 import com.voltcanary.analytics.domain.MlLabel;
 import com.voltcanary.analytics.domain.MlLabelType;
 import com.voltcanary.analytics.dto.MlHorizonLabelGenerationRequest;
@@ -40,12 +40,22 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 
 class MlHorizonLabelGenerationServiceTest {
 
-    private final MlDatasetVersionRepository datasetVersionRepository = mock(MlDatasetVersionRepository.class);
-    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(MlCanonicalMetricRowRepository.class);
-    private final MaintenanceOutcomeReadModelRepository outcomeRepository = mock(MaintenanceOutcomeReadModelRepository.class);
-    private final MaintenanceWindowProjectionService maintenanceWindowProjectionService = mock(MaintenanceWindowProjectionService.class);
+    private final MlDatasetVersionRepository datasetVersionRepository = mock(
+        MlDatasetVersionRepository.class
+    );
+    private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(
+        MlCanonicalMetricRowRepository.class
+    );
+    private final MaintenanceOutcomeReadModelRepository outcomeRepository = mock(
+        MaintenanceOutcomeReadModelRepository.class
+    );
+    private final MaintenanceWindowProjectionService maintenanceWindowProjectionService = mock(
+        MaintenanceWindowProjectionService.class
+    );
     private final MlLabelRepository labelRepository = mock(MlLabelRepository.class);
-    private final MlHorizonLabelGenerationJobRepository jobRepository = mock(MlHorizonLabelGenerationJobRepository.class);
+    private final MlHorizonLabelGenerationJobRepository jobRepository = mock(
+        MlHorizonLabelGenerationJobRepository.class
+    );
     private final PlatformTransactionManager transactionManager = new PlatformTransactionManager() {
         @Override
         public TransactionStatus getTransaction(TransactionDefinition definition) {
@@ -53,22 +63,21 @@ class MlHorizonLabelGenerationServiceTest {
         }
 
         @Override
-        public void commit(TransactionStatus status) {
-        }
+        public void commit(TransactionStatus status) {}
 
         @Override
-        public void rollback(TransactionStatus status) {
-        }
+        public void rollback(TransactionStatus status) {}
     };
     private final MlHorizonLabelGenerationService service = new MlHorizonLabelGenerationService(
-            datasetVersionRepository,
-            canonicalMetricRowRepository,
-            outcomeRepository,
-            maintenanceWindowProjectionService,
-            labelRepository,
-            jobRepository,
-            new SyncTaskExecutor(),
-            transactionManager);
+        datasetVersionRepository,
+        canonicalMetricRowRepository,
+        outcomeRepository,
+        maintenanceWindowProjectionService,
+        labelRepository,
+        jobRepository,
+        new SyncTaskExecutor(),
+        transactionManager
+    );
 
     @Test
     void generatesAuditableHorizonLabelsFromOutcomes() {
@@ -84,35 +93,67 @@ class MlHorizonLabelGenerationServiceTest {
         Instant base = Instant.parse("2026-07-01T00:00:00Z");
         MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
         List<MlCanonicalMetricRow> rows = List.of(
-                row(datasetVersionId, positiveDevice, base),
-                row(datasetVersionId, maintenanceDevice, base),
-                row(datasetVersionId, normalDevice, base),
-                row(datasetVersionId, normalDevice, base.plus(8, java.time.temporal.ChronoUnit.DAYS)),
-                row(datasetVersionId, unresolvedDevice, base),
-                row(datasetVersionId, shortHistoryDevice, base),
-                row(datasetVersionId, recentDevice, base.plus(18, java.time.temporal.ChronoUnit.DAYS)));
+            row(datasetVersionId, positiveDevice, base),
+            row(datasetVersionId, maintenanceDevice, base),
+            row(datasetVersionId, normalDevice, base),
+            row(datasetVersionId, normalDevice, base.plus(8, java.time.temporal.ChronoUnit.DAYS)),
+            row(datasetVersionId, unresolvedDevice, base),
+            row(datasetVersionId, shortHistoryDevice, base),
+            row(datasetVersionId, recentDevice, base.plus(18, java.time.temporal.ChronoUnit.DAYS))
+        );
         UUID failureOutcomeId = UUID.randomUUID();
         UUID unresolvedOutcomeId = UUID.randomUUID();
 
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(rows);
-        when(outcomeRepository.findByAccountAndObservedRange(eq(accountId), any(), any())).thenReturn(List.of(
-                outcome(accountId, positiveDevice, failureOutcomeId, base.plus(2, java.time.temporal.ChronoUnit.DAYS), "CONFIRMED_FAILURE"),
-                outcome(accountId, unresolvedDevice, unresolvedOutcomeId, base.plus(1, java.time.temporal.ChronoUnit.DAYS), "UNRESOLVED_ANOMALY")));
-        when(maintenanceWindowProjectionService.activeOverlapping(any(), any(), any())).thenAnswer(invocation -> {
-            UUID deviceId = invocation.getArgument(0);
-            if (!maintenanceDevice.equals(deviceId)) {
-                return List.of();
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion)
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)
+        ).thenReturn(rows);
+        when(
+            outcomeRepository.findByAccountAndObservedRange(eq(accountId), any(), any())
+        ).thenReturn(
+            List.of(
+                outcome(
+                    accountId,
+                    positiveDevice,
+                    failureOutcomeId,
+                    base.plus(2, java.time.temporal.ChronoUnit.DAYS),
+                    "CONFIRMED_FAILURE"
+                ),
+                outcome(
+                    accountId,
+                    unresolvedDevice,
+                    unresolvedOutcomeId,
+                    base.plus(1, java.time.temporal.ChronoUnit.DAYS),
+                    "UNRESOLVED_ANOMALY"
+                )
+            )
+        );
+        when(maintenanceWindowProjectionService.activeOverlapping(any(), any(), any())).thenAnswer(
+            invocation -> {
+                UUID deviceId = invocation.getArgument(0);
+                if (!maintenanceDevice.equals(deviceId)) {
+                    return List.of();
+                }
+                MaintenanceWindowReadModel window = new MaintenanceWindowReadModel();
+                window.setMaintenanceWindowId(UUID.randomUUID());
+                window.setDeviceId(maintenanceDevice);
+                window.setExcludeFromMl(true);
+                return List.of(window);
             }
-            MaintenanceWindowReadModel window = new MaintenanceWindowReadModel();
-            window.setMaintenanceWindowId(UUID.randomUUID());
-            window.setDeviceId(maintenanceDevice);
-            window.setExcludeFromMl(true);
-            return List.of(window);
-        });
+        );
 
         UUID jobId = UUID.randomUUID();
-        MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
+        MlHorizonLabelGenerationJob job = job(
+            accountId,
+            actorId,
+            datasetVersionId,
+            jobId,
+            "test-v1",
+            7,
+            false
+        );
         when(jobRepository.tryLockById(jobId)).thenReturn(Optional.of(job));
 
         service.runJob(jobId);
@@ -129,22 +170,27 @@ class MlHorizonLabelGenerationServiceTest {
         verify(labelRepository).saveAll(labelsCaptor.capture());
         List<MlLabel> labels = new ArrayList<>();
         labelsCaptor.getValue().forEach(labels::add);
-        assertThat(labels).extracting(MlLabel::getLabel)
-                .containsExactlyInAnyOrder(
-                        MlLabelType.CONFIRMED_FAILURE,
-                        MlLabelType.MAINTENANCE,
-                        MlLabelType.NORMAL,
-                        MlLabelType.UNRESOLVED_ANOMALY);
+        assertThat(labels)
+            .extracting(MlLabel::getLabel)
+            .containsExactlyInAnyOrder(
+                MlLabelType.CONFIRMED_FAILURE,
+                MlLabelType.MAINTENANCE,
+                MlLabelType.NORMAL,
+                MlLabelType.UNRESOLVED_ANOMALY
+            );
         assertThat(labels).allSatisfy(label -> {
             assertThat(label.getHorizonDays()).isEqualTo(7);
             assertThat(label.getGenerationVersion()).isEqualTo("test-v1");
             assertThat(label.getLineageHash()).isEqualTo(job.getLineageHash());
         });
-        assertThat(labels.stream()
+        assertThat(
+            labels
+                .stream()
                 .filter(label -> label.getLabel() == MlLabelType.CONFIRMED_FAILURE)
                 .findFirst()
                 .orElseThrow()
-                .getSourceOutcomeIdsJson()).contains(failureOutcomeId.toString());
+                .getSourceOutcomeIdsJson()
+        ).contains(failureOutcomeId.toString());
     }
 
     @Test
@@ -156,15 +202,36 @@ class MlHorizonLabelGenerationServiceTest {
         MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
         datasetVersion.setDataHash("sha256:dataset");
         MlCanonicalMetricRow row = row(datasetVersionId, UUID.randomUUID(), base);
-        MlHorizonLabelGenerationJob existing = job(accountId, actorId, datasetVersionId, UUID.randomUUID(), "test-v1", 7, false);
+        MlHorizonLabelGenerationJob existing = job(
+            accountId,
+            actorId,
+            datasetVersionId,
+            UUID.randomUUID(),
+            "test-v1",
+            7,
+            false
+        );
         existing.setStatus(MlHorizonLabelGenerationStatus.RUNNING);
 
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(List.of(row));
-        when(jobRepository.findFirstByAccountIdAndIdempotencyKeyAndStatusInOrderBySubmittedAtDesc(eq(accountId), any(), any()))
-                .thenReturn(Optional.of(existing));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion)
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)
+        ).thenReturn(List.of(row));
+        when(
+            jobRepository.findFirstByAccountIdAndIdempotencyKeyAndStatusInOrderBySubmittedAtDesc(
+                eq(accountId),
+                any(),
+                any()
+            )
+        ).thenReturn(Optional.of(existing));
 
-        var response = service.start(accountId, actorId, new MlHorizonLabelGenerationRequest(datasetVersionId, 7, "test-v1", false));
+        var response = service.start(
+            accountId,
+            actorId,
+            new MlHorizonLabelGenerationRequest(datasetVersionId, 7, "test-v1", false)
+        );
 
         assertThat(response.jobId()).isEqualTo(existing.getId());
         assertThat(response.status()).isEqualTo(MlHorizonLabelGenerationStatus.RUNNING);
@@ -177,11 +244,23 @@ class MlHorizonLabelGenerationServiceTest {
         UUID datasetVersionId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
-        MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
+        MlHorizonLabelGenerationJob job = job(
+            accountId,
+            actorId,
+            datasetVersionId,
+            jobId,
+            "test-v1",
+            7,
+            false
+        );
 
         when(jobRepository.tryLockById(jobId)).thenReturn(Optional.of(job));
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
-        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(List.of());
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion)
+        );
+        when(
+            canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)
+        ).thenReturn(List.of());
 
         service.runJob(jobId);
 
@@ -205,13 +284,14 @@ class MlHorizonLabelGenerationServiceTest {
     }
 
     private MlHorizonLabelGenerationJob job(
-            UUID accountId,
-            UUID actorId,
-            UUID datasetVersionId,
-            UUID jobId,
-            String generationVersion,
-            int horizonDays,
-            boolean includePreventiveMaintenance) {
+        UUID accountId,
+        UUID actorId,
+        UUID datasetVersionId,
+        UUID jobId,
+        String generationVersion,
+        int horizonDays,
+        boolean includePreventiveMaintenance
+    ) {
         MlHorizonLabelGenerationJob job = new MlHorizonLabelGenerationJob();
         job.setId(jobId);
         job.setAccountId(accountId);
@@ -246,11 +326,12 @@ class MlHorizonLabelGenerationServiceTest {
     }
 
     private MaintenanceOutcomeReadModel outcome(
-            UUID accountId,
-            UUID deviceId,
-            UUID outcomeId,
-            Instant observedAt,
-            String outcomeType) {
+        UUID accountId,
+        UUID deviceId,
+        UUID outcomeId,
+        Instant observedAt,
+        String outcomeType
+    ) {
         MaintenanceOutcomeReadModel outcome = new MaintenanceOutcomeReadModel();
         outcome.setMaintenanceOutcomeId(outcomeId);
         outcome.setAccountId(accountId);

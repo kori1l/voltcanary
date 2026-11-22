@@ -42,9 +42,12 @@ authoritative; the console applies no new numeric promotion thresholds.
 The serving cache synchronizes shared state and coalesces concurrent loads of
 the same model within one process. Clearing it prevents an earlier in-flight
 load from repopulating the cleared generation. Training requests sharing an
-idempotency key also share one in-flight execution within a process; a conflicting
-request fingerprint is rejected. These process-local caches do not replace the
-backend's durable training lease and registry.
+idempotency key share execution before fitting starts. Production-like profiles
+use a PostgreSQL session reservation across replicas; local profiles use an OS
+file lock across processes sharing the history directory. A waiting worker checks
+retained results again after acquiring ownership. Conflicting fingerprints return
+409; reservation timeout returns 503 with `Retry-After: 5`. Process exit releases
+the reservation. These reservations do not replace the backend job lease and registry.
 
 Local artifact paths must remain below the configured artifact root, including
 resolved symlinks. Absolute paths, traversal segments, Windows path separators,
@@ -380,12 +383,19 @@ partition metadata use a chronological holdout that keeps equal timestamps toget
 Anomaly contamination uses positive anomaly/failure labels, rather than total label
 coverage; NORMAL labels do not increase the expected anomaly fraction.
 
-Python run outcomes and idempotency metadata are persisted in SQLite at
-`ML_TRAINING_HISTORY_PATH` (default: `.training-history.sqlite3` under the artifact
-root). Retention defaults to seven days and 1,000 outcomes, controlled by
-`ML_TRAINING_HISTORY_RETENTION_SECONDS` and `ML_TRAINING_HISTORY_CAPACITY`.
-Use a persistent local volume across restarts. This history does not replace the
-backend's authoritative job lease or provide cross-host execution locking.
+Python run outcomes and idempotency metadata use PostgreSQL in production-like
+profiles. All replicas must share `ML_TRAINING_POSTGRES_HOST`,
+`ML_TRAINING_POSTGRES_PORT`, `ML_TRAINING_POSTGRES_DATABASE` (default `voltcanary_ml`),
+`ML_TRAINING_POSTGRES_USER` and `ML_TRAINING_POSTGRES_PASSWORD`. Host/port/user/password
+fall back to the matching `POSTGRES_*` setting. The database must already exist;
+the runtime initializes its history table under a database lock.
+Local profiles use SQLite at `ML_TRAINING_HISTORY_PATH` (default:
+`.training-history.sqlite3` under the artifact root). Retention defaults to seven
+days and 1,000 outcomes, controlled by `ML_TRAINING_HISTORY_RETENTION_SECONDS` and
+`ML_TRAINING_HISTORY_CAPACITY`. Idempotent replay is guaranteed only while the
+outcome is retained. Immutable artifact reservation still prevents overwriting an
+existing bundle after history expiry. Shared history does not replace the
+backend's authoritative job lease.
 Fitting runs in a separate process that is terminated when its remaining time
 budget expires. `ML_TRAINING_FIT_TIMEOUT_SECONDS` defaults to 600 seconds; the
 request's `trainingTimeoutSeconds` can shorten this limit.
@@ -899,6 +909,14 @@ account-scoped `EXTERNAL_IMPORT` dataset version and returns its
 ## POST /analytics/ml/datasets/feature-snapshots
 
 Generates a deterministic feature snapshot for a `READY` dataset version.
+Inputs are captured in a short repeatable-read transaction; feature computation,
+serialization and hashing run outside a database transaction. Publication checks
+the current dataset revision and READY status, then atomically stores the snapshot
+and feature rows. A lifecycle race returns 409. Success metrics are emitted after
+commit. Oversized inputs return 422 with guidance to select a smaller dataset.
+`app.ml-features.max-input-rows` and `max-labels` default to 20,000 each;
+`max-imported-files` defaults to 100. Limits apply across all files combined and
+reads request at most the configured limit plus one record.
 
 Request:
 
@@ -1233,11 +1251,17 @@ checkpoint before candidate registration.
 
 ## GET /analytics/ml/training-runs
 
-Lists recent training runs for the current account.
+Lists training runs for the current account, ordered by `createdAt DESC, id DESC`.
+Filtering and pagination execute in the database. The response remains an array.
+The console keeps selected pipeline lineage through the account-authorized
+`GET /analytics/ml/training-runs/{runId}` detail route even when the run is off-page.
 
 Optional query:
 
-- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+- `page`: zero-based page, default `0`; negative values return 400.
+- `size`: page size, default `100`, range `1..200`; invalid values return 400.
+- `statusFilter=default|active|failed|archived|deleted|all`. Unknown values return 400.
+  Default and active hide
   archived/deleted runs. `failed` includes `FAILED` and `CANCELED` runs for
   retry or cleanup workflows.
 
@@ -1279,7 +1303,10 @@ or demo environments.
 
 Optional query:
 
-- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+- `page`: zero-based page, default `0`; negative values return 400.
+- `size`: page size, default `100`, range `1..200`; invalid values return 400.
+- `statusFilter=default|active|failed|archived|deleted|all`. Unknown values return 400.
+  Default and active hide
   archived/deleted model versions. `failed` maps to rejected model versions.
 
 ## GET /analytics/ml/models/{modelVersionId}
@@ -1322,7 +1349,10 @@ Lists deployment policies for the current account.
 
 Optional query:
 
-- `statusFilter=default|active|failed|archived|deleted|all`. Default hides
+- `page`: zero-based page, default `0`; negative values return 400.
+- `size`: page size, default `100`, range `1..200`; invalid values return 400.
+- `statusFilter=default|active|failed|archived|deleted|all`. Unknown values return 400.
+  Default and active hide
   soft-deleted policies. `active` shows non-disabled policies, `failed` and
   `archived` show disabled policies, and `deleted` shows soft-deleted policies.
 

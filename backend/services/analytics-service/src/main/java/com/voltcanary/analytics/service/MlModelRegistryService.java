@@ -34,31 +34,65 @@ public class MlModelRegistryService {
         return modelQueryService.getModel(accountId, modelVersionId);
     }
 
-    public MlLifecycleImpactResponse modelImpact(UUID accountId, UUID modelVersionId, String action) {
+    public MlLifecycleImpactResponse modelImpact(
+        UUID accountId,
+        UUID modelVersionId,
+        String action
+    ) {
         return modelLifecycleService.modelImpact(accountId, modelVersionId, action);
     }
 
-    public MlModelVersionDto deleteModel(UUID accountId, UUID actorId, UUID modelVersionId, MlLifecycleActionRequest request) {
+    public MlModelVersionDto deleteModel(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlLifecycleActionRequest request
+    ) {
         return modelLifecycleService.deleteModel(accountId, actorId, modelVersionId, request);
     }
 
-    public MlModelVersionDto approve(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto approve(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         return modelLifecycleService.approve(accountId, actorId, modelVersionId, request);
     }
 
-    public MlModelVersionDto reject(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto reject(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         return modelLifecycleService.reject(accountId, actorId, modelVersionId, request);
     }
 
-    public MlModelVersionDto archive(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+    public MlModelVersionDto archive(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        MlModelStatusRequest request
+    ) {
         return modelLifecycleService.archive(accountId, actorId, modelVersionId, request);
     }
 
-    public MlDeploymentPolicyDto disablePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+    public MlDeploymentPolicyDto disablePolicy(
+        UUID accountId,
+        UUID actorId,
+        UUID policyId,
+        MlLifecycleActionRequest request
+    ) {
         return deploymentPolicyService.disablePolicy(accountId, actorId, policyId, request);
     }
 
-    public MlDeploymentPolicyDto deletePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+    public MlDeploymentPolicyDto deletePolicy(
+        UUID accountId,
+        UUID actorId,
+        UUID policyId,
+        MlLifecycleActionRequest request
+    ) {
         return deploymentPolicyService.deletePolicy(accountId, actorId, policyId, request);
     }
 
@@ -66,21 +100,37 @@ public class MlModelRegistryService {
         return deploymentPolicyService.policyImpact(accountId, policyId, action);
     }
 
-    public MlDeploymentPolicyDto upsertPolicy(UUID accountId, UUID actorId, MlDeploymentPolicyRequest request) {
+    public MlDeploymentPolicyDto upsertPolicy(
+        UUID accountId,
+        UUID actorId,
+        MlDeploymentPolicyRequest request
+    ) {
         return deploymentPolicyService.upsertPolicy(accountId, actorId, request);
     }
 
     public MlDeploymentPolicyDto rollbackPolicy(
-            UUID accountId,
-            UUID actorId,
-            MlDeploymentScope scope,
-            UUID deviceId,
-            String deviceType,
-            String reason) {
-        return deploymentPolicyService.rollbackPolicy(accountId, actorId, scope, deviceId, deviceType, reason);
+        UUID accountId,
+        UUID actorId,
+        MlDeploymentScope scope,
+        UUID deviceId,
+        String deviceType,
+        String reason
+    ) {
+        return deploymentPolicyService.rollbackPolicy(
+            accountId,
+            actorId,
+            scope,
+            deviceId,
+            deviceType,
+            reason
+        );
     }
 
-    public MlResolvedDeploymentPolicyResponse resolvePolicy(UUID accountId, UUID deviceId, String deviceType) {
+    public MlResolvedDeploymentPolicyResponse resolvePolicy(
+        UUID accountId,
+        UUID deviceId,
+        String deviceType
+    ) {
         return deploymentPolicyResolver.resolvePolicy(accountId, deviceId, deviceType);
     }
 

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class SimulationTargetProperties {
+
     private String deviceServiceBaseUrl = "http://localhost:8082";
     private String internalServiceToken = "dev-internal-token";
-
 }

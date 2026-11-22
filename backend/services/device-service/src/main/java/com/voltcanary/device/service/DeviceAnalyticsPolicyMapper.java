@@ -21,10 +21,11 @@ public class DeviceAnalyticsPolicyMapper {
 
     public DeviceAnalyticsConfigResponse toResponse(DeviceAnalyticsConfig entity) {
         return new DeviceAnalyticsConfigResponse(
-                entity.getDeviceId(),
-                entity.isEnabled(),
-                fromJson(entity.getConfigJson()),
-                entity.getUpdatedAt());
+            entity.getDeviceId(),
+            entity.isEnabled(),
+            fromJson(entity.getConfigJson()),
+            entity.getUpdatedAt()
+        );
     }
 
     public String toJson(Map<String, Object> config) {
@@ -40,8 +41,7 @@ public class DeviceAnalyticsPolicyMapper {
             return Map.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<>() {
-            });
+            return objectMapper.readValue(json, new TypeReference<>() {});
         } catch (Exception exception) {
             return Map.of();
         }

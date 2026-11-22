@@ -48,5 +48,4 @@ public class LoginAudit {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
 }

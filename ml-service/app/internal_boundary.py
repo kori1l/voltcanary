@@ -2,10 +2,11 @@ import hmac
 import logging
 from collections.abc import Callable
 
-from app.config.settings import Settings, settings
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.config.settings import Settings, settings
 
 TOKEN_HEADER = "X-Internal-Service-Token"
 SOURCE_SERVICE_HEADER = "X-Source-Service"
@@ -45,7 +46,9 @@ class InternalBoundaryMiddleware:
         if method in BODY_LIMIT_METHODS and path in BODY_LIMIT_PATHS:
             max_bytes = max(current_settings.ml_max_request_bytes, 0)
             if max_bytes > 0:
-                limited_receive, rejection = await self._limit_request_body(path, headers, receive, max_bytes)
+                limited_receive, rejection = await self._limit_request_body(
+                    path, headers, receive, max_bytes
+                )
                 if rejection is not None:
                     status_code, code, message = rejection
                     await self._reject(
@@ -70,7 +73,11 @@ class InternalBoundaryMiddleware:
         configured_token = current_settings.internal_service_token
         if not configured_token:
             self._log_rejection(path, 403, "internal_auth_not_configured", headers)
-            return 403, "internal_auth_not_configured", "Internal service authentication is not configured."
+            return (
+                403,
+                "internal_auth_not_configured",
+                "Internal service authentication is not configured.",
+            )
 
         provided_token = headers.get(TOKEN_HEADER)
         if not provided_token:
@@ -112,7 +119,9 @@ class InternalBoundaryMiddleware:
                         "Request body exceeds the configured maximum size.",
                     )
             except ValueError:
-                logger.warning("mlRequestRejected path=%s status=400 reason=invalid_content_length", path)
+                logger.warning(
+                    "mlRequestRejected path=%s status=400 reason=invalid_content_length", path
+                )
                 return receive, (
                     400,
                     "invalid_content_length",

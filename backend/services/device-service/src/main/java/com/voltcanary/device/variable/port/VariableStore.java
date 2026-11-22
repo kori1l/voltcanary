@@ -10,7 +10,13 @@ public interface VariableStore {
     VariableDefinition get(UUID accountId, String type, UUID id);
     List<VariableDefinition> list(UUID accountId, String type);
     void insert(VariableDefinition definition, UUID actor);
-    void advance(UUID id, int expectedVersion, UUID actor, boolean archive, Integer defaultRevision);
+    void advance(
+        UUID id,
+        int expectedVersion,
+        UUID actor,
+        boolean archive,
+        Integer defaultRevision
+    );
     void insertRevision(UUID id, VariableRevision revision, UUID actor);
     VariableRevision revision(UUID id, int revision);
     List<VariableRevision> revisions(UUID id);

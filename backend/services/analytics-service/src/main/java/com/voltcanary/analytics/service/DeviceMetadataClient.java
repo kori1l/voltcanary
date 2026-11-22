@@ -19,11 +19,14 @@ public class DeviceMetadataClient {
     private final MeterRegistry meterRegistry;
 
     public DeviceMetadataClient(
-            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
-            AnalyticsDownstreamProperties downstreamProperties,
-            AnalyticsInternalProperties internalProperties,
-            MeterRegistry meterRegistry) {
-        this.restClient = restClientBuilder.baseUrl(downstreamProperties.getDeviceService().getBaseUrl()).build();
+        @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
+        AnalyticsDownstreamProperties downstreamProperties,
+        AnalyticsInternalProperties internalProperties,
+        MeterRegistry meterRegistry
+    ) {
+        this.restClient = restClientBuilder
+            .baseUrl(downstreamProperties.getDeviceService().getBaseUrl())
+            .build();
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
         this.meterRegistry = meterRegistry;
@@ -32,25 +35,41 @@ public class DeviceMetadataClient {
     public DeviceMetadata metadata(UUID deviceId) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            DeviceMetadata response = restClient.get()
-                    .uri("/internal/devices/{deviceId}/metadata", deviceId)
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .retrieve()
-                    .body(DeviceMetadata.class);
-            sample.stop(meterRegistry.timer("analytics.device.metadata.fetch.duration", "status", "success"));
+            DeviceMetadata response = restClient
+                .get()
+                .uri("/internal/devices/{deviceId}/metadata", deviceId)
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .retrieve()
+                .body(DeviceMetadata.class);
+            sample.stop(
+                meterRegistry.timer("analytics.device.metadata.fetch.duration", "status", "success")
+            );
             return response;
         } catch (RestClientException exception) {
-            meterRegistry.counter("analytics.device.metadata.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("analytics.device.metadata.fetch.duration", "status", "failure"));
+            meterRegistry
+                .counter(
+                    "analytics.device.metadata.fetch.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer("analytics.device.metadata.fetch.duration", "status", "failure")
+            );
             return null;
         }
     }
 
-    public record DeviceMetadata(UUID deviceId, UUID accountId, UUID locationId, String type, String status) {
-    }
+    public record DeviceMetadata(
+        UUID deviceId,
+        UUID accountId,
+        UUID locationId,
+        String type,
+        String status
+    ) {}
 }

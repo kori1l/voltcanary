@@ -19,5 +19,4 @@ public class AnalyticsOutboxReconciliationProperties {
     private Duration processingTimeout = Duration.ofMinutes(5);
     private Duration retryDelay = Duration.ofSeconds(30);
     private int batchSize = 100;
-
 }

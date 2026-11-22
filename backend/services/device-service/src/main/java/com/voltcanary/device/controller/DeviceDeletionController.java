@@ -20,13 +20,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DeviceDeletionController {
-    public record Request(@NotNull Boolean deleteHistory) { }
+
+    public record Request(@NotNull Boolean deleteHistory) {}
+
     private final AuthenticatedUserResolver users;
     private final DeviceDeletionService deletions;
 
     @PostMapping("/devices/{id}/deletion")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public DeviceDeletionService.Receipt delete(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id, @Valid @RequestBody Request request) {
+    public DeviceDeletionService.Receipt delete(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id,
+        @Valid @RequestBody Request request
+    ) {
         return deletions.begin(users.resolve(headers), id, request.deleteHistory());
     }
 
@@ -36,7 +42,10 @@ public class DeviceDeletionController {
     }
 
     @GetMapping("/devices/{id}/deletion")
-    public DeviceDeletionService.Receipt status(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
+    public DeviceDeletionService.Receipt status(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id
+    ) {
         return deletions.receipt(users.resolve(headers), id);
     }
 }

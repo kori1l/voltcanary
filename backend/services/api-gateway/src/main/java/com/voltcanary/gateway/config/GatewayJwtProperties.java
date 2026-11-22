@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class GatewayJwtProperties {
+
     private String keyId = "dev-rsa";
     private String publicKeys = "";
     private String issuer = "voltcanary-identity";
     private String audience = "voltcanary-api";
-
 }

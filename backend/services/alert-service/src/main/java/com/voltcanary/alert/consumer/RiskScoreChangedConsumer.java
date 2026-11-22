@@ -17,15 +17,17 @@ public class RiskScoreChangedConsumer {
     private final AnalyticsAlertEventHandler eventHandler;
 
     @KafkaListener(
-            topics = "risk-score.changed.v1",
-            groupId = "${spring.kafka.consumer.group-id}",
-            containerFactory = "riskScoreChangedKafkaListenerContainerFactory")
+        topics = "risk-score.changed.v1",
+        groupId = "${spring.kafka.consumer.group-id}",
+        containerFactory = "riskScoreChangedKafkaListenerContainerFactory"
+    )
     public void consume(RiskScoreChangedEvent event) {
         boolean processed = eventHandler.handleRiskScoreChanged(event);
         log.info(
-                "riskScoreChangedConsumed eventId={} deviceId={} processed={}",
-                event.eventId(),
-                event.deviceId(),
-                processed);
+            "riskScoreChangedConsumed eventId={} deviceId={} processed={}",
+            event.eventId(),
+            event.deviceId(),
+            processed
+        );
     }
 }

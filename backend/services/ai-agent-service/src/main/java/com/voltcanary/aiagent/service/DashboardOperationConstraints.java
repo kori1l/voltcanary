@@ -7,9 +7,13 @@ import java.util.Map;
 
 /** Relational schema variants keep target-specific constraints visible to native tools. */
 final class DashboardOperationConstraints {
-    private DashboardOperationConstraints() { }
 
-    static Map<String, Object> replacements(Map<String, Object> envelope, Map<String, Object> context) {
+    private DashboardOperationConstraints() {}
+
+    static Map<String, Object> replacements(
+        Map<String, Object> envelope,
+        Map<String, Object> context
+    ) {
         var properties = copy((Map<?, ?>) envelope.get("properties"));
         var operations = copy((Map<?, ?>) properties.get("operations"));
         var items = copy((Map<?, ?>) operations.get("items"));
@@ -26,8 +30,9 @@ final class DashboardOperationConstraints {
                 // A preceding show_history may change view in the same batch. Type stays fixed;
                 // the ordered pre-check and final compiler validate the effective visualization.
                 var refs = WidgetDataCompatibility.typeChoices(context, widget);
-                if (!refs.isEmpty() && widget.get("key") instanceof String key)
-                    groups.computeIfAbsent(refs, ignored -> new ArrayList<>()).add(key);
+                if (!refs.isEmpty() && widget.get("key") instanceof String key) groups
+                    .computeIfAbsent(refs, ignored -> new ArrayList<>())
+                    .add(key);
             }
             groups.forEach((refs, keys) -> {
                 var selected = copy(fields);

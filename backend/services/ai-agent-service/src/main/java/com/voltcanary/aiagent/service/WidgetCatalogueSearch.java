@@ -19,10 +19,15 @@ import lombok.RequiredArgsConstructor;
 /** Advisory search over owner contracts. Complete catalogue and validation remain authoritative. */
 @RequiredArgsConstructor
 public final class WidgetCatalogueSearch {
+
     public static final String VERSION = "widget-catalogue-v1";
-    private record Document(String type, String setting, String text) { }
-    private record Index(List<float[]> vectors, int dimensions) { }
-    private record Ranked(Document document, double score) { }
+
+    private record Document(String type, String setting, String text) {}
+
+    private record Index(List<float[]> vectors, int dimensions) {}
+
+    private record Ranked(Document document, double score) {}
+
     private final ObjectMapper mapper;
     private final CapabilityEmbeddings embeddings;
     private final Map<String, Index> indexes = new LinkedHashMap<>();
@@ -35,14 +40,20 @@ public final class WidgetCatalogueSearch {
         return search(catalogue, message, (purpose, texts) -> embeddings.embed(texts));
     }
 
-    public ObjectNode search(JsonNode catalogue, String message,
-            java.util.function.BiFunction<String, List<String>, List<float[]>> dispatch) {
+    public ObjectNode search(
+        JsonNode catalogue,
+        String message,
+        java.util.function.BiFunction<String, List<String>, List<float[]>> dispatch
+    ) {
         var result = mapper.createObjectNode().put("version", VERSION).put("advisoryOnly", true);
         String digest = SkillRegistry.digest(identity() + ":" + catalogue);
         result.put("catalogueDigest", digest);
         var matches = result.putArray("matches");
         List<Document> documents = documents(catalogue);
-        if (documents.isEmpty()) return result.put("mode", "LEXICAL_ONLY").put("diagnostic", "CATALOGUE_EMPTY_OR_OVERSIZED").put("embeddingCalls", 0);
+        if (documents.isEmpty()) return result
+            .put("mode", "LEXICAL_ONLY")
+            .put("diagnostic", "CATALOGUE_EMPTY_OR_OVERSIZED")
+            .put("embeddingCalls", 0);
         String query = ConversationRedaction.text(message == null ? "" : message);
         query = query.substring(0, Math.min(4096, query.length()));
         var terms = terms(query);
@@ -57,10 +68,16 @@ public final class WidgetCatalogueSearch {
                     index = indexes.get(digest);
                     if (index == null) {
                         calls++;
-                        var proposed = dispatch.apply("CATALOGUE_INDEX", documents.stream().map(Document::text).toList());
+                        var proposed = dispatch.apply(
+                            "CATALOGUE_INDEX",
+                            documents.stream().map(Document::text).toList()
+                        );
                         int dimensions = validate(proposed, documents.size(), 0);
                         // Copy arrays so mutable provider buffers cannot change an accepted index.
-                        index = new Index(proposed.stream().map(float[]::clone).toList(), dimensions);
+                        index = new Index(
+                            proposed.stream().map(float[]::clone).toList(),
+                            dimensions
+                        );
                         if (indexes.size() >= 2) indexes.remove(indexes.keySet().iterator().next());
                         indexes.put(digest, index);
                     }
@@ -80,19 +97,37 @@ public final class WidgetCatalogueSearch {
         for (int i = 0; i < documents.size(); i++) {
             var document = documents.get(i);
             var words = terms(document.text());
-            double lexical = terms.isEmpty() ? 0 : (double) terms.stream().filter(words::contains).count() / terms.size();
-            double semantic = vectors == null ? 0 : Math.max(0, cosine(queryVector, vectors.get(i)));
+            double lexical = terms.isEmpty()
+                ? 0
+                : (double) terms.stream().filter(words::contains).count() / terms.size();
+            double semantic =
+                vectors == null ? 0 : Math.max(0, cosine(queryVector, vectors.get(i)));
             double score = vectors == null ? lexical : 0.45 * lexical + 0.55 * semantic;
             if (score > 0) ranked.add(new Ranked(document, score));
         }
-        ranked.stream().sorted(Comparator.comparingDouble(Ranked::score).reversed()
-                        .thenComparing(item -> item.document().type()).thenComparing(item -> item.document().setting()))
-                .limit(8).forEach(item -> {
-                    var match = matches.addObject().put("widgetType", item.document().type()).put("score", item.score());
-                    if (!item.document().setting().isEmpty()) match.put("settingKey", item.document().setting());
-                });
-        return result.put("mode", vectors == null ? "LEXICAL_ONLY" : "HYBRID")
-                .put("diagnostic", diagnostic).put("embeddingCalls", calls);
+        ranked
+            .stream()
+            .sorted(
+                Comparator.comparingDouble(Ranked::score)
+                    .reversed()
+                    .thenComparing(item -> item.document().type())
+                    .thenComparing(item -> item.document().setting())
+            )
+            .limit(8)
+            .forEach(item -> {
+                var match = matches
+                    .addObject()
+                    .put("widgetType", item.document().type())
+                    .put("score", item.score());
+                if (!item.document().setting().isEmpty()) match.put(
+                    "settingKey",
+                    item.document().setting()
+                );
+            });
+        return result
+            .put("mode", vectors == null ? "LEXICAL_ONLY" : "HYBRID")
+            .put("diagnostic", diagnostic)
+            .put("embeddingCalls", calls);
     }
 
     public List<float[]> embed(List<String> texts) {
@@ -104,14 +139,50 @@ public final class WidgetCatalogueSearch {
         var documents = new ArrayList<Document>();
         for (var widget : catalogue) {
             String type = widget.path("type").asText();
-            String purpose = type + " " + widget.path("title").asText() + " " + widget.path("description").asText();
-            documents.add(new Document(type, "", bounded(purpose + " " + widget.path("visualizations")
-                    + " " + widget.at("/capabilities/dataKind") + " " + widget.at("/capabilities/valueTypes"))));
+            String purpose =
+                type +
+                " " +
+                widget.path("title").asText() +
+                " " +
+                widget.path("description").asText();
+            documents.add(
+                new Document(
+                    type,
+                    "",
+                    bounded(
+                        purpose +
+                            " " +
+                            widget.path("visualizations") +
+                            " " +
+                            widget.at("/capabilities/dataKind") +
+                            " " +
+                            widget.at("/capabilities/valueTypes")
+                    )
+                )
+            );
             for (var setting : widget.at("/capabilities/settingContracts")) {
                 String key = setting.path("key").asText();
-                documents.add(new Document(type, key, bounded(type + " " + key + " " + setting.path("label").asText()
-                        + " " + setting.path("group").asText() + " " + setting.path("type").asText()
-                        + " " + setting.path("choices") + " " + widget.at("/capabilities/settingsSchema/properties/" + key))));
+                documents.add(
+                    new Document(
+                        type,
+                        key,
+                        bounded(
+                            type +
+                                " " +
+                                key +
+                                " " +
+                                setting.path("label").asText() +
+                                " " +
+                                setting.path("group").asText() +
+                                " " +
+                                setting.path("type").asText() +
+                                " " +
+                                setting.path("choices") +
+                                " " +
+                                widget.at("/capabilities/settingsSchema/properties/" + key)
+                        )
+                    )
+                );
             }
             if (documents.size() > 512) return List.of();
         }
@@ -124,18 +195,29 @@ public final class WidgetCatalogueSearch {
 
     private static Set<String> terms(String text) {
         // Identifier splitting is lexical indexing, never intent routing or semantic fallback.
-        return java.util.Arrays.stream(text.replaceAll("([a-z])([A-Z])", "$1 $2").toLowerCase(Locale.ROOT)
-                .split("[^\\p{L}\\p{N}]+"))
-                .filter(term -> !term.isBlank()).collect(Collectors.toSet());
+        return java.util.Arrays.stream(
+            text
+                .replaceAll("([a-z])([A-Z])", "$1 $2")
+                .toLowerCase(Locale.ROOT)
+                .split("[^\\p{L}\\p{N}]+")
+        )
+            .filter(term -> !term.isBlank())
+            .collect(Collectors.toSet());
     }
 
     private static int validate(List<float[]> vectors, int count, int expected) {
-        if (vectors == null || vectors.size() != count) throw new IllegalArgumentException("Embedding count");
+        if (vectors == null || vectors.size() != count) throw new IllegalArgumentException(
+            "Embedding count"
+        );
         int dimensions = expected;
         for (float[] vector : vectors) {
-            if (vector == null || vector.length == 0 || vector.length > 8192) throw new IllegalArgumentException("Embedding dimensions");
+            if (
+                vector == null || vector.length == 0 || vector.length > 8192
+            ) throw new IllegalArgumentException("Embedding dimensions");
             if (dimensions == 0) dimensions = vector.length;
-            if (vector.length != dimensions) throw new IllegalArgumentException("Embedding dimensions");
+            if (vector.length != dimensions) throw new IllegalArgumentException(
+                "Embedding dimensions"
+            );
             double norm = 0;
             for (float value : vector) {
                 if (!Float.isFinite(value)) throw new IllegalArgumentException("Embedding value");

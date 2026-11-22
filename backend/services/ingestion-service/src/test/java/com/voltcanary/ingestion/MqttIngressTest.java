@@ -1,5 +1,10 @@
 package com.voltcanary.ingestion;
 
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.ingestion.adapter.http.HttpTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.mqtt.MqttPayloadMapper;
@@ -16,11 +21,6 @@ import java.util.List;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.junit.jupiter.api.Test;
 
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-
 class MqttIngressTest {
 
     @Test
@@ -29,10 +29,13 @@ class MqttIngressTest {
         MqttIngress ingress = mqttIngress(pipeline);
 
         ingress.messageArrived(
-                "voltcanary/sources/sim-fridge-001/telemetry",
-                new MqttMessage("""
-                        {"timestamp":"2026-05-19T12:30:00Z","metrics":{"activePowerW":120.5}}
-                        """.getBytes()));
+            "voltcanary/sources/sim-fridge-001/telemetry",
+            new MqttMessage(
+                """
+                {"timestamp":"2026-05-19T12:30:00Z","metrics":{"activePowerW":120.5}}
+                """.getBytes()
+            )
+        );
 
         verify(pipeline).ingest(argThat(message -> "sim-fridge-001".equals(message.sourceId())));
     }
@@ -43,10 +46,13 @@ class MqttIngressTest {
         MqttIngress ingress = mqttIngress(pipeline);
 
         ingress.messageArrived(
-                "voltcanary/devices/sim-fridge-001/telemetry",
-                new MqttMessage("""
-                        {"timestamp":"2026-05-19T12:30:00Z","metrics":{"activePowerW":120.5}}
-                        """.getBytes()));
+            "voltcanary/devices/sim-fridge-001/telemetry",
+            new MqttMessage(
+                """
+                {"timestamp":"2026-05-19T12:30:00Z","metrics":{"activePowerW":120.5}}
+                """.getBytes()
+            )
+        );
 
         verifyNoInteractions(pipeline);
     }
@@ -57,8 +63,9 @@ class MqttIngressTest {
         MqttIngress ingress = mqttIngress(pipeline);
 
         ingress.messageArrived(
-                "voltcanary/sources/sim-fridge-001/telemetry",
-                new MqttMessage("not-json".getBytes()));
+            "voltcanary/sources/sim-fridge-001/telemetry",
+            new MqttMessage("not-json".getBytes())
+        );
 
         verifyNoInteractions(pipeline);
     }
@@ -70,15 +77,17 @@ class MqttIngressTest {
         properties.getMqtt().setTopicFilter("voltcanary/sources/+/telemetry");
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         MqttTelemetryAdapter adapter = new MqttTelemetryAdapter(
-                new MqttTopicResolver(),
-                new MqttPayloadMapper(new ObjectMapper()));
+            new MqttTopicResolver(),
+            new MqttPayloadMapper(new ObjectMapper())
+        );
         IngressOrchestrator orchestrator = new IngressOrchestrator(
-                pipeline,
-                new RegistryBackedTelemetryIngressDispatcher(new DefaultIngestionAdapterRegistry(List.of(
-                        new HttpTelemetryAdapter(),
-                        adapter))),
-                properties,
-                meterRegistry);
+            pipeline,
+            new RegistryBackedTelemetryIngressDispatcher(
+                new DefaultIngestionAdapterRegistry(List.of(new HttpTelemetryAdapter(), adapter))
+            ),
+            properties,
+            meterRegistry
+        );
         return new MqttIngress(orchestrator, meterRegistry, properties);
     }
 }

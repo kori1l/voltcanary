@@ -10,6 +10,6 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class VariableRuleProperties {
-    private String telemetryServiceBaseUrl = "http://localhost:8084";
 
+    private String telemetryServiceBaseUrl = "http://localhost:8084";
 }

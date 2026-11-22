@@ -20,23 +20,59 @@ import java.util.List;
     @JsonSubTypes.Type(value = DashboardOperation.RenameDashboard.class, name = "rename_dashboard"),
     @JsonSubTypes.Type(value = DashboardOperation.Period.class, name = "set_period"),
     @JsonSubTypes.Type(value = DashboardOperation.Restore.class, name = "restore_review"),
-    @JsonSubTypes.Type(value = DashboardOperation.Keep.class, name = "keep_review")
+    @JsonSubTypes.Type(value = DashboardOperation.Keep.class, name = "keep_review"),
 })
 public sealed interface DashboardOperation {
     String id();
-    record ShowMap(String id, String dataRef, String widgetKey) implements DashboardOperation { }
-    record ShowCurrent(String id, String dataRef, String widgetKey) implements DashboardOperation { }
-    record ShowHistory(String id, String dataRef, String widgetKey, String view, String period) implements DashboardOperation { }
-    record AddNote(String id, String title, String text) implements DashboardOperation { }
-    record Place(String id, List<String> targets, String position, String anchor) implements DashboardOperation { }
-    record Resize(String id, List<String> targets, String width, Integer height, Integer heightPercent) implements DashboardOperation { }
-    record SettingPatch(String key, Object value) { }
-    record Presentation(String id, List<String> targets, List<SettingPatch> settings) implements DashboardOperation { }
-    record RenameWidget(String id, String widgetKey, String title) implements DashboardOperation { }
-    record SetData(String id, String widgetKey, String dataRef) implements DashboardOperation { }
-    record Remove(String id, List<String> targets) implements DashboardOperation { }
-    record RenameDashboard(String id, String name) implements DashboardOperation { }
-    record Period(String id, List<String> targets, String period) implements DashboardOperation { }
-    record Restore(String id, Integer restoreSteps) implements DashboardOperation { }
-    record Keep(String id) implements DashboardOperation { }
+
+    record ShowMap(String id, String dataRef, String widgetKey) implements DashboardOperation {}
+
+    record ShowCurrent(String id, String dataRef, String widgetKey) implements DashboardOperation {}
+
+    record ShowHistory(
+        String id,
+        String dataRef,
+        String widgetKey,
+        String view,
+        String period
+    ) implements DashboardOperation {}
+
+    record AddNote(String id, String title, String text) implements DashboardOperation {}
+
+    record Place(
+        String id,
+        List<String> targets,
+        String position,
+        String anchor
+    ) implements DashboardOperation {}
+
+    record Resize(
+        String id,
+        List<String> targets,
+        String width,
+        Integer height,
+        Integer heightPercent
+    ) implements DashboardOperation {}
+
+    record SettingPatch(String key, Object value) {}
+
+    record Presentation(
+        String id,
+        List<String> targets,
+        List<SettingPatch> settings
+    ) implements DashboardOperation {}
+
+    record RenameWidget(String id, String widgetKey, String title) implements DashboardOperation {}
+
+    record SetData(String id, String widgetKey, String dataRef) implements DashboardOperation {}
+
+    record Remove(String id, List<String> targets) implements DashboardOperation {}
+
+    record RenameDashboard(String id, String name) implements DashboardOperation {}
+
+    record Period(String id, List<String> targets, String period) implements DashboardOperation {}
+
+    record Restore(String id, Integer restoreSteps) implements DashboardOperation {}
+
+    record Keep(String id) implements DashboardOperation {}
 }

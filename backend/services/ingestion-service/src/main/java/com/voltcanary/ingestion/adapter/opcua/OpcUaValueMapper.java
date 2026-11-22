@@ -8,7 +8,9 @@ public class OpcUaValueMapper {
 
     Object map(OpcUaNodeMapping mapping, Object value) {
         if (value == null) {
-            throw new IllegalArgumentException("OPC UA node value for " + mapping.metric() + " must not be null");
+            throw new IllegalArgumentException(
+                "OPC UA node value for " + mapping.metric() + " must not be null"
+            );
         }
         Object unwrapped = unwrap(value);
         if (unwrapped instanceof Number number) {
@@ -21,7 +23,9 @@ public class OpcUaValueMapper {
         if (unwrapped instanceof Boolean || unwrapped instanceof String) {
             return unwrapped;
         }
-        throw new IllegalArgumentException("Unsupported OPC UA value type for metric " + mapping.metric());
+        throw new IllegalArgumentException(
+            "Unsupported OPC UA value type for metric " + mapping.metric()
+        );
     }
 
     private Object unwrap(Object value) {

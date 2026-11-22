@@ -1,7 +1,12 @@
 import { type PointerEvent, useId, useState, useRef, useLayoutEffect } from "react";
 import type { TelemetryChart as ChartEvidence } from "../../../telemetry/telemetryApi";
 import { sampleDisplayEvidence } from "../model/displaySampling";
-import { MetricThreshold, TelemetryEvent, TelemetryOverviewResponse, TelemetrySample } from "../model/telemetry.types";
+import {
+  MetricThreshold,
+  TelemetryEvent,
+  TelemetryOverviewResponse,
+  TelemetrySample,
+} from "../model/telemetry.types";
 import { formatCompactNumber, formatMetricValue, formatShortTime } from "../model/telemetry.utils";
 import { splitSampleSegments } from "../model/chartSegments";
 
@@ -36,36 +41,67 @@ export function TelemetryChart({
   onRangeSelect?: (from: string, to: string) => void;
   mode?: "compact" | "detailed";
   evidence?: ChartEvidence;
-  showSummary?:boolean;
-  showAxes?:boolean;
-  fillContainer?:boolean;
+  showSummary?: boolean;
+  showAxes?: boolean;
+  fillContainer?: boolean;
 }) {
-  const [hovered, setHovered] = useState<{ sample: RenderSample; x: number; y: number; event?: TelemetryEvent } | null>(null);
+  const [hovered, setHovered] = useState<{
+    sample: RenderSample;
+    x: number;
+    y: number;
+    event?: TelemetryEvent;
+  } | null>(null);
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
   const summaryId = useId();
-  const bounded = series.filter((sample) => Date.parse(sample.timestamp) >= Date.parse(range.from) && Date.parse(sample.timestamp) <= Date.parse(range.to));
-  const stateSeries=unit==="boolean";
-  const display = sampleDisplayEvidence(bounded, maxDisplayPoints, stateSeries?{...threshold,metricKey:series[0]?.metricKey??label,spikeThreshold:0.5}:threshold, evidence?.buckets??undefined, evidence?.rawPointCount);
+  const bounded = series.filter(
+    (sample) =>
+      Date.parse(sample.timestamp) >= Date.parse(range.from) &&
+      Date.parse(sample.timestamp) <= Date.parse(range.to),
+  );
+  const stateSeries = unit === "boolean";
+  const display = sampleDisplayEvidence(
+    bounded,
+    maxDisplayPoints,
+    stateSeries
+      ? { ...threshold, metricKey: series[0]?.metricKey ?? label, spikeThreshold: 0.5 }
+      : threshold,
+    evidence?.buckets ?? undefined,
+    evidence?.rawPointCount,
+  );
   const renderSeries = display.points;
-  const values = [...renderSeries.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value)), ...display.buckets.flatMap((bucket) => [bucket.min, bucket.max])];
-  const svgRef=useRef<SVGSVGElement>(null);
-  const [dimensions,setDimensions]=useState({width:820,height:330});
-  useLayoutEffect(()=>{
-    const element=svgRef.current;
-    if(!fillContainer || !element || typeof ResizeObserver==="undefined")return;
-    const observer=new ResizeObserver(([entry])=>{
-      if(entry.contentRect.width>0 && entry.contentRect.height>0){
-        const next={width:entry.contentRect.width,height:entry.contentRect.height};
-        setDimensions((prior)=>prior.width===next.width && prior.height===next.height?prior:next);
+  const values = [
+    ...renderSeries
+      .map((sample) => sample.value)
+      .filter((value): value is number => value !== null && Number.isFinite(value)),
+    ...display.buckets.flatMap((bucket) => [bucket.min, bucket.max]),
+  ];
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 820, height: 330 });
+  useLayoutEffect(() => {
+    const element = svgRef.current;
+    if (!fillContainer || !element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+        const next = { width: entry.contentRect.width, height: entry.contentRect.height };
+        setDimensions((prior) =>
+          prior.width === next.width && prior.height === next.height ? prior : next,
+        );
       }
     });
     observer.observe(element);
-    return ()=>observer.disconnect();
-  },[fillContainer]);
-  const {width,height}=fillContainer?dimensions:{width:820,height:330};
+    return () => observer.disconnect();
+  }, [fillContainer]);
+  const { width, height } = fillContainer ? dimensions : { width: 820, height: 330 };
   const padding = fillContainer
-    ? {top:Math.min(12,height*.12),right:Math.min(20,width*.1),bottom:showAxes?Math.min(48,height*.4):Math.min(12,height*.12),left:showAxes?Math.min(unit.length>3?82:58,width*.3):Math.min(12,width*.1)}
-    : {top:28,right:28,bottom:54,left:58};
+    ? {
+        top: Math.min(12, height * 0.12),
+        right: Math.min(20, width * 0.1),
+        bottom: showAxes ? Math.min(48, height * 0.4) : Math.min(12, height * 0.12),
+        left: showAxes
+          ? Math.min(unit.length > 3 ? 82 : 58, width * 0.3)
+          : Math.min(12, width * 0.1),
+      }
+    : { top: 28, right: 28, bottom: 54, left: 58 };
   const thresholdEntries = [
     { key: "normalMin", value: threshold?.normalMin },
     { key: "normalMax", value: threshold?.normalMax },
@@ -86,13 +122,23 @@ export function TelemetryChart({
   const paddingValue = rawRange * 0.08;
   const includeZero = ["W", "Wh", "A"].includes(unit) && safeRawMin >= 0;
   const actualMax = hasValues ? Math.max(...values) : safeRawMax;
-  const warningReference = threshold?.warningMax ?? threshold?.spikeThreshold ?? threshold?.criticalMax;
+  const warningReference =
+    threshold?.warningMax ?? threshold?.spikeThreshold ?? threshold?.criticalMax;
   const minValue = stateSeries ? -0.1 : includeZero ? 0 : safeRawMin - paddingValue;
-  const maxValue = stateSeries ? 1.1 : unit === "W"
-    ? Math.max(actualMax * 1.15, warningReference !== undefined ? warningReference * 1.3 : actualMax * 1.15, 1)
-    : safeRawMax + paddingValue;
+  const maxValue = stateSeries
+    ? 1.1
+    : unit === "W"
+      ? Math.max(
+          actualMax * 1.15,
+          warningReference !== undefined ? warningReference * 1.3 : actualMax * 1.15,
+          1,
+        )
+      : safeRawMax + paddingValue;
   const valueRange = maxValue - minValue || 1;
-  const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / valueRange) * (height - padding.top - padding.bottom);
+  const yForValue = (value: number) =>
+    height -
+    padding.bottom -
+    ((value - minValue) / valueRange) * (height - padding.top - padding.bottom);
   const rangeStart = new Date(range.from).getTime();
   const rangeEnd = new Date(range.to).getTime();
   const rangeSpan = Math.max(rangeEnd - rangeStart, 1);
@@ -108,7 +154,12 @@ export function TelemetryChart({
     const scale = width / Math.max(bounds.width, 1);
     return clampChartX((event.clientX - bounds.left) * scale);
   };
-  const canSelectRange = enableRangeSelection && Boolean(onRangeSelect) && Number.isFinite(rangeStart) && Number.isFinite(rangeEnd) && rangeEnd > rangeStart;
+  const canSelectRange =
+    enableRangeSelection &&
+    Boolean(onRangeSelect) &&
+    Number.isFinite(rangeStart) &&
+    Number.isFinite(rangeEnd) &&
+    rangeEnd > rangeStart;
   const startRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
     if (!canSelectRange || event.button !== 0) return;
     const x = chartXFromPointer(event);
@@ -133,7 +184,9 @@ export function TelemetryChart({
   const xForTime = (timestamp: string) => {
     const current = new Date(timestamp).getTime();
     if (!Number.isFinite(current)) return padding.left;
-    return padding.left + ((current - rangeStart) / rangeSpan) * (width - padding.left - padding.right);
+    return (
+      padding.left + ((current - rangeStart) / rangeSpan) * (width - padding.left - padding.right)
+    );
   };
   const coordinates = renderSeries
     .filter((sample) => sample.value !== null)
@@ -146,15 +199,34 @@ export function TelemetryChart({
     event,
     x: xForTimestamp(range, event.timestamp, padding.left, width - padding.right),
   }));
-  const maxPoint = coordinates.reduce((current, next) => ((next.sample.value ?? 0) > (current.sample.value ?? 0) ? next : current), coordinates[0]);
-  const isolatedTimes = new Set(splitSampleSegments(renderSeries).filter((segment) => segment.length === 1).map((segment) => segment[0].timestamp));
-  const visiblePoints = showPoints ? coordinates : coordinates.filter((coordinate) => isolatedTimes.has(coordinate.sample.timestamp) || (coordinate === maxPoint && isAboveThreshold(coordinate.sample.value, threshold)));
-  const yTicks = stateSeries?[0,1]:[minValue, minValue + valueRange / 2, maxValue];
+  const maxPoint = coordinates.reduce(
+    (current, next) => ((next.sample.value ?? 0) > (current.sample.value ?? 0) ? next : current),
+    coordinates[0],
+  );
+  const isolatedTimes = new Set(
+    splitSampleSegments(renderSeries)
+      .filter((segment) => segment.length === 1)
+      .map((segment) => segment[0].timestamp),
+  );
+  const visiblePoints = showPoints
+    ? coordinates
+    : coordinates.filter(
+        (coordinate) =>
+          isolatedTimes.has(coordinate.sample.timestamp) ||
+          (coordinate === maxPoint && isAboveThreshold(coordinate.sample.value, threshold)),
+      );
+  const yTicks = stateSeries ? [0, 1] : [minValue, minValue + valueRange / 2, maxValue];
   const xTicks = rangeTicks(range, padding.left, width - padding.right);
 
   return (
     <div className={`chart-wrap annotated-chart chart-${mode === "detailed" ? "large" : "normal"}`}>
-      <p id={summaryId} hidden={!showSummary} className="muted-text">{display.rawCount} source points · {display.displayCount} display points · {display.mode} · {unit || "Unit unspecified"}. Gaps: {display.gapCount}. {display.mode === "Min/max envelope" ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}` : `${display.crossingCount} ${stateSeries ? "state changes" : "threshold crossings"} preserved.`}</p>
+      <p id={summaryId} hidden={!showSummary} className="muted-text">
+        {display.rawCount} source points · {display.displayCount} display points · {display.mode} ·{" "}
+        {unit || "Unit unspecified"}. Gaps: {display.gapCount}.{" "}
+        {display.mode === "Min/max envelope"
+          ? `Bucket ranges preserve extrema; intermediate order and exact threshold transitions require raw values.${display.crossingCount !== null ? ` ${display.crossingCount} crossings in source points.` : ""}`
+          : `${display.crossingCount} ${stateSeries ? "state changes" : "threshold crossings"} preserved.`}
+      </p>
       <svg
         ref={svgRef}
         className={canSelectRange ? "chart-range-selectable" : undefined}
@@ -171,23 +243,59 @@ export function TelemetryChart({
           const y = yForValue(tick);
           return (
             <g key={tick}>
-              <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
-              {showAxes?<text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
-                {stateSeries?formatMetricValue(tick,"boolean",series[0]?.metricKey??evidence?.metric):<>{formatCompactNumber(tick)} {unit}</>}
-              </text>:null}
+              <line
+                className="chart-grid-line"
+                x1={padding.left}
+                y1={y}
+                x2={width - padding.right}
+                y2={y}
+              />
+              {showAxes ? (
+                <text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
+                  {stateSeries ? (
+                    formatMetricValue(tick, "boolean", series[0]?.metricKey ?? evidence?.metric)
+                  ) : (
+                    <>
+                      {formatCompactNumber(tick)} {unit}
+                    </>
+                  )}
+                </text>
+              ) : null}
             </g>
           );
         })}
 
-        <line className="chart-axis" x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
-        <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
+        <line
+          className="chart-axis"
+          x1={padding.left}
+          y1={height - padding.bottom}
+          x2={width - padding.right}
+          y2={height - padding.bottom}
+        />
+        <line
+          className="chart-axis"
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={height - padding.bottom}
+        />
 
-        <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
+        <rect
+          className="chart-selection-hit-area"
+          x={padding.left}
+          y={padding.top}
+          width={width - padding.left - padding.right}
+          height={height - padding.top - padding.bottom}
+        />
 
         {thresholdEntries.map(({ key, value }, index) => (
           <line
             key={`threshold-${key}-${index}-${value}`}
-            className={isCriticalThreshold(value, threshold) ? "chart-threshold chart-threshold-critical" : "chart-threshold"}
+            className={
+              isCriticalThreshold(value, threshold)
+                ? "chart-threshold chart-threshold-critical"
+                : "chart-threshold"
+            }
             x1={padding.left}
             y1={yForValue(value)}
             x2={width - padding.right}
@@ -197,20 +305,60 @@ export function TelemetryChart({
 
         {eventCoordinates.slice(0, mode === "detailed" ? 24 : 8).map(({ event, x }) => (
           <g key={event.id}>
-            <line className={`chart-event-marker chart-event-${event.severity}`} x1={x} y1={padding.top} x2={x} y2={height - padding.bottom} />
+            <line
+              className={`chart-event-marker chart-event-${event.severity}`}
+              x1={x}
+              y1={padding.top}
+              x2={x}
+              y2={height - padding.bottom}
+            />
             <title>{`${formatShortTime(event.timestamp)} - ${event.title}`}</title>
           </g>
         ))}
 
         {display.buckets.map((bucket, index) => {
-          const x = xForTime(new Date((Date.parse(bucket.from) + Date.parse(bucket.to)) / 2).toISOString());
-          const description = `${label}: ${bucket.from} to ${bucket.to}, min ${formatMetricValue(bucket.min, unit,series[0]?.metricKey??evidence?.metric)}, max ${formatMetricValue(bucket.max, unit,series[0]?.metricKey??evidence?.metric)}, ${bucket.count} source points, ${bucket.gapCount} gaps. Envelope, sequence unknown.`;
-          return <g key={index} tabIndex={0} role="img" aria-label={description}><title>{description}</title><line className="telemetry-envelope-line" x1={x} x2={x} y1={yForValue(bucket.min)} y2={yForValue(bucket.max)} /><circle cx={x} cy={yForValue(bucket.min)} r={3}/><circle cx={x} cy={yForValue(bucket.max)} r={3}/></g>;
+          const x = xForTime(
+            new Date((Date.parse(bucket.from) + Date.parse(bucket.to)) / 2).toISOString(),
+          );
+          const description = `${label}: ${bucket.from} to ${bucket.to}, min ${formatMetricValue(bucket.min, unit, series[0]?.metricKey ?? evidence?.metric)}, max ${formatMetricValue(bucket.max, unit, series[0]?.metricKey ?? evidence?.metric)}, ${bucket.count} source points, ${bucket.gapCount} gaps. Envelope, sequence unknown.`;
+          return (
+            <g key={index} tabIndex={0} role="img" aria-label={description}>
+              <title>{description}</title>
+              <line
+                className="telemetry-envelope-line"
+                x1={x}
+                x2={x}
+                y1={yForValue(bucket.min)}
+                y2={yForValue(bucket.max)}
+              />
+              <circle cx={x} cy={yForValue(bucket.min)} r={3} />
+              <circle cx={x} cy={yForValue(bucket.max)} r={3} />
+            </g>
+          );
         })}
-        {splitSampleSegments(renderSeries).map((segment, index) => <polyline key={index} points={segment.flatMap((sample,i)=>stateSeries&&i>0?[`${xForTime(sample.timestamp)},${yForValue(segment[i-1].value!)}`,`${xForTime(sample.timestamp)},${yForValue(sample.value!)}`]:[`${xForTime(sample.timestamp)},${yForValue(sample.value!)}`]).join(" ")} />)}
+        {splitSampleSegments(renderSeries).map((segment, index) => (
+          <polyline
+            key={index}
+            points={segment
+              .flatMap((sample, i) =>
+                stateSeries && i > 0
+                  ? [
+                      `${xForTime(sample.timestamp)},${yForValue(segment[i - 1].value!)}`,
+                      `${xForTime(sample.timestamp)},${yForValue(sample.value!)}`,
+                    ]
+                  : [`${xForTime(sample.timestamp)},${yForValue(sample.value!)}`],
+              )
+              .join(" ")}
+          />
+        ))}
 
         {coordinates.length === 0 && display.buckets.length === 0 ? (
-          <text className="chart-axis-label" x={(padding.left + width - padding.right) / 2} y={(padding.top + height - padding.bottom) / 2} textAnchor="middle">
+          <text
+            className="chart-axis-label"
+            x={(padding.left + width - padding.right) / 2}
+            y={(padding.top + height - padding.bottom) / 2}
+            textAnchor="middle"
+          >
             No samples in selected range
           </text>
         ) : null}
@@ -228,7 +376,9 @@ export function TelemetryChart({
         {visiblePoints.map((coordinate, index) => (
           <circle
             key={`visible-${coordinate.sample.timestamp}-${index}`}
-            className={isAboveThreshold(coordinate.sample.value, threshold) ? "chart-spike-point" : undefined}
+            className={
+              isAboveThreshold(coordinate.sample.value, threshold) ? "chart-spike-point" : undefined
+            }
             cx={coordinate.x}
             cy={coordinate.y}
             r={isAboveThreshold(coordinate.sample.value, threshold) ? 6 : 4}
@@ -237,12 +387,14 @@ export function TelemetryChart({
             onFocus={() => setHovered(coordinate)}
             tabIndex={0}
           >
-            <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit,coordinate.sample.metricKey)}`}</title>
+            <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit, coordinate.sample.metricKey)}`}</title>
           </circle>
         ))}
 
         {coordinates.map((coordinate, index) => {
-          const nearbyEvent = eventCoordinates.find(({ x }) => Math.abs(x - coordinate.x) < 6)?.event;
+          const nearbyEvent = eventCoordinates.find(
+            ({ x }) => Math.abs(x - coordinate.x) < 6,
+          )?.event;
           return (
             <circle
               key={`hit-${coordinate.sample.timestamp}-${index}`}
@@ -255,28 +407,38 @@ export function TelemetryChart({
               onFocus={() => setHovered({ ...coordinate, event: nearbyEvent })}
               tabIndex={0}
             >
-              <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit,coordinate.sample.metricKey)}`}</title>
+              <title>{`${formatShortTime(coordinate.sample.timestamp)} - ${formatMetricValue(coordinate.sample.value, unit, coordinate.sample.metricKey)}`}</title>
             </circle>
           );
         })}
 
-        {showAxes && xTicks.map((tick) => {
-          const lines = formatChartTimeLabel(range, tick.timestamp);
-          return (
-            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - padding.bottom + Math.min(18,padding.bottom*.4)} textAnchor="middle">
-              {lines.map((line, index) => (
-                <tspan key={`${line}-${index}`} x={tick.x} dy={index === 0 ? 0 : 14}>
-                  {line}
-                </tspan>
-              ))}
-            </text>
-          );
-        })}
+        {showAxes &&
+          xTicks.map((tick) => {
+            const lines = formatChartTimeLabel(range, tick.timestamp);
+            return (
+              <text
+                key={tick.timestamp}
+                className="chart-axis-label"
+                x={tick.x}
+                y={height - padding.bottom + Math.min(18, padding.bottom * 0.4)}
+                textAnchor="middle"
+              >
+                {lines.map((line, index) => (
+                  <tspan key={`${line}-${index}`} x={tick.x} dy={index === 0 ? 0 : 14}>
+                    {line}
+                  </tspan>
+                ))}
+              </text>
+            );
+          })}
       </svg>
       {hovered ? (
-        <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
+        <div
+          className="chart-tooltip"
+          style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}
+        >
           <strong>{formatShortTime(hovered.sample.timestamp)}</strong>
-          <span>{formatMetricValue(hovered.sample.value, unit,hovered.sample.metricKey)}</span>
+          <span>{formatMetricValue(hovered.sample.value, unit, hovered.sample.metricKey)}</span>
           {hovered.sample.synthetic ? <em>No sample</em> : null}
           {isAboveThreshold(hovered.sample.value, threshold) ? <em>Outside threshold</em> : null}
           {hovered.event ? <em>{hovered.event.title}</em> : null}
@@ -286,7 +448,12 @@ export function TelemetryChart({
   );
 }
 
-function xForTimestamp(range: TelemetryOverviewResponse["range"], timestamp: string, left: number, right: number) {
+function xForTimestamp(
+  range: TelemetryOverviewResponse["range"],
+  timestamp: string,
+  left: number,
+  right: number,
+) {
   const first = new Date(range.from).getTime();
   const last = new Date(range.to).getTime();
   const current = new Date(timestamp).getTime();
@@ -302,7 +469,10 @@ function rangeTicks(range: TelemetryOverviewResponse["range"], left: number, rig
   }
   return [
     { timestamp: new Date(fromMs).toISOString(), x: left },
-    { timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(), x: left + (right - left) / 2 },
+    {
+      timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(),
+      x: left + (right - left) / 2,
+    },
     { timestamp: new Date(toMs).toISOString(), x: right },
   ];
 }

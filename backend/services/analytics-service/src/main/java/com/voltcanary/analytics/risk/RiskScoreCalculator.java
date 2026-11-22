@@ -20,13 +20,14 @@ public class RiskScoreCalculator {
     private final ObjectMapper objectMapper;
 
     public RiskScore calculate(
-            UUID deviceId,
-            List<Anomaly> anomalies,
-            int sampleCount,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now) {
+        UUID deviceId,
+        List<Anomaly> anomalies,
+        int sampleCount,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now
+    ) {
         int score = 0;
         List<Map<String, Object>> factors = new ArrayList<>();
         for (Anomaly anomaly : anomalies) {
@@ -36,15 +37,24 @@ public class RiskScoreCalculator {
                 default -> 0;
             };
             score += weight;
-            factors.add(Map.of(
-                    "code", "ANOMALY_" + anomaly.getType(),
-                    "weight", weight,
-                    "severity", anomaly.getSeverity(),
-                    "ruleId", anomaly.getRuleId() == null ? anomaly.getType() : anomaly.getRuleId()));
+            factors.add(
+                Map.of(
+                    "code",
+                    "ANOMALY_" + anomaly.getType(),
+                    "weight",
+                    weight,
+                    "severity",
+                    anomaly.getSeverity(),
+                    "ruleId",
+                    anomaly.getRuleId() == null ? anomaly.getType() : anomaly.getRuleId()
+                )
+            );
         }
         if (sampleCount < 3) {
             score += 10;
-            factors.add(Map.of("code", "LOW_SAMPLE_SIZE", "weight", 10, "sampleCount", sampleCount));
+            factors.add(
+                Map.of("code", "LOW_SAMPLE_SIZE", "weight", 10, "sampleCount", sampleCount)
+            );
         }
         if (sampleCount == 0) {
             score += 10;
@@ -53,16 +63,30 @@ public class RiskScoreCalculator {
         score = Math.min(100, score);
 
         RiskScore riskScore = new RiskScore();
-        riskScore.setId(UUID.nameUUIDFromBytes((deviceId + ":" + windowStart + ":" + windowEnd + ":" + inputHash)
-                .getBytes(StandardCharsets.UTF_8)));
+        riskScore.setId(
+            UUID.nameUUIDFromBytes(
+                (deviceId + ":" + windowStart + ":" + windowEnd + ":" + inputHash).getBytes(
+                    StandardCharsets.UTF_8
+                )
+            )
+        );
         riskScore.setDeviceId(deviceId);
         riskScore.setScore(score);
         riskScore.setLevel(level(score));
-        riskScore.setExplanationJson(writeJson(Map.of(
-                "modelVersion", "risk-basic-v2",
-                "sampleCount", sampleCount,
-                "factors", factors,
-                "cap", 100)));
+        riskScore.setExplanationJson(
+            writeJson(
+                Map.of(
+                    "modelVersion",
+                    "risk-basic-v2",
+                    "sampleCount",
+                    sampleCount,
+                    "factors",
+                    factors,
+                    "cap",
+                    100
+                )
+            )
+        );
         riskScore.setWindowStart(windowStart);
         riskScore.setWindowEnd(windowEnd);
         riskScore.setInputHash(inputHash);

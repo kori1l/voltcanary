@@ -24,13 +24,14 @@ public class AnomalyDetector {
     private final AnalyticsRuleProperties rules;
 
     public List<Anomaly> detect(
-            UUID deviceId,
-            TelemetryChartResponse chart,
-            BaselineStats baseline,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now) {
+        UUID deviceId,
+        TelemetryChartResponse chart,
+        BaselineStats baseline,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now
+    ) {
         if (chart == null || chart.points().isEmpty() || baseline.sampleCount() == 0) {
             return List.of();
         }
@@ -38,31 +39,53 @@ public class AnomalyDetector {
         List<Anomaly> anomalies = new ArrayList<>();
         detectPowerSpike(deviceId, baseline, windowStart, windowEnd, inputHash, now, anomalies);
 
-        List<TelemetryChartResponse.Point> points = chart.points().stream()
-                .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                .toList();
-        detectConsumptionGrowth(deviceId, points, windowStart, windowEnd, inputHash, now, anomalies);
-        detectLongCycle(deviceId, baseline, points, windowStart, windowEnd, inputHash, now, anomalies);
+        List<TelemetryChartResponse.Point> points = chart
+            .points()
+            .stream()
+            .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+            .toList();
+        detectConsumptionGrowth(
+            deviceId,
+            points,
+            windowStart,
+            windowEnd,
+            inputHash,
+            now,
+            anomalies
+        );
+        detectLongCycle(
+            deviceId,
+            baseline,
+            points,
+            windowStart,
+            windowEnd,
+            inputHash,
+            now,
+            anomalies
+        );
         return anomalies;
     }
 
     private void detectPowerSpike(
-            UUID deviceId,
-            BaselineStats baseline,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now,
-            List<Anomaly> anomalies) {
+        UUID deviceId,
+        BaselineStats baseline,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now,
+        List<Anomaly> anomalies
+    ) {
         AnalyticsRuleProperties.PowerSpike rule = rules.getPowerSpike();
         if (!rule.isEnabled()) {
             return;
         }
         double spikeThreshold = Math.max(
-                baseline.median() * rule.getMedianMultiplier(),
-                baseline.mean() * rule.getMeanMultiplier());
+            baseline.median() * rule.getMedianMultiplier(),
+            baseline.mean() * rule.getMeanMultiplier()
+        );
         if (baseline.max() > spikeThreshold && baseline.max() > baseline.mean()) {
-            anomalies.add(anomaly(
+            anomalies.add(
+                anomaly(
                     deviceId,
                     POWER_SPIKE_RULE,
                     rule.getSeverity(),
@@ -71,18 +94,21 @@ public class AnomalyDetector {
                     windowStart,
                     windowEnd,
                     inputHash,
-                    now));
+                    now
+                )
+            );
         }
     }
 
     private void detectConsumptionGrowth(
-            UUID deviceId,
-            List<TelemetryChartResponse.Point> points,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now,
-            List<Anomaly> anomalies) {
+        UUID deviceId,
+        List<TelemetryChartResponse.Point> points,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now,
+        List<Anomaly> anomalies
+    ) {
         AnalyticsRuleProperties.ConsumptionGrowth rule = rules.getConsumptionGrowth();
         if (!rule.isEnabled() || points.size() < rule.getMinPoints()) {
             return;
@@ -91,7 +117,8 @@ public class AnomalyDetector {
         double firstAverage = average(points.subList(0, midpoint));
         double secondAverage = average(points.subList(midpoint, points.size()));
         if (firstAverage > 0 && secondAverage > firstAverage * rule.getGrowthMultiplier()) {
-            anomalies.add(anomaly(
+            anomalies.add(
+                anomaly(
                     deviceId,
                     CONSUMPTION_GROWTH_RULE,
                     rule.getSeverity(),
@@ -100,26 +127,33 @@ public class AnomalyDetector {
                     windowStart,
                     windowEnd,
                     inputHash,
-                    now));
+                    now
+                )
+            );
         }
     }
 
     private void detectLongCycle(
-            UUID deviceId,
-            BaselineStats baseline,
-            List<TelemetryChartResponse.Point> points,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now,
-            List<Anomaly> anomalies) {
+        UUID deviceId,
+        BaselineStats baseline,
+        List<TelemetryChartResponse.Point> points,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now,
+        List<Anomaly> anomalies
+    ) {
         AnalyticsRuleProperties.LongCycle rule = rules.getLongCycle();
         if (!rule.isEnabled() || points.size() < rule.getMinPoints()) {
             return;
         }
-        long highRun = points.stream().filter(point -> point.value() > baseline.p90()).count();
+        long highRun = points
+            .stream()
+            .filter(point -> point.value() > baseline.p90())
+            .count();
         if (highRun >= Math.max(rule.getMinHighPoints(), points.size() / 2)) {
-            anomalies.add(anomaly(
+            anomalies.add(
+                anomaly(
                     deviceId,
                     LONG_CYCLE_RULE,
                     rule.getSeverity(),
@@ -128,7 +162,9 @@ public class AnomalyDetector {
                     windowStart,
                     windowEnd,
                     inputHash,
-                    now));
+                    now
+                )
+            );
         }
     }
 
@@ -137,18 +173,32 @@ public class AnomalyDetector {
     }
 
     private Anomaly anomaly(
-            UUID deviceId,
-            String ruleId,
-            String severity,
-            double score,
-            String description,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now) {
+        UUID deviceId,
+        String ruleId,
+        String severity,
+        double score,
+        String description,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now
+    ) {
         Anomaly anomaly = new Anomaly();
-        anomaly.setId(UUID.nameUUIDFromBytes((deviceId + ":" + ruleId + ":" + windowStart + ":" + windowEnd + ":" + inputHash)
-                .getBytes(StandardCharsets.UTF_8)));
+        anomaly.setId(
+            UUID.nameUUIDFromBytes(
+                (
+                    deviceId +
+                    ":" +
+                    ruleId +
+                    ":" +
+                    windowStart +
+                    ":" +
+                    windowEnd +
+                    ":" +
+                    inputHash
+                ).getBytes(StandardCharsets.UTF_8)
+            )
+        );
         anomaly.setDeviceId(deviceId);
         anomaly.setType(ruleId);
         anomaly.setSeverity(severity);

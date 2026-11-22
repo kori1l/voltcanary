@@ -83,5 +83,4 @@ public class MaintenanceOutcome {
 
     @Column(nullable = false)
     private long version;
-
 }

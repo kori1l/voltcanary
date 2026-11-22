@@ -19,19 +19,66 @@ import javax.sql.DataSource;
 
 /** Durable deployment identities. Activation requires a fresh owner check; this is not a worker or effect port. */
 public final class JdbcRuleDeployments {
-    public enum State { STAGED, ACTIVATING, ACTIVE, DRAINING, PAUSED, REVOKED }
+
+    public enum State {
+        STAGED,
+        ACTIVATING,
+        ACTIVE,
+        DRAINING,
+        PAUSED,
+        REVOKED,
+    }
+
     public record CutoverStart(UUID predecessor, Instant boundary, String checkpointDigest) {
         public CutoverStart {
             Objects.requireNonNull(boundary);
             require(boundary.getNano() % 1000 == 0, "DEPLOYMENT_BOUNDARY_INVALID");
-            require(checkpointDigest != null && checkpointDigest.matches("[0-9a-f]{64}"), "DEPLOYMENT_CHECKPOINT_INVALID");
+            require(
+                checkpointDigest != null && checkpointDigest.matches("[0-9a-f]{64}"),
+                "DEPLOYMENT_CHECKPOINT_INVALID"
+            );
         }
     }
-    public record Deployment(UUID actor, UUID account, UUID rule, UUID epoch, UUID bundle, String bundleDigest,
-            UUID grant, State state, long revision, Instant drainBefore, CutoverStart start, Instant resumeFrom) {
-        public Deployment(UUID actor, UUID account, UUID rule, UUID epoch, UUID bundle, String bundleDigest,
-                UUID grant, State state, long revision) {
-            this(actor, account, rule, epoch, bundle, bundleDigest, grant, state, revision, null, null, null);
+
+    public record Deployment(
+        UUID actor,
+        UUID account,
+        UUID rule,
+        UUID epoch,
+        UUID bundle,
+        String bundleDigest,
+        UUID grant,
+        State state,
+        long revision,
+        Instant drainBefore,
+        CutoverStart start,
+        Instant resumeFrom
+    ) {
+        public Deployment(
+            UUID actor,
+            UUID account,
+            UUID rule,
+            UUID epoch,
+            UUID bundle,
+            String bundleDigest,
+            UUID grant,
+            State state,
+            long revision
+        ) {
+            this(
+                actor,
+                account,
+                rule,
+                epoch,
+                bundle,
+                bundleDigest,
+                grant,
+                state,
+                revision,
+                null,
+                null,
+                null
+            );
         }
 
         boolean acceptsExistingWork() {
@@ -43,24 +90,42 @@ public final class JdbcRuleDeployments {
         }
 
         boolean includesWindow(Instant openedAt) {
-            return includesSessionObservation(openedAt)
-                    && (drainBefore == null || openedAt.isBefore(drainBefore));
+            return (
+                includesSessionObservation(openedAt) &&
+                (drainBefore == null || openedAt.isBefore(drainBefore))
+            );
         }
 
         boolean includesSessionObservation(Instant at) {
-            return acceptsExistingWork() && (start == null || !at.isBefore(start.boundary()))
-                    && (resumeFrom == null || !at.isBefore(resumeFrom));
+            return (
+                acceptsExistingWork() &&
+                (start == null || !at.isBefore(start.boundary())) &&
+                (resumeFrom == null || !at.isBefore(resumeFrom))
+            );
         }
     }
-    @FunctionalInterface public interface FreshAuthority { void verify(Deployment deployment); }
-    @FunctionalInterface public interface CutoverAuthority {
+
+    @FunctionalInterface
+    public interface FreshAuthority {
+        void verify(Deployment deployment);
+    }
+
+    @FunctionalInterface
+    public interface CutoverAuthority {
         void verify(Deployment previous, Deployment next, CutoverStart start);
     }
 
-    record EvaluatorReadiness(String bundleDigest, String checkpointDigest, String readinessDigest) {
+    record EvaluatorReadiness(
+        String bundleDigest,
+        String checkpointDigest,
+        String readinessDigest
+    ) {
         EvaluatorReadiness {
-            for (var digest : new String[]{bundleDigest, checkpointDigest, readinessDigest}) {
-                require(digest != null && digest.matches("[0-9a-f]{64}"), "EVALUATOR_READINESS_INVALID");
+            for (var digest : new String[] { bundleDigest, checkpointDigest, readinessDigest }) {
+                require(
+                    digest != null && digest.matches("[0-9a-f]{64}"),
+                    "EVALUATOR_READINESS_INVALID"
+                );
             }
         }
     }
@@ -77,17 +142,35 @@ public final class JdbcRuleDeployments {
         Objects.requireNonNull(actor);
         Objects.requireNonNull(bundle);
         Objects.requireNonNull(epoch);
-        var saved = bundles.find(bundle.accountId(), bundle.id()).orElseThrow(() -> invalid("DEPLOYMENT_BUNDLE_UNAVAILABLE"));
-        require(saved.digest().equals(bundle.digest()) && saved.payload().equals(bundle.payload()), "DEPLOYMENT_BUNDLE_CHANGED");
+        var saved = bundles
+            .find(bundle.accountId(), bundle.id())
+            .orElseThrow(() -> invalid("DEPLOYMENT_BUNDLE_UNAVAILABLE"));
+        require(
+            saved.digest().equals(bundle.digest()) && saved.payload().equals(bundle.payload()),
+            "DEPLOYMENT_BUNDLE_CHANGED"
+        );
         var identity = identity(bundle);
-        var candidate = new Deployment(actor, bundle.accountId(), identity.rule(), epoch, bundle.id(), bundle.digest(),
-                identity.grant(), State.STAGED, 0);
+        var candidate = new Deployment(
+            actor,
+            bundle.accountId(),
+            identity.rule(),
+            epoch,
+            bundle.id(),
+            bundle.digest(),
+            identity.grant(),
+            State.STAGED,
+            0
+        );
         try (var connection = source.getConnection()) {
             require(connection.getAutoCommit(), "DEPLOYMENT_AUTOCOMMIT_REQUIRED");
-            try (var insert = connection.prepareStatement("""
+            try (
+                var insert = connection.prepareStatement(
+                    """
                     INSERT INTO vcl_rule_deployments(account_id,rule_id,deployment_epoch,bundle_id,bundle_digest,grant_id,actor_id,state)
                     VALUES(?,?,?,?,?,?,?,'STAGED')
-                    """)) {
+                    """
+                )
+            ) {
                 insert.setObject(1, candidate.account());
                 insert.setObject(2, candidate.rule());
                 insert.setObject(3, candidate.epoch());
@@ -99,9 +182,13 @@ public final class JdbcRuleDeployments {
                 return candidate;
             }
         } catch (SQLException error) {
-            if (!"23505".equals(error.getSQLState())) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+            if (!"23505".equals(error.getSQLState())) throw invalid(
+                "DEPLOYMENT_STORAGE_UNAVAILABLE"
+            );
         }
-        var existing = find(candidate.account(), candidate.epoch()).orElseThrow(() -> invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"));
+        var existing = find(candidate.account(), candidate.epoch()).orElseThrow(() ->
+            invalid("DEPLOYMENT_STORAGE_UNAVAILABLE")
+        );
         require(sameIdentity(existing, candidate), "DEPLOYMENT_EPOCH_REUSED");
         return existing;
     }
@@ -123,24 +210,39 @@ public final class JdbcRuleDeployments {
                     connection.commit();
                     return current;
                 }
-                try (var update = connection.prepareStatement("""
+                try (
+                    var update = connection.prepareStatement(
+                        """
                         UPDATE vcl_rule_deployments SET state='ACTIVE',active_slot=1,revision=revision+1,
                         changed_at=CURRENT_TIMESTAMP WHERE account_id=? AND deployment_epoch=? AND revision=?
-                        """)) {
+                        """
+                    )
+                ) {
                     update.setObject(1, account);
                     update.setObject(2, epoch);
                     update.setLong(3, current.revision());
                     require(update.executeUpdate() == 1, "DEPLOYMENT_REVISION_CHANGED");
                 }
                 connection.commit();
-                return new Deployment(current.actor(), current.account(), current.rule(), current.epoch(), current.bundle(),
-                        current.bundleDigest(), current.grant(), State.ACTIVE, current.revision() + 1);
+                return new Deployment(
+                    current.actor(),
+                    current.account(),
+                    current.rule(),
+                    current.epoch(),
+                    current.bundle(),
+                    current.bundleDigest(),
+                    current.grant(),
+                    State.ACTIVE,
+                    current.revision() + 1
+                );
             } catch (SQLException | RuntimeException error) {
                 connection.rollback();
                 if (error instanceof SQLException) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
                 throw error;
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
     public Deployment revoke(UUID account, UUID epoch) {
@@ -152,25 +254,42 @@ public final class JdbcRuleDeployments {
                     connection.commit();
                     return current;
                 }
-                try (var update = connection.prepareStatement("""
+                try (
+                    var update = connection.prepareStatement(
+                        """
                         UPDATE vcl_rule_deployments SET state='REVOKED',active_slot=NULL,drain_before=NULL,revision=revision+1,
                         changed_at=CURRENT_TIMESTAMP WHERE account_id=? AND deployment_epoch=? AND revision=?
-                        """)) {
+                        """
+                    )
+                ) {
                     update.setObject(1, account);
                     update.setObject(2, epoch);
                     update.setLong(3, current.revision());
                     require(update.executeUpdate() == 1, "DEPLOYMENT_REVISION_CHANGED");
                 }
                 connection.commit();
-                return new Deployment(current.actor(), current.account(), current.rule(), current.epoch(), current.bundle(),
-                        current.bundleDigest(), current.grant(), State.REVOKED, current.revision() + 1, null,
-                        current.start(), current.resumeFrom());
+                return new Deployment(
+                    current.actor(),
+                    current.account(),
+                    current.rule(),
+                    current.epoch(),
+                    current.bundle(),
+                    current.bundleDigest(),
+                    current.grant(),
+                    State.REVOKED,
+                    current.revision() + 1,
+                    null,
+                    current.start(),
+                    current.resumeFrom()
+                );
             } catch (SQLException | RuntimeException error) {
                 connection.rollback();
                 if (error instanceof SQLException) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
                 throw error;
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
     /** A confirmed owner pause stops the logical rule, including draining and pending epochs. */
@@ -180,17 +299,28 @@ public final class JdbcRuleDeployments {
             connection.setAutoCommit(false);
             try {
                 var current = locked(connection, account, epoch);
-                require(current.state() == State.ACTIVE || current.state() == State.PAUSED, "DEPLOYMENT_CHANGED");
+                require(
+                    current.state() == State.ACTIVE || current.state() == State.PAUSED,
+                    "DEPLOYMENT_CHANGED"
+                );
                 verifyBundle(current);
                 authority.verify(current);
                 if (current.state() == State.ACTIVE) {
-                    try (var update = JdbcKeyedStateStore.prepare(connection, """
+                    try (
+                        var update = JdbcKeyedStateStore.prepare(
+                            connection,
+                            """
                             UPDATE vcl_rule_deployments SET state='REVOKED',active_slot=NULL,drain_before=NULL,
                                 paused_at=?,revision=revision+1,changed_at=CURRENT_TIMESTAMP
                             WHERE account_id=? AND rule_id=? AND (state='ACTIVE' OR
                                 (state='STAGED' AND (drain_before IS NOT NULL OR starts_at IS NOT NULL)))
-                            """)) {
-                        update.setObject(1, JdbcKeyedStateStore.now(connection).atOffset(ZoneOffset.UTC));
+                            """
+                        )
+                    ) {
+                        update.setObject(
+                            1,
+                            JdbcKeyedStateStore.now(connection).atOffset(ZoneOffset.UTC)
+                        );
                         update.setObject(2, account);
                         update.setObject(3, current.rule());
                         require(update.executeUpdate() > 0, "DEPLOYMENT_CHANGED");
@@ -201,10 +331,14 @@ public final class JdbcRuleDeployments {
                 return paused;
             } catch (SQLException | RuntimeException failure) {
                 connection.rollback();
-                if (failure instanceof SQLException) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+                if (failure instanceof SQLException) throw invalid(
+                    "DEPLOYMENT_STORAGE_UNAVAILABLE"
+                );
                 throw failure;
             }
-        } catch (SQLException failure) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException failure) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
     /** Persist the evaluator-owned ACK once the exact epoch has been prepared for execution. */
@@ -216,19 +350,29 @@ public final class JdbcRuleDeployments {
             try {
                 var current = locked(connection, account, epoch);
                 require(expected.equals(current), "DEPLOYMENT_CHANGED");
-                require(current.bundleDigest().equals(readiness.bundleDigest()), "DEPLOYMENT_BUNDLE_CHANGED");
+                require(
+                    current.bundleDigest().equals(readiness.bundleDigest()),
+                    "DEPLOYMENT_BUNDLE_CHANGED"
+                );
                 verifyBundle(current);
                 var existing = evaluatorReadiness(connection, account, epoch);
                 if (existing.isPresent()) {
                     require(existing.get().equals(readiness), "EVALUATOR_READINESS_CHANGED");
                 } else {
                     require(current.state() == State.ACTIVATING, "DEPLOYMENT_CHANGED");
-                    require(current.start().checkpointDigest().equals(readiness.checkpointDigest()),
-                            "EVALUATOR_READINESS_CHANGED");
-                    try (var insert = JdbcKeyedStateStore.prepare(connection, """
+                    require(
+                        current.start().checkpointDigest().equals(readiness.checkpointDigest()),
+                        "EVALUATOR_READINESS_CHANGED"
+                    );
+                    try (
+                        var insert = JdbcKeyedStateStore.prepare(
+                            connection,
+                            """
                             INSERT INTO vcl_rule_evaluator_readiness(account_id,deployment_epoch,bundle_digest,
                             checkpoint_digest,readiness_digest) VALUES (?,?,?,?,?)
-                            """)) {
+                            """
+                        )
+                    ) {
                         insert.setObject(1, account);
                         insert.setObject(2, epoch);
                         insert.setString(3, readiness.bundleDigest());
@@ -243,18 +387,29 @@ public final class JdbcRuleDeployments {
                 if (error instanceof SQLException) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
                 throw error;
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
     List<Deployment> pendingEvaluatorReadiness(int limit, int offset) {
-        require(limit >= 1 && limit <= 128 && offset >= 0 && offset <= 1_000_000, "DEPLOYMENT_SCAN_LIMIT");
-        try (var connection = source.getConnection(); var query = JdbcKeyedStateStore.prepare(connection, """
+        require(
+            limit >= 1 && limit <= 128 && offset >= 0 && offset <= 1_000_000,
+            "DEPLOYMENT_SCAN_LIMIT"
+        );
+        try (
+            var connection = source.getConnection();
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT d.* FROM vcl_rule_deployments d WHERE d.state='STAGED' AND d.starts_at IS NOT NULL
                     AND d.drain_before IS NULL AND NOT EXISTS (
                         SELECT 1 FROM vcl_rule_evaluator_readiness r WHERE r.account_id=d.account_id
                             AND r.deployment_epoch=d.deployment_epoch)
                 ORDER BY d.account_id,d.deployment_epoch LIMIT ? OFFSET ?
-                """)) {
+                """
+            )
+        ) {
             query.setInt(1, limit);
             query.setInt(2, offset);
             try (var rows = query.executeQuery()) {
@@ -262,82 +417,139 @@ public final class JdbcRuleDeployments {
                 while (rows.next()) result.add(read(rows));
                 return List.copyOf(result);
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
-    private static Optional<EvaluatorReadiness> evaluatorReadiness(Connection connection, UUID account, UUID epoch)
-            throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static Optional<EvaluatorReadiness> evaluatorReadiness(
+        Connection connection,
+        UUID account,
+        UUID epoch
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT bundle_digest,checkpoint_digest,readiness_digest FROM vcl_rule_evaluator_readiness
                 WHERE account_id=? AND deployment_epoch=?
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, account);
             query.setObject(2, epoch);
             try (var rows = query.executeQuery()) {
-                return rows.next() ? Optional.of(new EvaluatorReadiness(rows.getString(1), rows.getString(2),
-                        rows.getString(3))) : Optional.empty();
+                return rows.next()
+                    ? Optional.of(
+                          new EvaluatorReadiness(
+                              rows.getString(1),
+                              rows.getString(2),
+                              rows.getString(3)
+                          )
+                      )
+                    : Optional.empty();
             }
         }
     }
 
     /** Stage or finish a reviewed slot transfer. Only finishing can move the active slot. */
-    Deployment cutover(UUID account, UUID nextEpoch, CutoverStart start, RuleStartCheckpointRecipe recipe,
-            CutoverAuthority authority, boolean finish) {
+    Deployment cutover(
+        UUID account,
+        UUID nextEpoch,
+        CutoverStart start,
+        RuleStartCheckpointRecipe recipe,
+        CutoverAuthority authority,
+        boolean finish
+    ) {
         Objects.requireNonNull(authority);
         require(!nextEpoch.equals(start.predecessor()), "DEPLOYMENT_BOUNDARY_INVALID");
         var inputs = recipe.inputs();
-        require(start.checkpointDigest().equals(inputs.checkpointDigest()) && start.boundary().equals(inputs.boundary()),
-                "START_CHECKPOINT_CHANGED");
-        boolean previousFirst = start.predecessor() != null && start.predecessor().compareTo(nextEpoch) < 0;
+        require(
+            start.checkpointDigest().equals(inputs.checkpointDigest()) &&
+                start.boundary().equals(inputs.boundary()),
+            "START_CHECKPOINT_CHANGED"
+        );
+        boolean previousFirst =
+            start.predecessor() != null && start.predecessor().compareTo(nextEpoch) < 0;
         try (var connection = source.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                var previous = previousFirst ? locked(connection, account, start.predecessor()) : null;
+                var previous = previousFirst
+                    ? locked(connection, account, start.predecessor())
+                    : null;
                 var next = locked(connection, account, nextEpoch);
                 if (!previousFirst && start.predecessor() != null) {
                     previous = locked(connection, account, start.predecessor());
                 }
-                require(previous == null || previous.rule().equals(next.rule()), "DEPLOYMENT_CUTOVER_SCOPE_CHANGED");
+                require(
+                    previous == null || previous.rule().equals(next.rule()),
+                    "DEPLOYMENT_CUTOVER_SCOPE_CHANGED"
+                );
                 var bundle = verifyBundle(next);
-                var compiled = bundle.json()
-                        .path("compilation");
-                require(inputs.documentDigest().equals(compiled.path("documentDigest").textValue()),
-                        "DEPLOYMENT_BUNDLE_CHANGED");
+                var compiled = bundle.json().path("compilation");
+                require(
+                    inputs.documentDigest().equals(compiled.path("documentDigest").textValue()),
+                    "DEPLOYMENT_BUNDLE_CHANGED"
+                );
                 if (next.state() == State.ACTIVATING || next.state() == State.ACTIVE) {
                     require(start.equals(next.start()), "START_CHECKPOINT_CHANGED");
-                    require(recipe.equals(readStartRecipe(connection, account, nextEpoch)), "START_CHECKPOINT_CHANGED");
+                    require(
+                        recipe.equals(readStartRecipe(connection, account, nextEpoch)),
+                        "START_CHECKPOINT_CHANGED"
+                    );
                 }
                 if (next.state() == State.ACTIVE) {
                     authority.verify(previous, next, start);
                     connection.commit();
                     return next;
                 }
-                require(next.state() == State.ACTIVATING || !finish && next.state() == State.STAGED,
-                        "DEPLOYMENT_CHANGED");
+                require(
+                    next.state() == State.ACTIVATING || (!finish && next.state() == State.STAGED),
+                    "DEPLOYMENT_CHANGED"
+                );
                 verifyPredecessor(connection, previous, next, start.boundary());
                 authority.verify(previous, next, start);
                 if (!finish) {
-                    if (next.state() == State.STAGED) saveStartRecipe(connection, next, start, recipe);
+                    if (next.state() == State.STAGED) saveStartRecipe(
+                        connection,
+                        next,
+                        start,
+                        recipe
+                    );
                     var pending = locked(connection, account, nextEpoch);
                     connection.commit();
                     return pending;
                 }
-                var ready = evaluatorReadiness(connection, account, nextEpoch)
-                        .orElseThrow(() -> invalid("EVALUATOR_READINESS_UNAVAILABLE"));
-                require(ready.bundleDigest().equals(next.bundleDigest())
-                        && ready.checkpointDigest().equals(start.checkpointDigest()), "EVALUATOR_READINESS_CHANGED");
+                var ready = evaluatorReadiness(connection, account, nextEpoch).orElseThrow(() ->
+                    invalid("EVALUATOR_READINESS_UNAVAILABLE")
+                );
+                require(
+                    ready.bundleDigest().equals(next.bundleDigest()) &&
+                        ready.checkpointDigest().equals(start.checkpointDigest()),
+                    "EVALUATOR_READINESS_CHANGED"
+                );
                 if (previous != null) {
                     requireNoPendingRoutes(connection, previous);
                     beginDrain(connection, previous, start.boundary());
                 }
-                try (var activate = JdbcKeyedStateStore.prepare(connection, """
+                try (
+                    var activate = JdbcKeyedStateStore.prepare(
+                        connection,
+                        """
                         UPDATE vcl_rule_deployments SET state='ACTIVE',active_slot=1,resume_from=?,
                         revision=revision+1,changed_at=CURRENT_TIMESTAMP
                         WHERE account_id=? AND deployment_epoch=?
-                        """)) {
-                    Instant resumed = previous == null && lastPause(connection, next) != null
-                            ? JdbcKeyedStateStore.now(connection) : null;
-                    activate.setObject(1, resumed == null ? null : resumed.atOffset(ZoneOffset.UTC));
+                        """
+                    )
+                ) {
+                    Instant resumed =
+                        previous == null && lastPause(connection, next) != null
+                            ? JdbcKeyedStateStore.now(connection)
+                            : null;
+                    activate.setObject(
+                        1,
+                        resumed == null ? null : resumed.atOffset(ZoneOffset.UTC)
+                    );
                     activate.setObject(2, account);
                     activate.setObject(3, nextEpoch);
                     require(activate.executeUpdate() == 1, "DEPLOYMENT_REVISION_CHANGED");
@@ -353,15 +565,26 @@ public final class JdbcRuleDeployments {
                 if (error instanceof SQLException) throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
                 throw error;
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
-    private void verifyPredecessor(Connection connection, Deployment previous, Deployment next, Instant boundary)
-            throws SQLException {
+    private void verifyPredecessor(
+        Connection connection,
+        Deployment previous,
+        Deployment next,
+        Instant boundary
+    ) throws SQLException {
         if (previous == null) {
-            try (var query = JdbcKeyedStateStore.prepare(connection, """
+            try (
+                var query = JdbcKeyedStateStore.prepare(
+                    connection,
+                    """
                     SELECT 1 FROM vcl_rule_deployments WHERE account_id=? AND rule_id=? AND active_slot=1
-                    """)) {
+                    """
+                )
+            ) {
                 query.setObject(1, next.account());
                 query.setObject(2, next.rule());
                 try (var rows = query.executeQuery()) {
@@ -369,21 +592,35 @@ public final class JdbcRuleDeployments {
                 }
             }
             Instant pausedAt = lastPause(connection, next);
-            require(pausedAt == null || !boundary.isBefore(pausedAt), "DEPLOYMENT_RESUME_BOUNDARY_INVALID");
+            require(
+                pausedAt == null || !boundary.isBefore(pausedAt),
+                "DEPLOYMENT_RESUME_BOUNDARY_INVALID"
+            );
             return;
         }
         require(previous.state() == State.ACTIVE, "DEPLOYMENT_CHANGED");
-        require(previous.start() == null || boundary.isAfter(previous.start().boundary()), "DEPLOYMENT_BOUNDARY_INVALID");
+        require(
+            previous.start() == null || boundary.isAfter(previous.start().boundary()),
+            "DEPLOYMENT_BOUNDARY_INVALID"
+        );
         var reservation = pendingCutover(connection, previous.account(), previous.epoch());
-        require(reservation.isEmpty() || reservation.get().epoch().equals(next.epoch()), "DEPLOYMENT_CUTOVER_PENDING");
+        require(
+            reservation.isEmpty() || reservation.get().epoch().equals(next.epoch()),
+            "DEPLOYMENT_CUTOVER_PENDING"
+        );
         verifyUnopenedBoundary(connection, previous, boundary);
         verifyBundle(previous);
     }
 
     private static Instant lastPause(Connection connection, Deployment next) throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT MAX(paused_at) FROM vcl_rule_deployments WHERE account_id=? AND rule_id=?
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, next.account());
             query.setObject(2, next.rule());
             try (var rows = query.executeQuery()) {
@@ -394,14 +631,22 @@ public final class JdbcRuleDeployments {
         }
     }
 
-    private static void requireNoPendingRoutes(Connection connection, Deployment previous) throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static void requireNoPendingRoutes(
+        Connection connection,
+        Deployment previous
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT 1 FROM vcl_keyed_state s
                 JOIN vcl_keyed_outbox o ON o.account_id=s.account_id AND o.key_digest=s.key_digest
                 WHERE s.account_id=? AND s.rule_id=? AND s.deployment_epoch=?
                     AND o.output_kind='REKEY' AND o.acknowledged_at IS NULL
                 FETCH FIRST 1 ROW ONLY
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, previous.account());
             query.setObject(2, previous.rule());
             query.setObject(3, previous.epoch());
@@ -411,11 +656,20 @@ public final class JdbcRuleDeployments {
         }
     }
 
-    private static void beginDrain(Connection connection, Deployment previous, Instant boundary) throws SQLException {
-        try (var drain = JdbcKeyedStateStore.prepare(connection, """
+    private static void beginDrain(
+        Connection connection,
+        Deployment previous,
+        Instant boundary
+    ) throws SQLException {
+        try (
+            var drain = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 UPDATE vcl_rule_deployments SET state='STAGED',active_slot=NULL,drain_before=?,
                 revision=revision+1,changed_at=CURRENT_TIMESTAMP WHERE account_id=? AND deployment_epoch=?
-                """)) {
+                """
+            )
+        ) {
             drain.setObject(1, boundary.atOffset(ZoneOffset.UTC));
             drain.setObject(2, previous.account());
             drain.setObject(3, previous.epoch());
@@ -423,16 +677,28 @@ public final class JdbcRuleDeployments {
         }
     }
 
-    private static void saveStartRecipe(Connection connection, Deployment next, CutoverStart start,
-            RuleStartCheckpointRecipe recipe) throws SQLException {
-        try (var update = JdbcKeyedStateStore.prepare(connection, """
+    private static void saveStartRecipe(
+        Connection connection,
+        Deployment next,
+        CutoverStart start,
+        RuleStartCheckpointRecipe recipe
+    ) throws SQLException {
+        try (
+            var update = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 UPDATE vcl_rule_deployments SET starts_at=?,start_checkpoint_digest=?,predecessor_epoch=?,
                 revision=revision+1,changed_at=CURRENT_TIMESTAMP WHERE account_id=? AND deployment_epoch=?
-                """);
-             var insert = JdbcKeyedStateStore.prepare(connection, """
+                """
+            );
+            var insert = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 INSERT INTO vcl_rule_start_checkpoint(account_id,deployment_epoch,recipe_digest,recipe_payload)
                 VALUES (?,?,?,?)
-                """)) {
+                """
+            )
+        ) {
             update.setObject(1, start.boundary().atOffset(ZoneOffset.UTC));
             update.setString(2, start.checkpointDigest());
             update.setObject(3, start.predecessor());
@@ -450,13 +716,24 @@ public final class JdbcRuleDeployments {
     RuleStartCheckpointRecipe readStartRecipe(UUID account, UUID epoch) {
         try (var connection = source.getConnection()) {
             return readStartRecipe(connection, account, epoch);
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
-    private static RuleStartCheckpointRecipe readStartRecipe(Connection connection, UUID account, UUID epoch) throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static RuleStartCheckpointRecipe readStartRecipe(
+        Connection connection,
+        UUID account,
+        UUID epoch
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT recipe_payload,recipe_digest FROM vcl_rule_start_checkpoint WHERE account_id=? AND deployment_epoch=?
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, account);
             query.setObject(2, epoch);
             try (var rows = query.executeQuery()) {
@@ -467,10 +744,15 @@ public final class JdbcRuleDeployments {
     }
 
     public Optional<Deployment> find(UUID account, UUID epoch) {
-        try (var connection = source.getConnection(); var query = connection.prepareStatement("""
+        try (
+            var connection = source.getConnection();
+            var query = connection.prepareStatement(
+                """
                 SELECT *
                 FROM vcl_rule_deployments WHERE account_id=? AND deployment_epoch=?
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, Objects.requireNonNull(account));
             query.setObject(2, Objects.requireNonNull(epoch));
             try (var rows = query.executeQuery()) {
@@ -479,7 +761,9 @@ public final class JdbcRuleDeployments {
                 verifyBundle(value);
                 return Optional.of(value);
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
     /** Discovery is a candidate list, never authorization to execute. */
@@ -500,24 +784,40 @@ public final class JdbcRuleDeployments {
         return page(limit, offset, true, true);
     }
 
-    private List<Deployment> page(int limit, int offset, boolean includeDraining, boolean requireSessionTimer) {
-        require(limit >= 1 && limit <= 128 && offset >= 0 && offset <= 1_000_000, "DEPLOYMENT_SCAN_LIMIT");
-        String sessionCondition = requireSessionTimer ? """
-                AND EXISTS (
-                    SELECT 1 FROM vcl_keyed_state s
-                    JOIN vcl_keyed_timers t ON t.account_id=s.account_id AND t.key_digest=s.key_digest
-                    WHERE s.account_id=d.account_id AND s.rule_id=d.rule_id AND s.deployment_epoch=d.deployment_epoch
-                        AND t.timer_kind IN ('SESSION_TIMEOUT','WAIT_TIMEOUT')
-                )
-                """ : "";
-        String sql = """
-                SELECT d.* FROM vcl_rule_deployments d
-                WHERE d.state='ACTIVE' OR (? AND d.drain_before IS NOT NULL
-                """ + sessionCondition + """
-                )
-                ORDER BY d.account_id,d.rule_id,d.deployment_epoch LIMIT ? OFFSET ?
-                """;
-        try (var connection = source.getConnection(); var query = connection.prepareStatement(sql)) {
+    private List<Deployment> page(
+        int limit,
+        int offset,
+        boolean includeDraining,
+        boolean requireSessionTimer
+    ) {
+        require(
+            limit >= 1 && limit <= 128 && offset >= 0 && offset <= 1_000_000,
+            "DEPLOYMENT_SCAN_LIMIT"
+        );
+        String sessionCondition = requireSessionTimer
+            ? """
+              AND EXISTS (
+                  SELECT 1 FROM vcl_keyed_state s
+                  JOIN vcl_keyed_timers t ON t.account_id=s.account_id AND t.key_digest=s.key_digest
+                  WHERE s.account_id=d.account_id AND s.rule_id=d.rule_id AND s.deployment_epoch=d.deployment_epoch
+                      AND t.timer_kind IN ('SESSION_TIMEOUT','WAIT_TIMEOUT')
+              )
+              """
+            : "";
+        String sql =
+            """
+            SELECT d.* FROM vcl_rule_deployments d
+            WHERE d.state='ACTIVE' OR (? AND d.drain_before IS NOT NULL
+            """ +
+            sessionCondition +
+            """
+            )
+            ORDER BY d.account_id,d.rule_id,d.deployment_epoch LIMIT ? OFFSET ?
+            """;
+        try (
+            var connection = source.getConnection();
+            var query = connection.prepareStatement(sql)
+        ) {
             query.setBoolean(1, includeDraining);
             query.setInt(2, limit);
             query.setInt(3, offset);
@@ -530,81 +830,130 @@ public final class JdbcRuleDeployments {
                 }
                 return List.copyOf(result);
             }
-        } catch (SQLException error) { throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE"); }
+        } catch (SQLException error) {
+            throw invalid("DEPLOYMENT_STORAGE_UNAVAILABLE");
+        }
     }
 
-    static void lockExecutable(Connection connection, Deployment expected, boolean continuingWork) throws SQLException {
-        require(expected.state() == State.ACTIVE || expected.state() == State.DRAINING && continuingWork,
-                "DEPLOYMENT_CHANGED");
+    static void lockExecutable(
+        Connection connection,
+        Deployment expected,
+        boolean continuingWork
+    ) throws SQLException {
+        require(
+            expected.state() == State.ACTIVE ||
+                (expected.state() == State.DRAINING && continuingWork),
+            "DEPLOYMENT_CHANGED"
+        );
         lockCurrent(connection, expected);
     }
 
     static void lockCurrent(Connection connection, Deployment expected) throws SQLException {
-        require(expected.equals(locked(connection, expected.account(), expected.epoch())), "DEPLOYMENT_CHANGED");
+        require(
+            expected.equals(locked(connection, expected.account(), expected.epoch())),
+            "DEPLOYMENT_CHANGED"
+        );
     }
 
-    static boolean fenceJournalWindow(Connection connection, UUID account, UUID rule, UUID epoch,
-            Instant openedAt, boolean consumingTimer, boolean finalizing) throws SQLException {
+    static boolean fenceJournalWindow(
+        Connection connection,
+        UUID account,
+        UUID rule,
+        UUID epoch,
+        Instant openedAt,
+        boolean consumingTimer,
+        boolean finalizing
+    ) throws SQLException {
         var deployment = findLocked(connection, account, epoch);
         if (deployment.isEmpty()) {
             require(!finalizing, "DEPLOYMENT_UNAVAILABLE");
             return false; // Standalone diagnostic epoch.
         }
         var current = deployment.get();
-        require(current.rule().equals(rule) && current.includesWindow(openedAt)
-                && (consumingTimer || current.state() == State.ACTIVE), "DEPLOYMENT_CHANGED");
+        require(
+            current.rule().equals(rule) &&
+                current.includesWindow(openedAt) &&
+                (consumingTimer || current.state() == State.ACTIVE),
+            "DEPLOYMENT_CHANGED"
+        );
         if (consumingTimer) {
             require((current.start() != null) == finalizing, "WINDOW_FINALIZATION_REQUIRED");
         }
         if (!consumingTimer) {
             var reservation = pendingCutover(connection, account, epoch);
-            require(reservation.isEmpty() || openedAt.isBefore(reservation.get().boundary()),
-                    "DEPLOYMENT_CUTOVER_BOUNDARY_RESERVED");
+            require(
+                reservation.isEmpty() || openedAt.isBefore(reservation.get().boundary()),
+                "DEPLOYMENT_CUTOVER_BOUNDARY_RESERVED"
+            );
         }
         return true;
     }
 
-    static void fenceSession(Connection connection, Deployment current, Instant openedAt, boolean opening)
-            throws SQLException {
+    static void fenceSession(
+        Connection connection,
+        Deployment current,
+        Instant openedAt,
+        boolean opening
+    ) throws SQLException {
         require(current.start() != null && current.includesWindow(openedAt), "DEPLOYMENT_CHANGED");
         if (opening) {
             require(current.state() == State.ACTIVE, "DEPLOYMENT_CHANGED");
             var reservation = pendingCutover(connection, current.account(), current.epoch());
-            require(reservation.isEmpty() || openedAt.isBefore(reservation.get().boundary()),
-                    "DEPLOYMENT_CUTOVER_BOUNDARY_RESERVED");
+            require(
+                reservation.isEmpty() || openedAt.isBefore(reservation.get().boundary()),
+                "DEPLOYMENT_CUTOVER_BOUNDARY_RESERVED"
+            );
         }
     }
 
-    private record BoundaryReservation(UUID epoch, Instant boundary) { }
+    private record BoundaryReservation(UUID epoch, Instant boundary) {}
 
     /** Callers hold the predecessor row lock for both reservation and admission. */
-    private static Optional<BoundaryReservation> pendingCutover(Connection connection, UUID account, UUID predecessor)
-            throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static Optional<BoundaryReservation> pendingCutover(
+        Connection connection,
+        UUID account,
+        UUID predecessor
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT deployment_epoch,starts_at FROM vcl_rule_deployments
                 WHERE account_id=? AND predecessor_epoch=? AND state='STAGED' AND drain_before IS NULL
                 FETCH FIRST 2 ROWS ONLY
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, account);
             query.setObject(2, predecessor);
             try (var rows = query.executeQuery()) {
                 if (!rows.next()) return Optional.empty();
-                var reservation = new BoundaryReservation(rows.getObject(1, UUID.class),
-                        rows.getObject(2, OffsetDateTime.class).toInstant());
+                var reservation = new BoundaryReservation(
+                    rows.getObject(1, UUID.class),
+                    rows.getObject(2, OffsetDateTime.class).toInstant()
+                );
                 require(!rows.next(), "DEPLOYMENT_CUTOVER_PENDING");
                 return Optional.of(reservation);
             }
         }
     }
 
-    private static void verifyUnopenedBoundary(Connection connection, Deployment previous, Instant boundary)
-            throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static void verifyUnopenedBoundary(
+        Connection connection,
+        Deployment previous,
+        Instant boundary
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT state_payload,state_digest,journal_opened_at FROM vcl_keyed_state
                 WHERE account_id=? AND rule_id=? AND deployment_epoch=? AND state_revision>0
                     AND (journal_opened_at>=? OR journal_opened_at IS NULL)
                 FETCH FIRST 129 ROWS ONLY
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, previous.account());
             query.setObject(2, previous.rule());
             query.setObject(3, previous.epoch());
@@ -614,23 +963,44 @@ public final class JdbcRuleDeployments {
                 while (rows.next()) {
                     require(rows.getObject(3) == null, "DEPLOYMENT_BOUNDARY_ALREADY_OPEN");
                     require(++scanned <= 128, "DEPLOYMENT_BOUNDARY_HISTORY_LIMIT");
-                    var state = com.voltcanary.analytics.vcl.KeyedStateStore.State.restore(rows.getString(1), rows.getString(2));
+                    var state = com.voltcanary.analytics.vcl.KeyedStateStore.State.restore(
+                        rows.getString(1),
+                        rows.getString(2)
+                    );
                     var recipe = DurableJournalWindow.recipe(state);
-                    require(recipe.window().startInclusive().isBefore(boundary), "DEPLOYMENT_BOUNDARY_ALREADY_OPEN");
+                    require(
+                        recipe.window().startInclusive().isBefore(boundary),
+                        "DEPLOYMENT_BOUNDARY_ALREADY_OPEN"
+                    );
                 }
             }
         }
     }
 
-    private static Deployment locked(Connection connection, UUID account, UUID epoch) throws SQLException {
-        return findLocked(connection, account, epoch).orElseThrow(() -> invalid("DEPLOYMENT_UNAVAILABLE"));
+    private static Deployment locked(
+        Connection connection,
+        UUID account,
+        UUID epoch
+    ) throws SQLException {
+        return findLocked(connection, account, epoch).orElseThrow(() ->
+            invalid("DEPLOYMENT_UNAVAILABLE")
+        );
     }
 
-    private static Optional<Deployment> findLocked(Connection connection, UUID account, UUID epoch) throws SQLException {
-        try (var query = JdbcKeyedStateStore.prepare(connection, """
+    private static Optional<Deployment> findLocked(
+        Connection connection,
+        UUID account,
+        UUID epoch
+    ) throws SQLException {
+        try (
+            var query = JdbcKeyedStateStore.prepare(
+                connection,
+                """
                 SELECT *
                 FROM vcl_rule_deployments WHERE account_id=? AND deployment_epoch=? FOR UPDATE
-                """)) {
+                """
+            )
+        ) {
             query.setObject(1, Objects.requireNonNull(account));
             query.setObject(2, Objects.requireNonNull(epoch));
             try (var rows = query.executeQuery()) {
@@ -640,25 +1010,32 @@ public final class JdbcRuleDeployments {
     }
 
     private CompilationBundle verifyBundle(Deployment deployment) {
-        var bundle = bundles.find(deployment.account(), deployment.bundle())
-                .orElseThrow(() -> invalid("DEPLOYMENT_BUNDLE_UNAVAILABLE"));
+        var bundle = bundles
+            .find(deployment.account(), deployment.bundle())
+            .orElseThrow(() -> invalid("DEPLOYMENT_BUNDLE_UNAVAILABLE"));
         require(bundle.digest().equals(deployment.bundleDigest()), "DEPLOYMENT_BUNDLE_CHANGED");
         var identity = identity(bundle);
-        require(identity.rule().equals(deployment.rule()) && identity.grant().equals(deployment.grant()),
-                "DEPLOYMENT_BUNDLE_CHANGED");
+        require(
+            identity.rule().equals(deployment.rule()) &&
+                identity.grant().equals(deployment.grant()),
+            "DEPLOYMENT_BUNDLE_CHANGED"
+        );
         return bundle;
     }
 
-    private record Identity(UUID rule, UUID grant) { }
+    private record Identity(UUID rule, UUID grant) {}
 
     private static Identity identity(CompilationBundle bundle) {
         try {
-            JsonNode document = bundle.json()
-                    .path("compilation").path("canonicalDocument");
+            JsonNode document = bundle.json().path("compilation").path("canonicalDocument");
             var parsed = new VclParser().parse(document.textValue());
-            return new Identity(UUID.fromString(parsed.spec().path("ruleId").textValue()),
-                    UUID.fromString(parsed.spec().path("executionGrantId").textValue()));
-        } catch (RuntimeException error) { throw invalid("DEPLOYMENT_BUNDLE_CHANGED"); }
+            return new Identity(
+                UUID.fromString(parsed.spec().path("ruleId").textValue()),
+                UUID.fromString(parsed.spec().path("executionGrantId").textValue())
+            );
+        } catch (RuntimeException error) {
+            throw invalid("DEPLOYMENT_BUNDLE_CHANGED");
+        }
     }
 
     private static Deployment read(ResultSet row) throws SQLException {
@@ -668,25 +1045,54 @@ public final class JdbcRuleDeployments {
             var drain = row.getObject("drain_before", OffsetDateTime.class);
             var starts = row.getObject("starts_at", OffsetDateTime.class);
             var resumed = row.getObject("resume_from", OffsetDateTime.class);
-            var start = starts == null ? null : new CutoverStart(row.getObject("predecessor_epoch", UUID.class),
-                    starts.toInstant(), row.getString("start_checkpoint_digest"));
+            var start =
+                starts == null
+                    ? null
+                    : new CutoverStart(
+                          row.getObject("predecessor_epoch", UUID.class),
+                          starts.toInstant(),
+                          row.getString("start_checkpoint_digest")
+                      );
             var state = State.valueOf(row.getString("state"));
             if (row.getObject("paused_at") != null) state = State.PAUSED;
             else if (drain != null) state = State.DRAINING;
             else if (state == State.STAGED && start != null) state = State.ACTIVATING;
-            return new Deployment(actor, row.getObject("account_id", UUID.class), row.getObject("rule_id", UUID.class),
-                    row.getObject("deployment_epoch", UUID.class), row.getObject("bundle_id", UUID.class),
-                    row.getString("bundle_digest"), row.getObject("grant_id", UUID.class),
-                    state, row.getLong("revision"), drain == null ? null : drain.toInstant(), start,
-                    resumed == null ? null : resumed.toInstant());
-        } catch (RuntimeException error) { throw invalid("DEPLOYMENT_ROW_INVALID"); }
+            return new Deployment(
+                actor,
+                row.getObject("account_id", UUID.class),
+                row.getObject("rule_id", UUID.class),
+                row.getObject("deployment_epoch", UUID.class),
+                row.getObject("bundle_id", UUID.class),
+                row.getString("bundle_digest"),
+                row.getObject("grant_id", UUID.class),
+                state,
+                row.getLong("revision"),
+                drain == null ? null : drain.toInstant(),
+                start,
+                resumed == null ? null : resumed.toInstant()
+            );
+        } catch (RuntimeException error) {
+            throw invalid("DEPLOYMENT_ROW_INVALID");
+        }
     }
 
     private static boolean sameIdentity(Deployment a, Deployment b) {
-        return a.actor().equals(b.actor()) && a.account().equals(b.account()) && a.rule().equals(b.rule()) && a.epoch().equals(b.epoch())
-                && a.bundle().equals(b.bundle()) && a.bundleDigest().equals(b.bundleDigest()) && a.grant().equals(b.grant());
+        return (
+            a.actor().equals(b.actor()) &&
+            a.account().equals(b.account()) &&
+            a.rule().equals(b.rule()) &&
+            a.epoch().equals(b.epoch()) &&
+            a.bundle().equals(b.bundle()) &&
+            a.bundleDigest().equals(b.bundleDigest()) &&
+            a.grant().equals(b.grant())
+        );
     }
 
-    private static void require(boolean valid, String code) { if (!valid) throw invalid(code); }
-    private static VclException invalid(String code) { return new VclException(code, ""); }
+    private static void require(boolean valid, String code) {
+        if (!valid) throw invalid(code);
+    }
+
+    private static VclException invalid(String code) {
+        return new VclException(code, "");
+    }
 }

@@ -18,43 +18,47 @@ public class DeviceRegistryEventPublisher {
     private final boolean publishEnabled;
 
     public DeviceRegistryEventPublisher(
-            DeviceOutboxService outboxService,
-            DeviceKafkaProperties kafkaProperties) {
+        DeviceOutboxService outboxService,
+        DeviceKafkaProperties kafkaProperties
+    ) {
         this.outboxService = outboxService;
         this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
     public void publish(
-            String resourceType,
-            String action,
-            UUID accountId,
-            UUID deviceId,
-            UUID resourceId,
-            String status) {
+        String resourceType,
+        String action,
+        UUID accountId,
+        UUID deviceId,
+        UUID resourceId,
+        String status
+    ) {
         if (!publishEnabled) {
             return;
         }
         DeviceRegistryChangedEvent event = new DeviceRegistryChangedEvent(
-                UUID.randomUUID(),
-                VERSION,
-                resourceType,
-                action,
-                accountId,
-                deviceId,
-                resourceId,
-                status,
-                Instant.now(),
-                null,
-                "device-service");
+            UUID.randomUUID(),
+            VERSION,
+            resourceType,
+            action,
+            accountId,
+            deviceId,
+            resourceId,
+            status,
+            Instant.now(),
+            null,
+            "device-service"
+        );
         String key = accountId == null ? resourceId.toString() : accountId.toString();
         log.info(
-                "Publishing {} resourceType={} action={} accountId={} deviceId={} resourceId={}",
-                TOPIC,
-                resourceType,
-                action,
-                accountId,
-                deviceId,
-                resourceId);
+            "Publishing {} resourceType={} action={} accountId={} deviceId={} resourceId={}",
+            TOPIC,
+            resourceType,
+            action,
+            accountId,
+            deviceId,
+            resourceId
+        );
         outboxService.enqueue(event.eventId().toString(), TOPIC, key, event);
     }
 }

@@ -14,10 +14,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 /** Authenticated cache-miss recovery; never forward the device's raw source token. */
 public class SourceRegistryLookup {
+
     private final ObjectMapper mapper;
     private final String baseUrl;
     private final String serviceToken;
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+    private final HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(2))
+        .build();
 
     public SourceRegistryLookup(ObjectMapper mapper, String baseUrl, String serviceToken) {
         this.mapper = mapper;
@@ -35,17 +38,41 @@ public class SourceRegistryLookup {
 
     private Optional<InternalDataSourceResponse> read(String route, String value) {
         try {
-            var request = HttpRequest.newBuilder(URI.create(baseUrl + "/internal/data-sources/" + route + URLEncoder.encode(value, StandardCharsets.UTF_8)))
-                    .timeout(Duration.ofSeconds(3)).header("X-Internal-Service-Token", serviceToken).GET().build();
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            var request = HttpRequest.newBuilder(
+                URI.create(
+                    baseUrl +
+                        "/internal/data-sources/" +
+                        route +
+                        URLEncoder.encode(value, StandardCharsets.UTF_8)
+                )
+            )
+                .timeout(Duration.ofSeconds(3))
+                .header("X-Internal-Service-Token", serviceToken)
+                .GET()
+                .build();
+            var response = client.send(
+                request,
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
             if (response.statusCode() == 404) return Optional.empty();
-            if (response.statusCode() != 200 || response.body().length() > 65536) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Source registry unavailable");
+            if (
+                response.statusCode() != 200 || response.body().length() > 65536
+            ) throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Source registry unavailable"
+            );
             return Optional.of(mapper.readValue(response.body(), InternalDataSourceResponse.class));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Source registry unavailable");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Source registry unavailable"
+            );
         } catch (java.io.IOException unavailable) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Source registry unavailable");
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Source registry unavailable"
+            );
         }
     }
 }

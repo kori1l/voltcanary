@@ -15,17 +15,23 @@ import lombok.Setter;
 @Getter
 @Setter
 public class AiModelConfig {
+
     @Id
     private UUID id;
+
     private UUID providerId;
     private String displayName;
     private String modelId;
     private boolean enabled;
+
     @Column(name = "is_default")
     private boolean defaultModel;
+
     private BigDecimal temperature;
+
     @Column(name = "top_p")
     private BigDecimal topP;
+
     private Integer maxOutputTokens;
     private Integer timeoutMs;
     private boolean supportsTools;
@@ -34,5 +40,4 @@ public class AiModelConfig {
     private String metadata = "{}";
     private Instant createdAt;
     private Instant updatedAt;
-
 }

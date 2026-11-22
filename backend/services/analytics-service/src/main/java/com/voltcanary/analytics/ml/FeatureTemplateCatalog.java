@@ -11,30 +11,38 @@ public final class FeatureTemplateCatalog {
     public static final String DEFAULT_TEMPLATE_VERSION = "template-v1";
 
     private static final Map<String, FeatureTemplate> TEMPLATES = Map.of(
-            key(DEFAULT_TEMPLATE_ID, DEFAULT_TEMPLATE_VERSION),
-            new FeatureTemplate(
-                    DEFAULT_TEMPLATE_ID,
-                    DEFAULT_TEMPLATE_VERSION,
-                    List.of("*"),
-                    List.of("applianceLoadRatio", "applianceActivityFlag"),
-                    List.of("applianceLoadRatio")),
-            key("fridge-freezer", DEFAULT_TEMPLATE_VERSION),
-            new FeatureTemplate(
-                    "fridge-freezer",
-                    DEFAULT_TEMPLATE_VERSION,
-                    List.of("fridge", "freezer", "refrigerator"),
-                    List.of("fridgeTemperatureBandC", "compressorDutyProxy", "defrostCycleRiskFlag"),
-                    List.of("compressorDutyProxy")));
+        key(DEFAULT_TEMPLATE_ID, DEFAULT_TEMPLATE_VERSION),
+        new FeatureTemplate(
+            DEFAULT_TEMPLATE_ID,
+            DEFAULT_TEMPLATE_VERSION,
+            List.of("*"),
+            List.of("applianceLoadRatio", "applianceActivityFlag"),
+            List.of("applianceLoadRatio")
+        ),
+        key("fridge-freezer", DEFAULT_TEMPLATE_VERSION),
+        new FeatureTemplate(
+            "fridge-freezer",
+            DEFAULT_TEMPLATE_VERSION,
+            List.of("fridge", "freezer", "refrigerator"),
+            List.of("fridgeTemperatureBandC", "compressorDutyProxy", "defrostCycleRiskFlag"),
+            List.of("compressorDutyProxy")
+        )
+    );
 
-    private FeatureTemplateCatalog() {
-    }
+    private FeatureTemplateCatalog() {}
 
     public static FeatureTemplate resolve(String templateId, String templateVersion) {
         String id = templateId == null || templateId.isBlank() ? DEFAULT_TEMPLATE_ID : templateId;
-        String version = templateVersion == null || templateVersion.isBlank() ? DEFAULT_TEMPLATE_VERSION : templateVersion;
+        String version =
+            templateVersion == null || templateVersion.isBlank()
+                ? DEFAULT_TEMPLATE_VERSION
+                : templateVersion;
         FeatureTemplate template = TEMPLATES.get(key(id, version));
         if (template == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported ML feature template: " + id + "@" + version);
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Unsupported ML feature template: " + id + "@" + version
+            );
         }
         return template;
     }
@@ -44,18 +52,25 @@ public final class FeatureTemplateCatalog {
     }
 
     public record FeatureTemplate(
-            String id,
-            String version,
-            List<String> compatibleDeviceTypes,
-            List<String> generatedColumns,
-            List<String> requiredColumns) {
+        String id,
+        String version,
+        List<String> compatibleDeviceTypes,
+        List<String> generatedColumns,
+        List<String> requiredColumns
+    ) {
         public Map<String, Object> asMap() {
             return Map.of(
-                    "id", id,
-                    "version", version,
-                    "compatibleDeviceTypes", compatibleDeviceTypes,
-                    "generatedColumns", generatedColumns,
-                    "requiredColumns", requiredColumns);
+                "id",
+                id,
+                "version",
+                version,
+                "compatibleDeviceTypes",
+                compatibleDeviceTypes,
+                "generatedColumns",
+                generatedColumns,
+                "requiredColumns",
+                requiredColumns
+            );
         }
     }
 }

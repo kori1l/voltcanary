@@ -1,8 +1,5 @@
 package com.voltcanary.device.service;
 
-import com.voltcanary.device.telemetry.SourceRuntimeMappings;
-import java.util.stream.Collectors;
-import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.DataSource;
@@ -23,6 +20,7 @@ import com.voltcanary.device.repository.AccountRepository;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
+import com.voltcanary.device.telemetry.SourceRuntimeMappings;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -33,8 +31,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -54,9 +54,11 @@ public class DataSourceService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<DataSourceResponse> list(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        return dataSourceRepository.findByDeviceId(device.getId()).stream()
-                .map(this::toResponse)
-                .toList();
+        return dataSourceRepository
+            .findByDeviceId(device.getId())
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -66,7 +68,11 @@ public class DataSourceService {
     }
 
     @Transactional
-    public DataSourceResponse create(AuthenticatedUser user, UUID deviceId, DataSourceRequest request) {
+    public DataSourceResponse create(
+        AuthenticatedUser user,
+        UUID deviceId,
+        DataSourceRequest request
+    ) {
         Device device = deviceService.findOwned(user, deviceId);
 
         Instant now = Instant.now();
@@ -87,8 +93,21 @@ public class DataSourceService {
         dataSource.setUpdatedAt(now);
 
         DataSource saved = dataSourceRepository.save(dataSource);
-        auditService.record(user, device.getAccountId(), "DATA_SOURCE_CREATED", "DATA_SOURCE", saved.getId());
-        eventPublisher.publish("DATA_SOURCE", "CREATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "DATA_SOURCE_CREATED",
+            "DATA_SOURCE",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "DATA_SOURCE",
+            "CREATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.getStatus().name()
+        );
         runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return toResponse(saved);
     }
@@ -99,23 +118,36 @@ public class DataSourceService {
         List<String> errors = new ArrayList<>();
         List<DataSourceRequest> requests = new ArrayList<>();
         Set<String> importedSourceIds = new HashSet<>();
-        Set<String> existingSourceIds = dataSourceRepository.findByDeviceId(device.getId()).stream()
-                .map(DataSource::getSourceId)
-                .collect(Collectors.toSet());
+        Set<String> existingSourceIds = dataSourceRepository
+            .findByDeviceId(device.getId())
+            .stream()
+            .map(DataSource::getSourceId)
+            .collect(Collectors.toSet());
 
         List<String[]> rows;
-        try { rows = RegistryCsv.read(csv); }
-        catch (IllegalArgumentException invalid) { return new DataSourceImportResponse(0, List.of(invalid.getMessage())); }
-        if (rows.isEmpty() || rows.getFirst().length != 3
-                || !"externalId".equalsIgnoreCase(rows.getFirst()[0].trim())
-                || !"sourceType".equalsIgnoreCase(rows.getFirst()[1].trim())
-                || !"protocol".equalsIgnoreCase(rows.getFirst()[2].trim())) {
+        try {
+            rows = RegistryCsv.read(csv);
+        } catch (IllegalArgumentException invalid) {
+            return new DataSourceImportResponse(0, List.of(invalid.getMessage()));
+        }
+        if (
+            rows.isEmpty() ||
+            rows.getFirst().length != 3 ||
+            !"externalId".equalsIgnoreCase(rows.getFirst()[0].trim()) ||
+            !"sourceType".equalsIgnoreCase(rows.getFirst()[1].trim()) ||
+            !"protocol".equalsIgnoreCase(rows.getFirst()[2].trim())
+        ) {
             errors.add("Header must be externalId,sourceType,protocol");
         }
         for (int index = 1; index < rows.size(); index++) {
             String[] columns = rows.get(index);
             try {
-                DataSourceRequest request = validateImportRow(columns, index + 1, existingSourceIds, importedSourceIds);
+                DataSourceRequest request = validateImportRow(
+                    columns,
+                    index + 1,
+                    existingSourceIds,
+                    importedSourceIds
+                );
                 requests.add(request);
             } catch (IllegalArgumentException exception) {
                 errors.add(exception.getMessage());
@@ -133,19 +165,35 @@ public class DataSourceService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String exportCsv(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        StringBuilder csv = new StringBuilder("id,deviceId,externalId,sourceType,protocol,status\n");
-        dataSourceRepository.findByDeviceId(device.getId()).forEach(source -> csv
-                .append(source.getId()).append(',')
-                .append(source.getDeviceId()).append(',')
-                .append(RegistryCsv.cell(source.getSourceId())).append(',')
-                .append(source.getSourceType()).append(',')
-                .append(source.getProtocol()).append(',')
-                .append(source.getStatus()).append('\n'));
+        StringBuilder csv = new StringBuilder(
+            "id,deviceId,externalId,sourceType,protocol,status\n"
+        );
+        dataSourceRepository
+            .findByDeviceId(device.getId())
+            .forEach(source ->
+                csv
+                    .append(source.getId())
+                    .append(',')
+                    .append(source.getDeviceId())
+                    .append(',')
+                    .append(RegistryCsv.cell(source.getSourceId()))
+                    .append(',')
+                    .append(source.getSourceType())
+                    .append(',')
+                    .append(source.getProtocol())
+                    .append(',')
+                    .append(source.getStatus())
+                    .append('\n')
+            );
         return csv.toString();
     }
 
     @Transactional
-    public SourceTokenResponse rotateToken(AuthenticatedUser user, UUID deviceId, UUID dataSourceId) {
+    public SourceTokenResponse rotateToken(
+        AuthenticatedUser user,
+        UUID deviceId,
+        UUID dataSourceId
+    ) {
         Device device = deviceService.findOwned(user, deviceId);
         DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
 
@@ -158,8 +206,21 @@ public class DataSourceService {
         dataSource.setTokenRevokedAt(null);
         dataSource.setUpdatedAt(Instant.now());
         DataSource saved = dataSourceRepository.save(dataSource);
-        auditService.record(user, device.getAccountId(), "DATA_SOURCE_TOKEN_ROTATED", "DATA_SOURCE", saved.getId());
-        eventPublisher.publish("DATA_SOURCE", "TOKEN_ROTATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "DATA_SOURCE_TOKEN_ROTATED",
+            "DATA_SOURCE",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "DATA_SOURCE",
+            "TOKEN_ROTATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.getStatus().name()
+        );
         runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return new SourceTokenResponse(token, prefix);
     }
@@ -172,15 +233,29 @@ public class DataSourceService {
         dataSource.setStatus(SourceStatus.REVOKED);
         dataSource.setUpdatedAt(Instant.now());
         DataSource saved = dataSourceRepository.save(dataSource);
-        auditService.record(user, device.getAccountId(), "DATA_SOURCE_TOKEN_REVOKED", "DATA_SOURCE", saved.getId());
-        eventPublisher.publish("DATA_SOURCE", "TOKEN_REVOKED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "DATA_SOURCE_TOKEN_REVOKED",
+            "DATA_SOURCE",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "DATA_SOURCE",
+            "TOKEN_REVOKED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.getStatus().name()
+        );
         runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
     }
 
     @Transactional
     public void markTokenUsed(UUID dataSourceId) {
-        DataSource dataSource = dataSourceRepository.findById(dataSourceId)
-                .orElseThrow(() -> new NotFoundException("Data source not found"));
+        DataSource dataSource = dataSourceRepository
+            .findById(dataSourceId)
+            .orElseThrow(() -> new NotFoundException("Data source not found"));
         dataSource.setTokenLastUsedAt(Instant.now());
         dataSource.setLastSeenAt(Instant.now());
         dataSource.setUpdatedAt(Instant.now());
@@ -189,20 +264,36 @@ public class DataSourceService {
 
     @Transactional(readOnly = true)
     public boolean exists(UUID deviceId, String sourceId) {
-        return deviceRepository.findById(deviceId)
-                .filter(device -> accountRepository.findById(device.getAccountId())
-                        .filter(account -> account.getStatus() == AccountStatus.ACTIVE)
-                        .isPresent())
-                .filter(device -> device.getStatus() == DeviceStatus.ACTIVE)
-                .filter(device -> dataSourceRepository.findByDeviceId(device.getId()).stream()
-                        .anyMatch(source -> source.isEnabled()
-                                && source.getStatus() == SourceStatus.ACTIVE
-                                && source.getSourceId().equals(sourceId)))
-                .isPresent();
+        return deviceRepository
+            .findById(deviceId)
+            .filter(device ->
+                accountRepository
+                    .findById(device.getAccountId())
+                    .filter(account -> account.getStatus() == AccountStatus.ACTIVE)
+                    .isPresent()
+            )
+            .filter(device -> device.getStatus() == DeviceStatus.ACTIVE)
+            .filter(device ->
+                dataSourceRepository
+                    .findByDeviceId(device.getId())
+                    .stream()
+                    .anyMatch(
+                        source ->
+                            source.isEnabled() &&
+                            source.getStatus() == SourceStatus.ACTIVE &&
+                            source.getSourceId().equals(sourceId)
+                    )
+            )
+            .isPresent();
     }
 
     @Transactional
-    public DataSourceResponse update(AuthenticatedUser user, UUID deviceId, UUID dataSourceId, DataSourceRequest request) {
+    public DataSourceResponse update(
+        AuthenticatedUser user,
+        UUID deviceId,
+        UUID dataSourceId,
+        DataSourceRequest request
+    ) {
         Device device = deviceService.findOwned(user, deviceId);
         DataSource dataSource = lockOwnedDataSource(device, dataSourceId);
         dataSource.setType(request.sourceType());
@@ -214,8 +305,21 @@ public class DataSourceService {
         dataSource.setSourceId(sourceId);
         dataSource.setUpdatedAt(Instant.now());
         DataSource saved = dataSourceRepository.save(dataSource);
-        auditService.record(user, device.getAccountId(), "DATA_SOURCE_UPDATED", "DATA_SOURCE", saved.getId());
-        eventPublisher.publish("DATA_SOURCE", "UPDATED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "DATA_SOURCE_UPDATED",
+            "DATA_SOURCE",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "DATA_SOURCE",
+            "UPDATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.getStatus().name()
+        );
         runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
         return toResponse(saved);
     }
@@ -232,63 +336,94 @@ public class DataSourceService {
         }
         dataSource.setUpdatedAt(now);
         DataSource saved = dataSourceRepository.save(dataSource);
-        auditService.record(user, device.getAccountId(), "DATA_SOURCE_DISABLED", "DATA_SOURCE", saved.getId());
-        eventPublisher.publish("DATA_SOURCE", "DISABLED", device.getAccountId(), device.getId(), saved.getId(), saved.getStatus().name());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "DATA_SOURCE_DISABLED",
+            "DATA_SOURCE",
+            saved.getId()
+        );
+        eventPublisher.publish(
+            "DATA_SOURCE",
+            "DISABLED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.getStatus().name()
+        );
         runtimeConfigEventPublisher.publish(device.getAccountId(), saved);
     }
 
     @Transactional(readOnly = true)
     public InternalDataSourceResponse findInternalByTokenPrefix(String tokenPrefix) {
-        return toInternalResponse(dataSourceRepository.findByTokenPrefix(tokenPrefix)
-                .orElseThrow(() -> new NotFoundException("Data source not found")));
+        return toInternalResponse(
+            dataSourceRepository
+                .findByTokenPrefix(tokenPrefix)
+                .orElseThrow(() -> new NotFoundException("Data source not found"))
+        );
     }
 
     @Transactional(readOnly = true)
     public InternalDataSourceResponse findInternalByExternalId(String externalId) {
-        return toInternalResponse(dataSourceRepository.findFirstBySourceId(externalId)
-                .orElseThrow(() -> new NotFoundException("Data source not found")));
+        return toInternalResponse(
+            dataSourceRepository
+                .findFirstBySourceId(externalId)
+                .orElseThrow(() -> new NotFoundException("Data source not found"))
+        );
     }
 
     @Transactional(readOnly = true)
     public InternalDataSourceResponse findInternal(UUID dataSourceId) {
-        return toInternalResponse(dataSourceRepository.findById(dataSourceId)
-                .orElseThrow(() -> new NotFoundException("Data source not found")));
+        return toInternalResponse(
+            dataSourceRepository
+                .findById(dataSourceId)
+                .orElseThrow(() -> new NotFoundException("Data source not found"))
+        );
     }
 
     private DataSource lockOwnedDataSource(Device device, UUID dataSourceId) {
-        return dataSourceRepository.findByIdAndDeviceId(dataSourceId, device.getId())
-                .orElseThrow(() -> new NotFoundException("Data source not found"));
+        return dataSourceRepository
+            .findByIdAndDeviceId(dataSourceId, device.getId())
+            .orElseThrow(() -> new NotFoundException("Data source not found"));
     }
 
     private DataSource findOwnedDataSource(Device device, UUID dataSourceId) {
-        return dataSourceRepository.findById(dataSourceId)
-                .filter(source -> source.getDeviceId().equals(device.getId()))
-                .orElseThrow(() -> new NotFoundException("Data source not found"));
+        return dataSourceRepository
+            .findById(dataSourceId)
+            .filter(source -> source.getDeviceId().equals(device.getId()))
+            .orElseThrow(() -> new NotFoundException("Data source not found"));
     }
 
     private DataSourceResponse toResponse(DataSource dataSource) {
         return new DataSourceResponse(
-                dataSource.getId(),
-                dataSource.getDeviceId(),
-                dataSource.getSourceType().name(),
-                dataSource.getProtocol().name(),
-                dataSource.getSourceId(), runtimeMappings.objectMap(dataSource.getMappingJson()), runtimeMappings.objectMap(dataSource.getAdapterConfigJson()),
-                runtimeMappings.stringMap(dataSource.getCredentialReferencesJson()), dataSource.getHomeRegion());
+            dataSource.getId(),
+            dataSource.getDeviceId(),
+            dataSource.getSourceType().name(),
+            dataSource.getProtocol().name(),
+            dataSource.getSourceId(),
+            runtimeMappings.objectMap(dataSource.getMappingJson()),
+            runtimeMappings.objectMap(dataSource.getAdapterConfigJson()),
+            runtimeMappings.stringMap(dataSource.getCredentialReferencesJson()),
+            dataSource.getHomeRegion()
+        );
     }
 
     private InternalDataSourceResponse toInternalResponse(DataSource dataSource) {
-        Device device = deviceRepository.findById(dataSource.getDeviceId())
-                .orElseThrow(() -> new NotFoundException("Device not found"));
+        Device device = deviceRepository
+            .findById(dataSource.getDeviceId())
+            .orElseThrow(() -> new NotFoundException("Device not found"));
         return new InternalDataSourceResponse(
-                device.getAccountId(),
-                dataSource.getDeviceId(),
-                dataSource.getId(),
-                dataSource.getSourceId(),
-                dataSource.getSourceType().name(),
-                dataSource.getProtocol().name(),
-                dataSource.getStatus().name(),
-                dataSource.getTokenPrefix(),
-                dataSource.getIngestionTokenHash(), runtimeConfigEventPublisher.processingMapping(dataSource));
+            device.getAccountId(),
+            dataSource.getDeviceId(),
+            dataSource.getId(),
+            dataSource.getSourceId(),
+            dataSource.getSourceType().name(),
+            dataSource.getProtocol().name(),
+            dataSource.getStatus().name(),
+            dataSource.getTokenPrefix(),
+            dataSource.getIngestionTokenHash(),
+            runtimeConfigEventPublisher.processingMapping(dataSource)
+        );
     }
 
     private String generateToken() {
@@ -299,7 +434,9 @@ public class DataSourceService {
 
     private String sha256Hex(String value) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                value.getBytes(StandardCharsets.UTF_8)
+            );
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) {
                 hex.append(String.format("%02x", b));
@@ -325,27 +462,32 @@ public class DataSourceService {
     }
 
     private DataSourceRequest validateImportRow(
-            String[] columns,
-            int rowNumber,
-            Set<String> existingSourceIds,
-            Set<String> importedSourceIds) {
+        String[] columns,
+        int rowNumber,
+        Set<String> existingSourceIds,
+        Set<String> importedSourceIds
+    ) {
         if (columns.length != 3) {
             throw new IllegalArgumentException("Row " + rowNumber + ": expected 3 columns");
         }
         String externalId = normalizeRequired(columns[0], "externalId");
         if (existingSourceIds.contains(externalId) || !importedSourceIds.add(externalId)) {
-            throw new IllegalArgumentException("Row " + rowNumber + ": duplicate externalId " + externalId);
+            throw new IllegalArgumentException(
+                "Row " + rowNumber + ": duplicate externalId " + externalId
+            );
         }
         try {
             return new DataSourceRequest(
-                    DataSourceType.valueOf(columns[1].trim()),
-                    DataSourceProtocol.valueOf(columns[2].trim()),
-                    externalId);
+                DataSourceType.valueOf(columns[1].trim()),
+                DataSourceProtocol.valueOf(columns[2].trim()),
+                externalId
+            );
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("Row " + rowNumber + ": unknown source type or protocol");
+            throw new IllegalArgumentException(
+                "Row " + rowNumber + ": unknown source type or protocol"
+            );
         }
     }
-
 
     private void applyRuntimeConfig(DataSource source, DataSourceRequest request) {
         runtimeMappings.apply(source, request);

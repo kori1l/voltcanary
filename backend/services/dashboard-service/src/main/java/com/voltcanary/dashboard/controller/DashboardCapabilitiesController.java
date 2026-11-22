@@ -12,12 +12,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DashboardCapabilitiesController {
+
     private final DashboardOwnership ownership;
     private final DashboardCapabilityResolution resolver;
 
     @PostMapping("/dashboards/composition/capabilities")
-    public Resolution capabilities(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestBody DashboardCapabilityResolution.Request request, jakarta.servlet.http.HttpServletResponse response) {
+    public Resolution capabilities(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestBody DashboardCapabilityResolution.Request request,
+        jakarta.servlet.http.HttpServletResponse response
+    ) {
         response.setHeader("Cache-Control", "no-store");
         return resolver.resolve(ownership.resolveReadOnly(authorization), authorization, request);
     }

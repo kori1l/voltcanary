@@ -5,5 +5,5 @@ public enum AdapterCapability {
     POLLING,
     SUBSCRIPTION,
     COMMAND,
-    DISCOVERY
+    DISCOVERY,
 }

@@ -53,5 +53,4 @@ public class DeviceBaseline {
 
     @Column(name = "calculated_at", nullable = false)
     private Instant calculatedAt;
-
 }

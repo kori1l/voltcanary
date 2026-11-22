@@ -16,6 +16,12 @@ public class GenericApplianceGenerator implements TelemetryGenerator {
         if (anomalyInjector.offline(context)) {
             return Optional.empty();
         }
-        return Optional.of(new GeneratedTelemetryPoint(context.currentTime(), context.sourceId(), metricValueGenerator.metrics(context)));
+        return Optional.of(
+            new GeneratedTelemetryPoint(
+                context.currentTime(),
+                context.sourceId(),
+                metricValueGenerator.metrics(context)
+            )
+        );
     }
 }

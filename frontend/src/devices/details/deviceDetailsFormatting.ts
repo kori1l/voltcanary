@@ -10,7 +10,9 @@ export function formatEnum(value: string) {
 }
 
 export function formatNumber(value: number) {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export function formatCompactNumber(value: number) {
@@ -42,7 +44,12 @@ export function toDateTimeLocalValue(date: Date) {
 }
 
 export function locationLabel(location: Location) {
-  const hierarchy = [location.building, location.floor ? `Floor ${location.floor}` : null, location.room, location.zone]
+  const hierarchy = [
+    location.building,
+    location.floor ? `Floor ${location.floor}` : null,
+    location.room,
+    location.zone,
+  ]
     .filter(Boolean)
     .join(" / ");
   return hierarchy ? `${location.name} - ${hierarchy}` : location.name;
@@ -54,7 +61,8 @@ export function parseJsonObject(value: string) {
     return null;
   }
   const parsed: unknown = JSON.parse(trimmed);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON configuration must be an object.");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new Error("JSON configuration must be an object.");
   return parsed as Record<string, unknown>;
 }
 

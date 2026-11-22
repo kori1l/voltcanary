@@ -9,6 +9,7 @@ export default defineConfig({
     port: 3000,
   },
   test: {
+    maxWorkers: 4,
     environment: "jsdom",
     globals: true,
     setupFiles: "./src/test/setup.ts",

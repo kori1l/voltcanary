@@ -10,7 +10,12 @@ public interface DashboardTasks {
     Optional<DashboardTurn> request(UUID userId, UUID accountId, UUID requestId);
     DashboardTaskState find(UUID userId, UUID accountId, UUID taskId, UUID branchId);
     Optional<DashboardTurn> review(UUID userId, UUID accountId, UUID reviewId);
-    DashboardTaskState accept(DashboardTaskState state, DashboardTurn turn, Long expectedRevision, boolean newBranch);
+    DashboardTaskState accept(
+        DashboardTaskState state,
+        DashboardTurn turn,
+        Long expectedRevision,
+        boolean newBranch
+    );
     void checkpoint(DashboardTaskState state);
     void finish(DashboardTaskState state, DashboardTurn turn);
 }

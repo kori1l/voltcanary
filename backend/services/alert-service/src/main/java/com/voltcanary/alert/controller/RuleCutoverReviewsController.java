@@ -16,26 +16,36 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/alert-rules/configurable/cutover-reviews")
 @RequiredArgsConstructor
 public class RuleCutoverReviewsController {
+
     private final RuleCutoverReviews reviews;
 
     @PostMapping
-    public RuleCutoverReviews.Review prepare(@RequestHeader("X-User-Id") UUID actor,
-            @RequestHeader("Authorization") String authorization, @RequestBody VclRuleCutoverIntent intent) {
+    public RuleCutoverReviews.Review prepare(
+        @RequestHeader("X-User-Id") UUID actor,
+        @RequestHeader("Authorization") String authorization,
+        @RequestBody VclRuleCutoverIntent intent
+    ) {
         return reviews.prepare(actor, authorization, intent);
     }
 
-    public record Confirmation(String reviewDigest) { }
+    public record Confirmation(String reviewDigest) {}
 
     @GetMapping("/{id}/confirmed")
-    public RuleCutoverReviews.Review confirmed(@RequestHeader("X-User-Id") UUID actor,
-            @RequestHeader("Authorization") String authorization, @PathVariable UUID id) {
+    public RuleCutoverReviews.Review confirmed(
+        @RequestHeader("X-User-Id") UUID actor,
+        @RequestHeader("Authorization") String authorization,
+        @PathVariable UUID id
+    ) {
         return reviews.confirmed(actor, authorization, id);
     }
 
     @PostMapping("/{id}/confirm")
-    public RuleCutoverReviews.Review confirm(@RequestHeader("X-User-Id") UUID actor,
-            @RequestHeader("Authorization") String authorization, @PathVariable UUID id,
-            @RequestBody Confirmation confirmation) {
+    public RuleCutoverReviews.Review confirm(
+        @RequestHeader("X-User-Id") UUID actor,
+        @RequestHeader("Authorization") String authorization,
+        @PathVariable UUID id,
+        @RequestBody Confirmation confirmation
+    ) {
         return reviews.confirm(actor, authorization, id, confirmation.reviewDigest());
     }
 }

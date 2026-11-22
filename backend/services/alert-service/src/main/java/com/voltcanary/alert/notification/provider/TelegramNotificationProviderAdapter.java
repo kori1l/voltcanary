@@ -29,13 +29,12 @@ public class TelegramNotificationProviderAdapter implements NotificationProvider
     private final ObjectMapper objectMapper;
 
     public TelegramNotificationProviderAdapter(
-            AlertNotificationProperties properties,
-            RestClient.Builder restClientBuilder,
-            ObjectMapper objectMapper) {
+        AlertNotificationProperties properties,
+        RestClient.Builder restClientBuilder,
+        ObjectMapper objectMapper
+    ) {
         this.properties = properties;
-        this.restClient = restClientBuilder
-                .requestFactory(requestFactory(properties))
-                .build();
+        this.restClient = restClientBuilder.requestFactory(requestFactory(properties)).build();
         this.objectMapper = objectMapper;
     }
 
@@ -56,34 +55,45 @@ public class TelegramNotificationProviderAdapter implements NotificationProvider
         String token = properties.getTelegram().getBotToken();
         if (token == null) {
             return NotificationDeliveryResult.permanentFailure(
-                    "TELEGRAM_TOKEN_UNCONFIGURED",
-                    "Telegram bot token is not configured");
+                "TELEGRAM_TOKEN_UNCONFIGURED",
+                "Telegram bot token is not configured"
+            );
         }
         try {
-            String body = restClient.post()
-                    .uri(sendMessageUri(token))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("Idempotency-Key", command.idempotencyKey())
-                    .body(deliveryPayload(command))
-                    .retrieve()
-                    .body(String.class);
+            String body = restClient
+                .post()
+                .uri(sendMessageUri(token))
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", command.idempotencyKey())
+                .body(deliveryPayload(command))
+                .retrieve()
+                .body(String.class);
             return NotificationDeliveryResult.sent("TELEGRAM accepted", providerMessageId(body));
         } catch (RestClientResponseException exception) {
             String errorCode = "HTTP_" + exception.getStatusCode().value();
             if (isRetryable(exception.getStatusCode())) {
-                return NotificationDeliveryResult.retryableFailure(errorCode, responseSummary(exception));
+                return NotificationDeliveryResult.retryableFailure(
+                    errorCode,
+                    responseSummary(exception)
+                );
             }
-            return NotificationDeliveryResult.permanentFailure(errorCode, responseSummary(exception));
+            return NotificationDeliveryResult.permanentFailure(
+                errorCode,
+                responseSummary(exception)
+            );
         } catch (Exception exception) {
             return NotificationDeliveryResult.retryableFailure(
-                    exception.getClass().getSimpleName(),
-                    bounded(exception.getMessage()));
+                exception.getClass().getSimpleName(),
+                bounded(exception.getMessage())
+            );
         }
     }
 
     private URI sendMessageUri(String token) {
         String baseUrl = properties.getTelegram().getApiBaseUrl();
-        String trimmedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        String trimmedBase = baseUrl.endsWith("/")
+            ? baseUrl.substring(0, baseUrl.length() - 1)
+            : baseUrl;
         return URI.create(trimmedBase + "/bot" + token + "/sendMessage");
     }
 
@@ -130,9 +140,9 @@ public class TelegramNotificationProviderAdapter implements NotificationProvider
         if (value instanceof String text) {
             String trimmed = text.trim();
             return PARSE_MODES.stream()
-                    .filter(mode -> mode.equalsIgnoreCase(trimmed))
-                    .findFirst()
-                    .orElseThrow(() -> badRequest("parseMode is not supported"));
+                .filter(mode -> mode.equalsIgnoreCase(trimmed))
+                .findFirst()
+                .orElseThrow(() -> badRequest("parseMode is not supported"));
         }
         throw badRequest("parseMode must be a string");
     }
@@ -174,7 +184,9 @@ public class TelegramNotificationProviderAdapter implements NotificationProvider
             return "Telegram provider failed";
         }
         String trimmed = value.trim();
-        return trimmed.length() <= MAX_SUMMARY_LENGTH ? trimmed : trimmed.substring(0, MAX_SUMMARY_LENGTH);
+        return trimmed.length() <= MAX_SUMMARY_LENGTH
+            ? trimmed
+            : trimmed.substring(0, MAX_SUMMARY_LENGTH);
     }
 
     private String escapeMarkdownV2(String value) {
@@ -182,10 +194,7 @@ public class TelegramNotificationProviderAdapter implements NotificationProvider
     }
 
     private String escapeHtml(String value) {
-        return value
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private ResponseStatusException badRequest(String reason) {

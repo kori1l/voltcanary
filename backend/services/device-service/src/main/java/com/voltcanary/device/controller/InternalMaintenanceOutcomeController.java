@@ -23,10 +23,11 @@ public class InternalMaintenanceOutcomeController {
 
     @GetMapping("/maintenance-outcomes/changes")
     public List<MaintenanceOutcomeResponse> changes(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @RequestParam(value = "updatedAfter", required = false) Instant updatedAfter,
-            @RequestParam(value = "afterId", required = false) UUID afterId,
-            @RequestParam(value = "limit", required = false) Integer limit) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @RequestParam(value = "updatedAfter", required = false) Instant updatedAfter,
+        @RequestParam(value = "afterId", required = false) UUID afterId,
+        @RequestParam(value = "limit", required = false) Integer limit
+    ) {
         internalServiceAuth.require(internalToken);
         return service.changes(updatedAfter, afterId, limit);
     }

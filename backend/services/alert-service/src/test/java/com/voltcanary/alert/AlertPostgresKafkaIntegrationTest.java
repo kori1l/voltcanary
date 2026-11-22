@@ -1,5 +1,7 @@
 package com.voltcanary.alert;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import java.time.Duration;
@@ -17,9 +19,9 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -33,39 +35,51 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.redpanda.RedpandaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Testcontainers
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=true",
-                "spring.kafka.consumer.group-id=alert-integration-test",
-                "spring.jpa.hibernate.ddl-auto=none",
-                "app.alert.authorization.enabled=false",
-                "app.alert.notifications.worker-enabled=false",
-                "app.alert.reconciliation.enabled=false",
-                "app.alert.kafka.retry.max-attempts=2",
-                "app.alert.kafka.retry.interval=100ms"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=true",
+        "spring.kafka.consumer.group-id=alert-integration-test",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "app.alert.authorization.enabled=false",
+        "app.alert.notifications.worker-enabled=false",
+        "app.alert.reconciliation.enabled=false",
+        "app.alert.kafka.retry.max-attempts=2",
+        "app.alert.kafka.retry.interval=100ms",
+    }
+)
+@org.junit.jupiter.api.Tag("docker")
 class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
+
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
-        restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
-            if (request.getURI().getPath().startsWith("/alerts")) {
-                request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                        java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
-            }
-            return execution.execute(request, body);
-        }));
+        restTemplate.getRestTemplate().setInterceptors(
+            java.util.List.of((request, body, execution) -> {
+                if (request.getURI().getPath().startsWith("/alerts")) {
+                    request
+                        .getHeaders()
+                        .setBearerAuth(
+                            com.voltcanary.common.test.SignedUserTokens.create(
+                                java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                                "actor@example.invalid",
+                                "USER"
+                            )
+                        );
+                }
+                return execution.execute(request, body);
+            })
+        );
     }
 
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @Container
-    static final RedpandaContainer kafka = new RedpandaContainer(DockerImageName.parse("redpandadata/redpanda:v24.2.18"));
+    static final RedpandaContainer kafka = new RedpandaContainer(
+        DockerImageName.parse("redpandadata/redpanda:v24.2.18")
+    );
 
     @DynamicPropertySource
     static void infrastructureProperties(DynamicPropertyRegistry registry) {
@@ -79,20 +93,53 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
-    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
-    @Autowired private com.voltcanary.alert.repository.DashboardIncidentRepository dashboardReads;
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Autowired
+    private com.voltcanary.alert.repository.DashboardIncidentRepository dashboardReads;
 
     @Test
     void dashboardFullIncidentCountsAreIndependentOfRowsAndNeverDeliverNotifications() {
-        UUID user = UUID.randomUUID(), account = UUID.randomUUID(), device = UUID.randomUUID();
+        UUID user = UUID.randomUUID(),
+            account = UUID.randomUUID(),
+            device = UUID.randomUUID();
         Instant asOf = Instant.parse("2026-10-08T12:00:00Z");
         java.util.ArrayList<Object[]> rows = new java.util.ArrayList<>();
-        for (int index = 0; index < 250; index++) rows.add(new Object[]{UUID.randomUUID(), device, account,
-                "dashboard-" + UUID.randomUUID(), "Fixture", "Fixture", "CRITICAL", "OPEN", java.sql.Timestamp.from(asOf.minusSeconds(index + 1))});
-        jdbc.batchUpdate("insert into alerts(id,device_id,account_id,deduplication_key,title,description,severity,status,created_at) values(?,?,?,?,?,?,?,?,?)", rows);
-        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(asOf.minusSeconds(86400), asOf, asOf, null, null);
-        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(user, account, List.of(device), frame,
-                java.util.Set.of(), List.of(), 20, 0, "ACTIVE", List.of());
+        for (int index = 0; index < 250; index++) rows.add(new Object[] {
+            UUID.randomUUID(),
+            device,
+            account,
+            "dashboard-" + UUID.randomUUID(),
+            "Fixture",
+            "Fixture",
+            "CRITICAL",
+            "OPEN",
+            java.sql.Timestamp.from(asOf.minusSeconds(index + 1)),
+        });
+        jdbc.batchUpdate(
+            "insert into alerts(id,device_id,account_id,deduplication_key,title,description,severity,status,created_at) values(?,?,?,?,?,?,?,?,?)",
+            rows
+        );
+        var frame = new com.voltcanary.common.web.DashboardOwnerReadRequest.TimeFrame(
+            asOf.minusSeconds(86400),
+            asOf,
+            asOf,
+            null,
+            null
+        );
+        var request = new com.voltcanary.common.web.DashboardOwnerReadRequest(
+            user,
+            account,
+            List.of(device),
+            frame,
+            java.util.Set.of(),
+            List.of(),
+            20,
+            0,
+            "ACTIVE",
+            List.of()
+        );
         var result = dashboardReads.read(request, List.of(device));
         assertThat(result.path("activeNow").asInt()).isEqualTo(250);
         assertThat(result.path("criticalOpenNow").asInt()).isEqualTo(250);
@@ -101,13 +148,19 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
         assertThat(result.path("total").asInt()).isEqualTo(250);
         assertThat(result.path("hasNext").asBoolean()).isTrue();
         assertThat(result.path("rows").get(0).path("actions").size()).isZero();
-        assertThat(restTemplate.postForEntity("/internal/dashboard/incidents", request, String.class).getStatusCode().is4xxClientError()).isTrue();
+        assertThat(
+            restTemplate
+                .postForEntity("/internal/dashboard/incidents", request, String.class)
+                .getStatusCode()
+                .is4xxClientError()
+        ).isTrue();
     }
 
     @Test
     void consumesAnomalyEventAndPersistsAlertInPostgres() throws Exception {
         UUID deviceId = UUID.randomUUID();
-        publish(new AnomalyDetectedEvent(
+        publish(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -115,19 +168,21 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "A power spike was detected.",
-                Instant.now()));
+                Instant.now()
+            )
+        );
 
-        assertThat(waitForAlertsContaining(deviceId))
-                .anySatisfy(alert -> {
-                    assertThat(alert.deviceId()).isEqualTo(deviceId);
-                    assertThat(alert.alertType()).isEqualTo("POWER_SPIKE");
-                    assertThat(alert.status()).isEqualTo("OPEN");
-                });
+        assertThat(waitForAlertsContaining(deviceId)).anySatisfy(alert -> {
+            assertThat(alert.deviceId()).isEqualTo(deviceId);
+            assertThat(alert.alertType()).isEqualTo("POWER_SPIKE");
+            assertThat(alert.status()).isEqualTo("OPEN");
+        });
     }
 
     @Test
     void failedAnomalyEventGoesToDlqAndConsumerContinues() throws Exception {
-        publish(new AnomalyDetectedEvent(
+        publish(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 null,
                 UUID.randomUUID(),
@@ -135,13 +190,16 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Invalid event without a device id.",
-                Instant.now()));
+                Instant.now()
+            )
+        );
 
         String dlqPayload = waitForDlqPayload("anomaly.detected.dlq.v1");
         assertThat(dlqPayload).contains("Invalid event without a device id.");
 
         UUID deviceId = UUID.randomUUID();
-        publish(new AnomalyDetectedEvent(
+        publish(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -149,14 +207,15 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "A valid event after a failed one.",
-                Instant.now()));
+                Instant.now()
+            )
+        );
 
-        assertThat(waitForAlertsContaining(deviceId))
-                .anySatisfy(alert -> {
-                    assertThat(alert.deviceId()).isEqualTo(deviceId);
-                    assertThat(alert.alertType()).isEqualTo("POWER_SPIKE");
-                    assertThat(alert.status()).isEqualTo("OPEN");
-                });
+        assertThat(waitForAlertsContaining(deviceId)).anySatisfy(alert -> {
+            assertThat(alert.deviceId()).isEqualTo(deviceId);
+            assertThat(alert.alertType()).isEqualTo("POWER_SPIKE");
+            assertThat(alert.status()).isEqualTo("OPEN");
+        });
     }
 
     private void publish(AnomalyDetectedEvent event) throws Exception {
@@ -164,8 +223,11 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
         properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        try (KafkaProducer<String, AnomalyDetectedEvent> producer = new KafkaProducer<>(properties)) {
-            String key = event.deviceId() == null ? event.eventId().toString() : event.deviceId().toString();
+        try (
+            KafkaProducer<String, AnomalyDetectedEvent> producer = new KafkaProducer<>(properties)
+        ) {
+            String key =
+                event.deviceId() == null ? event.eventId().toString() : event.deviceId().toString();
             producer.send(new ProducerRecord<>("anomaly.detected.v1", key, event)).get();
         }
     }
@@ -174,11 +236,20 @@ class AlertPostgresKafkaIntegrationTest extends SignedUserTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         ResponseEntity<List<AlertResponse>> response = null;
         while (System.nanoTime() < deadline) {
-            response = restTemplate.exchange("/alerts", HttpMethod.GET, null, new ParameterizedTypeReference<>() {
-            });
-            if (response.getStatusCode() == HttpStatus.OK
-                    && response.getBody() != null
-                    && response.getBody().stream().anyMatch(alert -> deviceId.equals(alert.deviceId()))) {
+            response = restTemplate.exchange(
+                "/alerts",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<>() {}
+            );
+            if (
+                response.getStatusCode() == HttpStatus.OK &&
+                response.getBody() != null &&
+                response
+                    .getBody()
+                    .stream()
+                    .anyMatch(alert -> deviceId.equals(alert.deviceId()))
+            ) {
                 return response.getBody();
             }
             Thread.sleep(500);

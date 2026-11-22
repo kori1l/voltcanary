@@ -11,8 +11,8 @@ from app.config.settings import Settings
 from app.schemas.training import TrainingRequest, TrainingRunResponse
 from app.services.artifact_providers import LocalArtifactStoreProvider, S3ArtifactStoreProvider
 from app.services.serving_cache import ServingArtifactCache
-from app.services.training_service import TrainingService
 from app.services.training_coordinator import TrainingRunCoordinator
+from app.services.training_service import TrainingService
 
 
 class RuntimeBoundariesTest(unittest.TestCase):
@@ -36,7 +36,11 @@ class RuntimeBoundariesTest(unittest.TestCase):
     def test_s3_artifacts_cannot_use_another_bucket_or_relative_segments(self):
         client = Mock()
         provider = S3ArtifactStoreProvider("models", Settings(), client)
-        for uri in ("s3://another/model.json", "s3://models/a/../model.json", "s3://models/file?secret=value"):
+        for uri in (
+            "s3://another/model.json",
+            "s3://models/a/../model.json",
+            "s3://models/file?secret=value",
+        ):
             with self.subTest(uri=uri), self.assertRaises(ValueError):
                 provider.load_bytes(uri)
         client.assert_not_called()
@@ -80,14 +84,24 @@ class RuntimeBoundariesTest(unittest.TestCase):
 
     def test_duplicate_training_requests_share_one_inflight_run(self):
         service = TrainingService(Mock(), TrainingRunCoordinator())
-        request = TrainingRequest.model_validate({"accountId": "account", "sourceType": "EXTERNAL_IMPORT", "datasetVersionId": "dataset", "idempotencyKey": "same", "rows": []})
+        request = TrainingRequest.model_validate(
+            {
+                "accountId": "account",
+                "sourceType": "EXTERNAL_IMPORT",
+                "datasetVersionId": "dataset",
+                "idempotencyKey": "same",
+                "rows": [],
+            }
+        )
         started, release = threading.Event(), threading.Event()
 
         def train(_):
             started.set()
             self.assertTrue(release.wait(5))
             run = TrainingRunResponse(runId="run", status="SUCCEEDED", datasetVersionId="dataset")
-            return service.coordinator.record_result(request, run, service.coordinator.fingerprint(request))
+            return service.coordinator.record_result(
+                request, run, service.coordinator.fingerprint(request)
+            )
 
         service._start_training = Mock(side_effect=train)
         with ThreadPoolExecutor(max_workers=4) as executor:

@@ -9,9 +9,23 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class MlLifecycleExceptionHandler {
+
     @ExceptionHandler(MlLifecycleConflictException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     public MlLifecycleConflictResponse lifecycleConflict(MlLifecycleConflictException exception) {
         return exception.response();
+    }
+
+    @ExceptionHandler({
+        org.springframework.dao.OptimisticLockingFailureException.class,
+        jakarta.persistence.OptimisticLockException.class,
+    })
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public MlLifecycleConflictResponse concurrentUpdate(RuntimeException exception) {
+        return new MlLifecycleConflictResponse(
+            "CONCURRENT_UPDATE",
+            "ML data changed during this operation; reload before retrying",
+            java.util.List.of()
+        );
     }
 }

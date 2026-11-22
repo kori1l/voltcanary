@@ -19,7 +19,14 @@ public class MlDeploymentAuditWriter {
     private final MlDeploymentAuditEventRepository auditRepository;
     private final ObjectMapper objectMapper;
 
-    public void audit(UUID accountId, UUID actorId, UUID modelVersionId, UUID policyId, String action, Map<String, Object> details) {
+    public void audit(
+        UUID accountId,
+        UUID actorId,
+        UUID modelVersionId,
+        UUID policyId,
+        String action,
+        Map<String, Object> details
+    ) {
         MlDeploymentAuditEvent event = new MlDeploymentAuditEvent();
         event.setId(UUID.randomUUID());
         event.setAccountId(accountId);
@@ -36,7 +43,10 @@ public class MlDeploymentAuditWriter {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not serialize ML registry audit details");
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Could not serialize ML registry audit details"
+            );
         }
     }
 }

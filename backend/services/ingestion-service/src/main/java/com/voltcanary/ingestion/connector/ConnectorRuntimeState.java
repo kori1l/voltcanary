@@ -6,5 +6,5 @@ public enum ConnectorRuntimeState {
     DEGRADED,
     STOPPED,
     FAILED,
-    LEASE_LOST
+    LEASE_LOST,
 }

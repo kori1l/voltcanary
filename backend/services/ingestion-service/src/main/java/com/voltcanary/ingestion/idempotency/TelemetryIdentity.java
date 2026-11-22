@@ -6,11 +6,11 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
 import com.voltcanary.vcl.VclCanonical;
-
 import java.util.List;
 import java.util.TreeSet;
 
 final class TelemetryIdentity {
+
     private TelemetryIdentity() {}
 
     static String key(ObjectMapper mapper, TelemetryReceivedEvent event) {
@@ -35,7 +35,8 @@ final class TelemetryIdentity {
         }
         if (value.isNumber()) {
             return com.fasterxml.jackson.databind.node.DecimalNode.valueOf(
-                    value.decimalValue().stripTrailingZeros());
+                value.decimalValue().stripTrailingZeros()
+            );
         }
         return value;
     }

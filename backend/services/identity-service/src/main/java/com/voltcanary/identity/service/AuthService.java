@@ -1,14 +1,8 @@
 package com.voltcanary.identity.service;
 
-import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.RefreshToken;
-import com.voltcanary.identity.domain.UserRole;
+import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.UserStatus;
-import com.voltcanary.identity.dto.AdminRefreshSessionResponse;
-import com.voltcanary.identity.dto.AdminRevokeSessionsResponse;
-import com.voltcanary.identity.dto.AdminUpdateUserRoleRequest;
-import com.voltcanary.identity.dto.AdminUpdateUserStatusRequest;
-import com.voltcanary.identity.dto.AdminUserResponse;
 import com.voltcanary.identity.dto.AuthMessageResponse;
 import com.voltcanary.identity.dto.AuthTokenResponse;
 import com.voltcanary.identity.dto.ChangePasswordRequest;
@@ -22,18 +16,12 @@ import com.voltcanary.identity.dto.RegisterRequest;
 import com.voltcanary.identity.dto.RegisterResponse;
 import com.voltcanary.identity.dto.ResetPasswordRequest;
 import com.voltcanary.identity.exception.AuthenticationFailedException;
-import com.voltcanary.identity.exception.AuthorizationFailedException;
-import com.voltcanary.identity.exception.DuplicateEmailException;
 import com.voltcanary.identity.repository.RefreshTokenRepository;
 import com.voltcanary.identity.repository.UserRepository;
 import com.voltcanary.identity.security.AuthenticatedUser;
 import com.voltcanary.identity.security.JwtService;
 import com.voltcanary.identity.security.RefreshTokenService;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,11 +30,13 @@ import org.springframework.transaction.annotation.Transactional;
 @lombok.RequiredArgsConstructor
 public class AuthService {
 
-    private static final UserRole DEFAULT_ROLE = UserRole.USER;
     private static final String TOKEN_TYPE = "Bearer";
 
     private final UserRepository userRepository;
     private final AccountRecoveryService recovery;
+    private final UserRegistrationService registration;
+    private final PasswordLogin passwordLogin;
+    private final LoginSessions loginSessions;
     private final LoginAuditService loginAuditService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -55,57 +45,26 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final IdentityLifecycleOutboxService identityLifecycleOutboxService;
 
-    @Transactional
     public RegisterResponse register(RegisterRequest request) {
-        String email = normalizeEmail(request.email());
-        if (userRepository.existsByEmail(email)) {
-            throw new DuplicateEmailException(email);
-        }
-
-        Instant now = Instant.now();
-        User user = new User();
-        user.setId(UUID.randomUUID());
-        user.setEmail(email);
-        user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setEmailVerified(false);
-        user.setRole(DEFAULT_ROLE);
-        user.setStatus(UserStatus.ACTIVE);
-        user.setCreatedAt(now);
-        user.setUpdatedAt(now);
-
-        User saved = userRepository.save(user);
-        return new RegisterResponse(saved.getId(), saved.getEmail());
+        return registration.register(request);
     }
 
-    @Transactional
-    public AuthTokenResponse login(LoginRequest request, String clientIp, String userAgent, String correlationId) {
-        String email = normalizeEmail(request.email());
-        loginProtectionService.checkAllowed(email, clientIp);
-        User user = userRepository.findByEmail(email).orElse(null);
-
-        if (user == null) {
-            auditLogin(null, email, false, "user_not_found", clientIp, userAgent, correlationId);
-            loginProtectionService.recordFailure(email);
-            throw new AuthenticationFailedException("Invalid email or password");
-        }
-
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            auditLogin(user, email, false, "wrong_password", clientIp, userAgent, correlationId);
-            loginProtectionService.recordFailure(email);
-            throw new AuthenticationFailedException("Invalid email or password");
-        }
-
-        ensureActive(user);
-        auditLogin(user, email, true, null, clientIp, userAgent, correlationId);
-        loginProtectionService.recordSuccess(email);
-        return issueTokens(user);
+    public AuthTokenResponse login(
+        LoginRequest request,
+        String clientIp,
+        String userAgent,
+        String correlationId
+    ) {
+        return passwordLogin.login(request, clientIp, userAgent, correlationId);
     }
 
     @Transactional(readOnly = true)
     public MeResponse me(String authorizationHeader) {
-        AuthenticatedUser user = parseBearerToken(authorizationHeader);
-        User persistedUser = userRepository.findById(user.id())
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid access token"));
+        AuthenticatedUser user = jwtService.parseBearerToken(authorizationHeader);
+        User persistedUser = userRepository
+            .findById(user.id())
+            .orElseThrow(() -> new AuthenticationFailedException("Invalid access token"));
+        ensureActive(persistedUser);
         return toMeResponse(persistedUser);
     }
 
@@ -127,16 +86,22 @@ public class AuthService {
 
     @Transactional
     public AuthMessageResponse logoutAll(String authorizationHeader) {
-        AuthenticatedUser user = parseBearerToken(authorizationHeader);
+        AuthenticatedUser user = jwtService.parseBearerToken(authorizationHeader);
         int revokedCount = refreshTokenService.revokeAllForUser(user.id());
-        return new AuthMessageResponse("logout-all successful: revoked " + revokedCount + " refresh tokens");
+        return new AuthMessageResponse(
+            "logout-all successful: revoked " + revokedCount + " refresh tokens"
+        );
     }
 
     @Transactional
-    public AuthMessageResponse changePassword(String authorizationHeader, ChangePasswordRequest request) {
-        AuthenticatedUser authenticatedUser = parseBearerToken(authorizationHeader);
-        User user = userRepository.findById(authenticatedUser.id())
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid access token"));
+    public AuthMessageResponse changePassword(
+        String authorizationHeader,
+        ChangePasswordRequest request
+    ) {
+        AuthenticatedUser authenticatedUser = jwtService.parseBearerToken(authorizationHeader);
+        User user = userRepository
+            .findById(authenticatedUser.id())
+            .orElseThrow(() -> new AuthenticationFailedException("Invalid access token"));
         ensureActive(user);
         if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
             throw new AuthenticationFailedException("Invalid current password");
@@ -164,124 +129,24 @@ public class AuthService {
         return recovery.confirmEmailVerification(request);
     }
 
-    @Transactional(readOnly = true)
-    public List<AdminUserResponse> listUsers(String authorizationHeader) {
-        requireAdmin(authorizationHeader);
-        return userRepository.findAll().stream()
-                .sorted(Comparator.comparing(User::getCreatedAt).reversed())
-                .map(this::toAdminUserResponse)
-                .toList();
-    }
-
-    @Transactional
-    public AdminUserResponse updateUserStatus(
-            String authorizationHeader,
-            UUID userId,
-            AdminUpdateUserStatusRequest request) {
-        requireAdmin(authorizationHeader);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthenticationFailedException("User not found"));
-        user.setStatus(request.status());
-        user.setUpdatedAt(Instant.now());
-        if (request.status() != UserStatus.ACTIVE) {
-            refreshTokenService.revokeAllForUser(user.getId());
-        }
-        identityLifecycleOutboxService.enqueueAccountLifecycle(user);
-        return toAdminUserResponse(user);
-    }
-
-    @Transactional
-    public AdminUserResponse deleteUser(String authorizationHeader, UUID userId) {
-        requireAdmin(authorizationHeader);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthenticationFailedException("User not found"));
-        user.setStatus(UserStatus.DELETED);
-        user.setUpdatedAt(Instant.now());
-        refreshTokenService.revokeAllForUser(user.getId());
-        identityLifecycleOutboxService.enqueueAccountLifecycle(user);
-        return toAdminUserResponse(user);
-    }
-
-    @Transactional
-    public AdminUserResponse updateUserRole(
-            String authorizationHeader,
-            UUID userId,
-            AdminUpdateUserRoleRequest request) {
-        requireAdmin(authorizationHeader);
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AuthenticationFailedException("User not found"));
-        user.setRole(request.role());
-        user.setUpdatedAt(Instant.now());
-        return toAdminUserResponse(user);
-    }
-
-    @Transactional(readOnly = true)
-    public List<AdminRefreshSessionResponse> listUserSessions(String authorizationHeader, UUID userId) {
-        requireAdmin(authorizationHeader);
-        if (!userRepository.existsById(userId)) {
-            throw new AuthenticationFailedException("User not found");
-        }
-        return refreshTokenRepository.findByUserId(userId).stream()
-                .sorted(Comparator.comparing(RefreshToken::getCreatedAt).reversed())
-                .map(this::toAdminRefreshSessionResponse)
-                .toList();
-    }
-
-    @Transactional
-    public AdminRevokeSessionsResponse revokeUserSessions(String authorizationHeader, UUID userId) {
-        requireAdmin(authorizationHeader);
-        if (!userRepository.existsById(userId)) {
-            throw new AuthenticationFailedException("User not found");
-        }
-        return new AdminRevokeSessionsResponse(refreshTokenService.revokeAllForUser(userId));
-    }
-
     private AuthTokenResponse issueTokens(User user) {
         RefreshTokenService.IssuedRefreshToken refreshToken = refreshTokenService.issue(user);
         return new AuthTokenResponse(
-                jwtService.createAccessToken(user),
-                refreshToken.token(),
-                TOKEN_TYPE,
-                jwtService.accessTokenTtlSeconds());
-    }
-
-    private void requireAdmin(String authorizationHeader) {
-        AuthenticatedUser user = parseBearerToken(authorizationHeader);
-        if (!UserRole.ADMIN.name().equals(user.role())) {
-            throw new AuthorizationFailedException("Admin role is required");
-        }
+            jwtService.createAccessToken(user),
+            refreshToken.token(),
+            TOKEN_TYPE,
+            jwtService.accessTokenTtlSeconds()
+        );
     }
 
     private MeResponse toMeResponse(User user) {
         return new MeResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getRole().name(),
-                user.getStatus(),
-                user.isEmailVerified());
-    }
-
-    private AdminUserResponse toAdminUserResponse(User user) {
-        return new AdminUserResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getRole(),
-                user.getStatus(),
-                user.isEmailVerified(),
-                user.getCreatedAt(),
-                user.getUpdatedAt());
-    }
-
-    private AdminRefreshSessionResponse toAdminRefreshSessionResponse(RefreshToken token) {
-        Instant now = Instant.now();
-        boolean active = token.getRevokedAt() == null && token.getExpiresAt().isAfter(now);
-        return new AdminRefreshSessionResponse(
-                token.getId(),
-                token.getUser().getId(),
-                token.getCreatedAt(),
-                token.getExpiresAt(),
-                token.getRevokedAt(),
-                active);
+            user.getId(),
+            user.getEmail(),
+            user.getRole().name(),
+            user.getStatus(),
+            user.isEmailVerified()
+        );
     }
 
     private void ensureActive(User user) {
@@ -289,27 +154,4 @@ public class AuthService {
             throw new AuthenticationFailedException("Invalid email or password");
         }
     }
-
-    private AuthenticatedUser parseBearerToken(String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith(TOKEN_TYPE + " ")) {
-            throw new AuthenticationFailedException("Missing bearer token");
-        }
-        return jwtService.parseAccessToken(authorizationHeader.substring((TOKEN_TYPE + " ").length()));
-    }
-
-    private void auditLogin(
-            User user,
-            String email,
-            boolean successful,
-            String failureReason,
-            String clientIp,
-            String userAgent,
-            String correlationId) {
-        loginAuditService.record(user, email, successful, failureReason, clientIp, userAgent, correlationId);
-    }
-
-    private String normalizeEmail(String email) {
-        return email.trim().toLowerCase(Locale.ROOT);
-    }
-
 }

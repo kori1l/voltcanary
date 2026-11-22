@@ -18,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Adapts verified JWT claims to legacy controller inputs; client identity hints never survive. */
 public final class UserIdentityFilter extends OncePerRequestFilter {
+
     private final BearerUserIdentity identity;
 
     public UserIdentityFilter(BearerUserIdentity identity) {
@@ -31,9 +32,14 @@ public final class UserIdentityFilter extends OncePerRequestFilter {
             path = request.getRequestURI().substring(request.getContextPath().length());
         }
         // Explicit opt-in only on user-serving applications. New routes require JWT by default.
-        return under(path, "/internal") || under(path, "/actuator")
-                || under(path, "/v3/api-docs") || under(path, "/swagger-ui")
-                || path.equals("/swagger-ui.html") || path.equals("/error");
+        return (
+            under(path, "/internal") ||
+            under(path, "/actuator") ||
+            under(path, "/v3/api-docs") ||
+            under(path, "/swagger-ui") ||
+            path.equals("/swagger-ui.html") ||
+            path.equals("/error")
+        );
     }
 
     private boolean under(String path, String root) {
@@ -41,34 +47,52 @@ public final class UserIdentityFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        FilterChain chain
+    ) throws ServletException, IOException {
         JwtAccessTokenClaims claims;
         try {
             claims = identity.verify(request.getHeader("Authorization"));
         } catch (IllegalArgumentException exception) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("{\"code\":\"UNAUTHORIZED\",\"message\":\"Valid bearer access token required\"}");
+            response
+                .getWriter()
+                .write(
+                    "{\"code\":\"UNAUTHORIZED\",\"message\":\"Valid bearer access token required\"}"
+                );
             return;
         }
         chain.doFilter(new VerifiedRequest(request, claims), response);
     }
 
     private static final class VerifiedRequest extends HttpServletRequestWrapper {
+
         private final Map<String, String> claims;
 
         private VerifiedRequest(HttpServletRequest request, JwtAccessTokenClaims claims) {
             super(request);
-            this.claims = Map.of("x-user-id", claims.subject(), "x-user-email", claims.email(),
-                    "x-user-role", claims.role());
+            this.claims = Map.of(
+                "x-user-id",
+                claims.subject(),
+                "x-user-email",
+                claims.email(),
+                "x-user-role",
+                claims.role()
+            );
         }
 
         private boolean untrusted(String name) {
             String key = name.toLowerCase(Locale.ROOT);
-            return key.startsWith("x-user-") || key.startsWith("x-account-")
-                    || key.startsWith("x-workspace-") || key.startsWith("x-capabilit")
-                    || key.equals("x-internal-service-token");
+            return (
+                key.startsWith("x-user-") ||
+                key.startsWith("x-account-") ||
+                key.startsWith("x-workspace-") ||
+                key.startsWith("x-capabilit") ||
+                key.equals("x-internal-service-token")
+            );
         }
 
         @Override
@@ -89,7 +113,10 @@ public final class UserIdentityFilter extends OncePerRequestFilter {
         @Override
         public Enumeration<String> getHeaderNames() {
             Set<String> names = new LinkedHashSet<>();
-            Collections.list(super.getHeaderNames()).stream().filter(name -> !untrusted(name)).forEach(names::add);
+            Collections.list(super.getHeaderNames())
+                .stream()
+                .filter(name -> !untrusted(name))
+                .forEach(names::add);
             names.addAll(claims.keySet());
             return Collections.enumeration(names);
         }

@@ -13,5 +13,4 @@ public class AlertInternalProperties {
 
     private String serviceToken = "dev-internal-token";
     private String serviceName = "alert-service";
-
 }

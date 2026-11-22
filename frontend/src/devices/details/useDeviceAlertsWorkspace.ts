@@ -17,14 +17,23 @@ export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
       if (deviceAlertStatusFilter === "active") return alert.status !== "RESOLVED";
       return deviceAlertStatusFilter === "all" || alert.status === deviceAlertStatusFilter;
     })
-    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  const visibleDeviceAlerts = showAllDeviceAlerts ? filteredDeviceAlerts : filteredDeviceAlerts.slice(0, 12);
+    .sort(
+      (left, right) =>
+        severityRank(right.severity) - severityRank(left.severity) ||
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    );
+  const visibleDeviceAlerts = showAllDeviceAlerts
+    ? filteredDeviceAlerts
+    : filteredDeviceAlerts.slice(0, 12);
 
   async function loadDeviceAlerts(currentDeviceId = deviceId) {
     if (!currentDeviceId) {
       return;
     }
-    await resource.load(() => listAlerts({ deviceId: currentDeviceId, limit: 100 }), (data) => !data.length);
+    await resource.load(
+      () => listAlerts({ deviceId: currentDeviceId, limit: 100 }),
+      (data) => !data.length,
+    );
   }
 
   async function updateDeviceAlert(alertId: string, action: "ack" | "resolve") {
@@ -33,7 +42,12 @@ export function useDeviceAlertsWorkspace(deviceId: string | undefined) {
       if (action === "ack") {
         await acknowledgeAlert(alertId);
       } else {
-        const reason = await confirmation.confirm({ title: "Resolve alert", object: deviceAlerts.find((alert) => alert.id === alertId)?.title ?? alertId, impact: "The incident will be marked resolved. Its history will retain this reason.", reasonRequired: true });
+        const reason = await confirmation.confirm({
+          title: "Resolve alert",
+          object: deviceAlerts.find((alert) => alert.id === alertId)?.title ?? alertId,
+          impact: "The incident will be marked resolved. Its history will retain this reason.",
+          reasonRequired: true,
+        });
         if (reason === null) {
           return;
         }

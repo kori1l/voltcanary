@@ -18,7 +18,12 @@ public class AnalyticsMlRuntimeDecisionService {
 
     private final ObjectMapper objectMapper;
 
-    public boolean canaryIncluded(UUID accountId, UUID deviceId, UUID modelVersionId, Integer canaryPercent) {
+    public boolean canaryIncluded(
+        UUID accountId,
+        UUID deviceId,
+        UUID modelVersionId,
+        Integer canaryPercent
+    ) {
         if (modelVersionId == null) {
             return false;
         }
@@ -33,18 +38,28 @@ public class AnalyticsMlRuntimeDecisionService {
         return hashBucket(key) < percent;
     }
 
-    public String compatibilityFallbackReason(MlModelVersionDto model, String deviceType, String metric) {
+    public String compatibilityFallbackReason(
+        MlModelVersionDto model,
+        String deviceType,
+        String metric
+    ) {
         List<String> compatibleDeviceTypes = stringList(model.compatibleDeviceTypesJson());
-        if (!compatibleDeviceTypes.isEmpty()
-                && !blankToEmpty(deviceType).isBlank()
-                && compatibleDeviceTypes.stream().noneMatch(type -> type.equalsIgnoreCase(blankToEmpty(deviceType)))) {
+        if (
+            !compatibleDeviceTypes.isEmpty() &&
+            !blankToEmpty(deviceType).isBlank() &&
+            compatibleDeviceTypes
+                .stream()
+                .noneMatch(type -> type.equalsIgnoreCase(blankToEmpty(deviceType)))
+        ) {
             return "INCOMPATIBLE_DEVICE_TYPE";
         }
         List<String> supportedMetrics = stringList(model.supportedMetricsJson());
-        if (model.family() != MlModelFamily.FAILURE_PREDICTION
-                && !supportedMetrics.isEmpty()
-                && !blankToEmpty(metric).isBlank()
-                && supportedMetrics.stream().noneMatch(item -> item.equalsIgnoreCase(blankToEmpty(metric)))) {
+        if (
+            model.family() != MlModelFamily.FAILURE_PREDICTION &&
+            !supportedMetrics.isEmpty() &&
+            !blankToEmpty(metric).isBlank() &&
+            supportedMetrics.stream().noneMatch(item -> item.equalsIgnoreCase(blankToEmpty(metric)))
+        ) {
             return "INCOMPATIBLE_FEATURE_SCHEMA";
         }
         return "";
@@ -52,8 +67,8 @@ public class AnalyticsMlRuntimeDecisionService {
 
     public String runtimeModelType(MlModelVersionDto model) {
         return model.family() == MlModelFamily.FAILURE_PREDICTION
-                ? "trained_failure_prediction"
-                : "trained_tabular_anomaly";
+            ? "trained_failure_prediction"
+            : "trained_tabular_anomaly";
     }
 
     public List<String> stringList(String json) {
@@ -65,10 +80,11 @@ public class AnalyticsMlRuntimeDecisionService {
             if (!(value instanceof List<?> list)) {
                 return List.of();
             }
-            return list.stream()
-                    .map(Object::toString)
-                    .filter(item -> !item.isBlank())
-                    .toList();
+            return list
+                .stream()
+                .map(Object::toString)
+                .filter(item -> !item.isBlank())
+                .toList();
         } catch (JsonProcessingException exception) {
             return List.of();
         }
@@ -76,11 +92,14 @@ public class AnalyticsMlRuntimeDecisionService {
 
     private int hashBucket(String key) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            int value = ((digest[0] & 0xff) << 24)
-                    | ((digest[1] & 0xff) << 16)
-                    | ((digest[2] & 0xff) << 8)
-                    | (digest[3] & 0xff);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+                key.getBytes(StandardCharsets.UTF_8)
+            );
+            int value =
+                ((digest[0] & 0xff) << 24) |
+                ((digest[1] & 0xff) << 16) |
+                ((digest[2] & 0xff) << 8) |
+                (digest[3] & 0xff);
             return Math.floorMod(value, 100);
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);

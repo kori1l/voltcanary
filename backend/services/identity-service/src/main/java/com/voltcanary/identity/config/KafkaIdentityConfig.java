@@ -24,7 +24,11 @@ public class KafkaIdentityConfig {
 
     @Bean
     KafkaTemplate<String, String> identityStringKafkaTemplate(
-            @Qualifier("identityStringProducerFactory") ProducerFactory<String, String> identityStringProducerFactory) {
+        @Qualifier("identityStringProducerFactory") ProducerFactory<
+            String,
+            String
+        > identityStringProducerFactory
+    ) {
         return new KafkaTemplate<>(identityStringProducerFactory);
     }
 }

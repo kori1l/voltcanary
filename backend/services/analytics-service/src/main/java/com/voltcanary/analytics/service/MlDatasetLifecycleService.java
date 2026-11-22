@@ -41,18 +41,39 @@ public class MlDatasetLifecycleService {
         MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
         String normalizedAction = normalizedAction(action);
         List<Map<String, Object>> dependencies = "delete".equals(normalizedAction)
-                ? List.of(dependency("datasetVersion", datasetVersionId, Map.copyOf(datasetDependencies(datasetVersionId))))
-                : List.of(dependency("datasetVersion", datasetVersionId, Map.of("status", version.getStatus().name())));
-        boolean blocked = "delete".equals(normalizedAction)
-                && datasetDependencies(datasetVersionId).values().stream().anyMatch(count -> count > 0);
+            ? List.of(
+                  dependency(
+                      "datasetVersion",
+                      datasetVersionId,
+                      Map.copyOf(datasetDependencies(datasetVersionId))
+                  )
+              )
+            : List.of(
+                  dependency(
+                      "datasetVersion",
+                      datasetVersionId,
+                      Map.of("status", version.getStatus().name())
+                  )
+              );
+        boolean blocked =
+            "delete".equals(normalizedAction) &&
+            datasetDependencies(datasetVersionId)
+                .values()
+                .stream()
+                .anyMatch(count -> count > 0);
         String message = blocked
-                ? "Dataset version is referenced and should be archived instead of deleted"
-                : "Dataset version action is allowed when submitted with an audit reason";
+            ? "Dataset version is referenced and should be archived instead of deleted"
+            : "Dataset version action is allowed when submitted with an audit reason";
         return new MlLifecycleImpactResponse(normalizedAction, blocked, message, dependencies);
     }
 
     @Transactional
-    public MlDatasetSummaryDto archive(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+    public MlDatasetSummaryDto archive(
+        UUID accountId,
+        UUID actorId,
+        UUID datasetVersionId,
+        MlLifecycleActionRequest request
+    ) {
         MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
         String reason = requiredReason(request);
         if (version.getStatus() == MlDatasetStatus.DELETED) {
@@ -65,21 +86,38 @@ public class MlDatasetLifecycleService {
     }
 
     @Transactional
-    public MlDatasetSummaryDto delete(UUID accountId, UUID actorId, UUID datasetVersionId, MlLifecycleActionRequest request) {
+    public MlDatasetSummaryDto delete(
+        UUID accountId,
+        UUID actorId,
+        UUID datasetVersionId,
+        MlLifecycleActionRequest request
+    ) {
         MlDatasetVersion version = findOwnedVersion(accountId, datasetVersionId);
         String reason = requiredReason(request);
         if (version.getStatus() == MlDatasetStatus.DELETED) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
         }
         Map<String, Long> dependencies = datasetDependencies(datasetVersionId);
-        if (dependencies.values().stream().anyMatch(count -> count > 0)) {
+        if (
+            dependencies
+                .values()
+                .stream()
+                .anyMatch(count -> count > 0)
+        ) {
             throw new MlLifecycleConflictException(
-                    "DATASET_REFERENCED",
-                    "Dataset version is referenced by ML lineage and must be archived instead of deleted",
-                    dependency("datasetVersion", datasetVersionId, Map.copyOf(dependencies)));
+                "DATASET_REFERENCED",
+                "Dataset version is referenced by ML lineage and must be archived instead of deleted",
+                dependency("datasetVersion", datasetVersionId, Map.copyOf(dependencies))
+            );
         }
-        if (version.getStatus() != MlDatasetStatus.FAILED && version.getStatus() != MlDatasetStatus.DRAFT) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only failed or draft unreferenced dataset versions can be deleted");
+        if (
+            version.getStatus() != MlDatasetStatus.FAILED &&
+            version.getStatus() != MlDatasetStatus.DRAFT
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Only failed or draft unreferenced dataset versions can be deleted"
+            );
         }
         version.setStatus(MlDatasetStatus.DELETED);
         stampLifecycle(version, actorId, reason);
@@ -88,8 +126,11 @@ public class MlDatasetLifecycleService {
     }
 
     private MlDatasetVersion findOwnedVersion(UUID accountId, UUID datasetVersionId) {
-        MlDatasetVersion version = datasetVersionRepository.findById(datasetVersionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found"));
+        MlDatasetVersion version = datasetVersionRepository
+            .findById(datasetVersionId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found")
+            );
         if (!accountId.equals(version.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset version not found");
         }
@@ -97,23 +138,41 @@ public class MlDatasetLifecycleService {
     }
 
     private MlDataset dataset(MlDatasetVersion version) {
-        return datasetRepository.findById(version.getDatasetId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset not found"));
+        return datasetRepository
+            .findById(version.getDatasetId())
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML dataset not found")
+            );
     }
 
     private Map<String, Long> datasetDependencies(UUID datasetVersionId) {
         Map<String, Long> dependencies = new LinkedHashMap<>();
-        dependencies.put("labels", labelRepository.countByDatasetVersionIdAndDeletedAtIsNull(datasetVersionId));
-        dependencies.put("featureSnapshots", featureSnapshotRepository.countByDatasetVersionId(datasetVersionId));
-        dependencies.put("trainingRuns", trainingRunRepository.countByDatasetVersionId(datasetVersionId));
-        dependencies.put("modelVersions", modelVersionRepository.countByDatasetVersionId(datasetVersionId));
+        dependencies.put(
+            "labels",
+            labelRepository.countByDatasetVersionIdAndDeletedAtIsNull(datasetVersionId)
+        );
+        dependencies.put(
+            "featureSnapshots",
+            featureSnapshotRepository.countByDatasetVersionId(datasetVersionId)
+        );
+        dependencies.put(
+            "trainingRuns",
+            trainingRunRepository.countByDatasetVersionId(datasetVersionId)
+        );
+        dependencies.put(
+            "modelVersions",
+            modelVersionRepository.countByDatasetVersionId(datasetVersionId)
+        );
         return dependencies;
     }
 
     private String requiredReason(MlLifecycleActionRequest request) {
         String value = request == null ? null : request.reason();
         if (value == null || value.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Lifecycle reason is required"
+            );
         }
         return value.trim();
     }

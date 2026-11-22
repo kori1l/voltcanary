@@ -8,9 +8,10 @@ import com.voltcanary.alert.dto.AlertRuleTestResponse;
 import com.voltcanary.alert.dto.CreateAlertRuleRequest;
 import com.voltcanary.alert.dto.UpdateAlertRuleRequest;
 import com.voltcanary.alert.repository.AlertRuleRepository;
-
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -18,10 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -37,37 +34,36 @@ public class AlertRuleService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleResponse> list(
-            String userId,
-            String accountId,
-            Boolean enabled,
-            String ruleType,
-            String scopeType,
-            String metric) {
+        String userId,
+        String accountId,
+        Boolean enabled,
+        String ruleType,
+        String scopeType,
+        String metric
+    ) {
         UUID scope = accountScope(userId, accountId);
-        Specification<AlertRule> spec =
-                Specification.allOf(
-                        equalsIfPresent("accountId", scope),
-                        equalsIfPresent("enabled", enabled),
-                        equalsIfPresent("ruleType", definition.normalizeOptional(ruleType)),
-                        equalsIfPresent("scopeType", definition.normalizeOptional(scopeType)),
-                        equalsIfPresent("metric", definition.normalizeMetric(metric)));
+        Specification<AlertRule> spec = Specification.allOf(
+            equalsIfPresent("accountId", scope),
+            equalsIfPresent("enabled", enabled),
+            equalsIfPresent("ruleType", definition.normalizeOptional(ruleType)),
+            equalsIfPresent("scopeType", definition.normalizeOptional(scopeType)),
+            equalsIfPresent("metric", definition.normalizeMetric(metric))
+        );
         var found = repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt"));
-        UUID owner =
-                found.stream()
-                                .anyMatch(
-                                        rule ->
-                                                variableRules.applies(
-                                                        rule.getMetric(),
-                                                        variableRules.config(rule)))
-                        ? accessService.ownAccount(userId)
-                        : null;
-        return found.stream()
-                .filter(
-                        rule ->
-                                !variableRules.applies(rule.getMetric(), variableRules.config(rule))
-                                        || rule.getAccountId().equals(owner))
-                .map(views::toResponse)
-                .toList();
+        UUID owner = found
+            .stream()
+            .anyMatch(rule -> variableRules.applies(rule.getMetric(), variableRules.config(rule)))
+            ? accessService.ownAccount(userId)
+            : null;
+        return found
+            .stream()
+            .filter(
+                rule ->
+                    !variableRules.applies(rule.getMetric(), variableRules.config(rule)) ||
+                    rule.getAccountId().equals(owner)
+            )
+            .map(views::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -77,7 +73,10 @@ public class AlertRuleService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse create(
-            String userId, String accountId, CreateAlertRuleRequest request) {
+        String userId,
+        String accountId,
+        CreateAlertRuleRequest request
+    ) {
         UUID scope = accountScope(userId, accountId);
         Instant now = Instant.now();
         AlertRule rule = new AlertRule();
@@ -95,26 +94,33 @@ public class AlertRuleService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse update(
-            UUID id, String userId, String accountId, UpdateAlertRuleRequest request) {
+        UUID id,
+        String userId,
+        String accountId,
+        UpdateAlertRuleRequest request
+    ) {
         AlertRule rule = draft(loadOwned(id, userId, accountId));
         int expectedVersion = rule.getVersion();
         if (variableRules.applies(rule.getMetric(), variableRules.config(rule))) {
             Object expected =
-                    request == null || request.config() == null
-                            ? null
-                            : request.config().get("expectedVersion");
+                request == null || request.config() == null
+                    ? null
+                    : request.config().get("expectedVersion");
             if (!(expected instanceof Number number) || number.intValue() != rule.getVersion()) {
                 throw new ResponseStatusException(
-                        HttpStatus.CONFLICT, "Variable rule changed; reload");
+                    HttpStatus.CONFLICT,
+                    "Variable rule changed; reload"
+                );
             }
         }
         definition.applyUpdate(rule, request);
         variableRules.validate(
-                rule,
-                userId,
-                variableRules.applies(rule.getMetric(), variableRules.config(rule))
-                        ? rule.getVersion()
-                        : null);
+            rule,
+            userId,
+            variableRules.applies(rule.getMetric(), variableRules.config(rule))
+                ? rule.getVersion()
+                : null
+        );
         rule.setVersion(rule.getVersion() + 1);
         rule.setUpdatedBy(parseUuid(userId));
         rule.setUpdatedAt(Instant.now());
@@ -140,11 +146,17 @@ public class AlertRuleService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleTestResponse test(
-            String userId, String accountId, String correlationId, AlertRuleTestRequest request) {
+        String userId,
+        String accountId,
+        String correlationId,
+        AlertRuleTestRequest request
+    ) {
         accountScope(userId, accountId);
         if (request == null || request.rule() == null) {
             throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "Rule test request is required");
+                HttpStatus.BAD_REQUEST,
+                "Rule test request is required"
+            );
         }
         AlertRule draft = new AlertRule();
         draft.setId(UUID.randomUUID());
@@ -156,95 +168,113 @@ public class AlertRuleService {
         variableRules.validate(draft, userId, null);
         if (request.deviceId() != null) {
             return evaluationClient.test(
-                    request.deviceId(),
-                    request.rule(),
-                    request.from(),
-                    request.to(),
-                    userId,
-                    correlationId);
+                request.deviceId(),
+                request.rule(),
+                request.from(),
+                request.to(),
+                userId,
+                correlationId
+            );
         }
         String title = views.title(draft.getRuleType());
         return new AlertRuleTestResponse(
-                false,
-                0,
-                false,
-                draft.getSeverity(),
-                title,
-                "Rule is valid. Telemetry-backed rule preview will be evaluated by analytics"
-                        + " integration in the next backend step.",
-                "VALID_NOT_EVALUATED",
-                List.of());
+            false,
+            0,
+            false,
+            draft.getSeverity(),
+            title,
+            "Rule is valid. Telemetry-backed rule preview will be evaluated by analytics" +
+                " integration in the next backend step.",
+            "VALID_NOT_EVALUATED",
+            List.of()
+        );
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleResponse> effectiveForDevice(
-            String userId, String accountId, UUID deviceId, String correlationId) {
+        String userId,
+        String accountId,
+        UUID deviceId,
+        String correlationId
+    ) {
         UUID scope = accountScope(userId, accountId);
         if (deviceId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId is required");
         }
-        AlertAccessService.DeviceRuleContext device =
-                accessService.resolveDeviceRuleContext(deviceId, correlationId);
+        AlertAccessService.DeviceRuleContext device = accessService.resolveDeviceRuleContext(
+            deviceId,
+            correlationId
+        );
         if (device != null && device.accountId() != null && !scope.equals(device.accountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
-        Specification<AlertRule> spec =
-                Specification.allOf(
-                        equalsIfPresent("accountId", scope), equalsIfPresent("enabled", true));
-        return repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt")).stream()
-                .filter(rule -> appliesToDevice(rule, deviceId, device))
-                .map(views::toResponse)
-                .toList();
+        Specification<AlertRule> spec = Specification.allOf(
+            equalsIfPresent("accountId", scope),
+            equalsIfPresent("enabled", true)
+        );
+        return repository
+            .findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt"))
+            .stream()
+            .filter(rule -> appliesToDevice(rule, deviceId, device))
+            .map(views::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleSnapshotResponse> effectiveRuleSnapshotsForDevice(
-            UUID deviceId, String correlationId) {
+        UUID deviceId,
+        String correlationId
+    ) {
         if (deviceId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId is required");
         }
-        AlertAccessService.DeviceRuleContext device =
-                accessService.resolveDeviceRuleContext(deviceId, correlationId);
+        AlertAccessService.DeviceRuleContext device = accessService.resolveDeviceRuleContext(
+            deviceId,
+            correlationId
+        );
         if (device == null || device.accountId() == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
-        Specification<AlertRule> spec =
-                Specification.allOf(
-                        equalsIfPresent("accountId", device.accountId()),
-                        equalsIfPresent("enabled", true));
-        return repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt")).stream()
-                .filter(rule -> appliesToDevice(rule, deviceId, device))
-                .map(views::toSnapshot)
-                .toList();
+        Specification<AlertRule> spec = Specification.allOf(
+            equalsIfPresent("accountId", device.accountId()),
+            equalsIfPresent("enabled", true)
+        );
+        return repository
+            .findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt"))
+            .stream()
+            .filter(rule -> appliesToDevice(rule, deviceId, device))
+            .map(views::toSnapshot)
+            .toList();
     }
 
     private boolean appliesToDevice(
-            AlertRule rule, UUID deviceId, AlertAccessService.DeviceRuleContext device) {
+        AlertRule rule,
+        UUID deviceId,
+        AlertAccessService.DeviceRuleContext device
+    ) {
         return switch (rule.getScopeType()) {
             case "FLEET" -> true;
             case "DEVICE" -> deviceId.equals(rule.getScopeId());
-            case "LOCATION" ->
-                    device != null
-                            && device.locationId() != null
-                            && device.locationId().equals(rule.getScopeId());
-            case "DEVICE_TYPE" ->
-                    device != null
-                            && device.type() != null
-                            && device.type().equalsIgnoreCase(rule.getDeviceType());
+            case "LOCATION" -> device != null &&
+                device.locationId() != null &&
+                device.locationId().equals(rule.getScopeId());
+            case "DEVICE_TYPE" -> device != null &&
+                device.type() != null &&
+                device.type().equalsIgnoreCase(rule.getDeviceType());
             default -> false;
         };
     }
 
     private AlertRule loadOwned(UUID id, String userId, String accountId) {
-        AlertRule rule =
-                repository
-                        .findByIdAndAccountId(id, accountScope(userId, accountId))
-                        .orElseThrow(
-                                () ->
-                                        new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND, "Alert rule not found"));
-        if (variableRules.applies(rule.getMetric(), variableRules.config(rule))
-                && !accessService.ownAccount(userId).equals(rule.getAccountId())) {
+        AlertRule rule = repository
+            .findByIdAndAccountId(id, accountScope(userId, accountId))
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found")
+            );
+        if (
+            variableRules.applies(rule.getMetric(), variableRules.config(rule)) &&
+            !accessService.ownAccount(userId).equals(rule.getAccountId())
+        ) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found");
         }
         return rule;
@@ -297,7 +327,7 @@ public class AlertRuleService {
 
     private <T> Specification<AlertRule> equalsIfPresent(String field, T value) {
         return value == null
-                ? Specification.unrestricted()
-                : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
+            ? Specification.unrestricted()
+            : (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get(field), value);
     }
 }

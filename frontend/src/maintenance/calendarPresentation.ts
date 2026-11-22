@@ -37,7 +37,11 @@ export function addHours(date: Date, hours: number) {
   return next;
 }
 
-export function defaultsForCalendarSelection(deviceId: string, selectionStart: Date, selectionEnd: Date): CreateDefaults {
+export function defaultsForCalendarSelection(
+  deviceId: string,
+  selectionStart: Date,
+  selectionEnd: Date,
+): CreateDefaults {
   const normalizedStart = selectionStart <= selectionEnd ? selectionStart : selectionEnd;
   const normalizedEnd = selectionStart <= selectionEnd ? selectionEnd : selectionStart;
   const start = new Date(normalizedStart);
@@ -55,7 +59,10 @@ export function defaultsForCalendarSelection(deviceId: string, selectionStart: D
 }
 
 export function daySpan(start: Date, end: Date) {
-  return Math.max(1, Math.ceil((startOfDay(end).getTime() - startOfDay(start).getTime()) / 86400000));
+  return Math.max(
+    1,
+    Math.ceil((startOfDay(end).getTime() - startOfDay(start).getTime()) / 86400000),
+  );
 }
 
 export function buildTimelineSlots(start: Date, end: Date): TimelineSlot[] {
@@ -82,12 +89,16 @@ export function buildDailySlots(start: Date, end: Date) {
     });
     cursor = addDays(cursor, 1);
   }
-  return slots.length > 0 ? slots : [{
-    start: startOfDay(start),
-    end: addDays(startOfDay(start), 1),
-    label: weekdayShort(start),
-    subLabel: start.toLocaleDateString([], { month: "short", day: "numeric" }),
-  }];
+  return slots.length > 0
+    ? slots
+    : [
+        {
+          start: startOfDay(start),
+          end: addDays(startOfDay(start), 1),
+          label: weekdayShort(start),
+          subLabel: start.toLocaleDateString([], { month: "short", day: "numeric" }),
+        },
+      ];
 }
 
 export function buildWeeklySlots(start: Date, end: Date) {
@@ -159,7 +170,12 @@ export function formatDateRange(start: Date, end: Date) {
 }
 
 export function formatShortDateTime(value: string) {
-  return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function formatTimeRange(start: Date, end: Date) {
@@ -171,11 +187,22 @@ export function weekdayShort(date: Date) {
 }
 
 export function formatEnum(value: string) {
-  return value.toLowerCase().split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function locationLabel(location: Location) {
-  return [location.name, location.building, location.floor ? `Floor ${location.floor}` : null, location.room].filter(Boolean).join(" - ");
+  return [
+    location.name,
+    location.building,
+    location.floor ? `Floor ${location.floor}` : null,
+    location.room,
+  ]
+    .filter(Boolean)
+    .join(" - ");
 }
 
 export function rangesOverlap(leftStart: Date, leftEnd: Date, rightStart: Date, rightEnd: Date) {

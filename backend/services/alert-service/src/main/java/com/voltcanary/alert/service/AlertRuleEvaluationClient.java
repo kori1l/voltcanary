@@ -25,82 +25,113 @@ public class AlertRuleEvaluationClient {
     private final String internalServiceName;
 
     public AlertRuleEvaluationClient(
-            RestClient.Builder restClientBuilder,
-            AlertDownstreamProperties downstreamProperties,
-            AlertInternalProperties internalProperties) {
+        RestClient.Builder restClientBuilder,
+        AlertDownstreamProperties downstreamProperties,
+        AlertInternalProperties internalProperties
+    ) {
         this.restClient = restClientBuilder
-                .baseUrl(downstreamProperties.getAnalyticsService().getBaseUrl())
-                .build();
+            .baseUrl(downstreamProperties.getAnalyticsService().getBaseUrl())
+            .build();
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
     }
 
     public AlertRuleTestResponse test(
-            UUID deviceId,
-            CreateAlertRuleRequest rule,
-            Instant from,
-            Instant to,
-            String userId,
-            String correlationId) {
+        UUID deviceId,
+        CreateAlertRuleRequest rule,
+        Instant from,
+        Instant to,
+        String userId,
+        String correlationId
+    ) {
         try {
-            AnalyticsRuleTestResponse response = restClient.post()
-                    .uri("/analytics/rules/test")
-                    .headers(headers -> {
-                        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes context) {
-                            String authorization = context.getRequest().getHeader("Authorization");
-                            if (authorization != null) {
-                                headers.set("Authorization", authorization);
-                            }
+            AnalyticsRuleTestResponse response = restClient
+                .post()
+                .uri("/analytics/rules/test")
+                .headers(headers -> {
+                    if (
+                        RequestContextHolder.getRequestAttributes() instanceof
+                            ServletRequestAttributes context
+                    ) {
+                        String authorization = context.getRequest().getHeader("Authorization");
+                        if (authorization != null) {
+                            headers.set("Authorization", authorization);
                         }
-                        headers.set("X-Source-Service", internalServiceName);
-                        headers.set("X-Correlation-Id", correlationId == null ? "" : correlationId);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .body(new AnalyticsRuleTestRequest(
-                            deviceId,
-                            rule.ruleType(),
-                            rule.metric(),
-                            rule.conditionType(),
-                            rule.threshold() == null ? null : rule.threshold().doubleValue(),
-                            rule.thresholdUnit(),
-                            rule.baselineMultiplier() == null ? null : rule.baselineMultiplier().doubleValue(),
-                            rule.minPoints(),
-                            rule.severity(),
-                            from,
-                            to, rule.config()))
-                    .retrieve()
-                    .body(AnalyticsRuleTestResponse.class);
+                    }
+                    headers.set("X-Source-Service", internalServiceName);
+                    headers.set("X-Correlation-Id", correlationId == null ? "" : correlationId);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .body(
+                    new AnalyticsRuleTestRequest(
+                        deviceId,
+                        rule.ruleType(),
+                        rule.metric(),
+                        rule.conditionType(),
+                        rule.threshold() == null ? null : rule.threshold().doubleValue(),
+                        rule.thresholdUnit(),
+                        rule.baselineMultiplier() == null
+                            ? null
+                            : rule.baselineMultiplier().doubleValue(),
+                        rule.minPoints(),
+                        rule.severity(),
+                        from,
+                        to,
+                        rule.config()
+                    )
+                )
+                .retrieve()
+                .body(AnalyticsRuleTestResponse.class);
             if (response == null) {
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analytics rule evaluation unavailable");
+                throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "Analytics rule evaluation unavailable"
+                );
             }
             return toAlertResponse(response);
         } catch (ResponseStatusException exception) {
             throw exception;
         } catch (RestClientException exception) {
-            log.warn("alertRuleEvaluationFailed deviceId={} reason={}", deviceId, exception.getClass().getSimpleName());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Analytics rule evaluation unavailable", exception);
+            log.warn(
+                "alertRuleEvaluationFailed deviceId={} reason={}",
+                deviceId,
+                exception.getClass().getSimpleName()
+            );
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Analytics rule evaluation unavailable",
+                exception
+            );
         }
     }
 
     private AlertRuleTestResponse toAlertResponse(AnalyticsRuleTestResponse response) {
         return new AlertRuleTestResponse(
-                response.matched(),
-                response.matchCount(),
-                response.wouldCreateAlert(),
-                response.severity(),
-                response.previewTitle(),
-                response.previewDescription(),
-                response.evaluationStatus(),
-                response.evidence() == null ? List.of() : response.evidence().stream()
-                        .map(item -> new AlertRuleTestResponse.AlertRuleTestEvidence(
-                                item.timestamp(),
-                                item.metric(),
-                                item.value(),
-                                item.threshold(),
-                                parseUuid(item.alertId())))
-                        .toList());
+            response.matched(),
+            response.matchCount(),
+            response.wouldCreateAlert(),
+            response.severity(),
+            response.previewTitle(),
+            response.previewDescription(),
+            response.evaluationStatus(),
+            response.evidence() == null
+                ? List.of()
+                : response
+                      .evidence()
+                      .stream()
+                      .map(item ->
+                          new AlertRuleTestResponse.AlertRuleTestEvidence(
+                              item.timestamp(),
+                              item.metric(),
+                              item.value(),
+                              item.threshold(),
+                              parseUuid(item.alertId())
+                          )
+                      )
+                      .toList()
+        );
     }
 
     private UUID parseUuid(String value) {
@@ -115,35 +146,36 @@ public class AlertRuleEvaluationClient {
     }
 
     private record AnalyticsRuleTestRequest(
-            UUID deviceId,
-            String ruleType,
-            String metric,
-            String conditionType,
-            Double threshold,
-            String thresholdUnit,
-            Double baselineMultiplier,
-            Integer minPoints,
-            String severity,
-            Instant from,
-            Instant to, java.util.Map<String, Object> config) {
-    }
+        UUID deviceId,
+        String ruleType,
+        String metric,
+        String conditionType,
+        Double threshold,
+        String thresholdUnit,
+        Double baselineMultiplier,
+        Integer minPoints,
+        String severity,
+        Instant from,
+        Instant to,
+        java.util.Map<String, Object> config
+    ) {}
 
     private record AnalyticsRuleTestResponse(
-            boolean matched,
-            int matchCount,
-            boolean wouldCreateAlert,
-            String severity,
-            String previewTitle,
-            String previewDescription,
-            String evaluationStatus,
-            List<Evidence> evidence) {
-    }
+        boolean matched,
+        int matchCount,
+        boolean wouldCreateAlert,
+        String severity,
+        String previewTitle,
+        String previewDescription,
+        String evaluationStatus,
+        List<Evidence> evidence
+    ) {}
 
     private record Evidence(
-            Instant timestamp,
-            String metric,
-            Double value,
-            Double threshold,
-            String alertId) {
-    }
+        Instant timestamp,
+        String metric,
+        Double value,
+        Double threshold,
+        String alertId
+    ) {}
 }

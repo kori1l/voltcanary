@@ -34,28 +34,27 @@ public class SourceRuntimeConfigStore {
     }
 
     public List<SourceRuntimeConfig> snapshot() {
-        return byDataSourceId.values().stream()
-                .map(Entry::config)
-                .toList();
+        return byDataSourceId.values().stream().map(Entry::config).toList();
     }
 
     private SourceRuntimeConfig toConfig(SourceRuntimeConfigEvent event) {
         return new SourceRuntimeConfig(
-                event.sourceId(),
-                event.dataSourceId(),
-                event.accountId(),
-                event.deviceId(),
-                parseEnum(AdapterType.class, event.adapterType(), "adapterType"),
-                parseEnum(ProtocolType.class, event.protocol(), "protocol"),
-                parseEnum(TransportType.class, event.transport(), "transport"),
-                event.status(),
-                event.mappingSchemaVersion(),
-                event.adapterConfigSchemaVersion(),
-                event.mapping(),
-                event.adapterConfig(),
-                event.credentialReferences(),
-                event.homeRegion(),
-                event.configVersion());
+            event.sourceId(),
+            event.dataSourceId(),
+            event.accountId(),
+            event.deviceId(),
+            parseEnum(AdapterType.class, event.adapterType(), "adapterType"),
+            parseEnum(ProtocolType.class, event.protocol(), "protocol"),
+            parseEnum(TransportType.class, event.transport(), "transport"),
+            event.status(),
+            event.mappingSchemaVersion(),
+            event.adapterConfigSchemaVersion(),
+            event.mapping(),
+            event.adapterConfig(),
+            event.credentialReferences(),
+            event.homeRegion(),
+            event.configVersion()
+        );
     }
 
     private static <T extends Enum<T>> T parseEnum(Class<T> enumType, String value, String field) {
@@ -65,6 +64,5 @@ public class SourceRuntimeConfigStore {
         return Enum.valueOf(enumType, value.trim().toUpperCase());
     }
 
-    private record Entry(SourceRuntimeConfig config) {
-    }
+    private record Entry(SourceRuntimeConfig config) {}
 }

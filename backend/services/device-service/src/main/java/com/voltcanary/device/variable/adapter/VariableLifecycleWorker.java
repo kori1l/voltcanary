@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 public class VariableLifecycleWorker {
+
     private final JdbcTemplate jdbc;
     private final VariableRollouts rollouts;
     private final VariableDefaults defaults;
@@ -21,37 +22,59 @@ public class VariableLifecycleWorker {
 
     @Scheduled(fixedDelay = 15000, initialDelay = 15000)
     public void runOnce() {
-        jdbc.query("""
-                select r.id,r.variable_id,v.device_type,a.user_id from variable_rollout_targets r
-                join device_variables v on v.id=r.variable_id join accounts a on a.id=v.account_id
-                where r.status='PENDING' and a.status='ACTIVE' order by r.updated_at,r.id limit 50
-                """, (row, index) -> {
-            UUID id = row.getObject("id", UUID.class);
-            try {
-                rollouts.resume(actor(row.getObject("user_id", UUID.class)), row.getString("device_type"),
-                        row.getObject("variable_id", UUID.class), id);
-            } catch (RuntimeException failure) {
-                log.warn("Variable rollout temporarily unavailable targetId={} cause={}", id,
-                        failure.getClass().getSimpleName());
+        jdbc.query(
+            """
+            select r.id,r.variable_id,v.device_type,a.user_id from variable_rollout_targets r
+            join device_variables v on v.id=r.variable_id join accounts a on a.id=v.account_id
+            where r.status='PENDING' and a.status='ACTIVE' order by r.updated_at,r.id limit 50
+            """,
+            (row, index) -> {
+                UUID id = row.getObject("id", UUID.class);
+                try {
+                    rollouts.resume(
+                        actor(row.getObject("user_id", UUID.class)),
+                        row.getString("device_type"),
+                        row.getObject("variable_id", UUID.class),
+                        id
+                    );
+                } catch (RuntimeException failure) {
+                    log.warn(
+                        "Variable rollout temporarily unavailable targetId={} cause={}",
+                        id,
+                        failure.getClass().getSimpleName()
+                    );
+                }
+                return id;
             }
-            return id;
-        });
-        var scannedDefaults = jdbc.query("""
-                select v.id,v.device_type,a.user_id from device_variables v
-                join device_variable_default_bindings b on b.variable_id=v.id
-                join accounts a on a.id=v.account_id
-                where v.archived=false and a.status='ACTIVE' and cast(v.id as varchar)>?
-                order by cast(v.id as varchar) limit 50
-                """, (row, index) -> {
-            UUID id = row.getObject("id", UUID.class);
-            defaultCursor = id.toString();
-            try { defaults.reconcile(actor(row.getObject("user_id", UUID.class)), row.getString("device_type"), id); }
-            catch (RuntimeException failure) {
-                log.warn("Variable inheritance temporarily unavailable variableId={} cause={}", id,
-                        failure.getClass().getSimpleName());
-            }
-            return id;
-        }, defaultCursor);
+        );
+        var scannedDefaults = jdbc.query(
+            """
+            select v.id,v.device_type,a.user_id from device_variables v
+            join device_variable_default_bindings b on b.variable_id=v.id
+            join accounts a on a.id=v.account_id
+            where v.archived=false and a.status='ACTIVE' and cast(v.id as varchar)>?
+            order by cast(v.id as varchar) limit 50
+            """,
+            (row, index) -> {
+                UUID id = row.getObject("id", UUID.class);
+                defaultCursor = id.toString();
+                try {
+                    defaults.reconcile(
+                        actor(row.getObject("user_id", UUID.class)),
+                        row.getString("device_type"),
+                        id
+                    );
+                } catch (RuntimeException failure) {
+                    log.warn(
+                        "Variable inheritance temporarily unavailable variableId={} cause={}",
+                        id,
+                        failure.getClass().getSimpleName()
+                    );
+                }
+                return id;
+            },
+            defaultCursor
+        );
         if (scannedDefaults.isEmpty()) defaultCursor = "";
     }
 

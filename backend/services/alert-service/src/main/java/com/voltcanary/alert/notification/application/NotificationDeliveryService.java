@@ -32,17 +32,24 @@ public class NotificationDeliveryService implements AlertNotificationPort {
         if (!properties.isEnabled() || request == null || request.accountId() == null) {
             return;
         }
-        channelRepository.findByAccountIdAndEnabledTrueOrderByCreatedAtDesc(request.accountId())
-                .stream().filter(channel -> !"CONFIGURABLE_RULE".equals(request.alertType())
-                        || worker.allowsRecipient(channel, request))
-                .forEach(channel -> attemptService.createPendingAttempt(request, channel));
+        channelRepository
+            .findByAccountIdAndEnabledTrueOrderByCreatedAtDesc(request.accountId())
+            .stream()
+            .filter(
+                channel ->
+                    !"CONFIGURABLE_RULE".equals(request.alertType()) ||
+                    worker.allowsRecipient(channel, request)
+            )
+            .forEach(channel -> attemptService.createPendingAttempt(request, channel));
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    worker.processAvailableAsync();
+            TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        worker.processAvailableAsync();
+                    }
                 }
-            });
+            );
             return;
         }
         worker.processAvailableAsync();

@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/devices/telemetry-templates")
 @RequiredArgsConstructor
 public class TelemetryTemplatesController {
+
     private final TelemetryTemplates templates;
     private final AuthenticatedUserResolver users;
 
@@ -27,16 +28,29 @@ public class TelemetryTemplatesController {
     public List<TelemetryTemplates.Template> list(@RequestHeader HttpHeaders headers) {
         return templates.list(users.resolve(headers));
     }
+
     @PostMapping
-    public TelemetryTemplates.Template create(@RequestHeader HttpHeaders headers, @RequestBody TelemetryTemplates.Edit edit) {
+    public TelemetryTemplates.Template create(
+        @RequestHeader HttpHeaders headers,
+        @RequestBody TelemetryTemplates.Edit edit
+    ) {
         return templates.save(users.resolve(headers), null, edit);
     }
+
     @PutMapping("/{id}")
-    public TelemetryTemplates.Template update(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id, @RequestBody TelemetryTemplates.Edit edit) {
+    public TelemetryTemplates.Template update(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id,
+        @RequestBody TelemetryTemplates.Edit edit
+    ) {
         return templates.save(users.resolve(headers), id, edit);
     }
+
     @PostMapping("/assign")
-    public Map<String, Integer> assign(@RequestHeader HttpHeaders headers, @RequestBody TelemetryTemplates.Assignment request) {
+    public Map<String, Integer> assign(
+        @RequestHeader HttpHeaders headers,
+        @RequestBody TelemetryTemplates.Assignment request
+    ) {
         return Map.of("assigned", templates.assign(users.resolve(headers), request));
     }
 }

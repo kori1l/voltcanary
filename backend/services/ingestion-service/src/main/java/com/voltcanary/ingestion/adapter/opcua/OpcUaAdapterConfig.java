@@ -9,22 +9,22 @@ import java.util.Map;
 import org.springframework.boot.convert.DurationStyle;
 
 public record OpcUaAdapterConfig(
-        URI endpoint,
-        String endpointReference,
-        String securityPolicy,
-        OpcUaAuthenticationMode authenticationMode,
-        String usernameCredentialRef,
-        String passwordCredentialRef,
-        String clientCertificateRef,
-        String privateKeyRef,
-        String trustListRef,
-        Duration sessionTimeout,
-        Duration publishingInterval,
-        Duration samplingInterval,
-        int queueSize,
-        OpcUaTimestampPolicy timestampPolicy,
-        java.util.List<OpcUaNodeMapping> nodes) {
-
+    URI endpoint,
+    String endpointReference,
+    String securityPolicy,
+    OpcUaAuthenticationMode authenticationMode,
+    String usernameCredentialRef,
+    String passwordCredentialRef,
+    String clientCertificateRef,
+    String privateKeyRef,
+    String trustListRef,
+    Duration sessionTimeout,
+    Duration publishingInterval,
+    Duration samplingInterval,
+    int queueSize,
+    OpcUaTimestampPolicy timestampPolicy,
+    java.util.List<OpcUaNodeMapping> nodes
+) {
     static OpcUaAdapterConfig from(SourceRuntimeConfig sourceRuntimeConfig) {
         if (!"v1".equalsIgnoreCase(sourceRuntimeConfig.adapterConfigSchemaVersion())) {
             throw new IllegalArgumentException("Unsupported OPC UA adapter config schema version");
@@ -35,18 +35,24 @@ public record OpcUaAdapterConfig(
             endpointUrl = string(config, "endpoint", null);
         }
         String endpointReference = string(config, "endpointReference", null);
-        if ((endpointUrl == null || endpointUrl.isBlank())
-                && (endpointReference == null || endpointReference.isBlank())) {
-            throw new IllegalArgumentException("OPC UA endpointUrl or endpointReference is required");
+        if (
+            (endpointUrl == null || endpointUrl.isBlank()) &&
+            (endpointReference == null || endpointReference.isBlank())
+        ) {
+            throw new IllegalArgumentException(
+                "OPC UA endpointUrl or endpointReference is required"
+            );
         }
-        URI endpoint = endpointUrl == null || endpointUrl.isBlank() ? null : URI.create(endpointUrl.trim());
+        URI endpoint =
+            endpointUrl == null || endpointUrl.isBlank() ? null : URI.create(endpointUrl.trim());
         if (endpoint != null && !"opc.tcp".equalsIgnoreCase(endpoint.getScheme())) {
             throw new IllegalArgumentException("OPC UA endpointUrl must use opc.tcp");
         }
         OpcUaAuthenticationMode authMode = enumValue(
-                OpcUaAuthenticationMode.class,
-                string(config, "authenticationMode", "ANONYMOUS"),
-                "authenticationMode");
+            OpcUaAuthenticationMode.class,
+            string(config, "authenticationMode", "ANONYMOUS"),
+            "authenticationMode"
+        );
         validateAuth(sourceRuntimeConfig.credentialReferences(), authMode);
         Duration sessionTimeout = duration(config, "sessionTimeout", Duration.ofSeconds(30));
         Duration publishingInterval = duration(config, "publishingInterval", Duration.ofSeconds(1));
@@ -65,32 +71,49 @@ public record OpcUaAdapterConfig(
             throw new IllegalArgumentException("OPC UA queueSize must be between 1 and 10000");
         }
         return new OpcUaAdapterConfig(
-                endpoint,
-                clean(endpointReference),
-                clean(string(config, "securityPolicy", "None")),
-                authMode,
-                clean(sourceRuntimeConfig.credentialReferences().get("username")),
-                clean(sourceRuntimeConfig.credentialReferences().get("password")),
-                clean(sourceRuntimeConfig.credentialReferences().get("clientCertificate")),
-                clean(sourceRuntimeConfig.credentialReferences().get("privateKey")),
-                clean(sourceRuntimeConfig.credentialReferences().get("trustList")),
-                sessionTimeout,
-                publishingInterval,
-                samplingInterval,
-                queueSize,
-                enumValue(OpcUaTimestampPolicy.class, string(config, "timestampPolicy", "SOURCE_TIME"), "timestampPolicy"),
-                nodes(sourceRuntimeConfig.mapping()));
+            endpoint,
+            clean(endpointReference),
+            clean(string(config, "securityPolicy", "None")),
+            authMode,
+            clean(sourceRuntimeConfig.credentialReferences().get("username")),
+            clean(sourceRuntimeConfig.credentialReferences().get("password")),
+            clean(sourceRuntimeConfig.credentialReferences().get("clientCertificate")),
+            clean(sourceRuntimeConfig.credentialReferences().get("privateKey")),
+            clean(sourceRuntimeConfig.credentialReferences().get("trustList")),
+            sessionTimeout,
+            publishingInterval,
+            samplingInterval,
+            queueSize,
+            enumValue(
+                OpcUaTimestampPolicy.class,
+                string(config, "timestampPolicy", "SOURCE_TIME"),
+                "timestampPolicy"
+            ),
+            nodes(sourceRuntimeConfig.mapping())
+        );
     }
 
-    private static void validateAuth(Map<String, String> credentialReferences, OpcUaAuthenticationMode authMode) {
-        if (authMode == OpcUaAuthenticationMode.USERNAME
-                && (!credentialReferences.containsKey("username") || !credentialReferences.containsKey("password"))) {
-            throw new IllegalArgumentException("OPC UA username authentication requires username and password references");
+    private static void validateAuth(
+        Map<String, String> credentialReferences,
+        OpcUaAuthenticationMode authMode
+    ) {
+        if (
+            authMode == OpcUaAuthenticationMode.USERNAME &&
+            (!credentialReferences.containsKey("username") ||
+                !credentialReferences.containsKey("password"))
+        ) {
+            throw new IllegalArgumentException(
+                "OPC UA username authentication requires username and password references"
+            );
         }
-        if (authMode == OpcUaAuthenticationMode.CERTIFICATE
-                && (!credentialReferences.containsKey("clientCertificate")
-                || !credentialReferences.containsKey("privateKey"))) {
-            throw new IllegalArgumentException("OPC UA certificate authentication requires clientCertificate and privateKey references");
+        if (
+            authMode == OpcUaAuthenticationMode.CERTIFICATE &&
+            (!credentialReferences.containsKey("clientCertificate") ||
+                !credentialReferences.containsKey("privateKey"))
+        ) {
+            throw new IllegalArgumentException(
+                "OPC UA certificate authentication requires clientCertificate and privateKey references"
+            );
         }
     }
 
@@ -117,14 +140,15 @@ public record OpcUaAdapterConfig(
             throw new IllegalArgumentException("OPC UA nodeId or browsePath is required");
         }
         return new OpcUaNodeMapping(
-                metric,
-                clean(nodeId),
-                clean(string(raw, "namespaceUri", null)),
-                clean(browsePath),
-                clean(string(raw, "dataType", null)),
-                decimal(raw, "scale", 1.0),
-                decimal(raw, "offset", 0.0),
-                clean(string(raw, "unit", null)));
+            metric,
+            clean(nodeId),
+            clean(string(raw, "namespaceUri", null)),
+            clean(browsePath),
+            clean(string(raw, "dataType", null)),
+            decimal(raw, "scale", 1.0),
+            decimal(raw, "offset", 0.0),
+            clean(string(raw, "unit", null))
+        );
     }
 
     private static String requiredString(Map<?, ?> config, String key) {

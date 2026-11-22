@@ -15,11 +15,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/ai-agent/device-setups")
 @RequiredArgsConstructor
 public class DeviceSetupController {
+
     private final JwtIdentityService identities;
     private final DeviceSetupExecutor setups;
 
     @GetMapping("/{deviceId}")
-    public Map<?, ?> status(@RequestHeader("Authorization") String authorization, @PathVariable("deviceId") UUID deviceId) {
+    public Map<?, ?> status(
+        @RequestHeader("Authorization") String authorization,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
         identities.parseBearerToken(authorization);
         return setups.status(deviceId, authorization);
     }

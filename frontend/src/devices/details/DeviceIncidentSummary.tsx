@@ -17,7 +17,11 @@ interface DeviceIncidentSummaryProps {
   onChecked: () => void;
 }
 
-export function DeviceIncidentSummary({ incident, isChecked, onChecked }: DeviceIncidentSummaryProps) {
+export function DeviceIncidentSummary({
+  incident,
+  isChecked,
+  onChecked,
+}: DeviceIncidentSummaryProps) {
   return (
     <section className={`incident-summary incident-summary-${incident.riskTone}`}>
       <div>
@@ -26,7 +30,8 @@ export function DeviceIncidentSummary({ incident, isChecked, onChecked }: Device
           <h2>{incident.title}</h2>
         </div>
         <p className="incident-metrics">
-          {incident.eventCount} events in {incident.timeRangeLabel} - Peak {incident.peakValue} - Current value {incident.currentValue}
+          {incident.eventCount} events in {incident.timeRangeLabel} - Peak {incident.peakValue} -
+          Current value {incident.currentValue}
         </p>
         <p className="incident-conclusion">{incident.conclusion}</p>
       </div>

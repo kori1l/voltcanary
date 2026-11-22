@@ -53,12 +53,22 @@ export function AlertInbox({
             const device = deviceById.get(alert.deviceId);
             const location = device ? locationById.get(device.locationId ?? "") : null;
             const rule = alert.ruleId ? ruleById.get(alert.ruleId) : null;
-            const attempts = attemptsByAlert[alert.id] ?? initialResource<NotificationAttemptResponse[]>();
+            const attempts =
+              attemptsByAlert[alert.id] ?? initialResource<NotificationAttemptResponse[]>();
             return (
-              <article className={`alert-inbox-item severity-${alert.severity.toLowerCase()}`} key={alert.id}>
+              <article
+                className={`alert-inbox-item severity-${alert.severity.toLowerCase()}`}
+                key={alert.id}
+              >
                 <div className="alert-inbox-row">
-                  <span className={`status-pill severity-pill severity-${alert.severity.toLowerCase()}`}>{formatEnum(alert.severity)}</span>
-                  <span className={`status-pill alert-status-${alert.status.toLowerCase()}`}>{formatEnum(alert.status)}</span>
+                  <span
+                    className={`status-pill severity-pill severity-${alert.severity.toLowerCase()}`}
+                  >
+                    {formatEnum(alert.severity)}
+                  </span>
+                  <span className={`status-pill alert-status-${alert.status.toLowerCase()}`}>
+                    {formatEnum(alert.status)}
+                  </span>
                   <div className="alert-inbox-main">
                     <strong>{formatAlertTitle(alert)}</strong>
                     <span>{formatAlertDescription(alert)}</span>
@@ -80,20 +90,40 @@ export function AlertInbox({
                       Telemetry
                     </Link>
                     {alert.ruleId ? (
-                      <Link className="ghost-button button-link" to={`/alerts?ruleId=${encodeURIComponent(alert.ruleId)}`}>
+                      <Link
+                        className="ghost-button button-link"
+                        to={`/alerts?ruleId=${encodeURIComponent(alert.ruleId)}`}
+                      >
                         Rule
                       </Link>
                     ) : null}
-                    <button className="ghost-button" type="button" aria-label={`${expandedAttempts[alert.id] ? "Hide" : "Review"} delivery attempts for ${alert.title}`} onClick={() => void onAttempts(alert.id)}>
+                    <button
+                      className="ghost-button"
+                      type="button"
+                      aria-label={`${expandedAttempts[alert.id] ? "Hide" : "Review"} delivery attempts for ${alert.title}`}
+                      onClick={() => void onAttempts(alert.id)}
+                    >
                       {expandedAttempts[alert.id] ? "Hide" : "Details"}
                     </button>
                     {alert.status === "OPEN" ? (
-                      <button className="primary-button" type="button" aria-label={`Acknowledge ${alert.title}`} disabled={isPending(alert.id, "ack")} onClick={() => void onUpdate(alert.id, "ack")}>
+                      <button
+                        className="primary-button"
+                        type="button"
+                        aria-label={`Acknowledge ${alert.title}`}
+                        disabled={isPending(alert.id, "ack")}
+                        onClick={() => void onUpdate(alert.id, "ack")}
+                      >
                         Acknowledge
                       </button>
                     ) : null}
                     {alert.status === "ACKNOWLEDGED" ? (
-                      <button className="primary-button" type="button" aria-label={`Resolve ${alert.title}`} disabled={isPending(alert.id, "resolve")} onClick={() => void onUpdate(alert.id, "resolve")}>
+                      <button
+                        className="primary-button"
+                        type="button"
+                        aria-label={`Resolve ${alert.title}`}
+                        disabled={isPending(alert.id, "resolve")}
+                        onClick={() => void onUpdate(alert.id, "resolve")}
+                      >
                         Resolve
                       </button>
                     ) : null}
@@ -101,14 +131,21 @@ export function AlertInbox({
                 </div>
                 {alert.status === "RESOLVED" ? (
                   <p className="resolution-reason">
-                    Resolution reason: <strong>{alert.resolutionReason || "No reason recorded."}</strong>
+                    Resolution reason:{" "}
+                    <strong>{alert.resolutionReason || "No reason recorded."}</strong>
                   </p>
                 ) : null}
                 {expandedAttempts[alert.id] ? (
                   <div className="alert-inbox-details">
-                    <p className="status-note">Assignee: {alert.assignedTo ? "Recorded by the server" : "Unassigned"}. Assignment changes are unavailable in the current API.</p>
+                    <p className="status-note">
+                      Assignee: {alert.assignedTo ? "Recorded by the server" : "Unassigned"}.
+                      Assignment changes are unavailable in the current API.
+                    </p>
                     <AlertTrace alert={alert} />
-                    <NotificationAttempts resource={attempts} onRetry={() => void onRetryAttempts(alert.id)} />
+                    <NotificationAttempts
+                      resource={attempts}
+                      onRetry={() => void onRetryAttempts(alert.id)}
+                    />
                   </div>
                 ) : null}
               </article>
@@ -136,26 +173,44 @@ function AlertTrace({ alert }: { alert: AlertResponse }) {
     return null;
   }
   return (
-    <details><summary>Evidence identifiers and interval</summary><dl className="alert-trace-list">
-      {items.map(([label, value]) => (
-        <div key={label}>
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl></details>
+    <details>
+      <summary>Evidence identifiers and interval</summary>
+      <dl className="alert-trace-list">
+        {items.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
-function NotificationAttempts({ resource, onRetry }: { resource: SectionResource<NotificationAttemptResponse[]>; onRetry: () => void }) {
+function NotificationAttempts({
+  resource,
+  onRetry,
+}: {
+  resource: SectionResource<NotificationAttemptResponse[]>;
+  onRetry: () => void;
+}) {
   return (
     <div className="notification-attempts">
-      <SectionFeedback resource={resource} label="delivery attempts" onRetry={onRetry} emptyMessage="No delivery attempts recorded." />
+      <SectionFeedback
+        resource={resource}
+        label="delivery attempts"
+        onRetry={onRetry}
+        emptyMessage="No delivery attempts recorded."
+      />
       {resource.data?.map((attempt) => (
         <div className="notification-attempt-row" key={attempt.id}>
           <span>{formatEnum(attempt.channelType)}</span>
           <strong>{formatEnum(attempt.status)}</strong>
-          <span>{attempt.lastErrorCode || attempt.providerResponseSummary || formatShortDateTime(attempt.createdAt)}</span>
+          <span>
+            {attempt.lastErrorCode ||
+              attempt.providerResponseSummary ||
+              formatShortDateTime(attempt.createdAt)}
+          </span>
         </div>
       ))}
     </div>
@@ -277,10 +332,6 @@ function formatRelativeAge(value: string) {
 
 function shortId(value?: string | null) {
   return value ? value.slice(0, 8) : null;
-}
-
-function shortHash(value?: string | null) {
-  return value ? value.slice(0, 10) : null;
 }
 
 function formatWindow(start?: string | null, end?: string | null) {

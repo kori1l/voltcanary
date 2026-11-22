@@ -22,20 +22,34 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/ai-agent/conversations/{conversationId}/turns/{turnId}/trace")
 @RequiredArgsConstructor
 public class AssistantTraceController {
+
     private final JwtIdentityService identity;
     private final AuthorizedPlanningContext contexts;
     private final AssistantTraces traces;
 
     @GetMapping
-    public Page<Event> read(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("conversationId") UUID conversationId, @PathVariable("turnId") UUID turnId,
-            @RequestParam(value = "after", defaultValue = "0") long after, @RequestParam(value = "limit", defaultValue = "100") int limit) {
-        return traces.read(contexts.scope(identity.parseBearerToken(authorization), authorization), conversationId, turnId, after, limit);
+    public Page<Event> read(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("conversationId") UUID conversationId,
+        @PathVariable("turnId") UUID turnId,
+        @RequestParam(value = "after", defaultValue = "0") long after,
+        @RequestParam(value = "limit", defaultValue = "100") int limit
+    ) {
+        return traces.read(
+            contexts.scope(identity.parseBearerToken(authorization), authorization),
+            conversationId,
+            turnId,
+            after,
+            limit
+        );
     }
 
     @GetMapping("/export")
-    public ResponseEntity<java.util.List<Event>> export(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("conversationId") UUID conversationId, @PathVariable("turnId") UUID turnId) {
+    public ResponseEntity<java.util.List<Event>> export(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("conversationId") UUID conversationId,
+        @PathVariable("turnId") UUID turnId
+    ) {
         var owner = contexts.scope(identity.parseBearerToken(authorization), authorization);
         var events = new ArrayList<Event>();
         long after = 0;
@@ -45,7 +59,12 @@ public class AssistantTraceController {
             events.addAll(page.items());
             if (page.nextCursor() != null) after = Long.parseLong(page.nextCursor());
         } while (page.nextCursor() != null);
-        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=assistant-trace-" + turnId + ".json").body(events);
+        return ResponseEntity.ok()
+            .contentType(MediaType.APPLICATION_JSON)
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=assistant-trace-" + turnId + ".json"
+            )
+            .body(events);
     }
 }

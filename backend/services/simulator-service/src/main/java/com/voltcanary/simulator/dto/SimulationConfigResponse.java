@@ -7,15 +7,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record SimulationConfigResponse(
-        UUID id,
-        UUID deviceId,
-        UUID dataSourceId,
-        String name,
-        SimulationProfile profile,
-        SimulationProtocol protocol,
-        String yamlConfig,
-        int yamlVersion,
-        SimulationConfigStatus status,
-        Instant updatedAt,
-        boolean hasSourceToken) {
-}
+    UUID id,
+    UUID deviceId,
+    UUID dataSourceId,
+    String name,
+    SimulationProfile profile,
+    SimulationProtocol protocol,
+    String yamlConfig,
+    int yamlVersion,
+    SimulationConfigStatus status,
+    Instant updatedAt,
+    boolean hasSourceToken
+) {}

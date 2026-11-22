@@ -14,10 +14,7 @@ import { useActionConfirmation } from "../../../components/useActionConfirmation
 import { useEntityCommands } from "../../../components/useEntityCommands";
 import { CommandFeedback } from "../../../components/CommandFeedback";
 import { markWorkflowDraftSaved } from "../../../components/workflowDraftContext";
-import {
-  StatusFilterSelect,
-  modelOriginLabel,
-} from "./mlOperationalPresentation";
+import { StatusFilterSelect, modelOriginLabel } from "./mlOperationalPresentation";
 
 export function MlPoliciesTab(props: {
   selectedModelId?: string;
@@ -34,16 +31,11 @@ export function MlPoliciesTab(props: {
   onConfirmed?: () => void;
   onFilterChange: (value: MlLifecycleStatusFilter) => Promise<void>;
   isLifecyclePending?: (id: string, action: string) => boolean;
-  onLifecycle: (
-    policy: MlDeploymentPolicy,
-    action: "disable" | "delete",
-  ) => Promise<void>;
+  onLifecycle: (policy: MlDeploymentPolicy, action: "disable" | "delete") => Promise<void>;
   setError: (value: string | null) => void;
 }) {
   const deployableModels = props.models.filter(
-    (model) =>
-      (model.status === "APPROVED" || model.status === "ACTIVE") &&
-      !model.demoModel,
+    (model) => (model.status === "APPROVED" || model.status === "ACTIVE") && !model.demoModel,
   );
   const [scope, setScope] = useState<MlDeploymentScope>("ACCOUNT");
   const [mode, setMode] = useState<MlDeploymentMode>("SHADOW");
@@ -64,14 +56,11 @@ export function MlPoliciesTab(props: {
   const commands = useEntityCommands();
   const saving = commands.isBlocked("policy:save");
   const validPolicy =
-    (mode === "DISABLED" ||
-      deployableModels.some((model) => model.id === modelVersionId)) &&
+    (mode === "DISABLED" || deployableModels.some((model) => model.id === modelVersionId)) &&
     (scope !== "DEVICE" || Boolean(deviceId)) &&
     (scope !== "DEVICE_TYPE" || Boolean(deviceType)) &&
     (mode !== "CANARY" ||
-      (Number.isFinite(canaryPercent) &&
-        canaryPercent >= 0 &&
-        canaryPercent <= 100));
+      (Number.isFinite(canaryPercent) && canaryPercent >= 0 && canaryPercent <= 100));
 
   useEffect(() => {
     if (props.selectedModelId && props.selectedModelId !== modelVersionId) {
@@ -148,10 +137,7 @@ export function MlPoliciesTab(props: {
   return (
     <div className="ml-workflow-grid">
       {confirmation.dialog}
-      <CommandFeedback
-        outcomes={commands.outcomes}
-        onRetryRead={commands.retryRead}
-      />
+      <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
       {commands.outcomes["policy:save"]?.phase === "unknown-result" ? (
         <div>
           <p>Review deployment policies before submitting again.</p>
@@ -162,10 +148,8 @@ export function MlPoliciesTab(props: {
                 policy.scope === submittedPolicy.current.scope &&
                 policy.mode === submittedPolicy.current.mode &&
                 (policy.deviceId ?? "") === submittedPolicy.current.deviceId &&
-                (policy.deviceType ?? "") ===
-                  submittedPolicy.current.deviceType &&
-                (policy.modelVersionId ?? "") ===
-                  submittedPolicy.current.modelVersionId,
+                (policy.deviceType ?? "") === submittedPolicy.current.deviceType &&
+                (policy.modelVersionId ?? "") === submittedPolicy.current.modelVersionId,
             )
             .map((policy) => (
               <button
@@ -181,19 +165,12 @@ export function MlPoliciesTab(props: {
             ))}
         </div>
       ) : null}
-      <form
-        className="panel ml-workflow-form"
-        data-draft-id="ml-policy"
-        onSubmit={submit}
-      >
+      <form className="panel ml-workflow-form" data-draft-id="ml-policy" onSubmit={submit}>
         <h2>Deployment policy editor</h2>
         <div className="ml-control-grid">
           <label>
             Scope
-            <select
-              value={scope}
-              onChange={(e) => setScope(e.target.value as MlDeploymentScope)}
-            >
+            <select value={scope} onChange={(e) => setScope(e.target.value as MlDeploymentScope)}>
               <option value="ACCOUNT">Account</option>
               <option value="DEVICE_TYPE">Device type</option>
               <option value="DEVICE">Device</option>
@@ -201,10 +178,7 @@ export function MlPoliciesTab(props: {
           </label>
           <label>
             Mode
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as MlDeploymentMode)}
-            >
+            <select value={mode} onChange={(e) => setMode(e.target.value as MlDeploymentMode)}>
               <option value="SHADOW">Shadow</option>
               <option value="CANARY">Canary</option>
               <option value="ACTIVE">Active</option>
@@ -231,10 +205,7 @@ export function MlPoliciesTab(props: {
           {scope === "DEVICE" && (
             <label>
               Device
-              <select
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
-              >
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
                 <option value="">Select device</option>
                 {props.devices.map((device) => (
                   <option key={device.id} value={device.id}>
@@ -247,10 +218,7 @@ export function MlPoliciesTab(props: {
           {scope === "DEVICE_TYPE" && (
             <label>
               Device type
-              <select
-                value={deviceType}
-                onChange={(e) => setDeviceType(e.target.value)}
-              >
+              <select value={deviceType} onChange={(e) => setDeviceType(e.target.value)}>
                 <option value="">Select device type</option>
                 {props.deviceTypes.map((type) => (
                   <option key={type.code} value={type.code}>
@@ -282,20 +250,15 @@ export function MlPoliciesTab(props: {
           Baseline fallback enabled
         </label>
         <p className="status-note">
-          Shadow records comparison evidence; Canary serves a percentage; Active
-          serves the approved model. Fallback is a configured alternative, not a
-          measured success rate. Select a device and resolve its effective
-          policy to inspect inheritance before applying changes.
+          Shadow records comparison evidence; Canary serves a percentage; Active serves the approved
+          model. Fallback is a configured alternative, not a measured success rate. Select a device
+          and resolve its effective policy to inspect inheritance before applying changes.
         </p>
         <div className="action-row action-row-start">
           <button className="primary-button" disabled={!validPolicy || saving}>
             Save policy
           </button>
-          <button
-            className="ghost-button"
-            onClick={() => void resolve()}
-            type="button"
-          >
+          <button className="ghost-button" onClick={() => void resolve()} type="button">
             Resolve policy
           </button>
         </div>

@@ -10,11 +10,18 @@ afterEach(() => {
 it("serializes independent contenders when Web Locks are unavailable", async () => {
   vi.stubGlobal("navigator", { locks: undefined });
   let release!: () => void;
-  const pending = new Promise<void>(resolve => { release = resolve; });
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const order: string[] = [];
-  const first = withSessionRefreshLock(async () => { order.push("first"); await pending; });
-  const second = withSessionRefreshLock(async () => { order.push("second"); });
-  await new Promise(resolve => setTimeout(resolve, 40));
+  const first = withSessionRefreshLock(async () => {
+    order.push("first");
+    await pending;
+  });
+  const second = withSessionRefreshLock(async () => {
+    order.push("second");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 40));
   expect(order).toEqual(["first"]);
   release();
   await Promise.all([first, second]);
@@ -24,8 +31,15 @@ it("serializes independent contenders when Web Locks are unavailable", async () 
 
 it("releases a failed operation and ignores an expired crashed contender", async () => {
   vi.stubGlobal("navigator", { locks: undefined });
-  localStorage.setItem("voltcanary.refresh-lock.crashed", JSON.stringify({ choosing: true, ticket: 0, expires: Date.now() - 1 }));
-  await expect(withSessionRefreshLock(async () => { throw new Error("offline"); })).rejects.toThrow("offline");
+  localStorage.setItem(
+    "voltcanary.refresh-lock.crashed",
+    JSON.stringify({ choosing: true, ticket: 0, expires: Date.now() - 1 }),
+  );
+  await expect(
+    withSessionRefreshLock(async () => {
+      throw new Error("offline");
+    }),
+  ).rejects.toThrow("offline");
   await expect(withSessionRefreshLock(async () => "recovered")).resolves.toBe("recovered");
 });
 
@@ -40,17 +54,27 @@ it("shares rotated credentials between independent client instances", async () =
   vi.stubGlobal("navigator", { locks: undefined });
   vi.resetModules();
   const first = await import("./client");
-  const jwt = (seconds: number) => `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))}.signature`;
+  const jwt = (seconds: number) =>
+    `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))}.signature`;
   first.setTokens(jwt(100), "original-refresh");
   vi.resetModules();
   const second = await import("./client");
   const renewed = jwt(900);
   let finish!: (response: Response) => void;
-  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
   const a = first.prepareAiSession();
   const b = second.prepareAiSession();
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-  finish(new Response(JSON.stringify({ accessToken: renewed, refreshToken: "rotated-refresh" }), { status: 200 }));
+  finish(
+    new Response(JSON.stringify({ accessToken: renewed, refreshToken: "rotated-refresh" }), {
+      status: 200,
+    }),
+  );
   await Promise.all([a, b]);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(first.getAccessToken()).toBe(renewed);

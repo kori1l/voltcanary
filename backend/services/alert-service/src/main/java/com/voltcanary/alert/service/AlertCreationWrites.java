@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertCreationWrites {
+
     private final AlertRepository alertRepository;
     private final AlertDeduplicationService deduplicationService;
     private final AlertMaintenanceSuppressionService maintenanceSuppressionService;
@@ -34,7 +35,8 @@ public class AlertCreationWrites {
         if (!deletions.writable(event.deviceId())) return null;
         AlertSeverity severity = anomalySeverity(event.severity());
         String type = valueOrDefault(event.type(), "ANOMALY");
-        String deduplicationKey = event.variableEvidence() == null
+        String deduplicationKey =
+            event.variableEvidence() == null
                 ? deduplicationService.key(event.deviceId(), type, severity, event.detectedAt())
                 : deduplicationService.anomalyKey(event, severity);
         var existingBySourceEvent = deduplicationService.findBySourceEventId(event.eventId());
@@ -42,48 +44,60 @@ public class AlertCreationWrites {
             recordDeduplicationHit(existingBySourceEvent.get(), "source_event_id");
             return existingBySourceEvent.get();
         }
-        if (maintenanceSuppressionService.suppressesEvent(
+        if (
+            maintenanceSuppressionService.suppressesEvent(
                 event.deviceId(),
                 event.eventId(),
                 "ANOMALY_DETECTED",
                 event.windowStart(),
                 event.windowEnd(),
-                event.detectedAt())) {
+                event.detectedAt()
+            )
+        ) {
             return null;
         }
-        var activeInWindow = event.variableEvidence() == null
-                ? deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.detectedAt())
+        var activeInWindow =
+            event.variableEvidence() == null
+                ? deduplicationService.findActiveInWindow(
+                      event.deviceId(),
+                      type,
+                      severity,
+                      event.detectedAt()
+                  )
                 : deduplicationService.activeAnomaly(event, severity);
         if (activeInWindow.isPresent()) {
             recordDeduplicationHit(activeInWindow.get(), "active_window");
             return activeInWindow.get();
         }
-        String createDeduplicationKey = deduplicationService.findByDeduplicationKey(deduplicationKey)
-                .filter(existing -> existing.getStatus() == AlertStatus.RESOLVED)
-                .map(existing -> deduplicationService.reopenedKey(deduplicationKey, event.eventId()))
-                .orElse(deduplicationKey);
-        return findOrCreateAlert(
-                createDeduplicationKey,
+        String createDeduplicationKey = deduplicationService
+            .findByDeduplicationKey(deduplicationKey)
+            .filter(existing -> existing.getStatus() == AlertStatus.RESOLVED)
+            .map(existing -> deduplicationService.reopenedKey(deduplicationKey, event.eventId()))
+            .orElse(deduplicationKey);
+        return findOrCreateAlert(createDeduplicationKey, event.eventId(), () ->
+            createAlert(
+                accountId,
+                event.deviceId(),
                 event.eventId(),
-                () -> createAlert(accountId, 
-                        event.deviceId(),
-                        event.eventId(),
-                        event.anomalyId(),
-                        null,
-                        event.ruleId(),
-                        event.windowStart(),
-                        event.windowEnd(),
-                        event.inputHash(),
-                        createDeduplicationKey,
-                        type,
-                        title(type),
-                        event.description(),
-                        severity,
-                        "ANOMALY_DETECTED",
-                        event,
-                        event.detectedAt(),
-                        "anomaly:" + event.eventId()));
+                event.anomalyId(),
+                null,
+                event.ruleId(),
+                event.windowStart(),
+                event.windowEnd(),
+                event.inputHash(),
+                createDeduplicationKey,
+                type,
+                title(type),
+                event.description(),
+                severity,
+                "ANOMALY_DETECTED",
+                event,
+                event.detectedAt(),
+                "anomaly:" + event.eventId()
+            )
+        );
     }
+
     @Transactional
     public Alert handleRiskScoreChanged(RiskScoreChangedEvent event, UUID accountId) {
         if (!deletions.writable(event.deviceId())) return null;
@@ -92,71 +106,88 @@ public class AlertCreationWrites {
             return null;
         }
         String type = "RISK_" + valueOrDefault(event.riskLevel(), "UNKNOWN");
-        String deduplicationKey = deduplicationService.key(event.deviceId(), type, severity, event.changedAt());
+        String deduplicationKey = deduplicationService.key(
+            event.deviceId(),
+            type,
+            severity,
+            event.changedAt()
+        );
         var existingBySourceEvent = deduplicationService.findBySourceEventId(event.eventId());
         if (existingBySourceEvent.isPresent()) {
             recordDeduplicationHit(existingBySourceEvent.get(), "source_event_id");
             return existingBySourceEvent.get();
         }
-        if (maintenanceSuppressionService.suppressesEvent(
+        if (
+            maintenanceSuppressionService.suppressesEvent(
                 event.deviceId(),
                 event.eventId(),
                 "RISK_SCORE_CHANGED",
                 event.windowStart(),
                 event.windowEnd(),
-                event.changedAt())) {
+                event.changedAt()
+            )
+        ) {
             return null;
         }
-        var activeInWindow = deduplicationService.findActiveInWindow(event.deviceId(), type, severity, event.changedAt());
+        var activeInWindow = deduplicationService.findActiveInWindow(
+            event.deviceId(),
+            type,
+            severity,
+            event.changedAt()
+        );
         if (activeInWindow.isPresent()) {
             recordDeduplicationHit(activeInWindow.get(), "active_window");
             return activeInWindow.get();
         }
-        String createDeduplicationKey = deduplicationService.findByDeduplicationKey(deduplicationKey)
-                .filter(existing -> existing.getStatus() == AlertStatus.RESOLVED)
-                .map(existing -> deduplicationService.reopenedKey(deduplicationKey, event.eventId()))
-                .orElse(deduplicationKey);
-        return findOrCreateAlert(
-                createDeduplicationKey,
+        String createDeduplicationKey = deduplicationService
+            .findByDeduplicationKey(deduplicationKey)
+            .filter(existing -> existing.getStatus() == AlertStatus.RESOLVED)
+            .map(existing -> deduplicationService.reopenedKey(deduplicationKey, event.eventId()))
+            .orElse(deduplicationKey);
+        return findOrCreateAlert(createDeduplicationKey, event.eventId(), () ->
+            createAlert(
+                accountId,
+                event.deviceId(),
                 event.eventId(),
-                () -> createAlert(accountId, 
-                        event.deviceId(),
-                        event.eventId(),
-                        null,
-                        event.riskScoreId(),
-                        null,
-                        event.windowStart(),
-                        event.windowEnd(),
-                        event.inputHash(),
-                        createDeduplicationKey,
-                        type,
-                        "Risk score changed to " + event.riskLevel(),
-                        "Risk score is " + event.currentScore() + " (" + event.riskLevel() + ").",
-                        severity,
-                        "RISK_SCORE_CHANGED",
-                        event,
-                        event.changedAt(),
-                        "risk-score:" + event.eventId()));
+                null,
+                event.riskScoreId(),
+                null,
+                event.windowStart(),
+                event.windowEnd(),
+                event.inputHash(),
+                createDeduplicationKey,
+                type,
+                "Risk score changed to " + event.riskLevel(),
+                "Risk score is " + event.currentScore() + " (" + event.riskLevel() + ").",
+                severity,
+                "RISK_SCORE_CHANGED",
+                event,
+                event.changedAt(),
+                "risk-score:" + event.eventId()
+            )
+        );
     }
+
     private Alert createAlert(
-            UUID accountId,
-            UUID deviceId,
-            UUID sourceEventId,
-            UUID anomalyId,
-            UUID riskScoreId,
-            String ruleId,
-            Instant calculationWindowStart,
-            Instant calculationWindowEnd,
-            String calculationInputHash,
-            String deduplicationKey,
-            String type,
-            String title,
-            String description,
-            AlertSeverity severity,
-            String eventType,
-            Object payload,
-            Instant createdAt,
-            String correlationId) {
+        UUID accountId,
+        UUID deviceId,
+        UUID sourceEventId,
+        UUID anomalyId,
+        UUID riskScoreId,
+        String ruleId,
+        Instant calculationWindowStart,
+        Instant calculationWindowEnd,
+        String calculationInputHash,
+        String deduplicationKey,
+        String type,
+        String title,
+        String description,
+        AlertSeverity severity,
+        String eventType,
+        Object payload,
+        Instant createdAt,
+        String correlationId
+    ) {
         Alert alert = new Alert();
         alert.setId(UUID.randomUUID());
         alert.setDeviceId(deviceId);
@@ -178,48 +209,74 @@ public class AlertCreationWrites {
         Alert saved = alertRepository.saveAndFlush(alert);
         UUID alertEventId = events.saveEvent(saved, eventType, null, null, payload);
         recordCreated(saved, eventType);
-        alertNotificationPort.alertCreated(AlertNotificationRequest.fromAlert(
+        alertNotificationPort.alertCreated(
+            AlertNotificationRequest.fromAlert(
                 saved,
                 alertEventId,
                 "ALERT_CREATED",
-                saved.getCreatedAt()));
+                saved.getCreatedAt()
+            )
+        );
         return saved;
     }
-    private Alert findOrCreateAlert(String deduplicationKey, UUID sourceEventId, AlertFactory factory) {
+
+    private Alert findOrCreateAlert(
+        String deduplicationKey,
+        UUID sourceEventId,
+        AlertFactory factory
+    ) {
         synchronized (deduplicationService.lockFor(deduplicationKey)) {
-            return deduplicationService.findByDeduplicationKey(deduplicationKey)
-                    .orElseGet(factory::create);
+            return deduplicationService
+                .findByDeduplicationKey(deduplicationKey)
+                .orElseGet(factory::create);
         }
     }
+
     private void recordCreated(Alert alert, String eventType) {
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "alert.alerts.created",
-                "alertType", safeTag(alert.getAlertType()),
-                "severity", alert.getSeverity().name(),
-                "eventType", safeTag(eventType)).increment();
+                "alertType",
+                safeTag(alert.getAlertType()),
+                "severity",
+                alert.getSeverity().name(),
+                "eventType",
+                safeTag(eventType)
+            )
+            .increment();
         log.info(
-                "alertCreated alertId={} deviceId={} sourceEventId={} alertType={} severity={} status={}",
-                alert.getId(),
-                alert.getDeviceId(),
-                alert.getSourceEventId(),
-                alert.getAlertType(),
-                alert.getSeverity(),
-                alert.getStatus());
+            "alertCreated alertId={} deviceId={} sourceEventId={} alertType={} severity={} status={}",
+            alert.getId(),
+            alert.getDeviceId(),
+            alert.getSourceEventId(),
+            alert.getAlertType(),
+            alert.getSeverity(),
+            alert.getStatus()
+        );
     }
+
     private void recordDeduplicationHit(Alert alert, String reason) {
-        meterRegistry.counter(
+        meterRegistry
+            .counter(
                 "alert.alerts.deduplicated",
-                "reason", safeTag(reason),
-                "alertType", safeTag(alert.getAlertType()),
-                "severity", alert.getSeverity().name()).increment();
+                "reason",
+                safeTag(reason),
+                "alertType",
+                safeTag(alert.getAlertType()),
+                "severity",
+                alert.getSeverity().name()
+            )
+            .increment();
         log.info(
-                "alertDeduplicated alertId={} deviceId={} sourceEventId={} deduplicationKey={} reason={}",
-                alert.getId(),
-                alert.getDeviceId(),
-                alert.getSourceEventId(),
-                alert.getDeduplicationKey(),
-                reason);
+            "alertDeduplicated alertId={} deviceId={} sourceEventId={} deduplicationKey={} reason={}",
+            alert.getId(),
+            alert.getDeviceId(),
+            alert.getSourceEventId(),
+            alert.getDeduplicationKey(),
+            reason
+        );
     }
+
     private AlertSeverity anomalySeverity(String severity) {
         return switch (valueOrDefault(severity, "MEDIUM").toUpperCase()) {
             case "CRITICAL" -> AlertSeverity.CRITICAL;
@@ -228,6 +285,7 @@ public class AlertCreationWrites {
             default -> AlertSeverity.WARNING;
         };
     }
+
     private AlertSeverity riskSeverity(String level) {
         return switch (valueOrDefault(level, "LOW").toUpperCase()) {
             case "CRITICAL" -> AlertSeverity.CRITICAL;
@@ -236,6 +294,7 @@ public class AlertCreationWrites {
             default -> AlertSeverity.INFO;
         };
     }
+
     private String title(String type) {
         return switch (type) {
             case "POWER_SPIKE" -> "Power spike detected";
@@ -244,13 +303,17 @@ public class AlertCreationWrites {
             default -> "Anomaly detected";
         };
     }
+
     private String valueOrDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
     }
+
     private String safeTag(String value) {
         return value == null || value.isBlank() ? "UNKNOWN" : value;
     }
-    @FunctionalInterface
-    private interface AlertFactory { Alert create(); }
 
+    @FunctionalInterface
+    private interface AlertFactory {
+        Alert create();
+    }
 }

@@ -15,18 +15,28 @@ public class OpenApiConfig {
     @Bean
     OpenAPI analyticsOpenApi() {
         return new OpenAPI()
-                .info(new Info()
-                        .title("VoltCanary Analytics API")
-                        .version("v1")
-                        .description("Baselines, feature windows, anomalies, risk scores, recommendations, predictions, and analytics jobs."))
-                .schemaRequirement("bearerAuth", new SecurityScheme()
-                        .type(SecurityScheme.Type.HTTP)
-                        .scheme("bearer")
-                        .bearerFormat("JWT"))
-                .schemaRequirement("internalServiceToken", new SecurityScheme()
-                        .type(SecurityScheme.Type.APIKEY)
-                        .in(SecurityScheme.In.HEADER)
-                        .name(INTERNAL_SERVICE_TOKEN_HEADER))
-                .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
+            .info(
+                new Info()
+                    .title("VoltCanary Analytics API")
+                    .version("v1")
+                    .description(
+                        "Baselines, feature windows, anomalies, risk scores, recommendations, predictions, and analytics jobs."
+                    )
+            )
+            .schemaRequirement(
+                "bearerAuth",
+                new SecurityScheme()
+                    .type(SecurityScheme.Type.HTTP)
+                    .scheme("bearer")
+                    .bearerFormat("JWT")
+            )
+            .schemaRequirement(
+                "internalServiceToken",
+                new SecurityScheme()
+                    .type(SecurityScheme.Type.APIKEY)
+                    .in(SecurityScheme.In.HEADER)
+                    .name(INTERNAL_SERVICE_TOKEN_HEADER)
+            )
+            .addSecurityItem(new SecurityRequirement().addList("bearerAuth"));
     }
 }

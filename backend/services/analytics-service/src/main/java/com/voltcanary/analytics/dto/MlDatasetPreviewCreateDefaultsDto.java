@@ -6,14 +6,14 @@ import java.time.Instant;
 import java.util.List;
 
 public record MlDatasetPreviewCreateDefaultsDto(
-        List<String> metrics,
-        Instant from,
-        Instant to,
-        MlTrainingSplitStrategy splitStrategy,
-        String featureConfigVersion,
-        Integer minSamplesPerMetric,
-        Long maxSamplingGapSeconds,
-        MlModelFamily modelFamily,
-        Integer horizonDays,
-        MlMetricSelectionMode metricSelectionMode) {
-}
+    List<String> metrics,
+    Instant from,
+    Instant to,
+    MlTrainingSplitStrategy splitStrategy,
+    String featureConfigVersion,
+    Integer minSamplesPerMetric,
+    Long maxSamplingGapSeconds,
+    MlModelFamily modelFamily,
+    Integer horizonDays,
+    MlMetricSelectionMode metricSelectionMode
+) {}

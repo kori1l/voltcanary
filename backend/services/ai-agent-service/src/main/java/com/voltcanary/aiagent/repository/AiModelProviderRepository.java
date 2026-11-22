@@ -6,7 +6,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-
 public interface AiModelProviderRepository extends JpaRepository<AiModelProvider, UUID> {
     List<AiModelProvider> findByAccountIdOrderByCreatedAtDesc(UUID accountId);
     Optional<AiModelProvider> findByIdAndAccountId(UUID id, UUID accountId);

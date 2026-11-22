@@ -26,16 +26,18 @@ public class DeviceAnalyticsConfigController {
 
     @GetMapping
     public DeviceAnalyticsConfigResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
         return service.get(userResolver.resolve(headers), deviceId);
     }
 
     @PatchMapping
     public DeviceAnalyticsConfigResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("deviceId") UUID deviceId,
-            @Valid @RequestBody DeviceAnalyticsConfigRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("deviceId") UUID deviceId,
+        @Valid @RequestBody DeviceAnalyticsConfigRequest request
+    ) {
         return service.update(userResolver.resolve(headers), deviceId, request);
     }
 }

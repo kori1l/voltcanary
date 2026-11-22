@@ -20,8 +20,13 @@ const STATUS_WEIGHT: Record<MetricStatus, number> = {
   critical: 4,
 };
 
-export function calculateStatistics(series: TelemetrySample[], events: TelemetryEvent[] = []): MetricStatistics {
-  const values = series.map((sample) => sample.value).filter((value): value is number => value !== null && Number.isFinite(value));
+export function calculateStatistics(
+  series: TelemetrySample[],
+  events: TelemetryEvent[] = [],
+): MetricStatistics {
+  const values = series
+    .map((sample) => sample.value)
+    .filter((value): value is number => value !== null && Number.isFinite(value));
   if (values.length === 0) {
     return {
       latest: null,
@@ -32,7 +37,9 @@ export function calculateStatistics(series: TelemetrySample[], events: Telemetry
       p99: null,
       samplesCount: series.length,
       missingSamplesCount: series.length,
-      anomaliesCount: events.filter((event) => event.type === "spike_detected" || event.type === "threshold_exceeded").length,
+      anomaliesCount: events.filter(
+        (event) => event.type === "spike_detected" || event.type === "threshold_exceeded",
+      ).length,
       alertsCount: events.filter((event) => event.severity !== "info").length,
     };
   }
@@ -49,12 +56,17 @@ export function calculateStatistics(series: TelemetrySample[], events: Telemetry
     p99: percentile(sorted, 99),
     samplesCount: series.length,
     missingSamplesCount: series.length - values.length,
-    anomaliesCount: events.filter((event) => event.type === "spike_detected" || event.type === "threshold_exceeded").length,
+    anomaliesCount: events.filter(
+      (event) => event.type === "spike_detected" || event.type === "threshold_exceeded",
+    ).length,
     alertsCount: events.filter((event) => event.severity !== "info").length,
   };
 }
 
-export function thresholdFor(metricKey: string, fallback?: Partial<MetricThreshold>): MetricThreshold | undefined {
+export function thresholdFor(
+  metricKey: string,
+  fallback?: Partial<MetricThreshold>,
+): MetricThreshold | undefined {
   const predefined = DEFAULT_THRESHOLDS.find((threshold) => threshold.metricKey === metricKey);
   if (!predefined && !fallback) {
     return undefined;
@@ -72,7 +84,8 @@ export function detectTelemetryEvents(
   }
 
   const events: TelemetryEvent[] = [];
-  const spikeThreshold = threshold?.spikeThreshold ?? threshold?.warningMax ?? threshold?.criticalMax;
+  const spikeThreshold =
+    threshold?.spikeThreshold ?? threshold?.warningMax ?? threshold?.criticalMax;
   let previousTimestamp = new Date(series[0].timestamp).getTime();
 
   series.forEach((sample, index) => {
@@ -104,7 +117,11 @@ export function detectTelemetryEvents(
         title: `${metric.name} ${severity === "critical" ? "critical" : "warning"}`,
         description: `${formatMetricValue(sample.value, metric.unit)} is outside the expected range.`,
         value: sample.value,
-        threshold: threshold?.criticalMax ?? threshold?.warningMax ?? threshold?.criticalMin ?? threshold?.warningMin,
+        threshold:
+          threshold?.criticalMax ??
+          threshold?.warningMax ??
+          threshold?.criticalMin ??
+          threshold?.warningMin,
       });
       return;
     }
@@ -155,7 +172,10 @@ export function determineMetricStatus(
   return "normal";
 }
 
-export function determineDeviceHealth(metrics: TelemetryMetricOverview[], lastSampleAt: string | null): DeviceHealth {
+export function determineDeviceHealth(
+  metrics: TelemetryMetricOverview[],
+  lastSampleAt: string | null,
+): DeviceHealth {
   if (metrics.length === 0) {
     return {
       status: "no_data",
@@ -170,7 +190,10 @@ export function determineDeviceHealth(metrics: TelemetryMetricOverview[], lastSa
     STATUS_WEIGHT[metric.status] > STATUS_WEIGHT[current.status] ? metric : current,
   );
   const activeAlertsCount = metrics.reduce((sum, metric) => sum + metric.statistics.alertsCount, 0);
-  const missing = metrics.reduce((sum, metric) => sum + (metric.statistics.missingSamplesCount ?? 0), 0);
+  const missing = metrics.reduce(
+    (sum, metric) => sum + (metric.statistics.missingSamplesCount ?? 0),
+    0,
+  );
   const samples = metrics.reduce((sum, metric) => sum + metric.statistics.samplesCount, 0);
   const dataQuality = samples === 0 ? "unknown" : missing / samples > 0.2 ? "partial" : "good";
 
@@ -183,7 +206,11 @@ export function determineDeviceHealth(metrics: TelemetryMetricOverview[], lastSa
   };
 }
 
-export function metricConclusion(metric: MetricDefinition, status: MetricStatus, statistics: MetricStatistics) {
+export function metricConclusion(
+  metric: MetricDefinition,
+  status: MetricStatus,
+  statistics: MetricStatistics,
+) {
   if (status === "no_data") return `${metric.name} has no samples in this range.`;
   if (status === "stale") return `${metric.name} data is stale.`;
   if (status === "critical") return `${metric.name} reached a critical value.`;
@@ -196,7 +223,12 @@ export function metricConclusion(metric: MetricDefinition, status: MetricStatus,
 export function analyzeRelatedSignals(
   event: TelemetryEvent | null,
   metrics: TelemetryMetricOverview[],
-): { relatedSignals: RelatedSignal[]; summary: string; possibleCause?: string; recommendedAction?: string } {
+): {
+  relatedSignals: RelatedSignal[];
+  summary: string;
+  possibleCause?: string;
+  recommendedAction?: string;
+} {
   if (!event) {
     return {
       relatedSignals: metrics.slice(0, 4).map((metric) => ({
@@ -226,11 +258,22 @@ export function analyzeRelatedSignals(
   const currentTrend = current ? trendAroundEvent(current.series, event.timestamp) : "unknown";
   const currentIncreased = currentTrend === "increased";
   const currentMetricKey = current?.definition.key ?? event.metricKey;
-  const currentIncreasedWithPower = relatedSignals.some((signal) => signal.metricKey === "currentA" && signal.correlation === "increased");
-  const voltageStable = relatedSignals.some((signal) => signal.metricKey === "voltageV" && signal.correlation === "stable");
-  const signalDropped = relatedSignals.some((signal) => signal.metricKey === "rssi" && signal.correlation === "decreased");
+  const currentIncreasedWithPower = relatedSignals.some(
+    (signal) => signal.metricKey === "currentA" && signal.correlation === "increased",
+  );
+  const voltageStable = relatedSignals.some(
+    (signal) => signal.metricKey === "voltageV" && signal.correlation === "stable",
+  );
+  const signalDropped = relatedSignals.some(
+    (signal) => signal.metricKey === "rssi" && signal.correlation === "decreased",
+  );
 
-  if (currentMetricKey === "activePowerW" && currentIncreased && currentIncreasedWithPower && voltageStable) {
+  if (
+    currentMetricKey === "activePowerW" &&
+    currentIncreased &&
+    currentIncreasedWithPower &&
+    voltageStable
+  ) {
     return {
       relatedSignals,
       summary: "Power increased together with current while voltage stayed stable.",
@@ -238,7 +281,11 @@ export function analyzeRelatedSignals(
       recommendedAction: "Check the connected load or power-consuming component.",
     };
   }
-  if (relatedSignals.some((signal) => signal.metricKey === "voltageV" && signal.correlation === "decreased")) {
+  if (
+    relatedSignals.some(
+      (signal) => signal.metricKey === "voltageV" && signal.correlation === "decreased",
+    )
+  ) {
     return {
       relatedSignals,
       summary: "Voltage changed around the event and may have affected other metrics.",
@@ -268,7 +315,10 @@ function percentile(sortedValues: number[], p: number) {
   return sortedValues[index];
 }
 
-function severityForValue(value: number, threshold?: MetricThreshold): "info" | "warning" | "critical" {
+function severityForValue(
+  value: number,
+  threshold?: MetricThreshold,
+): "info" | "warning" | "critical" {
   if (isCritical(value, threshold)) return "critical";
   if (isWarning(value, threshold)) return "warning";
   return "info";
@@ -289,22 +339,32 @@ function isWarning(value: number, threshold?: MetricThreshold) {
 }
 
 function compactEvents(events: TelemetryEvent[]) {
-  const sorted = [...events].sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
+  const sorted = [...events].sort(
+    (first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime(),
+  );
   return sorted.filter((event, index) => {
     const previous = sorted[index - 1];
     if (!previous) return true;
-    return event.metricKey !== previous.metricKey || event.type !== previous.type || new Date(event.timestamp).getTime() - new Date(previous.timestamp).getTime() > 60_000;
+    return (
+      event.metricKey !== previous.metricKey ||
+      event.type !== previous.type ||
+      new Date(event.timestamp).getTime() - new Date(previous.timestamp).getTime() > 60_000
+    );
   });
 }
 
 function statusReason(metric: TelemetryMetricOverview) {
   if (metric.status === "normal") return "All selected metrics are within expected ranges.";
   if (metric.status === "stale") return `${metric.definition.name} telemetry is stale.`;
-  if (metric.status === "no_data") return `${metric.definition.name} has no data in the selected range.`;
+  if (metric.status === "no_data")
+    return `${metric.definition.name} has no data in the selected range.`;
   return `${metric.definition.name} is ${metric.status}.`;
 }
 
-function trendAroundEvent(series: TelemetrySample[], timestamp: string): RelatedSignal["correlation"] {
+function trendAroundEvent(
+  series: TelemetrySample[],
+  timestamp: string,
+): RelatedSignal["correlation"] {
   const eventTime = new Date(timestamp).getTime();
   const before = averageInWindow(series, eventTime - 5 * 60_000, eventTime);
   const after = averageInWindow(series, eventTime, eventTime + 5 * 60_000);

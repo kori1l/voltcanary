@@ -1,11 +1,13 @@
 package com.voltcanary.alert;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.voltcanary.alert.domain.AlertAnalyticsEventInboxStatus;
+import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.dto.AlertActionResponse;
 import com.voltcanary.alert.dto.AlertPageResponse;
 import com.voltcanary.alert.dto.AlertResponse;
 import com.voltcanary.alert.dto.AlertSummaryResponse;
-import com.voltcanary.alert.domain.AlertAnalyticsEventInboxStatus;
-import com.voltcanary.alert.domain.AlertStatus;
 import com.voltcanary.alert.repository.AlertAnalyticsEventInboxRepository;
 import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
@@ -21,60 +23,78 @@ import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
 import com.voltcanary.common.events.analytics.RiskScoreChangedEvent;
 import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import java.time.Instant;
-import java.util.UUID;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.consume-enabled=false",
-                "spring.datasource.url=jdbc:h2:mem:alert-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
-                "spring.jpa.hibernate.ddl-auto=none",
-                "spring.flyway.enabled=true",
-                "app.alert.authorization.enabled=false",
-                "app.alert.notifications.worker-enabled=false",
-                "app.alert.reconciliation.enabled=false",
-                "app.maintenance.reconciliation.enabled=false"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.consume-enabled=false",
+        "spring.datasource.url=jdbc:h2:mem:alert-api;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false",
+        "spring.jpa.hibernate.ddl-auto=none",
+        "spring.flyway.enabled=true",
+        "app.alert.authorization.enabled=false",
+        "app.alert.notifications.worker-enabled=false",
+        "app.alert.reconciliation.enabled=false",
+        "app.maintenance.reconciliation.enabled=false",
+    }
+)
 class AlertServiceApiTest extends SignedUserTest {
+
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Test
     void anOldInboxAttemptCannotCompleteOrFailANewerSuccessfulAttempt() {
         UUID eventId = UUID.randomUUID();
-        var event = new AnomalyDetectedEvent(eventId, UUID.randomUUID(), UUID.randomUUID(),
-                "POWER_SPIKE", "HIGH", 80, "Claim ownership regression", Instant.now());
-        var entry = alertAnalyticsEventInboxService.recordReceived("analytics-service", eventId, "ANOMALY_DETECTED", event);
+        var event = new AnomalyDetectedEvent(
+            eventId,
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "POWER_SPIKE",
+            "HIGH",
+            80,
+            "Claim ownership regression",
+            Instant.now()
+        );
+        var entry = alertAnalyticsEventInboxService.recordReceived(
+            "analytics-service",
+            eventId,
+            "ANOMALY_DETECTED",
+            event
+        );
         var original = alertAnalyticsEventInboxService.markProcessing(entry.getId());
         assertThat(alertAnalyticsEventInboxService.markProcessing(entry.getId())).isNull();
-        jdbc.update("update alert_analytics_event_inbox set processing_started_at=? where id=?",
-                java.sql.Timestamp.from(Instant.now().minusSeconds(86400)), entry.getId());
+        jdbc.update(
+            "update alert_analytics_event_inbox set processing_started_at=? where id=?",
+            java.sql.Timestamp.from(Instant.now().minusSeconds(86400)),
+            entry.getId()
+        );
         var replacement = alertAnalyticsEventInboxService.markProcessing(entry.getId());
         assertThat(replacement.getAttempts()).isEqualTo(original.getAttempts() + 1);
         assertThat(alertAnalyticsEventInboxService.markProcessed(original, null)).isFalse();
         assertThat(alertAnalyticsEventInboxService.markProcessed(replacement, null)).isTrue();
-        alertAnalyticsEventInboxService.markFailed(original, new IllegalStateException("Late old failure"));
+        alertAnalyticsEventInboxService.markFailed(
+            original,
+            new IllegalStateException("Late old failure")
+        );
         var completed = alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow();
         assertThat(completed.getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.NO_ALERT);
         assertThat(completed.getLastError()).isNull();
@@ -86,8 +106,18 @@ class AlertServiceApiTest extends SignedUserTest {
         var executor = Executors.newFixedThreadPool(2);
         try {
             for (int iteration = 0; iteration < 5; iteration++) {
-                var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
-                        "POWER_SPIKE", "HIGH", 80, "Lifecycle concurrency regression", Instant.now()));
+                var alert = alertService.handleAnomaly(
+                    new AnomalyDetectedEvent(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "POWER_SPIKE",
+                        "HIGH",
+                        80,
+                        "Lifecycle concurrency regression",
+                        Instant.now()
+                    )
+                );
                 var start = new CountDownLatch(1);
                 var acknowledge = executor.submit(() -> {
                     start.await();
@@ -95,7 +125,13 @@ class AlertServiceApiTest extends SignedUserTest {
                 });
                 var resolve = executor.submit(() -> {
                     start.await();
-                    return alertService.resolve(alert.getId(), "Resolved concurrently", null, "USER", "race-resolve");
+                    return alertService.resolve(
+                        alert.getId(),
+                        "Resolved concurrently",
+                        null,
+                        "USER",
+                        "race-resolve"
+                    );
                 });
                 start.countDown();
                 acknowledge.get(15, TimeUnit.SECONDS);
@@ -103,9 +139,12 @@ class AlertServiceApiTest extends SignedUserTest {
                 var finalAlert = alertRepository.findById(alert.getId()).orElseThrow();
                 assertThat(finalAlert.getStatus()).isEqualTo(AlertStatus.RESOLVED);
                 assertThat(finalAlert.getResolvedAt()).isNotNull();
-                if (finalAlert.getAcknowledgedAt() != null) assertThat(finalAlert.getAcknowledgedAt()).isBeforeOrEqualTo(finalAlert.getResolvedAt());
+                if (finalAlert.getAcknowledgedAt() != null) assertThat(
+                    finalAlert.getAcknowledgedAt()
+                ).isBeforeOrEqualTo(finalAlert.getResolvedAt());
                 assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
-                        .filteredOn(event -> "RESOLVED".equals(event.getEventType())).hasSize(1);
+                    .filteredOn(event -> "RESOLVED".equals(event.getEventType()))
+                    .hasSize(1);
             }
         } finally {
             executor.shutdownNow();
@@ -114,11 +153,20 @@ class AlertServiceApiTest extends SignedUserTest {
 
     @org.junit.jupiter.api.BeforeEach
     void authenticateApi() {
-        restTemplate.getRestTemplate().setInterceptors(List.of((request, body, execution) -> {
-            request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
-                    UUID.fromString("11111111-1111-1111-1111-111111111111"), "actor@example.invalid", "USER"));
-            return execution.execute(request, body);
-        }));
+        restTemplate.getRestTemplate().setInterceptors(
+            List.of((request, body, execution) -> {
+                request
+                    .getHeaders()
+                    .setBearerAuth(
+                        com.voltcanary.common.test.SignedUserTokens.create(
+                            UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                            "actor@example.invalid",
+                            "USER"
+                        )
+                    );
+                return execution.execute(request, body);
+            })
+        );
     }
 
     @Autowired
@@ -157,8 +205,9 @@ class AlertServiceApiTest extends SignedUserTest {
     @Test
     void staticAlertRoutesAreNotCapturedByAlertIdRoute() {
         ResponseEntity<AlertSummaryResponse> summaryResponse = restTemplate.getForEntity(
-                "/alerts/summary",
-                AlertSummaryResponse.class);
+            "/alerts/summary",
+            AlertSummaryResponse.class
+        );
 
         assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(summaryResponse.getBody()).isNotNull();
@@ -174,29 +223,30 @@ class AlertServiceApiTest extends SignedUserTest {
         Instant windowStart = Instant.parse("2026-05-13T12:00:00Z");
         Instant windowEnd = Instant.parse("2026-05-13T12:15:00Z");
         AnomalyDetectedEvent event = new AnomalyDetectedEvent(
-                eventId,
-                deviceId,
-                anomalyId,
-                ruleId,
-                windowStart,
-                windowEnd,
-                "input-hash-1",
-                "POWER_SPIKE",
-                "MEDIUM",
-                30,
-                "A power spike was detected above the normal range.",
-                detectedAt);
+            eventId,
+            deviceId,
+            anomalyId,
+            ruleId,
+            windowStart,
+            windowEnd,
+            "input-hash-1",
+            "POWER_SPIKE",
+            "MEDIUM",
+            30,
+            "A power spike was detected above the normal range.",
+            detectedAt
+        );
 
         alertService.handleAnomaly(event);
         alertService.handleAnomaly(event);
 
         ResponseEntity<List<AlertResponse>> listResponse = restTemplate.exchange(
-                "/alerts?deviceId={deviceId}&status=OPEN&severity=WARNING&alertType=POWER_SPIKE&limit=10",
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<>() {
-                },
-                deviceId);
+            "/alerts?deviceId={deviceId}&status=OPEN&severity=WARNING&alertType=POWER_SPIKE&limit=10",
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<>() {},
+            deviceId
+        );
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listResponse.getBody()).hasSize(1);
 
@@ -212,37 +262,44 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(alert.status()).isEqualTo("OPEN");
 
         ResponseEntity<AlertActionResponse> ackResponse = restTemplate.postForEntity(
-                "/alerts/{id}/ack",
-                null,
-                AlertActionResponse.class,
-                alert.id());
+            "/alerts/{id}/ack",
+            null,
+            AlertActionResponse.class,
+            alert.id()
+        );
         assertThat(ackResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ackResponse.getBody().status()).isEqualTo("ACKNOWLEDGED");
 
         ResponseEntity<AlertActionResponse> resolveResponse = restTemplate.postForEntity(
-                "/alerts/{id}/resolve",
-                new HttpEntity<>(Map.of("reason", "Breaker was inspected and load returned to normal.")),
-                AlertActionResponse.class,
-                alert.id());
+            "/alerts/{id}/resolve",
+            new HttpEntity<>(
+                Map.of("reason", "Breaker was inspected and load returned to normal.")
+            ),
+            AlertActionResponse.class,
+            alert.id()
+        );
         assertThat(resolveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resolveResponse.getBody().status()).isEqualTo("RESOLVED");
 
         ResponseEntity<AlertResponse> getResponse = restTemplate.getForEntity(
-                "/alerts/{id}",
-                AlertResponse.class,
-                alert.id());
+            "/alerts/{id}",
+            AlertResponse.class,
+            alert.id()
+        );
         assertThat(getResponse.getBody().status()).isEqualTo("RESOLVED");
         assertThat(getResponse.getBody().resolvedAt()).isNotNull();
-        assertThat(getResponse.getBody().resolutionReason()).isEqualTo("Breaker was inspected and load returned to normal.");
+        assertThat(getResponse.getBody().resolutionReason()).isEqualTo(
+            "Breaker was inspected and load returned to normal."
+        );
         assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.id()))
-                .hasSize(3)
-                .allSatisfy(storedEvent -> {
-                    assertThat(storedEvent.getPayloadJson()).contains("\"eventId\"");
-                    assertThat(storedEvent.getPayloadJson()).contains("\"alertId\"");
-                    assertThat(storedEvent.getPayloadJson()).contains("\"action\"");
-                    assertThat(storedEvent.getPayloadJson()).contains("\"status\"");
-                    assertThat(storedEvent.getPayloadJson()).contains("\"context\"");
-                });
+            .hasSize(3)
+            .allSatisfy(storedEvent -> {
+                assertThat(storedEvent.getPayloadJson()).contains("\"eventId\"");
+                assertThat(storedEvent.getPayloadJson()).contains("\"alertId\"");
+                assertThat(storedEvent.getPayloadJson()).contains("\"action\"");
+                assertThat(storedEvent.getPayloadJson()).contains("\"status\"");
+                assertThat(storedEvent.getPayloadJson()).contains("\"context\"");
+            });
     }
 
     @Test
@@ -250,17 +307,19 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();
         AnomalyDetectedEvent event = new AnomalyDetectedEvent(
-                eventId,
-                deviceId,
-                UUID.randomUUID(),
-                "POWER_SPIKE",
-                "MEDIUM",
-                30,
-                "A power spike was detected above the normal range.",
-                Instant.parse("2026-05-13T12:15:00Z"));
+            eventId,
+            deviceId,
+            UUID.randomUUID(),
+            "POWER_SPIKE",
+            "MEDIUM",
+            30,
+            "A power spike was detected above the normal range.",
+            Instant.parse("2026-05-13T12:15:00Z")
+        );
 
         var first = alertService.handleAnomaly(event);
-        var second = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var second = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 eventId,
                 deviceId,
                 UUID.randomUUID(),
@@ -268,7 +327,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Duplicate source event.",
-                Instant.parse("2026-05-13T12:45:00Z")));
+                Instant.parse("2026-05-13T12:45:00Z")
+            )
+        );
 
         assertThat(second.getId()).isEqualTo(first.getId());
         assertThat(second.getSourceEventId()).isEqualTo(eventId);
@@ -278,34 +339,41 @@ class AlertServiceApiTest extends SignedUserTest {
     void analyticsEventInboxReplaysFailedEventWithoutDuplicateAlert() {
         UUID deviceId = UUID.randomUUID();
         AnomalyDetectedEvent event = new AnomalyDetectedEvent(
-                UUID.randomUUID(),
-                deviceId,
-                UUID.randomUUID(),
-                "POWER_SPIKE",
-                "MEDIUM",
-                30,
-                "Replayable power spike.",
-                Instant.parse("2026-05-13T12:25:00Z"));
+            UUID.randomUUID(),
+            deviceId,
+            UUID.randomUUID(),
+            "POWER_SPIKE",
+            "MEDIUM",
+            30,
+            "Replayable power spike.",
+            Instant.parse("2026-05-13T12:25:00Z")
+        );
         var entry = alertAnalyticsEventInboxService.recordReceived(
-                AnalyticsAlertEventHandler.ANOMALY_TOPIC,
-                event.eventId(),
-                AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE,
-                event);
+            AnalyticsAlertEventHandler.ANOMALY_TOPIC,
+            event.eventId(),
+            AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE,
+            event
+        );
         var claim = alertAnalyticsEventInboxService.markProcessing(entry.getId());
-        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("transient downstream failure"));
+        alertAnalyticsEventInboxService.markFailed(
+            claim,
+            new IllegalStateException("transient downstream failure")
+        );
 
         alertAnalyticsEventReconciliationService.reconcile(
-                alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow());
+            alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow()
+        );
         alertAnalyticsEventReconciliationService.reconcile(
-                alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow());
+            alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow()
+        );
 
         var stored = alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.PROCESSED);
         assertThat(stored.getAlertId()).isNotNull();
         assertThat(stored.getAttempts()).isEqualTo(2);
         assertThat(alertRepository.findAll())
-                .filteredOn(alert -> event.eventId().equals(alert.getSourceEventId()))
-                .hasSize(1);
+            .filteredOn(alert -> event.eventId().equals(alert.getSourceEventId()))
+            .hasSize(1);
     }
 
     @Test
@@ -314,17 +382,21 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID maintenanceWindowId = UUID.randomUUID();
         Instant start = Instant.parse("2026-05-13T20:00:00Z");
         Instant end = Instant.parse("2026-05-13T21:00:00Z");
-        maintenanceWindowProjectionService.project(maintenanceEvent(
+        maintenanceWindowProjectionService.project(
+            maintenanceEvent(
                 maintenanceWindowId,
                 deviceId,
                 start,
                 end,
                 true,
                 1,
-                "MAINTENANCE_WINDOW_CREATED"));
+                "MAINTENANCE_WINDOW_CREATED"
+            )
+        );
 
         UUID eventId = UUID.randomUUID();
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 eventId,
                 deviceId,
                 UUID.randomUUID(),
@@ -336,7 +408,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Power spike during planned maintenance.",
-                start.plusSeconds(900)));
+                start.plusSeconds(900)
+            )
+        );
 
         assertThat(alert).isNull();
         assertThat(alertRepository.findFirstBySourceEventId(eventId)).isEmpty();
@@ -350,28 +424,35 @@ class AlertServiceApiTest extends SignedUserTest {
         Instant start = Instant.parse("2026-05-13T22:00:00Z");
         Instant end = Instant.parse("2026-05-13T23:00:00Z");
 
-        maintenanceWindowProjectionService.project(maintenanceEvent(
+        maintenanceWindowProjectionService.project(
+            maintenanceEvent(
                 maintenanceWindowId,
                 deviceId,
                 start,
                 end,
                 true,
                 2,
-                "MAINTENANCE_WINDOW_UPDATED"));
-        maintenanceWindowProjectionService.project(maintenanceEvent(
+                "MAINTENANCE_WINDOW_UPDATED"
+            )
+        );
+        maintenanceWindowProjectionService.project(
+            maintenanceEvent(
                 maintenanceWindowId,
                 deviceId,
                 start,
                 end,
                 false,
                 1,
-                "MAINTENANCE_WINDOW_UPDATED"));
+                "MAINTENANCE_WINDOW_UPDATED"
+            )
+        );
 
-        assertThat(maintenanceWindowReadModelRepository.findById(maintenanceWindowId))
-                .hasValueSatisfying(window -> {
-                    assertThat(window.getVersion()).isEqualTo(2);
-                    assertThat(window.isSuppressAlerts()).isTrue();
-                });
+        assertThat(
+            maintenanceWindowReadModelRepository.findById(maintenanceWindowId)
+        ).hasValueSatisfying(window -> {
+            assertThat(window.getVersion()).isEqualTo(2);
+            assertThat(window.isSuppressAlerts()).isTrue();
+        });
     }
 
     @Test
@@ -380,7 +461,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID maintenanceWindowId = UUID.randomUUID();
         Instant start = Instant.parse("2026-05-14T00:00:00Z");
         Instant end = Instant.parse("2026-05-14T01:00:00Z");
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -392,33 +474,46 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Power spike before maintenance projection arrived.",
-                start.plusSeconds(900)));
+                start.plusSeconds(900)
+            )
+        );
 
-        maintenanceWindowProjectionService.project(maintenanceEvent(
+        maintenanceWindowProjectionService.project(
+            maintenanceEvent(
                 maintenanceWindowId,
                 deviceId,
                 start,
                 end,
                 true,
                 1,
-                "MAINTENANCE_WINDOW_CREATED"));
+                "MAINTENANCE_WINDOW_CREATED"
+            )
+        );
 
-        assertThat(alertRepository.findById(alert.getId()))
-                .hasValueSatisfying(stored -> {
-                    assertThat(stored.getStatus()).isEqualTo(AlertStatus.RESOLVED);
-                    assertThat(stored.getResolvedAt()).isNotNull();
-                    assertThat(stored.getResolutionReason()).contains("maintenance window");
-                });
-        assertThat(alertSuppressionRepository.existsByAlertIdAndMaintenanceWindowId(alert.getId(), maintenanceWindowId)).isTrue();
-        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
-                .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("AUTO_RESOLVED_BY_MAINTENANCE"));
+        assertThat(alertRepository.findById(alert.getId())).hasValueSatisfying(stored -> {
+            assertThat(stored.getStatus()).isEqualTo(AlertStatus.RESOLVED);
+            assertThat(stored.getResolvedAt()).isNotNull();
+            assertThat(stored.getResolutionReason()).contains("maintenance window");
+        });
+        assertThat(
+            alertSuppressionRepository.existsByAlertIdAndMaintenanceWindowId(
+                alert.getId(),
+                maintenanceWindowId
+            )
+        ).isTrue();
+        assertThat(
+            alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())
+        ).anySatisfy(event ->
+            assertThat(event.getEventType()).isEqualTo("AUTO_RESOLVED_BY_MAINTENANCE")
+        );
     }
 
     @Test
     void highAnalyticsSeverityIsPreservedAsHighAlertSeverity() {
         UUID deviceId = UUID.randomUUID();
 
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -426,17 +521,19 @@ class AlertServiceApiTest extends SignedUserTest {
                 "HIGH",
                 75,
                 "A high severity power spike was detected.",
-                Instant.parse("2026-05-13T13:15:00Z")));
+                Instant.parse("2026-05-13T13:15:00Z")
+            )
+        );
 
         assertThat(alert.getSeverity().name()).isEqualTo("HIGH");
 
         ResponseEntity<List<AlertResponse>> listResponse = restTemplate.exchange(
-                "/alerts?deviceId={deviceId}&severity=HIGH&alertType=POWER_SPIKE&limit=10",
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<>() {
-                },
-                deviceId);
+            "/alerts?deviceId={deviceId}&severity=HIGH&alertType=POWER_SPIKE&limit=10",
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<>() {},
+            deviceId
+        );
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listResponse.getBody()).hasSize(1);
         assertThat(listResponse.getBody().getFirst().severity()).isEqualTo("HIGH");
@@ -449,7 +546,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID anomalyId = UUID.randomUUID();
         Instant detectedAt = Instant.parse("2026-08-19T10:15:00Z");
 
-        var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var alert = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 sourceEventId,
                 deviceId,
                 anomalyId,
@@ -461,7 +559,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 "HIGH",
                 88,
                 "Trained anomaly model reported high washer risk.",
-                detectedAt));
+                detectedAt
+            )
+        );
 
         assertThat(alert).isNotNull();
         assertThat(alert.getStatus()).isEqualTo(AlertStatus.OPEN);
@@ -469,11 +569,14 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(alert.getSourceEventId()).isEqualTo(sourceEventId);
         assertThat(alert.getAnomalyId()).isEqualTo(anomalyId);
         assertThat(alert.getCalculationInputHash()).isEqualTo("sha256:ml-anomaly-input");
-        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
-                .anySatisfy(event -> assertThat(event.getPayloadJson())
-                        .contains("\"sourceEventId\":\"" + sourceEventId + "\"")
-                        .contains("\"calculationInputHash\":\"sha256:ml-anomaly-input\"")
-                        .contains("Trained anomaly model reported high washer risk."));
+        assertThat(
+            alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())
+        ).anySatisfy(event ->
+            assertThat(event.getPayloadJson())
+                .contains("\"sourceEventId\":\"" + sourceEventId + "\"")
+                .contains("\"calculationInputHash\":\"sha256:ml-anomaly-input\"")
+                .contains("Trained anomaly model reported high washer risk.")
+        );
     }
 
     @Test
@@ -483,7 +586,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID riskScoreId = UUID.randomUUID();
         Instant changedAt = Instant.parse("2026-08-19T11:15:00Z");
 
-        var alert = alertService.handleRiskScoreChanged(new RiskScoreChangedEvent(
+        var alert = alertService.handleRiskScoreChanged(
+            new RiskScoreChangedEvent(
                 sourceEventId,
                 deviceId,
                 riskScoreId,
@@ -493,7 +597,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 0.21,
                 0.87,
                 "HIGH",
-                changedAt));
+                changedAt
+            )
+        );
 
         assertThat(alert).isNotNull();
         assertThat(alert.getStatus()).isEqualTo(AlertStatus.OPEN);
@@ -501,11 +607,14 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(alert.getAlertType()).isEqualTo("RISK_HIGH");
         assertThat(alert.getRiskScoreId()).isEqualTo(riskScoreId);
         assertThat(alert.getCalculationInputHash()).isEqualTo("sha256:failure-risk-input");
-        assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
-                .anySatisfy(event -> assertThat(event.getPayloadJson())
-                        .contains("\"riskScoreId\":\"" + riskScoreId + "\"")
-                        .contains("\"calculationInputHash\":\"sha256:failure-risk-input\"")
-                        .contains("\"currentScore\":0.87"));
+        assertThat(
+            alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId())
+        ).anySatisfy(event ->
+            assertThat(event.getPayloadJson())
+                .contains("\"riskScoreId\":\"" + riskScoreId + "\"")
+                .contains("\"calculationInputHash\":\"sha256:failure-risk-input\"")
+                .contains("\"currentScore\":0.87")
+        );
     }
 
     @Test
@@ -513,7 +622,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         UUID sourceEventId = UUID.randomUUID();
 
-        var alert = alertService.handleRiskScoreChanged(new RiskScoreChangedEvent(
+        var alert = alertService.handleRiskScoreChanged(
+            new RiskScoreChangedEvent(
                 sourceEventId,
                 deviceId,
                 UUID.randomUUID(),
@@ -523,7 +633,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 0.18,
                 0.22,
                 "LOW",
-                Instant.parse("2026-08-19T12:00:00Z")));
+                Instant.parse("2026-08-19T12:00:00Z")
+            )
+        );
 
         assertThat(alert).isNull();
         assertThat(alertRepository.findFirstBySourceEventId(sourceEventId)).isEmpty();
@@ -534,7 +646,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         Instant detectedAt = Instant.parse("2026-05-13T14:15:00Z");
 
-        var first = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var first = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -542,10 +655,13 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Initial power spike.",
-                detectedAt));
+                detectedAt
+            )
+        );
         alertService.resolve(first.getId(), "Investigated.", null, "ADMIN", "reopen-test");
 
-        var reopened = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var reopened = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -553,8 +669,11 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 31,
                 "Power spike returned after resolution.",
-                detectedAt.plusSeconds(600)));
-        var repeatedWhileOpen = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                detectedAt.plusSeconds(600)
+            )
+        );
+        var repeatedWhileOpen = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -562,23 +681,25 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 32,
                 "Same unresolved condition.",
-                detectedAt.plusSeconds(900)));
+                detectedAt.plusSeconds(900)
+            )
+        );
 
         assertThat(reopened.getId()).isNotEqualTo(first.getId());
         assertThat(reopened.getStatus().name()).isEqualTo("OPEN");
         assertThat(repeatedWhileOpen.getId()).isEqualTo(reopened.getId());
 
         ResponseEntity<List<AlertResponse>> listResponse = restTemplate.exchange(
-                "/alerts?deviceId={deviceId}&alertType=POWER_SPIKE&limit=10",
-                HttpMethod.GET,
-                null,
-                new ParameterizedTypeReference<>() {
-                },
-                deviceId);
+            "/alerts?deviceId={deviceId}&alertType=POWER_SPIKE&limit=10",
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<>() {},
+            deviceId
+        );
         assertThat(listResponse.getBody())
-                .filteredOn(alert -> deviceId.equals(alert.deviceId()))
-                .extracting(AlertResponse::status)
-                .containsExactlyInAnyOrder("OPEN", "RESOLVED");
+            .filteredOn(alert -> deviceId.equals(alert.deviceId()))
+            .extracting(AlertResponse::status)
+            .containsExactlyInAnyOrder("OPEN", "RESOLVED");
     }
 
     @Test
@@ -586,7 +707,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         Instant detectedAt = Instant.parse("2026-05-13T16:15:00Z");
 
-        var first = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var first = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -594,8 +716,11 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Initial medium severity alert.",
-                detectedAt));
-        var nextHour = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                detectedAt
+            )
+        );
+        var nextHour = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -603,8 +728,11 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 31,
                 "Same condition in a later hour.",
-                detectedAt.plusSeconds(3600)));
-        var highSeverity = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                detectedAt.plusSeconds(3600)
+            )
+        );
+        var highSeverity = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -612,7 +740,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 "HIGH",
                 80,
                 "Higher severity in the original hour.",
-                detectedAt.plusSeconds(300)));
+                detectedAt.plusSeconds(300)
+            )
+        );
 
         assertThat(nextHour.getId()).isNotEqualTo(first.getId());
         assertThat(highSeverity.getId()).isNotEqualTo(first.getId());
@@ -631,19 +761,26 @@ class AlertServiceApiTest extends SignedUserTest {
 
         try {
             for (int index = 0; index < workers; index++) {
-                futures.add(executor.submit(() -> {
-                    ready.countDown();
-                    start.await();
-                    return alertService.handleAnomaly(new AnomalyDetectedEvent(
-                            UUID.randomUUID(),
-                            deviceId,
-                            UUID.randomUUID(),
-                            "CONCURRENT_POWER_SPIKE",
-                            "MEDIUM",
-                            30,
-                            "Concurrent duplicate alert.",
-                            detectedAt)).getId();
-                }));
+                futures.add(
+                    executor.submit(() -> {
+                        ready.countDown();
+                        start.await();
+                        return alertService
+                            .handleAnomaly(
+                                new AnomalyDetectedEvent(
+                                    UUID.randomUUID(),
+                                    deviceId,
+                                    UUID.randomUUID(),
+                                    "CONCURRENT_POWER_SPIKE",
+                                    "MEDIUM",
+                                    30,
+                                    "Concurrent duplicate alert.",
+                                    detectedAt
+                                )
+                            )
+                            .getId();
+                    })
+                );
             }
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -655,9 +792,9 @@ class AlertServiceApiTest extends SignedUserTest {
 
             assertThat(alertIds).containsOnly(alertIds.getFirst());
             assertThat(alertRepository.findAll())
-                    .filteredOn(alert -> deviceId.equals(alert.getDeviceId()))
-                    .filteredOn(alert -> "CONCURRENT_POWER_SPIKE".equals(alert.getAlertType()))
-                    .hasSize(1);
+                .filteredOn(alert -> deviceId.equals(alert.getDeviceId()))
+                .filteredOn(alert -> "CONCURRENT_POWER_SPIKE".equals(alert.getAlertType()))
+                .hasSize(1);
         } finally {
             executor.shutdownNow();
         }
@@ -668,7 +805,8 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID deviceId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-05-13T18:00:00Z");
         Instant scanTime = createdAt.plusSeconds(31 * 60L);
-        var due = alertService.handleAnomaly(new AnomalyDetectedEvent(
+        var due = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -676,8 +814,11 @@ class AlertServiceApiTest extends SignedUserTest {
                 "MEDIUM",
                 30,
                 "Unacknowledged warning alert.",
-                createdAt));
-        var acknowledged = alertService.handleAnomaly(new AnomalyDetectedEvent(
+                createdAt
+            )
+        );
+        var acknowledged = alertService.handleAnomaly(
+            new AnomalyDetectedEvent(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
@@ -685,7 +826,9 @@ class AlertServiceApiTest extends SignedUserTest {
                 "CRITICAL",
                 95,
                 "Acknowledged critical alert.",
-                createdAt));
+                createdAt
+            )
+        );
         alertService.acknowledge(acknowledged.getId(), null, "ADMIN", "escalation-test");
 
         int escalated = alertEscalationService.escalateDueAlerts(scanTime);
@@ -694,21 +837,24 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(escalated).isPositive();
         assertThat(repeated).isZero();
         assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(due.getId()))
-                .filteredOn(event -> "ESCALATED".equals(event.getEventType()))
-                .hasSize(1)
-                .allSatisfy(event -> assertThat(event.getPayloadJson())
-                        .contains("\"action\":\"ESCALATED\"")
-                        .contains("\"thresholdSeconds\":1800"));
+            .filteredOn(event -> "ESCALATED".equals(event.getEventType()))
+            .hasSize(1)
+            .allSatisfy(event ->
+                assertThat(event.getPayloadJson())
+                    .contains("\"action\":\"ESCALATED\"")
+                    .contains("\"thresholdSeconds\":1800")
+            );
         assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(acknowledged.getId()))
-                .filteredOn(event -> "ESCALATED".equals(event.getEventType()))
-                .isEmpty();
+            .filteredOn(event -> "ESCALATED".equals(event.getEventType()))
+            .isEmpty();
     }
 
     @Test
     void alertsPageReturnsFilteredPaginationMetadata() {
         UUID deviceId = UUID.randomUUID();
         for (int index = 0; index < 3; index++) {
-            alertService.handleAnomaly(new AnomalyDetectedEvent(
+            alertService.handleAnomaly(
+                new AnomalyDetectedEvent(
                     UUID.randomUUID(),
                     deviceId,
                     UUID.randomUUID(),
@@ -716,17 +862,21 @@ class AlertServiceApiTest extends SignedUserTest {
                     "MEDIUM",
                     10 + index,
                     "Page test alert " + index,
-                    Instant.parse("2026-05-13T15:15:00Z").plusSeconds(index * 3600L)));
+                    Instant.parse("2026-05-13T15:15:00Z").plusSeconds(index * 3600L)
+                )
+            );
         }
 
         ResponseEntity<AlertPageResponse> firstPage = restTemplate.getForEntity(
-                "/alerts/page?deviceId={deviceId}&alertType=PAGE_TEST&page=0&size=2",
-                AlertPageResponse.class,
-                deviceId);
+            "/alerts/page?deviceId={deviceId}&alertType=PAGE_TEST&page=0&size=2",
+            AlertPageResponse.class,
+            deviceId
+        );
         ResponseEntity<AlertPageResponse> secondPage = restTemplate.getForEntity(
-                "/alerts/page?deviceId={deviceId}&alertType=PAGE_TEST&page=1&size=2",
-                AlertPageResponse.class,
-                deviceId);
+            "/alerts/page?deviceId={deviceId}&alertType=PAGE_TEST&page=1&size=2",
+            AlertPageResponse.class,
+            deviceId
+        );
 
         assertThat(firstPage.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(firstPage.getBody().content()).hasSize(2);
@@ -736,8 +886,8 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(firstPage.getBody().totalPages()).isEqualTo(2);
         assertThat(firstPage.getBody().hasNext()).isTrue();
         assertThat(firstPage.getBody().content())
-                .extracting(AlertResponse::description)
-                .containsExactly("Page test alert 2", "Page test alert 1");
+            .extracting(AlertResponse::description)
+            .containsExactly("Page test alert 2", "Page test alert 1");
 
         assertThat(secondPage.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(secondPage.getBody().content()).hasSize(1);
@@ -745,54 +895,81 @@ class AlertServiceApiTest extends SignedUserTest {
         assertThat(secondPage.getBody().totalElements()).isEqualTo(3);
         assertThat(secondPage.getBody().totalPages()).isEqualTo(2);
         assertThat(secondPage.getBody().hasNext()).isFalse();
-        assertThat(secondPage.getBody().content().getFirst().description()).isEqualTo("Page test alert 0");
+        assertThat(secondPage.getBody().content().getFirst().description()).isEqualTo(
+            "Page test alert 0"
+        );
     }
 
     @Autowired
     private com.voltcanary.alert.service.DeviceHistoryDeletion deviceHistoryDeletion;
+
     @Autowired
     private AnalyticsAlertEventHandler analyticsEventHandler;
 
     @Test
     void purgedInboxCannotBeRecreatedByLateDeliveryOrReconciliation() {
         UUID device = UUID.randomUUID();
-        var event = new AnomalyDetectedEvent(UUID.randomUUID(), device, UUID.randomUUID(), "DELETE_TEST", "MEDIUM", 10, "Synthetic", Instant.now());
-        var entry = alertAnalyticsEventInboxService.recordReceived(AnalyticsAlertEventHandler.ANOMALY_TOPIC, event.eventId(), AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE, event);
+        var event = new AnomalyDetectedEvent(
+            UUID.randomUUID(),
+            device,
+            UUID.randomUUID(),
+            "DELETE_TEST",
+            "MEDIUM",
+            10,
+            "Synthetic",
+            Instant.now()
+        );
+        var entry = alertAnalyticsEventInboxService.recordReceived(
+            AnalyticsAlertEventHandler.ANOMALY_TOPIC,
+            event.eventId(),
+            AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE,
+            event
+        );
         var claim = alertAnalyticsEventInboxService.markProcessing(entry.getId());
-        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("Transient test failure"));
-        assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow().getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.FAILED);
+        alertAnalyticsEventInboxService.markFailed(
+            claim,
+            new IllegalStateException("Transient test failure")
+        );
+        assertThat(
+            alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow().getStatus()
+        ).isEqualTo(AlertAnalyticsEventInboxStatus.FAILED);
         deviceHistoryDeletion.close(device, true);
         assertThat(analyticsEventHandler.handleAnomaly(event)).isFalse();
         assertThat(analyticsEventHandler.replayAnomaly(entry.getId(), event)).isFalse();
-        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("Late failure"));
+        alertAnalyticsEventInboxService.markFailed(
+            claim,
+            new IllegalStateException("Late failure")
+        );
         assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId())).isEmpty();
     }
 
     private MaintenanceWindowChangedEvent maintenanceEvent(
-            UUID maintenanceWindowId,
-            UUID deviceId,
-            Instant start,
-            Instant end,
-            boolean suppressAlerts,
-            long version,
-            String eventType) {
+        UUID maintenanceWindowId,
+        UUID deviceId,
+        Instant start,
+        Instant end,
+        boolean suppressAlerts,
+        long version,
+        String eventType
+    ) {
         return new MaintenanceWindowChangedEvent(
-                UUID.randomUUID(),
-                eventType,
-                maintenanceWindowId,
-                UUID.randomUUID(),
-                deviceId,
-                "Planned maintenance",
-                "Maintenance test window",
-                start,
-                end,
-                suppressAlerts,
-                true,
-                true,
-                null,
-                null,
-                version,
-                UUID.randomUUID(),
-                Instant.now());
+            UUID.randomUUID(),
+            eventType,
+            maintenanceWindowId,
+            UUID.randomUUID(),
+            deviceId,
+            "Planned maintenance",
+            "Maintenance test window",
+            start,
+            end,
+            suppressAlerts,
+            true,
+            true,
+            null,
+            null,
+            version,
+            UUID.randomUUID(),
+            Instant.now()
+        );
     }
 }

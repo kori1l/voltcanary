@@ -16,7 +16,9 @@ import org.springframework.kafka.support.serializer.JsonSerializer;
 public class KafkaProducerConfig {
 
     @Bean
-    ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         var properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
@@ -25,12 +27,15 @@ public class KafkaProducerConfig {
 
     @Bean
     KafkaTemplate<String, TelemetryReceivedEvent> telemetryKafkaTemplate(
-            ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory) {
+        ProducerFactory<String, TelemetryReceivedEvent> telemetryProducerFactory
+    ) {
         return new KafkaTemplate<>(telemetryProducerFactory);
     }
 
     @Bean
-    ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory(KafkaProperties kafkaProperties) {
+    ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory(
+        KafkaProperties kafkaProperties
+    ) {
         var properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
@@ -39,7 +44,8 @@ public class KafkaProducerConfig {
 
     @Bean
     KafkaTemplate<String, SourceRuntimeConfigEvent> sourceRuntimeConfigKafkaTemplate(
-            ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory) {
+        ProducerFactory<String, SourceRuntimeConfigEvent> sourceRuntimeConfigProducerFactory
+    ) {
         return new KafkaTemplate<>(sourceRuntimeConfigProducerFactory);
     }
 }

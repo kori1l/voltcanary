@@ -1,4 +1,3 @@
 package com.voltcanary.identity.dto;
 
-public record AuthMessageResponse(String message) {
-}
+public record AuthMessageResponse(String message) {}

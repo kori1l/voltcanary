@@ -17,12 +17,15 @@ public class ModbusRegisterValueMapper {
         Map<String, Object> metrics = new LinkedHashMap<>();
         for (ModbusRegisterMapping mapping : mappings) {
             ModbusReadRequest request = new ModbusReadRequest(
-                    mapping.function(),
-                    mapping.address(),
-                    mapping.dataType().registerCount());
+                mapping.function(),
+                mapping.address(),
+                mapping.dataType().registerCount()
+            );
             int[] registers = byRequest.get(request);
             if (registers == null) {
-                throw new IllegalStateException("Missing Modbus TCP read result for metric " + mapping.metric());
+                throw new IllegalStateException(
+                    "Missing Modbus TCP read result for metric " + mapping.metric()
+                );
             }
             metrics.put(mapping.metric(), decode(mapping, registers));
         }
@@ -31,14 +34,19 @@ public class ModbusRegisterValueMapper {
 
     private Object decode(ModbusRegisterMapping mapping, int[] registers) {
         if (registers.length < mapping.dataType().registerCount()) {
-            throw new IllegalStateException("Modbus TCP read returned too few registers for metric " + mapping.metric());
+            throw new IllegalStateException(
+                "Modbus TCP read returned too few registers for metric " + mapping.metric()
+            );
         }
         return switch (mapping.dataType()) {
             case INT16 -> scale((short) register(registers[0]), mapping);
             case UINT16 -> scale(register(registers[0]), mapping);
             case INT32 -> scale((int) unsigned32(registers, mapping), mapping);
             case UINT32 -> scale(unsigned32(registers, mapping), mapping);
-            case FLOAT32 -> scale(Float.intBitsToFloat((int) unsigned32(registers, mapping)), mapping);
+            case FLOAT32 -> scale(
+                Float.intBitsToFloat((int) unsigned32(registers, mapping)),
+                mapping
+            );
         };
     }
 
@@ -59,18 +67,13 @@ public class ModbusRegisterValueMapper {
             second = previousFirst;
         }
         byte[] bytes = new byte[] {
-                highByte(first),
-                lowByte(first),
-                highByte(second),
-                lowByte(second)
+            highByte(first),
+            lowByte(first),
+            highByte(second),
+            lowByte(second),
         };
         if (mapping.byteOrder() == ModbusByteOrder.LITTLE_ENDIAN) {
-            bytes = new byte[] {
-                    bytes[1],
-                    bytes[0],
-                    bytes[3],
-                    bytes[2]
-            };
+            bytes = new byte[] { bytes[1], bytes[0], bytes[3], bytes[2] };
         }
         return Integer.toUnsignedLong(ByteBuffer.wrap(bytes).getInt());
     }

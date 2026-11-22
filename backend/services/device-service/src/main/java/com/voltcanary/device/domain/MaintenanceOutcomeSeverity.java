@@ -4,5 +4,5 @@ public enum MaintenanceOutcomeSeverity {
     LOW,
     MEDIUM,
     HIGH,
-    CRITICAL
+    CRITICAL,
 }

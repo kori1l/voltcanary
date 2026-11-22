@@ -19,22 +19,35 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class HttpDashboardOwnership implements DashboardOwnership {
+
     private final DashboardHttpProperties properties;
     private final JwtAccessTokenService jwt;
     private final ObjectMapper mapper;
     private final HttpClient client;
     private final com.voltcanary.dashboard.port.DashboardEvidenceReads evidenceReads;
 
-    public HttpDashboardOwnership(DashboardHttpProperties properties, DashboardJwtProperties jwtProperties,
-            ObjectMapper mapper) {
+    public HttpDashboardOwnership(
+        DashboardHttpProperties properties,
+        DashboardJwtProperties jwtProperties,
+        ObjectMapper mapper
+    ) {
         this(properties, jwtProperties, mapper, null);
     }
+
     @org.springframework.beans.factory.annotation.Autowired
-    public HttpDashboardOwnership(DashboardHttpProperties properties, DashboardJwtProperties jwtProperties,
-            ObjectMapper mapper, com.voltcanary.dashboard.port.DashboardEvidenceReads evidenceReads) {
+    public HttpDashboardOwnership(
+        DashboardHttpProperties properties,
+        DashboardJwtProperties jwtProperties,
+        ObjectMapper mapper,
+        com.voltcanary.dashboard.port.DashboardEvidenceReads evidenceReads
+    ) {
         this.properties = properties;
-        this.jwt = new JwtAccessTokenService(jwtProperties.keyId(), jwtProperties.publicKeys(),
-                jwtProperties.issuer(), jwtProperties.audience());
+        this.jwt = new JwtAccessTokenService(
+            jwtProperties.keyId(),
+            jwtProperties.publicKeys(),
+            jwtProperties.issuer(),
+            jwtProperties.audience()
+        );
         this.mapper = mapper;
         this.client = HttpClient.newBuilder().connectTimeout(properties.ownershipTimeout()).build();
         this.evidenceReads = evidenceReads;
@@ -44,8 +57,10 @@ public class HttpDashboardOwnership implements DashboardOwnership {
     public DashboardActor resolveReadOnly(String authorization) {
         UUID userId = authenticatedId(authorization);
         JsonNode identity = read(properties.identityBaseUrl(), "/auth/me", authorization, false);
-        if (!userId.toString().equals(identity.path("id").asText()) || !"ACTIVE".equals(identity.path("status").asText()))
-            throw new DashboardFailure("ACTOR_INACTIVE", "Active user is required");
+        if (
+            !userId.toString().equals(identity.path("id").asText()) ||
+            !"ACTIVE".equals(identity.path("status").asText())
+        ) throw new DashboardFailure("ACTOR_INACTIVE", "Active user is required");
         if (evidenceReads == null) throw unavailable();
         return evidenceReads.activeActor(authorization, userId);
     }
@@ -54,13 +69,22 @@ public class HttpDashboardOwnership implements DashboardOwnership {
     public DashboardActor resolve(String authorization) {
         UUID userId = authenticatedId(authorization);
         JsonNode identity = read(properties.identityBaseUrl(), "/auth/me", authorization, false);
-        if (!userId.toString().equals(identity.path("id").asText())
-                || !"ACTIVE".equals(identity.path("status").asText())) {
+        if (
+            !userId.toString().equals(identity.path("id").asText()) ||
+            !"ACTIVE".equals(identity.path("status").asText())
+        ) {
             throw new DashboardFailure("ACTOR_INACTIVE", "Active user is required");
         }
-        JsonNode account = read(properties.deviceBaseUrl(), "/accounts/current", authorization, false);
-        if (!userId.toString().equals(account.path("userId").asText())
-                || !"ACTIVE".equals(account.path("status").asText())) {
+        JsonNode account = read(
+            properties.deviceBaseUrl(),
+            "/accounts/current",
+            authorization,
+            false
+        );
+        if (
+            !userId.toString().equals(account.path("userId").asText()) ||
+            !"ACTIVE".equals(account.path("status").asText())
+        ) {
             throw new DashboardFailure("ACTOR_INACTIVE", "Active device account is required");
         }
         try {
@@ -98,10 +122,16 @@ public class HttpDashboardOwnership implements DashboardOwnership {
     }
 
     private JsonNode read(URI base, String path, String authorization, boolean resource) {
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(path)).timeout(properties.ownershipTimeout())
-                .header("Authorization", authorization).GET().build();
+        HttpRequest request = HttpRequest.newBuilder(base.resolve(path))
+            .timeout(properties.ownershipTimeout())
+            .header("Authorization", authorization)
+            .GET()
+            .build();
         try {
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(
+                request,
+                HttpResponse.BodyHandlers.ofString()
+            );
             if (response.statusCode() == 401) {
                 throw new DashboardFailure("UNAUTHENTICATED", "Authentication is required");
             }
@@ -128,6 +158,9 @@ public class HttpDashboardOwnership implements DashboardOwnership {
     }
 
     private DashboardFailure unavailable() {
-        return new DashboardFailure("OWNERSHIP_UNAVAILABLE", "Ownership service is unavailable; retry later");
+        return new DashboardFailure(
+            "OWNERSHIP_UNAVAILABLE",
+            "Ownership service is unavailable; retry later"
+        );
     }
 }

@@ -81,12 +81,19 @@ describe("ML alert incident UI workflows", () => {
     mockFetch((url) => {
       if (url.includes("notification-attempts")) {
         histories.push(url);
-        return failed ? new Response(JSON.stringify({ message: "History unavailable" }), { status: 503 }) : json([]);
+        return failed
+          ? new Response(JSON.stringify({ message: "History unavailable" }), { status: 503 })
+          : json([]);
       }
-      if (new URL(url, "http://localhost").pathname === "/alerts/page") return json(page([mlAlert]));
+      if (new URL(url, "http://localhost").pathname === "/alerts/page")
+        return json(page([mlAlert]));
       return defaultJson(url);
     });
-    render(<MemoryRouter initialEntries={["/alerts"]}><AlertsPage /></MemoryRouter>);
+    render(
+      <MemoryRouter initialEntries={["/alerts"]}>
+        <AlertsPage />
+      </MemoryRouter>,
+    );
     await screen.findAllByText("Power spike detected");
     await userEvent.click(screen.getByRole("button", { name: /Review delivery attempts/ }));
     await screen.findByRole("button", { name: "Retry delivery attempts" });
@@ -99,38 +106,53 @@ describe("ML alert incident UI workflows", () => {
   it("shows ML-created alert trace, notification attempts, and lifecycle actions in the alert inbox", async () => {
     const requests: Request[] = [];
     let currentAlert: Record<string, unknown> = { ...mlAlert };
-    vi.stubGlobal("prompt", vi.fn(() => "Resolved after inspection."));
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "Resolved after inspection."),
+    );
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
       if (url.includes("/alerts/alert-ml-1/notification-attempts")) {
-        return json([{
-          id: "attempt-1",
-          alertId: "alert-ml-1",
-          channelId: "channel-1",
-          accountId: "account-1",
-          channelType: "HTTP",
-          status: "PENDING",
-          retryCount: 0,
-          lastErrorCode: null,
-          providerResponseSummary: "queued",
-          createdAt: "2026-08-19T11:01:10Z",
-          sentAt: null,
-        }]);
+        return json([
+          {
+            id: "attempt-1",
+            alertId: "alert-ml-1",
+            channelId: "channel-1",
+            accountId: "account-1",
+            channelType: "HTTP",
+            status: "PENDING",
+            retryCount: 0,
+            lastErrorCode: null,
+            providerResponseSummary: "queued",
+            createdAt: "2026-08-19T11:01:10Z",
+            sentAt: null,
+          },
+        ]);
       }
       if (url.includes("/alerts/alert-ml-1/ack")) {
         currentAlert = { ...currentAlert, status: "ACKNOWLEDGED" };
         return json({ status: "ACKNOWLEDGED", alertId: "alert-ml-1" });
       }
       if (url.includes("/alerts/alert-ml-1/resolve")) {
-        currentAlert = { ...currentAlert, status: "RESOLVED", resolutionReason: "Resolved after inspection." };
+        currentAlert = {
+          ...currentAlert,
+          status: "RESOLVED",
+          resolutionReason: "Resolved after inspection.",
+        };
         return json({ status: "RESOLVED", alertId: "alert-ml-1" });
       }
-      if (new URL(url, "http://localhost").pathname.endsWith("/alerts/page")) return json(page([currentAlert]));
-      if (new URL(url, "http://localhost").pathname.endsWith("/alerts")) return json([currentAlert]);
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts/page"))
+        return json(page([currentAlert]));
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts"))
+        return json([currentAlert]);
       if (url.endsWith("/alerts/summary?limit=100")) {
         return json({
           total: 1,
-          byStatus: { OPEN: currentAlert.status === "OPEN" ? 1 : 0, ACKNOWLEDGED: currentAlert.status === "ACKNOWLEDGED" ? 1 : 0, RESOLVED: currentAlert.status === "RESOLVED" ? 1 : 0 },
+          byStatus: {
+            OPEN: currentAlert.status === "OPEN" ? 1 : 0,
+            ACKNOWLEDGED: currentAlert.status === "ACKNOWLEDGED" ? 1 : 0,
+            RESOLVED: currentAlert.status === "RESOLVED" ? 1 : 0,
+          },
           bySeverity: { INFO: 0, WARNING: 0, HIGH: 1, CRITICAL: 0 },
           byDevice: { "device-1": 1 },
           generatedAt: "2026-08-19T11:02:00Z",
@@ -139,7 +161,11 @@ describe("ML alert incident UI workflows", () => {
       return defaultJson(url);
     });
 
-    render(<MemoryRouter initialEntries={["/alerts"]}><AlertsPage /></MemoryRouter>);
+    render(
+      <MemoryRouter initialEntries={["/alerts"]}>
+        <AlertsPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findAllByText("Power spike detected")).not.toHaveLength(0);
     expect(screen.getAllByText("ML alert washer")).not.toHaveLength(0);
@@ -150,17 +176,26 @@ describe("ML alert incident UI workflows", () => {
     expect(screen.getByText("Pending")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /Acknowledge / }));
-    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true),
+    );
     await userEvent.click(await screen.findByRole("button", { name: /^Resolve(?! alert)/ }));
     await userEvent.type(await screen.findByLabelText(/Reason/), "Resolved after inspection.");
     await userEvent.click(screen.getByRole("button", { name: "Resolve alert" }));
-    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(
+        true,
+      ),
+    );
   });
 
   it("keeps ML-created alerts visible on the device alert tab and supports acknowledge and resolve", async () => {
     const requests: Request[] = [];
     let currentAlert: Record<string, unknown> = { ...mlAlert };
-    vi.stubGlobal("prompt", vi.fn(() => "Resolved from device tab."));
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "Resolved from device tab."),
+    );
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
       if (url.includes("/alerts/alert-ml-1/ack")) {
@@ -168,11 +203,17 @@ describe("ML alert incident UI workflows", () => {
         return json({ status: "ACKNOWLEDGED", alertId: "alert-ml-1" });
       }
       if (url.includes("/alerts/alert-ml-1/resolve")) {
-        currentAlert = { ...currentAlert, status: "RESOLVED", resolutionReason: "Resolved from device tab." };
+        currentAlert = {
+          ...currentAlert,
+          status: "RESOLVED",
+          resolutionReason: "Resolved from device tab.",
+        };
         return json({ status: "RESOLVED", alertId: "alert-ml-1" });
       }
-      if (new URL(url, "http://localhost").pathname.endsWith("/alerts/page")) return json(page([currentAlert]));
-      if (new URL(url, "http://localhost").pathname.endsWith("/alerts")) return json([currentAlert]);
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts/page"))
+        return json(page([currentAlert]));
+      if (new URL(url, "http://localhost").pathname.endsWith("/alerts"))
+        return json([currentAlert]);
       return defaultJson(url);
     });
 
@@ -186,16 +227,24 @@ describe("ML alert incident UI workflows", () => {
 
     expect(await screen.findByText("Device alerts")).toBeInTheDocument();
     expect(screen.getByText("Power spike detected")).toBeInTheDocument();
-    expect(screen.getByText("A configured power spike rule matched recent telemetry.")).toBeInTheDocument();
+    expect(
+      screen.getByText("A configured power spike rule matched recent telemetry."),
+    ).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getAllByText("Open")).not.toHaveLength(0);
 
     await userEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
-    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/ack"))).toBe(true),
+    );
     await userEvent.click(await screen.findByRole("button", { name: /^Resolve(?! alert)/ }));
     await userEvent.type(await screen.findByLabelText(/Reason/), "Resolved from device tab.");
     await userEvent.click(screen.getByRole("button", { name: "Resolve alert" }));
-    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((request) => request.url.endsWith("/alerts/alert-ml-1/resolve"))).toBe(
+        true,
+      ),
+    );
   });
 
   it("renders operator-readable errors for alert backend failures", async () => {
@@ -209,7 +258,11 @@ describe("ML alert incident UI workflows", () => {
       return defaultJson(url);
     });
 
-    render(<MemoryRouter initialEntries={["/alerts"]}><AlertsPage /></MemoryRouter>);
+    render(
+      <MemoryRouter initialEntries={["/alerts"]}>
+        <AlertsPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findByText("Alert service temporarily unavailable")).toBeInTheDocument();
   });
@@ -223,19 +276,57 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response | Prom
 }
 
 function defaultJson(url: string) {
-  if (new URL(url).pathname === "/telemetry/devices/device-1/metrics") return json([{ name: "activePowerW", unit: "W", type: "number", displayName: "Active power", min: -100000, max: 100000 }]);
+  if (new URL(url).pathname === "/telemetry/devices/device-1/metrics")
+    return json([
+      {
+        name: "activePowerW",
+        unit: "W",
+        type: "number",
+        displayName: "Active power",
+        min: -100000,
+        max: 100000,
+      },
+    ]);
   if (url.endsWith("/devices/device-1")) return json(device);
   if (new URL(url).pathname === "/devices") return json([device]);
-  if (new URL(url).pathname === "/locations") return json([{ id: "location-1", name: "Line 1", description: null }]);
+  if (new URL(url).pathname === "/locations")
+    return json([{ id: "location-1", name: "Line 1", description: null }]);
   if (url.endsWith("/devices/device-1/maintenance-windows")) return json([]);
   if (url.includes("/telemetry/devices/device-1/latest")) {
-    return json({ deviceId: "device-1", timestamp: "2026-08-19T11:00:00Z", readings: { activePowerW: 1800, voltageV: 230 } });
+    return json({
+      deviceId: "device-1",
+      timestamp: "2026-08-19T11:00:00Z",
+      readings: { activePowerW: 1800, voltageV: 230 },
+    });
   }
   if (url.includes("/telemetry/devices/device-1/readings")) {
-    return json({ deviceId: "device-1", metric: "activePowerW", points: [{ timestamp: "2026-08-19T11:00:00Z", value: 1800 }] });
+    return json({
+      deviceId: "device-1",
+      metric: "activePowerW",
+      points: [{ timestamp: "2026-08-19T11:00:00Z", value: 1800 }],
+    });
   }
-  if (url.includes("/analytics/devices/device-1/baseline")) return json({ deviceId: "device-1", metric: "activePowerW", period: "24h", mean: 800, median: 790, p90: 900, min: 760, max: 1800, sampleCount: 24, calculatedAt: "2026-08-19T11:00:00Z" });
-  if (url.includes("/analytics/devices/device-1/risk")) return json({ deviceId: "device-1", score: 70, level: "HIGH", explanations: ["Power spike"], calculatedAt: "2026-08-19T11:00:00Z" });
+  if (url.includes("/analytics/devices/device-1/baseline"))
+    return json({
+      deviceId: "device-1",
+      metric: "activePowerW",
+      period: "24h",
+      mean: 800,
+      median: 790,
+      p90: 900,
+      min: 760,
+      max: 1800,
+      sampleCount: 24,
+      calculatedAt: "2026-08-19T11:00:00Z",
+    });
+  if (url.includes("/analytics/devices/device-1/risk"))
+    return json({
+      deviceId: "device-1",
+      score: 70,
+      level: "HIGH",
+      explanations: ["Power spike"],
+      calculatedAt: "2026-08-19T11:00:00Z",
+    });
   if (url.includes("/analytics/devices/device-1/anomalies")) return json([]);
   if (url.includes("/analytics/devices/device-1/recommendations")) return json([]);
   if (url.includes("/analytics/devices/device-1/predictions/latest")) {
@@ -264,14 +355,29 @@ function defaultJson(url: string) {
   }
   if (url.endsWith("/devices/device-1/data-sources")) return json([]);
   if (url.endsWith("/devices/device-1/sensors")) return json([]);
-  if (url.endsWith("/devices/device-1/analytics-config")) return json({ enabled: true, config: {} });
-  if (url.includes("/simulation/devices/device-1/config")) return json({ deviceId: "device-1", profile: "FRIDGE", protocol: "HTTP", sourceId: "source-1", dataSourceId: null, yamlConfig: "" });
+  if (url.endsWith("/devices/device-1/analytics-config"))
+    return json({ enabled: true, config: {} });
+  if (url.includes("/simulation/devices/device-1/config"))
+    return json({
+      deviceId: "device-1",
+      profile: "FRIDGE",
+      protocol: "HTTP",
+      sourceId: "source-1",
+      dataSourceId: null,
+      yamlConfig: "",
+    });
   if (url.includes("/simulation/devices/device-1/status")) return json(null);
   if (url.includes("/simulation/devices/device-1/runs")) return json([]);
   if (url.endsWith("/alerts/notification-channels")) return json([]);
   if (url.endsWith("/alert-rules")) return json([rule]);
   if (url.endsWith("/alerts/summary?limit=100")) {
-    return json({ total: 1, byStatus: { OPEN: 1, ACKNOWLEDGED: 0, RESOLVED: 0 }, bySeverity: { INFO: 0, WARNING: 0, HIGH: 1, CRITICAL: 0 }, byDevice: { "device-1": 1 }, generatedAt: "2026-08-19T11:02:00Z" });
+    return json({
+      total: 1,
+      byStatus: { OPEN: 1, ACKNOWLEDGED: 0, RESOLVED: 0 },
+      bySeverity: { INFO: 0, WARNING: 0, HIGH: 1, CRITICAL: 0 },
+      byDevice: { "device-1": 1 },
+      generatedAt: "2026-08-19T11:02:00Z",
+    });
   }
   return json({});
 }
@@ -283,4 +389,13 @@ function json(value: unknown) {
   });
 }
 
-function page(content: unknown[]) { return { content, page: 0, size: 100, totalElements: content.length, totalPages: content.length ? 1 : 0, hasNext: false }; }
+function page(content: unknown[]) {
+  return {
+    content,
+    page: 0,
+    size: 100,
+    totalElements: content.length,
+    totalPages: content.length ? 1 : 0,
+    hasNext: false,
+  };
+}

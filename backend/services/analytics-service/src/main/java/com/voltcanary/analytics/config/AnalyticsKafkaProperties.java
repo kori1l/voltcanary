@@ -12,5 +12,4 @@ import org.springframework.stereotype.Component;
 public class AnalyticsKafkaProperties {
 
     private boolean publishEnabled = true;
-
 }

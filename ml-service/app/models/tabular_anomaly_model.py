@@ -37,17 +37,28 @@ class TabularAnomalyModel:
             for metric, values in sorted(values_by_metric.items())
         }
         # Coverage describes whether labels exist, not how many observations are anomalous.
-        anomaly_labels = {"ANOMALY", "FAILURE", "DEGRADATION", "CONFIRMED_FAILURE", "CORRECTIVE_MAINTENANCE"}
+        anomaly_labels = {
+            "ANOMALY",
+            "FAILURE",
+            "DEGRADATION",
+            "CONFIRMED_FAILURE",
+            "CORRECTIVE_MAINTENANCE",
+        }
         positives = sum(1 for row in rows if row.label and row.label.upper() in anomaly_labels)
         contamination = min(0.25, max(0.01, positives / labels)) if positives and labels else "auto"
         self.pipeline = Pipeline(
             [
                 ("vectorizer", DictVectorizer(sparse=False)),
-                ("model", IsolationForest(contamination=contamination, random_state=42, n_estimators=100)),
+                (
+                    "model",
+                    IsolationForest(contamination=contamination, random_state=42, n_estimators=100),
+                ),
             ]
         )
         # Keep every observation. Collapsing to a metric dictionary discards history.
-        self.pipeline.fit([{"metric=" + row.metric: 1.0, "value": float(row.value)} for row in rows])
+        self.pipeline.fit(
+            [{"metric=" + row.metric: 1.0, "value": float(row.value)} for row in rows]
+        )
 
     def score(self, metrics: dict[str, float]) -> dict[str, Any]:
         if self.pipeline is not None:
@@ -92,7 +103,9 @@ class TabularAnomalyModel:
             "metricScores": metric_scores,
         }
 
-    def preprocessor_payload(self, dataset_version_id: str, feature_artifact: dict[str, Any]) -> dict[str, Any]:
+    def preprocessor_payload(
+        self, dataset_version_id: str, feature_artifact: dict[str, Any]
+    ) -> dict[str, Any]:
         return {
             "preprocessorType": "tabular-metric-robust-scaler",
             "datasetVersionId": dataset_version_id,

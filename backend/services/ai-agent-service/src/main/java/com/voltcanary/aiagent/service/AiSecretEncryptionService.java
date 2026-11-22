@@ -12,9 +12,9 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Service;
 
-
 @Service
 public class AiSecretEncryptionService {
+
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
 
@@ -29,7 +29,9 @@ public class AiSecretEncryptionService {
         this.encryptionKey = encryptionKey == null ? "" : encryptionKey;
         this.keyVersion = keyVersion == null || keyVersion.isBlank() ? "v1" : keyVersion;
         this.previousKeys = java.util.Map.copyOf(properties.getSecrets().getPreviousKeys());
-        if (previousKeys.containsKey(this.keyVersion)) throw new IllegalArgumentException("Current encryption key version cannot be a previous key");
+        if (previousKeys.containsKey(this.keyVersion)) throw new IllegalArgumentException(
+            "Current encryption key version cannot be a previous key"
+        );
     }
 
     public EncryptedSecret encrypt(String plainText) {
@@ -38,21 +40,34 @@ public class AiSecretEncryptionService {
             byte[] iv = new byte[IV_BYTES];
             secureRandom.nextBytes(iv);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec(encryptionKey), new GCMParameterSpec(TAG_BITS, iv));
+            cipher.init(
+                Cipher.ENCRYPT_MODE,
+                keySpec(encryptionKey),
+                new GCMParameterSpec(TAG_BITS, iv)
+            );
             byte[] cipherText = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
             ByteBuffer buffer = ByteBuffer.allocate(iv.length + cipherText.length);
             buffer.put(iv).put(cipherText);
-            return new EncryptedSecret(Base64.getEncoder().encodeToString(buffer.array()), keyVersion);
+            return new EncryptedSecret(
+                Base64.getEncoder().encodeToString(buffer.array()),
+                keyVersion
+            );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to encrypt AI provider secret", exception);
         }
     }
 
-    public String decrypt(String encryptedValue) { return decrypt(encryptedValue, keyVersion); }
+    public String decrypt(String encryptedValue) {
+        return decrypt(encryptedValue, keyVersion);
+    }
 
     public String decrypt(String encryptedValue, String storedKeyVersion) {
-        String selected = keyVersion.equals(storedKeyVersion) ? encryptionKey : previousKeys.get(storedKeyVersion);
-        if (selected == null || selected.isBlank()) throw new IllegalStateException("Encryption key version is not configured");
+        String selected = keyVersion.equals(storedKeyVersion)
+            ? encryptionKey
+            : previousKeys.get(storedKeyVersion);
+        if (selected == null || selected.isBlank()) throw new IllegalStateException(
+            "Encryption key version is not configured"
+        );
         try {
             byte[] payload = Base64.getDecoder().decode(encryptedValue);
             ByteBuffer buffer = ByteBuffer.wrap(payload);
@@ -86,13 +101,17 @@ public class AiSecretEncryptionService {
     }
 
     private SecretKeySpec keySpec(String material) throws Exception {
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(
+            material.getBytes(StandardCharsets.UTF_8)
+        );
         return new SecretKeySpec(digest, "AES");
     }
 
     private void requireKey() {
         if (encryptionKey.isBlank()) {
-            throw new IllegalStateException("AI_AGENT_SECRET_ENCRYPTION_KEY is required to store model provider secrets");
+            throw new IllegalStateException(
+                "AI_AGENT_SECRET_ENCRYPTION_KEY is required to store model provider secrets"
+            );
         }
     }
 }

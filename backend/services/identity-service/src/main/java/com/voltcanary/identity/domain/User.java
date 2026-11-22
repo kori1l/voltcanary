@@ -17,6 +17,10 @@ import lombok.Setter;
 @Setter
 public class User {
 
+    @jakarta.persistence.Version
+    @Column(name = "row_revision", nullable = false)
+    private Long rowRevision;
+
     @Id
     private UUID id;
 
@@ -42,5 +46,4 @@ public class User {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
 }

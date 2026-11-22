@@ -23,29 +23,44 @@ public class MaintenanceWindowChangedConsumer {
     private final MaintenanceWindowProjectionService projectionService;
     private final AnalyticsDeadLetterPublisher deadLetterPublisher;
 
-    @KafkaListener(topics = "maintenance-window.changed.v1", groupId = "${spring.kafka.consumer.group-id}-maintenance")
+    @KafkaListener(
+        topics = "maintenance-window.changed.v1",
+        groupId = "${spring.kafka.consumer.group-id}-maintenance"
+    )
     public void consume(String eventPayload) {
         MaintenanceWindowChangedEvent event = readEvent(eventPayload);
         if (event.deviceId() == null || event.maintenanceWindowId() == null) {
-            deadLetterPublisher.publish(SOURCE_TOPIC, eventPayload, "MaintenanceWindowChangedEvent ids are required");
+            deadLetterPublisher.publish(
+                SOURCE_TOPIC,
+                eventPayload,
+                "MaintenanceWindowChangedEvent ids are required"
+            );
             throw new IllegalArgumentException("MaintenanceWindowChangedEvent ids are required");
         }
         boolean processed = projectionService.project(event);
         log.info(
-                "analyticsMaintenanceWindowChangedReceived eventId={} maintenanceWindowId={} deviceId={} version={} processed={}",
-                event.eventId(),
-                event.maintenanceWindowId(),
-                event.deviceId(),
-                event.version(),
-                processed);
+            "analyticsMaintenanceWindowChangedReceived eventId={} maintenanceWindowId={} deviceId={} version={} processed={}",
+            event.eventId(),
+            event.maintenanceWindowId(),
+            event.deviceId(),
+            event.version(),
+            processed
+        );
     }
 
     private MaintenanceWindowChangedEvent readEvent(String eventPayload) {
         try {
             return objectMapper.readValue(eventPayload, MaintenanceWindowChangedEvent.class);
         } catch (JsonProcessingException exception) {
-            deadLetterPublisher.publish(SOURCE_TOPIC, eventPayload, "Invalid MaintenanceWindowChangedEvent payload");
-            throw new IllegalArgumentException("Invalid MaintenanceWindowChangedEvent payload", exception);
+            deadLetterPublisher.publish(
+                SOURCE_TOPIC,
+                eventPayload,
+                "Invalid MaintenanceWindowChangedEvent payload"
+            );
+            throw new IllegalArgumentException(
+                "Invalid MaintenanceWindowChangedEvent payload",
+                exception
+            );
         }
     }
 }

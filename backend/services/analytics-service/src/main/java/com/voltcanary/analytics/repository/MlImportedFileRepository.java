@@ -6,6 +6,10 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MlImportedFileRepository extends JpaRepository<MlImportedFile, UUID> {
+    List<MlImportedFile> findByDatasetIdOrderByImportedAtDesc(
+        UUID datasetId,
+        org.springframework.data.domain.Pageable page
+    );
     List<MlImportedFile> findByAccountIdOrderByImportedAtDesc(UUID accountId);
     List<MlImportedFile> findByDatasetIdOrderByImportedAtDesc(UUID datasetId);
 }

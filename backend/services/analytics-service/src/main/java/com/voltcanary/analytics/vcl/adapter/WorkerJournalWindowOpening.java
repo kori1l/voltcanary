@@ -13,10 +13,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 /** Opens windows from a bounded journal page per active reviewed epoch. */
 @Slf4j
 final class WorkerJournalWindowOpening {
+
     private static final int PAGE_SIZE = 8;
     private final JdbcKeyedStateStore store;
     private final WorkerRuleCompilationSnapshots snapshots;
-    private final VclCompiler compiler = new VclCompiler(new VclRegistry(new VclParser()), VclUnits.standard());
+    private final VclCompiler compiler = new VclCompiler(
+        new VclRegistry(new VclParser()),
+        VclUnits.standard()
+    );
     private final UUID holder = UUID.randomUUID();
     private int offset;
 
@@ -33,8 +37,13 @@ final class WorkerJournalWindowOpening {
             try {
                 snapshots.openPage(candidate, store, compiler, holder);
             } catch (RuntimeException pending) {
-                log.warn("VCL journal opening remains pending for epoch {}: {}", candidate.epoch(),
-                        pending instanceof VclException vcl ? vcl.code() : pending.getClass().getSimpleName());
+                log.warn(
+                    "VCL journal opening remains pending for epoch {}: {}",
+                    candidate.epoch(),
+                    pending instanceof VclException vcl
+                        ? vcl.code()
+                        : pending.getClass().getSimpleName()
+                );
             }
         }
     }

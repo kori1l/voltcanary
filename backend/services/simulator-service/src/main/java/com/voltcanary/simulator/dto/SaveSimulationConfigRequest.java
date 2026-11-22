@@ -7,10 +7,10 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record SaveSimulationConfigRequest(
-        @NotNull UUID dataSourceId,
-        @NotBlank String name,
-        @NotNull SimulationProfile profile,
-        @NotNull SimulationProtocol protocol,
-        @NotBlank String yamlConfig,
-        String sourceToken) {
-}
+    @NotNull UUID dataSourceId,
+    @NotBlank String name,
+    @NotNull SimulationProfile profile,
+    @NotNull SimulationProtocol protocol,
+    @NotBlank String yamlConfig,
+    String sourceToken
+) {}

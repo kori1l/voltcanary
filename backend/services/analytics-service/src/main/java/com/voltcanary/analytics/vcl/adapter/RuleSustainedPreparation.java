@@ -15,7 +15,6 @@ import com.voltcanary.vcl.VclCompilation;
 import com.voltcanary.vcl.VclCompiler;
 import com.voltcanary.vcl.VclException;
 import com.voltcanary.vcl.VclObservationPage;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 final class RuleSustainedPreparation {
+
     private final RuleCompilationSnapshot snapshot;
 
     RuleSustainedPreparation(RuleCompilationSnapshot snapshot) {
@@ -31,54 +31,65 @@ final class RuleSustainedPreparation {
 
     VclSustainedPlan prepareSustained(VclCompiler compiler, String nodeId) {
         return VclSustainedPlan.compile(
-                snapshot.compile(compiler), nodeId, snapshot.new Metadata());
+            snapshot.compile(compiler),
+            nodeId,
+            snapshot.new Metadata()
+        );
     }
 
     String sustainedEvaluatorPlanDigest(VclCompiler compiler, String nodeId, String bundleDigest) {
         var compilation = snapshot.compile(compiler);
-        var methods =
-                compilation.graph().stream()
-                        .map(VclCompilation.Node::method)
-                        .filter(method -> !"filter".equals(method))
-                        .toList();
-        if (methods.size() != 3
-                || !java.util.Set.copyOf(methods)
-                        .equals(java.util.Set.of("read_stream", "sustained", "emit_alert"))) {
+        var methods = compilation
+            .graph()
+            .stream()
+            .map(VclCompilation.Node::method)
+            .filter(method -> !"filter".equals(method))
+            .toList();
+        if (
+            methods.size() != 3 ||
+            !java.util.Set.copyOf(methods).equals(
+                java.util.Set.of("read_stream", "sustained", "emit_alert")
+            )
+        ) {
             throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
         }
-        snapshot.sessionAlertIntent(nodeId, bundleDigest)
-                .orElseThrow(() -> new VclException("EVALUATOR_PROFILE_UNAVAILABLE", ""));
+        snapshot
+            .sessionAlertIntent(nodeId, bundleDigest)
+            .orElseThrow(() -> new VclException("EVALUATOR_PROFILE_UNAVAILABLE", ""));
         var plan = VclSustainedPlan.compile(compilation, nodeId, snapshot.new Metadata());
-        var journal =
-                snapshot.journals.get(
-                        new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
+        var journal = snapshot.journals.get(
+            new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision())
+        );
         if (journal == null || plan.timing().requiredInputs().size() != 1) {
             throw new VclException("EVALUATOR_PROFILE_UNAVAILABLE", "");
         }
         snapshot.reauthorize();
         return VclCanonical.sha256(
-                String.join(
-                        "\n",
-                        "DIRECT_JOURNAL_SUSTAINED_EVALUATOR/1",
-                        DurableSustained.PROFILE,
-                        compilation.semanticDigest(),
-                        compilation.accessScopeDigest(),
-                        plan.digest(),
-                        plan.timing().digest(),
-                        journal.cutDigest()));
+            String.join(
+                "\n",
+                "DIRECT_JOURNAL_SUSTAINED_EVALUATOR/1",
+                DurableSustained.PROFILE,
+                compilation.semanticDigest(),
+                compilation.accessScopeDigest(),
+                plan.digest(),
+                plan.timing().digest(),
+                journal.cutDigest()
+            )
+        );
     }
 
     void observeSustained(
-            VclSustainedPlan plan,
-            String nodeId,
-            JdbcRuleDeployments.Deployment deployment,
-            JdbcKeyedStateStore store,
-            JsonNode event,
-            UUID holder,
-            Runnable deploymentCheck) {
-        var start =
-                snapshot.journals.get(
-                        new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
+        VclSustainedPlan plan,
+        String nodeId,
+        JdbcRuleDeployments.Deployment deployment,
+        JdbcKeyedStateStore store,
+        JsonNode event,
+        UUID holder,
+        Runnable deploymentCheck
+    ) {
+        var start = snapshot.journals.get(
+            new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision())
+        );
         if (start == null || !start.accountId().equals(deployment.account())) {
             throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
         }
@@ -91,35 +102,38 @@ final class RuleSustainedPreparation {
         if (plan.excludes(sample)) return;
         var journal = start.atCheckpoint(event.path("checkpoint").textValue());
         var key = sustainedKey(journal, deployment.epoch(), nodeId, subject);
-        var durable =
-                new DurableSustained(
-                        store,
-                        plan,
-                        key,
-                        deployment.bundleDigest(),
-                        () -> {
-                            snapshot.reauthorize();
-                            deploymentCheck.run();
-                        },
-                        (target, lease, transition, openedAt) ->
-                                store.commitReviewedInput(
-                                        target, lease, transition, openedAt, deployment));
+        var durable = new DurableSustained(
+            store,
+            plan,
+            key,
+            deployment.bundleDigest(),
+            () -> {
+                snapshot.reauthorize();
+                deploymentCheck.run();
+            },
+            (target, lease, transition, openedAt) ->
+                store.commitReviewedInput(target, lease, transition, openedAt, deployment)
+        );
         durable.observe(
-                sample,
-                VclCanonical.sha256(VclCanonical.encode(event)),
-                snapshot.scope,
-                holder,
-                new DurableSustained.JournalPin(
-                        journal.inputGeneration(), journal.capturedHeadCheckpoint()),
-                (from, through) -> sustainedHistory(journal, plan, key, from, through));
+            sample,
+            VclCanonical.sha256(VclCanonical.encode(event)),
+            snapshot.scope,
+            holder,
+            new DurableSustained.JournalPin(
+                journal.inputGeneration(),
+                journal.capturedHeadCheckpoint()
+            ),
+            (from, through) -> sustainedHistory(journal, plan, key, from, through)
+        );
     }
 
     List<VclSustainedPlan.Sample> sustainedHistory(
-            SourceCaptureSnapshot journal,
-            VclSustainedPlan plan,
-            KeyedStateStore.Key key,
-            Instant from,
-            Instant through) {
+        SourceCaptureSnapshot journal,
+        VclSustainedPlan plan,
+        KeyedStateStore.Key key,
+        Instant from,
+        Instant through
+    ) {
         var rows = new ArrayList<VclSustainedPlan.Sample>();
         var until = through.plus(1, java.time.temporal.ChronoUnit.MICROS);
         long remaining = RuleCompilationSnapshot.MAX_RETAINED_WINDOW_BYTES;
@@ -136,9 +150,11 @@ final class RuleSustainedPreparation {
                     UUID id = UUID.fromString(event.path("inputEventId").textValue());
                     var subject = RuleCompilationSnapshot.identity(event, plan.subjectField(), id);
                     if (subject != null && !key.subjectDigest().equals(subject)) continue;
-                    var sample =
-                            sustainedSample(
-                                    event, id, Instant.parse(event.path("eventTime").textValue()));
+                    var sample = sustainedSample(
+                        event,
+                        id,
+                        Instant.parse(event.path("eventTime").textValue())
+                    );
                     if (plan.excludes(sample)) continue;
                     if (subject == null) throw new VclException("WITNESS_SUBJECT_UNKNOWN", "");
                     if (rows.size() >= VclDurationWitnessKernel.MAX_INPUTS) {
@@ -155,47 +171,59 @@ final class RuleSustainedPreparation {
 
     static VclSustainedPlan.Sample sustainedSample(JsonNode event, UUID id, Instant at) {
         return new VclSustainedPlan.Sample(
-                id,
-                at,
-                Instant.parse(event.path("recordedAt").textValue()),
-                RuleCompilationSnapshot.observationFields(event, id));
+            id,
+            at,
+            Instant.parse(event.path("recordedAt").textValue()),
+            RuleCompilationSnapshot.observationFields(event, id)
+        );
     }
 
     SustainedPreview previewDirectSustained(
-            VclCompiler compiler,
-            String nodeId,
-            UUID previewEpoch,
-            ScalarValue subject,
-            VclWindowPlan.Window window,
-            long byteBudget) {
+        VclCompiler compiler,
+        String nodeId,
+        UUID previewEpoch,
+        ScalarValue subject,
+        VclWindowPlan.Window window,
+        long byteBudget
+    ) {
         var plan = prepareSustained(compiler, nodeId);
-        var journal =
-                snapshot.journals.get(
-                        new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision()));
+        var journal = snapshot.journals.get(
+            new SourceBindingSnapshots.Target(plan.binding(), plan.schemaRevision())
+        );
         if (journal == null) throw new VclException("SOURCE_CAPTURE_UNAVAILABLE", "");
-        var key =
-                sustainedKey(
-                        journal, previewEpoch, nodeId, VclWindowSessionKernel.identity(subject));
+        var key = sustainedKey(
+            journal,
+            previewEpoch,
+            nodeId,
+            VclWindowSessionKernel.identity(subject)
+        );
         return previewSustained(plan, journal, key, window, byteBudget);
     }
 
     KeyedStateStore.Key sustainedKey(
-            SourceCaptureSnapshot journal, UUID epoch, String nodeId, String subject) {
+        SourceCaptureSnapshot journal,
+        UUID epoch,
+        String nodeId,
+        String subject
+    ) {
         return new KeyedStateStore.Key(
-                journal.accountId(),
-                UUID.fromString(snapshot.document.spec().path("ruleId").textValue()),
-                epoch,
-                subject,
-                VclCanonical.sha256(
-                        "VCL_SUSTAINED_CURSOR/1\n" + nodeId + "\n" + journal.inputGeneration()));
+            journal.accountId(),
+            UUID.fromString(snapshot.document.spec().path("ruleId").textValue()),
+            epoch,
+            subject,
+            VclCanonical.sha256(
+                "VCL_SUSTAINED_CURSOR/1\n" + nodeId + "\n" + journal.inputGeneration()
+            )
+        );
     }
 
     SustainedPreview previewSustained(
-            VclSustainedPlan plan,
-            SourceCaptureSnapshot journal,
-            KeyedStateStore.Key key,
-            VclWindowPlan.Window window,
-            long byteBudget) {
+        VclSustainedPlan plan,
+        SourceCaptureSnapshot journal,
+        KeyedStateStore.Key key,
+        VclWindowPlan.Window window,
+        long byteBudget
+    ) {
         if (byteBudget <= 0 || byteBudget > RuleCompilationSnapshot.MAX_RETAINED_WINDOW_BYTES) {
             throw new VclException("WINDOW_INPUT_BYTE_BUDGET_INVALID", "");
         }
@@ -206,16 +234,17 @@ final class RuleSustainedPreparation {
         var rows = new ArrayList<VclSustainedPlan.Sample>();
         var ids = new HashSet<UUID>();
         String cut = journal.cutDigest();
-        var fingerprints =
-                new StringBuilder(
-                        String.join(
-                                "\n",
-                                "RULE_SUSTAINED_JOURNAL/1",
-                                cut,
-                                plan.digest(),
-                                key.digest(),
-                                window.startInclusive().toString(),
-                                window.endExclusive().toString()));
+        var fingerprints = new StringBuilder(
+            String.join(
+                "\n",
+                "RULE_SUSTAINED_JOURNAL/1",
+                cut,
+                plan.digest(),
+                key.digest(),
+                window.startInclusive().toString(),
+                window.endExclusive().toString()
+            )
+        );
         UUID unresolved = null;
         for (var from = window.startInclusive(); from.isBefore(until); ) {
             var chunkEnd = from.plus(com.voltcanary.vcl.VclCoverageSearch.MAX_INTERVAL);
@@ -231,19 +260,23 @@ final class RuleSustainedPreparation {
                     if (!ids.add(id)) throw new VclException("WINDOW_INPUT_EVENT_DUPLICATE", "");
                     var subject = RuleCompilationSnapshot.identity(event, plan.subjectField(), id);
                     if (subject != null && !key.subjectDigest().equals(subject)) continue;
-                    var sample =
-                            sustainedSample(
-                                    event, id, Instant.parse(event.path("eventTime").textValue()));
+                    var sample = sustainedSample(
+                        event,
+                        id,
+                        Instant.parse(event.path("eventTime").textValue())
+                    );
                     if (plan.excludes(sample)) continue;
                     fingerprints
-                            .append('\n')
-                            .append(VclCanonical.sha256(VclCanonical.encode(event)));
+                        .append('\n')
+                        .append(VclCanonical.sha256(VclCanonical.encode(event)));
                     if (subject == null) {
                         if (unresolved == null) unresolved = id;
                         continue;
                     }
-                    if (rows.size() >= VclDurationWitnessKernel.MAX_INPUTS)
-                        throw new VclException("WITNESS_INPUT_LIMIT", "");
+                    if (rows.size() >= VclDurationWitnessKernel.MAX_INPUTS) throw new VclException(
+                        "WITNESS_INPUT_LIMIT",
+                        ""
+                    );
                     rows.add(sample);
                 }
                 after = page.nextCheckpoint();
@@ -253,21 +286,23 @@ final class RuleSustainedPreparation {
         var evaluation = plan.episodes(key, window, rows, snapshot.scope);
         if (unresolved != null && !evaluation.result().value().isFailure()) {
             var evidence = List.of(unresolved);
-            evaluation =
-                    new VclDurationWitnessKernel.Episodes(
-                            new VclDurationWitnessKernel.Result(
-                                    ScalarValue.unknown("WITNESS_SUBJECT_UNKNOWN", evidence),
-                                    0,
-                                    null,
-                                    null,
-                                    evidence),
-                            List.of());
+            evaluation = new VclDurationWitnessKernel.Episodes(
+                new VclDurationWitnessKernel.Result(
+                    ScalarValue.unknown("WITNESS_SUBJECT_UNKNOWN", evidence),
+                    0,
+                    null,
+                    null,
+                    evidence
+                ),
+                List.of()
+            );
         }
         snapshot.reauthorize();
         return new SustainedPreview(
-                cut,
-                VclCanonical.sha256(fingerprints.toString()),
-                evaluation.result(),
-                evaluation.occurrences());
+            cut,
+            VclCanonical.sha256(fingerprints.toString()),
+            evaluation.result(),
+            evaluation.occurrences()
+        );
     }
 }

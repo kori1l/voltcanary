@@ -16,16 +16,35 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class PrimaryAssistantControlController {
+
     private final PrimaryAssistant primary;
     private final JwtIdentityService identity;
 
     @GetMapping("/ai-agent/orchestrations/runtime")
     public Map<String, Object> mode(@RequestHeader("Authorization") String authorization) {
         primary.session(identity.parseBearerToken(authorization), authorization);
-        return Map.of("generation", primary.enabled() ? "assistant-v2" : "disabled", "engine", "spring-ai-2", "hiddenFallback", false, "routing", "PINNED", "qualified", false);
+        return Map.of(
+            "generation",
+            primary.enabled() ? "assistant-v2" : "disabled",
+            "engine",
+            "spring-ai-2",
+            "hiddenFallback",
+            false,
+            "routing",
+            "PINNED",
+            "qualified",
+            false
+        );
     }
+
     @PostMapping("/ai-agent/orchestrations/{id}/control")
-    public Object control(@RequestHeader("Authorization") String authorization, @PathVariable("id") UUID id, @RequestBody AssistantProtocol.ControlRequest request) {
-        return primary.control(identity.parseBearerToken(authorization), id, request, authorization).wire();
+    public Object control(
+        @RequestHeader("Authorization") String authorization,
+        @PathVariable("id") UUID id,
+        @RequestBody AssistantProtocol.ControlRequest request
+    ) {
+        return primary
+            .control(identity.parseBearerToken(authorization), id, request, authorization)
+            .wire();
     }
 }

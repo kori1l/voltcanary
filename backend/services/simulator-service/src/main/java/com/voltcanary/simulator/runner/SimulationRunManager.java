@@ -5,11 +5,11 @@ import com.voltcanary.simulator.domain.SimulationConfigStatus;
 import com.voltcanary.simulator.domain.SimulationRun;
 import com.voltcanary.simulator.domain.SimulationRunEvent;
 import com.voltcanary.simulator.domain.SimulationRunStatus;
-import com.voltcanary.simulator.dto.SimulationRunResponse;
 import com.voltcanary.simulator.dto.SimulationRunDetailResponse;
 import com.voltcanary.simulator.dto.SimulationRunEventResponse;
-import com.voltcanary.simulator.generator.SimulationGeneratorSelection;
+import com.voltcanary.simulator.dto.SimulationRunResponse;
 import com.voltcanary.simulator.generator.SimulationContext;
+import com.voltcanary.simulator.generator.SimulationGeneratorSelection;
 import com.voltcanary.simulator.repository.SimulationConfigRepository;
 import com.voltcanary.simulator.repository.SimulationRunEventRepository;
 import com.voltcanary.simulator.repository.SimulationRunRepository;
@@ -17,13 +17,13 @@ import com.voltcanary.simulator.sender.TelemetrySenderRegistry;
 import com.voltcanary.simulator.yaml.SimulationConfigModel;
 import com.voltcanary.simulator.yaml.SimulationYamlParser;
 import com.voltcanary.simulator.yaml.SimulationYamlValidator;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SimulationRunManager {
+
     private final com.voltcanary.simulator.service.DeviceHistoryDeletion deletions;
     private final org.springframework.transaction.support.TransactionTemplate tickTransactions;
 
@@ -56,17 +57,23 @@ public class SimulationRunManager {
     private final com.voltcanary.simulator.service.VehicleSimulationTarget target;
 
     public SimulationRunManager(
-            SimulationConfigRepository configRepository,
-            SimulationRunRepository runRepository,
-            SimulationRunEventRepository eventRepository,
-            SimulationYamlParser parser,
-            SimulationYamlValidator validator,
-            SimulationGeneratorSelection generator,
-            TelemetrySenderRegistry senderRegistry,
-            RunningSimulationRegistry registry,
-            SimulationRunner simulationRunner,
-            MeterRegistry meterRegistry, com.voltcanary.simulator.service.VehicleSimulationTarget target, com.voltcanary.simulator.service.DeviceHistoryDeletion deletions, org.springframework.transaction.PlatformTransactionManager transactions) {
-        this.tickTransactions = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        SimulationConfigRepository configRepository,
+        SimulationRunRepository runRepository,
+        SimulationRunEventRepository eventRepository,
+        SimulationYamlParser parser,
+        SimulationYamlValidator validator,
+        SimulationGeneratorSelection generator,
+        TelemetrySenderRegistry senderRegistry,
+        RunningSimulationRegistry registry,
+        SimulationRunner simulationRunner,
+        MeterRegistry meterRegistry,
+        com.voltcanary.simulator.service.VehicleSimulationTarget target,
+        com.voltcanary.simulator.service.DeviceHistoryDeletion deletions,
+        org.springframework.transaction.PlatformTransactionManager transactions
+    ) {
+        this.tickTransactions = new org.springframework.transaction.support.TransactionTemplate(
+            transactions
+        );
         this.deletions = deletions;
         this.target = target;
         this.configRepository = configRepository;
@@ -80,24 +87,50 @@ public class SimulationRunManager {
         this.simulationRunner = simulationRunner;
         this.meterRegistry = meterRegistry;
         this.leaseOwner = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
-        meterRegistry.gauge("simulator_active_runs", registry, RunningSimulationRegistry::activeCount);
+        meterRegistry.gauge(
+            "simulator_active_runs",
+            registry,
+            RunningSimulationRegistry::activeCount
+        );
     }
 
     @Transactional
     public SimulationRunResponse start(UUID userId, UUID deviceId) {
-        if (!deletions.writable(deviceId)) throw new ResponseStatusException(HttpStatus.GONE, "Device deleted");
-        SimulationConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        if (config.getStatus() == SimulationConfigStatus.INVALID || !validator.validate(config.getYamlConfig()).isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Simulation config is invalid");
+        if (!deletions.writable(deviceId)) throw new ResponseStatusException(
+            HttpStatus.GONE,
+            "Device deleted"
+        );
+        SimulationConfig config = configRepository
+            .findByDeviceId(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
+        if (
+            config.getStatus() == SimulationConfigStatus.INVALID ||
+            !validator.validate(config.getYamlConfig()).isEmpty()
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Simulation config is invalid"
+            );
         }
         SimulationConfigModel model = parser.parse(config.getYamlConfig());
         target.require(userId, deviceId, config.getDataSourceId(), model);
-        if ("HTTP".equalsIgnoreCase(model.protocol()) && (config.getSourceToken() == null || config.getSourceToken().isBlank())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Simulation source token is missing");
+        if (
+            "HTTP".equalsIgnoreCase(model.protocol()) &&
+            (config.getSourceToken() == null || config.getSourceToken().isBlank())
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Simulation source token is missing"
+            );
         }
         stopExpiredActiveRuns(Instant.now());
-        if (runRepository.findFirstByDeviceIdAndActiveKeyOrderByStartedAtDesc(deviceId, ACTIVE_KEY).isPresent()) {
+        if (
+            runRepository
+                .findFirstByDeviceIdAndActiveKeyOrderByStartedAtDesc(deviceId, ACTIVE_KEY)
+                .isPresent()
+        ) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Simulation is already running");
         }
 
@@ -119,18 +152,25 @@ public class SimulationRunManager {
         try {
             runRepository.saveAndFlush(run);
         } catch (DataIntegrityViolationException exception) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Simulation is already running", exception);
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Simulation is already running",
+                exception
+            );
         }
         event(run.getId(), "STARTING", "Simulation starting");
         meterRegistry.counter("simulator_runs_started_total").increment();
 
         Runnable tick = () -> tick(run.getId(), config.getSourceToken(), model, intervalSeconds);
         var future = "VEHICLE_GPS".equals(model.profile())
-                ? simulationRunner.scheduleVehicle(run.getId(), tick, intervalSeconds)
-                : simulationRunner.schedule(run.getId(), tick, intervalSeconds);
+            ? simulationRunner.scheduleVehicle(run.getId(), tick, intervalSeconds)
+            : simulationRunner.schedule(run.getId(), tick, intervalSeconds);
         if (!registry.putIfAbsent(deviceId, future)) {
             future.cancel(false);
-            stopRun(run, "Stopped because this simulator replica already owns an in-memory run for the device.");
+            stopRun(
+                run,
+                "Stopped because this simulator replica already owns an in-memory run for the device."
+            );
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Simulation is already running");
         }
         run.setStatus(SimulationRunStatus.RUNNING);
@@ -141,15 +181,26 @@ public class SimulationRunManager {
 
     @Transactional
     public SimulationRunResponse stop(UUID deviceId, String reason) {
-        SimulationConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        SimulationRun run = runRepository.findFirstByDeviceIdAndStatusOrderByStartedAtDesc(deviceId, SimulationRunStatus.RUNNING)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Running simulation not found"));
+        SimulationConfig config = configRepository
+            .findByDeviceId(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
+        SimulationRun run = runRepository
+            .findFirstByDeviceIdAndStatusOrderByStartedAtDesc(deviceId, SimulationRunStatus.RUNNING)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Running simulation not found")
+            );
         run.setStatus(SimulationRunStatus.STOPPING);
         run.setStopReason(reason == null ? "Stopped by user" : reason);
         runRepository.save(run);
         event(run.getId(), "STOPPING", "Simulation stopping");
-        if (registry.remove(deviceId).map(future -> future.cancel(false)).isPresent()) {
+        if (
+            registry
+                .remove(deviceId)
+                .map(future -> future.cancel(false))
+                .isPresent()
+        ) {
             stopRun(run, run.getStopReason());
             meterRegistry.counter("simulator_runs_stopped_total").increment();
         }
@@ -158,14 +209,32 @@ public class SimulationRunManager {
 
     @Transactional(readOnly = true)
     public SimulationRunResponse status(UUID deviceId) {
-        SimulationConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        return runRepository.findByDeviceIdOrderByStartedAtDesc(deviceId).stream()
-                .findFirst()
-                .map(run -> registry.isRunning(deviceId) || run.getStatus() != SimulationRunStatus.RUNNING
-                        ? toResponse(run, config)
-                        : staleStoppedResponse(run, config))
-                .orElse(new SimulationRunResponse(null, SimulationRunStatus.STOPPED, config.getProfile().name(), config.getProtocol(), 0, null, null, null));
+        SimulationConfig config = configRepository
+            .findByDeviceId(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
+        return runRepository
+            .findByDeviceIdOrderByStartedAtDesc(deviceId)
+            .stream()
+            .findFirst()
+            .map(run ->
+                registry.isRunning(deviceId) || run.getStatus() != SimulationRunStatus.RUNNING
+                    ? toResponse(run, config)
+                    : staleStoppedResponse(run, config)
+            )
+            .orElse(
+                new SimulationRunResponse(
+                    null,
+                    SimulationRunStatus.STOPPED,
+                    config.getProfile().name(),
+                    config.getProtocol(),
+                    0,
+                    null,
+                    null,
+                    null
+                )
+            );
     }
 
     @Transactional
@@ -181,52 +250,87 @@ public class SimulationRunManager {
     }
 
     private void stopExpiredActiveRuns(Instant now) {
-        runRepository.findByStatusIn(List.of(
-                        SimulationRunStatus.STARTING,
-                        SimulationRunStatus.RUNNING,
-                        SimulationRunStatus.STOPPING))
-                .forEach(run -> {
-                    if (!deletions.writable(run.getDeviceId())) return;
-                    if (registry.isRunning(run.getDeviceId())) {
-                        return;
-                    }
-                    if (run.getLeaseUntil() != null && run.getLeaseUntil().isAfter(now)) {
-                        return;
-                    }
-                    stopRun(run, "Stopped because the simulator run lease expired before the run was resumed.");
-                });
+        runRepository
+            .findByStatusIn(
+                List.of(
+                    SimulationRunStatus.STARTING,
+                    SimulationRunStatus.RUNNING,
+                    SimulationRunStatus.STOPPING
+                )
+            )
+            .forEach(run -> {
+                if (!deletions.writable(run.getDeviceId())) return;
+                if (registry.isRunning(run.getDeviceId())) {
+                    return;
+                }
+                if (run.getLeaseUntil() != null && run.getLeaseUntil().isAfter(now)) {
+                    return;
+                }
+                stopRun(
+                    run,
+                    "Stopped because the simulator run lease expired before the run was resumed."
+                );
+            });
     }
 
     @Transactional(readOnly = true)
     public List<SimulationRunResponse> runs(UUID deviceId) {
-        SimulationConfig config = configRepository.findByDeviceId(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        return runRepository.findByDeviceIdOrderByStartedAtDesc(deviceId).stream()
-                .map(run -> toResponse(run, config))
-                .toList();
+        SimulationConfig config = configRepository
+            .findByDeviceId(deviceId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
+        return runRepository
+            .findByDeviceIdOrderByStartedAtDesc(deviceId)
+            .stream()
+            .map(run -> toResponse(run, config))
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public SimulationRunDetailResponse run(UUID runId) {
-        SimulationRun run = runRepository.findById(runId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation run not found"));
-        SimulationConfig config = configRepository.findById(run.getConfigId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found"));
-        List<SimulationRunEventResponse> events = eventRepository.findByRunIdOrderByCreatedAtAsc(runId).stream()
-                .map(event -> new SimulationRunEventResponse(
-                        event.getId(),
-                        event.getEventType(),
-                        event.getMessage(),
-                        event.getCreatedAt()))
-                .toList();
+        SimulationRun run = runRepository
+            .findById(runId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation run not found")
+            );
+        SimulationConfig config = configRepository
+            .findById(run.getConfigId())
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
+            );
+        List<SimulationRunEventResponse> events = eventRepository
+            .findByRunIdOrderByCreatedAtAsc(runId)
+            .stream()
+            .map(event ->
+                new SimulationRunEventResponse(
+                    event.getId(),
+                    event.getEventType(),
+                    event.getMessage(),
+                    event.getCreatedAt()
+                )
+            )
+            .toList();
         return new SimulationRunDetailResponse(toResponse(run, config), events);
     }
 
-    private void tick(UUID runId, String sourceToken, SimulationConfigModel model, long intervalSeconds) {
-        tickTransactions.executeWithoutResult(status -> tickWithinTransaction(runId, sourceToken, model, intervalSeconds));
+    private void tick(
+        UUID runId,
+        String sourceToken,
+        SimulationConfigModel model,
+        long intervalSeconds
+    ) {
+        tickTransactions.executeWithoutResult(status ->
+            tickWithinTransaction(runId, sourceToken, model, intervalSeconds)
+        );
     }
 
-    private void tickWithinTransaction(UUID runId, String sourceToken, SimulationConfigModel model, long intervalSeconds) {
+    private void tickWithinTransaction(
+        UUID runId,
+        String sourceToken,
+        SimulationConfigModel model,
+        long intervalSeconds
+    ) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             SimulationRun run = runRepository.findById(runId).orElseThrow();
@@ -248,29 +352,42 @@ public class SimulationRunManager {
                 registry.remove(run.getDeviceId()).ifPresent(future -> future.cancel(false));
                 return;
             }
-            runRepository.extendLease(runId, leaseOwner, Instant.now().plus(leaseDuration(intervalSeconds)));
-            if ("VEHICLE_GPS".equals(model.profile()) && Instant.now().isAfter(run.getStartedAt().plus(model.duration()))) {
+            runRepository.extendLease(
+                runId,
+                leaseOwner,
+                Instant.now().plus(leaseDuration(intervalSeconds))
+            );
+            if (
+                "VEHICLE_GPS".equals(model.profile()) &&
+                Instant.now().isAfter(run.getStartedAt().plus(model.duration()))
+            ) {
                 registry.remove(run.getDeviceId()).ifPresent(future -> future.cancel(false));
                 stopRun(run, "Configured duration completed");
                 return;
             }
             long tick = run.getGeneratedPoints() + 1;
             var context = new SimulationContext(
-                    runId,
-                    run.getDeviceId(),
-                    run.getDataSourceId(),
-                    model.sourceId(),
-                    run.getStartedAt(),
-                    Instant.now(),
-                    tick,
-                    model);
-            generator.forProfile(model.profile()).next(context).ifPresent(point -> {
-                senderRegistry.senderFor(model.protocol()).send(point, sourceToken);
-                run.setGeneratedPoints(tick);
-                run.setLeaseUntil(Instant.now().plus(leaseDuration(intervalSeconds)));
-                runRepository.save(run);
-                meterRegistry.counter("simulator_points_generated_total", "protocol", model.protocol()).increment();
-            });
+                runId,
+                run.getDeviceId(),
+                run.getDataSourceId(),
+                model.sourceId(),
+                run.getStartedAt(),
+                Instant.now(),
+                tick,
+                model
+            );
+            generator
+                .forProfile(model.profile())
+                .next(context)
+                .ifPresent(point -> {
+                    senderRegistry.senderFor(model.protocol()).send(point, sourceToken);
+                    run.setGeneratedPoints(tick);
+                    run.setLeaseUntil(Instant.now().plus(leaseDuration(intervalSeconds)));
+                    runRepository.save(run);
+                    meterRegistry
+                        .counter("simulator_points_generated_total", "protocol", model.protocol())
+                        .increment();
+                });
         } catch (Exception exception) {
             runRepository.findById(runId).ifPresent(run -> {
                 generator.release(run.getId());
@@ -291,7 +408,9 @@ public class SimulationRunManager {
                 }
             });
         } finally {
-            sample.stop(meterRegistry.timer("simulator_tick_duration_seconds", "protocol", model.protocol()));
+            sample.stop(
+                meterRegistry.timer("simulator_tick_duration_seconds", "protocol", model.protocol())
+            );
         }
     }
 
@@ -318,31 +437,35 @@ public class SimulationRunManager {
     }
 
     private Duration leaseDuration(long intervalSeconds) {
-        Duration intervalLease = Duration.ofSeconds(Math.max(1, intervalSeconds)).multipliedBy(2).plus(LEASE_GRACE);
+        Duration intervalLease = Duration.ofSeconds(Math.max(1, intervalSeconds))
+            .multipliedBy(2)
+            .plus(LEASE_GRACE);
         return intervalLease.compareTo(MIN_LEASE) > 0 ? intervalLease : MIN_LEASE;
     }
 
     private SimulationRunResponse toResponse(SimulationRun run, SimulationConfig config) {
         return new SimulationRunResponse(
-                run.getId(),
-                run.getStatus(),
-                config.getProfile().name(),
-                config.getProtocol(),
-                run.getGeneratedPoints(),
-                run.getStartedAt(),
-                run.getStoppedAt(),
-                run.getLastError());
+            run.getId(),
+            run.getStatus(),
+            config.getProfile().name(),
+            config.getProtocol(),
+            run.getGeneratedPoints(),
+            run.getStartedAt(),
+            run.getStoppedAt(),
+            run.getLastError()
+        );
     }
 
     private SimulationRunResponse staleStoppedResponse(SimulationRun run, SimulationConfig config) {
         return new SimulationRunResponse(
-                run.getId(),
-                SimulationRunStatus.STOPPED,
-                config.getProfile().name(),
-                config.getProtocol(),
-                run.getGeneratedPoints(),
-                run.getStartedAt(),
-                run.getStoppedAt() == null ? Instant.now() : run.getStoppedAt(),
-                "Stopped because simulator-service is not running this job in memory.");
+            run.getId(),
+            SimulationRunStatus.STOPPED,
+            config.getProfile().name(),
+            config.getProtocol(),
+            run.getGeneratedPoints(),
+            run.getStartedAt(),
+            run.getStoppedAt() == null ? Instant.now() : run.getStoppedAt(),
+            "Stopped because simulator-service is not running this job in memory."
+        );
     }
 }

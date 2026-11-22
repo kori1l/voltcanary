@@ -6,12 +6,25 @@ export class ReadLimiter {
   run<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const start = () => {
-        if (signal?.aborted) { reject(new DOMException("Obsolete read", "AbortError")); this.advance(); return; }
+        if (signal?.aborted) {
+          reject(new DOMException("Obsolete read", "AbortError"));
+          this.advance();
+          return;
+        }
         this.running++;
-        Promise.resolve().then(read).then(resolve, reject).finally(() => { this.running--; this.advance(); });
+        Promise.resolve()
+          .then(read)
+          .then(resolve, reject)
+          .finally(() => {
+            this.running--;
+            this.advance();
+          });
       };
-      if (this.running < this.limit) start(); else this.queue.push(start);
+      if (this.running < this.limit) start();
+      else this.queue.push(start);
     });
   }
-  private advance() { while (this.running < this.limit && this.queue.length) this.queue.shift()!(); }
+  private advance() {
+    while (this.running < this.limit && this.queue.length) this.queue.shift()!();
+  }
 }

@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/ai-agent/plans")
 @RequiredArgsConstructor
 public class AssistantExecutionController {
+
     private final JwtIdentityService identity;
     private final AuthorizedPlanningContext contexts;
     private final AssistantTraces traces;
@@ -29,16 +30,40 @@ public class AssistantExecutionController {
     private final com.voltcanary.aiagent.service.PrimaryAssistant primary;
 
     @PostMapping("/{planId}/execute")
-    public ExecutePlanResponse execute(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("planId") UUID planId, @Valid @RequestBody ExecutePlanRequest request) {
+    public ExecutePlanResponse execute(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("planId") UUID planId,
+        @Valid @RequestBody ExecutePlanRequest request
+    ) {
         var user = identity.parseBearerToken(authorization);
-        if (primary.mapped(user, planId, authorization)) return primary.execute(user, planId, request.confirmed(), request.expectedVersion(), request.payloadDigest(), authorization);
+        if (primary.mapped(user, planId, authorization)) return primary.execute(
+            user,
+            planId,
+            request.confirmed(),
+            request.expectedVersion(),
+            request.payloadDigest(),
+            authorization
+        );
         var correlation = traces.plan(contexts.scope(user, authorization), planId);
-        try (var session = correlation.map(value -> AssistantTrace.open(traces, value)).orElse(null);
-                var execution = AssistantTrace.start("EXECUTION", Map.of("reviewId", planId))) {
-            var result = orchestrator.execute(user, planId, request.confirmed(), authorization, request.expectedVersion(), request.payloadDigest());
-            if ("SUCCESS".equals(result.status())) execution.success(Map.of("executionStatus", result.status()));
-            else execution.failure("EXECUTION_" + result.status(), Map.of("executionStatus", result.status()));
+        try (
+            var session = correlation.map(value -> AssistantTrace.open(traces, value)).orElse(null);
+            var execution = AssistantTrace.start("EXECUTION", Map.of("reviewId", planId))
+        ) {
+            var result = orchestrator.execute(
+                user,
+                planId,
+                request.confirmed(),
+                authorization,
+                request.expectedVersion(),
+                request.payloadDigest()
+            );
+            if ("SUCCESS".equals(result.status())) execution.success(
+                Map.of("executionStatus", result.status())
+            );
+            else execution.failure(
+                "EXECUTION_" + result.status(),
+                Map.of("executionStatus", result.status())
+            );
             return result;
         }
     }

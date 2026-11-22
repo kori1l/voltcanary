@@ -5,7 +5,6 @@ import java.util.Objects;
 import java.util.Set;
 
 public record AdapterCapabilities(Set<AdapterCapability> values) {
-
     public AdapterCapabilities {
         Objects.requireNonNull(values, "values must not be null");
         values = Set.copyOf(values);

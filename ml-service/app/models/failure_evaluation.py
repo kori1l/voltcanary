@@ -1,10 +1,10 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Callable
-from app.services.training_fit import fit_with_deadline
 
 from app.models.failure_prediction_model import FailurePredictionModel
 from app.models.failure_target import FailureTargetSample
+from app.services.training_fit import fit_with_deadline
 
 
 @dataclass(frozen=True)
@@ -14,12 +14,19 @@ class FailureEvaluationSplit:
 
 
 class FailurePredictionEvaluator:
-    def evaluate(self, samples: list[FailureTargetSample], algorithm: str, remaining: Callable[[], float] | None = None) -> dict[str, Any]:
+    def evaluate(
+        self,
+        samples: list[FailureTargetSample],
+        algorithm: str,
+        remaining: Callable[[], float] | None = None,
+    ) -> dict[str, Any]:
         split = self.time_based_split(samples)
         if split is None:
             return {
                 "metadata": {
-                    "strategy": "provided_partition" if any(sample.split_assignment for sample in samples) else "time_based_holdout",
+                    "strategy": "provided_partition"
+                    if any(sample.split_assignment for sample in samples)
+                    else "time_based_holdout",
                     "status": "INSUFFICIENT_TIME_SPLIT",
                 },
                 "metrics": {
@@ -30,19 +37,26 @@ class FailurePredictionEvaluator:
 
         model = FailurePredictionModel(algorithm)
         model = fit_with_deadline(model, (split.train_samples,), remaining() if remaining else 600)
-        scores = [model.predict(sample.features)["failureRiskScore"] for sample in split.validation_samples]
+        scores = [
+            model.predict(sample.features)["failureRiskScore"]
+            for sample in split.validation_samples
+        ]
         labels = [int(sample.target or 0) for sample in split.validation_samples]
         predictions = [1 if score >= 0.5 else 0 for score in scores]
         precision, recall, f1 = self._classification_metrics(labels, predictions)
         baseline_score = self._training_positive_rate(split.train_samples)
         baseline_scores = [baseline_score for _ in split.validation_samples]
         baseline_predictions = [1 if score >= 0.5 else 0 for score in baseline_scores]
-        baseline_precision, baseline_recall, baseline_f1 = self._classification_metrics(labels, baseline_predictions)
+        baseline_precision, baseline_recall, baseline_f1 = self._classification_metrics(
+            labels, baseline_predictions
+        )
         candidate_pr_auc = self._pr_auc(labels, scores)
         baseline_pr_auc = self._pr_auc(labels, baseline_scores)
         return {
             "metadata": {
-                "strategy": "provided_partition" if any(sample.split_assignment for sample in samples) else "time_based_holdout",
+                "strategy": "provided_partition"
+                if any(sample.split_assignment for sample in samples)
+                else "time_based_holdout",
                 "status": "EVALUATED",
                 "threshold": 0.5,
                 "baseline": {
@@ -59,8 +73,12 @@ class FailurePredictionEvaluator:
                 "failureRecall": recall,
                 "failureF1": f1,
                 "failurePrAuc": candidate_pr_auc,
-                "failureFalseAlertsPerDeviceMonth": self._false_alerts_per_device_month(split.validation_samples, labels, predictions),
-                "failureAverageLeadTimeDays": self._average_lead_time_days(split.validation_samples, labels, predictions),
+                "failureFalseAlertsPerDeviceMonth": self._false_alerts_per_device_month(
+                    split.validation_samples, labels, predictions
+                ),
+                "failureAverageLeadTimeDays": self._average_lead_time_days(
+                    split.validation_samples, labels, predictions
+                ),
                 "failureBaselinePositiveRate": baseline_score,
                 "failureBaselinePrecision": baseline_precision,
                 "failureBaselineRecall": baseline_recall,
@@ -82,11 +100,17 @@ class FailurePredictionEvaluator:
             key=lambda sample: (sample.prediction_at, sample.device_id, sample.sample_id),
         )
         if any(sample.split_assignment for sample in usable):
-            if any(sample.split_assignment not in {"TRAIN", "VALIDATION", "TEST"} for sample in usable):
+            if any(
+                sample.split_assignment not in {"TRAIN", "VALIDATION", "TEST"} for sample in usable
+            ):
                 raise ValueError("Invalid split assignments")
             training = [sample for sample in usable if sample.split_assignment == "TRAIN"]
             validation = [sample for sample in usable if sample.split_assignment == "VALIDATION"]
-            return FailureEvaluationSplit(training, validation) if self._has_both_classes(training) and validation else None
+            return (
+                FailureEvaluationSplit(training, validation)
+                if self._has_both_classes(training) and validation
+                else None
+            )
         if len(usable) < 4:
             return None
 
@@ -96,15 +120,39 @@ class FailurePredictionEvaluator:
             train_samples = usable[:split_index]
             validation_samples = usable[split_index:]
             if self._has_both_classes(train_samples) and validation_samples:
-                return FailureEvaluationSplit(train_samples=train_samples, validation_samples=validation_samples)
+                return FailureEvaluationSplit(
+                    train_samples=train_samples, validation_samples=validation_samples
+                )
         return None
 
-    def _classification_metrics(self, labels: list[int], predictions: list[int]) -> tuple[float, float, float]:
-        true_positives = sum(1 for label, prediction in zip(labels, predictions, strict=False) if label == 1 and prediction == 1)
-        false_positives = sum(1 for label, prediction in zip(labels, predictions, strict=False) if label == 0 and prediction == 1)
-        false_negatives = sum(1 for label, prediction in zip(labels, predictions, strict=False) if label == 1 and prediction == 0)
-        precision = true_positives / (true_positives + false_positives) if true_positives + false_positives else 0.0
-        recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives else 0.0
+    def _classification_metrics(
+        self, labels: list[int], predictions: list[int]
+    ) -> tuple[float, float, float]:
+        true_positives = sum(
+            1
+            for label, prediction in zip(labels, predictions, strict=False)
+            if label == 1 and prediction == 1
+        )
+        false_positives = sum(
+            1
+            for label, prediction in zip(labels, predictions, strict=False)
+            if label == 0 and prediction == 1
+        )
+        false_negatives = sum(
+            1
+            for label, prediction in zip(labels, predictions, strict=False)
+            if label == 1 and prediction == 0
+        )
+        precision = (
+            true_positives / (true_positives + false_positives)
+            if true_positives + false_positives
+            else 0.0
+        )
+        recall = (
+            true_positives / (true_positives + false_negatives)
+            if true_positives + false_negatives
+            else 0.0
+        )
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
         return round(precision, 6), round(recall, 6), round(f1, 6)
 
@@ -121,10 +169,18 @@ class FailurePredictionEvaluator:
         labels: list[int],
         predictions: list[int],
     ) -> float:
-        false_positives = sum(1 for label, prediction in zip(labels, predictions, strict=False) if label == 0 and prediction == 1)
+        false_positives = sum(
+            1
+            for label, prediction in zip(labels, predictions, strict=False)
+            if label == 0 and prediction == 1
+        )
         device_count = max(1, len({sample.device_id for sample in samples}))
         timestamps = [sample.prediction_at for sample in samples]
-        observed_days = max(1.0, (max(timestamps) - min(timestamps)).total_seconds() / 86400) if timestamps else 1.0
+        observed_days = (
+            max(1.0, (max(timestamps) - min(timestamps)).total_seconds() / 86400)
+            if timestamps
+            else 1.0
+        )
         device_months = device_count * (observed_days / 30)
         return round(false_positives / device_months, 6) if device_months else 0.0
 

@@ -9,23 +9,24 @@ public class MlFeatureSnapshotResponseMapper {
 
     public MlFeatureSnapshotResponse response(MlFeatureSnapshot snapshot) {
         return new MlFeatureSnapshotResponse(
-                snapshot.getId(),
-                snapshot.getAccountId(),
-                snapshot.getDatasetVersionId(),
-                snapshot.getFeatureSetVersion(),
-                snapshot.getCodeConfigVersion(),
-                snapshot.getFeatureSchemaHash(),
-                snapshot.getFeatureDataHash(),
-                snapshot.getFeatureConfigHash(),
-                snapshot.getRowCount(),
-                snapshot.getRejectedRowCount(),
-                snapshot.getArtifactUri(),
-                snapshot.getImmutableRowReference(),
-                snapshot.getModelFamily(),
-                snapshot.getHorizonDays(),
-                snapshot.getFeatureTemplateId(),
-                snapshot.getFeatureTemplateVersion(),
-                snapshot.getLifecycleStatus(),
-                snapshot.getCreatedAt());
+            snapshot.getId(),
+            snapshot.getAccountId(),
+            snapshot.getDatasetVersionId(),
+            snapshot.getFeatureSetVersion(),
+            snapshot.getCodeConfigVersion(),
+            snapshot.getFeatureSchemaHash(),
+            snapshot.getFeatureDataHash(),
+            snapshot.getFeatureConfigHash(),
+            snapshot.getRowCount(),
+            snapshot.getRejectedRowCount(),
+            snapshot.getArtifactUri(),
+            snapshot.getImmutableRowReference(),
+            snapshot.getModelFamily(),
+            snapshot.getHorizonDays(),
+            snapshot.getFeatureTemplateId(),
+            snapshot.getFeatureTemplateVersion(),
+            snapshot.getLifecycleStatus(),
+            snapshot.getCreatedAt()
+        );
     }
 }

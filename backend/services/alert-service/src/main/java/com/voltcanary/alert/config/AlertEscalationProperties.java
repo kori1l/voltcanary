@@ -11,6 +11,7 @@ public class AlertEscalationProperties {
 
     @Setter
     private boolean enabled = true;
+
     private Duration warningAfter = Duration.ofMinutes(30);
     private Duration highAfter = Duration.ofMinutes(15);
     private Duration criticalAfter = Duration.ofMinutes(5);

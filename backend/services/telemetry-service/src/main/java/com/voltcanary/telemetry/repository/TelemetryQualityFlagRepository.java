@@ -19,36 +19,43 @@ public class TelemetryQualityFlagRepository {
     private final JdbcTemplate jdbcTemplate;
 
     public void save(TelemetryQualityFlag flag) {
-        jdbcTemplate.update("""
-                insert into telemetry_quality_flags (id, reading_id, device_id, flag, message, created_at)
-                values (?, ?, ?, ?, ?, ?)
-                """,
-                flag.getId(),
-                flag.getReadingId(),
-                flag.getDeviceId(),
-                flag.getFlag().name(),
-                flag.getMessage(),
-                Timestamp.from(flag.getCreatedAt()));
+        jdbcTemplate.update(
+            """
+            insert into telemetry_quality_flags (id, reading_id, device_id, flag, message, created_at)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            flag.getId(),
+            flag.getReadingId(),
+            flag.getDeviceId(),
+            flag.getFlag().name(),
+            flag.getMessage(),
+            Timestamp.from(flag.getCreatedAt())
+        );
     }
 
     public List<TelemetryQualityFlag> findByDeviceIdOrderByCreatedAtDesc(UUID deviceId) {
-        return jdbcTemplate.query("""
-                select id, reading_id, device_id, flag, message, created_at
-                from telemetry_quality_flags
-                where device_id = ?
-                order by created_at desc
-                limit 500
-                """, this::mapRow, deviceId);
+        return jdbcTemplate.query(
+            """
+            select id, reading_id, device_id, flag, message, created_at
+            from telemetry_quality_flags
+            where device_id = ?
+            order by created_at desc
+            limit 500
+            """,
+            this::mapRow,
+            deviceId
+        );
     }
 
     private TelemetryQualityFlag mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new TelemetryQualityFlag(
-                rs.getObject("id", UUID.class),
-                rs.getObject("reading_id", UUID.class),
-                rs.getObject("device_id", UUID.class),
-                QualityFlag.valueOf(rs.getString("flag")),
-                rs.getString("message"),
-                toInstant(rs, "created_at"));
+            rs.getObject("id", UUID.class),
+            rs.getObject("reading_id", UUID.class),
+            rs.getObject("device_id", UUID.class),
+            QualityFlag.valueOf(rs.getString("flag")),
+            rs.getString("message"),
+            toInstant(rs, "created_at")
+        );
     }
 
     private Instant toInstant(ResultSet rs, String column) throws SQLException {

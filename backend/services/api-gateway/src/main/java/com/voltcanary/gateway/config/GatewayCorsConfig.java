@@ -25,5 +25,4 @@ public class GatewayCorsConfig {
         source.registerCorsConfiguration("/**", configuration);
         return new CorsWebFilter(source);
     }
-
 }

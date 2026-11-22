@@ -6,7 +6,6 @@ import {
   MlModelVersion,
   MlTrainingRun,
 } from "../../../analytics/mlModuleApi";
-import { Device } from "../../../devices/devicesApi";
 import {
   formatPercentMetric,
   formatQualityValue,
@@ -33,18 +32,10 @@ export function MlMonitoringTab(props: {
   trainingRuns: MlTrainingRun[];
 }) {
   const stats = useMemo(() => {
-    const failedRuns = props.trainingRuns.filter(
-      (run) => run.status === "FAILED",
-    ).length;
-    const fallbackPolicies = props.policies.filter(
-      (policy) => policy.fallbackEnabled,
-    ).length;
-    const readyDatasets = props.datasets.filter(
-      (dataset) => dataset.status === "READY",
-    ).length;
-    const activeModels = props.models.filter(
-      (model) => model.status === "ACTIVE",
-    ).length;
+    const failedRuns = props.trainingRuns.filter((run) => run.status === "FAILED").length;
+    const fallbackPolicies = props.policies.filter((policy) => policy.fallbackEnabled).length;
+    const readyDatasets = props.datasets.filter((dataset) => dataset.status === "READY").length;
+    const activeModels = props.models.filter((model) => model.status === "ACTIVE").length;
     const fallbackRate =
       props.policies.length === 0
         ? null
@@ -56,9 +47,7 @@ export function MlMonitoringTab(props: {
     const predictionQuality =
       props.prediction &&
       Number.isFinite(props.prediction.confidence) &&
-      !/DISABLED|INSUFFICIENT|ERROR|UNAVAILABLE|NO_DATA/i.test(
-        props.prediction.predictionStatus,
-      )
+      !/DISABLED|INSUFFICIENT|ERROR|UNAVAILABLE|NO_DATA/i.test(props.prediction.predictionStatus)
         ? Math.round(props.prediction.confidence * 100)
         : null;
     const latencyStatus = "No latency measurement is exposed by this API.";
@@ -67,9 +56,7 @@ export function MlMonitoringTab(props: {
         ? "Watch feature hash changes"
         : "Insufficient model baseline";
     const deploymentPath =
-      props.prediction?.predictionPath ??
-      props.prediction?.deploymentMode ??
-      "N/A";
+      props.prediction?.predictionPath ?? props.prediction?.deploymentMode ?? "N/A";
     const canaryState =
       props.prediction?.canaryIncluded === true
         ? "Included"
@@ -89,13 +76,7 @@ export function MlMonitoringTab(props: {
       predictionQuality,
       readyDatasets,
     };
-  }, [
-    props.datasets,
-    props.models,
-    props.policies,
-    props.prediction,
-    props.trainingRuns,
-  ]);
+  }, [props.datasets, props.models, props.policies, props.prediction, props.trainingRuns]);
 
   return (
     <div className="ml-workflow-grid">
@@ -105,37 +86,30 @@ export function MlMonitoringTab(props: {
           <article>
             <span>Ready datasets (loaded)</span>
             <strong>
-              {props.dataAvailable?.datasets === false
-                ? "Unavailable"
-                : stats.readyDatasets}
+              {props.dataAvailable?.datasets === false ? "Unavailable" : stats.readyDatasets}
             </strong>
           </article>
           <article>
             <span>Active models (loaded)</span>
             <strong>
-              {props.dataAvailable?.models === false
-                ? "Unavailable"
-                : stats.activeModels}
+              {props.dataAvailable?.models === false ? "Unavailable" : stats.activeModels}
             </strong>
           </article>
           <article>
             <span>Fallback-enabled policies</span>
             <strong>
-              {props.dataAvailable?.policies === false ||
-              stats.fallbackRate === null
+              {props.dataAvailable?.policies === false || stats.fallbackRate === null
                 ? "Unavailable"
                 : `${stats.fallbackPolicies} / ${props.policies.length} (${stats.fallbackRate}%)`}
             </strong>
             <small>
-              Configuration share in loaded scopes; runtime fallback frequency
-              unavailable.
+              Configuration share in loaded scopes; runtime fallback frequency unavailable.
             </small>
           </article>
           <article>
             <span>Failed training runs</span>
             <strong>
-              {props.dataAvailable?.trainingRuns === false ||
-              stats.errorRate === null
+              {props.dataAvailable?.trainingRuns === false || stats.errorRate === null
                 ? "Unavailable"
                 : `${stats.failedRuns} / ${props.trainingRuns.length} (${stats.errorRate}%)`}
             </strong>
@@ -144,13 +118,9 @@ export function MlMonitoringTab(props: {
           <article>
             <span>Prediction confidence</span>
             <strong>
-              {stats.predictionQuality === null
-                ? "Unavailable"
-                : `${stats.predictionQuality}%`}
+              {stats.predictionQuality === null ? "Unavailable" : `${stats.predictionQuality}%`}
             </strong>
-            <small>
-              {props.prediction?.createdAt ?? "No prediction observation"}
-            </small>
+            <small>{props.prediction?.createdAt ?? "No prediction observation"}</small>
           </article>
           <article>
             <span>Inference latency</span>
@@ -249,9 +219,7 @@ function MlStatus({
     return (
       <section className="panel">
         <h2>Latest prediction</h2>
-        <div className="empty-state">
-          Select a device to inspect read-only ML metadata.
-        </div>
+        <div className="empty-state">Select a device to inspect read-only ML metadata.</div>
       </section>
     );
   if (!prediction)
@@ -259,16 +227,14 @@ function MlStatus({
       <section className="panel">
         <h2>Latest prediction</h2>
         <div className="empty-state">
-          {error ??
-            "Prediction metadata is unavailable. Settings remain editable."}
+          {error ?? "Prediction metadata is unavailable. Settings remain editable."}
         </div>
       </section>
     );
   const explanations = prediction.explanations ?? [];
   const riskDrivers = normalizeRiskDrivers(prediction.riskDrivers ?? []);
   const hasFailureRisk =
-    prediction.failureRiskScore !== null &&
-    prediction.failureRiskScore !== undefined;
+    prediction.failureRiskScore !== null && prediction.failureRiskScore !== undefined;
   return (
     <section className="panel">
       <div className="section-header">
@@ -276,13 +242,9 @@ function MlStatus({
           <h2>Latest prediction</h2>
           <p>Read-only traceability</p>
         </div>
-        <span className="status-badge">
-          {statusText(prediction.predictionStatus)}
-        </span>
+        <span className="status-badge">{statusText(prediction.predictionStatus)}</span>
       </div>
-      {hasFailureRisk && (
-        <FailureRiskDetail prediction={prediction} riskDrivers={riskDrivers} />
-      )}
+      {hasFailureRisk && <FailureRiskDetail prediction={prediction} riskDrivers={riskDrivers} />}
       <dl className="detail-list">
         <div>
           <dt>Model</dt>
@@ -293,8 +255,7 @@ function MlStatus({
         <div>
           <dt>Family / type</dt>
           <dd>
-            {prediction.modelFamily ?? "Unknown"} /{" "}
-            {prediction.modelType ?? "Unknown"}
+            {prediction.modelFamily ?? "Unknown"} / {prediction.modelType ?? "Unknown"}
           </dd>
         </div>
         <div>
@@ -304,8 +265,7 @@ function MlStatus({
         <div>
           <dt>Policy</dt>
           <dd>
-            {prediction.policySource ?? "BASELINE"} /{" "}
-            {prediction.deploymentMode ?? "DISABLED"}
+            {prediction.policySource ?? "BASELINE"} / {prediction.deploymentMode ?? "DISABLED"}
           </dd>
         </div>
         <div>
@@ -330,15 +290,11 @@ function MlStatus({
         </div>
         <div>
           <dt>Model version id</dt>
-          <dd className="mono-value">
-            {prediction.modelVersionId ?? "Unavailable"}
-          </dd>
+          <dd className="mono-value">{prediction.modelVersionId ?? "Unavailable"}</dd>
         </div>
         <div>
           <dt>Input hash</dt>
-          <dd className="mono-value">
-            {prediction.inputHash || "Unavailable"}
-          </dd>
+          <dd className="mono-value">{prediction.inputHash || "Unavailable"}</dd>
         </div>
       </dl>
       <dl className="ml-model-metric-grid">
@@ -390,9 +346,7 @@ function FailureRiskDetail({
             ? `${prediction.failureHorizonDays}-day failure risk`
             : "Failure risk"}
         </span>
-        <strong>
-          {formatPercentMetric(prediction.failureRiskScore ?? null)}
-        </strong>
+        <strong>{formatPercentMetric(prediction.failureRiskScore ?? null)}</strong>
         <small>
           {prediction.failureRiskBand ?? "Unbanded"} / confidence{" "}
           {formatPercentMetric(prediction.confidence)}
@@ -419,11 +373,7 @@ function FailureRiskDetail({
 
 function RiskDriversList({ drivers }: { drivers: RiskDriverView[] }) {
   if (drivers.length === 0) {
-    return (
-      <div className="empty-state">
-        No risk drivers returned for this prediction.
-      </div>
-    );
+    return <div className="empty-state">No risk drivers returned for this prediction.</div>;
   }
   const maxContribution = Math.max(
     ...drivers.map((driver) => Math.abs(driver.contribution)),
@@ -438,16 +388,12 @@ function RiskDriversList({ drivers }: { drivers: RiskDriverView[] }) {
           Math.round((Math.abs(driver.contribution) / maxContribution) * 100),
         );
         return (
-          <article
-            className="ml-risk-driver-row"
-            key={`${driver.feature}-${driver.contribution}`}
-          >
+          <article className="ml-risk-driver-row" key={`${driver.feature}-${driver.contribution}`}>
             <div>
               <strong>{humanizeFeatureName(driver.feature)}</strong>
               <span>
                 {readableDriverDirection(driver.direction)} / value{" "}
-                {formatDriverNumber(driver.value)} / weight{" "}
-                {formatDriverNumber(driver.weight)}
+                {formatDriverNumber(driver.value)} / weight {formatDriverNumber(driver.weight)}
               </span>
             </div>
             <div className="ml-risk-driver-impact">
@@ -499,13 +445,9 @@ function normalizeRiskDrivers(drivers: Array<Record<string, unknown>>) {
   return drivers
     .map((driver) => {
       const feature =
-        stringMetric(driver, "feature") ??
-        stringMetric(driver, "metric") ??
-        "unknown_feature";
+        stringMetric(driver, "feature") ?? stringMetric(driver, "metric") ?? "unknown_feature";
       const contribution =
-        metricNumber(driver, "contribution") ??
-        metricNumber(driver, "score") ??
-        0;
+        metricNumber(driver, "contribution") ?? metricNumber(driver, "score") ?? 0;
       return {
         feature,
         value: metricNumber(driver, "value"),
@@ -516,10 +458,7 @@ function normalizeRiskDrivers(drivers: Array<Record<string, unknown>>) {
           (contribution >= 0 ? "increases_risk" : "decreases_risk"),
       };
     })
-    .sort(
-      (left, right) =>
-        Math.abs(right.contribution) - Math.abs(left.contribution),
-    );
+    .sort((left, right) => Math.abs(right.contribution) - Math.abs(left.contribution));
 }
 
 function readableDriverDirection(value: string) {
@@ -548,9 +487,7 @@ function formatTrainingWindow(value: Record<string, unknown> | undefined) {
     stringMetric(value, "from") ??
     stringMetric(value, "windowStart");
   const end =
-    stringMetric(value, "end") ??
-    stringMetric(value, "to") ??
-    stringMetric(value, "windowEnd");
+    stringMetric(value, "end") ?? stringMetric(value, "to") ?? stringMetric(value, "windowEnd");
   if (start || end) {
     return `${start ?? "unknown start"} - ${end ?? "unknown end"}`;
   }

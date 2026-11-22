@@ -14,21 +14,30 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface SimulationRunRepository extends JpaRepository<SimulationRun, UUID> {
     List<SimulationRun> findByDeviceIdOrderByStartedAtDesc(UUID deviceId);
-    Optional<SimulationRun> findFirstByDeviceIdAndStatusOrderByStartedAtDesc(UUID deviceId, SimulationRunStatus status);
-    Optional<SimulationRun> findFirstByDeviceIdAndActiveKeyOrderByStartedAtDesc(UUID deviceId, String activeKey);
+    Optional<SimulationRun> findFirstByDeviceIdAndStatusOrderByStartedAtDesc(
+        UUID deviceId,
+        SimulationRunStatus status
+    );
+    Optional<SimulationRun> findFirstByDeviceIdAndActiveKeyOrderByStartedAtDesc(
+        UUID deviceId,
+        String activeKey
+    );
     List<SimulationRun> findByStatusIn(List<SimulationRunStatus> statuses);
 
     @Modifying
     @Transactional
-    @Query("""
-            update SimulationRun run
-            set run.leaseUntil = :leaseUntil
-            where run.id = :runId
-              and run.leaseOwner = :leaseOwner
-              and run.status = com.voltcanary.simulator.domain.SimulationRunStatus.RUNNING
-            """)
+    @Query(
+        """
+        update SimulationRun run
+        set run.leaseUntil = :leaseUntil
+        where run.id = :runId
+          and run.leaseOwner = :leaseOwner
+          and run.status = com.voltcanary.simulator.domain.SimulationRunStatus.RUNNING
+        """
+    )
     int extendLease(
-            @Param("runId") UUID runId,
-            @Param("leaseOwner") String leaseOwner,
-            @Param("leaseUntil") Instant leaseUntil);
+        @Param("runId") UUID runId,
+        @Param("leaseOwner") String leaseOwner,
+        @Param("leaseUntil") Instant leaseUntil
+    );
 }

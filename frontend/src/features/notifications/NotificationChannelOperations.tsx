@@ -16,8 +16,13 @@ interface NotificationChannelOperationsProps {
   disabled?: boolean;
 }
 
-export function NotificationChannelOperations({ channel, disabled = false }: NotificationChannelOperationsProps) {
-  const [diagnostics, setDiagnostics] = useState<NotificationChannelDiagnosticsResponse | null>(null);
+export function NotificationChannelOperations({
+  channel,
+  disabled = false,
+}: NotificationChannelOperationsProps) {
+  const [diagnostics, setDiagnostics] = useState<NotificationChannelDiagnosticsResponse | null>(
+    null,
+  );
   const [attempt, setAttempt] = useState<NotificationAttemptResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const commands = useEntityCommands();
@@ -34,51 +39,111 @@ export function NotificationChannelOperations({ channel, disabled = false }: Not
     try {
       setDiagnostics(await getNotificationChannelDiagnostics(channel.id));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Failed to load channel diagnostics");
+      setError(
+        requestError instanceof Error ? requestError.message : "Failed to load channel diagnostics",
+      );
     } finally {
       setIsLoading(false);
     }
   }
 
   async function runTestDelivery() {
-    await commands.run(`test:${channel.id}`, { label: `Delivery test ${channel.name}`, nonIdempotent: true,
-      mutate: () => testNotificationChannel(channel.id, { sample: { title: `${channel.name} delivery check`, description: "Operator-triggered notification delivery test.", alertType: "NOTIFICATION_TEST", severity: "INFO" } }),
+    await commands.run(`test:${channel.id}`, {
+      label: `Delivery test ${channel.name}`,
+      nonIdempotent: true,
+      mutate: () =>
+        testNotificationChannel(channel.id, {
+          sample: {
+            title: `${channel.name} delivery check`,
+            description: "Operator-triggered notification delivery test.",
+            alertType: "NOTIFICATION_TEST",
+            severity: "INFO",
+          },
+        }),
       onCommitted: setAttempt,
-      refresh: async () => { setDiagnostics(await getNotificationChannelDiagnostics(channel.id)); },
+      refresh: async () => {
+        setDiagnostics(await getNotificationChannelDiagnostics(channel.id));
+      },
     });
   }
 
-  const health = diagnostics ? healthLabel(diagnostics) : isLoading ? "Loading diagnostics" : "Diagnostics unavailable";
+  const health = diagnostics
+    ? healthLabel(diagnostics)
+    : isLoading
+      ? "Loading diagnostics"
+      : "Diagnostics unavailable";
   const currentAttemptStatus = attempt?.status ?? diagnostics?.lastTestAttemptStatus ?? null;
 
   return (
     <div className="notification-channel-operations">
       <CommandFeedback outcomes={commands.outcomes} onRetryRead={commands.retryRead} />
-      {commands.outcomes[`test:${channel.id}`]?.phase === "unknown-result" && diagnostics?.lastTestAttemptId ? <div className="status-note"><p>Review the recorded test attempt {diagnostics.lastTestAttemptId} · {diagnostics.lastTestAttemptStatus}. This does not establish delivery success.</p><button className="ghost-button" type="button" onClick={() => commands.reconcile(`test:${channel.id}`, { id: diagnostics.lastTestAttemptId, status: diagnostics.lastTestAttemptStatus })}>Confirm reviewed test attempt</button></div> : null}
+      {commands.outcomes[`test:${channel.id}`]?.phase === "unknown-result" &&
+      diagnostics?.lastTestAttemptId ? (
+        <div className="status-note">
+          <p>
+            Review the recorded test attempt {diagnostics.lastTestAttemptId} ·{" "}
+            {diagnostics.lastTestAttemptStatus}. This does not establish delivery success.
+          </p>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() =>
+              commands.reconcile(`test:${channel.id}`, {
+                id: diagnostics.lastTestAttemptId,
+                status: diagnostics.lastTestAttemptStatus,
+              })
+            }
+          >
+            Confirm reviewed test attempt
+          </button>
+        </div>
+      ) : null}
       <div className="notification-health-strip">
         <span className={`status-pill status-${healthTone(diagnostics)}`}>{health}</span>
-        <span>{!diagnostics ? "Adapter status unknown" : diagnostics.adapterRegistered === false ? "Adapter unavailable" : "Adapter ready"}</span>
         <span>
-          Queue {diagnostics ? diagnostics.pendingCount + diagnostics.retryingCount : "unknown"} / Failed{" "}
-          {diagnostics?.failedCount ?? "unknown"}
+          {!diagnostics
+            ? "Adapter status unknown"
+            : diagnostics.adapterRegistered === false
+              ? "Adapter unavailable"
+              : "Adapter ready"}
+        </span>
+        <span>
+          Queue {diagnostics ? diagnostics.pendingCount + diagnostics.retryingCount : "unknown"} /
+          Failed {diagnostics?.failedCount ?? "unknown"}
         </span>
         <span>{lastActivity(diagnostics)}</span>
       </div>
       {currentAttemptStatus ? (
         <div className="notification-test-result">
           <strong>Last test: {formatEnum(currentAttemptStatus)}</strong>
-          {attempt?.retryExhausted || diagnostics?.lastTestRetryExhausted ? <span>Retries exhausted</span> : null}
-          {attempt?.nextAttemptAt && attempt.status === "RETRYING" ? <span>Next retry {formatDate(attempt.nextAttemptAt)}</span> : null}
+          {attempt?.retryExhausted || diagnostics?.lastTestRetryExhausted ? (
+            <span>Retries exhausted</span>
+          ) : null}
+          {attempt?.nextAttemptAt && attempt.status === "RETRYING" ? (
+            <span>Next retry {formatDate(attempt.nextAttemptAt)}</span>
+          ) : null}
           {attempt?.lastErrorCode ? <span>{sanitizeApiMessage(attempt.lastErrorCode)}</span> : null}
-          {attempt?.providerResponseSummary ? <span>{sanitizeApiMessage(attempt.providerResponseSummary)}</span> : null}
+          {attempt?.providerResponseSummary ? (
+            <span>{sanitizeApiMessage(attempt.providerResponseSummary)}</span>
+          ) : null}
         </div>
       ) : null}
       {error ? <div className="error-message account-message">{error}</div> : null}
       <div className="action-row">
-        <button className="ghost-button" type="button" onClick={() => void loadDiagnostics()} disabled={disabled || isLoading || isTesting}>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => void loadDiagnostics()}
+          disabled={disabled || isLoading || isTesting}
+        >
           Refresh health
         </button>
-        <button className="ghost-button" type="button" onClick={() => void runTestDelivery()} disabled={disabled || isTesting}>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={() => void runTestDelivery()}
+          disabled={disabled || isTesting}
+        >
           {isTesting ? "Testing..." : "Send test"}
         </button>
       </div>

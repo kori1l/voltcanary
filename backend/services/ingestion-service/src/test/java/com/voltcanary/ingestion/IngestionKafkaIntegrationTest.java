@@ -1,5 +1,7 @@
 package com.voltcanary.ingestion;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.ingestion.source.InternalDataSourceResponse;
 import com.voltcanary.ingestion.source.SourceRegistryCache;
 import java.time.Duration;
@@ -13,9 +15,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -25,23 +27,25 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.redpanda.RedpandaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Testcontainers(disabledWithoutDocker = true)
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "app.kafka.publish-enabled=true",
-                "app.idempotency.redis-enabled=false",
-                "app.ingestion.redis-rate-limit-enabled=false",
-                "app.ingestion.multi-replica-mode=false",
-                "app.ingestion.local-correctness-state-enabled=true"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+        "app.kafka.publish-enabled=true",
+        "app.idempotency.redis-enabled=false",
+        "app.ingestion.redis-rate-limit-enabled=false",
+        "app.ingestion.multi-replica-mode=false",
+        "app.ingestion.local-correctness-state-enabled=true",
+    }
+)
+@org.junit.jupiter.api.Tag("docker")
 class IngestionKafkaIntegrationTest {
 
     @Container
-    static final RedpandaContainer kafka = new RedpandaContainer(DockerImageName.parse("redpandadata/redpanda:v24.2.18"));
+    static final RedpandaContainer kafka = new RedpandaContainer(
+        DockerImageName.parse("redpandadata/redpanda:v24.2.18")
+    );
 
     @DynamicPropertySource
     static void kafkaProperties(DynamicPropertyRegistry registry) {
@@ -63,9 +67,10 @@ class IngestionKafkaIntegrationTest {
         try (KafkaConsumer<String, String> consumer = consumer()) {
             consumer.subscribe(List.of("telemetry.raw.v1"));
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    "/ingestion/readings",
-                    request(deviceId, sourceId),
-                    String.class);
+                "/ingestion/readings",
+                request(deviceId, sourceId),
+                String.class
+            );
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
             String payload = pollValue(consumer);
@@ -98,14 +103,20 @@ class IngestionKafkaIntegrationTest {
 
     private Map<String, Object> request(UUID deviceId, String sourceId) {
         return Map.of(
-                "deviceId", deviceId,
-                "sourceId", sourceId,
-                "timestamp", Instant.now().minusSeconds(30).toString(),
-                "metrics", Map.of("activePowerW", 840.2, "voltageV", 230.1));
+            "deviceId",
+            deviceId,
+            "sourceId",
+            sourceId,
+            "timestamp",
+            Instant.now().minusSeconds(30).toString(),
+            "metrics",
+            Map.of("activePowerW", 840.2, "voltageV", 230.1)
+        );
     }
 
     private void seedSource(UUID deviceId, String sourceId) {
-        sourceRegistryCache.put(new InternalDataSourceResponse(
+        sourceRegistryCache.put(
+            new InternalDataSourceResponse(
                 UUID.randomUUID(),
                 deviceId,
                 UUID.randomUUID(),
@@ -114,6 +125,9 @@ class IngestionKafkaIntegrationTest {
                 "REST",
                 "ACTIVE",
                 null,
-                null), System.nanoTime());
+                null
+            ),
+            System.nanoTime()
+        );
     }
 }

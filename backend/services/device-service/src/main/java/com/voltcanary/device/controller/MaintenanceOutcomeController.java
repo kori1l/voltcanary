@@ -28,31 +28,35 @@ public class MaintenanceOutcomeController {
 
     @GetMapping("/maintenance-operations/{operationId}/outcomes")
     public List<MaintenanceOutcomeResponse> list(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId
+    ) {
         return service.list(userResolver.resolve(headers), operationId);
     }
 
     @PostMapping("/maintenance-operations/{operationId}/outcomes")
     public MaintenanceOutcomeResponse create(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("operationId") UUID operationId,
-            @Valid @RequestBody MaintenanceOutcomeRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("operationId") UUID operationId,
+        @Valid @RequestBody MaintenanceOutcomeRequest request
+    ) {
         return service.create(userResolver.resolve(headers), operationId, request);
     }
 
     @GetMapping("/maintenance-outcomes/{outcomeId}")
     public MaintenanceOutcomeResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("outcomeId") UUID outcomeId) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("outcomeId") UUID outcomeId
+    ) {
         return service.get(userResolver.resolve(headers), outcomeId);
     }
 
     @PatchMapping("/maintenance-outcomes/{outcomeId}")
     public MaintenanceOutcomeResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("outcomeId") UUID outcomeId,
-            @Valid @RequestBody MaintenanceOutcomeRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("outcomeId") UUID outcomeId,
+        @Valid @RequestBody MaintenanceOutcomeRequest request
+    ) {
         return service.update(userResolver.resolve(headers), outcomeId, request);
     }
 }

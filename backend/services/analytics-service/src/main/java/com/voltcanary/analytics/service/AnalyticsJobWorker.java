@@ -20,7 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Slf4j
 public class AnalyticsJobWorker {
 
-    private record Claim(UUID id, String owner) { }
+    private record Claim(UUID id, String owner) {}
 
     private static final int BATCH_SIZE = 10;
     private static final Duration LEASE_TTL = Duration.ofMinutes(15);
@@ -29,7 +29,8 @@ public class AnalyticsJobWorker {
     private final TransactionTemplate transactionTemplate;
     private final AnalyticsJobRunner jobRunner;
     private final AnalyticsJobProperties properties;
-    private final String workerId = ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
+    private final String workerId =
+        ManagementFactory.getRuntimeMXBean().getName() + ":" + UUID.randomUUID();
 
     @Scheduled(fixedDelayString = "${app.analytics.jobs.worker-delay:5s}")
     public void runClaimedJobs() {
@@ -44,9 +45,10 @@ public class AnalyticsJobWorker {
                 jobRunner.run(claim.id(), claim.owner());
             } catch (Exception exception) {
                 log.warn(
-                        "analyticsClaimedJobRunFailed jobId={} reasonCode={}",
-                        claim.id(),
-                        exception.getClass().getSimpleName());
+                    "analyticsClaimedJobRunFailed jobId={} reasonCode={}",
+                    claim.id(),
+                    exception.getClass().getSimpleName()
+                );
             }
         }
     }
@@ -60,35 +62,46 @@ public class AnalyticsJobWorker {
             if (ids.isEmpty()) {
                 return List.of();
             }
-            jdbcTemplate.update("""
-                    update analytics_jobs
-                    set status = 'RUNNING',
-                        started_at = coalesce(started_at, ?),
-                        locked_at = ?,
-                        locked_by = ?,
-                        error_message = null
-                    where id in (%s)
-                    """.formatted(placeholders(ids.size())),
-                    parameters(ids, Timestamp.from(now), Timestamp.from(now), owner));
-            return ids.stream().map(id -> new Claim(id, owner)).toList();
+            jdbcTemplate.update(
+                """
+                update analytics_jobs
+                set status = 'RUNNING',
+                    started_at = coalesce(started_at, ?),
+                    locked_at = ?,
+                    locked_by = ?,
+                    error_message = null
+                where id in (%s)
+                """.formatted(placeholders(ids.size())),
+                parameters(ids, Timestamp.from(now), Timestamp.from(now), owner)
+            );
+            return ids
+                .stream()
+                .map(id -> new Claim(id, owner))
+                .toList();
         });
     }
 
     private List<UUID> claimIds(Instant staleBefore) {
-        String sql = """
-                select id
-                from analytics_jobs
-                where (status = 'PENDING' and ? = true)
-                   or (
-                        status = 'RUNNING'
-                        and locked_at is not null
-                        and locked_at < ?
-                   )
-                order by created_at asc
-                limit ?
-                """ + " for update skip locked";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> rs.getObject("id", UUID.class),
-                properties.isAsync(), Timestamp.from(staleBefore), 1);
+        String sql =
+            """
+            select id
+            from analytics_jobs
+            where (status = 'PENDING' and ? = true)
+               or (
+                    status = 'RUNNING'
+                    and locked_at is not null
+                    and locked_at < ?
+               )
+            order by created_at asc
+            limit ?
+            """ + " for update skip locked";
+        return jdbcTemplate.query(
+            sql,
+            (rs, rowNum) -> rs.getObject("id", UUID.class),
+            properties.isAsync(),
+            Timestamp.from(staleBefore),
+            1
+        );
     }
 
     private String placeholders(int size) {

@@ -18,7 +18,10 @@ public class SimulationYamlParser {
         try {
             return mapper.readTree(yaml);
         } catch (Exception exception) {
-            throw new IllegalArgumentException("Invalid YAML syntax: " + exception.getMessage(), exception);
+            throw new IllegalArgumentException(
+                "Invalid YAML syntax: " + exception.getMessage(),
+                exception
+            );
         }
     }
 
@@ -27,27 +30,45 @@ public class SimulationYamlParser {
         JsonNode simulator = root.path("simulator");
         JsonNode schedule = root.path("schedule");
         return new SimulationConfigModel(
-                root.path("schemaVersion").asInt(),
-                simulator.path("name").asText("simulator"),
-                simulator.path("profile").asText("GENERIC_APPLIANCE"),
-                simulator.path("mode").asText("NORMAL"),
-                simulator.path("protocol").asText("HTTP"),
-                new TargetConfig(root.path("target").path("sourceId").asText()),
-                new ScheduleConfig(
-                        parseDuration(schedule.path("interval").asText("5s")),
-                        parseDuration(schedule.path("startDelay").asText("0s")),
-                        parseDuration(schedule.path("duration").asText("0s")),
-                        schedule.path("speed").asDouble(1.0)),
-                parseMetrics(root.path("metrics")),
-                parseAnomalies(root.path("anomalies")),
-                root.has("gps") ? parseGps(root.path("gps")) : null);
+            root.path("schemaVersion").asInt(),
+            simulator.path("name").asText("simulator"),
+            simulator.path("profile").asText("GENERIC_APPLIANCE"),
+            simulator.path("mode").asText("NORMAL"),
+            simulator.path("protocol").asText("HTTP"),
+            new TargetConfig(root.path("target").path("sourceId").asText()),
+            new ScheduleConfig(
+                parseDuration(schedule.path("interval").asText("5s")),
+                parseDuration(schedule.path("startDelay").asText("0s")),
+                parseDuration(schedule.path("duration").asText("0s")),
+                schedule.path("speed").asDouble(1.0)
+            ),
+            parseMetrics(root.path("metrics")),
+            parseAnomalies(root.path("anomalies")),
+            root.has("gps") ? parseGps(root.path("gps")) : null
+        );
     }
 
     private GpsConfig parseGps(JsonNode gps) {
         List<GpsConfig.Waypoint> points = new ArrayList<>();
-        gps.path("waypoints").forEach(point -> points.add(new GpsConfig.Waypoint(point.path("latitude").asDouble(), point.path("longitude").asDouble(), point.path("stopSeconds").asInt(0))));
-        return new GpsConfig(gps.path("routeId").asText(), gps.path("speedKmh").asDouble(), List.copyOf(points), gps.path("vehicleMetrics").asBoolean(false),
-                gps.path("initialFuelPercent").asDouble(80), gps.path("consumptionLitresPer100Km").asDouble(8), gps.path("fuelTankLitres").asDouble(50), gps.path("initialOdometerKm").asDouble(0));
+        gps.path("waypoints").forEach(point ->
+            points.add(
+                new GpsConfig.Waypoint(
+                    point.path("latitude").asDouble(),
+                    point.path("longitude").asDouble(),
+                    point.path("stopSeconds").asInt(0)
+                )
+            )
+        );
+        return new GpsConfig(
+            gps.path("routeId").asText(),
+            gps.path("speedKmh").asDouble(),
+            List.copyOf(points),
+            gps.path("vehicleMetrics").asBoolean(false),
+            gps.path("initialFuelPercent").asDouble(80),
+            gps.path("consumptionLitresPer100Km").asDouble(8),
+            gps.path("fuelTankLitres").asDouble(50),
+            gps.path("initialOdometerKm").asDouble(0)
+        );
     }
 
     Map<String, MetricConfig> parseMetrics(JsonNode metrics) {
@@ -58,7 +79,9 @@ public class SimulationYamlParser {
         metrics.fields().forEachRemaining(entry -> {
             JsonNode metric = entry.getValue();
             JsonNode cycle = metric.path("cycle");
-            parsed.put(entry.getKey(), new MetricConfig(
+            parsed.put(
+                entry.getKey(),
+                new MetricConfig(
                     entry.getKey(),
                     metric.path("type").asText(),
                     nullableDouble(metric.path("value")),
@@ -69,7 +92,9 @@ public class SimulationYamlParser {
                     nullableDuration(cycle.path("offDuration").path("min")),
                     nullableDuration(cycle.path("offDuration").path("max")),
                     metric.path("expression").asText(null),
-                    metric.path("from").asText(null)));
+                    metric.path("from").asText(null)
+                )
+            );
         });
         return parsed;
     }
@@ -80,14 +105,17 @@ public class SimulationYamlParser {
             return parsed;
         }
         for (JsonNode anomaly : anomalies) {
-            parsed.add(new AnomalyConfig(
+            parsed.add(
+                new AnomalyConfig(
                     anomaly.path("type").asText(),
                     anomaly.path("enabled").asBoolean(false),
                     parseDuration(anomaly.path("startAfter").asText("0s")),
                     parseDuration(anomaly.path("duration").asText("0s")),
                     nullableDouble(anomaly.path("powerW")),
                     nullableDouble(anomaly.path("growthPercent")),
-                    nullableDuration(anomaly.path("rampDuration"))));
+                    nullableDuration(anomaly.path("rampDuration"))
+                )
+            );
         }
         return parsed;
     }
@@ -118,6 +146,8 @@ public class SimulationYamlParser {
     }
 
     private Duration nullableDuration(JsonNode node) {
-        return node == null || node.isMissingNode() || node.isNull() || node.asText("").isBlank() ? null : parseDuration(node.asText());
+        return node == null || node.isMissingNode() || node.isNull() || node.asText("").isBlank()
+            ? null
+            : parseDuration(node.asText());
     }
 }

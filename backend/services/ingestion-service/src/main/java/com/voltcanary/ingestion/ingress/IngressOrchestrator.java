@@ -32,18 +32,20 @@ public class IngressOrchestrator {
     private final MeterRegistry meterRegistry;
 
     public IngestionAcceptedResponse ingestHttp(
-            TelemetryIngestionRequest request,
-            String sourceToken,
-            String correlationId,
-            String clientIp,
-            boolean historicalImport) {
+        TelemetryIngestionRequest request,
+        String sourceToken,
+        String correlationId,
+        String clientIp,
+        boolean historicalImport
+    ) {
         IngestionResult result = dispatch(
-                AdapterType.GENERIC_HTTP_PUSH,
-                ProtocolType.REST,
-                TransportType.HTTP,
-                HttpAdapterRequest.class,
-                new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport),
-                null);
+            AdapterType.GENERIC_HTTP_PUSH,
+            ProtocolType.REST,
+            TransportType.HTTP,
+            HttpAdapterRequest.class,
+            new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport),
+            null
+        );
         if (result.accepted()) {
             return IngestionAcceptedResponse.single(result.message(), 1, 0, result.eventId());
         }
@@ -51,28 +53,45 @@ public class IngressOrchestrator {
     }
 
     public IngestionAcceptedResponse ingestHttpBatch(
-            Collection<TelemetryIngestionRequest> requests,
-            String sourceToken,
-            String correlationId,
-            String clientIp,
-            boolean historicalImport) {
+        Collection<TelemetryIngestionRequest> requests,
+        String sourceToken,
+        String correlationId,
+        String clientIp,
+        boolean historicalImport
+    ) {
         if (requests.size() > properties.getMaxReadingsPerBatch()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Batch size exceeds configured limit");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Batch size exceeds configured limit"
+            );
         }
         meterRegistry.summary("voltcanary.ingestion.batch.size").record(requests.size());
 
-        List<HttpAdapterRequest> adapterRequests = requests.stream()
-                .map(request -> new HttpAdapterRequest(request, sourceToken, correlationId, clientIp, historicalImport))
-                .toList();
-        List<IncomingTelemetryMessage> messages = adapterRequests.stream()
-                .map(adapterRequest -> ingressDispatcher.dispatch(
-                        AdapterType.GENERIC_HTTP_PUSH,
-                        ProtocolType.REST,
-                        TransportType.HTTP,
-                        HttpAdapterRequest.class,
-                        adapterRequest,
-                        null))
-                .toList();
+        List<HttpAdapterRequest> adapterRequests = requests
+            .stream()
+            .map(request ->
+                new HttpAdapterRequest(
+                    request,
+                    sourceToken,
+                    correlationId,
+                    clientIp,
+                    historicalImport
+                )
+            )
+            .toList();
+        List<IncomingTelemetryMessage> messages = adapterRequests
+            .stream()
+            .map(adapterRequest ->
+                ingressDispatcher.dispatch(
+                    AdapterType.GENERIC_HTTP_PUSH,
+                    ProtocolType.REST,
+                    TransportType.HTTP,
+                    HttpAdapterRequest.class,
+                    adapterRequest,
+                    null
+                )
+            )
+            .toList();
 
         int index = 0;
         int accepted = 0;
@@ -84,34 +103,61 @@ public class IngressOrchestrator {
                 IngestionResult result = pipeline.ingest(message);
                 if (result.accepted()) {
                     accepted++;
-                    items.add(new BatchIngestionItemResponse(index, result.message(), result.eventId(), null));
+                    items.add(
+                        new BatchIngestionItemResponse(
+                            index,
+                            result.message(),
+                            result.eventId(),
+                            null
+                        )
+                    );
                 } else {
                     duplicate++;
-                    items.add(new BatchIngestionItemResponse(index, "duplicate", result.eventId(), result.message()));
+                    items.add(
+                        new BatchIngestionItemResponse(
+                            index,
+                            "duplicate",
+                            result.eventId(),
+                            result.message()
+                        )
+                    );
                 }
             } catch (ResponseStatusException exception) {
                 rejected++;
-                items.add(new BatchIngestionItemResponse(index, "rejected", null, exception.getReason()));
+                items.add(
+                    new BatchIngestionItemResponse(index, "rejected", null, exception.getReason())
+                );
             }
             index++;
         }
-        String status = rejected == 0 ? "accepted" : accepted == 0 && duplicate == 0 ? "rejected" : "partial";
-        return IngestionAcceptedResponse.batch(status, accepted, duplicate, rejected, List.copyOf(items));
+        String status =
+            rejected == 0 ? "accepted" : accepted == 0 && duplicate == 0 ? "rejected" : "partial";
+        return IngestionAcceptedResponse.batch(
+            status,
+            accepted,
+            duplicate,
+            rejected,
+            List.copyOf(items)
+        );
     }
 
     public <T> IngestionResult dispatch(
-            AdapterType adapterType,
-            ProtocolType protocol,
-            TransportType transport,
-            Class<T> requestType,
-            T request,
-            SourceRuntimeConfig sourceRuntimeConfig) {
-        return pipeline.ingest(ingressDispatcher.dispatch(
+        AdapterType adapterType,
+        ProtocolType protocol,
+        TransportType transport,
+        Class<T> requestType,
+        T request,
+        SourceRuntimeConfig sourceRuntimeConfig
+    ) {
+        return pipeline.ingest(
+            ingressDispatcher.dispatch(
                 adapterType,
                 protocol,
                 transport,
                 requestType,
                 request,
-                sourceRuntimeConfig));
+                sourceRuntimeConfig
+            )
+        );
     }
 }

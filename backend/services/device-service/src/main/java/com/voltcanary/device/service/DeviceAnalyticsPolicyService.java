@@ -1,6 +1,5 @@
 package com.voltcanary.device.service;
 
-import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceAnalyticsConfig;
@@ -14,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -29,16 +29,18 @@ public class DeviceAnalyticsPolicyService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DeviceAnalyticsConfigResponse get(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
-        return repository.findByDeviceId(device.getId())
-                .map(mapper::toResponse)
-                .orElseGet(() -> mapper.defaults(device.getId()));
+        return repository
+            .findByDeviceId(device.getId())
+            .map(mapper::toResponse)
+            .orElseGet(() -> mapper.defaults(device.getId()));
     }
 
     @Transactional
     public DeviceAnalyticsConfigResponse update(
-            AuthenticatedUser user,
-            UUID deviceId,
-            DeviceAnalyticsConfigRequest request) {
+        AuthenticatedUser user,
+        UUID deviceId,
+        DeviceAnalyticsConfigRequest request
+    ) {
         Device device = deviceService.findOwned(user, deviceId);
         Map<String, Object> config = request.config() == null ? Map.of() : request.config();
         DeviceAnalyticsConfig entity = repository.findByDeviceId(device.getId()).orElseGet(() -> {
@@ -51,14 +53,21 @@ public class DeviceAnalyticsPolicyService {
         entity.setConfigJson(mapper.toJson(config));
         entity.setUpdatedAt(Instant.now());
         DeviceAnalyticsConfig saved = repository.save(entity);
-        auditService.record(user, device.getAccountId(), "ANALYTICS_CONFIG_UPDATED", "ANALYTICS_CONFIG", saved.getId());
+        auditService.record(
+            user,
+            device.getAccountId(),
+            "ANALYTICS_CONFIG_UPDATED",
+            "ANALYTICS_CONFIG",
+            saved.getId()
+        );
         eventPublisher.publish(
-                "ANALYTICS_CONFIG",
-                "UPDATED",
-                device.getAccountId(),
-                device.getId(),
-                saved.getId(),
-                saved.isEnabled() ? "ENABLED" : "DISABLED");
+            "ANALYTICS_CONFIG",
+            "UPDATED",
+            device.getAccountId(),
+            device.getId(),
+            saved.getId(),
+            saved.isEnabled() ? "ENABLED" : "DISABLED"
+        );
         return mapper.toResponse(saved);
     }
 }

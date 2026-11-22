@@ -21,18 +21,25 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class AiModelSelectionService {
+
     private final AiModelProviderRepository providerRepository;
     private final AiModelConfigRepository modelRepository;
 
     public List<ModelConfigResponse> list(AuthenticatedUser user, UUID providerId) {
         requireProvider(user, providerId);
-        return modelRepository.findByProviderIdOrderByCreatedAtAsc(providerId).stream()
-                .map(AiProviderMapper::model)
-                .toList();
+        return modelRepository
+            .findByProviderIdOrderByCreatedAtAsc(providerId)
+            .stream()
+            .map(AiProviderMapper::model)
+            .toList();
     }
 
     @Transactional
-    public ModelConfigResponse create(AuthenticatedUser user, UUID providerId, CreateModelConfigRequest request) {
+    public ModelConfigResponse create(
+        AuthenticatedUser user,
+        UUID providerId,
+        CreateModelConfigRequest request
+    ) {
         requireProvider(user, providerId);
         Instant now = Instant.now();
         AiModelConfig model = new AiModelConfig();
@@ -41,7 +48,10 @@ public class AiModelSelectionService {
         model.setDisplayName(request.displayName());
         model.setModelId(request.modelId());
         model.setEnabled(request.enabled() == null || request.enabled());
-        model.setDefaultModel(Boolean.TRUE.equals(request.makeDefault()) || modelRepository.findByProviderIdOrderByCreatedAtAsc(providerId).isEmpty());
+        model.setDefaultModel(
+            Boolean.TRUE.equals(request.makeDefault()) ||
+                modelRepository.findByProviderIdOrderByCreatedAtAsc(providerId).isEmpty()
+        );
         model.setTemperature(request.temperature());
         model.setTopP(request.topP());
         model.setMaxOutputTokens(request.maxOutputTokens());
@@ -58,10 +68,18 @@ public class AiModelSelectionService {
     }
 
     @Transactional
-    public ModelConfigResponse update(AuthenticatedUser user, UUID providerId, UUID modelConfigId, UpdateModelConfigRequest request) {
+    public ModelConfigResponse update(
+        AuthenticatedUser user,
+        UUID providerId,
+        UUID modelConfigId,
+        UpdateModelConfigRequest request
+    ) {
         requireProvider(user, providerId);
-        AiModelConfig model = modelRepository.findByIdAndProviderId(modelConfigId, providerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found"));
+        AiModelConfig model = modelRepository
+            .findByIdAndProviderId(modelConfigId, providerId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found")
+            );
         if (request.displayName() != null) model.setDisplayName(request.displayName());
         if (request.modelId() != null) model.setModelId(request.modelId());
         if (request.enabled() != null) model.setEnabled(request.enabled());
@@ -79,18 +97,31 @@ public class AiModelSelectionService {
     @Transactional
     public void delete(AuthenticatedUser user, UUID providerId, UUID modelConfigId) {
         requireProvider(user, providerId);
-        AiModelConfig model = modelRepository.findByIdAndProviderId(modelConfigId, providerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found"));
+        AiModelConfig model = modelRepository
+            .findByIdAndProviderId(modelConfigId, providerId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found")
+            );
         modelRepository.delete(model);
     }
 
     @Transactional
-    public ModelConfigResponse setDefault(AuthenticatedUser user, UUID providerId, UUID modelConfigId) {
+    public ModelConfigResponse setDefault(
+        AuthenticatedUser user,
+        UUID providerId,
+        UUID modelConfigId
+    ) {
         requireProvider(user, providerId);
-        AiModelConfig model = modelRepository.findByIdAndProviderId(modelConfigId, providerId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found"));
+        AiModelConfig model = modelRepository
+            .findByIdAndProviderId(modelConfigId, providerId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Model config not found")
+            );
         if (!model.isEnabled()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Disabled model cannot be default");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Disabled model cannot be default"
+            );
         }
         unsetDefaultModels(providerId);
         model.setDefaultModel(true);
@@ -99,12 +130,17 @@ public class AiModelSelectionService {
     }
 
     AiModelProvider requireProvider(AuthenticatedUser user, UUID providerId) {
-        return providerRepository.findByIdAndAccountId(providerId, user.accountId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Model provider not found"));
+        return providerRepository
+            .findByIdAndAccountId(providerId, user.accountId())
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Model provider not found")
+            );
     }
 
     private void unsetDefaultModels(UUID providerId) {
-        for (AiModelConfig existing : modelRepository.findByProviderIdOrderByCreatedAtAsc(providerId)) {
+        for (AiModelConfig existing : modelRepository.findByProviderIdOrderByCreatedAtAsc(
+            providerId
+        )) {
             if (existing.isDefaultModel()) {
                 existing.setDefaultModel(false);
                 existing.setUpdatedAt(Instant.now());

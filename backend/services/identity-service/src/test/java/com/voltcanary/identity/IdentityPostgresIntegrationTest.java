@@ -1,12 +1,14 @@
 package com.voltcanary.identity;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.voltcanary.identity.dto.RegisterResponse;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -15,16 +17,13 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Testcontainers
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "spring.jpa.hibernate.ddl-auto=validate",
-                "spring.jpa.open-in-view=false"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = { "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false" }
+)
+@org.junit.jupiter.api.Tag("docker")
 class IdentityPostgresIntegrationTest {
 
     @Container
@@ -44,9 +43,10 @@ class IdentityPostgresIntegrationTest {
     @Test
     void registerPersistsUserInPostgres() {
         ResponseEntity<RegisterResponse> response = restTemplate.postForEntity(
-                "/auth/register",
-                Map.of("email", "postgres-user@example.com", "password", "Password123!"),
-                RegisterResponse.class);
+            "/auth/register",
+            Map.of("email", "postgres-user@example.com", "password", "Password123!"),
+            RegisterResponse.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();

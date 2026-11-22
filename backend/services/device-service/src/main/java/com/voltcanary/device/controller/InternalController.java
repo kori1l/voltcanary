@@ -1,19 +1,12 @@
 package com.voltcanary.device.controller;
 
 import com.voltcanary.device.config.InternalServiceAuth;
-import com.voltcanary.device.domain.Account;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountLifecycleRequest;
 import com.voltcanary.device.dto.AccountLifecycleStatusResponse;
-import com.voltcanary.device.repository.DeviceRepository;
-import com.voltcanary.device.repository.DeviceTypeRepository;
-import com.voltcanary.device.service.AccountService;
+import com.voltcanary.device.service.InternalDeviceQueries;
 import jakarta.validation.Valid;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,89 +15,69 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/internal")
-@RequiredArgsConstructor
 public class InternalController {
 
-    private final DeviceRepository deviceRepository;
-    private final DeviceTypeRepository deviceTypeRepository;
-    private final AccountService accountService;
-    private final InternalServiceAuth internalServiceAuth;
-    private final com.voltcanary.device.service.DeviceDeletionService deletions;
+    private final InternalDeviceQueries useCase;
+
+    public InternalController(InternalDeviceQueries useCase) {
+        this.useCase = useCase;
+    }
 
     @GetMapping("/device-deletions/{deviceId}")
-    public Map<String, Object> deletion(@RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token, @PathVariable("deviceId") UUID deviceId) {
-        internalServiceAuth.require(token);
-        return deletions.internalReceipt(deviceId);
+    public Map<String, Object> deletion(
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String token,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
+        return useCase.deletion(token, deviceId);
     }
 
     @GetMapping("/ping")
     public Map<String, String> ping() {
-        return Map.of("status", "ok", "service", "device-service");
+        return useCase.ping();
     }
 
     @GetMapping("/devices/{deviceId}/access")
     public Map<String, Boolean> deviceAccess(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("deviceId") UUID deviceId,
-            @RequestParam("userId") UUID userId) {
-        internalServiceAuth.require(internalToken);
-        return Map.of("allowed", deviceRepository.existsByIdAndAccountUserId(deviceId, userId) || deletions.retainedAccess(deviceId, userId));
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam("userId") UUID userId
+    ) {
+        return useCase.deviceAccess(internalToken, deviceId, userId);
     }
 
     @GetMapping("/devices/{deviceId}/owner")
     public Map<String, String> deviceOwner(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("deviceId") UUID deviceId) {
-        internalServiceAuth.require(internalToken);
-        Device device = deviceRepository.findById(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        return Map.of(
-                "deviceId", device.getId().toString(),
-                "accountId", device.getAccountId().toString());
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
+        return useCase.deviceOwner(internalToken, deviceId);
     }
 
     @GetMapping("/devices/{deviceId}/metadata")
     public Map<String, String> deviceMetadata(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("deviceId") UUID deviceId) {
-        internalServiceAuth.require(internalToken);
-        Device device = deviceRepository.findById(deviceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        String deviceType = deviceTypeRepository.findById(device.getDeviceTypeId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device type not found"))
-                .getCode();
-        Map<String, String> response = new LinkedHashMap<>();
-        response.put("deviceId", device.getId().toString());
-        response.put("accountId", device.getAccountId().toString());
-        if (device.getLocationId() != null) {
-            response.put("locationId", device.getLocationId().toString());
-        }
-        response.put("type", deviceType);
-        response.put("status", device.getStatus().name());
-        return response;
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("deviceId") UUID deviceId
+    ) {
+        return useCase.deviceMetadata(internalToken, deviceId);
     }
 
     @PostMapping("/accounts/users/{userId}/lifecycle")
     public Map<String, String> syncAccountLifecycle(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("userId") UUID userId,
-            @Valid @RequestBody AccountLifecycleRequest request) {
-        internalServiceAuth.require(internalToken);
-        var account = accountService.syncUser(userId, request.email(), request.status());
-        return Map.of("accountId", account.getId().toString(), "status", account.getStatus().name());
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("userId") UUID userId,
+        @Valid @RequestBody AccountLifecycleRequest request
+    ) {
+        return useCase.syncAccountLifecycle(internalToken, userId, request);
     }
 
     @GetMapping("/accounts/users/{userId}/lifecycle")
     public AccountLifecycleStatusResponse accountLifecycle(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("userId") UUID userId) {
-        internalServiceAuth.require(internalToken);
-        Account account = accountService.findByUserId(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
-        return new AccountLifecycleStatusResponse(account.getUserId(), account.getId(), account.getStatus().name());
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("userId") UUID userId
+    ) {
+        return useCase.accountLifecycle(internalToken, userId);
     }
 }

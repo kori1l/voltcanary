@@ -11,6 +11,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /** Protects the explicitly declared, read-only telemetry service contracts. */
 public final class InternalTelemetryFilter extends OncePerRequestFilter {
+
     private final String token;
 
     public InternalTelemetryFilter(String token) {
@@ -27,11 +28,22 @@ public final class InternalTelemetryFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        FilterChain chain
+    ) throws ServletException, IOException {
         String supplied = request.getHeader("X-Internal-Service-Token");
-        if (!"GET".equals(request.getMethod()) || token == null || token.isBlank() || supplied == null
-                || !MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
+        if (
+            !"GET".equals(request.getMethod()) ||
+            token == null ||
+            token.isBlank() ||
+            supplied == null ||
+            !MessageDigest.isEqual(
+                token.getBytes(StandardCharsets.UTF_8),
+                supplied.getBytes(StandardCharsets.UTF_8)
+            )
+        ) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }

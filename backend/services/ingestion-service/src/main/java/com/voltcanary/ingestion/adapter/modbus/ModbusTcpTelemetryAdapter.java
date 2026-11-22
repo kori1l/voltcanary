@@ -24,13 +24,14 @@ import org.springframework.stereotype.Component;
 public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
 
     private static final AdapterManifest MANIFEST = new AdapterManifest(
-            "generic-modbus-tcp",
-            AdapterType.GENERIC_MODBUS_TCP,
-            "Generic Modbus TCP",
-            TransportType.TCP,
-            ProtocolType.MODBUS_TCP,
-            AdapterCapabilities.of(AdapterCapability.POLLING),
-            "v1");
+        "generic-modbus-tcp",
+        AdapterType.GENERIC_MODBUS_TCP,
+        "Generic Modbus TCP",
+        TransportType.TCP,
+        ProtocolType.MODBUS_TCP,
+        AdapterCapabilities.of(AdapterCapability.POLLING),
+        "v1"
+    );
 
     private final ModbusTcpClientOperations client;
     private final ModbusRegisterValueMapper mapper;
@@ -46,7 +47,8 @@ public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
         ModbusTcpAdapterConfig config = ModbusTcpAdapterConfig.from(sourceRuntimeConfig);
         Instant receivedAt = clock.instant();
         Map<String, Object> metrics = mapper.map(config.registers(), client.read(config));
-        return List.of(new IncomingTelemetryMessage(
+        return List.of(
+            new IncomingTelemetryMessage(
                 sourceRuntimeConfig.sourceId(),
                 sourceRuntimeConfig.deviceId(),
                 sourceRuntimeConfig.accountId(),
@@ -55,7 +57,9 @@ public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
                 metrics,
                 origin(config),
                 context(sourceRuntimeConfig, config),
-                false));
+                false
+            )
+        );
     }
 
     private Instant occurredAt(ModbusTcpAdapterConfig config, Instant receivedAt) {
@@ -66,17 +70,25 @@ public class ModbusTcpTelemetryAdapter implements PollingTelemetryAdapter {
 
     private TelemetryOrigin origin(ModbusTcpAdapterConfig config) {
         return new TelemetryOrigin(
-                MANIFEST.adapterType(),
-                MANIFEST.protocol(),
-                MANIFEST.transport(),
-                MANIFEST.adapterId(),
-                Map.of("endpointHost", config.host(), "endpointPort", Integer.toString(config.port())));
+            MANIFEST.adapterType(),
+            MANIFEST.protocol(),
+            MANIFEST.transport(),
+            MANIFEST.adapterId(),
+            Map.of("endpointHost", config.host(), "endpointPort", Integer.toString(config.port()))
+        );
     }
 
-    private IngestionContext context(SourceRuntimeConfig sourceRuntimeConfig, ModbusTcpAdapterConfig config) {
+    private IngestionContext context(
+        SourceRuntimeConfig sourceRuntimeConfig,
+        ModbusTcpAdapterConfig config
+    ) {
         Map<String, String> metadata = new LinkedHashMap<>();
         putIfPresent(metadata, "mappingSchemaVersion", sourceRuntimeConfig.mappingSchemaVersion());
-        putIfPresent(metadata, "adapterConfigSchemaVersion", sourceRuntimeConfig.adapterConfigSchemaVersion());
+        putIfPresent(
+            metadata,
+            "adapterConfigSchemaVersion",
+            sourceRuntimeConfig.adapterConfigSchemaVersion()
+        );
         metadata.put("configVersion", Long.toString(sourceRuntimeConfig.version()));
         metadata.put("timestampPolicy", config.timestampPolicy().name());
         for (ModbusRegisterMapping mapping : config.registers()) {

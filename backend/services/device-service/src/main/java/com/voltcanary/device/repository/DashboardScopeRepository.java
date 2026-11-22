@@ -3,9 +3,9 @@ package com.voltcanary.device.repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.dto.DashboardScopeRequest;
+import com.voltcanary.device.dto.DashboardScopeResponse;
 import com.voltcanary.device.dto.DashboardScopeResponse.DeviceEntry;
 import com.voltcanary.device.dto.DashboardScopeResponse.LocationEntry;
-import com.voltcanary.device.dto.DashboardScopeResponse;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,31 +25,56 @@ import org.springframework.web.server.ResponseStatusException;
 @Repository
 @RequiredArgsConstructor
 public class DashboardScopeRepository {
-    private record SourceCadence(Long seconds, String policy) {
-    }
+
+    private record SourceCadence(Long seconds, String policy) {}
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final EnergyMeterRepository meters;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public DashboardScopeResponse resolve(UUID userId, UUID accountId, DashboardScopeRequest request) {
-        return resolve(userId,accountId,request,null);
+    public DashboardScopeResponse resolve(
+        UUID userId,
+        UUID accountId,
+        DashboardScopeRequest request
+    ) {
+        return resolve(userId, accountId, request, null);
     }
+
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public DashboardScopeResponse resolve(UUID userId, UUID accountId, DashboardScopeRequest request,Set<UUID> permitted) {
+    public DashboardScopeResponse resolve(
+        UUID userId,
+        UUID accountId,
+        DashboardScopeRequest request,
+        Set<UUID> permitted
+    ) {
         if ("UNBOUND".equals(request.mode())) {
-            return new DashboardScopeResponse(userId, accountId, 0, 0, 0, List.of(), List.of(), false, Instant.now());
+            return new DashboardScopeResponse(
+                userId,
+                accountId,
+                0,
+                0,
+                0,
+                List.of(),
+                List.of(),
+                false,
+                Instant.now()
+            );
         }
-        long denied = permitted!=null?0:deniedBindings(accountId, request.deviceIds(), "devices")
-                + deniedBindings(accountId, request.locationIds(), "locations");
-        Set<UUID> locations = request.includeSubtree() ? subtree(accountId, request.locationIds()) : request.locationIds();
+        long denied =
+            permitted != null
+                ? 0
+                : deniedBindings(accountId, request.deviceIds(), "devices") +
+                  deniedBindings(accountId, request.locationIds(), "locations");
+        Set<UUID> locations = request.includeSubtree()
+            ? subtree(accountId, request.locationIds())
+            : request.locationIds();
         List<Object> parameters = new ArrayList<>(List.of(accountId));
         String where = " WHERE d.account_id=?";
-        if (permitted!=null) {
-            if (permitted.isEmpty()) where+=" AND false";
+        if (permitted != null) {
+            if (permitted.isEmpty()) where += " AND false";
             else {
-                where+=" AND d.id IN ("+placeholders(permitted.size())+")";
+                where += " AND d.id IN (" + placeholders(permitted.size()) + ")";
                 parameters.addAll(permitted);
             }
         }
@@ -70,31 +95,90 @@ public class DashboardScopeRepository {
             parameters.addAll(request.deviceTypes());
         }
         if (!request.locationTags().isEmpty()) {
-            where += " AND jsonb_exists_any(coalesce(l.tags_json,'[]')::jsonb, ARRAY["
-                    + placeholders(request.locationTags().size()) + "]::text[])";
+            where +=
+                " AND jsonb_exists_any(coalesce(l.tags_json,'[]')::jsonb, ARRAY[" +
+                placeholders(request.locationTags().size()) +
+                "]::text[])";
             parameters.addAll(request.locationTags());
         }
-        String joined = " FROM devices d JOIN device_types t ON t.id=d.device_type_id LEFT JOIN locations l ON l.id=d.location_id AND l.account_id=d.account_id";
-        long count = jdbc.queryForObject("SELECT count(*)" + joined + where, Long.class, parameters.toArray());
+        String joined =
+            " FROM devices d JOIN device_types t ON t.id=d.device_type_id LEFT JOIN locations l ON l.id=d.location_id AND l.account_id=d.account_id";
+        long count = jdbc.queryForObject(
+            "SELECT count(*)" + joined + where,
+            Long.class,
+            parameters.toArray()
+        );
         if (count > 500) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Scope exceeds500 devices; choose a narrower binding");
+            throw new ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                "Scope exceeds500 devices; choose a narrower binding"
+            );
         }
-        List<DeviceEntry> devices = jdbc.query("SELECT d.id,d.name,t.code,d.location_id,d.status,d.updated_at" + joined + where
-                + " ORDER BY d.created_at,d.id", (row, index) -> new DeviceEntry(row.getObject("id", UUID.class),
-                row.getString("name"), row.getString("code"), row.getObject("location_id", UUID.class), row.getString("status"),
-                null, "dashboard_default", "PERIODIC", row.getTimestamp("updated_at").toInstant()), parameters.toArray());
-        Map<UUID, SourceCadence> cadences = cadences(devices.stream().map(DeviceEntry::id).toList());
-        var energyMeters = meters.definitions(accountId,devices.stream().map(DeviceEntry::id).toList());
-        List<DeviceEntry> enriched = devices.stream().map(device -> {
-            SourceCadence cadence = cadences.get(device.id());
-            return new DeviceEntry(device.id(), device.name(), device.type(), device.locationId(), device.registrationStatus(),
-                    cadence == null ? null : cadence.seconds(), cadence != null && cadence.seconds() != null ? "source_configuration" : "dashboard_default",
-                    cadence == null ? "PERIODIC" : cadence.policy(), device.updatedAt(),energyMeters.getOrDefault(device.id(),List.of()));
-        }).toList();
-        Set<UUID> relevantLocations = permitted==null?new HashSet<>(request.locationIds()):new HashSet<>();
-        devices.stream().map(DeviceEntry::locationId).filter(java.util.Objects::nonNull).forEach(relevantLocations::add);
+        List<DeviceEntry> devices = jdbc.query(
+            "SELECT d.id,d.name,t.code,d.location_id,d.status,d.updated_at" +
+                joined +
+                where +
+                " ORDER BY d.created_at,d.id",
+            (row, index) ->
+                new DeviceEntry(
+                    row.getObject("id", UUID.class),
+                    row.getString("name"),
+                    row.getString("code"),
+                    row.getObject("location_id", UUID.class),
+                    row.getString("status"),
+                    null,
+                    "dashboard_default",
+                    "PERIODIC",
+                    row.getTimestamp("updated_at").toInstant()
+                ),
+            parameters.toArray()
+        );
+        Map<UUID, SourceCadence> cadences = cadences(
+            devices.stream().map(DeviceEntry::id).toList()
+        );
+        var energyMeters = meters.definitions(
+            accountId,
+            devices.stream().map(DeviceEntry::id).toList()
+        );
+        List<DeviceEntry> enriched = devices
+            .stream()
+            .map(device -> {
+                SourceCadence cadence = cadences.get(device.id());
+                return new DeviceEntry(
+                    device.id(),
+                    device.name(),
+                    device.type(),
+                    device.locationId(),
+                    device.registrationStatus(),
+                    cadence == null ? null : cadence.seconds(),
+                    cadence != null && cadence.seconds() != null
+                        ? "source_configuration"
+                        : "dashboard_default",
+                    cadence == null ? "PERIODIC" : cadence.policy(),
+                    device.updatedAt(),
+                    energyMeters.getOrDefault(device.id(), List.of())
+                );
+            })
+            .toList();
+        Set<UUID> relevantLocations =
+            permitted == null ? new HashSet<>(request.locationIds()) : new HashSet<>();
+        devices
+            .stream()
+            .map(DeviceEntry::locationId)
+            .filter(java.util.Objects::nonNull)
+            .forEach(relevantLocations::add);
         List<LocationEntry> metadata = locationMetadata(accountId, relevantLocations);
-        return new DashboardScopeResponse(userId, accountId, count + denied, count, denied, enriched, metadata, false, Instant.now());
+        return new DashboardScopeResponse(
+            userId,
+            accountId,
+            count + denied,
+            count,
+            denied,
+            enriched,
+            metadata,
+            false,
+            Instant.now()
+        );
     }
 
     private long deniedBindings(UUID accountId, Set<UUID> ids, String table) {
@@ -103,8 +187,15 @@ public class DashboardScopeRepository {
         }
         List<Object> args = new ArrayList<>(List.of(accountId));
         args.addAll(ids);
-        long owned = jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE account_id=? AND id IN ("
-                + placeholders(ids.size()) + ")", Long.class, args.toArray());
+        long owned = jdbc.queryForObject(
+            "SELECT count(*) FROM " +
+                table +
+                " WHERE account_id=? AND id IN (" +
+                placeholders(ids.size()) +
+                ")",
+            Long.class,
+            args.toArray()
+        );
         return ids.size() - owned;
     }
 
@@ -115,13 +206,21 @@ public class DashboardScopeRepository {
         List<Object> args = new ArrayList<>(List.of(accountId));
         args.addAll(roots);
         args.add(accountId);
-        return new HashSet<>(jdbc.query("""
+        return new HashSet<>(
+            jdbc.query(
+                """
                 WITH RECURSIVE tree AS (
                   SELECT id FROM locations WHERE account_id=? AND id IN (
-                """ + placeholders(roots.size()) + """
-                ) UNION SELECT l.id FROM locations l JOIN tree p ON l.parent_id=p.id WHERE l.account_id=?
-                ) SELECT id FROM tree
-                """, (row, index) -> row.getObject("id", UUID.class), args.toArray()));
+                """ +
+                    placeholders(roots.size()) +
+                    """
+                    ) UNION SELECT l.id FROM locations l JOIN tree p ON l.parent_id=p.id WHERE l.account_id=?
+                    ) SELECT id FROM tree
+                    """,
+                (row, index) -> row.getObject("id", UUID.class),
+                args.toArray()
+            )
+        );
     }
 
     private List<LocationEntry> locationMetadata(UUID accountId, Set<UUID> ids) {
@@ -130,9 +229,19 @@ public class DashboardScopeRepository {
         }
         List<Object> args = new ArrayList<>(List.of(accountId));
         args.addAll(ids);
-        return jdbc.query("SELECT id,name,parent_id,tags_json FROM locations WHERE account_id=? AND id IN ("
-                + placeholders(ids.size()) + ") ORDER BY id", (row, index) -> new LocationEntry(row.getObject("id", UUID.class),
-                row.getString("name"), row.getObject("parent_id", UUID.class), tags(row.getString("tags_json"))), args.toArray());
+        return jdbc.query(
+            "SELECT id,name,parent_id,tags_json FROM locations WHERE account_id=? AND id IN (" +
+                placeholders(ids.size()) +
+                ") ORDER BY id",
+            (row, index) ->
+                new LocationEntry(
+                    row.getObject("id", UUID.class),
+                    row.getString("name"),
+                    row.getObject("parent_id", UUID.class),
+                    tags(row.getString("tags_json"))
+                ),
+            args.toArray()
+        );
     }
 
     private Map<UUID, SourceCadence> cadences(List<UUID> ids) {
@@ -140,17 +249,31 @@ public class DashboardScopeRepository {
             return Map.of();
         }
         Map<UUID, List<SourceCadence>> sources = new HashMap<>();
-        jdbc.query("SELECT device_id,type,adapter_config_json FROM data_sources WHERE enabled=true AND status='ACTIVE' AND device_id IN ("
-                + placeholders(ids.size()) + ")", row -> {
-            UUID id = row.getObject("device_id", UUID.class);
-            String policy = "CSV".equals(row.getString("type")) ? "MANUAL" : "PERIODIC";
-            sources.computeIfAbsent(id, unused -> new ArrayList<>()).add(new SourceCadence(interval(row.getString("adapter_config_json")), policy));
-        }, ids.toArray());
+        jdbc.query(
+            "SELECT device_id,type,adapter_config_json FROM data_sources WHERE enabled=true AND status='ACTIVE' AND device_id IN (" +
+                placeholders(ids.size()) +
+                ")",
+            row -> {
+                UUID id = row.getObject("device_id", UUID.class);
+                String policy = "CSV".equals(row.getString("type")) ? "MANUAL" : "PERIODIC";
+                sources
+                    .computeIfAbsent(id, unused -> new ArrayList<>())
+                    .add(new SourceCadence(interval(row.getString("adapter_config_json")), policy));
+            },
+            ids.toArray()
+        );
         Map<UUID, SourceCadence> result = new HashMap<>();
         sources.forEach((id, entries) -> {
-            String policy = entries.stream().allMatch(entry -> "MANUAL".equals(entry.policy())) ? "MANUAL" : "PERIODIC";
-            Long seconds = entries.stream().filter(entry -> "PERIODIC".equals(entry.policy())).map(SourceCadence::seconds)
-                    .filter(java.util.Objects::nonNull).min(Long::compareTo).orElse(null);
+            String policy = entries.stream().allMatch(entry -> "MANUAL".equals(entry.policy()))
+                ? "MANUAL"
+                : "PERIODIC";
+            Long seconds = entries
+                .stream()
+                .filter(entry -> "PERIODIC".equals(entry.policy()))
+                .map(SourceCadence::seconds)
+                .filter(java.util.Objects::nonNull)
+                .min(Long::compareTo)
+                .orElse(null);
             result.put(id, new SourceCadence(seconds, policy));
         });
         return result;

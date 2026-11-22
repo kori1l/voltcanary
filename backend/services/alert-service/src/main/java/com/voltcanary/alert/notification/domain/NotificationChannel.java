@@ -41,5 +41,4 @@ public class NotificationChannel {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
 }

@@ -5,5 +5,5 @@ public enum SimulationRunStatus {
     RUNNING,
     STOPPING,
     STOPPED,
-    FAILED
+    FAILED,
 }

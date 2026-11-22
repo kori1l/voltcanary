@@ -12,21 +12,21 @@ class IngestionMetricCatalogTest {
     @Test
     void supportsTenNumericMetricsForCapacityProfile() {
         var metricNames = List.of(
-                "activePowerW",
-                "voltageV",
-                "currentA",
-                "energyWh",
-                "rssi",
-                "temperatureC",
-                "vibrationMmS",
-                "runtimeHours",
-                "powerFactor",
-                "frequencyHz");
+            "activePowerW",
+            "voltageV",
+            "currentA",
+            "energyWh",
+            "rssi",
+            "temperatureC",
+            "vibrationMmS",
+            "runtimeHours",
+            "powerFactor",
+            "frequencyHz"
+        );
 
-        assertThat(metricNames)
-                .allSatisfy(metricName -> assertThat(catalog.find(metricName))
-                        .as(metricName)
-                        .isPresent());
+        assertThat(metricNames).allSatisfy(metricName ->
+            assertThat(catalog.find(metricName)).as(metricName).isPresent()
+        );
         assertThat(catalog.find("temperatureC").orElseThrow().unit()).isEqualTo("C");
         assertThat(catalog.find("vibrationMmS").orElseThrow().unit()).isEqualTo("mm/s");
         assertThat(catalog.find("runtimeHours").orElseThrow().unit()).isEqualTo("h");

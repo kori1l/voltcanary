@@ -6,6 +6,7 @@ import java.util.Set;
 
 /** Explicit, exact token matching for the VCL parse_boolean conversion. */
 public final class VclBooleanTokens {
+
     private final Set<String> trueTokens;
     private final Set<String> falseTokens;
 
@@ -15,21 +16,36 @@ public final class VclBooleanTokens {
     }
 
     public static VclBooleanTokens parse(JsonNode config, String path) {
-        if (!config.isObject() || config.size() != 3 || !"parse_boolean".equals(config.path("method").textValue())) {
+        if (
+            !config.isObject() ||
+            config.size() != 3 ||
+            !"parse_boolean".equals(config.path("method").textValue())
+        ) {
             throw new VclException("BOOLEAN_TOKEN_CONFIG_INVALID", path);
         }
         var yes = read(config.path("trueTokens"), path);
         var no = read(config.path("falseTokens"), path);
-        if (yes.stream().anyMatch(no::contains)) throw new VclException("BOOLEAN_TOKEN_OVERLAP", path);
+        if (yes.stream().anyMatch(no::contains)) throw new VclException(
+            "BOOLEAN_TOKEN_OVERLAP",
+            path
+        );
         return new VclBooleanTokens(yes, no);
     }
 
     private static Set<String> read(JsonNode array, String path) {
-        if (!array.isArray() || array.isEmpty() || array.size() > 8) throw new VclException("BOOLEAN_TOKEN_CONFIG_INVALID", path);
+        if (!array.isArray() || array.isEmpty() || array.size() > 8) throw new VclException(
+            "BOOLEAN_TOKEN_CONFIG_INVALID",
+            path
+        );
         var values = new HashSet<String>();
         for (var value : array) {
             String token = value.textValue();
-            if (token == null || token.isEmpty() || token.codePointCount(0, token.length()) > 256 || !values.add(token)) {
+            if (
+                token == null ||
+                token.isEmpty() ||
+                token.codePointCount(0, token.length()) > 256 ||
+                !values.add(token)
+            ) {
                 throw new VclException("BOOLEAN_TOKEN_CONFIG_INVALID", path);
             }
         }

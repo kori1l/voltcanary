@@ -1,22 +1,33 @@
 package com.voltcanary.aiagent.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 class PrimarySourceBindingTest {
+
     @Test
     void simulatorDefaultsUseTheActualExternalSourceIdentity() {
-        assertEquals("actual-source", PrimaryDomainPreparation.simulatorPayload(Map.of(), "actual-source").get("sourceId"));
-        assertEquals("SIMULATOR_EXTERNAL_ID_CHANGED", assertThrows(IntentPlans.Rejected.class, () ->
-                PrimaryDomainPreparation.simulatorPayload(Map.of("sourceId", "other-source"), "actual-source")).getMessage());
+        assertEquals(
+            "actual-source",
+            PrimaryDomainPreparation.simulatorPayload(Map.of(), "actual-source").get("sourceId")
+        );
+        assertEquals(
+            "SIMULATOR_EXTERNAL_ID_CHANGED",
+            assertThrows(IntentPlans.Rejected.class, () ->
+                PrimaryDomainPreparation.simulatorPayload(
+                    Map.of("sourceId", "other-source"),
+                    "actual-source"
+                )
+            ).getMessage()
+        );
     }
 
     @Test
@@ -31,9 +42,17 @@ class PrimarySourceBindingTest {
         assertEquals("source", ref.kind());
         assertEquals(source, ref.resourceId());
         assertEquals(device, ref.summary().get("deviceId"));
-        assertEquals("SIMULATOR_SOURCE_BINDING_CHANGED", assertThrows(IntentPlans.Rejected.class, () ->
-                PrimaryDomainPreparation.retainSimulatorSource(initial, device, bound,
-                        TextNode.valueOf(UUID.randomUUID().toString()))).getMessage());
+        assertEquals(
+            "SIMULATOR_SOURCE_BINDING_CHANGED",
+            assertThrows(IntentPlans.Rejected.class, () ->
+                PrimaryDomainPreparation.retainSimulatorSource(
+                    initial,
+                    device,
+                    bound,
+                    TextNode.valueOf(UUID.randomUUID().toString())
+                )
+            ).getMessage()
+        );
     }
 
     @Test
@@ -52,9 +71,19 @@ class PrimarySourceBindingTest {
     void acceptsTheReceiptDeviceAndRejectsRetargeting() {
         String deviceId = UUID.randomUUID().toString();
         var bound = TextNode.valueOf(deviceId);
-        assertEquals(deviceId, PrimaryDomainPreparation.sourceDevice(bound, TextNode.valueOf(deviceId.toUpperCase(Locale.ROOT))));
+        assertEquals(
+            deviceId,
+            PrimaryDomainPreparation.sourceDevice(
+                bound,
+                TextNode.valueOf(deviceId.toUpperCase(Locale.ROOT))
+            )
+        );
         var error = assertThrows(IntentPlans.Rejected.class, () ->
-                PrimaryDomainPreparation.sourceDevice(bound, TextNode.valueOf(UUID.randomUUID().toString())));
+            PrimaryDomainPreparation.sourceDevice(
+                bound,
+                TextNode.valueOf(UUID.randomUUID().toString())
+            )
+        );
         assertEquals("SOURCE_DEVICE_BINDING_CHANGED", error.getMessage());
     }
 }

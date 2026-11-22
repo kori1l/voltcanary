@@ -14,12 +14,12 @@ Read the local service shape before editing:
 
 - Parent build: `backend/pom.xml`
 - Shared modules: `backend/common/common-events`, `common-web`,
-  `common-security`, `common-test`, `common-vcl`
+  `common-security`, `common-test`, `common-vcl`, `common-business-contracts`
 - Services: `api-gateway`, `identity-service`, `device-service`,
   `ingestion-service`, `simulator-service`, `ai-agent-service`,
   `telemetry-service`, `analytics-service`, `alert-service`, `dashboard-service`
-- Contracts: `docs/api/*.md`, `docs/events/*.md`,
-  `docs/architecture/02-service-boundaries.md`
+- Contracts: `docs/current/api/*.md`, `docs/current/events/*.md`,
+  `docs/current/architecture/02-service-boundaries.md`
 
 ## Spring Boot 4 and Spring AI
 
@@ -262,3 +262,9 @@ mvn -pl services/<service-name> -am test
 ```
 
 Run `mvn test` from `backend/` for shared modules or broad backend changes.
+
+For explicitly requested validation without Docker, use `mvn -Plocal-tests test`.
+This profile excludes tests tagged `docker`; ordinary Maven tests retain container
+coverage. Run `npm run architecture:check` from the repository root after changes
+to package or Maven module dependencies. Shared business records belong in
+`common-business-contracts`; keep `common-web` focused on transport concerns.

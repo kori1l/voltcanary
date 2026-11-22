@@ -18,10 +18,22 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class AnalyticsInputReader {
-    public record Input(UUID device, Instant now, Instant from, Instant to, String period, List<String> metrics,
-            AnalyticsResourceContext.Context context, List<TelemetryChartResponse> charts,
-            Map<String, TelemetryChartResponse> chartByMetric, List<AlertRuleSnapshot> rules,
-            int excludedSamples, String inputHash) { }
+
+    public record Input(
+        UUID device,
+        Instant now,
+        Instant from,
+        Instant to,
+        String period,
+        List<String> metrics,
+        AnalyticsResourceContext.Context context,
+        List<TelemetryChartResponse> charts,
+        Map<String, TelemetryChartResponse> chartByMetric,
+        List<AlertRuleSnapshot> rules,
+        int excludedSamples,
+        String inputHash
+    ) {}
+
     private final AnalyticsMetricProperties properties;
     private final AnalyticsResourceContext resources;
     private final TelemetryClient telemetry;
@@ -29,13 +41,19 @@ public class AnalyticsInputReader {
     private final AnalyticsMaintenanceTelemetryFilterService filter;
     private final AnalyticsPredictionTraceService trace;
 
-    public Instant windowStart(Instant end) { return end.minus(properties.getDefaultWindow()); }
+    public Instant windowStart(Instant end) {
+        return end.minus(properties.getDefaultWindow());
+    }
 
     public Input read(UUID device, Instant end) {
         Instant now = Instant.now();
         Instant from = windowStart(end);
         var context = resources.read(device, from, end);
-        var exclusions = context.windows().stream().filter(MaintenanceWindowReadModel::isExcludeFromAnalytics).toList();
+        var exclusions = context
+            .windows()
+            .stream()
+            .filter(MaintenanceWindowReadModel::isExcludeFromAnalytics)
+            .toList();
         List<String> metrics = List.copyOf(properties.getDefaultMetrics());
         var charts = new ArrayList<TelemetryChartResponse>();
         var byMetric = new HashMap<String, TelemetryChartResponse>();
@@ -50,12 +68,33 @@ public class AnalyticsInputReader {
         String hash = trace.inputHash(device, from, end, charts, context.windows());
         var rules = alertRules.effectiveRules(device, hash);
         for (var rule : rules) {
-            if (rule.metric() != null && !rule.metric().isBlank() && !byMetric.containsKey(rule.metric())) {
-                byMetric.put(rule.metric(), filter.filterChart(telemetry.readings(device, rule.metric(), from, end), exclusions));
+            if (
+                rule.metric() != null &&
+                !rule.metric().isBlank() &&
+                !byMetric.containsKey(rule.metric())
+            ) {
+                byMetric.put(
+                    rule.metric(),
+                    filter.filterChart(
+                        telemetry.readings(device, rule.metric(), from, end),
+                        exclusions
+                    )
+                );
             }
         }
-        return new Input(device, now, from, end, properties.getPeriodLabel(), metrics, context,
-                Collections.unmodifiableList(charts), Collections.unmodifiableMap(byMetric),
-                List.copyOf(rules), excluded, hash);
+        return new Input(
+            device,
+            now,
+            from,
+            end,
+            properties.getPeriodLabel(),
+            metrics,
+            context,
+            Collections.unmodifiableList(charts),
+            Collections.unmodifiableMap(byMetric),
+            List.copyOf(rules),
+            excluded,
+            hash
+        );
     }
 }

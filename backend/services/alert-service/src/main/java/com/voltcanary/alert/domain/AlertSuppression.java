@@ -44,5 +44,4 @@ public class AlertSuppression {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
-
 }

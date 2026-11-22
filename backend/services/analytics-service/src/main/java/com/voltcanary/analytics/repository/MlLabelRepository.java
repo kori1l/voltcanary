@@ -9,20 +9,31 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MlLabelRepository extends JpaRepository<MlLabel, UUID> {
-    List<MlLabel> findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(UUID accountId, UUID datasetVersionId);
+    List<MlLabel> findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(
+        UUID accountId,
+        UUID datasetVersionId,
+        org.springframework.data.domain.Pageable page
+    );
+    List<MlLabel> findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(
+        UUID accountId,
+        UUID datasetVersionId
+    );
     List<MlLabel> findByAccountIdAndDatasetVersionId(UUID accountId, UUID datasetVersionId);
     long countByDatasetVersionIdAndDeletedAtIsNull(UUID datasetVersionId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("""
-            delete from MlLabel label
-            where label.accountId = :accountId
-              and label.datasetVersionId = :datasetVersionId
-              and label.source = com.voltcanary.analytics.domain.MlLabelSource.MAINTENANCE_OUTCOME
-              and label.horizonDays = :horizonDays
-            """)
+    @Query(
+        """
+        delete from MlLabel label
+        where label.accountId = :accountId
+          and label.datasetVersionId = :datasetVersionId
+          and label.source = com.voltcanary.analytics.domain.MlLabelSource.MAINTENANCE_OUTCOME
+          and label.horizonDays = :horizonDays
+        """
+    )
     int deleteGeneratedOutcomeLabels(
-            @Param("accountId") UUID accountId,
-            @Param("datasetVersionId") UUID datasetVersionId,
-            @Param("horizonDays") int horizonDays);
+        @Param("accountId") UUID accountId,
+        @Param("datasetVersionId") UUID datasetVersionId,
+        @Param("horizonDays") int horizonDays
+    );
 }

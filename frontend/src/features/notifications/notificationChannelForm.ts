@@ -21,7 +21,9 @@ export interface NotificationChannelDraft {
 
 const secretKeyParts = ["secret", "token", "password", "credential", "api_key", "apikey"];
 
-export function createNotificationChannelRequestFromDraft(draft: NotificationChannelDraft): NotificationChannelRequest {
+export function createNotificationChannelRequestFromDraft(
+  draft: NotificationChannelDraft,
+): NotificationChannelRequest {
   const config = providerConfig(draft);
   if (draft.extraConfig) {
     Object.assign(config, draft.extraConfig);
@@ -97,7 +99,9 @@ function containsSecretKey(value: unknown): boolean {
   }
   return Object.entries(value).some(([key, nestedValue]) => {
     const normalized = key.toLowerCase();
-    return secretKeyParts.some((part) => normalized.includes(part)) || containsSecretKey(nestedValue);
+    return (
+      secretKeyParts.some((part) => normalized.includes(part)) || containsSecretKey(nestedValue)
+    );
   });
 }
 

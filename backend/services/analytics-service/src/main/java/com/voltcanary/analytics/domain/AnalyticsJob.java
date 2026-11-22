@@ -59,5 +59,4 @@ public class AnalyticsJob {
 
     @Column(name = "skip_reason")
     private String skipReason;
-
 }

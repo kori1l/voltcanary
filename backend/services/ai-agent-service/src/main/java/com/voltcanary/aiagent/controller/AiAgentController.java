@@ -14,14 +14,13 @@ import com.voltcanary.aiagent.dto.TestModelProviderResponse;
 import com.voltcanary.aiagent.dto.UpdateModelConfigRequest;
 import com.voltcanary.aiagent.dto.UpdateModelProviderRequest;
 import com.voltcanary.aiagent.model.AgentTool;
-import com.voltcanary.aiagent.repository.AiModelConfigRepository;
-import com.voltcanary.aiagent.repository.AiModelProviderRepository;
 import com.voltcanary.aiagent.security.AuthenticatedUser;
 import com.voltcanary.aiagent.security.JwtIdentityService;
 import com.voltcanary.aiagent.service.AiModelProviderCapabilityRegistry;
 import com.voltcanary.aiagent.service.AiModelProviderService;
 import com.voltcanary.aiagent.service.AiModelSelectionService;
 import com.voltcanary.aiagent.service.DashboardTaskConversation;
+import com.voltcanary.aiagent.service.DefaultProviderStatus;
 import jakarta.validation.Valid;
 import java.util.Arrays;
 import java.util.List;
@@ -49,43 +48,70 @@ public class AiAgentController {
     private final AiModelProviderCapabilityRegistry capabilityRegistry;
     private final AiModelProviderService providerService;
     private final AiModelSelectionService modelSelectionService;
-    private final AiModelProviderRepository providerRepository;
-    private final AiModelConfigRepository modelConfigRepository;
+    private final DefaultProviderStatus providerStatus;
     private final com.voltcanary.aiagent.service.PrimaryAssistant primary;
 
     @PostMapping("/plans")
     public PlanResponse plan(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @Valid @RequestBody PlanRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @Valid @RequestBody PlanRequest request
+    ) {
         AuthenticatedUser user = jwtIdentityService.parseBearerToken(authorization);
         return primary.create(user, request, authorization);
     }
 
     @GetMapping("/orchestration/profile")
-    public java.util.Map<String, Object> profile(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    public java.util.Map<String, Object> profile(
+        @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
         return primary.profile(jwtIdentityService.parseBearerToken(authorization), authorization);
     }
 
     @PostMapping("/plans/{planId}/clarifications")
-    public PlanResponse clarifyPlan(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("planId") UUID planId,
-            @Valid @RequestBody com.voltcanary.aiagent.dto.ClarifyPlanRequest request) {
-        return primary.clarify(jwtIdentityService.parseBearerToken(authorization), planId, request.message(), request.metadata(), authorization);
+    public PlanResponse clarifyPlan(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("planId") UUID planId,
+        @Valid @RequestBody com.voltcanary.aiagent.dto.ClarifyPlanRequest request
+    ) {
+        return primary.clarify(
+            jwtIdentityService.parseBearerToken(authorization),
+            planId,
+            request.message(),
+            request.metadata(),
+            authorization
+        );
     }
 
     @GetMapping("/plans/{planId}")
-    public PlanResponse planStatus(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("planId") UUID planId) {
-        var current = primary.readPlan(jwtIdentityService.parseBearerToken(authorization), planId, authorization);
+    public PlanResponse planStatus(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("planId") UUID planId
+    ) {
+        var current = primary.readPlan(
+            jwtIdentityService.parseBearerToken(authorization),
+            planId,
+            authorization
+        );
         if (current.isPresent()) return current.get();
-        return dashboardTasks.getPlan(jwtIdentityService.parseBearerToken(authorization), planId, authorization);
+        return dashboardTasks.getPlan(
+            jwtIdentityService.parseBearerToken(authorization),
+            planId,
+            authorization
+        );
     }
 
     @GetMapping("/dashboard-tasks/{taskId}")
     public com.voltcanary.aiagent.dto.DashboardTaskRecovery dashboardTask(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("taskId") UUID taskId, @RequestParam(value = "branchId", required = false) UUID branchId) {
-        return dashboardTasks.recover(jwtIdentityService.parseBearerToken(authorization), taskId, branchId, authorization);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("taskId") UUID taskId,
+        @RequestParam(value = "branchId", required = false) UUID branchId
+    ) {
+        return dashboardTasks.recover(
+            jwtIdentityService.parseBearerToken(authorization),
+            taskId,
+            branchId,
+            authorization
+        );
     }
 
     @GetMapping("/tools")
@@ -94,14 +120,10 @@ public class AiAgentController {
     }
 
     @GetMapping("/provider")
-    public ProviderStatusResponse provider(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        var user = jwtIdentityService.parseBearerToken(authorization);
-        var provider = providerRepository.findByAccountIdAndDefaultProviderTrue(user.accountId());
-        if (provider.isEmpty()) return new ProviderStatusResponse("spring-ai", "Configured model required", false, "none");
-        var model = modelConfigRepository.findByProviderIdAndDefaultModelTrue(provider.get().getId());
-        return new ProviderStatusResponse(provider.get().getProviderType().name(), model.map(item -> item.getModelId()).orElse("Configured model required"),
-                primary.enabled() && provider.get().getStatus() == com.voltcanary.aiagent.domain.AiModelProviderStatus.ACTIVE
-                        && model.isPresent() && model.get().isEnabled(), "none");
+    public ProviderStatusResponse provider(
+        @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        return providerStatus.read(jwtIdentityService.parseBearerToken(authorization));
     }
 
     @GetMapping("/model-provider-capabilities")
@@ -110,98 +132,143 @@ public class AiAgentController {
     }
 
     @GetMapping("/model-providers")
-    public List<ModelProviderResponse> modelProviders(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    public List<ModelProviderResponse> modelProviders(
+        @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
         return providerService.list(jwtIdentityService.parseBearerToken(authorization));
     }
 
     @PostMapping("/model-providers")
     public ModelProviderResponse createModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @Valid @RequestBody CreateModelProviderRequest request) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @Valid @RequestBody CreateModelProviderRequest request
+    ) {
         return providerService.create(jwtIdentityService.parseBearerToken(authorization), request);
     }
 
     @GetMapping("/model-providers/{providerId}")
     public ModelProviderResponse getModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId
+    ) {
         return providerService.get(jwtIdentityService.parseBearerToken(authorization), providerId);
     }
 
     @PutMapping("/model-providers/{providerId}")
     public ModelProviderResponse updateModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @Valid @RequestBody UpdateModelProviderRequest request) {
-        return providerService.update(jwtIdentityService.parseBearerToken(authorization), providerId, request);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @Valid @RequestBody UpdateModelProviderRequest request
+    ) {
+        return providerService.update(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            request
+        );
     }
 
     @DeleteMapping("/model-providers/{providerId}")
     public void deleteModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId
+    ) {
         providerService.delete(jwtIdentityService.parseBearerToken(authorization), providerId);
     }
 
     @PostMapping("/model-providers/{providerId}/set-default")
     public ModelProviderResponse setDefaultModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId) {
-        return providerService.setDefault(jwtIdentityService.parseBearerToken(authorization), providerId);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId
+    ) {
+        return providerService.setDefault(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId
+        );
     }
 
     @PostMapping("/model-providers/{providerId}/test")
     public TestModelProviderResponse testModelProvider(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId) {
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId
+    ) {
         return providerService.test(jwtIdentityService.parseBearerToken(authorization), providerId);
     }
 
     @PostMapping("/model-providers/{providerId}/rotate-secret")
     public ModelProviderResponse rotateModelProviderSecret(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @Valid @RequestBody RotateModelProviderSecretRequest request) {
-        return providerService.rotateSecret(jwtIdentityService.parseBearerToken(authorization), providerId, request);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @Valid @RequestBody RotateModelProviderSecretRequest request
+    ) {
+        return providerService.rotateSecret(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            request
+        );
     }
 
     @GetMapping("/model-providers/{providerId}/models")
     public List<ModelConfigResponse> modelConfigs(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId) {
-        return modelSelectionService.list(jwtIdentityService.parseBearerToken(authorization), providerId);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId
+    ) {
+        return modelSelectionService.list(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId
+        );
     }
 
     @PostMapping("/model-providers/{providerId}/models")
     public ModelConfigResponse createModelConfig(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @Valid @RequestBody CreateModelConfigRequest request) {
-        return modelSelectionService.create(jwtIdentityService.parseBearerToken(authorization), providerId, request);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @Valid @RequestBody CreateModelConfigRequest request
+    ) {
+        return modelSelectionService.create(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            request
+        );
     }
 
     @PutMapping("/model-providers/{providerId}/models/{modelConfigId}")
     public ModelConfigResponse updateModelConfig(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @PathVariable("modelConfigId") UUID modelConfigId,
-            @Valid @RequestBody UpdateModelConfigRequest request) {
-        return modelSelectionService.update(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId, request);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @PathVariable("modelConfigId") UUID modelConfigId,
+        @Valid @RequestBody UpdateModelConfigRequest request
+    ) {
+        return modelSelectionService.update(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            modelConfigId,
+            request
+        );
     }
 
     @DeleteMapping("/model-providers/{providerId}/models/{modelConfigId}")
     public void deleteModelConfig(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @PathVariable("modelConfigId") UUID modelConfigId) {
-        modelSelectionService.delete(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @PathVariable("modelConfigId") UUID modelConfigId
+    ) {
+        modelSelectionService.delete(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            modelConfigId
+        );
     }
 
     @PostMapping("/model-providers/{providerId}/models/{modelConfigId}/set-default")
     public ModelConfigResponse setDefaultModelConfig(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("providerId") UUID providerId,
-            @PathVariable("modelConfigId") UUID modelConfigId) {
-        return modelSelectionService.setDefault(jwtIdentityService.parseBearerToken(authorization), providerId, modelConfigId);
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("providerId") UUID providerId,
+        @PathVariable("modelConfigId") UUID modelConfigId
+    ) {
+        return modelSelectionService.setDefault(
+            jwtIdentityService.parseBearerToken(authorization),
+            providerId,
+            modelConfigId
+        );
     }
 }

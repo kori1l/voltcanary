@@ -7,7 +7,9 @@
     "build": "vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src",
+    "lint:fix": "biome lint --write src"
   },
   "dependencies": {
     "lucide-react": "^1.54.0",
@@ -19,6 +21,7 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

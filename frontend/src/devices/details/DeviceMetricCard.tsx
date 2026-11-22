@@ -15,8 +15,10 @@ export function DeviceMetricCard({
   return (
     <article className={`metric-card${emphasis ? " metric-card-emphasis" : ""}`}>
       <span>{label}</span>
-      <strong>{valueText ?? (value === undefined ? "No data" : `${formatNumber(value)}${unit ? ` ${unit}` : ""}`)}</strong>
+      <strong>
+        {valueText ??
+          (value === undefined ? "No data" : `${formatNumber(value)}${unit ? ` ${unit}` : ""}`)}
+      </strong>
     </article>
   );
 }
-

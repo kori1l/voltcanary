@@ -18,5 +18,4 @@ public class AlertReconciliationProperties {
     private Duration processingTimeout = Duration.ofMinutes(5);
     private Duration retryDelay = Duration.ofSeconds(30);
     private int batchSize = 25;
-
 }

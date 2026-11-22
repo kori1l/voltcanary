@@ -1,13 +1,11 @@
 package com.voltcanary.ingestion.config;
 
-import lombok.Getter;
-import lombok.Setter;
-
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
-
 import java.time.Duration;
 import java.time.Instant;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 @Component
 @ConfigurationProperties(prefix = "app.ingestion")
@@ -41,9 +39,21 @@ public class IngestionProperties {
     private Mqtt mqtt = new Mqtt();
 
     public static class Mqtt {
-        @Getter @Setter private boolean enabled = false;
-        @Getter @Setter private String brokerUrl = "tcp://localhost:1883";
-        @Getter @Setter private String clientId = "voltcanary-ingestion";
-        @Getter @Setter private String topicFilter = "voltcanary/sources/+/telemetry";
+
+        @Getter
+        @Setter
+        private boolean enabled = false;
+
+        @Getter
+        @Setter
+        private String brokerUrl = "tcp://localhost:1883";
+
+        @Getter
+        @Setter
+        private String clientId = "voltcanary-ingestion";
+
+        @Getter
+        @Setter
+        private String topicFilter = "voltcanary/sources/+/telemetry";
     }
 }

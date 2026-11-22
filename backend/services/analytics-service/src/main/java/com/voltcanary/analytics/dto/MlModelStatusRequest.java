@@ -1,4 +1,3 @@
 package com.voltcanary.analytics.dto;
 
-public record MlModelStatusRequest(String reason) {
-}
+public record MlModelStatusRequest(String reason) {}

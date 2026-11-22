@@ -1,6 +1,5 @@
 package com.voltcanary.device.service;
 
-import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.Device;
@@ -22,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -42,9 +42,11 @@ public class MaintenanceOutcomeService {
     public List<MaintenanceOutcomeResponse> list(AuthenticatedUser user, UUID operationId) {
         Account account = accountService.currentAccount(user);
         loadOperation(account.getId(), operationId);
-        return outcomeRepository.findByAccountIdAndOperationIdOrderByObservedAtAsc(account.getId(), operationId).stream()
-                .map(this::toResponse)
-                .toList();
+        return outcomeRepository
+            .findByAccountIdAndOperationIdOrderByObservedAtAsc(account.getId(), operationId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -54,11 +56,19 @@ public class MaintenanceOutcomeService {
     }
 
     @Transactional
-    public MaintenanceOutcomeResponse create(AuthenticatedUser user, UUID operationId, MaintenanceOutcomeRequest request) {
+    public MaintenanceOutcomeResponse create(
+        AuthenticatedUser user,
+        UUID operationId,
+        MaintenanceOutcomeRequest request
+    ) {
         Account account = accountService.currentAccount(user);
         MaintenanceOperation operation = loadOperation(account.getId(), operationId);
         Device device = deviceService.findOwned(user, request.deviceId());
-        MaintenanceWindow window = loadWindow(operation, device.getId(), request.maintenanceWindowId());
+        MaintenanceWindow window = loadWindow(
+            operation,
+            device.getId(),
+            request.maintenanceWindowId()
+        );
         validateRequest(request);
 
         Instant now = Instant.now();
@@ -76,17 +86,31 @@ public class MaintenanceOutcomeService {
         outcome.setVersion(1);
 
         MaintenanceOutcome saved = outcomeRepository.save(outcome);
-        auditService.record(user, saved.getAccountId(), "MAINTENANCE_OUTCOME_CREATED", "MAINTENANCE_OUTCOME", saved.getId());
+        auditService.record(
+            user,
+            saved.getAccountId(),
+            "MAINTENANCE_OUTCOME_CREATED",
+            "MAINTENANCE_OUTCOME",
+            saved.getId()
+        );
         return toResponse(saved);
     }
 
     @Transactional
-    public MaintenanceOutcomeResponse update(AuthenticatedUser user, UUID outcomeId, MaintenanceOutcomeRequest request) {
+    public MaintenanceOutcomeResponse update(
+        AuthenticatedUser user,
+        UUID outcomeId,
+        MaintenanceOutcomeRequest request
+    ) {
         Account account = accountService.currentAccount(user);
         MaintenanceOutcome outcome = loadOwned(account.getId(), outcomeId);
         MaintenanceOperation operation = loadOperation(account.getId(), outcome.getOperationId());
         Device device = deviceService.findOwned(user, request.deviceId());
-        MaintenanceWindow window = loadWindow(operation, device.getId(), request.maintenanceWindowId());
+        MaintenanceWindow window = loadWindow(
+            operation,
+            device.getId(),
+            request.maintenanceWindowId()
+        );
         validateRequest(request);
 
         outcome.setDeviceId(device.getId());
@@ -97,7 +121,13 @@ public class MaintenanceOutcomeService {
         outcome.setVersion(outcome.getVersion() + 1);
 
         MaintenanceOutcome saved = outcomeRepository.save(outcome);
-        auditService.record(user, saved.getAccountId(), "MAINTENANCE_OUTCOME_UPDATED", "MAINTENANCE_OUTCOME", saved.getId());
+        auditService.record(
+            user,
+            saved.getAccountId(),
+            "MAINTENANCE_OUTCOME_UPDATED",
+            "MAINTENANCE_OUTCOME",
+            saved.getId()
+        );
         return toResponse(saved);
     }
 
@@ -107,41 +137,61 @@ public class MaintenanceOutcomeService {
     }
 
     @Transactional(readOnly = true)
-    public List<MaintenanceOutcomeResponse> changes(Instant updatedAfter, UUID afterId, Integer limit) {
+    public List<MaintenanceOutcomeResponse> changes(
+        Instant updatedAfter,
+        UUID afterId,
+        Integer limit
+    ) {
         Instant threshold = updatedAfter == null ? Instant.EPOCH : updatedAfter;
-        return outcomeRepository.findChangesAfter(
-                        threshold, afterId,
-                        PageRequest.of(0, normalizedLimit(limit), Sort.by(Sort.Direction.ASC, "updatedAt")))
-                .stream()
-                .map(this::toResponse)
-                .toList();
+        return outcomeRepository
+            .findChangesAfter(
+                threshold,
+                afterId,
+                PageRequest.of(0, normalizedLimit(limit), Sort.by(Sort.Direction.ASC, "updatedAt"))
+            )
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     private MaintenanceOperation loadOperation(UUID accountId, UUID operationId) {
         if (operationId == null) {
             throw new IllegalArgumentException("operationId is required");
         }
-        return operationRepository.findByIdAndAccountId(operationId, accountId)
-                .orElseThrow(() -> new NotFoundException("Maintenance operation not found"));
+        return operationRepository
+            .findByIdAndAccountId(operationId, accountId)
+            .orElseThrow(() -> new NotFoundException("Maintenance operation not found"));
     }
 
     private MaintenanceOutcome loadOwned(UUID accountId, UUID outcomeId) {
-        return outcomeRepository.findByIdAndAccountId(outcomeId, accountId)
-                .orElseThrow(() -> new NotFoundException("Maintenance outcome not found"));
+        return outcomeRepository
+            .findByIdAndAccountId(outcomeId, accountId)
+            .orElseThrow(() -> new NotFoundException("Maintenance outcome not found"));
     }
 
-    private MaintenanceWindow loadWindow(MaintenanceOperation operation, UUID deviceId, UUID maintenanceWindowId) {
+    private MaintenanceWindow loadWindow(
+        MaintenanceOperation operation,
+        UUID deviceId,
+        UUID maintenanceWindowId
+    ) {
         if (maintenanceWindowId == null) {
-            return windowRepository.findByOperationIdOrderByStartAtAsc(operation.getId()).stream()
-                    .filter(window -> deviceId.equals(window.getDeviceId()))
-                    .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Device is not part of the maintenance operation"));
+            return windowRepository
+                .findByOperationIdOrderByStartAtAsc(operation.getId())
+                .stream()
+                .filter(window -> deviceId.equals(window.getDeviceId()))
+                .findFirst()
+                .orElseThrow(() ->
+                    new IllegalArgumentException("Device is not part of the maintenance operation")
+                );
         }
-        MaintenanceWindow window = windowRepository.findById(maintenanceWindowId)
-                .orElseThrow(() -> new NotFoundException("Maintenance window not found"));
-        if (!operation.getAccountId().equals(window.getAccountId())
-                || !operation.getId().equals(window.getOperationId())
-                || !deviceId.equals(window.getDeviceId())) {
+        MaintenanceWindow window = windowRepository
+            .findById(maintenanceWindowId)
+            .orElseThrow(() -> new NotFoundException("Maintenance window not found"));
+        if (
+            !operation.getAccountId().equals(window.getAccountId()) ||
+            !operation.getId().equals(window.getOperationId()) ||
+            !deviceId.equals(window.getDeviceId())
+        ) {
             throw new NotFoundException("Maintenance window not found");
         }
         return window;
@@ -155,8 +205,12 @@ public class MaintenanceOutcomeService {
         outcome.setComponent(normalizeOptional(request.component(), 255, "component"));
         outcome.setSeverity(request.severity());
         outcome.setDowntimeMinutes(request.downtimeMinutes());
-        outcome.setTechnicianNotes(normalizeOptional(request.technicianNotes(), 5000, "technicianNotes"));
-        outcome.setSource(request.source() == null ? MaintenanceOutcomeSource.OPERATOR : request.source());
+        outcome.setTechnicianNotes(
+            normalizeOptional(request.technicianNotes(), 5000, "technicianNotes")
+        );
+        outcome.setSource(
+            request.source() == null ? MaintenanceOutcomeSource.OPERATOR : request.source()
+        );
         outcome.setConfidence(request.confidence() == null ? 1.0 : request.confidence());
     }
 
@@ -171,7 +225,9 @@ public class MaintenanceOutcomeService {
             throw new IllegalArgumentException("resolvedAt must not be before observedAt");
         }
         if (request.downtimeMinutes() != null && request.downtimeMinutes() < 0) {
-            throw new IllegalArgumentException("downtimeMinutes must be greater than or equal to 0");
+            throw new IllegalArgumentException(
+                "downtimeMinutes must be greater than or equal to 0"
+            );
         }
         double confidence = request.confidence() == null ? 1.0 : request.confidence();
         if (confidence < 0.0 || confidence > 1.0) {
@@ -181,26 +237,27 @@ public class MaintenanceOutcomeService {
 
     private MaintenanceOutcomeResponse toResponse(MaintenanceOutcome outcome) {
         return new MaintenanceOutcomeResponse(
-                outcome.getId(),
-                outcome.getAccountId(),
-                outcome.getDeviceId(),
-                outcome.getOperationId(),
-                outcome.getMaintenanceWindowId(),
-                outcome.getObservedAt(),
-                outcome.getResolvedAt(),
-                outcome.getOutcomeType(),
-                outcome.getFailureMode(),
-                outcome.getComponent(),
-                outcome.getSeverity(),
-                outcome.getDowntimeMinutes(),
-                outcome.getTechnicianNotes(),
-                outcome.getSource(),
-                outcome.getConfidence(),
-                outcome.getCreatedBy(),
-                outcome.getUpdatedBy(),
-                outcome.getCreatedAt(),
-                outcome.getUpdatedAt(),
-                outcome.getVersion());
+            outcome.getId(),
+            outcome.getAccountId(),
+            outcome.getDeviceId(),
+            outcome.getOperationId(),
+            outcome.getMaintenanceWindowId(),
+            outcome.getObservedAt(),
+            outcome.getResolvedAt(),
+            outcome.getOutcomeType(),
+            outcome.getFailureMode(),
+            outcome.getComponent(),
+            outcome.getSeverity(),
+            outcome.getDowntimeMinutes(),
+            outcome.getTechnicianNotes(),
+            outcome.getSource(),
+            outcome.getConfidence(),
+            outcome.getCreatedBy(),
+            outcome.getUpdatedBy(),
+            outcome.getCreatedAt(),
+            outcome.getUpdatedAt(),
+            outcome.getVersion()
+        );
     }
 
     private String normalizeOptional(String value, int maxLength, String field) {
@@ -209,7 +266,9 @@ public class MaintenanceOutcomeService {
         }
         String normalized = value.trim();
         if (normalized.length() > maxLength) {
-            throw new IllegalArgumentException(field + " must be at most " + maxLength + " characters");
+            throw new IllegalArgumentException(
+                field + " must be at most " + maxLength + " characters"
+            );
         }
         return normalized;
     }

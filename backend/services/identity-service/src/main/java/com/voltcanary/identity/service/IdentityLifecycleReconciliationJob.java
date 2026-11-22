@@ -1,6 +1,5 @@
 package com.voltcanary.identity.service;
 
-import java.util.UUID;
 import com.voltcanary.identity.config.IdentityDownstreamProperties;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.UserStatus;
@@ -9,6 +8,7 @@ import com.voltcanary.identity.scheduling.SchedulerLockService;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -47,30 +47,44 @@ public class IdentityLifecycleReconciliationJob {
 
     private void reconcileBatch() {
         int batchSize = Math.max(1, properties.getDeviceLifecycleReconciliationBatchSize());
-        List<User> users = userRepository.reconciliationBatch(afterUser, PageRequest.of(0, batchSize));
+        List<User> users = userRepository.reconciliationBatch(
+            afterUser,
+            PageRequest.of(0, batchSize)
+        );
         int repaired = 0;
         for (User user : users) {
             try {
-            String expected = accountStatus(user.getStatus());
-            Optional<String> actual = deviceAccountLifecycleClient.findAccountStatus(user.getId());
-            boolean missingInactiveProjection = actual.isEmpty() && user.getStatus() != UserStatus.ACTIVE;
-            boolean mismatchedProjection = actual.isPresent() && !expected.equals(actual.get());
-            if (missingInactiveProjection || mismatchedProjection) {
-                identityLifecycleOutboxService.enqueueAccountLifecycle(user);
-                repaired++;
-                log.info(
+                String expected = accountStatus(user.getStatus());
+                Optional<String> actual = deviceAccountLifecycleClient.findAccountStatus(
+                    user.getId()
+                );
+                boolean missingInactiveProjection =
+                    actual.isEmpty() && user.getStatus() != UserStatus.ACTIVE;
+                boolean mismatchedProjection = actual.isPresent() && !expected.equals(actual.get());
+                if (missingInactiveProjection || mismatchedProjection) {
+                    identityLifecycleOutboxService.enqueueAccountLifecycle(user);
+                    repaired++;
+                    log.info(
                         "identityLifecycleDriftRepaired userId={} expectedStatus={} actualStatus={}",
                         user.getId(),
                         expected,
-                        actual.orElse("MISSING"));
-            }
+                        actual.orElse("MISSING")
+                    );
+                }
             } catch (RuntimeException unavailable) {
-                log.warn("identityLifecycleReconciliationUnavailable userId={} reasonCode={}",
-                        user.getId(), unavailable.getClass().getSimpleName());
+                log.warn(
+                    "identityLifecycleReconciliationUnavailable userId={} reasonCode={}",
+                    user.getId(),
+                    unavailable.getClass().getSimpleName()
+                );
             }
         }
         afterUser = users.size() < batchSize ? null : users.getLast().getId();
-        log.info("identityLifecycleReconciliationCompleted checked={} repaired={}", users.size(), repaired);
+        log.info(
+            "identityLifecycleReconciliationCompleted checked={} repaired={}",
+            users.size(),
+            repaired
+        );
     }
 
     private String accountStatus(UserStatus userStatus) {

@@ -18,10 +18,11 @@ import com.voltcanary.analytics.domain.MlModelVersion;
 import com.voltcanary.analytics.domain.MlTrainingRun;
 import com.voltcanary.analytics.domain.MlTrainingRunStatus;
 import com.voltcanary.analytics.domain.MlTrainingSplitStrategy;
+import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.dto.MlTrainingRunDto;
 import com.voltcanary.analytics.dto.MlTrainingRunRequest;
-import com.voltcanary.analytics.dto.MlLifecycleActionRequest;
 import com.voltcanary.analytics.ml.MlClient;
+import com.voltcanary.analytics.ml.MlInferenceModelPreference;
 import com.voltcanary.analytics.ml.MlInferenceResponse;
 import com.voltcanary.analytics.ml.MlTrainingRequest;
 import com.voltcanary.analytics.ml.MlTrainingResponse;
@@ -44,21 +45,34 @@ import org.mockito.ArgumentCaptor;
 
 class MlTrainingLifecycleTest {
 
-    private final MlDatasetVersionRepository datasetVersionRepository = mock(MlDatasetVersionRepository.class);
-    private final MlFeatureSnapshotRepository featureSnapshotRepository = mock(MlFeatureSnapshotRepository.class);
+    private final MlDatasetVersionRepository datasetVersionRepository = mock(
+        MlDatasetVersionRepository.class
+    );
+    private final MlFeatureSnapshotRepository featureSnapshotRepository = mock(
+        MlFeatureSnapshotRepository.class
+    );
     private final MlFeatureRowRepository featureRowRepository = mock(MlFeatureRowRepository.class);
-    private final MlTrainingRunRepository trainingRunRepository = mock(MlTrainingRunRepository.class);
-    private final MlModelVersionRepository modelVersionRepository = mock(MlModelVersionRepository.class);
+    private final MlTrainingRunRepository trainingRunRepository = mock(
+        MlTrainingRunRepository.class
+    );
+    private final MlModelVersionRepository modelVersionRepository = mock(
+        MlModelVersionRepository.class
+    );
     private final MlClient mlClient = mock(MlClient.class);
     private final MlTrainingService service = new MlTrainingService(
-            datasetVersionRepository,
-            featureSnapshotRepository,
-            trainingRunRepository,
-            mock(jakarta.persistence.EntityManager.class),
-            modelVersionRepository);
+        datasetVersionRepository,
+        featureSnapshotRepository,
+        trainingRunRepository,
+        mock(jakarta.persistence.EntityManager.class),
+        modelVersionRepository,
+        new ObjectMapper().findAndRegisterModules()
+    );
     private final java.util.Map<UUID, MlTrainingRun> storedRuns = new java.util.HashMap<>();
-    private final com.voltcanary.analytics.service.MlTrainingLeases leases = new com.voltcanary.analytics.service.MlTrainingLeases(
-            trainingRunRepository, mock(jakarta.persistence.EntityManager.class));
+    private final com.voltcanary.analytics.service.MlTrainingLeases leases =
+        new com.voltcanary.analytics.service.MlTrainingLeases(
+            trainingRunRepository,
+            mock(jakarta.persistence.EntityManager.class)
+        );
 
     @org.junit.jupiter.api.BeforeEach
     void repositorySnapshots() {
@@ -67,29 +81,43 @@ class MlTrainingLifecycleTest {
             storedRuns.put(value.getId(), value);
             return value;
         });
-        when(trainingRunRepository.saveAndFlush(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
-            MlTrainingRun value = call.getArgument(0);
-            storedRuns.put(value.getId(), value);
-            var detached = new MlTrainingRun();
-            org.springframework.beans.BeanUtils.copyProperties(value, detached);
-            return detached;
-        });
-        when(trainingRunRepository.nextQueued(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
-                .thenAnswer(call -> trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED));
-        when(trainingRunRepository.lockById(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> Optional.ofNullable(storedRuns.get(call.getArgument(0))));
-        when(trainingRunRepository.findById(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> Optional.ofNullable(storedRuns.get(call.getArgument(0))));
+        when(trainingRunRepository.saveAndFlush(org.mockito.ArgumentMatchers.any())).thenAnswer(
+            call -> {
+                MlTrainingRun value = call.getArgument(0);
+                storedRuns.put(value.getId(), value);
+                var detached = new MlTrainingRun();
+                org.springframework.beans.BeanUtils.copyProperties(value, detached);
+                return detached;
+            }
+        );
+        when(
+            trainingRunRepository.nextQueued(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+            )
+        ).thenAnswer(call ->
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        );
+        when(trainingRunRepository.lockById(org.mockito.ArgumentMatchers.any())).thenAnswer(call ->
+            Optional.ofNullable(storedRuns.get(call.getArgument(0)))
+        );
+        when(trainingRunRepository.findById(org.mockito.ArgumentMatchers.any())).thenAnswer(call ->
+            Optional.ofNullable(storedRuns.get(call.getArgument(0)))
+        );
     }
 
     private final MlTrainingWorker worker = new MlTrainingWorker(
-            trainingRunRepository, leases,
-            datasetVersionRepository,
-            featureSnapshotRepository,
-            featureRowRepository,
-            modelVersionRepository,
-            mock(com.voltcanary.analytics.service.MlRegistryFence.class),
-            mlClient,
-            new ObjectMapper(),
-            new SimpleMeterRegistry());
+        trainingRunRepository,
+        leases,
+        datasetVersionRepository,
+        featureSnapshotRepository,
+        featureRowRepository,
+        modelVersionRepository,
+        mock(com.voltcanary.analytics.service.MlRegistryFence.class),
+        mlClient,
+        new ObjectMapper(),
+        new SimpleMeterRegistry()
+    );
 
     @Test
     void createsQueuedAnomalyTrainingRun() {
@@ -97,15 +125,24 @@ class MlTrainingLifecycleTest {
         UUID userId = UUID.randomUUID();
         UUID datasetVersionId = UUID.randomUUID();
         UUID featureSnapshotId = UUID.randomUUID();
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10)));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10))
+        );
 
-        MlTrainingRunDto response = service.create(accountId, userId, new MlTrainingRunRequest(
+        MlTrainingRunDto response = service.create(
+            accountId,
+            userId,
+            new MlTrainingRunRequest(
                 datasetVersionId,
                 featureSnapshotId,
                 MlModelFamily.ANOMALY_DETECTION,
                 null,
-                null));
+                null
+            )
+        );
 
         assertThat(response.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
         assertThat(response.algorithm()).isEqualTo("sklearn-isolation-forest-v1");
@@ -117,19 +154,35 @@ class MlTrainingLifecycleTest {
         UUID userId = UUID.randomUUID();
         UUID datasetVersionId = UUID.randomUUID();
         UUID featureSnapshotId = UUID.randomUUID();
-        MlFeatureSnapshot snapshot = featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10);
+        MlFeatureSnapshot snapshot = featureSnapshot(
+            accountId,
+            datasetVersionId,
+            featureSnapshotId,
+            10
+        );
         snapshot.setLifecycleStatus("ARCHIVED");
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(snapshot));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(snapshot)
+        );
 
-        assertThatThrownBy(() -> service.create(accountId, userId, new MlTrainingRunRequest(
-                datasetVersionId,
-                featureSnapshotId,
-                MlModelFamily.ANOMALY_DETECTION,
-                null,
-                null)))
-                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .hasMessageContaining("Feature snapshot must be active");
+        assertThatThrownBy(() ->
+            service.create(
+                accountId,
+                userId,
+                new MlTrainingRunRequest(
+                    datasetVersionId,
+                    featureSnapshotId,
+                    MlModelFamily.ANOMALY_DETECTION,
+                    null,
+                    null
+                )
+            )
+        )
+            .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+            .hasMessageContaining("Feature snapshot must be active");
     }
 
     @Test
@@ -138,13 +191,25 @@ class MlTrainingLifecycleTest {
         UUID userId = UUID.randomUUID();
         UUID datasetVersionId = UUID.randomUUID();
         UUID featureSnapshotId = UUID.randomUUID();
-        MlFeatureSnapshot snapshot = featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 10);
+        MlFeatureSnapshot snapshot = featureSnapshot(
+            accountId,
+            datasetVersionId,
+            featureSnapshotId,
+            10
+        );
         snapshot.setModelFamily("FAILURE_PREDICTION");
         snapshot.setHorizonDays(14);
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(snapshot));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(snapshot)
+        );
 
-        MlTrainingRunDto response = service.create(accountId, userId, new MlTrainingRunRequest(
+        MlTrainingRunDto response = service.create(
+            accountId,
+            userId,
+            new MlTrainingRunRequest(
                 datasetVersionId,
                 featureSnapshotId,
                 MlModelFamily.FAILURE_PREDICTION,
@@ -153,20 +218,27 @@ class MlTrainingLifecycleTest {
                 1,
                 0.5,
                 Map.of(
-                        "profileId", "failure-smoke-ci",
-                        "profileVersion", "2026-08-smoke",
-                        "thresholdSource", "docker-smoke",
-                        "minimumLeadTimeDays", 0),
-                "{}"));
+                    "profileId",
+                    "failure-smoke-ci",
+                    "profileVersion",
+                    "2026-08-smoke",
+                    "thresholdSource",
+                    "docker-smoke",
+                    "minimumLeadTimeDays",
+                    0
+                ),
+                "{}"
+            )
+        );
 
         assertThat(response.status()).isEqualTo(MlTrainingRunStatus.QUEUED);
         assertThat(response.algorithm()).isEqualTo("sklearn-logistic-regression-failure-v1");
         assertThat(response.hyperparametersJson())
-                .contains("\"failureHorizonDays\":14")
-                .contains("\"minimumPositiveLabels\":1")
-                .contains("\"minimumLabelCoverage\":0.5")
-                .contains("\"approvalGateProfile\"")
-                .contains("\"minimumLeadTimeDays\":0");
+            .contains("\"failureHorizonDays\":14")
+            .contains("\"minimumPositiveLabels\":1")
+            .contains("\"minimumLabelCoverage\":0.5")
+            .contains("\"approvalGateProfile\"")
+            .contains("\"minimumLeadTimeDays\":0");
     }
 
     @Test
@@ -177,11 +249,22 @@ class MlTrainingLifecycleTest {
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
         run.setHyperparametersJson("{\"approvalGateProfile\":{\"minimumLeadTimeDays\":0}}");
         UUID modelVersionId = UUID.randomUUID();
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42)));
-        when(featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)).thenReturn(List.of(featureRow(accountId, datasetVersionId, featureSnapshotId)));
-        when(mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))).thenReturn(new MlTrainingResponse(
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of(run));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42))
+        );
+        when(
+            featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)
+        ).thenReturn(List.of(featureRow(accountId, datasetVersionId, featureSnapshotId)));
+        when(
+            mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))
+        ).thenReturn(
+            new MlTrainingResponse(
                 UUID.randomUUID().toString(),
                 "SUCCEEDED",
                 datasetVersionId.toString(),
@@ -191,31 +274,43 @@ class MlTrainingLifecycleTest {
                 "artifact://local/model/manifest.json",
                 "sha256:model-artifact",
                 2048L,
-                Map.of("trainingRows", 4.0)));
-        when(mlClient.requestPrediction(
+                Map.of("trainingRows", 4.0)
+            )
+        );
+        when(
+            mlClient.requestPrediction(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(new MlInferenceResponse(
-                        UUID.randomUUID(),
-                        modelVersionId.toString(),
-                        "trained-model",
-                        "sklearn-isolation-forest-v1-test",
-                        "trained_tabular_anomaly",
-                        "READY",
-                        "TRAINED_MODEL",
-                        0.2,
-                        0.1,
-                        "LOW",
-                        0.8,
-                        List.of(),
-                        List.of("ok"),
-                        List.of(),
-                        "hash"));
-        when(modelVersionRepository.findByModelKeyOrderByVersionDesc("account-" + accountId + "-anomaly_detection")).thenReturn(List.of());
+                org.mockito.ArgumentMatchers.any()
+            )
+        ).thenReturn(
+            new MlInferenceResponse(
+                UUID.randomUUID(),
+                modelVersionId.toString(),
+                "trained-model",
+                "sklearn-isolation-forest-v1-test",
+                "trained_tabular_anomaly",
+                "READY",
+                "TRAINED_MODEL",
+                0.2,
+                0.1,
+                "LOW",
+                0.8,
+                List.of(),
+                List.of("ok"),
+                List.of(),
+                "hash"
+            )
+        );
+        when(
+            modelVersionRepository.findByModelKeyOrderByVersionDesc(
+                "account-" + accountId + "-anomaly_detection"
+            )
+        ).thenReturn(List.of());
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();
 
@@ -227,27 +322,34 @@ class MlTrainingLifecycleTest {
         assertThat(result.get().getMetricsJson()).contains("trainingRows");
         assertThat(result.get().getArtifactUri()).isEqualTo("artifact://local/model/model.joblib");
 
-        ArgumentCaptor<MlTrainingRequest> trainingRequest = ArgumentCaptor.forClass(MlTrainingRequest.class);
+        ArgumentCaptor<MlTrainingRequest> trainingRequest = ArgumentCaptor.forClass(
+            MlTrainingRequest.class
+        );
         verify(mlClient).requestTraining(trainingRequest.capture());
-        assertThat(trainingRequest.getValue().approvalGateProfile())
-                .containsEntry("minimumLeadTimeDays", 0);
+        assertThat(trainingRequest.getValue().approvalGateProfile()).containsEntry(
+            "minimumLeadTimeDays",
+            0
+        );
 
-        ArgumentCaptor<Map<String, Object>> smokePreference = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<MlInferenceModelPreference> smokePreference = ArgumentCaptor.forClass(
+            MlInferenceModelPreference.class
+        );
         verify(mlClient).requestPrediction(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                smokePreference.capture());
-        assertThat(smokePreference.getValue())
-                .containsEntry("modelVersionId", modelVersionId.toString())
-                .containsEntry("artifactUri", "artifact://local/model/model.joblib")
-                .containsEntry("manifestUri", "artifact://local/model/manifest.json")
-                .containsEntry("artifactHash", "sha256:model-artifact")
-                .containsEntry("artifactSizeBytes", 2048L)
-                .containsEntry("allowBaselineHeuristic", false);
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            smokePreference.capture()
+        );
+        assertThat(InferenceTestContext.asMap(smokePreference.getValue()))
+            .containsEntry("modelVersionId", modelVersionId.toString())
+            .containsEntry("artifactUri", "artifact://local/model/model.joblib")
+            .containsEntry("manifestUri", "artifact://local/model/manifest.json")
+            .containsEntry("artifactHash", "sha256:model-artifact")
+            .containsEntry("artifactSizeBytes", 2048L)
+            .containsEntry("allowBaselineHeuristic", false);
 
         ArgumentCaptor<MlModelVersion> model = ArgumentCaptor.forClass(MlModelVersion.class);
         verify(modelVersionRepository).save(model.capture());
@@ -255,10 +357,16 @@ class MlTrainingLifecycleTest {
         assertThat(model.getValue().getTrainingRunId()).isEqualTo(run.getId());
         assertThat(model.getValue().getVersion()).isEqualTo(1);
         assertThat(model.getValue().getFeatureSchemaHash()).isEqualTo("sha256:test-feature-schema");
-        assertThat(model.getValue().getArtifactManifestUri()).isEqualTo("artifact://local/model/manifest.json");
+        assertThat(model.getValue().getArtifactManifestUri()).isEqualTo(
+            "artifact://local/model/manifest.json"
+        );
         assertThat(model.getValue().getArtifactHash()).isEqualTo("sha256:model-artifact");
         assertThat(model.getValue().getArtifactSizeBytes()).isEqualTo(2048L);
-        assertThat(model.getValue().getSupportedMetricsJson()).contains("activePowerW", "current", "voltage");
+        assertThat(model.getValue().getSupportedMetricsJson()).contains(
+            "activePowerW",
+            "current",
+            "voltage"
+        );
     }
 
     @Test
@@ -267,9 +375,15 @@ class MlTrainingLifecycleTest {
         UUID datasetVersionId = UUID.randomUUID();
         UUID featureSnapshotId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 0)));
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of(run));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 0))
+        );
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();
 
@@ -285,11 +399,22 @@ class MlTrainingLifecycleTest {
         UUID featureSnapshotId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
         UUID modelVersionId = UUID.randomUUID();
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42)));
-        when(featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)).thenReturn(List.of(featureRow(accountId, datasetVersionId, featureSnapshotId)));
-        when(mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))).thenReturn(new MlTrainingResponse(
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of(run));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42))
+        );
+        when(
+            featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)
+        ).thenReturn(List.of(featureRow(accountId, datasetVersionId, featureSnapshotId)));
+        when(
+            mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))
+        ).thenReturn(
+            new MlTrainingResponse(
                 UUID.randomUUID().toString(),
                 "SUCCEEDED",
                 datasetVersionId.toString(),
@@ -299,30 +424,38 @@ class MlTrainingLifecycleTest {
                 "artifact://local/model/manifest.json",
                 "sha256:model-artifact",
                 2048L,
-                Map.of("trainingRows", 4.0)));
-        when(mlClient.requestPrediction(
+                Map.of("trainingRows", 4.0)
+            )
+        );
+        when(
+            mlClient.requestPrediction(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(new MlInferenceResponse(
-                        UUID.randomUUID(),
-                        modelVersionId.toString(),
-                        "trained-model",
-                        "sklearn-isolation-forest-v1-test",
-                        "trained_tabular_anomaly",
-                        "READY",
-                        "MODEL_UNAVAILABLE",
-                        0.0,
-                        0.0,
-                        "LOW",
-                        0.1,
-                        List.of(),
-                        List.of("missing"),
-                        List.of(),
-                        "hash"));
+                org.mockito.ArgumentMatchers.any()
+            )
+        ).thenReturn(
+            new MlInferenceResponse(
+                UUID.randomUUID(),
+                modelVersionId.toString(),
+                "trained-model",
+                "sklearn-isolation-forest-v1-test",
+                "trained_tabular_anomaly",
+                "READY",
+                "MODEL_UNAVAILABLE",
+                0.0,
+                0.0,
+                "LOW",
+                0.1,
+                List.of(),
+                List.of("missing"),
+                List.of(),
+                "hash"
+            )
+        );
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();
 
@@ -340,14 +473,26 @@ class MlTrainingLifecycleTest {
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
         run.setModelFamily(MlModelFamily.FAILURE_PREDICTION);
         run.setAlgorithm("sklearn-logistic-regression-failure-v1");
-        run.setHyperparametersJson("{\"failureHorizonDays\":14,\"minimumPositiveLabels\":1,\"minimumLabelCoverage\":0.5}");
+        run.setHyperparametersJson(
+            "{\"failureHorizonDays\":14,\"minimumPositiveLabels\":1,\"minimumLabelCoverage\":0.5}"
+        );
         UUID modelVersionId = UUID.randomUUID();
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
-        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion(accountId, datasetVersionId)));
-        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42)));
-        when(featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId))
-                .thenReturn(List.of(labelledFeatureRow(accountId, datasetVersionId, featureSnapshotId)));
-        when(mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))).thenReturn(new MlTrainingResponse(
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of(run));
+        when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(
+            Optional.of(datasetVersion(accountId, datasetVersionId))
+        );
+        when(featureSnapshotRepository.findById(featureSnapshotId)).thenReturn(
+            Optional.of(featureSnapshot(accountId, datasetVersionId, featureSnapshotId, 42))
+        );
+        when(
+            featureRowRepository.findByFeatureSnapshotIdOrderByPredictionAtAsc(featureSnapshotId)
+        ).thenReturn(List.of(labelledFeatureRow(accountId, datasetVersionId, featureSnapshotId)));
+        when(
+            mlClient.requestTraining(org.mockito.ArgumentMatchers.any(MlTrainingRequest.class))
+        ).thenReturn(
+            new MlTrainingResponse(
                 UUID.randomUUID().toString(),
                 "SUCCEEDED",
                 datasetVersionId.toString(),
@@ -357,62 +502,76 @@ class MlTrainingLifecycleTest {
                 "artifact://local/model/manifest.json",
                 "sha256:model-artifact",
                 2048L,
-                Map.of("failurePositiveLabels", 1.0)));
-        when(mlClient.requestPrediction(
+                Map.of("failurePositiveLabels", 1.0)
+            )
+        );
+        when(
+            mlClient.requestPrediction(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(new MlInferenceResponse(
-                        UUID.randomUUID(),
-                        modelVersionId.toString(),
-                        "trained-model",
-                        "failure-v1-test",
-                        "trained_failure_prediction",
-                        "READY",
-                        "TRAINED_MODEL",
-                        0.0,
-                        0.0,
-                        "LOW",
-                        0.8,
-                        List.of(),
-                        List.of("ok"),
-                        List.of(),
-                        "hash"));
-        when(modelVersionRepository.findByModelKeyOrderByVersionDesc("account-" + accountId + "-failure_prediction")).thenReturn(List.of());
+                org.mockito.ArgumentMatchers.any()
+            )
+        ).thenReturn(
+            new MlInferenceResponse(
+                UUID.randomUUID(),
+                modelVersionId.toString(),
+                "trained-model",
+                "failure-v1-test",
+                "trained_failure_prediction",
+                "READY",
+                "TRAINED_MODEL",
+                0.0,
+                0.0,
+                "LOW",
+                0.8,
+                List.of(),
+                List.of("ok"),
+                List.of(),
+                "hash"
+            )
+        );
+        when(
+            modelVersionRepository.findByModelKeyOrderByVersionDesc(
+                "account-" + accountId + "-failure_prediction"
+            )
+        ).thenReturn(List.of());
 
         worker.executeNextQueuedRun();
 
-        ArgumentCaptor<MlTrainingRequest> request = ArgumentCaptor.forClass(MlTrainingRequest.class);
+        ArgumentCaptor<MlTrainingRequest> request = ArgumentCaptor.forClass(
+            MlTrainingRequest.class
+        );
         verify(mlClient).requestTraining(request.capture());
         assertThat(request.getValue().trainingRunId()).isEqualTo(run.getId());
         assertThat(request.getValue().idempotencyKey()).isEqualTo("ml-training:" + run.getId());
         assertThat(request.getValue().artifactBundleId()).isEqualTo("model-" + run.getId());
         assertThat(request.getValue().modelFamily()).isEqualTo("FAILURE_PREDICTION");
         assertThat(request.getValue().failureHorizonDays()).isEqualTo(14);
-        assertThat(request.getValue().rows())
-                .allSatisfy(row -> {
-                    assertThat(row.label()).isEqualTo("CONFIRMED_FAILURE");
-                    assertThat(row.metadata())
-                            .containsEntry("failureWithinHorizon", true)
-                            .containsEntry("failureOutcomeType", "CONFIRMED_FAILURE")
-                            .containsEntry("horizonDays", 14);
-                });
+        assertThat(request.getValue().rows()).allSatisfy(row -> {
+            assertThat(row.label()).isEqualTo("CONFIRMED_FAILURE");
+            assertThat(row.metadata())
+                .containsEntry("failureWithinHorizon", true)
+                .containsEntry("failureOutcomeType", "CONFIRMED_FAILURE")
+                .containsEntry("horizonDays", 14);
+        });
         ArgumentCaptor<Map<String, Object>> smokeMetrics = ArgumentCaptor.forClass(Map.class);
         verify(mlClient).requestPrediction(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                smokeMetrics.capture(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            smokeMetrics.capture(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any()
+        );
         assertThat(smokeMetrics.getValue())
-                .containsEntry("applianceLoadRatio", 0.92)
-                .containsEntry("dayOfWeek", 2.0)
-                .containsEntry("hourOfDay", 10.0);
+            .containsEntry("applianceLoadRatio", 0.92)
+            .containsEntry("dayOfWeek", 2.0)
+            .containsEntry("hourOfDay", 10.0);
     }
 
     @Test
@@ -440,9 +599,16 @@ class MlTrainingLifecycleTest {
         when(trainingRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
         when(modelVersionRepository.countByTrainingRunId(run.getId())).thenReturn(1L);
 
-        assertThatThrownBy(() -> service.delete(accountId, actorId, run.getId(), new MlLifecycleActionRequest("cleanup", false)))
-                .isInstanceOf(MlLifecycleConflictException.class)
-                .hasMessageContaining("model lineage");
+        assertThatThrownBy(() ->
+            service.delete(
+                accountId,
+                actorId,
+                run.getId(),
+                new MlLifecycleActionRequest("cleanup", false)
+            )
+        )
+            .isInstanceOf(MlLifecycleConflictException.class)
+            .hasMessageContaining("model lineage");
     }
 
     @Test
@@ -466,7 +632,9 @@ class MlTrainingLifecycleTest {
         UUID featureSnapshotId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, datasetVersionId, featureSnapshotId);
         run.setCancellationRequested(true);
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of(run));
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of(run));
         when(trainingRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();
@@ -487,10 +655,16 @@ class MlTrainingLifecycleTest {
         stale.setLeaseOwner("dead-worker");
         stale.setLeaseExpiresAt(Instant.now().minusSeconds(60));
         stale.setHeartbeatAt(Instant.now().minusSeconds(120));
-        when(trainingRunRepository.stale(
+        when(
+            trainingRunRepository.stale(
                 org.mockito.ArgumentMatchers.eq(MlTrainingRunStatus.RUNNING),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stale));
-        when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of());
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any()
+            )
+        ).thenReturn(List.of(stale));
+        when(
+            trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)
+        ).thenReturn(List.of());
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();
 
@@ -515,7 +689,12 @@ class MlTrainingLifecycleTest {
         return version;
     }
 
-    private MlFeatureSnapshot featureSnapshot(UUID accountId, UUID datasetVersionId, UUID id, long rows) {
+    private MlFeatureSnapshot featureSnapshot(
+        UUID accountId,
+        UUID datasetVersionId,
+        UUID id,
+        long rows
+    ) {
         MlFeatureSnapshot snapshot = new MlFeatureSnapshot();
         snapshot.setId(id);
         snapshot.setAccountId(accountId);
@@ -540,24 +719,34 @@ class MlTrainingLifecycleTest {
         row.setDeviceId(UUID.randomUUID());
         row.setDeviceType("meter");
         row.setPredictionAt(Instant.now());
-        row.setFeatureValuesJson("""
-                {"voltage":230.0,"current":5.2,"activePowerW":840.0}
-                """);
+        row.setFeatureValuesJson(
+            """
+            {"voltage":230.0,"current":5.2,"activePowerW":840.0}
+            """
+        );
         row.setSourceLineageJson("{}");
         row.setQualityFlagsJson("[]");
         row.setCreatedAt(Instant.now());
         return row;
     }
 
-    private MlFeatureRow labelledFeatureRow(UUID accountId, UUID datasetVersionId, UUID featureSnapshotId) {
+    private MlFeatureRow labelledFeatureRow(
+        UUID accountId,
+        UUID datasetVersionId,
+        UUID featureSnapshotId
+    ) {
         MlFeatureRow row = featureRow(accountId, datasetVersionId, featureSnapshotId);
         row.setHorizonDays(14);
-        row.setFeatureValuesJson("""
-                {"rollingMean":830.0,"rollingMin":805.0,"rollingMax":910.0,"rollingStddev":12.5,"baselineDeviationRatio":1.18,"samplingGapSeconds":14400,"hourOfDay":10,"dayOfWeek":2,"applianceLoadRatio":0.92}
-                """);
-        row.setLabelValuesJson("""
-                {"label":"CONFIRMED_FAILURE","failureWithinHorizon":true,"failureOutcomeType":"CONFIRMED_FAILURE","horizonDays":14}
-                """);
+        row.setFeatureValuesJson(
+            """
+            {"rollingMean":830.0,"rollingMin":805.0,"rollingMax":910.0,"rollingStddev":12.5,"baselineDeviationRatio":1.18,"samplingGapSeconds":14400,"hourOfDay":10,"dayOfWeek":2,"applianceLoadRatio":0.92}
+            """
+        );
+        row.setLabelValuesJson(
+            """
+            {"label":"CONFIRMED_FAILURE","failureWithinHorizon":true,"failureOutcomeType":"CONFIRMED_FAILURE","horizonDays":14}
+            """
+        );
         return row;
     }
 

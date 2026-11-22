@@ -258,10 +258,24 @@ export interface AlertRuleTestResponse {
 export function listAlerts(filters: AlertFilters = {}) {
   return apiRequest<AlertResponse[]>(`/alerts${query(filters)}`);
 }
-export interface AlertPageResponse { content: AlertResponse[]; page: number; size: number; totalElements: number; totalPages: number; hasNext: boolean }
-export function listAlertPage(filters: AlertFilters = {}, page = 0, size = 100, signal?: AbortSignal) {
+export interface AlertPageResponse {
+  content: AlertResponse[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+}
+export function listAlertPage(
+  filters: AlertFilters = {},
+  page = 0,
+  size = 100,
+  signal?: AbortSignal,
+) {
   const params = new URLSearchParams(query(filters).replace(/^\?/, ""));
-  params.delete("limit"); params.set("page", String(page)); params.set("size", String(size));
+  params.delete("limit");
+  params.set("page", String(page));
+  params.set("size", String(size));
   return apiRequest<AlertPageResponse>(`/alerts/page?${params}`, { signal });
 }
 
@@ -285,15 +299,21 @@ export function createNotificationChannel(request: NotificationChannelRequest) {
 }
 
 export function enableNotificationChannel(channelId: string) {
-  return apiRequest<NotificationChannelResponse>(`/alerts/notification-channels/${channelId}/enable`, {
-    method: "POST",
-  });
+  return apiRequest<NotificationChannelResponse>(
+    `/alerts/notification-channels/${channelId}/enable`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function disableNotificationChannel(channelId: string) {
-  return apiRequest<NotificationChannelResponse>(`/alerts/notification-channels/${channelId}/disable`, {
-    method: "POST",
-  });
+  return apiRequest<NotificationChannelResponse>(
+    `/alerts/notification-channels/${channelId}/disable`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function deleteNotificationChannel(channelId: string) {
@@ -303,14 +323,22 @@ export function deleteNotificationChannel(channelId: string) {
 }
 
 export function getNotificationChannelDiagnostics(channelId: string) {
-  return apiRequest<NotificationChannelDiagnosticsResponse>(`/alerts/notification-channels/${channelId}/diagnostics`);
+  return apiRequest<NotificationChannelDiagnosticsResponse>(
+    `/alerts/notification-channels/${channelId}/diagnostics`,
+  );
 }
 
-export function testNotificationChannel(channelId: string, request: NotificationTestDeliveryRequest = {}) {
-  return apiRequest<NotificationAttemptResponse>(`/alerts/notification-channels/${channelId}/test`, {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+export function testNotificationChannel(
+  channelId: string,
+  request: NotificationTestDeliveryRequest = {},
+) {
+  return apiRequest<NotificationAttemptResponse>(
+    `/alerts/notification-channels/${channelId}/test`,
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
 }
 
 export function getNotificationPreference() {

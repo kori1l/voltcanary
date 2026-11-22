@@ -16,26 +16,39 @@ import org.springframework.stereotype.Service;
 public class UserRuleAnomalyDetector {
 
     public List<Anomaly> detect(
-            UUID deviceId,
-            AlertRuleSnapshot rule,
-            TelemetryChartResponse chart,
-            BaselineStats baseline,
-            Instant windowStart,
-            Instant windowEnd,
-            String inputHash,
-            Instant now) {
-        if (rule == null || !rule.enabled() || rule.config() != null && rule.config().containsKey("variable")
-                || chart == null || chart.points() == null || chart.points().isEmpty()) {
+        UUID deviceId,
+        AlertRuleSnapshot rule,
+        TelemetryChartResponse chart,
+        BaselineStats baseline,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now
+    ) {
+        if (
+            rule == null ||
+            !rule.enabled() ||
+            (rule.config() != null && rule.config().containsKey("variable")) ||
+            chart == null ||
+            chart.points() == null ||
+            chart.points().isEmpty()
+        ) {
             return List.of();
         }
-        List<TelemetryChartResponse.Point> points = chart.points().stream()
-                .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                .toList();
+        List<TelemetryChartResponse.Point> points = chart
+            .points()
+            .stream()
+            .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
+            .toList();
         boolean matched = switch (normalize(rule.conditionType())) {
-            case "ABOVE_THRESHOLD" -> rule.threshold() != null && points.stream().anyMatch(point -> point.value() > rule.threshold().doubleValue());
-            case "BELOW_THRESHOLD" -> rule.threshold() != null && points.stream().anyMatch(point -> point.value() < rule.threshold().doubleValue());
-            case "BASELINE_MULTIPLIER" -> rule.baselineMultiplier() != null && baseline != null && baseline.sampleCount() > 0
-                    && baseline.max() > baseline.mean() * rule.baselineMultiplier().doubleValue();
+            case "ABOVE_THRESHOLD" -> rule.threshold() != null &&
+                points.stream().anyMatch(point -> point.value() > rule.threshold().doubleValue());
+            case "BELOW_THRESHOLD" -> rule.threshold() != null &&
+                points.stream().anyMatch(point -> point.value() < rule.threshold().doubleValue());
+            case "BASELINE_MULTIPLIER" -> rule.baselineMultiplier() != null &&
+                baseline != null &&
+                baseline.sampleCount() > 0 &&
+                baseline.max() > baseline.mean() * rule.baselineMultiplier().doubleValue();
             case "GROWTH_RATE" -> matchesGrowth(points, rule);
             case "LONG_HIGH_RUN" -> matchesLongHighRun(points, baseline, rule);
             default -> false;
@@ -46,7 +59,10 @@ public class UserRuleAnomalyDetector {
         return List.of(anomaly(deviceId, rule, windowStart, windowEnd, inputHash, now));
     }
 
-    private boolean matchesGrowth(List<TelemetryChartResponse.Point> points, AlertRuleSnapshot rule) {
+    private boolean matchesGrowth(
+        List<TelemetryChartResponse.Point> points,
+        AlertRuleSnapshot rule
+    ) {
         int minPoints = rule.minPoints() == null ? 4 : rule.minPoints();
         if (points.size() < minPoints) {
             return false;
@@ -54,16 +70,24 @@ public class UserRuleAnomalyDetector {
         int midpoint = points.size() / 2;
         double firstAverage = average(points.subList(0, midpoint));
         double secondAverage = average(points.subList(midpoint, points.size()));
-        double multiplier = rule.baselineMultiplier() == null ? 1.15 : rule.baselineMultiplier().doubleValue();
+        double multiplier =
+            rule.baselineMultiplier() == null ? 1.15 : rule.baselineMultiplier().doubleValue();
         return firstAverage > 0 && secondAverage > firstAverage * multiplier;
     }
 
-    private boolean matchesLongHighRun(List<TelemetryChartResponse.Point> points, BaselineStats baseline, AlertRuleSnapshot rule) {
+    private boolean matchesLongHighRun(
+        List<TelemetryChartResponse.Point> points,
+        BaselineStats baseline,
+        AlertRuleSnapshot rule
+    ) {
         int minPoints = rule.minPoints() == null ? 8 : rule.minPoints();
         if (baseline == null || baseline.sampleCount() == 0 || points.size() < minPoints) {
             return false;
         }
-        long highRun = points.stream().filter(point -> point.value() > baseline.p90()).count();
+        long highRun = points
+            .stream()
+            .filter(point -> point.value() > baseline.p90())
+            .count();
         return highRun >= Math.max(4, points.size() / 2);
     }
 
@@ -71,11 +95,31 @@ public class UserRuleAnomalyDetector {
         return points.stream().mapToDouble(TelemetryChartResponse.Point::value).average().orElse(0);
     }
 
-    private Anomaly anomaly(UUID deviceId, AlertRuleSnapshot rule, Instant windowStart, Instant windowEnd, String inputHash, Instant now) {
+    private Anomaly anomaly(
+        UUID deviceId,
+        AlertRuleSnapshot rule,
+        Instant windowStart,
+        Instant windowEnd,
+        String inputHash,
+        Instant now
+    ) {
         Anomaly anomaly = new Anomaly();
         String ruleId = rule.id().toString();
-        anomaly.setId(UUID.nameUUIDFromBytes((deviceId + ":" + ruleId + ":" + windowStart + ":" + windowEnd + ":" + inputHash)
-                .getBytes(StandardCharsets.UTF_8)));
+        anomaly.setId(
+            UUID.nameUUIDFromBytes(
+                (
+                    deviceId +
+                    ":" +
+                    ruleId +
+                    ":" +
+                    windowStart +
+                    ":" +
+                    windowEnd +
+                    ":" +
+                    inputHash
+                ).getBytes(StandardCharsets.UTF_8)
+            )
+        );
         anomaly.setDeviceId(deviceId);
         anomaly.setType(rule.ruleType());
         anomaly.setSeverity(normalizeSeverity(rule.severity()));

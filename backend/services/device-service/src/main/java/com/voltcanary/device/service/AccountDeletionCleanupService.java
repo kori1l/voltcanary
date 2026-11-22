@@ -30,21 +30,25 @@ public class AccountDeletionCleanupService {
         }
 
         List<UUID> deviceIds = devices.stream().map(Device::getId).toList();
-        List<DataSource> dataSources = dataSourceRepository.findByDeviceIdIn(deviceIds).stream()
-                .filter(dataSource -> revokeDataSource(accountId, dataSource, cleanupTime))
-                .toList();
+        List<DataSource> dataSources = dataSourceRepository
+            .findByDeviceIdIn(deviceIds)
+            .stream()
+            .filter(dataSource -> revokeDataSource(accountId, dataSource, cleanupTime))
+            .toList();
         dataSourceRepository.saveAll(dataSources);
 
-        List<Device> changedDevices = devices.stream()
-                .filter(device -> decommissionDevice(device, cleanupTime))
-                .toList();
+        List<Device> changedDevices = devices
+            .stream()
+            .filter(device -> decommissionDevice(device, cleanupTime))
+            .toList();
         deviceRepository.saveAll(changedDevices);
     }
 
     private boolean revokeDataSource(UUID accountId, DataSource dataSource, Instant cleanupTime) {
-        boolean changed = dataSource.isEnabled()
-                || dataSource.getStatus() != SourceStatus.REVOKED
-                || dataSource.getTokenRevokedAt() == null;
+        boolean changed =
+            dataSource.isEnabled() ||
+            dataSource.getStatus() != SourceStatus.REVOKED ||
+            dataSource.getTokenRevokedAt() == null;
         if (!changed) {
             return false;
         }
@@ -55,12 +59,13 @@ public class AccountDeletionCleanupService {
         }
         dataSource.setUpdatedAt(cleanupTime);
         eventPublisher.publish(
-                "DATA_SOURCE",
-                "ACCOUNT_DELETED_REVOKED",
-                accountId,
-                dataSource.getDeviceId(),
-                dataSource.getId(),
-                dataSource.getStatus().name());
+            "DATA_SOURCE",
+            "ACCOUNT_DELETED_REVOKED",
+            accountId,
+            dataSource.getDeviceId(),
+            dataSource.getId(),
+            dataSource.getStatus().name()
+        );
         return true;
     }
 
@@ -71,12 +76,13 @@ public class AccountDeletionCleanupService {
         device.setStatus(DeviceStatus.DECOMMISSIONED);
         device.setUpdatedAt(cleanupTime);
         eventPublisher.publish(
-                "DEVICE",
-                "ACCOUNT_DELETED_DECOMMISSIONED",
-                device.getAccountId(),
-                device.getId(),
-                device.getId(),
-                device.getStatus().name());
+            "DEVICE",
+            "ACCOUNT_DELETED_DECOMMISSIONED",
+            device.getAccountId(),
+            device.getId(),
+            device.getId(),
+            device.getStatus().name()
+        );
         return true;
     }
 }

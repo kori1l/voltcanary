@@ -24,9 +24,10 @@ public class InternalDataSourceController {
 
     @GetMapping("/internal/devices/{deviceId}/data-sources/{sourceId}/exists")
     public Map<String, Boolean> exists(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("deviceId") UUID deviceId,
-            @PathVariable("sourceId") String sourceId) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("deviceId") UUID deviceId,
+        @PathVariable("sourceId") String sourceId
+    ) {
         internalServiceAuth.require(internalToken);
         Timer.Sample sample = metrics.startInternalValidation();
         try {
@@ -41,32 +42,36 @@ public class InternalDataSourceController {
 
     @GetMapping("/internal/data-sources/by-token-prefix/{tokenPrefix}")
     public InternalDataSourceResponse byTokenPrefix(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("tokenPrefix") String tokenPrefix) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("tokenPrefix") String tokenPrefix
+    ) {
         internalServiceAuth.require(internalToken);
         return dataSourceService.findInternalByTokenPrefix(tokenPrefix);
     }
 
     @GetMapping("/internal/data-sources/by-external-id/{externalId}")
     public InternalDataSourceResponse byExternalId(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("externalId") String externalId) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("externalId") String externalId
+    ) {
         internalServiceAuth.require(internalToken);
         return dataSourceService.findInternalByExternalId(externalId);
     }
 
     @GetMapping("/internal/data-sources/{dataSourceId}")
     public InternalDataSourceResponse byId(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("dataSourceId") UUID dataSourceId) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("dataSourceId") UUID dataSourceId
+    ) {
         internalServiceAuth.require(internalToken);
         return dataSourceService.findInternal(dataSourceId);
     }
 
     @PostMapping("/internal/data-sources/{dataSourceId}/token-used")
     public void markTokenUsed(
-            @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
-            @PathVariable("dataSourceId") UUID dataSourceId) {
+        @RequestHeader(value = InternalServiceAuth.HEADER, required = false) String internalToken,
+        @PathVariable("dataSourceId") UUID dataSourceId
+    ) {
         internalServiceAuth.require(internalToken);
         dataSourceService.markTokenUsed(dataSourceId);
     }

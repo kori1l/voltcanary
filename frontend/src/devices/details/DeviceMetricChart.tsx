@@ -37,7 +37,9 @@ export function DeviceMetricChart({
   onRangeSelect?: (from: string, to: string) => void;
   size?: "normal" | "large";
 }) {
-  const [hovered, setHovered] = useState<{ point: RenderChartPoint; x: number; y: number } | null>(null);
+  const [hovered, setHovered] = useState<{ point: RenderChartPoint; x: number; y: number } | null>(
+    null,
+  );
   const [selection, setSelection] = useState<{ startX: number; currentX: number } | null>(null);
   const renderPoints = buildChartRenderPoints(points, maxDisplayPoints, timeRange);
   if (renderPoints.length === 0) {
@@ -54,7 +56,9 @@ export function DeviceMetricChart({
   const width = 820;
   const height = 330;
   const padding = { top: 28, right: 28, bottom: 54, left: 58 };
-  const values = [...renderPoints.map((point) => point.value), baseline, threshold].filter((value): value is number => value !== undefined);
+  const values = [...renderPoints.map((point) => point.value), baseline, threshold].filter(
+    (value): value is number => value !== undefined,
+  );
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
   const rawRange = rawMax - rawMin || Math.max(Math.abs(rawMax), 1);
@@ -63,9 +67,16 @@ export function DeviceMetricChart({
   const minValue = includeZero ? Math.min(0, rawMin - paddingValue) : rawMin - paddingValue;
   const maxValue = rawMax + paddingValue;
   const range = maxValue - minValue || 1;
-  const yForValue = (value: number) => height - padding.bottom - ((value - minValue) / range) * (height - padding.top - padding.bottom);
-  const timeStart = timeRange ? new Date(timeRange.from).getTime() : new Date(renderPoints[0].timestamp).getTime();
-  const timeEnd = timeRange ? new Date(timeRange.to).getTime() : new Date(renderPoints[renderPoints.length - 1].timestamp).getTime();
+  const yForValue = (value: number) =>
+    height -
+    padding.bottom -
+    ((value - minValue) / range) * (height - padding.top - padding.bottom);
+  const timeStart = timeRange
+    ? new Date(timeRange.from).getTime()
+    : new Date(renderPoints[0].timestamp).getTime();
+  const timeEnd = timeRange
+    ? new Date(timeRange.to).getTime()
+    : new Date(renderPoints[renderPoints.length - 1].timestamp).getTime();
   const timeSpan = Math.max(timeEnd - timeStart, 1);
   const xForTime = (timestamp: string) => {
     const time = new Date(timestamp).getTime();
@@ -86,7 +97,12 @@ export function DeviceMetricChart({
     const scale = width / Math.max(bounds.width, 1);
     return clampChartX((event.clientX - bounds.left) * scale);
   };
-  const canSelectRange = enableRangeSelection && Boolean(onRangeSelect) && Number.isFinite(timeStart) && Number.isFinite(timeEnd) && timeEnd > timeStart;
+  const canSelectRange =
+    enableRangeSelection &&
+    Boolean(onRangeSelect) &&
+    Number.isFinite(timeStart) &&
+    Number.isFinite(timeEnd) &&
+    timeEnd > timeStart;
   const startRangeSelection = (event: PointerEvent<SVGSVGElement>) => {
     if (!canSelectRange || event.button !== 0) return;
     const x = chartXFromPointer(event);
@@ -113,7 +129,10 @@ export function DeviceMetricChart({
     x: xForTime(point.timestamp),
     y: yForValue(point.value),
   }));
-  const spike = coordinates.reduce((current, next) => (next.point.value > current.point.value ? next : current), coordinates[0]);
+  const spike = coordinates.reduce(
+    (current, next) => (next.point.value > current.point.value ? next : current),
+    coordinates[0],
+  );
   const visiblePointCoordinates = showPoints
     ? coordinates
     : threshold !== undefined && spike.point.value >= threshold
@@ -131,12 +150,24 @@ export function DeviceMetricChart({
             id: window.id,
             title: window.title,
             status: window.status,
-            x: padding.left + ((start - timeStart) / timeSpan) * (width - padding.left - padding.right),
+            x:
+              padding.left +
+              ((start - timeStart) / timeSpan) * (width - padding.left - padding.right),
             width: ((end - start) / timeSpan) * (width - padding.left - padding.right),
           }
         : null;
     })
-    .filter((band): band is { id: string; title: string; status: MaintenanceWindow["status"]; x: number; width: number } => band !== null);
+    .filter(
+      (
+        band,
+      ): band is {
+        id: string;
+        title: string;
+        status: MaintenanceWindow["status"];
+        x: number;
+        width: number;
+      } => band !== null,
+    );
 
   return (
     <div className={`chart-wrap annotated-chart chart-${size}`}>
@@ -154,7 +185,13 @@ export function DeviceMetricChart({
           const y = yForValue(tick);
           return (
             <g key={tick}>
-              <line className="chart-grid-line" x1={padding.left} y1={y} x2={width - padding.right} y2={y} />
+              <line
+                className="chart-grid-line"
+                x1={padding.left}
+                y1={y}
+                x2={width - padding.right}
+                y2={y}
+              />
               <text className="chart-axis-label" x={padding.left - 10} y={y + 4} textAnchor="end">
                 {formatCompactNumber(tick)} {unit}
               </text>
@@ -162,10 +199,28 @@ export function DeviceMetricChart({
           );
         })}
 
-        <line className="chart-axis" x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} />
-        <line className="chart-axis" x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} />
+        <line
+          className="chart-axis"
+          x1={padding.left}
+          y1={height - padding.bottom}
+          x2={width - padding.right}
+          y2={height - padding.bottom}
+        />
+        <line
+          className="chart-axis"
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={height - padding.bottom}
+        />
 
-        <rect className="chart-selection-hit-area" x={padding.left} y={padding.top} width={width - padding.left - padding.right} height={height - padding.top - padding.bottom} />
+        <rect
+          className="chart-selection-hit-area"
+          x={padding.left}
+          y={padding.top}
+          width={width - padding.left - padding.right}
+          height={height - padding.top - padding.bottom}
+        />
 
         {maintenanceBands.map((band) => (
           <g key={band.id}>
@@ -182,8 +237,19 @@ export function DeviceMetricChart({
 
         {baseline !== undefined ? (
           <g>
-            <line className="chart-baseline" x1={padding.left} y1={yForValue(baseline)} x2={width - padding.right} y2={yForValue(baseline)} />
-            <text className="chart-line-label" x={width - padding.right - 8} y={yForValue(baseline) - 6} textAnchor="end">
+            <line
+              className="chart-baseline"
+              x1={padding.left}
+              y1={yForValue(baseline)}
+              x2={width - padding.right}
+              y2={yForValue(baseline)}
+            />
+            <text
+              className="chart-line-label"
+              x={width - padding.right - 8}
+              y={yForValue(baseline) - 6}
+              textAnchor="end"
+            >
               Typical range
             </text>
           </g>
@@ -191,14 +257,27 @@ export function DeviceMetricChart({
 
         {threshold !== undefined ? (
           <g>
-            <line className="chart-threshold" x1={padding.left} y1={yForValue(threshold)} x2={width - padding.right} y2={yForValue(threshold)} />
-            <text className="chart-line-label threshold-label" x={width - padding.right - 8} y={yForValue(threshold) - 6} textAnchor="end">
+            <line
+              className="chart-threshold"
+              x1={padding.left}
+              y1={yForValue(threshold)}
+              x2={width - padding.right}
+              y2={yForValue(threshold)}
+            />
+            <text
+              className="chart-line-label threshold-label"
+              x={width - padding.right - 8}
+              y={yForValue(threshold) - 6}
+              textAnchor="end"
+            >
               Alert threshold
             </text>
           </g>
         ) : null}
 
-        <polyline points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")} />
+        <polyline
+          points={coordinates.map((coordinate) => `${coordinate.x},${coordinate.y}`).join(" ")}
+        />
 
         {selection ? (
           <rect
@@ -211,7 +290,9 @@ export function DeviceMetricChart({
         ) : null}
 
         {visiblePointCoordinates.map((coordinate, index) => {
-          const isSpike = coordinate === spike && (threshold === undefined || coordinate.point.value >= threshold);
+          const isSpike =
+            coordinate === spike &&
+            (threshold === undefined || coordinate.point.value >= threshold);
           return (
             <circle
               key={`visible-${coordinate.point.timestamp}-${index}`}
@@ -246,7 +327,12 @@ export function DeviceMetricChart({
         ))}
 
         {anomaly && spike ? (
-          <text className="chart-spike-label" x={spike.x} y={Math.max(spike.y - 14, 16)} textAnchor="middle">
+          <text
+            className="chart-spike-label"
+            x={spike.x}
+            y={Math.max(spike.y - 14, 16)}
+            textAnchor="middle"
+          >
             Power spike
           </text>
         ) : null}
@@ -254,7 +340,13 @@ export function DeviceMetricChart({
         {xTicks.map((tick) => {
           const lines = formatMetricChartTimeLabel(timeRange, tick.timestamp);
           return (
-            <text key={tick.timestamp} className="chart-axis-label" x={tick.x} y={height - 28} textAnchor="middle">
+            <text
+              key={tick.timestamp}
+              className="chart-axis-label"
+              x={tick.x}
+              y={height - 28}
+              textAnchor="middle"
+            >
               {lines.map((line, index) => (
                 <tspan key={line} x={tick.x} dy={index === 0 ? 0 : 14}>
                   {line}
@@ -265,18 +357,31 @@ export function DeviceMetricChart({
         })}
       </svg>
       {hovered ? (
-        <div className="chart-tooltip" style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}>
+        <div
+          className="chart-tooltip"
+          style={{ left: `${(hovered.x / width) * 100}%`, top: `${(hovered.y / height) * 100}%` }}
+        >
           <strong>{formatShortTime(hovered.point.timestamp)}</strong>
-          <span>{hovered.point.synthetic ? "No data - 0" : formatMetricValue(hovered.point.value, unit)}</span>
-          {threshold !== undefined && hovered.point.value >= threshold ? <em>Above threshold</em> : null}
+          <span>
+            {hovered.point.synthetic ? "No data - 0" : formatMetricValue(hovered.point.value, unit)}
+          </span>
+          {threshold !== undefined && hovered.point.value >= threshold ? (
+            <em>Above threshold</em>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
 }
 
-function buildChartRenderPoints(points: ChartPoint[], maxPoints: number, timeRange?: { from: string; to: string } | null): RenderChartPoint[] {
-  const sortedPoints = [...points].sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
+function buildChartRenderPoints(
+  points: ChartPoint[],
+  maxPoints: number,
+  timeRange?: { from: string; to: string } | null,
+): RenderChartPoint[] {
+  const sortedPoints = [...points].sort(
+    (first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime(),
+  );
   if (!timeRange) {
     return sampleChartPoints(sortedPoints, maxPoints);
   }
@@ -304,7 +409,10 @@ function buildChartRenderPoints(points: ChartPoint[], maxPoints: number, timeRan
     if (!Number.isFinite(pointMs) || pointMs < fromMs || pointMs > toMs) {
       continue;
     }
-    const index = Math.min(bucketCount - 1, Math.max(0, Math.round((pointMs - fromMs) / bucketSizeMs)));
+    const index = Math.min(
+      bucketCount - 1,
+      Math.max(0, Math.round((pointMs - fromMs) / bucketSizeMs)),
+    );
     const bucket = buckets[index];
     if (bucket.sourceCount === 0) {
       bucket.value = point.value;
@@ -325,16 +433,26 @@ function sampleChartPoints(points: ChartPoint[], maxPoints: number): RenderChart
   }
 
   const lastIndex = points.length - 1;
-  const maxIndex = points.reduce((currentIndex, point, index) => (point.value > points[currentIndex].value ? index : currentIndex), 0);
+  const maxIndex = points.reduce(
+    (currentIndex, point, index) =>
+      point.value > points[currentIndex].value ? index : currentIndex,
+    0,
+  );
   const indexes = new Set<number>([0, lastIndex, maxIndex]);
   for (let index = 1; index < maxPoints - 1; index += 1) {
     indexes.add(Math.round((index / (maxPoints - 1)) * lastIndex));
   }
 
-  return [...indexes].sort((first, second) => first - second).map((sourceIndex) => points[sourceIndex]);
+  return [...indexes]
+    .sort((first, second) => first - second)
+    .map((sourceIndex) => points[sourceIndex]);
 }
 
-function metricChartRangeTicks(timeRange: { from: string; to: string } | null | undefined, left: number, right: number) {
+function metricChartRangeTicks(
+  timeRange: { from: string; to: string } | null | undefined,
+  left: number,
+  right: number,
+) {
   if (!timeRange) {
     return [];
   }
@@ -345,12 +463,18 @@ function metricChartRangeTicks(timeRange: { from: string; to: string } | null | 
   }
   return [
     { timestamp: new Date(fromMs).toISOString(), x: left },
-    { timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(), x: left + (right - left) / 2 },
+    {
+      timestamp: new Date(fromMs + (toMs - fromMs) / 2).toISOString(),
+      x: left + (right - left) / 2,
+    },
     { timestamp: new Date(toMs).toISOString(), x: right },
   ];
 }
 
-function formatMetricChartTimeLabel(timeRange: { from: string; to: string } | null | undefined, timestamp: string) {
+function formatMetricChartTimeLabel(
+  timeRange: { from: string; to: string } | null | undefined,
+  timestamp: string,
+) {
   if (!timeRange) {
     return [formatShortTime(timestamp)];
   }

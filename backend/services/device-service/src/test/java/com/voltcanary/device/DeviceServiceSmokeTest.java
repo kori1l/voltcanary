@@ -1,34 +1,34 @@
 package com.voltcanary.device;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-                "spring.flyway.enabled=false",
-                "spring.jpa.hibernate.ddl-auto=none"
-        })
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = { "spring.flyway.enabled=false", "spring.jpa.hibernate.ddl-auto=none" }
+)
 class DeviceServiceSmokeTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
 
     @Test
-    void contextLoads() {
-    }
+    void contextLoads() {}
 
     @Test
     void healthEndpointReturns200() {
-        ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
+        ResponseEntity<String> response = restTemplate.getForEntity(
+            "/actuator/health",
+            String.class
+        );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }

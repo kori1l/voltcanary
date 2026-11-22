@@ -1,3 +1,3 @@
 package com.voltcanary.device;
 
-class SourceBindingsTest extends SourceBindingsContract { }
+class SourceBindingsTest extends SourceBindingsContract {}

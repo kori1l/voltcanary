@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class SimulationGeneratorSelection {
+
     private final GenericApplianceGenerator appliance;
     private final VehicleGpsGenerator vehicle;
 

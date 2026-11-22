@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class IdentityJwtProperties {
+
     private String keyId = "dev-rsa";
     private String privateKey = "";
     private String publicKeys = "";
@@ -17,5 +18,4 @@ public class IdentityJwtProperties {
     private long refreshTokenTtlSeconds = 2_592_000;
     private String issuer = "voltcanary-identity";
     private String audience = "voltcanary-api";
-
 }

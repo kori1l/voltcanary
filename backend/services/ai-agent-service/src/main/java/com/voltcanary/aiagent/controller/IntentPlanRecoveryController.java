@@ -20,31 +20,70 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class IntentPlanRecoveryController {
-    public record Recovery(UUID planId, UUID conversationId, long revision, String status, PlanState plan,
-            PendingQuestion pendingQuestion, Focus focus) { }
+
+    public record Recovery(
+        UUID planId,
+        UUID conversationId,
+        long revision,
+        String status,
+        PlanState plan,
+        PendingQuestion pendingQuestion,
+        Focus focus
+    ) {}
+
     private final IntentPlanStore store;
     private final JwtIdentityService identity;
     private final AuthorizedPlanningContext contexts;
 
     @GetMapping("/ai-agent/orchestrations/{id}")
-    public PlanState get(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") UUID id) {
+    public PlanState get(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id
+    ) {
         var recovery = recovery(authorization, id);
         if (recovery.plan() == null) throw IntentPlans.conflict("INITIAL_PLAN_AWAITS_INPUT");
         return recovery.plan();
     }
 
     @GetMapping("/ai-agent/orchestrations/{id}/recovery")
-    public Recovery recovery(@RequestHeader(value = "Authorization", required = false) String authorization, @PathVariable("id") UUID id) {
+    public Recovery recovery(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id
+    ) {
         var state = store.read(scope(authorization), id);
-        String status = state.expiresAt().isAfter(java.time.Instant.now()) ? state.status() : "EXPIRED";
-        if (status.equals("EXPIRED")) state = state.revise(state.revision(), status, state.steps(), state.goals(), state.facts(), state.pendingQuestion(),
-                state.focus(), state.skills(), state.reviews(), state.outputs());
-        return new Recovery(state.planId(), state.conversationId(), state.revision(), status, state.wire(), state.pendingQuestion(), state.focus());
+        String status = state.expiresAt().isAfter(java.time.Instant.now())
+            ? state.status()
+            : "EXPIRED";
+        if (status.equals("EXPIRED")) state = state.revise(
+            state.revision(),
+            status,
+            state.steps(),
+            state.goals(),
+            state.facts(),
+            state.pendingQuestion(),
+            state.focus(),
+            state.skills(),
+            state.reviews(),
+            state.outputs()
+        );
+        return new Recovery(
+            state.planId(),
+            state.conversationId(),
+            state.revision(),
+            status,
+            state.wire(),
+            state.pendingQuestion(),
+            state.focus()
+        );
     }
 
     @GetMapping("/ai-agent/conversations/{id}/orchestration-resources")
-    public List<IntentPlans.ResourceEvent> resources(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestParam(value = "after", defaultValue = "0") long after, @RequestParam(value = "limit", defaultValue = "50") int limit) {
+    public List<IntentPlans.ResourceEvent> resources(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestParam(value = "after", defaultValue = "0") long after,
+        @RequestParam(value = "limit", defaultValue = "50") int limit
+    ) {
         return store.resources(scope(authorization), id, after, limit);
     }
 

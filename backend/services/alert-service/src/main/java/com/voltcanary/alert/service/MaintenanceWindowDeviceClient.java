@@ -1,6 +1,5 @@
 package com.voltcanary.alert.service;
 
-import java.util.Optional;
 import com.voltcanary.alert.config.AlertDownstreamProperties;
 import com.voltcanary.alert.config.AlertInternalProperties;
 import com.voltcanary.alert.dto.MaintenanceWindowSnapshot;
@@ -9,6 +8,7 @@ import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -23,11 +23,14 @@ public class MaintenanceWindowDeviceClient {
     private final MeterRegistry meterRegistry;
 
     public MaintenanceWindowDeviceClient(
-            RestClient.Builder restClientBuilder,
-            AlertDownstreamProperties downstreamProperties,
-            AlertInternalProperties internalProperties,
-            MeterRegistry meterRegistry) {
-        this.restClient = restClientBuilder.baseUrl(downstreamProperties.getDeviceService().getBaseUrl()).build();
+        RestClient.Builder restClientBuilder,
+        AlertDownstreamProperties downstreamProperties,
+        AlertInternalProperties internalProperties,
+        MeterRegistry meterRegistry
+    ) {
+        this.restClient = restClientBuilder
+            .baseUrl(downstreamProperties.getDeviceService().getBaseUrl())
+            .build();
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
         this.meterRegistry = meterRegistry;
@@ -40,26 +43,47 @@ public class MaintenanceWindowDeviceClient {
     public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, UUID afterId, int limit) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            MaintenanceWindowSnapshot[] response = restClient.get()
-                    .uri(uriBuilder -> uriBuilder
-                            .path("/internal/maintenance-windows/changes")
-                            .queryParam("updatedAfter", updatedAfter)
-                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
-                            .queryParam("limit", limit)
-                            .build())
-                    .headers(headers -> {
-                        headers.set("X-Source-Service", internalServiceName);
-                        if (!internalServiceToken.isBlank()) {
-                            headers.set("X-Internal-Service-Token", internalServiceToken);
-                        }
-                    })
-                    .retrieve()
-                    .body(MaintenanceWindowSnapshot[].class);
-            sample.stop(meterRegistry.timer("alert.maintenance.reconciliation.fetch.duration", "status", "success"));
+            MaintenanceWindowSnapshot[] response = restClient
+                .get()
+                .uri(uriBuilder ->
+                    uriBuilder
+                        .path("/internal/maintenance-windows/changes")
+                        .queryParam("updatedAfter", updatedAfter)
+                        .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
+                        .queryParam("limit", limit)
+                        .build()
+                )
+                .headers(headers -> {
+                    headers.set("X-Source-Service", internalServiceName);
+                    if (!internalServiceToken.isBlank()) {
+                        headers.set("X-Internal-Service-Token", internalServiceToken);
+                    }
+                })
+                .retrieve()
+                .body(MaintenanceWindowSnapshot[].class);
+            sample.stop(
+                meterRegistry.timer(
+                    "alert.maintenance.reconciliation.fetch.duration",
+                    "status",
+                    "success"
+                )
+            );
             return response == null ? List.of() : Arrays.asList(response);
         } catch (RestClientException exception) {
-            meterRegistry.counter("alert.maintenance.reconciliation.fetch.failures", "reason", exception.getClass().getSimpleName()).increment();
-            sample.stop(meterRegistry.timer("alert.maintenance.reconciliation.fetch.duration", "status", "failure"));
+            meterRegistry
+                .counter(
+                    "alert.maintenance.reconciliation.fetch.failures",
+                    "reason",
+                    exception.getClass().getSimpleName()
+                )
+                .increment();
+            sample.stop(
+                meterRegistry.timer(
+                    "alert.maintenance.reconciliation.fetch.duration",
+                    "status",
+                    "failure"
+                )
+            );
             return List.of();
         }
     }

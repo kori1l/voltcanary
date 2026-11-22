@@ -10,9 +10,9 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class IdentityDownstreamProperties {
+
     private String deviceServiceBaseUrl = "http://localhost:8082";
     private String internalServiceToken = "dev-internal-token";
     private boolean deviceLifecycleReconciliationEnabled = false;
     private int deviceLifecycleReconciliationBatchSize = 100;
-
 }

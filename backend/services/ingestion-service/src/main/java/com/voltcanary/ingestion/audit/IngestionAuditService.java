@@ -19,32 +19,35 @@ public class IngestionAuditService {
     private final ArrayDeque<IngestionAuditEvent> recentEvents = new ArrayDeque<>();
 
     public synchronized void record(
-            String outcome,
-            String reason,
-            String correlationId,
-            UUID deviceId,
-            String sourceId,
-            UUID eventId) {
+        String outcome,
+        String reason,
+        String correlationId,
+        UUID deviceId,
+        String sourceId,
+        UUID eventId
+    ) {
         IngestionAuditEvent event = new IngestionAuditEvent(
-                Instant.now(),
-                outcome,
-                reason,
-                correlationId,
-                deviceId,
-                sourceId,
-                eventId);
+            Instant.now(),
+            outcome,
+            reason,
+            correlationId,
+            deviceId,
+            sourceId,
+            eventId
+        );
         recentEvents.addLast(event);
         while (recentEvents.size() > properties.getAuditCapacity()) {
             recentEvents.removeFirst();
         }
         log.info(
-                "ingestionAudit outcome={} reason={} correlationId={} deviceId={} sourceId={} eventId={}",
-                outcome,
-                reason,
-                correlationId,
-                deviceId,
-                sourceId,
-                eventId);
+            "ingestionAudit outcome={} reason={} correlationId={} deviceId={} sourceId={} eventId={}",
+            outcome,
+            reason,
+            correlationId,
+            deviceId,
+            sourceId,
+            eventId
+        );
     }
 
     public synchronized List<IngestionAuditEvent> recent() {

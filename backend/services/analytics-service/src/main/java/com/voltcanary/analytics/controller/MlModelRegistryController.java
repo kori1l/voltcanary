@@ -35,165 +35,240 @@ public class MlModelRegistryController {
 
     @GetMapping("/models")
     public List<MlModelVersionDto> listModels(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter
+    ) {
         return service.listModels(resolveAccountId(accountId, userId, correlationId), statusFilter);
     }
 
     @GetMapping("/models/{modelVersionId}")
     public MlModelVersionDto getModel(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
         return service.getModel(resolveAccountId(accountId, userId, correlationId), modelVersionId);
     }
 
     @PostMapping("/models/{modelVersionId}/approve")
     public MlModelVersionDto approve(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlModelStatusRequest request) {
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlModelStatusRequest request
+    ) {
         requireWrite(role);
-        return service.approve(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
+        return service.approve(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            modelVersionId,
+            request
+        );
     }
 
     @PostMapping("/models/{modelVersionId}/reject")
     public MlModelVersionDto reject(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlModelStatusRequest request) {
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlModelStatusRequest request
+    ) {
         requireWrite(role);
-        return service.reject(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
+        return service.reject(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            modelVersionId,
+            request
+        );
     }
 
     @PostMapping("/models/{modelVersionId}/archive")
     public MlModelVersionDto archive(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlModelStatusRequest request) {
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlModelStatusRequest request
+    ) {
         requireWrite(role);
-        return service.archive(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
+        return service.archive(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            modelVersionId,
+            request
+        );
     }
 
     @GetMapping("/models/{modelVersionId}/lifecycle-impact")
     public MlLifecycleImpactResponse modelLifecycleImpact(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
-        return service.modelImpact(resolveAccountId(accountId, userId, correlationId), modelVersionId, action);
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
+        return service.modelImpact(
+            resolveAccountId(accountId, userId, correlationId),
+            modelVersionId,
+            action
+        );
     }
 
     @PostMapping("/models/{modelVersionId}/delete")
     public MlModelVersionDto deleteModel(
-            @PathVariable("modelVersionId") UUID modelVersionId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("modelVersionId") UUID modelVersionId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.deleteModel(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), modelVersionId, request);
+        return service.deleteModel(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            modelVersionId,
+            request
+        );
     }
 
     @GetMapping("/deployment-policies")
     public List<MlDeploymentPolicyDto> listPolicies(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
-        return service.listPolicies(resolveAccountId(accountId, userId, correlationId), statusFilter);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter
+    ) {
+        return service.listPolicies(
+            resolveAccountId(accountId, userId, correlationId),
+            statusFilter
+        );
     }
 
     @PostMapping("/deployment-policies")
     public MlDeploymentPolicyDto upsertPolicy(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlDeploymentPolicyRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlDeploymentPolicyRequest request
+    ) {
         requireWrite(role);
-        return service.upsertPolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), request);
+        return service.upsertPolicy(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            request
+        );
     }
 
     @PostMapping("/deployment-policies/rollback")
     public MlDeploymentPolicyDto rollbackPolicy(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam("scope") MlDeploymentScope scope,
-            @RequestParam(value = "deviceId", required = false) UUID deviceId,
-            @RequestParam(value = "deviceType", required = false) String deviceType,
-            @RequestParam(value = "reason", required = false) String reason) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam("scope") MlDeploymentScope scope,
+        @RequestParam(value = "deviceId", required = false) UUID deviceId,
+        @RequestParam(value = "deviceType", required = false) String deviceType,
+        @RequestParam(value = "reason", required = false) String reason
+    ) {
         requireWrite(role);
-        return service.rollbackPolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), scope, deviceId, deviceType, reason);
+        return service.rollbackPolicy(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            scope,
+            deviceId,
+            deviceType,
+            reason
+        );
     }
 
     @PostMapping("/deployment-policies/{policyId}/disable")
     public MlDeploymentPolicyDto disablePolicy(
-            @PathVariable("policyId") UUID policyId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("policyId") UUID policyId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.disablePolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), policyId, request);
+        return service.disablePolicy(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            policyId,
+            request
+        );
     }
 
     @GetMapping("/deployment-policies/{policyId}/lifecycle-impact")
     public MlLifecycleImpactResponse policyLifecycleImpact(
-            @PathVariable("policyId") UUID policyId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
-        return service.policyImpact(resolveAccountId(accountId, userId, correlationId), policyId, action);
+        @PathVariable("policyId") UUID policyId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
+        return service.policyImpact(
+            resolveAccountId(accountId, userId, correlationId),
+            policyId,
+            action
+        );
     }
 
     @PostMapping("/deployment-policies/{policyId}/delete")
     public MlDeploymentPolicyDto deletePolicy(
-            @PathVariable("policyId") UUID policyId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("policyId") UUID policyId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.deletePolicy(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), policyId, request);
+        return service.deletePolicy(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            policyId,
+            request
+        );
     }
 
     @GetMapping("/deployment-policies/resolve")
     public MlResolvedDeploymentPolicyResponse resolvePolicy(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "deviceId", required = false) UUID deviceId,
-            @RequestParam(value = "deviceType", required = false) String deviceType) {
-        return service.resolvePolicy(resolveAccountId(accountId, userId, correlationId), deviceId, deviceType);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "deviceId", required = false) UUID deviceId,
+        @RequestParam(value = "deviceType", required = false) String deviceType
+    ) {
+        return service.resolvePolicy(
+            resolveAccountId(accountId, userId, correlationId),
+            deviceId,
+            deviceType
+        );
     }
 
     private UUID resolveAccountId(UUID accountId, String userId, String correlationId) {
-        return accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return accountId != null
+            ? accountId
+            : accessService.accountIdForUser(userId, correlationId);
     }
 
     private void requireWrite(String role) {
         if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML registry write access denied");
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "ML registry write access denied"
+            );
         }
     }
 
@@ -201,7 +276,10 @@ public class MlModelRegistryController {
         try {
             return UUID.fromString(userId);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 }

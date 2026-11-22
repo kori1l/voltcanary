@@ -34,10 +34,12 @@ public class MlModelQueryService {
             demoModelSeeder.ensureDemoModels(accountId);
         }
         String filter = normalizedFilter(statusFilter);
-        return modelVersionRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
-                .filter(model -> matchesModelFilter(model.getStatus(), filter))
-                .map(mapper::modelResponse)
-                .toList();
+        return modelVersionRepository
+            .findByAccountIdOrderByCreatedAtDesc(accountId)
+            .stream()
+            .filter(model -> matchesModelFilter(model.getStatus(), filter))
+            .map(mapper::modelResponse)
+            .toList();
     }
 
     public MlModelVersionDto getModel(UUID accountId, UUID modelVersionId) {
@@ -45,8 +47,11 @@ public class MlModelQueryService {
     }
 
     MlModelVersion findOwnedModel(UUID accountId, UUID modelVersionId) {
-        MlModelVersion model = modelVersionRepository.findById(modelVersionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found"));
+        MlModelVersion model = modelVersionRepository
+            .findById(modelVersionId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found")
+            );
         if (!accountId.equals(model.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found");
         }

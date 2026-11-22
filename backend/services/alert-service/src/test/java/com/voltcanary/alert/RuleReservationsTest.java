@@ -1,3 +1,3 @@
 package com.voltcanary.alert;
 
-class RuleReservationsTest extends RuleReservationsContract { }
+class RuleReservationsTest extends RuleReservationsContract {}

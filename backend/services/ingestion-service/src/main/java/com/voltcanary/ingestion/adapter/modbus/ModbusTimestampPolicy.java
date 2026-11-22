@@ -1,5 +1,5 @@
 package com.voltcanary.ingestion.adapter.modbus;
 
 enum ModbusTimestampPolicy {
-    POLL_TIME
+    POLL_TIME,
 }

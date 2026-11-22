@@ -30,12 +30,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/dashboards")
 @RequiredArgsConstructor
 public class DashboardCatalogController {
-    public record CatalogPage(List<Dashboard> items, boolean hasNext, String nextCursor) {
-    }
 
-    public record DashboardView(Dashboard dashboard, DashboardDefinition definition, int revision,
-            List<String> permissions, UUID draftEtag, List<String> unsupportedWidgetIds) {
-    }
+    public record CatalogPage(List<Dashboard> items, boolean hasNext, String nextCursor) {}
+
+    public record DashboardView(
+        Dashboard dashboard,
+        DashboardDefinition definition,
+        int revision,
+        List<String> permissions,
+        UUID draftEtag,
+        List<String> unsupportedWidgetIds
+    ) {}
 
     private final DashboardOwnership ownership;
     private final DashboardCatalog catalog;
@@ -46,78 +51,153 @@ public class DashboardCatalogController {
     private final com.voltcanary.dashboard.sharing.DashboardSharing sharing;
 
     @GetMapping
-    public CatalogPage list(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestParam(value = "status", defaultValue = "ACTIVE") String status, @RequestParam(value = "limit", defaultValue = "20") int limit,
-            @RequestParam(value = "cursor", required = false) String cursor) {
+    public CatalogPage list(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestParam(value = "status", defaultValue = "ACTIVE") String status,
+        @RequestParam(value = "limit", defaultValue = "20") int limit,
+        @RequestParam(value = "cursor", required = false) String cursor
+    ) {
         var actor = ownership.resolve(authorization);
         List<Dashboard> loaded = catalog.list(actor, status, cursor(cursor), limit);
         boolean hasNext = loaded.size() > limit;
         List<Dashboard> visible = hasNext ? loaded.subList(0, limit) : loaded;
         Dashboard last = visible.isEmpty() ? null : visible.getLast();
-        String next = hasNext && last != null ? Base64.getUrlEncoder().withoutPadding().encodeToString(
-                (last.createdAt() + "|" + last.id()).getBytes(StandardCharsets.UTF_8)) : null;
+        String next =
+            hasNext && last != null
+                ? Base64.getUrlEncoder()
+                      .withoutPadding()
+                      .encodeToString(
+                          (last.createdAt() + "|" + last.id()).getBytes(StandardCharsets.UTF_8)
+                      )
+                : null;
         return new CatalogPage(visible, hasNext, next);
     }
 
     @PostMapping
-    public ResponseEntity<Dashboard> create(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key, @RequestBody JsonNode body) {
+    public ResponseEntity<Dashboard> create(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key,
+        @RequestBody JsonNode body
+    ) {
         var actor = ownership.resolve(authorization);
-        return ResponseEntity.status(201).body(catalog.create(actor, authorization, key, body, decoder.definition(body)));
+        return ResponseEntity.status(201).body(
+            catalog.create(actor, authorization, key, body, decoder.definition(body))
+        );
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DashboardView> get(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestParam(value = "revision", required = false) Integer revision) {
+    public ResponseEntity<DashboardView> get(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestParam(value = "revision", required = false) Integer revision
+    ) {
         var actor = ownership.resolve(authorization);
         Dashboard dashboard = catalog.get(actor, id);
         int requested = revision == null ? dashboard.publishedRevision() : revision;
-        List<String> permissions=catalog.permissions(actor,id);
-        if (dashboard.ownerUserId().equals(actor.userId()) && dashboard.accountId().equals(actor.accountId())) {
-            permissions = java.util.stream.Stream.concat(permissions.stream(), java.util.stream.Stream.of("delete")).distinct().toList();
+        List<String> permissions = catalog.permissions(actor, id);
+        if (
+            dashboard.ownerUserId().equals(actor.userId()) &&
+            dashboard.accountId().equals(actor.accountId())
+        ) {
+            permissions = java.util.stream.Stream.concat(
+                permissions.stream(),
+                java.util.stream.Stream.of("delete")
+            )
+                .distinct()
+                .toList();
         }
-        DashboardDefinition definition = requested == 0 ? null : catalog.definition(actor,id,requested);
-        if (sharing!=null && definition!=null) definition=sharing.viewerDefinition(actor,id,definition);
-        UUID draftEtag = permissions.contains("edit")?drafts.get(actor,id).etag():permissions.contains("archive")?drafts.lifecycleEtag(actor,id):null;
-        if (!"ACTIVE".equals(dashboard.status()) && permissions.contains("archive")) permissions=java.util.stream.Stream.concat(permissions.stream(),java.util.stream.Stream.of("restore")).distinct().toList();
-        return ResponseEntity.ok().eTag(id + "-r" + requested + "-" + dashboard.status())
-                .body(new DashboardView(dashboard, definition, requested, permissions, draftEtag,
-                        definition == null ? List.of() : definition.widgets().stream()
-                                .filter(widget -> manifests.find(widget.type(), widget.typeVersion()).map(manifest -> !manifest.supported()).orElse(true))
-                                .map(DashboardDefinition.Widget::id).toList()));
+        DashboardDefinition definition =
+            requested == 0 ? null : catalog.definition(actor, id, requested);
+        if (sharing != null && definition != null) definition = sharing.viewerDefinition(
+            actor,
+            id,
+            definition
+        );
+        UUID draftEtag = permissions.contains("edit")
+            ? drafts.get(actor, id).etag()
+            : permissions.contains("archive")
+              ? drafts.lifecycleEtag(actor, id)
+              : null;
+        if (!"ACTIVE".equals(dashboard.status()) && permissions.contains("archive")) permissions =
+            java.util.stream.Stream.concat(
+                permissions.stream(),
+                java.util.stream.Stream.of("restore")
+            )
+                .distinct()
+                .toList();
+        return ResponseEntity.ok()
+            .eTag(id + "-r" + requested + "-" + dashboard.status())
+            .body(
+                new DashboardView(
+                    dashboard,
+                    definition,
+                    requested,
+                    permissions,
+                    draftEtag,
+                    definition == null
+                        ? List.of()
+                        : definition
+                              .widgets()
+                              .stream()
+                              .filter(widget ->
+                                  manifests
+                                      .find(widget.type(), widget.typeVersion())
+                                      .map(manifest -> !manifest.supported())
+                                      .orElse(true)
+                              )
+                              .map(DashboardDefinition.Widget::id)
+                              .toList()
+                )
+            );
     }
 
     @GetMapping("/creation-receipt")
-    public Dashboard receipt(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestHeader(value = "Idempotency-Key", required = false) String key) {
+    public Dashboard receipt(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key
+    ) {
         return catalog.creationReceipt(ownership.resolveReadOnly(authorization), key);
     }
 
     @PostMapping("/{id}/copy")
-    public ResponseEntity<Dashboard> copy(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @RequestBody JsonNode body) {
+    public ResponseEntity<Dashboard> copy(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "Idempotency-Key", required = false) String key,
+        @RequestBody JsonNode body
+    ) {
         var actor = ownership.resolve(authorization);
         decoder.validateRequest(body);
-        return ResponseEntity.status(201).body(catalog.copy(actor, authorization, id, key, body, body.path("name").asText()));
+        return ResponseEntity.status(201).body(
+            catalog.copy(actor, authorization, id, key, body, body.path("name").asText())
+        );
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+    public ResponseEntity<Void> delete(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch
+    ) {
         lifecycle.delete(ownership.resolve(authorization), id, ifMatch);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/archive")
-    public Dashboard archive(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+    public Dashboard archive(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch
+    ) {
         return lifecycle.transition(ownership.resolve(authorization), id, ifMatch, true);
     }
 
     @PostMapping("/{id}/restore")
-    public Dashboard restore(@RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable("id") UUID id, @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+    public Dashboard restore(
+        @RequestHeader(value = "Authorization", required = false) String authorization,
+        @PathVariable("id") UUID id,
+        @RequestHeader(value = "If-Match", required = false) String ifMatch
+    ) {
         return lifecycle.transition(ownership.resolve(authorization), id, ifMatch, false);
     }
 
@@ -129,7 +209,10 @@ public class DashboardCatalogController {
             if (value.length() > 160) {
                 throw new IllegalArgumentException();
             }
-            String decoded = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+            String decoded = new String(
+                Base64.getUrlDecoder().decode(value),
+                StandardCharsets.UTF_8
+            );
             String[] parts = decoded.split("\\|", -1);
             if (parts.length != 2) {
                 throw new IllegalArgumentException();

@@ -1,7 +1,13 @@
 import { MetricDefinition, MetricStatistics } from "../model/telemetry.types";
 import { formatMetricValue } from "../model/telemetry.utils";
 
-export function MetricStatsBar({ metric, statistics }: { metric: MetricDefinition; statistics: MetricStatistics }) {
+export function MetricStatsBar({
+  metric,
+  statistics,
+}: {
+  metric: MetricDefinition;
+  statistics: MetricStatistics;
+}) {
   return (
     <div className="metric-detail-stats">
       <article>

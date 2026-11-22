@@ -14,10 +14,14 @@ public class NotificationProviderRegistry {
     private final Map<String, NotificationProviderAdapter> adapters;
 
     public NotificationProviderRegistry(List<NotificationProviderAdapter> adapters) {
-        this.adapters = adapters.stream()
-                .collect(Collectors.toUnmodifiableMap(
-                        adapter -> normalize(adapter.channelType()),
-                        Function.identity()));
+        this.adapters = adapters
+            .stream()
+            .collect(
+                Collectors.toUnmodifiableMap(
+                    adapter -> normalize(adapter.channelType()),
+                    Function.identity()
+                )
+            );
     }
 
     public Optional<NotificationProviderAdapter> find(String channelType) {

@@ -31,39 +31,38 @@ public class LocationController {
 
     @PostMapping
     public LocationResponse create(
-            @RequestHeader HttpHeaders headers,
-            @Valid @RequestBody LocationRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @Valid @RequestBody LocationRequest request
+    ) {
         return locationService.create(user(headers), request);
     }
 
     @GetMapping
     public List<LocationResponse> list(
-            @RequestHeader HttpHeaders headers,
-            @RequestParam(value = "search", required = false) String search,
-            @RequestParam(value = "limit", required = false) Integer limit,
-            @RequestParam(value = "offset", required = false) Integer offset) {
+        @RequestHeader HttpHeaders headers,
+        @RequestParam(value = "search", required = false) String search,
+        @RequestParam(value = "limit", required = false) Integer limit,
+        @RequestParam(value = "offset", required = false) Integer offset
+    ) {
         return locationService.list(user(headers), search, limit, offset);
     }
 
     @GetMapping("/{id}")
-    public LocationResponse get(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public LocationResponse get(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         return locationService.get(user(headers), id);
     }
 
     @PatchMapping("/{id}")
     public LocationResponse update(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id,
-            @Valid @RequestBody LocationRequest request) {
+        @RequestHeader HttpHeaders headers,
+        @PathVariable("id") UUID id,
+        @Valid @RequestBody LocationRequest request
+    ) {
         return locationService.update(user(headers), id, request);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(
-            @RequestHeader HttpHeaders headers,
-            @PathVariable("id") UUID id) {
+    public void delete(@RequestHeader HttpHeaders headers, @PathVariable("id") UUID id) {
         locationService.delete(user(headers), id);
     }
 

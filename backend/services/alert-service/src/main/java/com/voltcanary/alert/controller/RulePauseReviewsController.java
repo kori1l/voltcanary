@@ -16,21 +16,31 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/alert-rules/configurable/pause-reviews")
 @RequiredArgsConstructor
 public class RulePauseReviewsController {
+
     private final RulePauseReviews reviews;
 
     @PostMapping
-    public RulePauseReviews.Review prepare(@RequestHeader("X-User-Id") UUID actor, @RequestBody VclRulePauseIntent intent) {
+    public RulePauseReviews.Review prepare(
+        @RequestHeader("X-User-Id") UUID actor,
+        @RequestBody VclRulePauseIntent intent
+    ) {
         return reviews.prepare(actor, intent);
     }
 
     @PostMapping("/{id}/confirm")
-    public RulePauseReviews.Review confirm(@RequestHeader("X-User-Id") UUID actor, @PathVariable UUID id,
-            @RequestBody RuleCutoverReviewsController.Confirmation confirmation) {
+    public RulePauseReviews.Review confirm(
+        @RequestHeader("X-User-Id") UUID actor,
+        @PathVariable UUID id,
+        @RequestBody RuleCutoverReviewsController.Confirmation confirmation
+    ) {
         return reviews.confirm(actor, id, confirmation.reviewDigest());
     }
 
     @GetMapping("/{id}/confirmed")
-    public RulePauseReviews.Review confirmed(@RequestHeader("X-User-Id") UUID actor, @PathVariable UUID id) {
+    public RulePauseReviews.Review confirmed(
+        @RequestHeader("X-User-Id") UUID actor,
+        @PathVariable UUID id
+    ) {
         return reviews.confirmed(actor, id);
     }
 }

@@ -24,10 +24,23 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class NotificationChannelService {
 
-    private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {
-    };
-    private static final Set<String> SUPPORTED_TYPES = Set.of("EMAIL", "WEBHOOK", "TELEGRAM", "SLACK", "SMS", "PUSH");
-    private static final Set<String> SECRET_KEY_PARTS = Set.of("secret", "token", "password", "credential", "api_key", "apikey");
+    private static final TypeReference<Map<String, Object>> CONFIG_TYPE = new TypeReference<>() {};
+    private static final Set<String> SUPPORTED_TYPES = Set.of(
+        "EMAIL",
+        "WEBHOOK",
+        "TELEGRAM",
+        "SLACK",
+        "SMS",
+        "PUSH"
+    );
+    private static final Set<String> SECRET_KEY_PARTS = Set.of(
+        "secret",
+        "token",
+        "password",
+        "credential",
+        "api_key",
+        "apikey"
+    );
 
     private final NotificationChannelRepository repository;
     private final ObjectMapper objectMapper;
@@ -37,13 +50,19 @@ public class NotificationChannelService {
     @Transactional(readOnly = true)
     public java.util.List<NotificationChannelResponse> list(String userId, String accountId) {
         UUID scope = accountScope(userId, accountId);
-        return repository.findByAccountIdOrderByCreatedAtDesc(scope).stream()
-                .map(this::toResponse)
-                .toList();
+        return repository
+            .findByAccountIdOrderByCreatedAtDesc(scope)
+            .stream()
+            .map(this::toResponse)
+            .toList();
     }
 
     @Transactional
-    public NotificationChannelResponse create(String userId, String accountId, NotificationChannelRequest request) {
+    public NotificationChannelResponse create(
+        String userId,
+        String accountId,
+        NotificationChannelRequest request
+    ) {
         UUID scope = accountScope(userId, accountId);
         Instant now = Instant.now();
         NotificationChannel channel = new NotificationChannel();
@@ -56,7 +75,12 @@ public class NotificationChannelService {
     }
 
     @Transactional
-    public NotificationChannelResponse update(UUID id, String userId, String accountId, NotificationChannelRequest request) {
+    public NotificationChannelResponse update(
+        UUID id,
+        String userId,
+        String accountId,
+        NotificationChannelRequest request
+    ) {
         NotificationChannel channel = loadOwned(id, userId, accountId);
         applyRequest(channel, request, false);
         channel.setUpdatedAt(Instant.now());
@@ -64,7 +88,12 @@ public class NotificationChannelService {
     }
 
     @Transactional
-    public NotificationChannelResponse setEnabled(UUID id, String userId, String accountId, boolean enabled) {
+    public NotificationChannelResponse setEnabled(
+        UUID id,
+        String userId,
+        String accountId,
+        boolean enabled
+    ) {
         NotificationChannel channel = loadOwned(id, userId, accountId);
         channel.setEnabled(enabled);
         channel.setUpdatedAt(Instant.now());
@@ -77,13 +106,23 @@ public class NotificationChannelService {
     }
 
     NotificationChannel loadOwned(UUID id, String userId, String accountId) {
-        return repository.findByIdAndAccountId(id, accountScope(userId, accountId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification channel not found"));
+        return repository
+            .findByIdAndAccountId(id, accountScope(userId, accountId))
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification channel not found")
+            );
     }
 
-    private void applyRequest(NotificationChannel channel, NotificationChannelRequest request, boolean create) {
+    private void applyRequest(
+        NotificationChannel channel,
+        NotificationChannelRequest request,
+        boolean create
+    ) {
         if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Notification channel request is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Notification channel request is required"
+            );
         }
         if (request.name() != null) {
             channel.setName(nonBlank(request.name(), "name", 255));
@@ -93,9 +132,14 @@ public class NotificationChannelService {
         String originalType = channel.getChannelType();
         String originalCredentials = channel.getCredentialsRef();
         if (request.channelType() != null) {
-            String type = nonBlank(request.channelType(), "channelType", 100).toUpperCase(Locale.ROOT);
+            String type = nonBlank(request.channelType(), "channelType", 100).toUpperCase(
+                Locale.ROOT
+            );
             if (!SUPPORTED_TYPES.contains(type)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported notification channel type");
+                throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported notification channel type"
+                );
             }
             channel.setChannelType(type);
         } else if (create) {
@@ -110,11 +154,16 @@ public class NotificationChannelService {
         if (request.credentialsRef() != null) {
             channel.setCredentialsRef(optionalRef(request.credentialsRef()));
         }
-        if (!create && request.config() == null
-                && (!java.util.Objects.equals(originalType, channel.getChannelType())
-                || !java.util.Objects.equals(originalCredentials, channel.getCredentialsRef()))) {
+        if (
+            !create &&
+            request.config() == null &&
+            (!java.util.Objects.equals(originalType, channel.getChannelType()) ||
+                !java.util.Objects.equals(originalCredentials, channel.getCredentialsRef()))
+        ) {
             var config = new java.util.LinkedHashMap<>(readConfig(channel.getConfigJson()));
-            if (config.remove("configurableRuleIds") != null) channel.setConfigJson(writeConfig(config));
+            if (config.remove("configurableRuleIds") != null) channel.setConfigJson(
+                writeConfig(config)
+            );
         }
         if (request.enabled() != null) {
             channel.setEnabled(request.enabled());
@@ -151,10 +200,16 @@ public class NotificationChannelService {
 
     private void validateConfig(String channelType, Map<String, Object> config) {
         validateConfigObject(config);
-        if (config.containsKey("configurableRuleIds")
-                && (!(config.get("configurableRuleIds") instanceof java.util.List<?> rules)
-                || rules.size() > 100 || rules.stream().anyMatch(value -> !isRuleId(value)))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "configurableRuleIds must contain canonical rule UUIDs");
+        if (
+            config.containsKey("configurableRuleIds") &&
+            (!(config.get("configurableRuleIds") instanceof java.util.List<?> rules) ||
+                rules.size() > 100 ||
+                rules.stream().anyMatch(value -> !isRuleId(value)))
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "configurableRuleIds must contain canonical rule UUIDs"
+            );
         }
         providerRegistry.find(channelType).ifPresent(adapter -> adapter.validateConfig(config));
     }
@@ -174,8 +229,9 @@ public class NotificationChannelService {
             String normalized = key.toLowerCase(Locale.ROOT);
             if (SECRET_KEY_PARTS.stream().anyMatch(normalized::contains)) {
                 throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "notification channel config must not contain secrets; use credentialsRef");
+                    HttpStatus.BAD_REQUEST,
+                    "notification channel config must not contain secrets; use credentialsRef"
+                );
             }
             validateConfigValue(entry.getValue());
         }
@@ -196,28 +252,39 @@ public class NotificationChannelService {
         try {
             return objectMapper.writeValueAsString(config);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification channel config", exception);
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid notification channel config",
+                exception
+            );
         }
     }
 
     private Map<String, Object> readConfig(String configJson) {
         try {
-            return objectMapper.readValue(configJson == null || configJson.isBlank() ? "{}" : configJson, CONFIG_TYPE);
+            return objectMapper.readValue(
+                configJson == null || configJson.isBlank() ? "{}" : configJson,
+                CONFIG_TYPE
+            );
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Stored notification channel config is invalid", exception);
+            throw new IllegalStateException(
+                "Stored notification channel config is invalid",
+                exception
+            );
         }
     }
 
     private NotificationChannelResponse toResponse(NotificationChannel channel) {
         return new NotificationChannelResponse(
-                channel.getId(),
-                channel.getAccountId(),
-                channel.getName(),
-                channel.getChannelType(),
-                readConfig(channel.getConfigJson()),
-                channel.getCredentialsRef(),
-                channel.isEnabled(),
-                channel.getCreatedAt(),
-                channel.getUpdatedAt());
+            channel.getId(),
+            channel.getAccountId(),
+            channel.getName(),
+            channel.getChannelType(),
+            readConfig(channel.getConfigJson()),
+            channel.getCredentialsRef(),
+            channel.isEnabled(),
+            channel.getCreatedAt(),
+            channel.getUpdatedAt()
+        );
     }
 }

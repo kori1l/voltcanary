@@ -28,7 +28,10 @@ public class AlertAnalyticsEventReconciliationService {
 
     @Scheduled(fixedDelayString = "#{@alertReconciliationProperties.interval.toMillis()}")
     public void reconcileDueAnalyticsEvents() {
-        if (!properties.isEnabled() || !schedulerLockService.acquire(LOCK_NAME, properties.getLockLease())) {
+        if (
+            !properties.isEnabled() ||
+            !schedulerLockService.acquire(LOCK_NAME, properties.getLockLease())
+        ) {
             return;
         }
         try {
@@ -46,17 +49,25 @@ public class AlertAnalyticsEventReconciliationService {
     }
 
     public void reconcile(AlertAnalyticsEventInboxEntry entry) {
-        if (entry.getStatus() == AlertAnalyticsEventInboxStatus.PROCESSED
-                || entry.getStatus() == AlertAnalyticsEventInboxStatus.NO_ALERT) {
+        if (
+            entry.getStatus() == AlertAnalyticsEventInboxStatus.PROCESSED ||
+            entry.getStatus() == AlertAnalyticsEventInboxStatus.NO_ALERT
+        ) {
             return;
         }
         try {
             switch (entry.getEventType()) {
-                case AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE ->
-                        eventHandler.replayAnomaly(entry.getId(), objectMapper.readValue(entry.getPayloadJson(), AnomalyDetectedEvent.class));
-                case AnalyticsAlertEventHandler.RISK_EVENT_TYPE ->
-                        eventHandler.replayRiskScoreChanged(entry.getId(), objectMapper.readValue(entry.getPayloadJson(), RiskScoreChangedEvent.class));
-                default -> throw new IllegalArgumentException("Unsupported analytics alert event type: " + entry.getEventType());
+                case AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE -> eventHandler.replayAnomaly(
+                    entry.getId(),
+                    objectMapper.readValue(entry.getPayloadJson(), AnomalyDetectedEvent.class)
+                );
+                case AnalyticsAlertEventHandler.RISK_EVENT_TYPE -> eventHandler.replayRiskScoreChanged(
+                    entry.getId(),
+                    objectMapper.readValue(entry.getPayloadJson(), RiskScoreChangedEvent.class)
+                );
+                default -> throw new IllegalArgumentException(
+                    "Unsupported analytics alert event type: " + entry.getEventType()
+                );
             }
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Invalid analytics alert inbox payload", exception);

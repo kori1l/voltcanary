@@ -31,31 +31,55 @@ public class MlTrainingController {
 
     @PostMapping
     public MlTrainingRunDto create(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @Valid @RequestBody MlTrainingRunRequest request) {
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @Valid @RequestBody MlTrainingRunRequest request
+    ) {
         requireWrite(role);
-        return service.create(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), request);
+        return service.create(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            request
+        );
     }
 
     @GetMapping
     public List<MlTrainingRunDto> list(
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter) {
-        return service.list(resolveAccountId(accountId, userId, correlationId), statusFilter);
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "100") int size
+    ) {
+        return service.list(
+            resolveAccountId(accountId, userId, correlationId),
+            statusFilter,
+            page,
+            size
+        );
+    }
+
+    @GetMapping("/{runId}")
+    public MlTrainingRunDto get(
+        @PathVariable UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
+        return service.get(resolveAccountId(accountId, userId, correlationId), runId);
     }
 
     @PostMapping("/{runId}/cancel")
     public MlTrainingRunDto cancel(
-            @PathVariable("runId") UUID runId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        @PathVariable("runId") UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
         requireWrite(role);
         parseUserId(userId);
         return service.cancel(resolveAccountId(accountId, userId, correlationId), runId);
@@ -63,11 +87,12 @@ public class MlTrainingController {
 
     @PostMapping("/{runId}/retry")
     public MlTrainingRunDto retry(
-            @PathVariable("runId") UUID runId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId) {
+        @PathVariable("runId") UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId
+    ) {
         requireWrite(role);
         parseUserId(userId);
         return service.retry(resolveAccountId(accountId, userId, correlationId), runId);
@@ -75,45 +100,63 @@ public class MlTrainingController {
 
     @PostMapping("/{runId}/archive")
     public MlTrainingRunDto archive(
-            @PathVariable("runId") UUID runId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("runId") UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.archive(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), runId, request);
+        return service.archive(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            runId,
+            request
+        );
     }
 
     @GetMapping("/{runId}/lifecycle-impact")
     public MlLifecycleImpactResponse lifecycleImpact(
-            @PathVariable("runId") UUID runId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestParam(value = "action", defaultValue = "delete") String action) {
+        @PathVariable("runId") UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestParam(value = "action", defaultValue = "delete") String action
+    ) {
         return service.impact(resolveAccountId(accountId, userId, correlationId), runId, action);
     }
 
     @PostMapping("/{runId}/delete")
     public MlTrainingRunDto delete(
-            @PathVariable("runId") UUID runId,
-            @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
-            @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-User-Role", required = false) String role,
-            @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-            @RequestBody(required = false) MlLifecycleActionRequest request) {
+        @PathVariable("runId") UUID runId,
+        @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
+        @RequestHeader(value = "X-User-Id", required = false) String userId,
+        @RequestHeader(value = "X-User-Role", required = false) String role,
+        @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
+        @RequestBody(required = false) MlLifecycleActionRequest request
+    ) {
         requireWrite(role);
-        return service.delete(resolveAccountId(accountId, userId, correlationId), parseUserId(userId), runId, request);
+        return service.delete(
+            resolveAccountId(accountId, userId, correlationId),
+            parseUserId(userId),
+            runId,
+            request
+        );
     }
 
     private UUID resolveAccountId(UUID accountId, String userId, String correlationId) {
-        return accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
+        return accountId != null
+            ? accountId
+            : accessService.accountIdForUser(userId, correlationId);
     }
 
     private void requireWrite(String role) {
         if (!("ADMIN".equals(role) || "OWNER".equals(role) || "USER".equals(role))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ML training write access denied");
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "ML training write access denied"
+            );
         }
     }
 
@@ -121,7 +164,10 @@ public class MlTrainingController {
         try {
             return UUID.fromString(userId);
         } catch (Exception exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing authenticated user");
+            throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Missing authenticated user"
+            );
         }
     }
 }

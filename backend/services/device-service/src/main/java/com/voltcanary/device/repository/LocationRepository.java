@@ -6,9 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-
 public interface LocationRepository extends JpaRepository<Location, UUID> {
-
     List<Location> findByAccountIdOrderByCreatedAtAsc(UUID accountId);
 
     Optional<Location> findByIdAndAccountId(UUID id, UUID accountId);

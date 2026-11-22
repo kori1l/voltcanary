@@ -9,20 +9,67 @@ import { useScopedDraftValue } from "./useScopedDraftValue";
 import { useWorkflowDraft } from "./workflowDraftContext";
 import { draftScope, scopedDraftKey } from "./scopedDrafts";
 
-afterEach(() => { cleanup(); clearTokens(); localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  clearTokens();
+  localStorage.clear();
+});
 function Editor() {
-  const query = useConsoleQuery(); const [tab, setTab] = query.state<string>("tab", "settings");
-  return <><form><label>Draft title<input defaultValue="Original" /></label></form><Link to="/devices">Leave route</Link><button onClick={() => setTab("training")}>Training tab</button><p>Tab {tab}</p></>;
+  const query = useConsoleQuery();
+  const [tab, setTab] = query.state<string>("tab", "settings");
+  return (
+    <>
+      <form>
+        <label>
+          Draft title
+          <input defaultValue="Original" />
+        </label>
+      </form>
+      <Link to="/devices">Leave route</Link>
+      <button onClick={() => setTab("training")}>Training tab</button>
+      <p>Tab {tab}</p>
+    </>
+  );
 }
 function PersistedEditor() {
   const scope = draftScope("account-1", "training", "v1");
-  const [draft, setDraft, clear, recovered] = useScopedDraftValue(scope, { title: "Original" }, (value) => typeof value.title === "string" ? { title: value.title } : null);
+  const [draft, setDraft, clear, recovered] = useScopedDraftValue(
+    scope,
+    { title: "Original" },
+    (value) => (typeof value.title === "string" ? { title: value.title } : null),
+  );
   useWorkflowDraft(recovered, clear);
-  return <><form><label>Draft title<input value={draft.title} onChange={(event) => setDraft({ title: event.target.value })} /></label></form><Link to="/devices">Leave route</Link></>;
+  return (
+    <>
+      <form>
+        <label>
+          Draft title
+          <input
+            value={draft.title}
+            onChange={(event) => setDraft({ title: event.target.value })}
+          />
+        </label>
+      </form>
+      <Link to="/devices">Leave route</Link>
+    </>
+  );
 }
 it("discards a newly persisted controlled draft as well as its visible form", async () => {
   setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`, "fixture");
-  const router = createMemoryRouter([{ path: "/settings/ml", element: <WorkflowDraftProvider><PersistedEditor /></WorkflowDraftProvider> }, { path: "/devices", element: <p>Devices destination</p> }], { initialEntries: ["/settings/ml"] });
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/settings/ml",
+        element: (
+          <WorkflowDraftProvider>
+            <PersistedEditor />
+          </WorkflowDraftProvider>
+        ),
+      },
+      { path: "/devices", element: <p>Devices destination</p> },
+    ],
+    { initialEntries: ["/settings/ml"] },
+  );
   render(<RouterProvider router={router} />);
   await userEvent.type(screen.getByLabelText("Draft title"), " edited");
   const key = scopedDraftKey(draftScope("account-1", "training", "v1")!);
@@ -36,7 +83,20 @@ it("discards a newly persisted controlled draft as well as its visible form", as
 });
 it("keeps dirty route/tab drafts and proceeds only after explicit discard", async () => {
   setTokens("fixture", "fixture");
-  const router = createMemoryRouter([{ path: "/settings/ml", element: <WorkflowDraftProvider><Editor /></WorkflowDraftProvider> }, { path: "/devices", element: <p>Devices destination</p> }], { initialEntries: ["/settings/ml"] });
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/settings/ml",
+        element: (
+          <WorkflowDraftProvider>
+            <Editor />
+          </WorkflowDraftProvider>
+        ),
+      },
+      { path: "/devices", element: <p>Devices destination</p> },
+    ],
+    { initialEntries: ["/settings/ml"] },
+  );
   render(<RouterProvider router={router} />);
   await userEvent.type(screen.getByLabelText("Draft title"), " edited");
   await userEvent.click(screen.getByText("Leave route"));
@@ -54,7 +114,20 @@ it("keeps dirty route/tab drafts and proceeds only after explicit discard", asyn
 });
 it("protects browser Back through the data router", async () => {
   setTokens("fixture", "fixture");
-  const router = createMemoryRouter([{ path: "/settings/ml", element: <WorkflowDraftProvider><Editor /></WorkflowDraftProvider> }, { path: "/devices", element: <p>Devices destination</p> }], { initialEntries: ["/devices", "/settings/ml"], initialIndex: 1 });
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/settings/ml",
+        element: (
+          <WorkflowDraftProvider>
+            <Editor />
+          </WorkflowDraftProvider>
+        ),
+      },
+      { path: "/devices", element: <p>Devices destination</p> },
+    ],
+    { initialEntries: ["/devices", "/settings/ml"], initialIndex: 1 },
+  );
   render(<RouterProvider router={router} />);
   await userEvent.type(screen.getByLabelText("Draft title"), " edited");
   await act(() => router.navigate(-1));

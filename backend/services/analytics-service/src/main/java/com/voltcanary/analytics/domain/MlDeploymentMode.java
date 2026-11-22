@@ -4,5 +4,5 @@ public enum MlDeploymentMode {
     SHADOW,
     CANARY,
     ACTIVE,
-    DISABLED
+    DISABLED,
 }

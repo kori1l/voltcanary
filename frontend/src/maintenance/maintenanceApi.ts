@@ -108,7 +108,8 @@ function query(params: MaintenanceOperationListParams) {
   const searchParams = new URLSearchParams();
   if (params.from) searchParams.set("from", params.from);
   if (params.to) searchParams.set("to", params.to);
-  if (params.locationId && params.locationId !== "all") searchParams.set("locationId", params.locationId);
+  if (params.locationId && params.locationId !== "all")
+    searchParams.set("locationId", params.locationId);
   if (params.status && params.status !== "all") searchParams.set("status", params.status);
   if (params.includeCancelled) searchParams.set("includeCancelled", "true");
   if (params.limit !== undefined) searchParams.set("limit", String(params.limit));
@@ -118,7 +119,10 @@ function query(params: MaintenanceOperationListParams) {
   return value ? `?${value}` : "";
 }
 
-export function listMaintenanceOperations(params: MaintenanceOperationListParams = {}, signal?: AbortSignal) {
+export function listMaintenanceOperations(
+  params: MaintenanceOperationListParams = {},
+  signal?: AbortSignal,
+) {
   return apiRequest<MaintenanceOperation[]>(`/maintenance-operations${query(params)}`, { signal });
 }
 export function getMaintenanceOperation(id: string, signal?: AbortSignal) {
@@ -132,7 +136,10 @@ export function createMaintenanceOperation(request: MaintenanceOperationRequest)
   });
 }
 
-export function updateMaintenanceOperation(operationId: string, request: MaintenanceOperationRequest) {
+export function updateMaintenanceOperation(
+  operationId: string,
+  request: MaintenanceOperationRequest,
+) {
   return apiRequest<MaintenanceOperation>(`/maintenance-operations/${operationId}`, {
     method: "PATCH",
     body: JSON.stringify(request),

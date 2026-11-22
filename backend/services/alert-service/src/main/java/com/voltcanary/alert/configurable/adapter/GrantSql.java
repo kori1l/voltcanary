@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class GrantSql {
+
     private final DataSource source;
 
     <T> T transaction(UUID account, Work<T> work) {
@@ -27,12 +28,22 @@ public class GrantSql {
                     execute(connection, "SET LOCAL lock_timeout='2s'");
                     execute(connection, "SET LOCAL statement_timeout='10s'");
                 }
-                try (var query = connection.prepareStatement("SELECT account_id FROM cfg_rule_owner_fence WHERE account_id=? FOR UPDATE")) {
+                try (
+                    var query = connection.prepareStatement(
+                        "SELECT account_id FROM cfg_rule_owner_fence WHERE account_id=? FOR UPDATE"
+                    )
+                ) {
                     query.setObject(1, account);
-                    try (var rows = query.executeQuery()) { if (!rows.next()) throw new VclException("REVIEW_UNAVAILABLE", ""); }
+                    try (var rows = query.executeQuery()) {
+                        if (!rows.next()) throw new VclException("REVIEW_UNAVAILABLE", "");
+                    }
                 }
-                execute(connection, "UPDATE cfg_grant_review SET status='EXPIRED' WHERE account_id=? AND status IN ('RESERVED','PREPARED') AND expires_at<=?",
-                        account, OffsetDateTime.ofInstant(now(connection), java.time.ZoneOffset.UTC));
+                execute(
+                    connection,
+                    "UPDATE cfg_grant_review SET status='EXPIRED' WHERE account_id=? AND status IN ('RESERVED','PREPARED') AND expires_at<=?",
+                    account,
+                    OffsetDateTime.ofInstant(now(connection), java.time.ZoneOffset.UTC)
+                );
                 T result = work.run(connection);
                 connection.commit();
                 return result;
@@ -40,11 +51,22 @@ public class GrantSql {
                 connection.rollback();
                 throw failure;
             }
-        } catch (SQLException failure) { throw new VclException("GRANT_STORAGE_UNAVAILABLE", ""); }
+        } catch (SQLException failure) {
+            throw new VclException("GRANT_STORAGE_UNAVAILABLE", "");
+        }
     }
 
-    GrantReview review(Connection connection, UUID account, UUID actor, UUID id) throws SQLException {
-        try (var query = connection.prepareStatement("SELECT * FROM cfg_grant_review WHERE id=? AND account_id=? AND actor_id=? FOR UPDATE")) {
+    GrantReview review(
+        Connection connection,
+        UUID account,
+        UUID actor,
+        UUID id
+    ) throws SQLException {
+        try (
+            var query = connection.prepareStatement(
+                "SELECT * FROM cfg_grant_review WHERE id=? AND account_id=? AND actor_id=? FOR UPDATE"
+            )
+        ) {
             query.setObject(1, id);
             query.setObject(2, account);
             query.setObject(3, actor);
@@ -56,61 +78,110 @@ public class GrantSql {
     }
 
     static GrantReview review(ResultSet row) throws SQLException {
-        return new GrantReview(row.getObject("id", UUID.class), row.getObject("account_id", UUID.class), row.getObject("actor_id", UUID.class),
-                row.getObject("rule_review_id", UUID.class), row.getObject("rule_id", UUID.class), row.getObject("grant_id", UUID.class),
-                row.getObject("receipt_id", UUID.class), row.getString("reservation_key"), row.getLong("revision"), row.getString("status"),
-                row.getObject("expires_at", OffsetDateTime.class).toInstant(), row.getString("canonical_definition"), row.getString("canonical_pins"),
-                row.getString("review_digest"), row.getString("outcome_code"));
+        return new GrantReview(
+            row.getObject("id", UUID.class),
+            row.getObject("account_id", UUID.class),
+            row.getObject("actor_id", UUID.class),
+            row.getObject("rule_review_id", UUID.class),
+            row.getObject("rule_id", UUID.class),
+            row.getObject("grant_id", UUID.class),
+            row.getObject("receipt_id", UUID.class),
+            row.getString("reservation_key"),
+            row.getLong("revision"),
+            row.getString("status"),
+            row.getObject("expires_at", OffsetDateTime.class).toInstant(),
+            row.getString("canonical_definition"),
+            row.getString("canonical_pins"),
+            row.getString("review_digest"),
+            row.getString("outcome_code")
+        );
     }
 
     AutomationGrant grant(Connection connection, UUID actor, UUID id) throws SQLException {
         AutomationGrant value;
-        try (var query = connection.prepareStatement("SELECT * FROM cfg_automation_grant WHERE id=? AND actor_id=? FOR UPDATE")) {
+        try (
+            var query = connection.prepareStatement(
+                "SELECT * FROM cfg_automation_grant WHERE id=? AND actor_id=? FOR UPDATE"
+            )
+        ) {
             query.setObject(1, id);
             query.setObject(2, actor);
             try (var row = query.executeQuery()) {
                 if (!row.next()) throw new VclException("GRANT_UNAVAILABLE", "");
-                value = new AutomationGrant(id, row.getObject("account_id", UUID.class), actor, row.getObject("rule_id", UUID.class),
-                        row.getObject("review_id", UUID.class), row.getString("canonical_definition"), row.getString("canonical_pins"),
-                        row.getString("definition_digest"), row.getLong("epoch"), row.getString("status"),
-                        row.getObject("expires_at", OffsetDateTime.class).toInstant());
+                value = new AutomationGrant(
+                    id,
+                    row.getObject("account_id", UUID.class),
+                    actor,
+                    row.getObject("rule_id", UUID.class),
+                    row.getObject("review_id", UUID.class),
+                    row.getString("canonical_definition"),
+                    row.getString("canonical_pins"),
+                    row.getString("definition_digest"),
+                    row.getLong("epoch"),
+                    row.getString("status"),
+                    row.getObject("expires_at", OffsetDateTime.class).toInstant()
+                );
             }
         }
         return value.effectiveAt(now(connection));
     }
 
     UUID grantAccount(UUID actor, UUID id) {
-        try (var connection = source.getConnection(); var query = connection.prepareStatement("SELECT account_id FROM cfg_automation_grant WHERE id=? AND actor_id=?")) {
+        try (
+            var connection = source.getConnection();
+            var query = connection.prepareStatement(
+                "SELECT account_id FROM cfg_automation_grant WHERE id=? AND actor_id=?"
+            )
+        ) {
             query.setObject(1, id);
             query.setObject(2, actor);
             try (var rows = query.executeQuery()) {
                 if (!rows.next()) throw new VclException("GRANT_UNAVAILABLE", "");
                 return rows.getObject(1, UUID.class);
             }
-        } catch (SQLException failure) { throw new VclException("GRANT_STORAGE_UNAVAILABLE", ""); }
+        } catch (SQLException failure) {
+            throw new VclException("GRANT_STORAGE_UNAVAILABLE", "");
+        }
     }
 
     UUID revocationAccount(UUID actor, UUID id) {
-        try (var connection = source.getConnection(); var query = connection.prepareStatement("SELECT account_id FROM cfg_grant_revocation WHERE id=? AND actor_id=?")) {
+        try (
+            var connection = source.getConnection();
+            var query = connection.prepareStatement(
+                "SELECT account_id FROM cfg_grant_revocation WHERE id=? AND actor_id=?"
+            )
+        ) {
             query.setObject(1, id);
             query.setObject(2, actor);
             try (var rows = query.executeQuery()) {
                 if (!rows.next()) throw new VclException("REVIEW_UNAVAILABLE", "");
                 return rows.getObject(1, UUID.class);
             }
-        } catch (SQLException failure) { throw new VclException("GRANT_STORAGE_UNAVAILABLE", ""); }
+        } catch (SQLException failure) {
+            throw new VclException("GRANT_STORAGE_UNAVAILABLE", "");
+        }
     }
 
     static Instant now(Connection connection) throws SQLException {
         return OwnerDatabaseClock.now(connection);
     }
 
-    static void execute(Connection connection, String sql, Object... arguments) throws SQLException {
+    static void execute(
+        Connection connection,
+        String sql,
+        Object... arguments
+    ) throws SQLException {
         try (var query = connection.prepareStatement(sql)) {
-            for (int index = 0; index < arguments.length; index++) query.setObject(index + 1, arguments[index]);
+            for (int index = 0; index < arguments.length; index++) query.setObject(
+                index + 1,
+                arguments[index]
+            );
             query.executeUpdate();
         }
     }
 
-    @FunctionalInterface interface Work<T> { T run(Connection connection) throws SQLException; }
+    @FunctionalInterface
+    interface Work<T> {
+        T run(Connection connection) throws SQLException;
+    }
 }

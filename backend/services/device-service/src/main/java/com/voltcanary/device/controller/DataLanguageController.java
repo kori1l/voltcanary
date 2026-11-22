@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 public class DataLanguageController {
+
     private final AuthenticatedUserResolver users;
     private final VclRegistry registry = new VclRegistry(new VclParser());
 

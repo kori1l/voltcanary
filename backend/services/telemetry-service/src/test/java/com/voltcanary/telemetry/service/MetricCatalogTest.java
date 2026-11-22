@@ -12,18 +12,21 @@ class MetricCatalogTest {
     @Test
     void exposesApplianceAndGpsNumericMetrics() {
         var metricNames = List.of(
-                "activePowerW",
-                "voltageV",
-                "currentA",
-                "energyWh",
-                "rssi",
-                "temperatureC",
-                "vibrationMmS",
-                "runtimeHours",
-                "powerFactor",
-                "frequencyHz");
+            "activePowerW",
+            "voltageV",
+            "currentA",
+            "energyWh",
+            "rssi",
+            "temperatureC",
+            "vibrationMmS",
+            "runtimeHours",
+            "powerFactor",
+            "frequencyHz"
+        );
 
-        assertThat(metricNames).allSatisfy(metricName -> assertThat(catalog.isSupported(metricName)).as(metricName).isTrue());
+        assertThat(metricNames).allSatisfy(metricName ->
+            assertThat(catalog.isSupported(metricName)).as(metricName).isTrue()
+        );
         assertThat(catalog.all()).hasSize(17);
         assertThat(catalog.find("temperatureC").orElseThrow().unit()).isEqualTo("C");
         assertThat(catalog.find("vibrationMmS").orElseThrow().unit()).isEqualTo("mm/s");

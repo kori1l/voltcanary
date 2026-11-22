@@ -21,5 +21,4 @@ public class AnalyticsRetentionProperties {
     private Duration jobs = Duration.ofDays(30);
     private Duration recommendations = Duration.ofDays(180);
     private Duration outbox = Duration.ofDays(7);
-
 }

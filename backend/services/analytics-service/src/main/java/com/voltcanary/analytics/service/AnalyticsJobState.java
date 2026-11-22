@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AnalyticsJobState {
+
     private final AnalyticsJobRepository repository;
     private final DeviceHistoryDeletion deletions;
     private final EntityManager entityManager;
@@ -26,9 +27,14 @@ public class AnalyticsJobState {
         job = repository.lockById(id).orElse(null);
         if (job == null) return null;
         entityManager.refresh(job);
-        if (owner == null ? !"PENDING".equals(job.getStatus())
-                : !"RUNNING".equals(job.getStatus()) || !owner.equals(job.getLockedBy())
-                    || job.getLockedAt() == null || job.getLockedAt().isBefore(Instant.now().minusSeconds(900))) return null;
+        if (
+            owner == null
+                ? !"PENDING".equals(job.getStatus())
+                : !"RUNNING".equals(job.getStatus()) ||
+                      !owner.equals(job.getLockedBy()) ||
+                      job.getLockedAt() == null ||
+                      job.getLockedAt().isBefore(Instant.now().minusSeconds(900))
+        ) return null;
         if (owner == null) {
             job.setLockedBy("sync:" + UUID.randomUUID());
             job.setLockedAt(Instant.now());
@@ -43,14 +49,22 @@ public class AnalyticsJobState {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void finish(AnalyticsJob expected, AnalyticsRecalculationService.RecalculationResult result, String error) {
+    public void finish(
+        AnalyticsJob expected,
+        AnalyticsRecalculationService.RecalculationResult result,
+        String error
+    ) {
         if (!deletions.writable(expected.getDeviceId())) return;
         AnalyticsJob job = repository.lockById(expected.getId()).orElse(null);
         if (job != null) entityManager.refresh(job);
-        if (job == null || !"RUNNING".equals(job.getStatus())
-                || !Objects.equals(job.getLockedBy(), expected.getLockedBy())
-                || !Objects.equals(job.getLockedAt(), expected.getLockedAt())
-                || job.getLockedAt() == null || job.getLockedAt().isBefore(Instant.now().minusSeconds(900))) return;
+        if (
+            job == null ||
+            !"RUNNING".equals(job.getStatus()) ||
+            !Objects.equals(job.getLockedBy(), expected.getLockedBy()) ||
+            !Objects.equals(job.getLockedAt(), expected.getLockedAt()) ||
+            job.getLockedAt() == null ||
+            job.getLockedAt().isBefore(Instant.now().minusSeconds(900))
+        ) return;
         job.setStatus(error != null ? "FAILED" : result.skipped() ? "SKIPPED" : "COMPLETED");
         job.setActiveKey(null);
         job.setCompletedAt(Instant.now());

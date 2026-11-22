@@ -26,18 +26,21 @@ public class MqttPayloadMapper {
             String rawPayload = new String(payload, StandardCharsets.UTF_8);
             JsonNode root = objectMapper.readTree(rawPayload);
             Instant timestamp = Instant.parse(root.path("timestamp").asText());
-            Map<String, Object> metrics = objectMapper.convertValue(root.path("metrics"), new TypeReference<>() {
-            });
+            Map<String, Object> metrics = objectMapper.convertValue(
+                root.path("metrics"),
+                new TypeReference<>() {}
+            );
             return new IncomingTelemetryMessage(
-                    sourceId,
-                    null,
-                    null,
-                    timestamp,
-                    Instant.now(),
-                    metrics,
-                    TelemetryOrigin.mqtt(topic),
-                    null,
-                    false);
+                sourceId,
+                null,
+                null,
+                timestamp,
+                Instant.now(),
+                metrics,
+                TelemetryOrigin.mqtt(topic),
+                null,
+                false
+            );
         } catch (Exception exception) {
             throw new MqttPayloadMappingException("Invalid MQTT telemetry payload", exception);
         }

@@ -18,31 +18,54 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/data/datasets/{dataset}")
 @RequiredArgsConstructor
 public class NativeMigrationsController {
+
     private final AuthenticatedUserResolver users;
     private final NativeMigrationWorkflows migrations;
 
     @PostMapping("/migration-reviews")
-    public JsonNode reserve(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @RequestBody byte[] body) {
+    public JsonNode reserve(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @RequestBody byte[] body
+    ) {
         return migrations.reserve(users.resolve(headers), dataset, body);
     }
 
     @PostMapping("/migration-reviews/{review}/prepare")
-    public JsonNode prepare(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID review, @RequestBody byte[] body) {
+    public JsonNode prepare(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID review,
+        @RequestBody byte[] body
+    ) {
         return migrations.prepare(users.resolve(headers), dataset, review, body);
     }
 
     @GetMapping("/migration-reviews/{review}")
-    public JsonNode inspect(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID review) {
+    public JsonNode inspect(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID review
+    ) {
         return migrations.inspect(users.resolve(headers), dataset, review);
     }
 
     @PostMapping("/migration-reviews/{review}/apply")
-    public JsonNode apply(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @PathVariable UUID review, @RequestBody byte[] body) {
+    public JsonNode apply(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @PathVariable UUID review,
+        @RequestBody byte[] body
+    ) {
         return migrations.apply(users.resolve(headers), dataset, review, body);
     }
 
     @PostMapping("/archive")
-    public JsonNode archive(@RequestHeader HttpHeaders headers, @PathVariable UUID dataset, @RequestBody byte[] body) {
+    public JsonNode archive(
+        @RequestHeader HttpHeaders headers,
+        @PathVariable UUID dataset,
+        @RequestBody byte[] body
+    ) {
         return migrations.archive(users.resolve(headers), dataset, body);
     }
 }

@@ -1,7 +1,7 @@
 package com.voltcanary.gateway.config;
 
-import java.util.List;
 import java.time.Duration;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -20,5 +20,4 @@ public class GatewayRateLimitProperties {
     private int authRequestsPerWindow = 30;
     private int ingestionRequestsPerWindow = 120;
     private int generalRequestsPerWindow = 600;
-
 }

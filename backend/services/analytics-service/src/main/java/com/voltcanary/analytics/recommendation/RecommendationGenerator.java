@@ -15,26 +15,38 @@ public class RecommendationGenerator {
         List<Recommendation> recommendations = new ArrayList<>();
         for (Anomaly anomaly : anomalies) {
             if ("CONSUMPTION_GROWTH".equals(anomaly.getType())) {
-                recommendations.add(recommendation(
+                recommendations.add(
+                    recommendation(
                         deviceId,
                         "Check consumption growth",
                         "Average consumption increased compared to baseline. Check operating mode and external conditions. If the anomaly repeats, maintenance is recommended.",
                         "MEDIUM",
-                        now));
+                        now
+                    )
+                );
             }
             if ("POWER_SPIKE".equals(anomaly.getType())) {
-                recommendations.add(recommendation(
+                recommendations.add(
+                    recommendation(
                         deviceId,
                         "Check power conditions",
                         "A power spike was detected above the normal range. Check device load and power conditions.",
                         "MEDIUM",
-                        now));
+                        now
+                    )
+                );
             }
         }
         return recommendations;
     }
 
-    private Recommendation recommendation(UUID deviceId, String title, String description, String priority, Instant now) {
+    private Recommendation recommendation(
+        UUID deviceId,
+        String title,
+        String description,
+        String priority,
+        Instant now
+    ) {
         Recommendation recommendation = new Recommendation();
         recommendation.setId(UUID.randomUUID());
         recommendation.setDeviceId(deviceId);

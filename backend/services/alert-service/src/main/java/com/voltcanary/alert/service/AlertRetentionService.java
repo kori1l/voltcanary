@@ -30,8 +30,9 @@ public class AlertRetentionService {
     private final SchedulerLockService schedulerLockService;
 
     @Scheduled(
-            initialDelayString = "${app.alert.retention.initial-delay-ms:300000}",
-            fixedDelayString = "${app.alert.retention.scan-interval-ms:3600000}")
+        initialDelayString = "${app.alert.retention.initial-delay-ms:300000}",
+        fixedDelayString = "${app.alert.retention.scan-interval-ms:3600000}"
+    )
     public void cleanupExpiredRecords() {
         if (!properties.isEnabled()) {
             return;
@@ -48,20 +49,34 @@ public class AlertRetentionService {
 
     private void cleanupRecords() {
         Instant now = Instant.now();
-        long attempts = notificationAttemptRepository.deleteByCreatedAtBefore(now.minus(properties.getNotificationAttemptTtl()));
-        long events = alertEventRepository.deleteByCreatedAtBefore(now.minus(properties.getEventTtl()));
-        long alerts = alertRepository.deleteByStatusAndResolvedAtBefore(AlertStatus.RESOLVED, now.minus(properties.getResolvedAlertTtl()));
+        long attempts = notificationAttemptRepository.deleteByCreatedAtBefore(
+            now.minus(properties.getNotificationAttemptTtl())
+        );
+        long events = alertEventRepository.deleteByCreatedAtBefore(
+            now.minus(properties.getEventTtl())
+        );
+        long alerts = alertRepository.deleteByStatusAndResolvedAtBefore(
+            AlertStatus.RESOLVED,
+            now.minus(properties.getResolvedAlertTtl())
+        );
         record("notification_attempts", attempts);
         record("alert_events", events);
         record("resolved_alerts", alerts);
         if (attempts > 0 || events > 0 || alerts > 0) {
-            log.info("alertRetentionCleanup notificationAttempts={} alertEvents={} resolvedAlerts={}", attempts, events, alerts);
+            log.info(
+                "alertRetentionCleanup notificationAttempts={} alertEvents={} resolvedAlerts={}",
+                attempts,
+                events,
+                alerts
+            );
         }
     }
 
     private void record(String recordType, long count) {
         if (count > 0) {
-            meterRegistry.counter("alert.retention.deleted", "recordType", recordType).increment(count);
+            meterRegistry
+                .counter("alert.retention.deleted", "recordType", recordType)
+                .increment(count);
         }
     }
 }

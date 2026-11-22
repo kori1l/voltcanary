@@ -11,7 +11,10 @@ class IngestionCorrectnessStateHealthIndicator implements HealthIndicator {
     private final IngestionProperties properties;
     private final Environment environment;
 
-    IngestionCorrectnessStateHealthIndicator(IngestionProperties properties, Environment environment) {
+    IngestionCorrectnessStateHealthIndicator(
+        IngestionProperties properties,
+        Environment environment
+    ) {
         this.properties = properties;
         this.environment = environment;
     }
@@ -19,16 +22,18 @@ class IngestionCorrectnessStateHealthIndicator implements HealthIndicator {
     @Override
     public Health health() {
         String idempotencyState = idempotencyRedisEnabled() ? "shared-redis" : "local-only";
-        String rateLimitState = properties.isRedisRateLimitEnabled() ? "shared-redis" : "local-only";
+        String rateLimitState = properties.isRedisRateLimitEnabled()
+            ? "shared-redis"
+            : "local-only";
         Health.Builder builder = properties.isMultiReplicaMode()
-                ? Health.up()
-                : Health.status("DEGRADED");
+            ? Health.up()
+            : Health.status("DEGRADED");
         return builder
-                .withDetail("mode", properties.isMultiReplicaMode() ? "multi-replica" : "local-only")
-                .withDetail("idempotency", idempotencyState)
-                .withDetail("rateLimit", rateLimitState)
-                .withDetail("localCorrectnessStateEnabled", properties.isLocalCorrectnessStateEnabled())
-                .build();
+            .withDetail("mode", properties.isMultiReplicaMode() ? "multi-replica" : "local-only")
+            .withDetail("idempotency", idempotencyState)
+            .withDetail("rateLimit", rateLimitState)
+            .withDetail("localCorrectnessStateEnabled", properties.isLocalCorrectnessStateEnabled())
+            .build();
     }
 
     private boolean idempotencyRedisEnabled() {

@@ -21,28 +21,40 @@ public class RegistryBackedTelemetryIngressDispatcher implements TelemetryIngres
 
     @Override
     public <T> IncomingTelemetryMessage dispatch(
-            AdapterType adapterType,
-            ProtocolType protocol,
-            TransportType transport,
-            Class<T> requestType,
-            T request,
-            SourceRuntimeConfig sourceRuntimeConfig) {
-        TelemetryAdapter adapter = registry.find(adapterType, protocol, transport)
-                .filter(candidate -> candidate.manifest().supports(AdapterCapability.INBOUND))
-                .orElseThrow(() -> new IllegalStateException(
-                        "No inbound telemetry adapter registered for " + adapterType
-                                + " protocol=" + protocol + " transport=" + transport));
+        AdapterType adapterType,
+        ProtocolType protocol,
+        TransportType transport,
+        Class<T> requestType,
+        T request,
+        SourceRuntimeConfig sourceRuntimeConfig
+    ) {
+        TelemetryAdapter adapter = registry
+            .find(adapterType, protocol, transport)
+            .filter(candidate -> candidate.manifest().supports(AdapterCapability.INBOUND))
+            .orElseThrow(() ->
+                new IllegalStateException(
+                    "No inbound telemetry adapter registered for " +
+                        adapterType +
+                        " protocol=" +
+                        protocol +
+                        " transport=" +
+                        transport
+                )
+            );
         if (!(adapter instanceof InboundTelemetryAdapter<?> inboundAdapter)) {
-            throw new IllegalStateException("Adapter " + adapter.adapterId() + " does not implement inbound mapping");
+            throw new IllegalStateException(
+                "Adapter " + adapter.adapterId() + " does not implement inbound mapping"
+            );
         }
         return map(inboundAdapter, requestType.cast(request), sourceRuntimeConfig);
     }
 
     @SuppressWarnings("unchecked")
     private static <T> IncomingTelemetryMessage map(
-            InboundTelemetryAdapter<?> adapter,
-            T request,
-            SourceRuntimeConfig sourceRuntimeConfig) {
+        InboundTelemetryAdapter<?> adapter,
+        T request,
+        SourceRuntimeConfig sourceRuntimeConfig
+    ) {
         return ((InboundTelemetryAdapter<T>) adapter).map(request, sourceRuntimeConfig);
     }
 }

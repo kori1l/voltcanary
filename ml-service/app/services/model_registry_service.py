@@ -2,7 +2,6 @@ from typing import Any
 
 from app.schemas.model import ModelSummary
 
-
 MODEL_NAME = "voltcanary-baseline-heuristic"
 MODEL_VERSION = "baseline-heuristic-v1"
 MODEL_TYPE = "baseline_heuristic"
@@ -19,7 +18,9 @@ class ModelRegistryService:
         if model.get("modelVersionId"):
             self._models_by_id[model["modelVersionId"]] = model
 
-    def get_model(self, name: str | None = None, model_version_id: str | None = None) -> dict[str, Any] | None:
+    def get_model(
+        self, name: str | None = None, model_version_id: str | None = None
+    ) -> dict[str, Any] | None:
         if model_version_id:
             return self._models_by_id.get(model_version_id)
         if name:

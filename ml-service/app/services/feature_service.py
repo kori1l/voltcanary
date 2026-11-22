@@ -12,7 +12,9 @@ class FeatureService:
     def __init__(self, artifact_store: ArtifactStore | None = None) -> None:
         self.artifact_store = artifact_store or ArtifactStore()
 
-    def generate_snapshot(self, dataset_version_id: str, rows: list[MetricRow]) -> FeatureSnapshotResponse:
+    def generate_snapshot(
+        self, dataset_version_id: str, rows: list[MetricRow]
+    ) -> FeatureSnapshotResponse:
         if not rows:
             raise ValueError("feature generation requires at least one metric row")
 

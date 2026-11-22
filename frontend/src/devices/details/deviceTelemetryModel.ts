@@ -1,7 +1,12 @@
 import { TelemetryChart } from "../../telemetry/telemetryApi";
 import { humanizeMetricKey, inferMetricUnit } from "../../features/telemetry/model/telemetry.utils";
 import { toDateTimeLocalValue } from "./deviceDetailsFormatting";
-import { draftScope, readScopedDraft, saveScopedDraft, sessionUserId } from "../../components/scopedDrafts";
+import {
+  draftScope,
+  readScopedDraft,
+  saveScopedDraft,
+  sessionUserId,
+} from "../../components/scopedDrafts";
 
 export type ChartMetricConfig = { key: string; label: string; unit: string };
 export type ChartDensity = "compact" | "balanced" | "detailed";
@@ -16,7 +21,6 @@ export type DashboardChartPreferences = {
   customChartTo: string;
   expandedChartMetricKey: string | null;
 };
-
 
 export const CHART_METRICS: ChartMetricConfig[] = [
   { key: "activePowerW", label: "Active power", unit: "W" },
@@ -56,14 +60,22 @@ export function buildChartMetrics(readings: Record<string, number>): ChartMetric
   return Object.entries(readings)
     .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
     .map(([key]) => CHART_METRIC_LOOKUP.get(key) ?? createMetricConfig(key))
-    .sort((first, second) => metricSortWeight(first.key) - metricSortWeight(second.key) || first.label.localeCompare(second.label));
+    .sort(
+      (first, second) =>
+        metricSortWeight(first.key) - metricSortWeight(second.key) ||
+        first.label.localeCompare(second.label),
+    );
 }
 
 export function buildAvailableChartMetrics(charts: Record<string, TelemetryChart>) {
   return Object.keys(charts)
     .map((key) => CHART_METRIC_LOOKUP.get(key) ?? createMetricConfig(key))
     .filter((metric) => charts[metric.key]?.points.length > 0)
-    .sort((first, second) => metricSortWeight(first.key) - metricSortWeight(second.key) || first.label.localeCompare(second.label));
+    .sort(
+      (first, second) =>
+        metricSortWeight(first.key) - metricSortWeight(second.key) ||
+        first.label.localeCompare(second.label),
+    );
 }
 
 export function createMetricConfig(key: string): ChartMetricConfig {
@@ -79,33 +91,60 @@ export function metricSortWeight(key: string) {
   return index >= 0 ? index : DEFAULT_CHART_METRICS.length + 1;
 }
 
-export function readDashboardChartPreferences(deviceId: string | undefined): DashboardChartPreferences {
+export function readDashboardChartPreferences(
+  deviceId: string | undefined,
+): DashboardChartPreferences {
   if (!deviceId) {
     return DEFAULT_DASHBOARD_CHART_PREFERENCES;
   }
   try {
-    const parsed = readScopedDraft(draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"), (value) => value as Partial<DashboardChartPreferences>);
+    const parsed = readScopedDraft(
+      draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"),
+      (value) => value as Partial<DashboardChartPreferences>,
+    );
     if (!parsed) {
       return DEFAULT_DASHBOARD_CHART_PREFERENCES;
     }
     return {
-      selectedMetricKeys: Array.isArray(parsed.selectedMetricKeys) && parsed.selectedMetricKeys.length > 0
-        ? parsed.selectedMetricKeys.filter((key): key is string => typeof key === "string")
-        : DEFAULT_DASHBOARD_CHART_PREFERENCES.selectedMetricKeys,
-      showChartPoints: typeof parsed.showChartPoints === "boolean" ? parsed.showChartPoints : DEFAULT_DASHBOARD_CHART_PREFERENCES.showChartPoints,
-      chartDensity: isChartDensity(parsed.chartDensity) ? parsed.chartDensity : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartDensity,
-      chartTimeRange: isChartTimeRange(parsed.chartTimeRange) ? parsed.chartTimeRange : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartTimeRange,
-      customChartFrom: typeof parsed.customChartFrom === "string" && parsed.customChartFrom ? parsed.customChartFrom : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartFrom,
-      customChartTo: typeof parsed.customChartTo === "string" && parsed.customChartTo ? parsed.customChartTo : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartTo,
-      expandedChartMetricKey: typeof parsed.expandedChartMetricKey === "string" ? parsed.expandedChartMetricKey : null,
+      selectedMetricKeys:
+        Array.isArray(parsed.selectedMetricKeys) && parsed.selectedMetricKeys.length > 0
+          ? parsed.selectedMetricKeys.filter((key): key is string => typeof key === "string")
+          : DEFAULT_DASHBOARD_CHART_PREFERENCES.selectedMetricKeys,
+      showChartPoints:
+        typeof parsed.showChartPoints === "boolean"
+          ? parsed.showChartPoints
+          : DEFAULT_DASHBOARD_CHART_PREFERENCES.showChartPoints,
+      chartDensity: isChartDensity(parsed.chartDensity)
+        ? parsed.chartDensity
+        : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartDensity,
+      chartTimeRange: isChartTimeRange(parsed.chartTimeRange)
+        ? parsed.chartTimeRange
+        : DEFAULT_DASHBOARD_CHART_PREFERENCES.chartTimeRange,
+      customChartFrom:
+        typeof parsed.customChartFrom === "string" && parsed.customChartFrom
+          ? parsed.customChartFrom
+          : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartFrom,
+      customChartTo:
+        typeof parsed.customChartTo === "string" && parsed.customChartTo
+          ? parsed.customChartTo
+          : DEFAULT_DASHBOARD_CHART_PREFERENCES.customChartTo,
+      expandedChartMetricKey:
+        typeof parsed.expandedChartMetricKey === "string" ? parsed.expandedChartMetricKey : null,
     };
   } catch {
     return DEFAULT_DASHBOARD_CHART_PREFERENCES;
   }
 }
 
-export function writeDashboardChartPreferences(deviceId: string, preferences: DashboardChartPreferences) {
-  saveScopedDraft(draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"), preferences, Object.keys(DEFAULT_DASHBOARD_CHART_PREFERENCES));
+export function writeDashboardChartPreferences(
+  deviceId: string,
+  preferences: DashboardChartPreferences,
+) {
+  saveScopedDraft(
+    draftScope(sessionUserId(), `chart.${deviceId}`, "chart-preferences-v1"),
+    preferences,
+    Object.keys(DEFAULT_DASHBOARD_CHART_PREFERENCES),
+  );
 }
 
 export function getChartTimeWindow(range: ChartTimeRange, customFrom: string, customTo: string) {
@@ -128,14 +167,17 @@ export function arraysEqual(first: string[], second: string[]) {
   return first.length === second.length && first.every((item, index) => item === second[index]);
 }
 
-function dashboardChartPreferencesKey(deviceId: string) {
-  return `voltcanary.dashboardCharts.${deviceId}`;
-}
-
 function isChartDensity(value: unknown): value is ChartDensity {
   return value === "compact" || value === "balanced" || value === "detailed";
 }
 
 function isChartTimeRange(value: unknown): value is ChartTimeRange {
-  return value === "15m" || value === "1h" || value === "6h" || value === "24h" || value === "7d" || value === "custom";
+  return (
+    value === "15m" ||
+    value === "1h" ||
+    value === "6h" ||
+    value === "24h" ||
+    value === "7d" ||
+    value === "custom"
+  );
 }

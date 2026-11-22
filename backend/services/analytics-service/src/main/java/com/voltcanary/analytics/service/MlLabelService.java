@@ -30,11 +30,16 @@ public class MlLabelService {
     @Transactional(readOnly = true)
     public List<MlLabelDto> list(UUID accountId, UUID datasetVersionId) {
         if (datasetVersionId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "datasetVersionId is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "datasetVersionId is required"
+            );
         }
-        return labelRepository.findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(accountId, datasetVersionId).stream()
-                .map(this::dto)
-                .toList();
+        return labelRepository
+            .findByAccountIdAndDatasetVersionIdAndDeletedAtIsNull(accountId, datasetVersionId)
+            .stream()
+            .map(this::dto)
+            .toList();
     }
 
     @Transactional
@@ -63,8 +68,11 @@ public class MlLabelService {
 
     @Transactional
     public MlLabelDto correct(UUID accountId, UUID actorId, UUID labelId, MlLabelRequest request) {
-        MlLabel label = labelRepository.findById(labelId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+        MlLabel label = labelRepository
+            .findById(labelId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found")
+            );
         if (!accountId.equals(label.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
         }
@@ -76,42 +84,66 @@ public class MlLabelService {
         label.setReason(blankToNull(request.reason()));
         label.setUpdatedAt(Instant.now());
         labelRepository.save(label);
-        audit(label.getId(), previous, label.getLabel(), actorId, label.getReason(), label.getUpdatedAt());
+        audit(
+            label.getId(),
+            previous,
+            label.getLabel(),
+            actorId,
+            label.getReason(),
+            label.getUpdatedAt()
+        );
         return dto(label);
     }
 
     @Transactional(readOnly = true)
     public List<MlLabelAuditDto> audit(UUID accountId, UUID labelId) {
-        MlLabel label = labelRepository.findById(labelId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+        MlLabel label = labelRepository
+            .findById(labelId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found")
+            );
         if (!accountId.equals(label.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
         }
-        return auditRepository.findByLabelIdOrderByEditedAtDesc(labelId).stream()
-                .map(item -> new MlLabelAuditDto(
-                        item.getId(),
-                        item.getLabelId(),
-                        item.getPreviousLabel(),
-                        item.getNewLabel(),
-                        item.getEditedBy(),
-                        item.getEditedAt(),
-                        item.getReason()))
-                .toList();
+        return auditRepository
+            .findByLabelIdOrderByEditedAtDesc(labelId)
+            .stream()
+            .map(item ->
+                new MlLabelAuditDto(
+                    item.getId(),
+                    item.getLabelId(),
+                    item.getPreviousLabel(),
+                    item.getNewLabel(),
+                    item.getEditedBy(),
+                    item.getEditedAt(),
+                    item.getReason()
+                )
+            )
+            .toList();
     }
 
     @Transactional
-    public MlLabelDto delete(UUID accountId, UUID actorId, UUID labelId, MlLifecycleActionRequest request) {
-        MlLabel label = labelRepository.findById(labelId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+    public MlLabelDto delete(
+        UUID accountId,
+        UUID actorId,
+        UUID labelId,
+        MlLifecycleActionRequest request
+    ) {
+        MlLabel label = labelRepository
+            .findById(labelId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found")
+            );
         if (!accountId.equals(label.getAccountId()) || label.getDeletedAt() != null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
         }
         String reason = requiredReason(request);
         if (label.getSource() != MlLabelSource.MANUAL) {
             throw new MlLifecycleConflictException(
-                    "GENERATED_LABEL_LINEAGE",
-                    "Generated labels must be regenerated or superseded instead of hard-deleted",
-                    dependency("label", labelId, label.getSource().name(), label.getLineageHash()));
+                "GENERATED_LABEL_LINEAGE",
+                "Generated labels must be regenerated or superseded instead of hard-deleted",
+                dependency("label", labelId, label.getSource().name(), label.getLineageHash())
+            );
         }
         Instant now = Instant.now();
         label.setDeletedAt(now);
@@ -125,35 +157,59 @@ public class MlLabelService {
 
     @Transactional(readOnly = true)
     public MlLifecycleImpactResponse impact(UUID accountId, UUID labelId, String action) {
-        MlLabel label = labelRepository.findById(labelId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found"));
+        MlLabel label = labelRepository
+            .findById(labelId)
+            .orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found")
+            );
         if (!accountId.equals(label.getAccountId()) || label.getDeletedAt() != null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML label not found");
         }
         boolean blocked = label.getSource() != MlLabelSource.MANUAL;
         String message = blocked
-                ? "Generated labels must be regenerated or superseded instead of hard-deleted"
-                : "Manual label deletion is allowed when submitted with an audit reason";
+            ? "Generated labels must be regenerated or superseded instead of hard-deleted"
+            : "Manual label deletion is allowed when submitted with an audit reason";
         return new MlLifecycleImpactResponse(
-                normalizedAction(action),
-                blocked,
-                message,
-                List.of(dependency("label", labelId, label.getSource().name(), label.getLineageHash())));
+            normalizedAction(action),
+            blocked,
+            message,
+            List.of(dependency("label", labelId, label.getSource().name(), label.getLineageHash()))
+        );
     }
 
     private void validate(MlLabelRequest request) {
         if (request.datasetVersionId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "datasetVersionId is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "datasetVersionId is required"
+            );
         }
         if (request.deviceId() == null && blankToNull(request.externalDeviceKey()) == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId or externalDeviceKey is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "deviceId or externalDeviceKey is required"
+            );
         }
-        if (request.labelStartAt() == null || request.labelEndAt() == null || !request.labelEndAt().isAfter(request.labelStartAt())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Label time window must end after it starts");
+        if (
+            request.labelStartAt() == null ||
+            request.labelEndAt() == null ||
+            !request.labelEndAt().isAfter(request.labelStartAt())
+        ) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Label time window must end after it starts"
+            );
         }
     }
 
-    private void audit(UUID labelId, MlLabelType previous, MlLabelType current, UUID actorId, String reason, Instant now) {
+    private void audit(
+        UUID labelId,
+        MlLabelType previous,
+        MlLabelType current,
+        UUID actorId,
+        String reason,
+        Instant now
+    ) {
         MlLabelAudit audit = new MlLabelAudit();
         audit.setId(UUID.randomUUID());
         audit.setLabelId(labelId);
@@ -168,12 +224,20 @@ public class MlLabelService {
     private String requiredReason(MlLifecycleActionRequest request) {
         String value = request == null ? null : request.reason();
         if (value == null || value.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Lifecycle reason is required");
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Lifecycle reason is required"
+            );
         }
         return value.trim();
     }
 
-    private java.util.Map<String, Object> dependency(String type, UUID id, String source, String lineageHash) {
+    private java.util.Map<String, Object> dependency(
+        String type,
+        UUID id,
+        String source,
+        String lineageHash
+    ) {
         java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
         details.put("source", source);
         details.put("lineageHash", lineageHash == null ? "" : lineageHash);
@@ -193,23 +257,24 @@ public class MlLabelService {
 
     private MlLabelDto dto(MlLabel label) {
         return new MlLabelDto(
-                label.getId(),
-                label.getAccountId(),
-                label.getDatasetVersionId(),
-                label.getDeviceId(),
-                label.getExternalDeviceKey(),
-                label.getMetricName(),
-                label.getLabelStartAt(),
-                label.getLabelEndAt(),
-                label.getLabel(),
-                label.getSource(),
-                label.getCreatedBy(),
-                label.getCreatedAt(),
-                label.getReason(),
-                label.getHorizonDays(),
-                label.getGenerationVersion(),
-                label.getSourceOutcomeIdsJson(),
-                label.getLineageHash());
+            label.getId(),
+            label.getAccountId(),
+            label.getDatasetVersionId(),
+            label.getDeviceId(),
+            label.getExternalDeviceKey(),
+            label.getMetricName(),
+            label.getLabelStartAt(),
+            label.getLabelEndAt(),
+            label.getLabel(),
+            label.getSource(),
+            label.getCreatedBy(),
+            label.getCreatedAt(),
+            label.getReason(),
+            label.getHorizonDays(),
+            label.getGenerationVersion(),
+            label.getSourceOutcomeIdsJson(),
+            label.getLineageHash()
+        );
     }
 
     private String blankToNull(String value) {

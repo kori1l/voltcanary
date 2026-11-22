@@ -11,33 +11,56 @@ import java.util.Set;
 
 /** Structural postconditions, not a claim that the model correctly interpreted natural language. */
 final class PrimaryDashboardVerification {
-    private PrimaryDashboardVerification() { }
-    static void verify(ObjectMapper mapper, PlanStore.Stored base, AgentPlan prepared, DashboardOperationCompiler.Result expected,
-            DashboardOperationProtocol.Envelope operations, AuthorizedPlanningContext.Prepared context) {
+
+    private PrimaryDashboardVerification() {}
+
+    static void verify(
+        ObjectMapper mapper,
+        PlanStore.Stored base,
+        AgentPlan prepared,
+        DashboardOperationCompiler.Result expected,
+        DashboardOperationProtocol.Envelope operations,
+        AuthorizedPlanningContext.Prepared context
+    ) {
         var action = mapper.valueToTree(prepared.actions().getFirst().parameters());
         var actual = action.path("prepareIntent");
         var definition = action.path("definition");
-        if (!actual.path("name").asText().equals(definition.path("name").asText()) || actual.path("name").asText().isBlank()) fail("DASHBOARD_NAME_POSTCONDITION");
-        if (!actual.path("period").isTextual() || !actual.path("period").equals(definition.at("/defaultContext/time/preset")))
-            fail("DASHBOARD_PERIOD_POSTCONDITION");
+        if (
+            !actual.path("name").asText().equals(definition.path("name").asText()) ||
+            actual.path("name").asText().isBlank()
+        ) fail("DASHBOARD_NAME_POSTCONDITION");
+        if (
+            !actual.path("period").isTextual() ||
+            !actual.path("period").equals(definition.at("/defaultContext/time/preset"))
+        ) fail("DASHBOARD_PERIOD_POSTCONDITION");
         var widgets = indexed(actual.path("widgets"), "key");
         var defined = indexed(definition.path("widgets"), "id");
         JsonNode compiled = mapper.valueToTree(expected.intent());
         var expectedOrder = widgetOrder(compiled.path("widgets"), "key");
-        if (!expectedOrder.equals(widgetOrder(actual.path("widgets"), "key"))
-                || !widgets.keySet().equals(defined.keySet())) fail("WIDGET_IDENTITY_POSTCONDITION");
+        if (
+            !expectedOrder.equals(widgetOrder(actual.path("widgets"), "key")) ||
+            !widgets.keySet().equals(defined.keySet())
+        ) fail("WIDGET_IDENTITY_POSTCONDITION");
         for (var panel : compiled.path("widgets")) {
             var widget = widgets.get(panel.path("key").asText());
             for (String field : List.of("width", "height")) {
-                if (!panel.path(field).equals(widget.path(field))) fail("WIDGET_SIZE_POSTCONDITION");
+                if (!panel.path(field).equals(widget.path(field))) fail(
+                    "WIDGET_SIZE_POSTCONDITION"
+                );
             }
         }
         widgets.forEach((id, widget) -> {
-            if (!widget.path("type").equals(defined.get(id).path("type"))) fail("WIDGET_TYPE_POSTCONDITION");
-            if (widget.has("title") && !widget.path("title").equals(defined.get(id).path("title"))) fail("WIDGET_TITLE_POSTCONDITION");
+            if (!widget.path("type").equals(defined.get(id).path("type"))) fail(
+                "WIDGET_TYPE_POSTCONDITION"
+            );
+            if (
+                widget.has("title") && !widget.path("title").equals(defined.get(id).path("title"))
+            ) fail("WIDGET_TITLE_POSTCONDITION");
         });
         if (base != null) {
-            var prior = mapper.valueToTree(base.plan().actions().getFirst().parameters()).path("prepareIntent");
+            var prior = mapper
+                .valueToTree(base.plan().actions().getFirst().parameters())
+                .path("prepareIntent");
             var previous = indexed(prior.path("widgets"), "key");
             previous.forEach((id, old) -> {
                 Set<String> mask = expected.allowedChanges().getOrDefault(id, Set.of());
@@ -55,40 +78,80 @@ final class PrimaryDashboardVerification {
                         var settings = new HashSet<String>();
                         old.path(field).fieldNames().forEachRemaining(settings::add);
                         next.path(field).fieldNames().forEachRemaining(settings::add);
-                        for (String key : settings) if (!mask.contains("settings." + key) && !old.path(field).path(key).equals(next.path(field).path(key))) fail("UNTARGETED_SETTING_CHANGED");
-                    } else if (!mask.contains(field) && !field.equals("dataChoiceId") && !old.path(field).equals(next.path(field))) fail("UNTARGETED_WIDGET_FIELD_CHANGED");
+                        for (String key : settings)
+                            if (
+                                !mask.contains("settings." + key) &&
+                                !old.path(field).path(key).equals(next.path(field).path(key))
+                            ) fail("UNTARGETED_SETTING_CHANGED");
+                    } else if (
+                        !mask.contains(field) &&
+                        !field.equals("dataChoiceId") &&
+                        !old.path(field).equals(next.path(field))
+                    ) fail("UNTARGETED_WIDGET_FIELD_CHANGED");
                 }
             });
             Set<String> root = expected.allowedChanges().getOrDefault("$dashboard", Set.of());
-            for (String field : List.of("name", "period")) if (!root.contains(field) && !prior.path(field).equals(actual.path(field))) fail("UNTARGETED_DASHBOARD_FIELD_CHANGED");
+            for (String field : List.of("name", "period"))
+                if (!root.contains(field) && !prior.path(field).equals(actual.path(field))) fail(
+                    "UNTARGETED_DASHBOARD_FIELD_CHANGED"
+                );
             var geometric = new HashSet<String>();
             expected.allowedChanges().forEach((id, fields) -> {
-                if (fields.stream().anyMatch(Set.of("order", "width", "height", "created", "removed")::contains)) geometric.add(id);
+                if (
+                    fields
+                        .stream()
+                        .anyMatch(
+                            Set.of("order", "width", "height", "created", "removed")::contains
+                        )
+                ) geometric.add(id);
             });
-            verifyLayouts(mapper.valueToTree(base.plan().actions().getFirst().parameters()).path("definition"), definition, geometric);
+            verifyLayouts(
+                mapper
+                    .valueToTree(base.plan().actions().getFirst().parameters())
+                    .path("definition"),
+                definition,
+                geometric
+            );
         }
         // Check explicit targeted values independently of compiler-generated masks.
         var envelope = mapper.valueToTree(operations);
         for (var operation : envelope.path("operations")) {
             String op = operation.path("op").asText();
-            if (op.equals("rename_dashboard") && !operation.path("name").equals(actual.path("name"))) fail("RENAME_POSTCONDITION");
+            if (
+                op.equals("rename_dashboard") && !operation.path("name").equals(actual.path("name"))
+            ) fail("RENAME_POSTCONDITION");
             for (var target : operation.path("targets")) {
                 if (target.asText().startsWith("@") || target.asText().equals("ALL")) continue;
                 var widget = widgets.get(target.asText());
                 if (op.equals("remove_widgets")) {
                     if (widget != null) fail("REMOVAL_POSTCONDITION");
                 } else if (widget == null) fail("TARGET_POSTCONDITION");
-                else if (op.equals("resize_widgets") && operation.hasNonNull("width") && !operation.path("width").equals(widget.path("width"))) fail("WIDTH_POSTCONDITION");
+                else if (
+                    op.equals("resize_widgets") &&
+                    operation.hasNonNull("width") &&
+                    !operation.path("width").equals(widget.path("width"))
+                ) fail("WIDTH_POSTCONDITION");
             }
         }
         verifyLayoutGeometry(definition.path("layouts"), defined.keySet());
-        if (!widgets.isEmpty()) verifyCompositionLayout(definition.path("layouts"), expectedOrder, widgets);
+        if (!widgets.isEmpty()) verifyCompositionLayout(
+            definition.path("layouts"),
+            expectedOrder,
+            widgets
+        );
     }
-    static void verifyCompositionLayout(JsonNode layouts, List<String> expectedOrder, Map<String, JsonNode> widgets) {
+
+    static void verifyCompositionLayout(
+        JsonNode layouts,
+        List<String> expectedOrder,
+        Map<String, JsonNode> widgets
+    ) {
         Map<String, Integer> columns = Map.of("desktop", 12, "tablet", 6, "mobile", 1);
         for (var breakpoint : columns.entrySet()) {
             var placements = layouts.path(breakpoint.getKey());
-            if (!placements.isArray() || !expectedOrder.equals(ordered(placements))) fail("LAYOUT_ORDER_POSTCONDITION");
+            if (!placements.isArray() || !expectedOrder.equals(ordered(placements))) fail(
+                "LAYOUT_ORDER_POSTCONDITION"
+            );
             for (var placement : placements) {
                 var widget = widgets.get(placement.path("widgetId").asText());
                 int divisor = switch (widget.path("width").asText()) {
@@ -96,11 +159,15 @@ final class PrimaryDashboardVerification {
                     case "THIRD" -> 3;
                     default -> 1;
                 };
-                if (placement.path("w").intValue() != Math.max(1, breakpoint.getValue() / divisor)
-                        || placement.path("h").intValue() != widget.path("height").asInt(4)) fail("LAYOUT_SIZE_POSTCONDITION");
+                if (
+                    placement.path("w").intValue() !=
+                        Math.max(1, breakpoint.getValue() / divisor) ||
+                    placement.path("h").intValue() != widget.path("height").asInt(4)
+                ) fail("LAYOUT_SIZE_POSTCONDITION");
             }
         }
     }
+
     static void verifyLayoutGeometry(JsonNode layouts, Set<String> widgetIds) {
         if (!layouts.isObject()) fail("LAYOUTS_REQUIRED");
         layouts.fields().forEachRemaining(entry -> {
@@ -109,52 +176,101 @@ final class PrimaryDashboardVerification {
             var placed = new HashSet<String>();
             for (var rectangle : entry.getValue()) {
                 String widgetId = rectangle.path("widgetId").asText();
-                if (!widgetIds.contains(widgetId) || !placed.add(widgetId)) fail("LAYOUT_WIDGET_IDENTITY_POSTCONDITION");
+                if (!widgetIds.contains(widgetId) || !placed.add(widgetId)) fail(
+                    "LAYOUT_WIDGET_IDENTITY_POSTCONDITION"
+                );
                 for (String coordinate : List.of("x", "y", "w", "h")) {
                     var value = rectangle.path(coordinate);
-                    if (!value.isIntegralNumber() || !value.canConvertToInt()) fail("INVALID_LAYOUT_GEOMETRY");
+                    if (!value.isIntegralNumber() || !value.canConvertToInt()) fail(
+                        "INVALID_LAYOUT_GEOMETRY"
+                    );
                 }
-                if (rectangle.path("x").intValue() < 0 || rectangle.path("y").intValue() < 0
-                        || rectangle.path("w").intValue() <= 0 || rectangle.path("h").intValue() <= 0) fail("INVALID_LAYOUT_GEOMETRY");
-                for (var other : rectangles) if (overlaps(rectangle, other, "x", "w")
-                        && overlaps(rectangle, other, "y", "h")) fail("OVERLAPPING_LAYOUT");
+                if (
+                    rectangle.path("x").intValue() < 0 ||
+                    rectangle.path("y").intValue() < 0 ||
+                    rectangle.path("w").intValue() <= 0 ||
+                    rectangle.path("h").intValue() <= 0
+                ) fail("INVALID_LAYOUT_GEOMETRY");
+                for (var other : rectangles)
+                    if (
+                        overlaps(rectangle, other, "x", "w") && overlaps(rectangle, other, "y", "h")
+                    ) fail("OVERLAPPING_LAYOUT");
                 rectangles.add(rectangle);
             }
         });
     }
+
     private static boolean overlaps(JsonNode first, JsonNode second, String offset, String size) {
         long firstStart = first.path(offset).intValue();
         long secondStart = second.path(offset).intValue();
-        return firstStart < secondStart + second.path(size).intValue()
-                && secondStart < firstStart + first.path(size).intValue();
+        return (
+            firstStart < secondStart + second.path(size).intValue() &&
+            secondStart < firstStart + first.path(size).intValue()
+        );
     }
+
     static void verifyLayouts(JsonNode previous, JsonNode current, Set<String> geometricTargets) {
-        if (geometricTargets.isEmpty() && !previous.path("layouts").equals(current.path("layouts"))) fail("UNTARGETED_LAYOUT_CHANGED");
-        previous.path("layouts").fields().forEachRemaining(entry -> {
-            var next = current.path("layouts").path(entry.getKey());
-            if (!entry.getValue().isArray() || !next.isArray()) fail("LAYOUT_BREAKPOINT_MISSING");
-            var before = ordered(entry.getValue()).stream().filter(id -> !geometricTargets.contains(id)).toList();
-            var after = ordered(next).stream().filter(before::contains).toList();
-            if (!before.equals(after)) fail("UNTARGETED_LAYOUT_ORDER_CHANGED");
-        });
+        if (
+            geometricTargets.isEmpty() && !previous.path("layouts").equals(current.path("layouts"))
+        ) fail("UNTARGETED_LAYOUT_CHANGED");
+        previous
+            .path("layouts")
+            .fields()
+            .forEachRemaining(entry -> {
+                var next = current.path("layouts").path(entry.getKey());
+                if (!entry.getValue().isArray() || !next.isArray()) fail(
+                    "LAYOUT_BREAKPOINT_MISSING"
+                );
+                var before = ordered(entry.getValue())
+                    .stream()
+                    .filter(id -> !geometricTargets.contains(id))
+                    .toList();
+                var after = ordered(next).stream().filter(before::contains).toList();
+                if (!before.equals(after)) fail("UNTARGETED_LAYOUT_ORDER_CHANGED");
+            });
     }
+
     private static List<String> ordered(JsonNode layout) {
         var items = new java.util.ArrayList<JsonNode>();
         layout.forEach(items::add);
-        items.sort(java.util.Comparator.comparingInt((JsonNode item) -> item.path("y").asInt()).thenComparingInt(item -> item.path("x").asInt()));
-        return items.stream().map(item -> item.path("widgetId").asText()).toList();
+        items.sort(
+            java.util.Comparator.comparingInt((JsonNode item) ->
+                item.path("y").asInt()
+            ).thenComparingInt(item -> item.path("x").asInt())
+        );
+        return items
+            .stream()
+            .map(item -> item.path("widgetId").asText())
+            .toList();
     }
+
     private static List<String> widgetOrder(JsonNode widgets, String key) {
         if (!widgets.isArray()) fail("WIDGETS_REQUIRED");
         return java.util.stream.StreamSupport.stream(widgets.spliterator(), false)
-                .map(widget -> widget.path(key).asText()).toList();
+            .map(widget -> widget.path(key).asText())
+            .toList();
     }
+
     private static Map<String, JsonNode> indexed(JsonNode array, String field) {
         var result = new HashMap<String, JsonNode>();
         if (!array.isArray()) fail("WIDGETS_REQUIRED");
-        for (var widget : array) if (widget.path(field).asText().isBlank() || result.putIfAbsent(widget.path(field).asText(), widget) != null) fail("DUPLICATE_WIDGET_IDENTITY");
+        for (var widget : array)
+            if (
+                widget.path(field).asText().isBlank() ||
+                result.putIfAbsent(widget.path(field).asText(), widget) != null
+            ) fail("DUPLICATE_WIDGET_IDENTITY");
         return result;
     }
-    private static void fail(String code) { throw new com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure(
-            new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Diagnostic("OUTCOME", code, "Подготовленный вариант нарушает проверяемое условие: " + code, List.of(), true)); }
+
+    private static void fail(String code) {
+        throw new com.voltcanary.aiagent.orchestration.plan.StepPreparationFailure(
+            new com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Diagnostic(
+                "OUTCOME",
+                code,
+                "Подготовленный вариант нарушает проверяемое условие: " + code,
+                List.of(),
+                true
+            )
+        );
+    }
 }

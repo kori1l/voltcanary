@@ -11,5 +11,5 @@ public enum QualityFlag {
     OUT_OF_RANGE,
     NORMALIZED,
     BACKFILL,
-    RATE_LIMITED
+    RATE_LIMITED,
 }

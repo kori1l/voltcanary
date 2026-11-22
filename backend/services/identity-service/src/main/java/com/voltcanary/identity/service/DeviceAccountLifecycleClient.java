@@ -17,27 +17,32 @@ public class DeviceAccountLifecycleClient {
     private final IdentityDownstreamProperties properties;
 
     public DeviceAccountLifecycleClient(
-            RestClient.Builder restClientBuilder,
-            IdentityDownstreamProperties properties) {
+        RestClient.Builder restClientBuilder,
+        IdentityDownstreamProperties properties
+    ) {
         this.properties = properties;
         this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
     }
 
     public Optional<String> findAccountStatus(UUID userId) {
         try {
-            AccountLifecycleStatusResponse response = restClient.get()
-                    .uri("/internal/accounts/users/{userId}/lifecycle", userId)
-                    .header("X-Internal-Service-Token", properties.getInternalServiceToken())
-                    .retrieve()
-                    .body(AccountLifecycleStatusResponse.class);
+            AccountLifecycleStatusResponse response = restClient
+                .get()
+                .uri("/internal/accounts/users/{userId}/lifecycle", userId)
+                .header("X-Internal-Service-Token", properties.getInternalServiceToken())
+                .retrieve()
+                .body(AccountLifecycleStatusResponse.class);
             return Optional.ofNullable(response).map(AccountLifecycleStatusResponse::status);
         } catch (HttpClientErrorException.NotFound exception) {
             return Optional.empty();
         } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device account lifecycle lookup failed", exception);
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "Device account lifecycle lookup failed",
+                exception
+            );
         }
     }
 
-    private record AccountLifecycleStatusResponse(UUID userId, String status) {
-    }
+    private record AccountLifecycleStatusResponse(UUID userId, String status) {}
 }

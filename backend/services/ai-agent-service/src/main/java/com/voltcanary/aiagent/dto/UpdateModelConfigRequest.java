@@ -6,14 +6,14 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 public record UpdateModelConfigRequest(
-        @Size(max = 160) String displayName,
-        @Size(max = 255) String modelId,
-        Boolean enabled,
-        BigDecimal temperature,
-        BigDecimal topP,
-        @Min(128) @Max(32000) Integer maxOutputTokens,
-        @Min(1000) @Max(120000) Integer timeoutMs,
-        Boolean supportsTools,
-        Boolean supportsJson,
-        String responseFormat) {
-}
+    @Size(max = 160) String displayName,
+    @Size(max = 255) String modelId,
+    Boolean enabled,
+    BigDecimal temperature,
+    BigDecimal topP,
+    @Min(128) @Max(32000) Integer maxOutputTokens,
+    @Min(1000) @Max(120000) Integer timeoutMs,
+    Boolean supportsTools,
+    Boolean supportsJson,
+    String responseFormat
+) {}

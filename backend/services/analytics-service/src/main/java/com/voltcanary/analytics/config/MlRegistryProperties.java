@@ -12,5 +12,4 @@ import org.springframework.stereotype.Component;
 public class MlRegistryProperties {
 
     private boolean demoSeedingEnabled;
-
 }

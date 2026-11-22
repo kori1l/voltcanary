@@ -14,5 +14,4 @@ public class GatewayRequestSizeProperties {
     private long defaultMaxBytes = 1_048_576;
     private long authMaxBytes = 65_536;
     private long ingestionMaxBytes = 262_144;
-
 }

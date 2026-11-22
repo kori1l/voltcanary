@@ -7,7 +7,8 @@ import java.time.OffsetDateTime;
 
 /** Fresh database time after row-lock waits, never the transaction-start timestamp. */
 final class OwnerDatabaseClock {
-    private OwnerDatabaseClock() { }
+
+    private OwnerDatabaseClock() {}
 
     static Instant now(Connection connection) throws SQLException {
         String query = switch (connection.getMetaData().getDatabaseProductName()) {
@@ -17,8 +18,13 @@ final class OwnerDatabaseClock {
             case "H2" -> "SELECT EXECUTING_STATEMENT_START FROM INFORMATION_SCHEMA.SESSIONS WHERE SESSION_ID=SESSION_ID()";
             default -> throw new SQLException("Unsupported owner database clock");
         };
-        try (var statement = connection.prepareStatement(query); var rows = statement.executeQuery()) {
-            if (!rows.next() || rows.getObject(1) == null) throw new SQLException("Owner database clock unavailable");
+        try (
+            var statement = connection.prepareStatement(query);
+            var rows = statement.executeQuery()
+        ) {
+            if (!rows.next() || rows.getObject(1) == null) throw new SQLException(
+                "Owner database clock unavailable"
+            );
             return rows.getObject(1, OffsetDateTime.class).toInstant();
         }
     }

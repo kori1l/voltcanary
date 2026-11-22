@@ -7,21 +7,21 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record MlDatasetVersionDto(
-        UUID id,
-        UUID datasetId,
-        UUID accountId,
-        int version,
-        MlDatasetSourceType sourceType,
-        MlDatasetStatus status,
-        MlTrainingSplitStrategy splitStrategy,
-        String splitConfigJson,
-        String featureConfigVersion,
-        Instant sourceWindowStart,
-        Instant sourceWindowEnd,
-        Instant createdAt,
-        Instant readyAt,
-        String artifactUri,
-        String artifactHash,
-        String immutableRowReference,
-        String dataHash) {
-}
+    UUID id,
+    UUID datasetId,
+    UUID accountId,
+    int version,
+    MlDatasetSourceType sourceType,
+    MlDatasetStatus status,
+    MlTrainingSplitStrategy splitStrategy,
+    String splitConfigJson,
+    String featureConfigVersion,
+    Instant sourceWindowStart,
+    Instant sourceWindowEnd,
+    Instant createdAt,
+    Instant readyAt,
+    String artifactUri,
+    String artifactHash,
+    String immutableRowReference,
+    String dataHash
+) {}

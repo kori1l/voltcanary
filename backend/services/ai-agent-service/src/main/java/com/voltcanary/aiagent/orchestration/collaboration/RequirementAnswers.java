@@ -12,30 +12,69 @@ import lombok.RequiredArgsConstructor;
 /** Applies the collaboration wire contract under a verified root input turn. */
 @RequiredArgsConstructor
 public final class RequirementAnswers {
+
     private final ProtocolValidator validator;
     private final RequirementChanges changes;
 
-    public Requirements.Snapshot apply(Requirements.Snapshot before, JsonNode body, IntentPlans.Token turn, Instant now) {
+    public Requirements.Snapshot apply(
+        Requirements.Snapshot before,
+        JsonNode body,
+        IntentPlans.Token turn,
+        Instant now
+    ) {
         validator.validate("collab.RequirementsAnswer", body);
         UUID plan = id(body, "planId");
         UUID request = id(body, "requestId");
         UUID question = id(body, "questionId");
-        if (!before.planId().equals(plan) || !turn.planId().equals(plan) || !turn.requestId().equals(request)) {
+        if (
+            !before.planId().equals(plan) ||
+            !turn.planId().equals(plan) ||
+            !turn.requestId().equals(request)
+        ) {
             throw Requirements.conflict("REQUIREMENT_ANSWER_TURN_CHANGED");
         }
-        if (turn.answeredQuestion() == null || !question.toString().equals(turn.answeredQuestion().questionId())) {
+        if (
+            turn.answeredQuestion() == null ||
+            !question.toString().equals(turn.answeredQuestion().questionId())
+        ) {
             throw Requirements.conflict("QUESTION_CHANGED");
         }
         long questionRevision = body.get("expectedQuestionRevision").longValue();
         long requirementsRevision = body.get("expectedRequirementsRevision").longValue();
         var answer = body.get("answer");
         return switch (answer.get("kind").textValue()) {
-            case "CHOICE" -> changes.answer(before, question, questionRevision, requirementsRevision,
-                    request, turn.messageId(), Map.of(), answer.get("choiceId").textValue(), now);
-            case "TEXT" -> changes.answerText(before, question, questionRevision, requirementsRevision,
-                    request, turn.messageId(), answer.get("text").textValue(), now);
-            case "VALUES" -> changes.answer(before, question, questionRevision, requirementsRevision,
-                    request, turn.messageId(), bindings(answer.get("bindings")), null, now);
+            case "CHOICE" -> changes.answer(
+                before,
+                question,
+                questionRevision,
+                requirementsRevision,
+                request,
+                turn.messageId(),
+                Map.of(),
+                answer.get("choiceId").textValue(),
+                now
+            );
+            case "TEXT" -> changes.answerText(
+                before,
+                question,
+                questionRevision,
+                requirementsRevision,
+                request,
+                turn.messageId(),
+                answer.get("text").textValue(),
+                now
+            );
+            case "VALUES" -> changes.answer(
+                before,
+                question,
+                questionRevision,
+                requirementsRevision,
+                request,
+                turn.messageId(),
+                bindings(answer.get("bindings")),
+                null,
+                now
+            );
             default -> throw Requirements.invalid("INVALID_REQUIREMENT_ANSWER");
         };
     }

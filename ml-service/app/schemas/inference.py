@@ -1,5 +1,5 @@
-from datetime import datetime
 import math
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -37,13 +37,27 @@ class ModelPreference(BaseModel):
     manifest_uri: str | None = Field(default=None, alias="manifestUri")
     artifact_hash: str | None = Field(default=None, alias="artifactHash")
     allow_baseline_heuristic: bool = Field(default=True, alias="allowBaselineHeuristic")
-    required_feature_schema_hash: str | None = Field(default=None, alias="requiredFeatureSchemaHash")
-    required_feature_contract_version: str | None = Field(default=None, alias="requiredFeatureContractVersion")
-    required_feature_contract_metadata_hash: str | None = Field(default=None, alias="requiredFeatureContractMetadataHash")
-    required_feature_set_version: str | None = Field(default=None, alias="requiredFeatureSetVersion")
-    required_feature_generator_version: str | None = Field(default=None, alias="requiredFeatureGeneratorVersion")
-    required_feature_template_id: str | None = Field(default=None, alias="requiredFeatureTemplateId")
-    required_feature_template_version: str | None = Field(default=None, alias="requiredFeatureTemplateVersion")
+    required_feature_schema_hash: str | None = Field(
+        default=None, alias="requiredFeatureSchemaHash"
+    )
+    required_feature_contract_version: str | None = Field(
+        default=None, alias="requiredFeatureContractVersion"
+    )
+    required_feature_contract_metadata_hash: str | None = Field(
+        default=None, alias="requiredFeatureContractMetadataHash"
+    )
+    required_feature_set_version: str | None = Field(
+        default=None, alias="requiredFeatureSetVersion"
+    )
+    required_feature_generator_version: str | None = Field(
+        default=None, alias="requiredFeatureGeneratorVersion"
+    )
+    required_feature_template_id: str | None = Field(
+        default=None, alias="requiredFeatureTemplateId"
+    )
+    required_feature_template_version: str | None = Field(
+        default=None, alias="requiredFeatureTemplateVersion"
+    )
     required_horizon_days: int | None = Field(default=None, alias="requiredHorizonDays")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -62,12 +76,16 @@ class InferenceRequest(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     baseline: BaselineSummary | None = None
     recent_window: RecentWindowSummary | None = Field(default=None, alias="recentWindow")
-    excluded_intervals: list[dict[str, Any]] = Field(default_factory=list, alias="excludedIntervals")
+    excluded_intervals: list[dict[str, Any]] = Field(
+        default_factory=list, alias="excludedIntervals"
+    )
     model_preference: ModelPreference | None = Field(default=None, alias="modelPreference")
     feature_vector: dict[str, Any] = Field(default_factory=dict, alias="featureVector")
     feature_contract: dict[str, Any] = Field(default_factory=dict, alias="featureContract")
     feature_generation_status: str | None = Field(default=None, alias="featureGenerationStatus")
-    feature_generation_errors: list[str] = Field(default_factory=list, alias="featureGenerationErrors")
+    feature_generation_errors: list[str] = Field(
+        default_factory=list, alias="featureGenerationErrors"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -16,16 +16,22 @@ public class SourceAssignmentManager {
     private final IngestionAdapterResolver adapterResolver;
 
     public List<SourceRuntimeConfig> assignedSources() {
-        return configStore.snapshot().stream()
-                .filter(SourceRuntimeConfig::active)
-                .filter(this::hasActiveConnectorAdapter)
-                .toList();
+        return configStore
+            .snapshot()
+            .stream()
+            .filter(SourceRuntimeConfig::active)
+            .filter(this::hasActiveConnectorAdapter)
+            .toList();
     }
 
     private boolean hasActiveConnectorAdapter(SourceRuntimeConfig config) {
-        return adapterResolver.resolve(config)
-                .map(adapter -> adapter.manifest().supports(AdapterCapability.POLLING)
-                        || adapter.manifest().supports(AdapterCapability.SUBSCRIPTION))
-                .orElse(false);
+        return adapterResolver
+            .resolve(config)
+            .map(
+                adapter ->
+                    adapter.manifest().supports(AdapterCapability.POLLING) ||
+                    adapter.manifest().supports(AdapterCapability.SUBSCRIPTION)
+            )
+            .orElse(false);
     }
 }

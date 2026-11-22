@@ -2,7 +2,6 @@ package com.voltcanary.device.service;
 
 import com.voltcanary.device.domain.MaintenanceOperation;
 import com.voltcanary.device.domain.MaintenanceWindow;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -10,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 final class MaintenanceValues {
+
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 200;
 
@@ -79,7 +79,8 @@ final class MaintenanceValues {
         String normalized = value.trim();
         if (normalized.length() > maxLength) {
             throw new IllegalArgumentException(
-                    field + " must be at most " + maxLength + " characters");
+                field + " must be at most " + maxLength + " characters"
+            );
         }
         return normalized;
     }

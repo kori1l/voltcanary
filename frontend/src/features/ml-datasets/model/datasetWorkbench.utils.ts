@@ -42,7 +42,10 @@ export function datasetWorkbenchDraftKey(accountId: string) {
   return `voltcanary.ml.${accountId}.datasets.ANOMALY_DETECTION.internal-dataset`;
 }
 
-export function applyQuickRange(range: DatasetWorkbenchQuickRange, now = new Date()): Pick<DatasetWorkbenchDraft, "from" | "to" | "quickRange"> {
+export function applyQuickRange(
+  range: DatasetWorkbenchQuickRange,
+  now = new Date(),
+): Pick<DatasetWorkbenchDraft, "from" | "to" | "quickRange"> {
   if (range === "custom") {
     return {
       from: defaultDatasetWorkbenchDraft.from,
@@ -58,7 +61,9 @@ export function applyQuickRange(range: DatasetWorkbenchQuickRange, now = new Dat
   };
 }
 
-export function buildPreviewRequest(draft: DatasetWorkbenchDraft): MlDatasetWorkbenchPreviewRequest {
+export function buildPreviewRequest(
+  draft: DatasetWorkbenchDraft,
+): MlDatasetWorkbenchPreviewRequest {
   return {
     modelFamily: draft.modelFamily,
     deviceIds: draft.deviceIds,
@@ -84,11 +89,16 @@ export function reconcileDraftWithPreview(
   preview: MlDatasetWorkbenchPreviewResponse,
 ): DatasetWorkbenchDraft {
   const availableNames = availableMetricNames(preview);
-  const defaultMetrics = preview.createRequestDefaults.metrics.filter((metric) => availableNames.includes(metric));
+  const defaultMetrics = preview.createRequestDefaults.metrics.filter((metric) =>
+    availableNames.includes(metric),
+  );
   const selectedMetrics = draft.selectedMetrics.length > 0 ? draft.selectedMetrics : defaultMetrics;
-  const focusedMetric = selectedMetrics.includes(draft.focusedMetric) && availableNames.includes(draft.focusedMetric)
-    ? draft.focusedMetric
-    : selectedMetrics.find((metric) => availableNames.includes(metric)) ?? availableNames[0] ?? "";
+  const focusedMetric =
+    selectedMetrics.includes(draft.focusedMetric) && availableNames.includes(draft.focusedMetric)
+      ? draft.focusedMetric
+      : (selectedMetrics.find((metric) => availableNames.includes(metric)) ??
+        availableNames[0] ??
+        "");
 
   return {
     ...draft,
@@ -96,17 +106,30 @@ export function reconcileDraftWithPreview(
     focusedMetric,
     selectedCandidateId: preview.recommendedCandidateId ?? draft.selectedCandidateId,
     splitStrategy: preview.createRequestDefaults.splitStrategy ?? draft.splitStrategy,
-    featureConfigVersion: preview.createRequestDefaults.featureConfigVersion ?? draft.featureConfigVersion,
-    minSamplesPerMetric: preview.createRequestDefaults.minSamplesPerMetric ?? draft.minSamplesPerMetric,
-    maxSamplingGapSeconds: preview.createRequestDefaults.maxSamplingGapSeconds ?? draft.maxSamplingGapSeconds,
+    featureConfigVersion:
+      preview.createRequestDefaults.featureConfigVersion ?? draft.featureConfigVersion,
+    minSamplesPerMetric:
+      preview.createRequestDefaults.minSamplesPerMetric ?? draft.minSamplesPerMetric,
+    maxSamplingGapSeconds:
+      preview.createRequestDefaults.maxSamplingGapSeconds ?? draft.maxSamplingGapSeconds,
   };
 }
 
-export function selectedDeviceSummary(devices: Device[], deviceIds: string[], preview: MlDatasetWorkbenchPreviewResponse | null) {
+export function selectedDeviceSummary(
+  devices: Device[],
+  deviceIds: string[],
+  preview: MlDatasetWorkbenchPreviewResponse | null,
+) {
   const selectedDevices = devices.filter((device) => deviceIds.includes(device.id));
-  const staleDeviceIds = deviceIds.filter((id) => devices.length > 0 && !devices.some((device) => device.id === id));
-  const activeCount = selectedDevices.filter((device) => isActiveDeviceStatus(device.status)).length;
-  const telemetryPresentCount = selectedDevices.filter((device) => deviceHasTelemetryMetadata(device, preview)).length;
+  const staleDeviceIds = deviceIds.filter(
+    (id) => devices.length > 0 && !devices.some((device) => device.id === id),
+  );
+  const activeCount = selectedDevices.filter((device) =>
+    isActiveDeviceStatus(device.status),
+  ).length;
+  const telemetryPresentCount = selectedDevices.filter((device) =>
+    deviceHasTelemetryMetadata(device, preview),
+  ).length;
 
   return {
     selectedCount: deviceIds.length,
@@ -147,7 +170,10 @@ export function availableMetricNames(preview: MlDatasetWorkbenchPreviewResponse 
   return preview?.availableMetrics.map((metric) => metric.metricName) ?? [];
 }
 
-export function metricByName(preview: MlDatasetWorkbenchPreviewResponse | null, metricName: string) {
+export function metricByName(
+  preview: MlDatasetWorkbenchPreviewResponse | null,
+  metricName: string,
+) {
   return preview?.availableMetrics.find((metric) => metric.metricName === metricName) ?? null;
 }
 
@@ -159,16 +185,22 @@ export function validateWorkbench(
 ): DatasetWorkbenchValidation {
   const staleDeviceIds = selectedDeviceSummary(devices, draft.deviceIds, preview).staleDeviceIds;
   const availableNames = availableMetricNames(preview);
-  const staleMetrics = preview ? draft.selectedMetrics.filter((metric) => !availableNames.includes(metric)) : [];
+  const staleMetrics = preview
+    ? draft.selectedMetrics.filter((metric) => !availableNames.includes(metric))
+    : [];
   const blockingReasons = [
     ...staleDeviceIds.map((id) => `Device ${id} is no longer available in the selector.`),
     ...staleMetrics.map((metric) => `Metric ${metric} is not available in the latest preview.`),
     ...(preview?.blockingReasons ?? []),
-    ...(preview?.qualityGates ?? []).filter((gate) => gate.status === "BLOCK" && gate.blocking).map((gate) => gate.message),
+    ...(preview?.qualityGates ?? [])
+      .filter((gate) => gate.status === "BLOCK" && gate.blocking)
+      .map((gate) => gate.message),
   ].filter(Boolean);
   const warningReasons = [
     ...(preview?.warningReasons ?? []),
-    ...(preview?.qualityGates ?? []).filter((gate) => gate.status === "WARN").map((gate) => gate.message),
+    ...(preview?.qualityGates ?? [])
+      .filter((gate) => gate.status === "WARN")
+      .map((gate) => gate.message),
   ].filter(Boolean);
 
   let createDisabledReason: string | null = null;
@@ -251,7 +283,9 @@ export function formatNumber(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "N/A";
   }
-  return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export function formatSeconds(value: number | null | undefined) {
@@ -287,7 +321,9 @@ export function statusLabel(value: string) {
     .replace(/^./, (match) => match.toUpperCase());
 }
 
-export function workbenchStatusClass(status: MlWorkbenchStatus | "PASS" | "WARN" | "BLOCK" | string) {
+export function workbenchStatusClass(
+  status: MlWorkbenchStatus | "PASS" | "WARN" | "BLOCK" | string,
+) {
   if (status === "READY" || status === "PASS") {
     return "workbench-status-ready";
   }
@@ -320,7 +356,9 @@ export function humanizeFeatureName(value: string) {
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .split(/\s+/)
     .filter(Boolean)
-    .map((part) => part.length <= 2 ? part.toUpperCase() : part.replace(/^./, (match) => match.toUpperCase()))
+    .map((part) =>
+      part.length <= 2 ? part.toUpperCase() : part.replace(/^./, (match) => match.toUpperCase()),
+    )
     .join(" ");
 }
 
@@ -328,7 +366,10 @@ function isActiveDeviceStatus(status: string) {
   return status === "ACTIVE" || status === "ONLINE";
 }
 
-function deviceHasTelemetryMetadata(device: Device, preview: MlDatasetWorkbenchPreviewResponse | null) {
+function deviceHasTelemetryMetadata(
+  device: Device,
+  preview: MlDatasetWorkbenchPreviewResponse | null,
+) {
   if (preview?.availableMetrics.some((metric) => metric.devicesWithMetric > 0)) {
     return true;
   }

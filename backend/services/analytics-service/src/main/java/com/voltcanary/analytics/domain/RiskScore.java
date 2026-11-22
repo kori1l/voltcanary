@@ -44,5 +44,4 @@ public class RiskScore {
 
     @Column(name = "calculated_at", nullable = false)
     private Instant calculatedAt;
-
 }

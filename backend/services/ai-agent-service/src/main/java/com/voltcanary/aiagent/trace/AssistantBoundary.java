@@ -11,6 +11,9 @@ public @interface AssistantBoundary {
     Operation operation();
 
     enum Operation {
-        PREPARE, SUBMIT, EXECUTE, CONTROL
+        PREPARE,
+        SUBMIT,
+        EXECUTE,
+        CONTROL,
     }
 }

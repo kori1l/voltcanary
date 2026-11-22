@@ -12,26 +12,44 @@ import { VerifyEmailPage } from "../pages/VerifyEmailPage";
 const loadLayout = () => import("./AppLayout").then((m) => ({ default: m.AppLayout }));
 const loadAlerts = () => import("../pages/AlertsPage").then((m) => ({ default: m.AlertsPage }));
 const loadAi = () => import("../pages/AiAgentPage").then((m) => ({ default: m.AiAgentPage }));
-const loadAiSettings = () => import("../pages/AiAgentSettingsPage").then((m) => ({ default: m.AiAgentSettingsPage }));
+const loadAiSettings = () =>
+  import("../pages/AiAgentSettingsPage").then((m) => ({ default: m.AiAgentSettingsPage }));
 const loadAccount = () => import("../pages/AccountPage").then((m) => ({ default: m.AccountPage }));
-const loadDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.DashboardDefaultPage }));
-const loadDashboards = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardsPage }));
-const loadPersonalDashboard = () => import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardPage }));
-const loadDevice = () => import("../pages/DeviceDetailsPage").then((m) => ({ default: m.DeviceDetailsPage }));
-const loadDeviceVariables = () => import("../pages/DeviceVariablesPage").then((m) => ({ default: m.DeviceVariablesPage }));
-const loadDeviceDeletions = () => import("../pages/DeviceDeletionsPage").then(m => ({default: m.DeviceDeletionsPage}));
+const loadDashboard = () =>
+  import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.DashboardDefaultPage }));
+const loadDashboards = () =>
+  import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardsPage }));
+const loadPersonalDashboard = () =>
+  import("../pages/PersonalDashboardsPage").then((m) => ({ default: m.PersonalDashboardPage }));
+const loadDevice = () =>
+  import("../pages/DeviceDetailsPage").then((m) => ({ default: m.DeviceDetailsPage }));
+const loadDeviceVariables = () =>
+  import("../pages/DeviceVariablesPage").then((m) => ({ default: m.DeviceVariablesPage }));
+const loadDeviceDeletions = () =>
+  import("../pages/DeviceDeletionsPage").then((m) => ({ default: m.DeviceDeletionsPage }));
 const loadDevices = () => import("../pages/DevicesPage").then((m) => ({ default: m.DevicesPage }));
-const loadDataTables = () => import("../pages/DataTablesPage").then((m) => ({ default: m.DataTablesPage }));
-const loadVehicles = () => import("../vehicles/VehicleConsole").then((m) => ({ default: m.VehicleConsole }));
-const loadSettings = () => import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage }));
-const loadMaintenance = () => import("../maintenance/MaintenanceCalendarPage").then((m) => ({ default: m.MaintenanceCalendarPage }));
+const loadDataTables = () =>
+  import("../pages/DataTablesPage").then((m) => ({ default: m.DataTablesPage }));
+const loadVehicles = () =>
+  import("../vehicles/VehicleConsole").then((m) => ({ default: m.VehicleConsole }));
+const loadSettings = () =>
+  import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage }));
+const loadMaintenance = () =>
+  import("../maintenance/MaintenanceCalendarPage").then((m) => ({
+    default: m.MaintenanceCalendarPage,
+  }));
 const loadMl = () => import("../pages/MlSettingsPage").then((m) => ({ default: m.MlSettingsPage }));
-const loadWorkspaces = () => import("../features/workspaces/WorkspaceManagement").then(m=>({default:m.WorkspaceManagement}));
+const loadWorkspaces = () =>
+  import("../features/workspaces/WorkspaceManagement").then((m) => ({
+    default: m.WorkspaceManagement,
+  }));
 
 export function RequireAuth({ children }: { children: ReactElement }) {
   const status = useSyncExternalStore(subscribeSession, sessionStatus);
   const location = useLocation();
-  const query = new URLSearchParams({ returnTo: safeReturnTo(`${location.pathname}${location.search}`) });
+  const query = new URLSearchParams({
+    returnTo: safeReturnTo(`${location.pathname}${location.search}`),
+  });
   if (status === "expired") query.set("reason", "expired");
   return status === "authenticated" ? children : <Navigate to={`/login?${query}`} replace />;
 }
@@ -55,26 +73,62 @@ export function appRouteElements() {
         }
       >
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<RouteDelivery load={loadDashboard} label="dashboard" />} />
-        <Route path="/dashboards" element={<RouteDelivery load={loadDashboards} label="my dashboards" />} />
-        <Route path="/dashboards/:dashboardId" element={<RouteDelivery load={loadPersonalDashboard} label="personal dashboard" />} />
-        <Route path="/dashboards/:dashboardId/edit" element={<RouteDelivery load={loadPersonalDashboard} label="dashboard editor" />} />
+        <Route
+          path="/dashboard"
+          element={<RouteDelivery load={loadDashboard} label="dashboard" />}
+        />
+        <Route
+          path="/dashboards"
+          element={<RouteDelivery load={loadDashboards} label="my dashboards" />}
+        />
+        <Route
+          path="/dashboards/:dashboardId"
+          element={<RouteDelivery load={loadPersonalDashboard} label="personal dashboard" />}
+        />
+        <Route
+          path="/dashboards/:dashboardId/edit"
+          element={<RouteDelivery load={loadPersonalDashboard} label="dashboard editor" />}
+        />
         <Route path="/devices" element={<RouteDelivery load={loadDevices} label="devices" />} />
         <Route path="/data" element={<RouteDelivery load={loadDataTables} label="data tables" />} />
         <Route path="/vehicles" element={<RouteDelivery load={loadVehicles} label="vehicles" />} />
-        <Route path="/maintenance" element={<RouteDelivery load={loadMaintenance} label="maintenance" />} />
-        <Route path="/devices/deletions" element={<RouteDelivery load={loadDeviceDeletions} label="deleted devices" />} />
-        <Route path="/devices/:deviceId" element={<RouteDelivery load={loadDevice} label="device details" />} />
-        <Route path="/devices/:deviceId/variables" element={<RouteDelivery load={loadDeviceVariables} label="device variables" />} />
+        <Route
+          path="/maintenance"
+          element={<RouteDelivery load={loadMaintenance} label="maintenance" />}
+        />
+        <Route
+          path="/devices/deletions"
+          element={<RouteDelivery load={loadDeviceDeletions} label="deleted devices" />}
+        />
+        <Route
+          path="/devices/:deviceId"
+          element={<RouteDelivery load={loadDevice} label="device details" />}
+        />
+        <Route
+          path="/devices/:deviceId/variables"
+          element={<RouteDelivery load={loadDeviceVariables} label="device variables" />}
+        />
         <Route path="/alerts" element={<RouteDelivery load={loadAlerts} label="alerts" />} />
         <Route path="/settings" element={<RouteDelivery load={loadSettings} label="settings" />} />
         <Route path="/settings/ml" element={<RouteDelivery load={loadMl} label="ML workspace" />} />
         <Route path="/ai-agent" element={<RouteDelivery load={loadAi} label="AI agent" />} />
-        <Route path="/ai-agent/settings" element={<RouteDelivery load={loadAiSettings} label="AI settings" />} />
-        <Route path="/account" element={<RouteDelivery load={loadAccount} label="administration" />} />
-        <Route path="/workspaces" element={<RouteDelivery load={loadWorkspaces} label="workspaces" />} />
+        <Route
+          path="/ai-agent/settings"
+          element={<RouteDelivery load={loadAiSettings} label="AI settings" />}
+        />
+        <Route
+          path="/account"
+          element={<RouteDelivery load={loadAccount} label="administration" />}
+        />
+        <Route
+          path="/workspaces"
+          element={<RouteDelivery load={loadWorkspaces} label="workspaces" />}
+        />
       </Route>
-      <Route path="*" element={<Navigate to={isAuthenticated() ? "/devices" : "/login"} replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={isAuthenticated() ? "/devices" : "/login"} replace />}
+      />
     </>
   );
 }
