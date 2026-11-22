@@ -1,6 +1,7 @@
 import os
 
 from pydantic_settings import BaseSettings
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -19,6 +20,10 @@ class Settings(BaseSettings):
     ml_internal_service_token: str = ""
     ml_allowed_source_services: str = "analytics-service"
     ml_max_request_bytes: int = 1_048_576
+    ml_training_history_path: str | None = None
+    ml_training_history_capacity: int = Field(default=1000, ge=1)
+    ml_training_history_retention_seconds: float = Field(default=604800, gt=0)
+    ml_training_fit_timeout_seconds: float = Field(default=600, gt=0)
     ml_serving_cache_max_entries: int = 32
     ml_serving_cache_ttl_seconds: float = 900.0
 

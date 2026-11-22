@@ -178,7 +178,9 @@ class MlLifecycleTest(unittest.TestCase):
             self.assertTrue((run.artifact_uri or "").endswith("/model.joblib"))
             self.assertTrue((run.manifest_uri or "").startswith("artifact://local/model-"))
             self.assertGreater(run.artifact_size_bytes or 0, 0)
-            self.assertEqual(run.metrics["trainingRows"], float(len(sample_rows())))
+            self.assertGreater(run.metrics["trainingRows"], 0)
+            self.assertGreater(run.metrics["validationRows"], 0)
+            self.assertEqual(run.metrics["trainingRows"] + run.metrics["validationRows"], float(len(sample_rows())))
             self.assertIn("validationAnomalyScore", run.metrics)
             bundle = artifact_store.load_model_bundle(run.manifest_uri or "", run.artifact_hash)
             artifact = bundle["files"]["model.json"]
@@ -1057,7 +1059,7 @@ class MlLifecycleTest(unittest.TestCase):
         self.assertEqual(train.status_code, 200)
         trained = train.json()
         self.assertEqual(trained["status"], "SUCCEEDED")
-        self.assertEqual(trained["metrics"]["trainingRows"], float(len(sample_rows())))
+        self.assertEqual(trained["metrics"]["trainingRows"] + trained["metrics"]["validationRows"], float(len(sample_rows())))
 
         models = client.get("/models")
         self.assertEqual(models.status_code, 200)

@@ -1,5 +1,6 @@
 from app.schemas.training import TrainingRequest, TrainingRunResponse
-from app.services.training_service import IdempotencyConflictError, TrainingService
+from app.services.training_coordinator import IdempotencyConflictError
+from app.services.training_service import TrainingService
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["training"])

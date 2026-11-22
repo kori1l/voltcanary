@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
+from collections.abc import Callable
+from app.services.training_fit import fit_with_deadline
 
 from app.models.failure_prediction_model import FailurePredictionModel
 from app.models.failure_target import FailureTargetSample
@@ -12,12 +14,12 @@ class FailureEvaluationSplit:
 
 
 class FailurePredictionEvaluator:
-    def evaluate(self, samples: list[FailureTargetSample], algorithm: str) -> dict[str, Any]:
+    def evaluate(self, samples: list[FailureTargetSample], algorithm: str, remaining: Callable[[], float] | None = None) -> dict[str, Any]:
         split = self.time_based_split(samples)
         if split is None:
             return {
                 "metadata": {
-                    "strategy": "time_based_holdout",
+                    "strategy": "provided_partition" if any(sample.split_assignment for sample in samples) else "time_based_holdout",
                     "status": "INSUFFICIENT_TIME_SPLIT",
                 },
                 "metrics": {
@@ -27,7 +29,7 @@ class FailurePredictionEvaluator:
             }
 
         model = FailurePredictionModel(algorithm)
-        model.fit(split.train_samples)
+        model = fit_with_deadline(model, (split.train_samples,), remaining() if remaining else 600)
         scores = [model.predict(sample.features)["failureRiskScore"] for sample in split.validation_samples]
         labels = [int(sample.target or 0) for sample in split.validation_samples]
         predictions = [1 if score >= 0.5 else 0 for score in scores]
@@ -40,7 +42,7 @@ class FailurePredictionEvaluator:
         baseline_pr_auc = self._pr_auc(labels, baseline_scores)
         return {
             "metadata": {
-                "strategy": "time_based_holdout",
+                "strategy": "provided_partition" if any(sample.split_assignment for sample in samples) else "time_based_holdout",
                 "status": "EVALUATED",
                 "threshold": 0.5,
                 "baseline": {
@@ -79,6 +81,12 @@ class FailurePredictionEvaluator:
             [sample for sample in samples if sample.target is not None and sample.features],
             key=lambda sample: (sample.prediction_at, sample.device_id, sample.sample_id),
         )
+        if any(sample.split_assignment for sample in usable):
+            if any(sample.split_assignment not in {"TRAIN", "VALIDATION", "TEST"} for sample in usable):
+                raise ValueError("Invalid split assignments")
+            training = [sample for sample in usable if sample.split_assignment == "TRAIN"]
+            validation = [sample for sample in usable if sample.split_assignment == "VALIDATION"]
+            return FailureEvaluationSplit(training, validation) if self._has_both_classes(training) and validation else None
         if len(usable) < 4:
             return None
 

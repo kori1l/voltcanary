@@ -27,6 +27,7 @@ class FailureTargetSample:
     outcome_type: str | None
     exclusion_reason: str | None
     lead_time_days: float | None
+    split_assignment: str | None = None
 
 
 class FailureTargetBuilder:
@@ -84,6 +85,7 @@ class FailureTargetBuilder:
             outcome_type=outcome_type,
             exclusion_reason=exclusion_reason,
             lead_time_days=self._lead_time_days(label_values, first.timestamp, target),
+            split_assignment=first.metadata.get("splitAssignment"),
         )
 
     def _sample_id(self, row: MetricRow) -> str:
