@@ -10,11 +10,9 @@ from app.services.training_coordinator import (
     TrainingRunCoordinator,
     TrainingTimeoutError,
 )
-from app.services.training_runtime import (
-    AnomalyTrainingRunner,
-    FailurePredictionTrainingRunner,
-    ModelArtifactPublisher,
-)
+from app.services.anomaly_training import AnomalyTrainingRunner
+from app.services.failure_training import FailurePredictionTrainingRunner
+from app.services.model_artifact_publisher import ModelArtifactPublisher
 
 
 class TrainingService:

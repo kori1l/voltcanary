@@ -183,7 +183,7 @@ read model.
 
 Telemetry-service repeats defensive validation before persistence. It treats ingestion as the primary external trust boundary, but still rejects malformed events, unsupported metrics, out-of-window timestamps, and out-of-range values before writing TimescaleDB rows.
 
-Batch ingestion uses partial-success semantics. The response includes accepted, duplicate, and rejected counts plus per-reading status entries. Kafka publish failures return `503`; the idempotency key is released so collectors can retry the same reading.
+Batch ingestion uses partial-success semantics. The response includes accepted, duplicate, and rejected counts plus per-reading status entries. Kafka publish failures return `503`. Delivery ownership is released while the original event envelope remains retained for exact retry. Pending deliveries use expiring owner leases; they are never acknowledged as published duplicates. The SHA-256 identity includes stable account/schema/generation context. See [delivery states and retention](../api/ingestion-api.md#scaling-and-failure-policy).
 
 Realtime ingestion enforces rate limits by source, device, account, and client
 IP. In multi-replica mode, idempotency and rate limiting must both use Redis.

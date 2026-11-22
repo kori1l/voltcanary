@@ -1,30 +1,38 @@
 package com.voltcanary.ingestion.idempotency;
 
-import java.time.Instant;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.common.events.telemetry.TelemetryReceivedEvent;
+import com.voltcanary.ingestion.config.IngestionProperties;
+
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
+
 @Service
-@ConditionalOnProperty(name = "app.idempotency.redis-enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(
+        name = "app.idempotency.redis-enabled",
+        havingValue = "false",
+        matchIfMissing = true)
 class InMemoryIdempotencyService implements IdempotencyService {
+    private final LocalDeliveryReservations deliveries;
 
-    private final Set<String> keys = ConcurrentHashMap.newKeySet();
-
-    @Override
-    public boolean markIfNew(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
-        return keys.add(key(deviceId, sourceId, timestamp, metrics));
+    InMemoryIdempotencyService(ObjectMapper mapper, IngestionProperties properties) {
+        deliveries = new LocalDeliveryReservations(mapper, properties, Clock.systemUTC());
     }
 
     @Override
-    public void forget(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
-        keys.remove(key(deviceId, sourceId, timestamp, metrics));
+    public Reservation reserve(TelemetryReceivedEvent candidate) {
+        return deliveries.reserve(candidate);
     }
 
-    private String key(UUID deviceId, String sourceId, Instant timestamp, Map<String, Object> metrics) {
-        return deviceId + ":" + sourceId + ":" + timestamp + ":" + metrics.hashCode();
+    @Override
+    public void complete(Reservation reservation) {
+        deliveries.complete(reservation);
+    }
+
+    @Override
+    public void release(Reservation reservation) {
+        deliveries.release(reservation);
     }
 }

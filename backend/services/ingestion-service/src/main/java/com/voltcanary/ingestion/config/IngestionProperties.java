@@ -1,11 +1,13 @@
 package com.voltcanary.ingestion.config;
 
-import java.time.Duration;
-import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
+import java.time.Duration;
+import java.time.Instant;
 
 @Component
 @ConfigurationProperties(prefix = "app.ingestion")
@@ -22,6 +24,7 @@ public class IngestionProperties {
     private int maxMetricNameLength = 100;
     private Duration kafkaAckTimeout = Duration.ofSeconds(3);
     private Duration idempotencyTtl = Duration.ofHours(24);
+    private Duration idempotencyLease = Duration.ofSeconds(30);
     private boolean rateLimitEnabled = true;
     private boolean redisRateLimitEnabled = true;
     private boolean multiReplicaMode = true;
@@ -38,18 +41,9 @@ public class IngestionProperties {
     private Mqtt mqtt = new Mqtt();
 
     public static class Mqtt {
-        @Getter
-        @Setter
-        private boolean enabled = false;
-        @Getter
-        @Setter
-        private String brokerUrl = "tcp://localhost:1883";
-        @Getter
-        @Setter
-        private String clientId = "voltcanary-ingestion";
-        @Getter
-        @Setter
-        private String topicFilter = "voltcanary/sources/+/telemetry";
-
+        @Getter @Setter private boolean enabled = false;
+        @Getter @Setter private String brokerUrl = "tcp://localhost:1883";
+        @Getter @Setter private String clientId = "voltcanary-ingestion";
+        @Getter @Setter private String topicFilter = "voltcanary/sources/+/telemetry";
     }
 }

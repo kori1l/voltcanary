@@ -1,9 +1,7 @@
 package com.voltcanary.device.service;
 
-import com.voltcanary.device.business.BusinessResourceAuthorization;
-import com.voltcanary.device.repository.DeviceRepository;
-import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
+import com.voltcanary.device.business.BusinessResourceAuthorization;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceStatus;
 import com.voltcanary.device.domain.MaintenanceOperation;
@@ -13,51 +11,87 @@ import com.voltcanary.device.dto.MaintenanceWindowRequest;
 import com.voltcanary.device.dto.MaintenanceWindowResponse;
 import com.voltcanary.device.event.MaintenanceWindowEventPublisher;
 import com.voltcanary.device.exception.NotFoundException;
+import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.MaintenanceOperationRepository;
 import com.voltcanary.device.repository.MaintenanceWindowRepository;
 import com.voltcanary.device.security.AuthenticatedUser;
-import jakarta.persistence.criteria.Predicate;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MaintenanceWindowService {
 
     private final BusinessResourceAuthorization workspaceAccess;
     private final DeviceRepository workspaceDevices;
-    private Device scopedDevice(AuthenticatedUser user, UUID workspace, UUID account, UUID deviceId, String action) {
-        workspaceAccess.device(user,account,workspace,action,deviceId);
-        return workspaceDevices.findByIdAndAccountId(deviceId,account).orElseThrow();
+
+    private Device scopedDevice(
+            AuthenticatedUser user, UUID workspace, UUID account, UUID deviceId, String action) {
+        workspaceAccess.device(user, account, workspace, action, deviceId);
+        return workspaceDevices.findByIdAndAccountId(deviceId, account).orElseThrow();
     }
+
     @Transactional
-    public MaintenanceWindowResponse workspaceCreate(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,MaintenanceWindowRequest request) {
-        return createForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),request);
+    public MaintenanceWindowResponse workspaceCreate(
+            AuthenticatedUser user,
+            UUID workspace,
+            UUID account,
+            UUID deviceId,
+            MaintenanceWindowRequest request) {
+        return createForDevice(
+                user,
+                scopedDevice(user, workspace, account, deviceId, "maintenance.write"),
+                request);
     }
+
     @Transactional
-    public MaintenanceWindowResponse workspaceCancel(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id,CancelMaintenanceWindowRequest request) {
-        return cancelForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id,request);
+    public MaintenanceWindowResponse workspaceCancel(
+            AuthenticatedUser user,
+            UUID workspace,
+            UUID account,
+            UUID deviceId,
+            UUID id,
+            CancelMaintenanceWindowRequest request) {
+        return cancelForDevice(
+                user,
+                scopedDevice(user, workspace, account, deviceId, "maintenance.write"),
+                id,
+                request);
     }
+
     @Transactional
-    public MaintenanceWindowResponse workspaceUpdate(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id,MaintenanceWindowRequest request) {
-        return updateForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id,request);
+    public MaintenanceWindowResponse workspaceUpdate(
+            AuthenticatedUser user,
+            UUID workspace,
+            UUID account,
+            UUID deviceId,
+            UUID id,
+            MaintenanceWindowRequest request) {
+        return updateForDevice(
+                user,
+                scopedDevice(user, workspace, account, deviceId, "maintenance.write"),
+                id,
+                request);
     }
+
     @Transactional
-    public MaintenanceWindowResponse workspaceFinish(AuthenticatedUser user,UUID workspace,UUID account,UUID deviceId,UUID id) {
-        return finishForDevice(user,scopedDevice(user,workspace,account,deviceId,"maintenance.write"),id);
+    public MaintenanceWindowResponse workspaceFinish(
+            AuthenticatedUser user, UUID workspace, UUID account, UUID deviceId, UUID id) {
+        return finishForDevice(
+                user, scopedDevice(user, workspace, account, deviceId, "maintenance.write"), id);
     }
-    private static final int DEFAULT_LIMIT = 100;
-    private static final int MAX_LIMIT = 200;
 
     private final MaintenanceQueries queries;
     private final DeviceService deviceService;
+    private final MaintenanceWindowOperationSync operationSync;
     private final MaintenanceOperationRepository operationRepository;
     private final MaintenanceWindowRepository repository;
     private final DeviceAuditService auditService;
@@ -69,15 +103,18 @@ public class MaintenanceWindowService {
             MaintenanceOperationRepository operationRepository,
             MaintenanceWindowRepository repository,
             DeviceAuditService auditService,
-            MaintenanceWindowEventPublisher eventPublisher,BusinessResourceAuthorization workspaceAccess,DeviceRepository workspaceDevices) {
+            MaintenanceWindowEventPublisher eventPublisher,
+            BusinessResourceAuthorization workspaceAccess,
+            DeviceRepository workspaceDevices) {
         this.queries = queries;
         this.deviceService = deviceService;
+        this.operationSync = new MaintenanceWindowOperationSync(repository, operationRepository);
         this.operationRepository = operationRepository;
         this.repository = repository;
         this.auditService = auditService;
         this.eventPublisher = eventPublisher;
-        this.workspaceAccess=workspaceAccess;
-        this.workspaceDevices=workspaceDevices;
+        this.workspaceAccess = workspaceAccess;
+        this.workspaceDevices = workspaceDevices;
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -90,38 +127,52 @@ public class MaintenanceWindowService {
             Integer limit,
             Integer offset) {
         Device device = deviceService.findOwned(user, deviceId);
-        validateQueryRange(from, to);
+        MaintenanceValues.validateQueryRange(from, to);
         String normalizedStatus = normalizeStatus(status);
-        return queries.windows(maintenanceWindowSpec(device.getAccountId(), device.getId(), from, to, true), normalizedStatus,
-                normalizedOffset(offset), normalizedLimit(limit)).stream().map(this::toResponse).toList();
+        return queries
+                .windows(
+                        MaintenanceWindowFilters.matching(
+                                device.getAccountId(), device.getId(), from, to, true),
+                        normalizedStatus,
+                        MaintenanceValues.normalizedOffset(offset),
+                        MaintenanceValues.normalizedLimit(limit))
+                .stream()
+                .map(MaintenanceWindowViews::toResponse)
+                .toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MaintenanceWindowResponse get(AuthenticatedUser user, UUID deviceId, UUID windowId) {
         Device device = deviceService.findOwned(user, deviceId);
-        return toResponse(loadOwned(device, windowId));
+        return MaintenanceWindowViews.toResponse(loadOwned(device, windowId));
     }
 
     @Transactional
-    public MaintenanceWindowResponse create(AuthenticatedUser user, UUID deviceId, MaintenanceWindowRequest request) {
-        return createForDevice(user,deviceService.findOwned(user,deviceId),request);
+    public MaintenanceWindowResponse create(
+            AuthenticatedUser user, UUID deviceId, MaintenanceWindowRequest request) {
+        return createForDevice(user, deviceService.findOwned(user, deviceId), request);
     }
-    private MaintenanceWindowResponse createForDevice(AuthenticatedUser user,Device device,MaintenanceWindowRequest request) {
+
+    private MaintenanceWindowResponse createForDevice(
+            AuthenticatedUser user, Device device, MaintenanceWindowRequest request) {
         if (device.getStatus() == DeviceStatus.DECOMMISSIONED) {
-            throw new IllegalArgumentException("Decommissioned devices cannot receive maintenance windows");
+            throw new IllegalArgumentException(
+                    "Decommissioned devices cannot receive maintenance windows");
         }
-        validateRange(request.startAt(), request.endAt());
+        MaintenanceValues.validateRange(request.startAt(), request.endAt());
         Instant now = Instant.now();
         MaintenanceOperation operation = new MaintenanceOperation();
         operation.setId(UUID.randomUUID());
         operation.setAccountId(device.getAccountId());
-        operation.setTitle(normalizeRequired(request.title(), 255, "title"));
-        operation.setDescription(normalizeOptional(request.description(), 5000, "description"));
+        operation.setTitle(MaintenanceValues.normalizeRequired(request.title(), 255, "title"));
+        operation.setDescription(
+                MaintenanceValues.normalizeOptional(request.description(), 5000, "description"));
         operation.setStartAt(request.startAt());
         operation.setEndAt(request.endAt());
-        operation.setSuppressAlerts(defaultTrue(request.suppressAlerts()));
-        operation.setExcludeFromAnalytics(defaultTrue(request.excludeFromAnalytics()));
-        operation.setExcludeFromMl(defaultTrue(request.excludeFromMl()));
+        operation.setSuppressAlerts(MaintenanceValues.defaultTrue(request.suppressAlerts()));
+        operation.setExcludeFromAnalytics(
+                MaintenanceValues.defaultTrue(request.excludeFromAnalytics()));
+        operation.setExcludeFromMl(MaintenanceValues.defaultTrue(request.excludeFromMl()));
         operation.setCreatedBy(user.id());
         operation.setUpdatedBy(user.id());
         operation.setCreatedAt(now);
@@ -141,10 +192,20 @@ public class MaintenanceWindowService {
         window.setUpdatedAt(now);
         window.setVersion(1);
         MaintenanceWindow saved = repository.save(window);
-        auditService.record(user, savedOperation.getAccountId(), "MAINTENANCE_OPERATION_CREATED", "MAINTENANCE_OPERATION", savedOperation.getId());
-        auditService.record(user, saved.getAccountId(), "MAINTENANCE_WINDOW_CREATED", "MAINTENANCE_WINDOW", saved.getId());
+        auditService.record(
+                user,
+                savedOperation.getAccountId(),
+                "MAINTENANCE_OPERATION_CREATED",
+                "MAINTENANCE_OPERATION",
+                savedOperation.getId());
+        auditService.record(
+                user,
+                saved.getAccountId(),
+                "MAINTENANCE_WINDOW_CREATED",
+                "MAINTENANCE_WINDOW",
+                saved.getId());
         eventPublisher.publish("MAINTENANCE_WINDOW_CREATED", saved, user.id());
-        return toResponse(saved);
+        return MaintenanceWindowViews.toResponse(saved);
     }
 
     @Transactional
@@ -153,24 +214,34 @@ public class MaintenanceWindowService {
             UUID deviceId,
             UUID windowId,
             MaintenanceWindowRequest request) {
-        return updateForDevice(user,deviceService.findOwned(user,deviceId),windowId,request);
+        return updateForDevice(user, deviceService.findOwned(user, deviceId), windowId, request);
     }
-    private MaintenanceWindowResponse updateForDevice(AuthenticatedUser user,Device device,UUID windowId,MaintenanceWindowRequest request) {
+
+    private MaintenanceWindowResponse updateForDevice(
+            AuthenticatedUser user,
+            Device device,
+            UUID windowId,
+            MaintenanceWindowRequest request) {
         MaintenanceWindow window = loadOwned(device, windowId);
         if (window.getCancelledAt() != null) {
             throw new IllegalArgumentException("Cancelled maintenance windows cannot be updated");
         }
-        if (isFinished(window, Instant.now())) {
+        if (MaintenanceValues.isFinished(window, Instant.now())) {
             throw new IllegalArgumentException("Finished maintenance windows cannot be updated");
         }
-        validateRange(request.startAt(), request.endAt());
+        MaintenanceValues.validateRange(request.startAt(), request.endAt());
         applyRequest(window, request);
         touch(window, user.id());
         MaintenanceWindow saved = repository.save(window);
-        syncSingleWindowOperation(saved, user.id(), null);
-        auditService.record(user, saved.getAccountId(), "MAINTENANCE_WINDOW_UPDATED", "MAINTENANCE_WINDOW", saved.getId());
+        operationSync.synchronize(saved, user.id(), null);
+        auditService.record(
+                user,
+                saved.getAccountId(),
+                "MAINTENANCE_WINDOW_UPDATED",
+                "MAINTENANCE_WINDOW",
+                saved.getId());
         eventPublisher.publish("MAINTENANCE_WINDOW_UPDATED", saved, user.id());
-        return toResponse(saved);
+        return MaintenanceWindowViews.toResponse(saved);
     }
 
     @Transactional
@@ -179,58 +250,78 @@ public class MaintenanceWindowService {
             UUID deviceId,
             UUID windowId,
             CancelMaintenanceWindowRequest request) {
-        return cancelForDevice(user,deviceService.findOwned(user,deviceId),windowId,request);
+        return cancelForDevice(user, deviceService.findOwned(user, deviceId), windowId, request);
     }
-    private MaintenanceWindowResponse cancelForDevice(AuthenticatedUser user,Device device,UUID windowId,CancelMaintenanceWindowRequest request) {
+
+    private MaintenanceWindowResponse cancelForDevice(
+            AuthenticatedUser user,
+            Device device,
+            UUID windowId,
+            CancelMaintenanceWindowRequest request) {
         MaintenanceWindow window = loadOwned(device, windowId);
         if (window.getCancelledAt() == null) {
             window.setCancelledAt(Instant.now());
-            window.setCancellationReason(normalizeOptional(request == null ? null : request.reason(), 1000, "reason"));
+            window.setCancellationReason(
+                    MaintenanceValues.normalizeOptional(
+                            request == null ? null : request.reason(), 1000, "reason"));
             touch(window, user.id());
             repository.save(window);
-            syncSingleWindowOperation(window, user.id(), window.getCancellationReason());
-            auditService.record(user, window.getAccountId(), "MAINTENANCE_WINDOW_CANCELLED", "MAINTENANCE_WINDOW", window.getId());
+            operationSync.synchronize(window, user.id(), window.getCancellationReason());
+            auditService.record(
+                    user,
+                    window.getAccountId(),
+                    "MAINTENANCE_WINDOW_CANCELLED",
+                    "MAINTENANCE_WINDOW",
+                    window.getId());
             eventPublisher.publish("MAINTENANCE_WINDOW_CANCELLED", window, user.id());
         }
-        return toResponse(window);
+        return MaintenanceWindowViews.toResponse(window);
     }
 
     @Transactional
-    public MaintenanceWindowResponse finishNow(AuthenticatedUser user, UUID deviceId, UUID windowId) {
-        return finishForDevice(user,deviceService.findOwned(user,deviceId),windowId);
+    public MaintenanceWindowResponse finishNow(
+            AuthenticatedUser user, UUID deviceId, UUID windowId) {
+        return finishForDevice(user, deviceService.findOwned(user, deviceId), windowId);
     }
-    private MaintenanceWindowResponse finishForDevice(AuthenticatedUser user,Device device,UUID windowId) {
+
+    private MaintenanceWindowResponse finishForDevice(
+            AuthenticatedUser user, Device device, UUID windowId) {
         MaintenanceWindow window = loadOwned(device, windowId);
         Instant now = Instant.now();
         if (window.getCancelledAt() != null) {
             throw new IllegalArgumentException("Cancelled maintenance windows cannot be finished");
         }
         if (now.isBefore(window.getStartAt())) {
-            throw new IllegalArgumentException("Scheduled maintenance windows cannot be finished before they start");
+            throw new IllegalArgumentException(
+                    "Scheduled maintenance windows cannot be finished before they start");
         }
         if (now.isBefore(window.getEndAt())) {
             window.setEndAt(now);
             touch(window, user.id());
             repository.save(window);
-            syncSingleWindowOperation(window, user.id(), null);
-            auditService.record(user, window.getAccountId(), "MAINTENANCE_WINDOW_FINISHED_NOW", "MAINTENANCE_WINDOW", window.getId());
+            operationSync.synchronize(window, user.id(), null);
+            auditService.record(
+                    user,
+                    window.getAccountId(),
+                    "MAINTENANCE_WINDOW_FINISHED_NOW",
+                    "MAINTENANCE_WINDOW",
+                    window.getId());
             eventPublisher.publish("MAINTENANCE_WINDOW_FINISHED", window, user.id());
         }
-        return toResponse(window);
+        return MaintenanceWindowViews.toResponse(window);
     }
 
     @Transactional(readOnly = true)
     public List<MaintenanceWindowResponse> listInternal(
-            UUID deviceId,
-            Instant from,
-            Instant to,
-            boolean includeCancelled) {
-        validateQueryRange(from, to);
-        return repository.findAll(
-                        maintenanceWindowSpec(null, deviceId, from, to, includeCancelled),
+            UUID deviceId, Instant from, Instant to, boolean includeCancelled) {
+        MaintenanceValues.validateQueryRange(from, to);
+        return repository
+                .findAll(
+                        MaintenanceWindowFilters.matching(
+                                null, deviceId, from, to, includeCancelled),
                         Sort.by(Sort.Direction.ASC, "startAt"))
                 .stream()
-                .map(this::toResponse)
+                .map(MaintenanceWindowViews::toResponse)
                 .toList();
     }
 
@@ -240,158 +331,41 @@ public class MaintenanceWindowService {
     }
 
     @Transactional(readOnly = true)
-    public List<MaintenanceWindowResponse> changes(Instant updatedAfter, UUID afterId, Integer limit) {
+    public List<MaintenanceWindowResponse> changes(
+            Instant updatedAfter, UUID afterId, Integer limit) {
         Instant checkpoint = updatedAfter == null ? Instant.EPOCH : updatedAfter;
-        return repository.findChangesAfter(checkpoint, afterId, PageRequest.of(0, normalizedLimit(limit))).stream()
-                .map(this::toResponse)
+        return repository
+                .findChangesAfter(
+                        checkpoint,
+                        afterId,
+                        PageRequest.of(0, MaintenanceValues.normalizedLimit(limit)))
+                .stream()
+                .map(MaintenanceWindowViews::toResponse)
                 .toList();
     }
 
     private MaintenanceWindow loadOwned(Device device, UUID windowId) {
-        return repository.findByIdAndDeviceIdAndAccountId(windowId, device.getId(), device.getAccountId())
+        return repository
+                .findByIdAndDeviceIdAndAccountId(windowId, device.getId(), device.getAccountId())
                 .orElseThrow(() -> new NotFoundException("Maintenance window not found"));
     }
 
     private void applyRequest(MaintenanceWindow window, MaintenanceWindowRequest request) {
-        window.setTitle(normalizeRequired(request.title(), 255, "title"));
-        window.setDescription(normalizeOptional(request.description(), 5000, "description"));
+        window.setTitle(MaintenanceValues.normalizeRequired(request.title(), 255, "title"));
+        window.setDescription(
+                MaintenanceValues.normalizeOptional(request.description(), 5000, "description"));
         window.setStartAt(request.startAt());
         window.setEndAt(request.endAt());
-        window.setSuppressAlerts(defaultTrue(request.suppressAlerts()));
-        window.setExcludeFromAnalytics(defaultTrue(request.excludeFromAnalytics()));
-        window.setExcludeFromMl(defaultTrue(request.excludeFromMl()));
+        window.setSuppressAlerts(MaintenanceValues.defaultTrue(request.suppressAlerts()));
+        window.setExcludeFromAnalytics(
+                MaintenanceValues.defaultTrue(request.excludeFromAnalytics()));
+        window.setExcludeFromMl(MaintenanceValues.defaultTrue(request.excludeFromMl()));
     }
 
     private void touch(MaintenanceWindow window, UUID userId) {
         window.setUpdatedBy(userId);
         window.setUpdatedAt(Instant.now());
         window.setVersion(window.getVersion() + 1);
-    }
-
-    private void syncSingleWindowOperation(MaintenanceWindow window, UUID userId, String cancellationReason) {
-        if (window.getOperationId() == null) {
-            return;
-        }
-        List<MaintenanceWindow> operationWindows = repository.findByOperationIdOrderByStartAtAsc(window.getOperationId());
-        if (operationWindows.size() != 1) {
-            return;
-        }
-        operationRepository.findById(window.getOperationId()).ifPresent(operation -> {
-            operation.setTitle(window.getTitle());
-            operation.setDescription(window.getDescription());
-            operation.setStartAt(window.getStartAt());
-            operation.setEndAt(window.getEndAt());
-            operation.setSuppressAlerts(window.isSuppressAlerts());
-            operation.setExcludeFromAnalytics(window.isExcludeFromAnalytics());
-            operation.setExcludeFromMl(window.isExcludeFromMl());
-            if (window.getCancelledAt() != null) {
-                operation.setCancelledAt(window.getCancelledAt());
-                operation.setCancellationReason(cancellationReason);
-            }
-            operation.setUpdatedBy(userId);
-            operation.setUpdatedAt(Instant.now());
-            operation.setVersion(operation.getVersion() + 1);
-            operationRepository.save(operation);
-        });
-    }
-
-    private MaintenanceWindowResponse toResponse(MaintenanceWindow window) {
-        return new MaintenanceWindowResponse(
-                window.getId(),
-                window.getAccountId(),
-                window.getDeviceId(),
-                window.getOperationId(),
-                window.getTitle(),
-                window.getDescription(),
-                window.getStartAt(),
-                window.getEndAt(),
-                status(window, Instant.now()),
-                window.isSuppressAlerts(),
-                window.isExcludeFromAnalytics(),
-                window.isExcludeFromMl(),
-                window.getCancelledAt(),
-                window.getCancellationReason(),
-                window.getCreatedBy(),
-                window.getUpdatedBy(),
-                window.getCreatedAt(),
-                window.getUpdatedAt(),
-                window.getVersion());
-    }
-
-    private String status(MaintenanceWindow window, Instant now) {
-        if (window.getCancelledAt() != null) {
-            return "CANCELLED";
-        }
-        if (now.isBefore(window.getStartAt())) {
-            return "SCHEDULED";
-        }
-        if (now.isBefore(window.getEndAt())) {
-            return "ACTIVE";
-        }
-        return "FINISHED";
-    }
-
-    private boolean isFinished(MaintenanceWindow window, Instant now) {
-        return window.getCancelledAt() == null && !now.isBefore(window.getEndAt());
-    }
-
-    private Specification<MaintenanceWindow> maintenanceWindowSpec(
-            UUID accountId,
-            UUID deviceId,
-            Instant from,
-            Instant to,
-            boolean includeCancelled) {
-        return (root, query, criteriaBuilder) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (accountId != null) {
-                predicates.add(criteriaBuilder.equal(root.get("accountId"), accountId));
-            }
-            predicates.add(criteriaBuilder.equal(root.get("deviceId"), deviceId));
-            if (!includeCancelled) {
-                predicates.add(criteriaBuilder.isNull(root.get("cancelledAt")));
-            }
-            if (from != null) {
-                predicates.add(criteriaBuilder.greaterThan(root.get("endAt"), from));
-            }
-            if (to != null) {
-                predicates.add(criteriaBuilder.lessThan(root.get("startAt"), to));
-            }
-            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
-        };
-    }
-
-    private void validateRange(Instant startAt, Instant endAt) {
-        if (startAt == null || endAt == null) {
-            throw new IllegalArgumentException("startAt and endAt are required");
-        }
-        if (!endAt.isAfter(startAt)) {
-            throw new IllegalArgumentException("endAt must be after startAt");
-        }
-    }
-
-    private void validateQueryRange(Instant from, Instant to) {
-        if (from != null && to != null && !to.isAfter(from)) {
-            throw new IllegalArgumentException("to must be after from");
-        }
-    }
-
-    private String normalizeRequired(String value, int maxLength, String field) {
-        String normalized = normalizeOptional(value, maxLength, field);
-        if (normalized == null) {
-            throw new IllegalArgumentException(field + " is required");
-        }
-        return normalized;
-    }
-
-    private String normalizeOptional(String value, int maxLength, String field) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        String normalized = value.trim();
-        if (normalized.length() > maxLength) {
-            throw new IllegalArgumentException(field + " must be at most " + maxLength + " characters");
-        }
-        return normalized;
     }
 
     private String normalizeStatus(String status) {
@@ -401,31 +375,9 @@ public class MaintenanceWindowService {
         String normalized = status.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "SCHEDULED", "ACTIVE", "FINISHED", "CANCELLED" -> normalized;
-            default -> throw new IllegalArgumentException("Unknown maintenance window status: " + status);
+            default ->
+                    throw new IllegalArgumentException(
+                            "Unknown maintenance window status: " + status);
         };
-    }
-
-    private int normalizedLimit(Integer limit) {
-        if (limit == null) {
-            return DEFAULT_LIMIT;
-        }
-        if (limit < 1 || limit > MAX_LIMIT) {
-            throw new IllegalArgumentException("limit must be between 1 and " + MAX_LIMIT);
-        }
-        return limit;
-    }
-
-    private int normalizedOffset(Integer offset) {
-        if (offset == null) {
-            return 0;
-        }
-        if (offset < 0) {
-            throw new IllegalArgumentException("offset must be greater than or equal to 0");
-        }
-        return offset;
-    }
-
-    private boolean defaultTrue(Boolean value) {
-        return value == null || value;
     }
 }

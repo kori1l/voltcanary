@@ -1,6 +1,6 @@
 import {cleanup,fireEvent,render,screen} from "@testing-library/react";
 import {afterEach,expect,it,vi} from "vitest";
-import {MlModelsTab} from "./MlOperationalTabs";
+import { MlModelsTab } from "./MlModelsTab";
 import type {MlModelVersion} from "../../../analytics/mlModuleApi";
 afterEach(cleanup);
 const models=[{id:"selected",modelKey:"Chosen model",version:2,status:"ACTIVE",family:"ANOMALY_DETECTION",algorithm:"ISOLATION_FOREST"},{id:"other",modelKey:"Other model",version:1,status:"ACTIVE",family:"ANOMALY_DETECTION",algorithm:"ISOLATION_FOREST"}] as MlModelVersion[];

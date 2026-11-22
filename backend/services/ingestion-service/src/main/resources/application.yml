@@ -66,6 +66,7 @@ app:
     max-metric-name-length: ${INGESTION_MAX_METRIC_NAME_LENGTH:100}
     kafka-ack-timeout: ${INGESTION_KAFKA_ACK_TIMEOUT:3s}
     idempotency-ttl: ${INGESTION_IDEMPOTENCY_TTL:24h}
+    idempotency-lease: ${INGESTION_IDEMPOTENCY_LEASE:30s}
     rate-limit-enabled: ${INGESTION_RATE_LIMIT_ENABLED:true}
     redis-rate-limit-enabled: ${INGESTION_RATE_LIMIT_REDIS_ENABLED:true}
     multi-replica-mode: ${INGESTION_MULTI_REPLICA_MODE:true}

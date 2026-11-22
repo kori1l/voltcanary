@@ -253,7 +253,8 @@ Important properties:
 - `app.ingestion.kafka-publish-enabled` / `APP_KAFKA_PUBLISH_ENABLED`
 - `app.ingestion.kafka-ack-timeout`
 - `app.idempotency.redis-enabled`
-- `app.idempotency.ttl`
+- `app.ingestion.idempotency-ttl` / `INGESTION_IDEMPOTENCY_TTL` (default `24h`)
+- `app.ingestion.idempotency-lease` / `INGESTION_IDEMPOTENCY_LEASE` (default `30s`)
 - `app.ingestion.multi-replica-mode`
 - `app.ingestion.local-correctness-state-enabled`
 - `app.ingestion.max-metrics-per-reading`
@@ -289,8 +290,31 @@ single-instance/local development by setting
 `app.ingestion.redis-rate-limit-enabled=false`.
 
 Kafka publication to `telemetry.raw.v1` waits for broker acknowledgement within
-`app.ingestion.kafka-ack-timeout`. Publish failures return `503`, release the
-idempotency key for retry, and open the configured backpressure cooldown so
+`app.ingestion.kafka-ack-timeout`. Before publication, ingestion retains the original
+`TelemetryReceivedEvent` envelope under a SHA-256 identity of its stable content,
+including account, processing generation and source-schema pins. Object key order
+and equivalent numeric representations do not change the identity. Event ID,
+receive time and correlation ID are excluded from identity, but retained in the
+original envelope for exact replay.
+
+The delivery record distinguishes `PENDING` from `PUBLISHED`. A concurrent request
+for a pending reading returns `503`; it is not acknowledged as a duplicate. Only a
+broker acknowledgement followed by completion of the owning delivery lease marks
+the record published. Completion drops the retained payload and keeps only a compact
+identity marker until its retention expires. A failed or uncertain attempt releases ownership while
+retaining the original envelope. After a process crash, another attempt can acquire
+the expired lease and publish that same event, including its original ID and payload.
+Old owners cannot complete or release a newer owner's lease.
+
+Retention must exceed the delivery lease, which must exceed the Kafka acknowledgement
+timeout. Recovery requires a sender retry within the retained identity window;
+there is no autonomous delivery worker. An uncertain broker result can cause exact
+event replay, so downstream event-ID deduplication remains mandatory. Redis
+persistence/availability determines survival of delivery records across Redis
+failures. Local single-instance storage expires records but does not survive a
+process restart.
+
+Publish failures return `503` and open the configured backpressure cooldown so
 subsequent ingress is rejected instead of buffering telemetry without bounds.
 
 Source runtime configuration is served from the local

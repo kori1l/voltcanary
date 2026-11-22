@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { archiveFeatureSnapshot, archiveMlDatasetVersion, archiveTrainingRun, createInternalTelemetryDataset, deleteDeploymentPolicy, deleteFeatureSnapshot, deleteMlDatasetVersion, deleteMlLabel, deleteMlModel, deleteTrainingRun, disableDeploymentPolicy, generateFeatureSnapshot, MlLifecycleStatusFilter, previewDeploymentPolicyLifecycle, previewFeatureSnapshotLifecycle, previewMlDatasetVersionLifecycle, previewMlLabelLifecycle, previewMlModelLifecycle, previewTrainingRunLifecycle } from "../analytics/mlModuleApi";
 import { safeMlError } from "../analytics/mlSettingsApi";
 import { useMlWorkspaceData } from "../features/ml-settings/hooks/useMlWorkspaceData";
-import { MlModelsTab, MlMonitoringTab, MlPoliciesTab } from "../features/ml-settings/components/MlOperationalTabs";
+import { MlModelsTab } from "../features/ml-settings/components/MlModelsTab";
+import { MlMonitoringTab } from "../features/ml-settings/components/MlMonitoringTab";
+import { MlPoliciesTab } from "../features/ml-settings/components/MlPoliciesTab";
 import { SectionFeedback } from "../components/SectionFeedback";
 import { useActionConfirmation } from "../components/useActionConfirmation";
 
