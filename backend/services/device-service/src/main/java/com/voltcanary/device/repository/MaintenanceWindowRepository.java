@@ -15,13 +15,16 @@ public interface MaintenanceWindowRepository extends JpaRepository<MaintenanceWi
 
     Optional<MaintenanceWindow> findByIdAndDeviceIdAndAccountId(UUID id, UUID deviceId, UUID accountId);
 
+    List<MaintenanceWindow> findByOperationIdInOrderByStartAtAsc(java.util.Collection<UUID> operationIds);
+
     List<MaintenanceWindow> findByOperationIdOrderByStartAtAsc(UUID operationId);
 
     @Query("""
             select window
             from MaintenanceWindow window
             where window.updatedAt > :updatedAfter
-            order by window.updatedAt asc
+               or (window.updatedAt = :updatedAfter and :afterId is not null and window.id > :afterId)
+            order by window.updatedAt asc, window.id asc
             """)
-    List<MaintenanceWindow> findChangesAfter(@Param("updatedAfter") Instant updatedAfter, Pageable pageable);
+    List<MaintenanceWindow> findChangesAfter(@Param("updatedAfter") Instant updatedAfter, @Param("afterId") UUID afterId, Pageable pageable);
 }

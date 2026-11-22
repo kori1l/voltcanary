@@ -9,7 +9,6 @@ import com.voltcanary.aiagent.service.AuthorizedPlanningContext.Scope;
 import com.voltcanary.aiagent.trace.TracePayload;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;

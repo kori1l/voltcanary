@@ -1,5 +1,8 @@
 package com.voltcanary.alert.notification.application;
 
+import jakarta.persistence.EntityManager;
+import java.util.Map;
+import java.util.Objects;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.alert.domain.Alert;
@@ -28,6 +31,11 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 public class NotificationAttemptService {
+    public static final class LeaseLost extends RuntimeException {
+        public LeaseLost() { super("Notification attempt lease is no longer owned"); }
+    }
+    private final EntityManager entityManager;
+
 
     private final NotificationAttemptRepository attemptRepository;
     private final AlertRepository alertRepository;
@@ -36,7 +44,7 @@ public class NotificationAttemptService {
     private final AlertNotificationProperties properties;
     private final ObjectMapper objectMapper;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NEVER)
     public List<NotificationAttemptResponse> listForAlert(
             UUID alertId,
             String userId,
@@ -79,7 +87,7 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt createTestAttempt(NotificationChannel channel, java.util.Map<String, Object> sample) {
+    public NotificationAttempt createTestAttempt(NotificationChannel channel, Map<String, Object> sample) {
         Instant now = Instant.now();
         NotificationAttempt attempt = new NotificationAttempt();
         attempt.setId(UUID.randomUUID());
@@ -145,13 +153,13 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markRetrying(UUID attemptId, String errorCode, String providerResponseSummary) {
-        return markRetrying(attemptId, errorCode, providerResponseSummary, Instant.now());
+    public NotificationAttempt markRetrying(NotificationAttempt expected, String errorCode, String providerResponseSummary) {
+        return markRetrying(expected, errorCode, providerResponseSummary, Instant.now());
     }
 
     @Transactional
-    public NotificationAttempt markRetrying(UUID attemptId, String errorCode, String providerResponseSummary, Instant nextAttemptAt) {
-        NotificationAttempt attempt = loadAttempt(attemptId);
+    public NotificationAttempt markRetrying(NotificationAttempt expected, String errorCode, String providerResponseSummary, Instant nextAttemptAt) {
+        NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.RETRYING);
         attempt.setRetryCount(attempt.getRetryCount() + 1);
         attempt.setMaxAttempts(Math.max(1, attempt.getMaxAttempts()));
@@ -166,13 +174,13 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markSent(UUID attemptId, String providerResponseSummary) {
-        return markSent(attemptId, providerResponseSummary, null);
+    public NotificationAttempt markSent(NotificationAttempt expected, String providerResponseSummary) {
+        return markSent(expected, providerResponseSummary, null);
     }
 
     @Transactional
-    public NotificationAttempt markSent(UUID attemptId, String providerResponseSummary, String providerMessageId) {
-        NotificationAttempt attempt = loadAttempt(attemptId);
+    public NotificationAttempt markSent(NotificationAttempt expected, String providerResponseSummary, String providerMessageId) {
+        NotificationAttempt attempt = owned(expected);
         Instant now = Instant.now();
         attempt.setStatus(NotificationAttemptStatus.SENT);
         attempt.setLastErrorCode(null);
@@ -187,17 +195,17 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markFailed(UUID attemptId, String errorCode, String providerResponseSummary) {
-        return markFailed(attemptId, errorCode, providerResponseSummary, false);
+    public NotificationAttempt markFailed(NotificationAttempt expected, String errorCode, String providerResponseSummary) {
+        return markFailed(expected, errorCode, providerResponseSummary, false);
     }
 
     @Transactional
     public NotificationAttempt markFailed(
-            UUID attemptId,
+            NotificationAttempt expected,
             String errorCode,
             String providerResponseSummary,
             boolean retryExhausted) {
-        NotificationAttempt attempt = loadAttempt(attemptId);
+        NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.FAILED);
         attempt.setLastErrorCode(normalize(errorCode, 100));
         attempt.setProviderResponseSummary(normalize(providerResponseSummary, 1000));
@@ -209,8 +217,8 @@ public class NotificationAttemptService {
     }
 
     @Transactional
-    public NotificationAttempt markDisabled(UUID attemptId, String providerResponseSummary) {
-        NotificationAttempt attempt = loadAttempt(attemptId);
+    public NotificationAttempt markDisabled(NotificationAttempt expected, String providerResponseSummary) {
+        NotificationAttempt attempt = owned(expected);
         attempt.setStatus(NotificationAttemptStatus.DISABLED);
         attempt.setProviderResponseSummary(normalize(providerResponseSummary, 1000));
         attempt.setRetryExhausted(false);
@@ -223,6 +231,19 @@ public class NotificationAttemptService {
     @Transactional(readOnly = true)
     public NotificationAttempt get(UUID attemptId) {
         return loadAttempt(attemptId);
+    }
+
+    private NotificationAttempt owned(NotificationAttempt expected) {
+        String owner = expected.getLockedBy();
+        Instant acquiredAt = expected.getLockedAt();
+        NotificationAttempt actual = attemptRepository.lockById(expected.getId()).orElseThrow(LeaseLost::new);
+        entityManager.refresh(actual);
+        if (actual.getStatus() != NotificationAttemptStatus.PROCESSING
+                || !Objects.equals(actual.getLockedBy(), owner)
+                || !Objects.equals(actual.getLockedAt(), acquiredAt)
+                || actual.getLockedBy() == null || actual.getLockedAt() == null
+                || actual.getLockedAt().isBefore(Instant.now().minus(properties.getLeaseDuration()))) throw new LeaseLost();
+        return actual;
     }
 
     private Alert loadAlert(UUID alertId) {
@@ -262,9 +283,9 @@ public class NotificationAttemptService {
         return requestIdempotencyKey + ":" + channelId;
     }
 
-    private String writePayload(java.util.Map<String, Object> sample) {
+    private String writePayload(Map<String, Object> sample) {
         try {
-            return objectMapper.writeValueAsString(sample == null ? java.util.Map.of() : sample);
+            return objectMapper.writeValueAsString(sample == null ? Map.of() : sample);
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid notification test payload", exception);
         }

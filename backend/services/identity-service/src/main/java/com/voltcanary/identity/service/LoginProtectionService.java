@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class LoginProtectionService {
 
+    private static final int MAX_TRACKED_KEYS = 10_000;
     private static final String GENERIC_LOGIN_FAILURE = "Invalid email or password";
 
     private final Map<String, AttemptWindow> attemptWindows = new ConcurrentHashMap<>();
@@ -23,16 +24,21 @@ public class LoginProtectionService {
     private final long attemptWindowSeconds;
     private final int failedAttemptsBeforeLockout;
     private final long lockoutSeconds;
+    @org.springframework.beans.factory.annotation.Autowired
     public LoginProtectionService(IdentityAuthProperties properties) {
+        this(properties, Clock.systemUTC());
+    }
+
+    LoginProtectionService(IdentityAuthProperties properties, Clock clock) {
         this.maxAttemptsPerEmail = properties.getLogin().getMaxAttemptsPerEmail();
         this.maxAttemptsPerIp = properties.getLogin().getMaxAttemptsPerIp();
         this.attemptWindowSeconds = properties.getLogin().getAttemptWindowSeconds();
         this.failedAttemptsBeforeLockout = properties.getLogin().getFailedAttemptsBeforeLockout();
         this.lockoutSeconds = properties.getLogin().getLockoutSeconds();
-        this.clock = Clock.systemUTC();
+        this.clock = clock;
     }
 
-    public void checkAllowed(String email, String clientIp) {
+    public synchronized void checkAllowed(String email, String clientIp) {
         Instant now = clock.instant();
         FailedLoginState failedLoginState = failedLogins.get(email);
         if (failedLoginState != null && failedLoginState.isLocked(now)) {
@@ -48,11 +54,16 @@ public class LoginProtectionService {
         }
     }
 
-    public void recordFailure(String email) {
+    public synchronized void recordFailure(String email) {
         Instant now = clock.instant();
+        if (!failedLogins.containsKey(email) && failedLogins.size() >= MAX_TRACKED_KEYS) {
+            failedLogins.entrySet().removeIf(entry -> entry.getValue().expired(now));
+            if (failedLogins.size() >= MAX_TRACKED_KEYS) throw genericFailure();
+        }
         failedLogins.compute(email, (key, current) -> {
-            FailedLoginState state = current == null || current.lockExpired(now) ? new FailedLoginState() : current;
-            state.failedAttempts++;
+            FailedLoginState state = current == null || current.expired(now) ? new FailedLoginState() : current;
+            state.failedAttempts = Math.min(failedAttemptsBeforeLockout, state.failedAttempts + 1);
+            state.idleUntil = now.plusSeconds(Math.max(attemptWindowSeconds, lockoutSeconds));
             if (state.failedAttempts >= failedAttemptsBeforeLockout) {
                 state.lockedUntil = now.plusSeconds(lockoutSeconds);
             }
@@ -60,11 +71,17 @@ public class LoginProtectionService {
         });
     }
 
-    public void recordSuccess(String email) {
+    public synchronized void recordSuccess(String email) {
         failedLogins.remove(email);
     }
 
     private void recordAttempt(String key, int maxAttempts, Instant now) {
+        if (!attemptWindows.containsKey(key) && attemptWindows.size() >= MAX_TRACKED_KEYS) {
+            Instant cutoff = now.minusSeconds(attemptWindowSeconds);
+            attemptWindows.entrySet().removeIf(entry -> entry.getValue().attempts.isEmpty()
+                    || entry.getValue().attempts.peekLast().isBefore(cutoff));
+            if (attemptWindows.size() >= MAX_TRACKED_KEYS) throw genericFailure();
+        }
         AttemptWindow window = attemptWindows.computeIfAbsent(key, ignored -> new AttemptWindow());
         synchronized (window) {
             Instant oldestAllowed = now.minusSeconds(attemptWindowSeconds);
@@ -89,6 +106,11 @@ public class LoginProtectionService {
     private static class FailedLoginState {
         private int failedAttempts;
         private Instant lockedUntil;
+        private Instant idleUntil;
+
+        private boolean expired(Instant now) {
+            return !isLocked(now) && idleUntil != null && !idleUntil.isAfter(now);
+        }
 
         private boolean isLocked(Instant now) {
             return lockedUntil != null && lockedUntil.isAfter(now);

@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 public class IdentityAuthProperties {
     private long passwordResetTokenTtlSeconds = 900;
     private long emailVerificationTokenTtlSeconds = 86_400;
+    private String mailEncryptionKey = "";
+    private String mailFrom = "no-reply@voltcanary.local";
     private Login login = new Login();
 
     public static class Login {

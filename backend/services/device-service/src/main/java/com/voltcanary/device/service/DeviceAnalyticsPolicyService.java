@@ -1,5 +1,6 @@
 package com.voltcanary.device.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceAnalyticsConfig;
@@ -25,7 +26,7 @@ public class DeviceAnalyticsPolicyService {
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DeviceAnalyticsConfigResponse get(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
         return repository.findByDeviceId(device.getId())

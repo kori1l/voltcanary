@@ -51,6 +51,7 @@ public class RefreshTokenService {
         return new IssuedRefreshToken(token, refreshToken);
     }
 
+    @Transactional
     public RefreshToken validate(String token) {
         RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(hash(token))
                 .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));

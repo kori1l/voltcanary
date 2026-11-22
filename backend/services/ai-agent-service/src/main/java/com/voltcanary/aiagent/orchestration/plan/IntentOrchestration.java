@@ -6,7 +6,6 @@ import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.Focus;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.PendingQuestion;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.PlannerResponse;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.StepResponse;
-import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.StepState;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol.TurnSubmit;
 import com.voltcanary.aiagent.orchestration.contract.ProtocolValidator;
 import com.voltcanary.aiagent.port.AssistantTraceRecorder;

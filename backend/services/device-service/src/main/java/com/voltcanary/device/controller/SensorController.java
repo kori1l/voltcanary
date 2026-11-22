@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.SensorRequest;
 import com.voltcanary.device.dto.SensorResponse;
 import com.voltcanary.device.security.AuthenticatedUserResolver;

@@ -8,7 +8,10 @@ public final class JacksonRestClients {
     private JacksonRestClients() { }
 
     public static RestClient.Builder builder() {
-        return RestClient.builder().messageConverters(converters -> {
+        var factory = new org.springframework.http.client.JdkClientHttpRequestFactory(
+                java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build());
+        factory.setReadTimeout(java.time.Duration.ofSeconds(30));
+        return RestClient.builder().requestFactory(factory).messageConverters(converters -> {
             int jsonIndex = java.util.stream.IntStream.range(0, converters.size())
                     .filter(index -> converters.get(index) instanceof MappingJackson2HttpMessageConverter
                             || converters.get(index) instanceof org.springframework.http.converter.json.JacksonJsonHttpMessageConverter)

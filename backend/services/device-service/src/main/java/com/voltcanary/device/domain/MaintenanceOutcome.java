@@ -17,6 +17,10 @@ import lombok.Setter;
 @Setter
 public class MaintenanceOutcome {
 
+    @jakarta.persistence.Version
+    @Column(name = "row_revision", nullable = false)
+    private Long rowRevision;
+
     @Id
     private UUID id;
 

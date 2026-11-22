@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -19,7 +20,7 @@ public class AlertRuleClient {
     private final String internalServiceToken;
 
     public AlertRuleClient(
-            RestClient.Builder restClientBuilder,
+            @Qualifier("alertRestClientBuilder") RestClient.Builder restClientBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties) {
         this.restClient = restClientBuilder
@@ -40,10 +41,13 @@ public class AlertRuleClient {
                     })
                     .retrieve()
                     .body(AlertRuleSnapshot[].class);
-            return response == null ? List.of() : Arrays.asList(response);
+            if (response == null) throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Alert rule snapshot unavailable");
+            return Arrays.asList(response);
         } catch (RestClientException exception) {
             log.warn("analyticsAlertRulesUnavailable deviceId={} reason={}", deviceId, exception.getClass().getSimpleName());
-            return List.of();
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "Alert rule service unavailable");
         }
     }
 

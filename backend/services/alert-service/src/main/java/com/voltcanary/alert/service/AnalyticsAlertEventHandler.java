@@ -40,27 +40,27 @@ public class AnalyticsAlertEventHandler {
     }
 
     public boolean replayAnomaly(java.util.UUID inboxEntryId, AnomalyDetectedEvent event) {
-        if (inboxService.markProcessing(inboxEntryId) == null) return false;
+        var claim = inboxService.markProcessing(inboxEntryId);
+        if (claim == null) return false;
         try {
             Alert alert = variableAdmission.accepts(event) ? alertService.handleAnomaly(event) : null;
             boolean firstProcessing = processedEventService.markIfNew(ANOMALY_TOPIC, event.eventId());
-            inboxService.markProcessed(inboxEntryId, alert);
-            return firstProcessing;
+            return inboxService.markProcessed(claim, alert) && firstProcessing;
         } catch (RuntimeException exception) {
-            inboxService.markFailed(inboxEntryId, exception);
+            inboxService.markFailed(claim, exception);
             throw exception;
         }
     }
 
     public boolean replayRiskScoreChanged(java.util.UUID inboxEntryId, RiskScoreChangedEvent event) {
-        if (inboxService.markProcessing(inboxEntryId) == null) return false;
+        var claim = inboxService.markProcessing(inboxEntryId);
+        if (claim == null) return false;
         try {
             Alert alert = alertService.handleRiskScoreChanged(event);
             boolean firstProcessing = processedEventService.markIfNew(RISK_TOPIC, event.eventId());
-            inboxService.markProcessed(inboxEntryId, alert);
-            return firstProcessing;
+            return inboxService.markProcessed(claim, alert) && firstProcessing;
         } catch (RuntimeException exception) {
-            inboxService.markFailed(inboxEntryId, exception);
+            inboxService.markFailed(claim, exception);
             throw exception;
         }
     }

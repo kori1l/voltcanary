@@ -12,7 +12,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.Set;
 import java.util.UUID;
 
 /** Seals exact row IDs, versions and typed mutations before confirmation. */

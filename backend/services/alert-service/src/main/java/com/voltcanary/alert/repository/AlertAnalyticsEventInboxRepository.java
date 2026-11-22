@@ -14,6 +14,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface AlertAnalyticsEventInboxRepository extends JpaRepository<AlertAnalyticsEventInboxEntry, UUID> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select entry from AlertAnalyticsEventInboxEntry entry where entry.id=:id")
+    Optional<AlertAnalyticsEventInboxEntry> lockById(@Param("id") UUID id);
+
     Optional<AlertAnalyticsEventInboxEntry> findBySourceNameAndEventId(String sourceName, UUID eventId);
 
     @Query("""

@@ -65,13 +65,16 @@ public class AlertAccessService {
                     .header("X-Internal-Service-Token", internalServiceToken)
                     .retrieve()
                     .body(DeviceOwnerResponse.class);
-            return response == null ? null : response.accountId();
+            if (response == null || response.accountId() == null) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device owner snapshot unavailable");
+            }
+            return response.accountId();
         } catch (Exception exception) {
             log.warn(
                     "alertDeviceOwnerLookupFailed deviceId={} reason={}",
                     deviceId,
                     exception.getClass().getSimpleName());
-            return null;
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device owner lookup unavailable");
         }
     }
 
@@ -129,6 +132,11 @@ public class AlertAccessService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Support or admin role is required");
         }
     }
+    public UUID accountScope(String userId) {
+        requireAuthenticated(userId);
+        return properties.isEnabled() ? ownAccount(userId) : null;
+    }
+
     public UUID ownAccount(String userId) {
         requireAuthenticated(userId);
         try {

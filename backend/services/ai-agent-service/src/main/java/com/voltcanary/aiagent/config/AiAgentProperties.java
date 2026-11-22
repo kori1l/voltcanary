@@ -65,6 +65,9 @@ public class AiAgentProperties {
         @Getter
         @Setter
         private String keyVersion = "v1";
+        @Getter
+        @Setter
+        private java.util.Map<String, String> previousKeys = new java.util.HashMap<>();
 
     }
 }

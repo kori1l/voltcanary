@@ -35,6 +35,12 @@ public class DeviceExceptionHandler {
                 .body(new ApiErrorResponse("not_found", exception.getMessage()));
     }
 
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    ResponseEntity<ApiErrorResponse> handleConcurrentChange(org.springframework.dao.OptimisticLockingFailureException exception) {
+        metrics.operationRejected("concurrent_change");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse("concurrent_change", "Record changed. Reload it before retrying."));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException exception) {
         metrics.operationRejected("bad_request");

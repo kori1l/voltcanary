@@ -3,7 +3,6 @@ package com.voltcanary.telemetry.controller;
 import com.voltcanary.common.web.DashboardPositionReadRequest;
 import com.voltcanary.telemetry.adapter.DashboardReadAuthorization;
 import com.voltcanary.telemetry.adapter.PositionSourceAccess;
-import com.voltcanary.telemetry.dto.PositionEvidence;
 import com.voltcanary.telemetry.service.PositionReads;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

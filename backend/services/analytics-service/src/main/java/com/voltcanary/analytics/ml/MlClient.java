@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -22,17 +23,20 @@ import org.springframework.web.client.RestClientResponseException;
 public class MlClient {
 
     private final RestClient restClient;
+    private final RestClient trainingClient;
     private final MeterRegistry meterRegistry;
     private final String internalServiceToken;
     private final String internalServiceName;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public MlClient(
-            RestClient.Builder restClientBuilder,
+            @Qualifier("mlRestClientBuilder") RestClient.Builder restClientBuilder,
+            @Qualifier("mlTrainingRestClientBuilder") RestClient.Builder trainingBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties,
             MeterRegistry meterRegistry) {
         this.restClient = buildRestClient(restClientBuilder, downstreamProperties);
+        this.trainingClient = buildRestClient(trainingBuilder, downstreamProperties);
         this.internalServiceToken = internalProperties.getServiceToken();
         this.internalServiceName = internalProperties.getServiceName();
         this.meterRegistry = meterRegistry;
@@ -54,7 +58,7 @@ public class MlClient {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             String body = objectMapper.writeValueAsString(request);
-            MlTrainingResponse response = restClient.post()
+            MlTrainingResponse response = trainingClient.post()
                     .uri("/train")
                     .contentType(MediaType.APPLICATION_JSON)
                     .headers(headers -> {
@@ -76,8 +80,8 @@ public class MlClient {
         } catch (RestClientResponseException exception) {
             meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
             sample.stop(meterRegistry.timer("analytics.ml.training.worker.request.duration", "status", "failure"));
-            log.warn("mlTrainingRequestFailed datasetVersionId={} status={} response={} phase=request",
-                    request.datasetVersionId(), exception.getStatusCode(), responseSnippet(exception));
+            log.warn("mlTrainingRequestFailed datasetVersionId={} status={} phase=request",
+                    request.datasetVersionId(), exception.getStatusCode());
             return null;
         } catch (RestClientException exception) {
             meterRegistry.counter("analytics.ml.training.worker.request.failures", "reason", exception.getClass().getSimpleName()).increment();
@@ -160,8 +164,8 @@ public class MlClient {
                     "failure",
                     "modelVersionId",
                     modelVersionId(modelPreference, null)));
-            log.warn("mlInferenceFailed deviceId={} status={} response={} phase=request",
-                    deviceId, exception.getStatusCode(), responseSnippet(exception));
+            log.warn("mlInferenceFailed deviceId={} status={} phase=request",
+                    deviceId, exception.getStatusCode());
             return null;
         } catch (RestClientException exception) {
             meterRegistry.counter(
@@ -190,12 +194,4 @@ public class MlClient {
         return result.isBlank() ? "none" : result;
     }
 
-    private String responseSnippet(RestClientResponseException exception) {
-        String body = exception.getResponseBodyAsString();
-        if (body == null || body.isBlank()) {
-            return "";
-        }
-        String compact = body.replaceAll("\\s+", " ");
-        return compact.length() > 1000 ? compact.substring(0, 1000) : compact;
-    }
 }

@@ -1,7 +1,4 @@
-import hashlib
-import json
 import sys
-import time
 from uuid import uuid4
 
 from app.models.failure_evaluation import FailurePredictionEvaluator
@@ -11,114 +8,10 @@ from app.models.tabular_anomaly_model import TabularAnomalyModel
 from app.schemas.training import ApprovalGateProfile, TrainingRequest, TrainingRunResponse
 from app.services.artifact_store import ArtifactStore
 from app.services.feature_service import FeatureService
+from app.services.anomaly_evaluation import AnomalyEvaluation
+from app.services.training_fit import fit_with_deadline
 from app.services.model_registry_service import model_registry_service
-
-
-class IdempotencyConflictError(Exception):
-    pass
-
-
-class TrainingCanceledError(Exception):
-    pass
-
-
-class TrainingTimeoutError(Exception):
-    pass
-
-
-class TrainingRunCoordinator:
-    def __init__(self) -> None:
-        self.runs: dict[str, TrainingRunResponse] = {}
-        self.idempotency_records: dict[str, tuple[str, TrainingRunResponse]] = {}
-
-    def run_id(self, request: TrainingRequest) -> str:
-        return request.training_run_id or str(uuid4())
-
-    def fingerprint(self, request: TrainingRequest) -> str:
-        payload = request.model_dump(mode="json", by_alias=True)
-        payload.pop("cancellationRequested", None)
-        payload.pop("trainingTimeoutSeconds", None)
-        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        return "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
-    def idempotent_result(self, request: TrainingRequest, fingerprint: str) -> TrainingRunResponse | None:
-        if not request.idempotency_key:
-            return None
-        existing = self.idempotency_records.get(request.idempotency_key)
-        if existing is None:
-            return None
-        existing_fingerprint, existing_response = existing
-        if existing_fingerprint != fingerprint:
-            raise IdempotencyConflictError("training idempotency key was reused with different request metadata")
-        return existing_response
-
-    def record_result(
-        self,
-        request: TrainingRequest,
-        run: TrainingRunResponse,
-        fingerprint: str,
-    ) -> TrainingRunResponse:
-        self.runs[run.run_id] = run
-        if request.idempotency_key:
-            self.idempotency_records[request.idempotency_key] = (fingerprint, run)
-        return run
-
-    def get_run(self, run_id: str) -> TrainingRunResponse:
-        return self.runs.get(
-            run_id,
-            TrainingRunResponse(
-                runId=run_id,
-                status="NOT_FOUND",
-                datasetVersionId="unknown",
-                failureReason="training run was not found",
-            ),
-        )
-
-    def artifact_bundle_id(self, run_id: str, request: TrainingRequest) -> str:
-        return request.artifact_bundle_id or f"model-{run_id}"
-
-    def checkpoint(self, request: TrainingRequest, started_at: float) -> None:
-        if request.cancellation_requested:
-            raise TrainingCanceledError()
-        timeout = request.training_timeout_seconds
-        if timeout is not None and time.monotonic() - started_at > timeout:
-            raise TrainingTimeoutError()
-
-    def empty_dataset_response(self, run_id: str, request: TrainingRequest) -> TrainingRunResponse:
-        return TrainingRunResponse(
-            runId=run_id,
-            status="FAILED",
-            datasetVersionId=request.dataset_version_id,
-            trainingRunId=request.training_run_id,
-            idempotencyKey=request.idempotency_key,
-            artifactBundleId=self.artifact_bundle_id(run_id, request),
-            failureReason="training requires at least one metric row",
-            logsSummary=["Rejected empty training dataset."],
-        )
-
-    def canceled_response(self, run_id: str, request: TrainingRequest) -> TrainingRunResponse:
-        return TrainingRunResponse(
-            runId=run_id,
-            status="CANCELED",
-            datasetVersionId=request.dataset_version_id,
-            trainingRunId=request.training_run_id,
-            idempotencyKey=request.idempotency_key,
-            artifactBundleId=self.artifact_bundle_id(run_id, request),
-            failureReason="training run cancellation was requested",
-            logsSummary=["Training canceled before artifact promotion."],
-        )
-
-    def timeout_response(self, run_id: str, request: TrainingRequest) -> TrainingRunResponse:
-        return TrainingRunResponse(
-            runId=run_id,
-            status="FAILED",
-            datasetVersionId=request.dataset_version_id,
-            trainingRunId=request.training_run_id,
-            idempotencyKey=request.idempotency_key,
-            artifactBundleId=self.artifact_bundle_id(run_id, request),
-            failureReason="training timeout exceeded before artifact promotion",
-            logsSummary=["Training stopped before artifact promotion because the timeout budget was exceeded."],
-        )
+from app.services.training_coordinator import TrainingRunCoordinator
 
 
 class ModelArtifactPublisher:
@@ -216,13 +109,17 @@ class AnomalyTrainingRunner:
 
     def run(self, run_id: str, request: TrainingRequest, started_at: float) -> TrainingRunResponse:
         self.coordinator.checkpoint(request, started_at)
-        snapshot = self.feature_service.generate_snapshot(request.dataset_version_id, request.rows)
+        evaluation = AnomalyEvaluation()
+        training_rows, validation_rows = evaluation.split(request.rows)
+        snapshot = self.feature_service.generate_snapshot(request.dataset_version_id, training_rows)
         self.coordinator.checkpoint(request, started_at)
         feature_artifact = self.feature_service.load_snapshot_artifact(snapshot.artifact_uri)
         model = TabularAnomalyModel()
-        model.fit(request.rows, feature_artifact)
+        model = fit_with_deadline(model, (training_rows, feature_artifact), self.coordinator.remaining_seconds(request, started_at))
         self.coordinator.checkpoint(request, started_at)
-        metrics = self._evaluate(model, request.rows)
+        metrics = evaluation.evaluate(model, training_rows, validation_rows)
+        metrics["inputRows"] = float(len(request.rows))
+        metrics["testRows"] = float(sum(row.metadata.get("splitAssignment") == "TEST" for row in request.rows))
         model_version_id = str(uuid4())
         algorithm = self._algorithm(request, model.algorithm)
         model_version = f"{algorithm}-{run_id[:8]}"
@@ -289,17 +186,6 @@ class AnomalyTrainingRunner:
                 f"Registered model {model_name}.",
             ],
         )
-
-    def _evaluate(self, model: TabularAnomalyModel, rows: list) -> dict[str, float]:
-        values = {row.metric: float(row.value) for row in rows[-min(3, len(rows)) :]}
-        score = model.score(values)["anomalyScore"]
-        labels = [row.label for row in rows if row.label]
-        label_coverage = len(labels) / len(rows)
-        return {
-            "validationAnomalyScore": round(score, 6),
-            "labelCoverage": round(label_coverage, 6),
-            "trainingRows": float(len(rows)),
-        }
 
     def _algorithm(self, request: TrainingRequest, default_algorithm: str) -> str:
         if request.model_family.upper() == "FAILURE_PREDICTION" and request.algorithm == "baseline-statistical-anomaly-v1":
@@ -571,13 +457,15 @@ class FailurePredictionTrainingRunner:
 
         algorithm = self._failure_algorithm(request)
         self.coordinator.checkpoint(request, started_at)
-        evaluation = FailurePredictionEvaluator().evaluate(samples, algorithm)
+        evaluation = FailurePredictionEvaluator().evaluate(samples, algorithm,
+                lambda: self.coordinator.remaining_seconds(request, started_at))
         evaluation_metrics = evaluation["metrics"]
         evaluation_metadata = evaluation["metadata"]
 
         try:
             model = FailurePredictionModel(algorithm)
-            model.fit(samples)
+            fit_samples = [sample for sample in samples if sample.split_assignment == "TRAIN"] if any(sample.split_assignment for sample in samples) else samples
+            model = fit_with_deadline(model, (fit_samples,), self.coordinator.remaining_seconds(request, started_at))
         except ValueError as exc:
             return self._failed_response(
                 run_id,

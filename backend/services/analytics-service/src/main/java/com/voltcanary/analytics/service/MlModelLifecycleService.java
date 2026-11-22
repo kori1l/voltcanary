@@ -28,6 +28,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class MlModelLifecycleService {
 
+    private final MlRegistryFence fence;
+    private final jakarta.persistence.EntityManager entityManager;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDeploymentPolicyRepository policyRepository;
     private final PredictionResultRepository predictionResultRepository;
@@ -51,6 +53,7 @@ public class MlModelLifecycleService {
 
     @Transactional
     public MlModelVersionDto deleteModel(UUID accountId, UUID actorId, UUID modelVersionId, MlLifecycleActionRequest request) {
+        fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
         String reason = requiredReason(request);
         List<Map<String, Object>> dependencies = activeModelPolicyDependencies(modelVersionId);
@@ -83,6 +86,7 @@ public class MlModelLifecycleService {
 
     @Transactional
     public MlModelVersionDto approve(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+        fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
         if (model.getStatus() != MlModelStatus.CANDIDATE && model.getStatus() != MlModelStatus.REJECTED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only candidate or rejected models can be approved");
@@ -100,8 +104,9 @@ public class MlModelLifecycleService {
 
     @Transactional
     public MlModelVersionDto reject(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+        fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
-        if (model.getStatus() == MlModelStatus.ACTIVE) {
+        if (model.getStatus() == MlModelStatus.ACTIVE || !activeModelPolicyDependencies(model.getId()).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active models must be rolled back before rejection");
         }
         model.setStatus(MlModelStatus.REJECTED);
@@ -114,8 +119,9 @@ public class MlModelLifecycleService {
 
     @Transactional
     public MlModelVersionDto archive(UUID accountId, UUID actorId, UUID modelVersionId, MlModelStatusRequest request) {
+        fence.account(accountId);
         MlModelVersion model = findOwnedModel(accountId, modelVersionId);
-        if (model.getStatus() == MlModelStatus.ACTIVE) {
+        if (model.getStatus() == MlModelStatus.ACTIVE || !activeModelPolicyDependencies(model.getId()).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active models must be rolled back before archive");
         }
         model.setStatus(MlModelStatus.ARCHIVED);
@@ -130,6 +136,7 @@ public class MlModelLifecycleService {
     private MlModelVersion findOwnedModel(UUID accountId, UUID modelVersionId) {
         MlModelVersion model = modelVersionRepository.findById(modelVersionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found"));
+        entityManager.refresh(model);
         if (!accountId.equals(model.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found");
         }

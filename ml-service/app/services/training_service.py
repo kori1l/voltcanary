@@ -3,14 +3,17 @@ import time
 from app.schemas.training import TrainingRequest, TrainingRunResponse
 from app.services.artifact_store import ArtifactStore
 from app.services.feature_service import FeatureService
-from app.services.training_runtime import (
-    AnomalyTrainingRunner,
-    FailurePredictionTrainingRunner,
-    IdempotencyConflictError,
-    ModelArtifactPublisher,
+from app.services.training_history import TrainingHistory
+from pathlib import Path
+from app.services.training_coordinator import (
     TrainingCanceledError,
     TrainingRunCoordinator,
     TrainingTimeoutError,
+)
+from app.services.training_runtime import (
+    AnomalyTrainingRunner,
+    FailurePredictionTrainingRunner,
+    ModelArtifactPublisher,
 )
 
 
@@ -22,14 +25,21 @@ class TrainingService:
     ) -> None:
         self.artifact_store = artifact_store or ArtifactStore()
         self.feature_service = FeatureService(self.artifact_store)
-        self.coordinator = coordinator or TrainingRunCoordinator()
+        if coordinator is None:
+            current = self.artifact_store.settings_provider()
+            history_path = Path(current.ml_training_history_path) if current.ml_training_history_path else self.artifact_store.root / ".training-history.sqlite3"
+            coordinator = TrainingRunCoordinator(TrainingHistory(history_path,
+                    current.ml_training_history_capacity, current.ml_training_history_retention_seconds), current.ml_training_fit_timeout_seconds)
+        self.coordinator = coordinator
         self.publisher = ModelArtifactPublisher(self.artifact_store)
         self.anomaly_runner = AnomalyTrainingRunner(self.feature_service, self.publisher, self.coordinator)
         self.failure_runner = FailurePredictionTrainingRunner(self.publisher, self.coordinator)
-        self.runs = self.coordinator.runs
-        self.idempotency_records = self.coordinator.idempotency_records
 
     def start_training(self, request: TrainingRequest) -> TrainingRunResponse:
+        fingerprint = self.coordinator.fingerprint(request)
+        return self.coordinator.singleflight(request, fingerprint, lambda: self._start_training(request))
+
+    def _start_training(self, request: TrainingRequest) -> TrainingRunResponse:
         run_id = self.coordinator.run_id(request)
         fingerprint = self.coordinator.fingerprint(request)
         existing = self.coordinator.idempotent_result(request, fingerprint)
@@ -63,6 +73,12 @@ class TrainingService:
                 self.coordinator.timeout_response(run_id, request),
                 fingerprint,
             )
+
+        except ValueError:
+            return self.coordinator.record_result(request, TrainingRunResponse(
+                runId=run_id, status="FAILED", datasetVersionId=request.dataset_version_id,
+                trainingRunId=request.training_run_id, idempotencyKey=request.idempotency_key,
+                failureReason="Training samples or split assignments are invalid."), fingerprint)
 
     def get_run(self, run_id: str) -> TrainingRunResponse:
         return self.coordinator.get_run(run_id)

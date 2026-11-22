@@ -20,7 +20,6 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
@@ -278,6 +277,35 @@ class ApiGatewaySmokeTest {
                 .expectStatus().isEqualTo(HttpStatus.CONTENT_TOO_LARGE)
                 .expectBody(String.class)
                 .value(body -> assertThat(body).contains("\"code\":\"payload_too_large\""));
+    }
+
+    @Test
+    void forgedForwardedHeaderDoesNotResetRateLimit() {
+        var properties = new GatewayRateLimitProperties();
+        properties.setAuthRequestsPerWindow(1);
+        var filter = new GatewayRateLimitGlobalFilter(properties, Optional.empty());
+        var first = MockServerWebExchange.from(MockServerHttpRequest.post("/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("127.0.0.1", 12345)).header("X-Forwarded-For", "192.0.2.1"));
+        var second = MockServerWebExchange.from(MockServerHttpRequest.post("/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("127.0.0.1", 12345)).header("X-Forwarded-For", "192.0.2.2"));
+        filter.filter(first, exchange -> Mono.empty()).block();
+        filter.filter(second, exchange -> Mono.empty()).block();
+        assertThat(second.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @Test
+    void trustedProxyChainStopsAtFirstUntrustedAddressFromTheRight() {
+        var properties = new GatewayRateLimitProperties();
+        properties.setAuthRequestsPerWindow(1);
+        properties.setTrustedProxyAddresses(java.util.List.of("127.0.0.1"));
+        var filter = new GatewayRateLimitGlobalFilter(properties, Optional.empty());
+        for (int i = 0; i < 2; i++) {
+            var request = MockServerWebExchange.from(MockServerHttpRequest.post("/auth/login")
+                    .remoteAddress(new java.net.InetSocketAddress("127.0.0.1", 12345))
+                    .header("X-Forwarded-For", "192.0.2." + (i + 1) + ", 198.51.100.1"));
+            filter.filter(request, exchange -> Mono.empty()).block();
+            if (i == 1) assertThat(request.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        }
     }
 
     @Test

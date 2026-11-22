@@ -1,8 +1,6 @@
 package com.voltcanary.identity.service;
 
 import com.voltcanary.identity.config.IdentityDownstreamProperties;
-import com.voltcanary.identity.domain.UserStatus;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -25,24 +23,6 @@ public class DeviceAccountLifecycleClient {
         this.restClient = restClientBuilder.baseUrl(properties.getDeviceServiceBaseUrl()).build();
     }
 
-    public void sync(UUID userId, String email, UserStatus userStatus) {
-        if (!properties.isDeviceLifecycleSyncEnabled()) {
-            return;
-        }
-        try {
-            restClient.post()
-                    .uri("/internal/accounts/users/{userId}/lifecycle", userId)
-                    .header("X-Internal-Service-Token", properties.getInternalServiceToken())
-                    .body(Map.of(
-                            "email", email,
-                            "status", accountStatus(userStatus)))
-                    .retrieve()
-                    .toBodilessEntity();
-        } catch (RestClientException exception) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device account lifecycle sync failed", exception);
-        }
-    }
-
     public Optional<String> findAccountStatus(UUID userId) {
         try {
             AccountLifecycleStatusResponse response = restClient.get()
@@ -56,16 +36,6 @@ public class DeviceAccountLifecycleClient {
         } catch (RestClientException exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Device account lifecycle lookup failed", exception);
         }
-    }
-
-    private String accountStatus(UserStatus userStatus) {
-        if (userStatus == UserStatus.ACTIVE) {
-            return "ACTIVE";
-        }
-        if (userStatus == UserStatus.DELETED) {
-            return "DELETED";
-        }
-        return "DISABLED";
     }
 
     private record AccountLifecycleStatusResponse(UUID userId, String status) {

@@ -1,6 +1,5 @@
 package com.voltcanary.device.dto;
 
-import com.voltcanary.device.domain.Device;
 import jakarta.validation.constraints.NotNull;
 import java.util.Map;
 

@@ -54,6 +54,15 @@ class DevicePostgresIntegrationTest extends SignedUserTest {
     private com.voltcanary.device.event.DeviceOutboxPublisher outboxDispatcher;
 
     @Test
+    void firstReadCanProvisionAccountWithoutWritingInsideReadOnlyTransaction() {
+        UUID user = UUID.randomUUID();
+        HttpHeaders headers = headersFor(user, "first-read@example.invalid");
+        var response = restTemplate.exchange("/devices?limit=10", HttpMethod.GET, new HttpEntity<>(headers), String.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("select count(*) from accounts where user_id=?", Integer.class, user)).isEqualTo(1);
+    }
+
+    @Test
     void receiptFailureAfterDeviceFlushRollsBackDeviceAndExistingOutboxTogether() {
         HttpHeaders owner = headersFor(UUID.randomUUID(), "receipt-after-flush@example.invalid");
         AccountResponse account = restTemplate.exchange("/accounts/current", HttpMethod.GET,

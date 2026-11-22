@@ -68,6 +68,32 @@ the servlet remote address. `User-Agent` and `X-Correlation-Id` or
 uses the same complexity policy as registration. `POST
 /auth/email-verification/confirm` accepts `token`.
 
+Recovery request responses contain only the generic `password reset requested`
+or `email verification requested` message, including for unknown addresses.
+They never contain a usable code. Configure `SPRING_MAIL_HOST`,
+`SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`, and
+`APP_AUTH_MAIL_FROM` (Compose: `AUTH_MAIL_FROM`) to deliver codes to the stored
+account email. SMTP authentication and STARTTLS are configured through
+`SMTP_AUTH` and `SMTP_STARTTLS_ENABLE` in Compose. Configure
+`AUTH_MAIL_ENCRYPTION_KEY` with a stable Base64-encoded 32-byte random key for
+AES-GCM encryption of pending recovery deliveries. Keep this key in secret
+storage and share it across identity replicas. Replacing it requires draining
+the pending queue first; existing encrypted deliveries otherwise cannot be read.
+Without a mail transport or a valid encryption key, both request endpoints return
+`503` before checking whether an address exists.
+
+The recovery token and encrypted `recovery_mail_outbox` row commit together.
+An executor wakes delivery after commit; a five-second scheduler also discovers
+pending deliveries after a restart or executor rejection. SMTP calls run outside
+database transactions. Failed deliveries retry with exponential backoff from five
+seconds to five minutes, until the recovery code expires. A processing claim can
+be recovered after 120 seconds; completion requires its exact owner and attempt.
+Successful delivery clears the encrypted payload; expired rows are deleted.
+Only error categories are persisted, without codes or recipient addresses.
+Delivery is at least once: a crash after SMTP acceptance can resend the same code.
+An accepted request does not claim that an email was delivered. Refresh rotation
+and one-time recovery-code consumption lock the token row until commit.
+
 ## Authenticated User Endpoints
 
 ```http
@@ -132,3 +158,12 @@ Current public auth routes are unversioned. Public API key management, MFA, SSO,
 SCIM, custom RBAC, audit export, and tenant administration are not implemented;
 they are target product/security gaps in
 [../../target/production-readiness.md](../../target/production-readiness.md).
+
+### User lifecycle propagation
+
+Administrative status changes and soft deletion commit the user state, refresh
+session revocation and identity lifecycle outbox event in one local transaction.
+Device-service applies the existing Kafka lifecycle event asynchronously; these
+endpoints do not call device-service while the identity transaction is open.
+The existing reconciliation job repairs projection drift through the same outbox.
+The former synchronous lifecycle-delivery toggle is no longer used.

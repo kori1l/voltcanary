@@ -1,5 +1,6 @@
 package com.voltcanary.device.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.Device;
@@ -40,16 +41,16 @@ public class MaintenanceOperationService {
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 200;
 
+    private final MaintenanceQueries queries;
+    private final MaintenanceOperationViews views;
     private final AccountService accountService;
     private final DeviceService deviceService;
     private final MaintenanceOperationRepository operationRepository;
     private final MaintenanceWindowRepository windowRepository;
-    private final DeviceTypeRepository deviceTypeRepository;
-    private final LocationRepository locationRepository;
     private final DeviceAuditService auditService;
     private final MaintenanceWindowEventPublisher eventPublisher;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MaintenanceOperationResponse> list(
             AuthenticatedUser user,
             Instant from,
@@ -64,21 +65,14 @@ public class MaintenanceOperationService {
         validateQueryRange(from, to);
         String normalizedStatus = normalizeStatus(status);
         List<UUID> normalizedDeviceIds = normalizeDeviceIds(deviceIds);
-        List<MaintenanceOperationResponse> responses = operationRepository.findAll(
-                        MaintenanceOperationFilters.matching(account.getId(), from, to, normalizedStatus, includeCancelled, normalizedDeviceIds, locationId),
-                        PageRequest.of(
-                                0,
-                                normalizedOffset(offset) + normalizedLimit(limit),
-                                Sort.by(Sort.Direction.ASC, "startAt", "id")))
-                .getContent()
-                .stream()
-                .map(this::toResponse)
-                .skip(normalizedOffset(offset))
-                .toList();
-        return responses;
+        var operations = queries.operations(
+                MaintenanceOperationFilters.matching(account.getId(), from, to, normalizedStatus, includeCancelled, normalizedDeviceIds, locationId),
+                normalizedOffset(offset), normalizedLimit(limit));
+        var children = views.devices(operations);
+        return operations.stream().map(operation -> toResponse(operation, children.getOrDefault(operation.getId(), List.of()))).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MaintenanceOperationResponse get(AuthenticatedUser user, UUID operationId) {
         Account account = accountService.currentAccount(user);
         return toResponse(loadOwned(account.getId(), operationId));
@@ -282,9 +276,10 @@ public class MaintenanceOperationService {
     }
 
     private MaintenanceOperationResponse toResponse(MaintenanceOperation operation) {
-        List<MaintenanceOperationDeviceResponse> devices = windowRepository.findByOperationIdOrderByStartAtAsc(operation.getId()).stream()
-                .map(this::toDeviceResponse)
-                .toList();
+        return toResponse(operation, views.devices(List.of(operation)).getOrDefault(operation.getId(), List.of()));
+    }
+
+    private MaintenanceOperationResponse toResponse(MaintenanceOperation operation, List<MaintenanceOperationDeviceResponse> devices) {
         return new MaintenanceOperationResponse(
                 operation.getId(),
                 operation.getAccountId(),
@@ -304,22 +299,6 @@ public class MaintenanceOperationService {
                 operation.getCreatedAt(),
                 operation.getUpdatedAt(),
                 operation.getVersion());
-    }
-
-    private MaintenanceOperationDeviceResponse toDeviceResponse(MaintenanceWindow window) {
-        Device device = deviceService.findByIdForMaintenanceResponse(window.getDeviceId());
-        DeviceType type = deviceTypeRepository.findById(device.getDeviceTypeId()).orElse(null);
-        Location location = device.getLocationId() == null
-                ? null
-                : locationRepository.findByIdAndAccountId(device.getLocationId(), device.getAccountId()).orElse(null);
-        return new MaintenanceOperationDeviceResponse(
-                device.getId(),
-                device.getName(),
-                type == null ? null : type.getCode(),
-                device.getLocationId(),
-                location == null ? null : location.getName(),
-                window.getId(),
-                status(window, Instant.now()));
     }
 
     private String status(MaintenanceOperation operation, Instant now) {

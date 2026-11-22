@@ -1,5 +1,8 @@
 package com.voltcanary.device.service;
 
+import com.voltcanary.device.business.BusinessResourceAuthorization;
+import com.voltcanary.device.repository.DeviceRepository;
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceStatus;
@@ -28,8 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MaintenanceWindowService {
 
-    private final com.voltcanary.device.business.BusinessResourceAuthorization workspaceAccess;
-    private final com.voltcanary.device.repository.DeviceRepository workspaceDevices;
+    private final BusinessResourceAuthorization workspaceAccess;
+    private final DeviceRepository workspaceDevices;
     private Device scopedDevice(AuthenticatedUser user, UUID workspace, UUID account, UUID deviceId, String action) {
         workspaceAccess.device(user,account,workspace,action,deviceId);
         return workspaceDevices.findByIdAndAccountId(deviceId,account).orElseThrow();
@@ -53,6 +56,7 @@ public class MaintenanceWindowService {
     private static final int DEFAULT_LIMIT = 100;
     private static final int MAX_LIMIT = 200;
 
+    private final MaintenanceQueries queries;
     private final DeviceService deviceService;
     private final MaintenanceOperationRepository operationRepository;
     private final MaintenanceWindowRepository repository;
@@ -60,11 +64,13 @@ public class MaintenanceWindowService {
     private final MaintenanceWindowEventPublisher eventPublisher;
 
     public MaintenanceWindowService(
+            MaintenanceQueries queries,
             DeviceService deviceService,
             MaintenanceOperationRepository operationRepository,
             MaintenanceWindowRepository repository,
             DeviceAuditService auditService,
-            MaintenanceWindowEventPublisher eventPublisher,com.voltcanary.device.business.BusinessResourceAuthorization workspaceAccess,com.voltcanary.device.repository.DeviceRepository workspaceDevices) {
+            MaintenanceWindowEventPublisher eventPublisher,BusinessResourceAuthorization workspaceAccess,DeviceRepository workspaceDevices) {
+        this.queries = queries;
         this.deviceService = deviceService;
         this.operationRepository = operationRepository;
         this.repository = repository;
@@ -74,7 +80,7 @@ public class MaintenanceWindowService {
         this.workspaceDevices=workspaceDevices;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MaintenanceWindowResponse> list(
             AuthenticatedUser user,
             UUID deviceId,
@@ -86,21 +92,11 @@ public class MaintenanceWindowService {
         Device device = deviceService.findOwned(user, deviceId);
         validateQueryRange(from, to);
         String normalizedStatus = normalizeStatus(status);
-        return repository.findAll(
-                        maintenanceWindowSpec(device.getAccountId(), device.getId(), from, to, true),
-                        PageRequest.of(
-                                0,
-                                normalizedOffset(offset) + normalizedLimit(limit),
-                                Sort.by(Sort.Direction.DESC, "startAt")))
-                .getContent()
-                .stream()
-                .skip(normalizedOffset(offset))
-                .map(this::toResponse)
-                .filter(response -> normalizedStatus == null || normalizedStatus.equals(response.status()))
-                .toList();
+        return queries.windows(maintenanceWindowSpec(device.getAccountId(), device.getId(), from, to, true), normalizedStatus,
+                normalizedOffset(offset), normalizedLimit(limit)).stream().map(this::toResponse).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MaintenanceWindowResponse get(AuthenticatedUser user, UUID deviceId, UUID windowId) {
         Device device = deviceService.findOwned(user, deviceId);
         return toResponse(loadOwned(device, windowId));
@@ -240,8 +236,13 @@ public class MaintenanceWindowService {
 
     @Transactional(readOnly = true)
     public List<MaintenanceWindowResponse> changes(Instant updatedAfter, Integer limit) {
+        return changes(updatedAfter, null, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MaintenanceWindowResponse> changes(Instant updatedAfter, UUID afterId, Integer limit) {
         Instant checkpoint = updatedAfter == null ? Instant.EPOCH : updatedAfter;
-        return repository.findChangesAfter(checkpoint, PageRequest.of(0, normalizedLimit(limit))).stream()
+        return repository.findChangesAfter(checkpoint, afterId, PageRequest.of(0, normalizedLimit(limit))).stream()
                 .map(this::toResponse)
                 .toList();
     }

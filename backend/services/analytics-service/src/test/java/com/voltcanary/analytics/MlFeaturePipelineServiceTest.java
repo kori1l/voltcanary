@@ -55,6 +55,36 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 class MlFeaturePipelineServiceTest {
+    @Test
+    void changingFutureValuesCannotChangePastFeaturesInEitherBuilder() {
+        UUID account = UUID.randomUUID();
+        UUID dataset = UUID.randomUUID();
+        UUID version = UUID.randomUUID();
+        UUID file = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
+        var config = new com.voltcanary.analytics.service.MlFeatureConfig("v1", "test", 2, 7200,
+                List.of("rolling_stats", "baseline_deviation", "device_context"), "ANOMALY_DETECTION", null,
+                "generic-appliance", "template-v1");
+        var contract = FeatureVectorContract.forConfig(config.modelFamily(), config.horizonDays(),
+                config.featureTemplateId(), config.featureTemplateVersion(), config.enabledFeatureFamilies());
+        var importedVersion = datasetVersion(account, dataset, version);
+        var importedRows = rows(account, file);
+        when(importedFileRepository.findByDatasetIdOrderByImportedAtDesc(dataset)).thenReturn(List.of(importedFile(file, dataset)));
+        when(rowRepository.findByImportedFileIdOrderBySourceRowNumber(file)).thenReturn(importedRows);
+        var importedPast = importedBuilder.generate(importedVersion, config, contract).rows().getFirst().featureValues();
+        importedRows.getLast().setNumericValue(1_000_000_000);
+        assertThat(importedBuilder.generate(importedVersion, config, contract).rows().getFirst().featureValues()).isEqualTo(importedPast);
+
+        var internalVersion = datasetVersion(account, dataset, version, MlDatasetSourceType.INTERNAL_TELEMETRY);
+        var internalRows = List.of(
+                canonicalRow(account, version, device, 1, "activePowerW", "activePowerW", "2026-07-01T00:00:00Z", 100),
+                canonicalRow(account, version, device, 2, "activePowerW", "activePowerW", "2026-07-01T01:00:00Z", 120),
+                canonicalRow(account, version, device, 3, "activePowerW", "activePowerW", "2026-07-01T02:00:00Z", 110));
+        when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(version)).thenReturn(internalRows);
+        var internalPast = internalBuilder.generate(internalVersion, config, contract).rows().getFirst().featureValues();
+        internalRows.getLast().setNumericValue(1_000_000_000);
+        assertThat(internalBuilder.generate(internalVersion, config, contract).rows().getFirst().featureValues()).isEqualTo(internalPast);
+    }
 
     private final MlDatasetVersionRepository datasetVersionRepository = mock(MlDatasetVersionRepository.class);
     private final MlCanonicalMetricRowRepository canonicalMetricRowRepository = mock(MlCanonicalMetricRowRepository.class);

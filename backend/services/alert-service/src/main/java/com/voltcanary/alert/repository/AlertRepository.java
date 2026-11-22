@@ -14,6 +14,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface AlertRepository extends JpaRepository<Alert, UUID>, JpaSpecificationExecutor<Alert> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select alert from Alert alert where alert.id=:id")
+    Optional<Alert> lockById(@Param("id") UUID id);
+
     List<Alert> findTop100ByOrderByCreatedAtDesc();
 
     Optional<Alert> findFirstByDeduplicationKeyOrderByCreatedAtDesc(String deduplicationKey);

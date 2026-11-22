@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigRequest;
 import com.voltcanary.device.dto.DeviceAnalyticsConfigResponse;
 import com.voltcanary.device.security.AuthenticatedUserResolver;

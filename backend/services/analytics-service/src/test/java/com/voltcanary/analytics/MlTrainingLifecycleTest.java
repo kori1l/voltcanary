@@ -54,13 +54,39 @@ class MlTrainingLifecycleTest {
             datasetVersionRepository,
             featureSnapshotRepository,
             trainingRunRepository,
+            mock(jakarta.persistence.EntityManager.class),
             modelVersionRepository);
+    private final java.util.Map<UUID, MlTrainingRun> storedRuns = new java.util.HashMap<>();
+    private final com.voltcanary.analytics.service.MlTrainingLeases leases = new com.voltcanary.analytics.service.MlTrainingLeases(
+            trainingRunRepository, mock(jakarta.persistence.EntityManager.class));
+
+    @org.junit.jupiter.api.BeforeEach
+    void repositorySnapshots() {
+        when(trainingRunRepository.save(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            MlTrainingRun value = call.getArgument(0);
+            storedRuns.put(value.getId(), value);
+            return value;
+        });
+        when(trainingRunRepository.saveAndFlush(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+            MlTrainingRun value = call.getArgument(0);
+            storedRuns.put(value.getId(), value);
+            var detached = new MlTrainingRun();
+            org.springframework.beans.BeanUtils.copyProperties(value, detached);
+            return detached;
+        });
+        when(trainingRunRepository.nextQueued(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(call -> trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED));
+        when(trainingRunRepository.lockById(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> Optional.ofNullable(storedRuns.get(call.getArgument(0))));
+        when(trainingRunRepository.findById(org.mockito.ArgumentMatchers.any())).thenAnswer(call -> Optional.ofNullable(storedRuns.get(call.getArgument(0))));
+    }
+
     private final MlTrainingWorker worker = new MlTrainingWorker(
-            trainingRunRepository,
+            trainingRunRepository, leases,
             datasetVersionRepository,
             featureSnapshotRepository,
             featureRowRepository,
             modelVersionRepository,
+            mock(com.voltcanary.analytics.service.MlRegistryFence.class),
             mlClient,
             new ObjectMapper(),
             new SimpleMeterRegistry());
@@ -394,6 +420,7 @@ class MlTrainingLifecycleTest {
         UUID accountId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, UUID.randomUUID(), UUID.randomUUID());
         when(trainingRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(trainingRunRepository.lockById(run.getId())).thenReturn(Optional.of(run));
 
         MlTrainingRunDto canceled = service.cancel(accountId, run.getId());
         assertThat(canceled.status()).isEqualTo(MlTrainingRunStatus.CANCELED);
@@ -423,7 +450,7 @@ class MlTrainingLifecycleTest {
         UUID accountId = UUID.randomUUID();
         MlTrainingRun run = queuedRun(accountId, UUID.randomUUID(), UUID.randomUUID());
         run.setStatus(MlTrainingRunStatus.RUNNING);
-        when(trainingRunRepository.findById(run.getId())).thenReturn(Optional.of(run));
+        when(trainingRunRepository.lockById(run.getId())).thenReturn(Optional.of(run));
 
         MlTrainingRunDto canceled = service.cancel(accountId, run.getId());
 
@@ -460,9 +487,9 @@ class MlTrainingLifecycleTest {
         stale.setLeaseOwner("dead-worker");
         stale.setLeaseExpiresAt(Instant.now().minusSeconds(60));
         stale.setHeartbeatAt(Instant.now().minusSeconds(120));
-        when(trainingRunRepository.findByStatusAndLeaseExpiresAtBeforeOrderByCreatedAtAsc(
+        when(trainingRunRepository.stale(
                 org.mockito.ArgumentMatchers.eq(MlTrainingRunStatus.RUNNING),
-                org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stale));
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(List.of(stale));
         when(trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED)).thenReturn(List.of());
 
         Optional<MlTrainingRun> result = worker.executeNextQueuedRun();

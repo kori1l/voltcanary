@@ -27,6 +27,7 @@ public class DeviceHistoryDeletion {
         }
     }
 
+    @Transactional
     public boolean writable(UUID device) { return fence.writable(device); }
 
     @Transactional

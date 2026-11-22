@@ -86,8 +86,8 @@ class MlDatasetServiceTest {
             support);
     private final MlDatasetPreviewService previewService = new MlDatasetPreviewService(
             maintenanceOutcomeRepository,
-            maintenanceRepository,
-            telemetryClient,
+            new com.voltcanary.analytics.service.MlDatasetMetricCoverage(telemetryClient, support),
+            new com.voltcanary.analytics.service.MlDatasetTimeline(maintenanceOutcomeRepository, maintenanceRepository, support),
             validationService,
             labelReadinessService,
             support);
@@ -96,6 +96,12 @@ class MlDatasetServiceTest {
             previewService,
             new MlDatasetMaterializationService(
                     datasetRepository,
+                    new com.voltcanary.analytics.service.MlDatasetWrites(new org.springframework.transaction.support.AbstractPlatformTransactionManager() {
+                        protected Object doGetTransaction() { return new Object(); }
+                        protected void doBegin(Object transaction, org.springframework.transaction.TransactionDefinition definition) { }
+                        protected void doCommit(org.springframework.transaction.support.DefaultTransactionStatus status) { }
+                        protected void doRollback(org.springframework.transaction.support.DefaultTransactionStatus status) { }
+                    }),
                     versionRepository,
                     reportRepository,
                     lineageRepository,
@@ -194,7 +200,7 @@ class MlDatasetServiceTest {
     }
 
     @Test
-    void storesFailedDatasetVersionWhenMaterializationPersistenceFails() {
+    void propagatesPersistenceFailureForAtomicRollback() {
         UUID accountId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
@@ -206,7 +212,7 @@ class MlDatasetServiceTest {
         when(canonicalMetricRowRepository.saveAll(any()))
                 .thenThrow(new RuntimeException("database password leaked in stack trace"));
 
-        MlInternalDatasetResponse response = service.createFromInternalTelemetry(accountId, userId,
+        assertThatThrownBy(() -> service.createFromInternalTelemetry(accountId, userId,
                 new MlInternalDatasetRequest(
                         "July training",
                         null,
@@ -225,22 +231,12 @@ class MlDatasetServiceTest {
                         null,
                         null,
                         null,
-                        null));
+                        null))).isInstanceOf(RuntimeException.class);
 
-        assertThat(response.status()).isEqualTo(MlDatasetStatus.FAILED);
-        assertThat(response.readyAt()).isNull();
-
-        ArgumentCaptor<MlDatasetVersion> version = ArgumentCaptor.forClass(MlDatasetVersion.class);
-        verify(versionRepository, times(2)).save(version.capture());
-        assertThat(version.getAllValues().get(0).getStatus()).isEqualTo(MlDatasetStatus.FAILED);
-        assertThat(version.getValue().getFailureReason()).isEqualTo("Internal telemetry materialization failed.");
-        assertThat(version.getValue().getFailureReason()).doesNotContain("password");
-        assertThat(version.getValue().getImmutableRowReference()).isNull();
-        assertThat(version.getValue().getDataHash()).isNull();
-
-        ArgumentCaptor<MlValidationReport> report = ArgumentCaptor.forClass(MlValidationReport.class);
-        verify(reportRepository).save(report.capture());
-        assertThat(report.getValue().getSummary()).isEqualTo("Telemetry selection failed validation.");
+        // The transaction boundary rolls back all local writes; no attempt is made to
+        // store a FAILED row inside an already failed database transaction.
+        verify(versionRepository, times(1)).save(any());
+        verify(reportRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test
@@ -642,7 +638,7 @@ class MlDatasetServiceTest {
         lineage.setContentHash("sha256:lineage");
         lineage.setCreatedAt(createdAt);
         when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of(dataset));
-        when(versionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(datasetId, MlDatasetStatus.DELETED))
+        when(versionRepository.findLatestVisibleByAccountId(accountId, List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)))
                 .thenReturn(List.of(version));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
         when(datasetRepository.findById(datasetId)).thenReturn(Optional.of(dataset));
@@ -681,9 +677,10 @@ class MlDatasetServiceTest {
         MlDataset dataset = dataset(datasetId, accountId, createdAt);
         MlDatasetVersion version = datasetVersion(datasetId, accountId, versionId, createdAt, MlDatasetStatus.ARCHIVED);
         when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(List.of(dataset));
-        when(versionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(datasetId, MlDatasetStatus.DELETED))
+        when(versionRepository.findLatestVisibleByAccountId(accountId, List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)))
+                .thenReturn(List.of());
+        when(versionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.ARCHIVED))
                 .thenReturn(List.of(version));
-        when(versionRepository.findByDatasetIdOrderByVersionDesc(datasetId)).thenReturn(List.of(version));
 
         assertThat(service.list(accountId)).isEmpty();
         assertThat(service.list(accountId, "archived")).singleElement()

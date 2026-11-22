@@ -75,6 +75,7 @@ import static org.mockito.Mockito.when;
 class AnalyticsRecalculationTest extends SignedUserTest {
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
+        when(alertRuleClient.effectiveRules(any(), any())).thenReturn(List.of());
         restTemplate.getRestTemplate().setInterceptors(java.util.List.of((request, body, execution) -> {
             if (request.getURI().getPath().startsWith("/analytics/") && !request.getHeaders().containsHeader("Authorization")) {
                 request.getHeaders().setBearerAuth(com.voltcanary.common.test.SignedUserTokens.create(
@@ -95,6 +96,29 @@ class AnalyticsRecalculationTest extends SignedUserTest {
 
     @MockitoBean
     private DeviceMetadataClient deviceMetadataClient;
+
+    @MockitoBean
+    private com.voltcanary.analytics.service.AlertRuleClient alertRuleClient;
+
+    @Test
+    void unavailableRulesFailTheJobWithoutReplacingTheLastSuccessfulResults() {
+        UUID device = UUID.randomUUID();
+        Instant start = Instant.parse("2026-05-13T00:00:00Z");
+        var points = java.util.stream.IntStream.range(0, 12)
+                .mapToObj(index -> point(start.plusSeconds(index * 60L), 100 + index)).toList();
+        when(telemetryClient.readings(eq(device), eq("activePowerW"), any(), any()))
+                .thenReturn(new TelemetryChartResponse(device, "activePowerW", points));
+        org.mockito.Mockito.doAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return List.of();
+        }).when(alertRuleClient).effectiveRules(eq(device), any());
+        assertThat(jobService.enqueueRecalculation(device).status()).isEqualTo("COMPLETED");
+        UUID baseline = baselineRepository.findFirstByDeviceIdOrderByCalculatedAtDesc(device).orElseThrow().getId();
+        when(alertRuleClient.effectiveRules(eq(device), any())).thenThrow(new org.springframework.web.server.ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Rule snapshot unavailable"));
+        assertThat(jobService.enqueueRecalculation(device).status()).isEqualTo("FAILED");
+        assertThat(baselineRepository.findFirstByDeviceIdOrderByCalculatedAtDesc(device).orElseThrow().getId()).isEqualTo(baseline);
+    }
 
     @Autowired
     private DeviceBaselineRepository baselineRepository;

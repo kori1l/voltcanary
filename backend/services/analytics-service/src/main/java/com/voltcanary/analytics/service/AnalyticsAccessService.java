@@ -2,9 +2,9 @@ package com.voltcanary.analytics.service;
 
 import com.voltcanary.analytics.config.AnalyticsAuthorizationProperties;
 import com.voltcanary.analytics.config.AnalyticsInternalProperties;
-import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -19,7 +19,7 @@ public class AnalyticsAccessService {
     private final String internalServiceToken;
     public AnalyticsAccessService(
             AnalyticsAuthorizationProperties properties,
-            RestClient.Builder restClientBuilder,
+            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
             AnalyticsInternalProperties internalProperties) {
         this.properties = properties;
         this.internalServiceToken = internalProperties.getServiceToken();

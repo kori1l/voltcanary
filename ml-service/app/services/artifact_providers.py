@@ -3,6 +3,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from app.config.settings import Settings
+from app.services.artifact_names import relative_artifact_path
 from app.services.artifact_bundle import BundleFilePayload, ModelBundleBuilder, json_bytes
 
 
@@ -15,12 +16,12 @@ class ArtifactStoreHealthError(Exception):
 
 class LocalArtifactStoreProvider:
     def __init__(self, root: Path, current_settings: Settings) -> None:
-        self.root = root
+        self.root = root.resolve()
         self.current_settings = current_settings
         self.bundle_builder = ModelBundleBuilder()
 
     def save_json(self, artifact_id: str, payload: dict[str, Any]) -> str:
-        target = self.root / f"{artifact_id}.json"
+        target = self._contained_path(f"{relative_artifact_path(artifact_id)}.json")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json_bytes(payload).decode("utf-8"), encoding="utf-8")
         return f"artifact://local/{artifact_id}.json"
@@ -40,11 +41,12 @@ class LocalArtifactStoreProvider:
         manifest_payload: dict[str, Any],
         supporting_files: dict[str, BundleFilePayload] | None = None,
     ) -> dict[str, Any]:
+        artifact_id = relative_artifact_path(artifact_id)
         bundle = self.bundle_builder.prepare(model_payload, manifest_payload, supporting_files)
-        bundle_dir = self.root / artifact_id
+        bundle_dir = self._contained_path(relative_artifact_path(artifact_id))
         bundle_dir.mkdir(parents=True, exist_ok=True)
         for relative_path, payload in bundle.files.items():
-            target = bundle_dir / relative_path
+            target = self._contained_path(relative_artifact_path(artifact_id) + "/" + relative_artifact_path(relative_path))
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
         (bundle_dir / "manifest.json").write_bytes(bundle.manifest_bytes)
@@ -110,7 +112,8 @@ class LocalArtifactStoreProvider:
         return artifacts
 
     def delete_artifact_bundle(self, artifact_id: str) -> None:
-        target = self.root / artifact_id
+        artifact_id = relative_artifact_path(artifact_id)
+        target = self._contained_path(relative_artifact_path(artifact_id))
         if not target.exists():
             return
         for path in sorted(target.rglob("*"), key=lambda item: len(item.parts), reverse=True):
@@ -121,15 +124,25 @@ class LocalArtifactStoreProvider:
         target.rmdir()
 
     def artifact_dir(self, manifest_uri: str) -> str:
+        self._local_path(manifest_uri)
         return Path(manifest_uri.removeprefix("artifact://local/")).parent.as_posix()
 
     def child_uri(self, artifact_dir: str, relative_path: str) -> str:
+        relative_artifact_path(relative_path)
         path = Path(artifact_dir) / relative_path
+        self._contained_path(path.as_posix())
         return f"artifact://local/{path.as_posix()}"
 
     def _local_path(self, artifact_uri: str) -> Path:
-        artifact_id = artifact_uri.removeprefix("artifact://local/")
-        return self.root / artifact_id
+        if not artifact_uri.startswith("artifact://local/"):
+            raise ValueError("invalid local artifact uri")
+        return self._contained_path(artifact_uri.removeprefix("artifact://local/"))
+
+    def _contained_path(self, relative: str) -> Path:
+        path = (self.root / relative_artifact_path(relative)).resolve()
+        if not path.is_relative_to(self.root):
+            raise ValueError("artifact path escapes the configured root")
+        return path
 
 
 class S3ArtifactStoreProvider:
@@ -145,7 +158,7 @@ class S3ArtifactStoreProvider:
         self.bundle_builder = ModelBundleBuilder()
 
     def save_json(self, artifact_id: str, payload: dict[str, Any]) -> str:
-        key = f"{artifact_id}.json"
+        key = f"{relative_artifact_path(artifact_id)}.json"
         self._put_object(key, json_bytes(payload), "application/json")
         return f"s3://{self.bucket}/{key}"
 
@@ -166,6 +179,7 @@ class S3ArtifactStoreProvider:
         manifest_payload: dict[str, Any],
         supporting_files: dict[str, BundleFilePayload] | None = None,
     ) -> dict[str, Any]:
+        artifact_id = relative_artifact_path(artifact_id)
         bundle = self.bundle_builder.prepare(model_payload, manifest_payload, supporting_files)
         for relative_path, payload in bundle.files.items():
             self._put_object(f"{artifact_id}/{relative_path}", payload, self._content_type(relative_path))
@@ -246,6 +260,7 @@ class S3ArtifactStoreProvider:
         return artifacts
 
     def delete_artifact_bundle(self, artifact_id: str) -> None:
+        artifact_id = relative_artifact_path(artifact_id)
         client = self.client_provider(False)
         for item in self._list_objects():
             key = item["Key"]
@@ -258,13 +273,15 @@ class S3ArtifactStoreProvider:
         return f"s3://{bucket}/{key_dir}"
 
     def child_uri(self, artifact_dir: str, relative_path: str) -> str:
-        return f"{artifact_dir.rstrip('/')}/{relative_path}"
+        return f"{artifact_dir.rstrip('/')}/{relative_artifact_path(relative_path)}"
 
     def parse_s3_uri(self, artifact_uri: str) -> tuple[str, str]:
         parsed = urlparse(artifact_uri)
         if parsed.scheme != "s3" or not parsed.netloc or not parsed.path:
             raise ValueError("invalid s3 artifact uri")
-        return parsed.netloc, parsed.path.lstrip("/")
+        if parsed.netloc != self.bucket or parsed.query or parsed.fragment:
+            raise ValueError("artifact uri is outside the configured bucket")
+        return parsed.netloc, relative_artifact_path(parsed.path.lstrip("/"))
 
     def _put_object(self, key: str, payload: bytes, content_type: str) -> None:
         self.client_provider(True).put_object(Bucket=self.bucket, Key=key, Body=payload, ContentType=content_type)

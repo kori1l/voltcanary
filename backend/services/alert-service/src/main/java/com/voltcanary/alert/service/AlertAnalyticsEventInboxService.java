@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AlertAnalyticsEventInboxService {
+    private final jakarta.persistence.EntityManager entityManager;
     private final AlertAnalyticsEventInboxRepository repository;
     private final AlertReconciliationProperties properties;
     private final ObjectMapper objectMapper;
@@ -40,21 +40,28 @@ public class AlertAnalyticsEventInboxService {
 
     @Transactional
     public AlertAnalyticsEventInboxEntry markProcessing(UUID id) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
-        if (entry == null || !writable(entry)) return null;
+        var entry = locked(id);
+        if (entry == null) return null;
         Instant now = Instant.now();
+        if (entry.getStatus() == AlertAnalyticsEventInboxStatus.PROCESSED
+                || entry.getStatus() == AlertAnalyticsEventInboxStatus.NO_ALERT) return null;
+        if (entry.getStatus() == AlertAnalyticsEventInboxStatus.PROCESSING && entry.getProcessingStartedAt() != null
+                && entry.getProcessingStartedAt().isAfter(now.minus(properties.getProcessingTimeout()))) return null;
         entry.setStatus(AlertAnalyticsEventInboxStatus.PROCESSING);
         entry.setAttempts(entry.getAttempts() + 1);
         entry.setProcessingStartedAt(now);
         entry.setUpdatedAt(now);
         entry.setLastError(null);
-        return repository.saveAndFlush(entry);
+        repository.saveAndFlush(entry);
+        entityManager.refresh(entry);
+        entityManager.detach(entry);
+        return entry;
     }
 
     @Transactional
-    public void markProcessed(UUID id, Alert alert) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
-        if (entry == null || !writable(entry)) return;
+    public boolean markProcessed(AlertAnalyticsEventInboxEntry claim, Alert alert) {
+        var entry = owned(claim);
+        if (entry == null) return false;
         Instant now = Instant.now();
         entry.setStatus(alert == null ? AlertAnalyticsEventInboxStatus.NO_ALERT : AlertAnalyticsEventInboxStatus.PROCESSED);
         entry.setAlertId(alert == null ? null : alert.getId());
@@ -63,24 +70,40 @@ public class AlertAnalyticsEventInboxService {
         entry.setUpdatedAt(now);
         entry.setLastError(null);
         repository.save(entry);
-        meterRegistry.counter(
-                "alert.analytics.inbox.processed",
-                "eventType", entry.getEventType(),
-                "status", entry.getStatus().name()).increment();
+        meterRegistry.counter("alert.analytics.inbox.processed", "eventType", entry.getEventType(), "status", entry.getStatus().name()).increment();
+        return true;
     }
 
     @Transactional
-    public void markFailed(UUID id, RuntimeException exception) {
-        AlertAnalyticsEventInboxEntry entry = repository.findById(id).orElse(null);
-        if (entry == null || !writable(entry)) return;
+    public void markFailed(AlertAnalyticsEventInboxEntry claim, RuntimeException exception) {
+        var entry = owned(claim);
+        if (entry == null) return;
         Instant now = Instant.now();
         entry.setStatus(AlertAnalyticsEventInboxStatus.FAILED);
         entry.setProcessingStartedAt(null);
         entry.setNextAttemptAt(now.plus(properties.getRetryDelay()));
         entry.setUpdatedAt(now);
-        entry.setLastError(truncate(exception.getClass().getSimpleName() + ": " + exception.getMessage()));
+        entry.setLastError(exception.getClass().getSimpleName());
         repository.save(entry);
         meterRegistry.counter("alert.analytics.inbox.failed", "eventType", entry.getEventType()).increment();
+    }
+
+    private AlertAnalyticsEventInboxEntry owned(AlertAnalyticsEventInboxEntry claim) {
+        int attempt = claim.getAttempts();
+        Instant started = claim.getProcessingStartedAt();
+        var entry = locked(claim.getId());
+        if (entry == null || entry.getStatus() != AlertAnalyticsEventInboxStatus.PROCESSING
+                || entry.getAttempts() != attempt || !java.util.Objects.equals(started, entry.getProcessingStartedAt())
+                || started == null || !started.isAfter(Instant.now().minus(properties.getProcessingTimeout()))) return null;
+        return entry;
+    }
+
+    private AlertAnalyticsEventInboxEntry locked(UUID id) {
+        var snapshot = repository.findById(id).orElse(null);
+        if (snapshot == null || !writable(snapshot)) return null;
+        var actual = repository.lockById(id).orElse(null);
+        if (actual != null) entityManager.refresh(actual);
+        return actual;
     }
 
     private boolean writable(AlertAnalyticsEventInboxEntry entry) {
@@ -104,11 +127,9 @@ public class AlertAnalyticsEventInboxService {
     }
 
     private AlertAnalyticsEventInboxEntry saveNew(String sourceName, UUID eventId, String eventType, Object event) {
-        try {
-            return repository.saveAndFlush(newEntry(sourceName, eventId, eventType, event));
-        } catch (DataIntegrityViolationException ignored) {
-            return repository.findBySourceNameAndEventId(sourceName, eventId).orElseThrow();
-        }
+        // The device fence serializes accepted events. Unexpected conflicts must roll back;
+        // a later delivery can read the winner in a fresh transaction.
+        return repository.saveAndFlush(newEntry(sourceName, eventId, eventType, event));
     }
 
     private AlertAnalyticsEventInboxEntry newEntry(String sourceName, UUID eventId, String eventType, Object event) {

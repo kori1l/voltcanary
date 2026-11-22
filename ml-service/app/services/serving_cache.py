@@ -1,5 +1,7 @@
 import logging
 import time
+from threading import RLock
+from concurrent.futures import Future
 from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +49,9 @@ class ServingArtifactCache:
         self.max_entries = max(1, int(max_entries if max_entries is not None else settings.ml_serving_cache_max_entries))
         self.ttl_seconds = max(0.0, float(ttl_seconds if ttl_seconds is not None else settings.ml_serving_cache_ttl_seconds))
         self._entries: OrderedDict[ServingCacheKey, ServingRuntimeArtifact] = OrderedDict()
+        self._lock = RLock()
+        self._loading: dict[ServingCacheKey, Future[ServingRuntimeArtifact]] = {}
+        self._generation = 0
         self.hits = 0
         self.misses = 0
         self.load_failures = 0
@@ -55,49 +60,67 @@ class ServingArtifactCache:
     def get(self, model: dict[str, Any]) -> ServingRuntimeArtifact:
         key = self._key(model)
         now = time.monotonic()
-        cached = self._entries.get(key)
-        if cached is not None and not self._expired(cached, now):
-            self._entries.move_to_end(key)
-            self.hits += 1
-            self._log("hit", key, cache_size=len(self._entries))
-            return cached
-        if cached is not None:
-            self._entries.pop(key, None)
-            self.evictions += 1
-            self._log("eviction", key, reason="ttl", cache_size=len(self._entries))
-
-        self.misses += 1
-        self._log("miss", key, cache_size=len(self._entries))
+        with self._lock:
+            cached = self._entries.get(key)
+            if cached is not None and not self._expired(cached, now):
+                self._entries.move_to_end(key)
+                self.hits += 1
+                self._log("hit", key, cache_size=len(self._entries))
+                return cached
+            if cached is not None:
+                self._entries.pop(key)
+                self.evictions += 1
+                self._log("eviction", key, reason="ttl", cache_size=len(self._entries))
+            pending = self._loading.get(key)
+            owner = pending is None
+            generation = self._generation
+            if owner:
+                pending = Future()
+                self._loading[key] = pending
+                self.misses += 1
+                self._log("miss", key, cache_size=len(self._entries))
+        if not owner:
+            result = pending.result()
+            with self._lock:
+                self.hits += 1
+            return result
         started = time.monotonic()
         try:
             runtime = self._load(key, model, now)
-        except Exception:
-            self.load_failures += 1
-            self._log("load_failure", key, load_duration_ms=round((time.monotonic() - started) * 1000, 3))
+            with self._lock:
+                if generation == self._generation:
+                    self._entries[key] = runtime
+                    self._entries.move_to_end(key)
+                    self._evict_capacity()
+                pending.set_result(runtime)
+                self._log("load_success", key, load_duration_ms=round((time.monotonic() - started) * 1000, 3), cache_size=len(self._entries))
+            return runtime
+        except Exception as failure:
+            with self._lock:
+                self.load_failures += 1
+                pending.set_exception(failure)
+                self._log("load_failure", key, load_duration_ms=round((time.monotonic() - started) * 1000, 3))
             raise
-
-        self._entries[key] = runtime
-        self._entries.move_to_end(key)
-        self._evict_capacity()
-        self._log(
-            "load_success",
-            key,
-            load_duration_ms=round((time.monotonic() - started) * 1000, 3),
-            cache_size=len(self._entries),
-        )
-        return runtime
+        finally:
+            with self._lock:
+                if self._loading.get(key) is pending:
+                    self._loading.pop(key)
 
     def clear(self) -> None:
-        self._entries.clear()
+        with self._lock:
+            self._entries.clear()
+            self._loading.clear()
+            self._generation += 1
 
     def stats(self) -> dict[str, int]:
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "loadFailures": self.load_failures,
-            "evictions": self.evictions,
-            "cacheSize": len(self._entries),
-        }
+        with self._lock:
+            return {
+                "hits": self.hits,
+                "misses": self.misses,
+                "loadFailures": self.load_failures,
+                "evictions": self.evictions,
+                "cacheSize": len(self._entries),
+            }
 
     def _load(self, key: ServingCacheKey, model: dict[str, Any], loaded_at: float) -> ServingRuntimeArtifact:
         bundle = self.artifact_store.load_model_bundle(key.manifest_uri, key.artifact_hash or None)

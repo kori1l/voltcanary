@@ -13,7 +13,6 @@ import com.voltcanary.alert.repository.AlertSuppressionRepository;
 import com.voltcanary.alert.repository.MaintenanceWindowReadModelRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +28,7 @@ public class AlertMaintenanceSuppressionService {
 
     private final MaintenanceWindowReadModelRepository maintenanceRepository;
     private final AlertSuppressionRepository suppressionRepository;
+    private final jakarta.persistence.EntityManager entityManager;
     private final AlertRepository alertRepository;
     private final AlertEventRepository alertEventRepository;
     private final MeterRegistry meterRegistry;
@@ -131,11 +131,7 @@ public class AlertMaintenanceSuppressionService {
         suppression.setSuppressionReason(reason);
         suppression.setEventTime(eventTime == null ? Instant.now() : eventTime);
         suppression.setCreatedAt(Instant.now());
-        try {
-            suppressionRepository.saveAndFlush(suppression);
-        } catch (DataIntegrityViolationException ignored) {
-            // Concurrent replay of the same source event is already audited.
-        }
+        suppressionRepository.saveAndFlush(suppression);
     }
 
     private void saveAlertEvent(Alert alert, MaintenanceWindowReadModel window) {

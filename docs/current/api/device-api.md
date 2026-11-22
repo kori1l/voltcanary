@@ -97,6 +97,16 @@ Internal source existence checks return `false` for non-active devices, so
 disabled or decommissioned devices cannot ingest new telemetry through the
 normal source validation path.
 
+Device and location list filters, ordering, offsets, and limits execute in SQL.
+Device type metadata is fetched in the same query as the requested device page.
+Omitting `limit` still supports a complete inventory export. Text search treats
+`%`, `_`, and backslashes as literal text. First reads provision an account in a
+write transaction; read-only repository transactions never perform provisioning.
+Concurrent first requests converge on the unique user/account mapping.
+
+CSV import supports quoted commas, doubled quotes, multiline fields, and a UTF-8
+BOM. Malformed quoting rejects the import before any rows are created.
+
 ## Data Sources
 
 - `GET /devices/{deviceId}/data-sources`: list data sources for an owned
@@ -487,3 +497,10 @@ Internal participants accept `POST /internal/device-deletions/{id}` only with
 policy from `GET /internal/device-deletions/{id}` on device-service rather than
 trusting a policy or source identifiers supplied by the caller. Cleanup endpoints
 are idempotent and have no public gateway route.
+
+Maintenance change-feed requests accept `updatedAfter`, optional `afterId`, and
+`limit`. Resume with both the `updatedAt` and `id` of the last returned record.
+The order is `(updatedAt ASC, id ASC)`, including timestamp ties. This applies
+to both `/internal/maintenance-windows/changes` and
+`/internal/maintenance-outcomes/changes`. A timestamp-only request starts after
+that entire timestamp; it is not a complete continuation cursor.

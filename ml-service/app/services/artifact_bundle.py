@@ -1,3 +1,4 @@
+from app.services.artifact_names import relative_artifact_path
 import hashlib
 import json
 from dataclasses import dataclass
@@ -113,7 +114,7 @@ class ArtifactBundleVerifier:
         artifact_dir = self.provider.artifact_dir(manifest_uri)
         loaded_files: dict[str, Any] = {}
         for entry in manifest.get("files", []):
-            relative_path = entry["path"]
+            relative_path = relative_artifact_path(entry["path"])
             uri = self.provider.child_uri(artifact_dir, relative_path)
             payload = self.provider.load_json(uri) if relative_path.endswith(".json") else self.provider.load_bytes(uri)
             serialized = json_bytes(payload) if isinstance(payload, dict) else payload

@@ -1,7 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
-import com.voltcanary.device.domain.DeviceType;
 import com.voltcanary.device.repository.DeviceTypeRepository;
 import java.util.List;
 import java.util.Map;

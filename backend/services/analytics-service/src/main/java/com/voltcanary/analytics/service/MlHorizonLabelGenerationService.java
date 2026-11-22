@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class MlHorizonLabelGenerationService {
 
     private static final String DEFAULT_GENERATION_VERSION = "failure-outcome-v1";
@@ -134,27 +135,28 @@ public class MlHorizonLabelGenerationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Horizon label generation job not found")));
     }
 
+    @org.springframework.scheduling.annotation.Scheduled(
+            initialDelayString = "${app.ml.horizon-labels.recovery-initial-delay:60s}",
+            fixedDelayString = "${app.ml.horizon-labels.recovery-delay:10s}")
+    public void recoverQueuedJobs() {
+        var due = jobRepository.findByStatusInOrderBySubmittedAtAsc(
+                List.of(MlHorizonLabelGenerationStatus.QUEUED, MlHorizonLabelGenerationStatus.RUNNING),
+                org.springframework.data.domain.PageRequest.of(0, 10));
+        for (var job : due) runJob(job.getId());
+    }
+
     public void runJob(UUID jobId) {
         try {
             transactionTemplate.executeWithoutResult(status -> {
-                MlHorizonLabelGenerationJob job = jobRepository.findById(jobId).orElseThrow();
-                if (job.getStatus() != MlHorizonLabelGenerationStatus.QUEUED) {
-                    return;
-                }
+                var job = jobRepository.tryLockById(jobId).orElse(null);
+                if (job == null || (job.getStatus() != MlHorizonLabelGenerationStatus.QUEUED
+                        && job.getStatus() != MlHorizonLabelGenerationStatus.RUNNING)) return;
                 job.setStatus(MlHorizonLabelGenerationStatus.RUNNING);
                 job.setStartedAt(Instant.now());
                 job.setProgressPercent(10);
                 job.setMessage("Generating horizon labels");
-                jobRepository.save(job);
-            });
-
-            MlHorizonLabelGenerationResult result = transactionTemplate.execute(status -> {
-                MlHorizonLabelGenerationJob job = jobRepository.findById(jobId).orElseThrow();
-                return generateLabels(job);
-            });
-
-            transactionTemplate.executeWithoutResult(status -> {
-                MlHorizonLabelGenerationJob job = jobRepository.findById(jobId).orElseThrow();
+                var result = generateLabels(job);
+                // Result replacement and terminal job state are one commit. A crash rolls back to QUEUED.
                 job.setStatus(MlHorizonLabelGenerationStatus.COMPLETED);
                 job.setCompletedAt(Instant.now());
                 job.setProgressPercent(100);
@@ -170,7 +172,9 @@ public class MlHorizonLabelGenerationService {
                 jobRepository.save(job);
             });
         } catch (Exception exception) {
-            transactionTemplate.executeWithoutResult(status -> jobRepository.findById(jobId).ifPresent(job -> {
+            transactionTemplate.executeWithoutResult(status -> jobRepository.tryLockById(jobId).ifPresent(job -> {
+                if (job.getStatus() != MlHorizonLabelGenerationStatus.QUEUED
+                        && job.getStatus() != MlHorizonLabelGenerationStatus.RUNNING) return;
                 job.setStatus(MlHorizonLabelGenerationStatus.FAILED);
                 job.setCompletedAt(Instant.now());
                 job.setProgressPercent(100);
@@ -187,11 +191,18 @@ public class MlHorizonLabelGenerationService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    taskExecutor.execute(command);
+                    dispatch(command);
                 }
             });
         } else {
-            taskExecutor.execute(command);
+            dispatch(command);
+        }
+    }
+
+    private void dispatch(Runnable command) {
+        try { taskExecutor.execute(command); }
+        catch (RuntimeException unavailable) {
+            log.warn("horizonLabelDispatchDeferred reasonCode={}", unavailable.getClass().getSimpleName());
         }
     }
 

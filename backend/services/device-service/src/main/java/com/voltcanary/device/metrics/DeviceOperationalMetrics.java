@@ -1,7 +1,6 @@
 package com.voltcanary.device.metrics;
 
 import com.voltcanary.device.domain.DataSourceProtocol;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceStatus;
 import com.voltcanary.device.domain.SourceStatus;
 import com.voltcanary.device.repository.DataSourceRepository;

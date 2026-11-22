@@ -6,7 +6,6 @@ import com.voltcanary.dashboard.port.DashboardEvidenceReads.ScopeSnapshot;
 import com.voltcanary.dashboard.port.DashboardEvidenceReads;
 import com.voltcanary.dashboard.query.QueryTypes.Scope;
 import com.voltcanary.dashboard.query.QueryTypes.ScopeMode;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;

@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.LocationRequest;
 import com.voltcanary.device.dto.LocationResponse;
 import com.voltcanary.device.security.AuthenticatedUser;

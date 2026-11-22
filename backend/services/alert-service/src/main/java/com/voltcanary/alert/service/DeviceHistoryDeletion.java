@@ -16,6 +16,7 @@ public class DeviceHistoryDeletion {
         fence = new JdbcDeviceFence(jdbc);
     }
 
+    @Transactional
     public boolean writable(UUID device) { return fence.writable(device); }
 
     @Transactional

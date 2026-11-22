@@ -30,6 +30,8 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class MlDeploymentPolicyService {
 
+    private final MlRegistryFence fence;
+    private final jakarta.persistence.EntityManager entityManager;
     private final MlDeploymentPolicyRepository policyRepository;
     private final MlModelVersionRepository modelVersionRepository;
     private final MlDeploymentAuditWriter auditWriter;
@@ -37,6 +39,7 @@ public class MlDeploymentPolicyService {
 
     @Transactional
     public MlDeploymentPolicyDto disablePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+        fencePolicy(accountId, policyId);
         MlDeploymentPolicy policy = findOwnedPolicy(accountId, policyId);
         String reason = requiredReason(request);
         if (policy.getDeletedAt() != null) {
@@ -54,6 +57,7 @@ public class MlDeploymentPolicyService {
 
     @Transactional
     public MlDeploymentPolicyDto deletePolicy(UUID accountId, UUID actorId, UUID policyId, MlLifecycleActionRequest request) {
+        fencePolicy(accountId, policyId);
         MlDeploymentPolicy policy = findOwnedPolicy(accountId, policyId);
         String reason = requiredReason(request);
         if (policy.getDeletedAt() != null) {
@@ -102,6 +106,8 @@ public class MlDeploymentPolicyService {
             UUID accountId,
             UUID actorId,
             MlDeploymentPolicyRequest request) {
+        if (request.scope() == MlDeploymentScope.SYSTEM) fence.systemPolicy();
+        fence.account(accountId);
         validatePolicyRequest(request);
         MlModelVersion model = null;
         if (request.modelVersionId() != null) {
@@ -151,6 +157,8 @@ public class MlDeploymentPolicyService {
             UUID deviceId,
             String deviceType,
             String reason) {
+        if (scope == MlDeploymentScope.SYSTEM) fence.systemPolicy();
+        fence.account(accountId);
         MlDeploymentPolicy policy = findExistingPolicy(accountId,
                 new MlDeploymentPolicyRequest(scope, deviceId, deviceType, null, MlDeploymentMode.DISABLED, null, true, reason))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found"));
@@ -177,6 +185,14 @@ public class MlDeploymentPolicyService {
                 .filter(policy -> matchesPolicyFilter(policy, filter))
                 .map(mapper::policyResponse)
                 .toList();
+    }
+
+    private void fencePolicy(UUID accountId, UUID policyId) {
+        var policy = policyRepository.findById(policyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML deployment policy not found"));
+        if (policy.getScope() == MlDeploymentScope.SYSTEM) fence.systemPolicy();
+        fence.account(accountId);
+        entityManager.refresh(policy);
     }
 
     private boolean matchesPolicyFilter(MlDeploymentPolicy policy, String filter) {
@@ -208,6 +224,7 @@ public class MlDeploymentPolicyService {
     private MlModelVersion findOwnedModel(UUID accountId, UUID modelVersionId) {
         MlModelVersion model = modelVersionRepository.findById(modelVersionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found"));
+        entityManager.refresh(model);
         if (!accountId.equals(model.getAccountId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML model version not found");
         }

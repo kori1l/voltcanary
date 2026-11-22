@@ -11,7 +11,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,6 +34,8 @@ public class MlInternalTelemetryFeatureBuilder {
                         .thenComparing(MlCanonicalMetricRow::getTimestamp))
                 .toList();
 
+        var partitions = MlFeaturePartitions.assign(datasetVersion, rows, MlCanonicalMetricRow::getId, MlCanonicalMetricRow::getTimestamp,
+                row -> row.getDeviceId() == null ? row.getVirtualDeviceKey() : row.getDeviceId().toString());
         Map<String, List<MlCanonicalMetricRow>> groups = rows.stream()
                 .collect(Collectors.groupingBy(
                         row -> internalEntityId(row) + "|" + row.getCanonicalMetricName(),
@@ -46,9 +47,11 @@ public class MlInternalTelemetryFeatureBuilder {
 
         List<MlFeatureRowData> featureRows = new java.util.ArrayList<>();
         for (List<MlCanonicalMetricRow> groupRows : groups.values()) {
-            double baselineMean = groupRows.stream().mapToDouble(MlCanonicalMetricRow::getNumericValue).average().orElse(0);
+            double observedSum = 0;
             for (int index = 0; index < groupRows.size(); index++) {
                 MlCanonicalMetricRow row = groupRows.get(index);
+                observedSum += row.getNumericValue();
+                double baselineMean = observedSum / (index + 1);
                 int from = Math.max(0, index - config.rollingWindowSize() + 1);
                 List<MlCanonicalMetricRow> window = groupRows.subList(from, index + 1);
                 Map<String, Object> features = new LinkedHashMap<>();
@@ -92,7 +95,7 @@ public class MlInternalTelemetryFeatureBuilder {
                                 row.getMetricName(),
                                 row.getTimestamp(),
                                 config.horizonDays()),
-                        splitAssignment(index, groupRows.size()),
+                        partitions.get(row.getId()),
                         Map.of(
                                 "source", "ml_canonical_metric_rows",
                                 "canonicalRowId", row.getId().toString(),
@@ -145,17 +148,4 @@ public class MlInternalTelemetryFeatureBuilder {
         return value == null ? "" : value;
     }
 
-    private String splitAssignment(int index, int groupSize) {
-        if (groupSize <= 1) {
-            return "TRAIN";
-        }
-        double ratio = (double) index / groupSize;
-        if (ratio < 0.7) {
-            return "TRAIN";
-        }
-        if (ratio < 0.85) {
-            return "VALIDATION";
-        }
-        return "TEST";
-    }
 }

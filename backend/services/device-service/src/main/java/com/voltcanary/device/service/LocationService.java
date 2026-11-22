@@ -1,10 +1,12 @@
 package com.voltcanary.device.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.voltcanary.device.repository.RegistryQueries;
+import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Account;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.Location;
 import com.voltcanary.device.dto.LocationRequest;
 import com.voltcanary.device.dto.LocationResponse;
@@ -23,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class LocationService {
 
+    private final RegistryQueries queries;
+    private final LocationHierarchy hierarchy;
     private final AccountService accountService;
     private final LocationRepository locationRepository;
     private final DeviceRegistryEventPublisher eventPublisher;
@@ -47,25 +51,18 @@ public class LocationService {
         return toResponse(saved);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<LocationResponse> list(AuthenticatedUser user) {
         return list(user, null, null, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<LocationResponse> list(AuthenticatedUser user, String search, Integer limit, Integer offset) {
         Account account = accountService.currentAccount(user);
-        return locationRepository.findByAccountIdOrderByCreatedAtAsc(account.getId()).stream()
-                .sorted(java.util.Comparator.comparing(Location::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                        .thenComparing(Location::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
-                .filter(location -> matchesSearch(location, search))
-                .skip(normalizedOffset(offset))
-                .limit(normalizedLimit(limit))
-                .map(this::toResponse)
-                .toList();
+        return queries.locations(account.getId(), search, limit, offset).stream().map(this::toResponse).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public LocationResponse get(AuthenticatedUser user, UUID id) {
         return toResponse(findOwned(user, id));
     }
@@ -108,43 +105,6 @@ public class LocationService {
                 fromTagsJson(location.getTagsJson()));
     }
 
-    private boolean matchesSearch(Location location, String search) {
-        if (search == null || search.isBlank()) {
-            return true;
-        }
-        String needle = search.trim().toLowerCase();
-        return contains(location.getName(), needle)
-                || contains(location.getDescription(), needle)
-                || contains(location.getBuilding(), needle)
-                || contains(location.getFloor(), needle)
-                || contains(location.getRoom(), needle)
-                || contains(location.getZone(), needle);
-    }
-
-    private boolean contains(String value, String needle) {
-        return value != null && value.toLowerCase().contains(needle);
-    }
-
-    private long normalizedOffset(Integer offset) {
-        if (offset == null) {
-            return 0;
-        }
-        if (offset < 0) {
-            throw new IllegalArgumentException("offset must be greater than or equal to 0");
-        }
-        return offset;
-    }
-
-    private long normalizedLimit(Integer limit) {
-        if (limit == null) {
-            return Long.MAX_VALUE;
-        }
-        if (limit < 1 || limit > 200) {
-            throw new IllegalArgumentException("limit must be between 1 and 200");
-        }
-        return limit;
-    }
-
     private String normalizeRequired(String value, String field) {
         String normalized = normalizeOptional(value);
         if (normalized == null) {
@@ -161,6 +121,7 @@ public class LocationService {
     }
 
     private void applyRequest(AuthenticatedUser user, Location location, LocationRequest request) {
+        hierarchy.validate(location.getAccountId(), location.getId(), request.parentId());
         if (request.parentId() != null) {
             Location parent = findOwned(user, request.parentId());
             if (location.getId() != null && parent.getId().equals(location.getId())) {
@@ -202,8 +163,8 @@ public class LocationService {
         try {
             return objectMapper.readValue(json, new TypeReference<>() {
             });
-        } catch (Exception exception) {
-            return List.of();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Invalid persisted location tags", exception);
         }
     }
 }

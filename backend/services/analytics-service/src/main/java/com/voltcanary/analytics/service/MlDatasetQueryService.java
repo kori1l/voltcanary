@@ -37,20 +37,24 @@ public class MlDatasetQueryService {
     @Transactional(readOnly = true)
     public List<MlDatasetSummaryDto> list(UUID accountId, String statusFilter) {
         String filter = normalizedFilter(statusFilter);
-        if (!"default".equals(filter) && !"active".equals(filter) && !"current".equals(filter)) {
-            return datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
-                    .flatMap(dataset -> datasetVersionRepository.findByDatasetIdOrderByVersionDesc(dataset.getId()).stream()
-                            .filter(version -> matchesFilter(version.getStatus(), filter))
-                            .map(version -> mapper.summary(dataset, version)))
-                    .toList();
-        }
-        return datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId).stream()
-                .map(dataset -> datasetVersionRepository.findByDatasetIdAndStatusNotOrderByVersionDesc(dataset.getId(), MlDatasetStatus.DELETED).stream()
-                        .filter(version -> version.getStatus() != MlDatasetStatus.ARCHIVED)
-                        .findFirst()
-                        .map(version -> mapper.summary(dataset, version)))
-                .flatMap(Optional::stream)
-                .toList();
+        var datasets = datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
+        boolean latestOnly = List.of("default", "active", "current").contains(filter);
+        var selectedVersions = latestOnly
+                ? datasetVersionRepository.findLatestVisibleByAccountId(accountId, List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED))
+                : switch (filter) {
+                    case "archived" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.ARCHIVED);
+                    case "deleted" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.DELETED);
+                    case "failed" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(accountId, MlDatasetStatus.FAILED);
+                    default -> datasetVersionRepository.findByAccountIdOrderByVersionDesc(accountId);
+                };
+        var versions = selectedVersions.stream()
+                .collect(java.util.stream.Collectors.groupingBy(MlDatasetVersion::getDatasetId));
+        return datasets.stream().flatMap(dataset -> {
+            var selected = versions.getOrDefault(dataset.getId(), List.of()).stream()
+                    .filter(version -> matchesFilter(version.getStatus(), filter));
+            if (latestOnly) selected = selected.limit(1);
+            return selected.map(version -> mapper.summary(dataset, version));
+        }).toList();
     }
 
     @Transactional(readOnly = true)

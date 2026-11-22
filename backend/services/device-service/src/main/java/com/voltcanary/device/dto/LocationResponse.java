@@ -1,6 +1,5 @@
 package com.voltcanary.device.dto;
 
-import com.voltcanary.device.domain.Device;
 import java.util.List;
 import java.util.UUID;
 

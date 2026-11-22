@@ -1,5 +1,6 @@
 package com.voltcanary.device.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.Account;
 import com.voltcanary.device.domain.Device;
@@ -37,7 +38,7 @@ public class MaintenanceOutcomeService {
     private final MaintenanceOutcomeRepository outcomeRepository;
     private final DeviceAuditService auditService;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MaintenanceOutcomeResponse> list(AuthenticatedUser user, UUID operationId) {
         Account account = accountService.currentAccount(user);
         loadOperation(account.getId(), operationId);
@@ -46,7 +47,7 @@ public class MaintenanceOutcomeService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MaintenanceOutcomeResponse get(AuthenticatedUser user, UUID outcomeId) {
         Account account = accountService.currentAccount(user);
         return toResponse(loadOwned(account.getId(), outcomeId));
@@ -102,9 +103,14 @@ public class MaintenanceOutcomeService {
 
     @Transactional(readOnly = true)
     public List<MaintenanceOutcomeResponse> changes(Instant updatedAfter, Integer limit) {
+        return changes(updatedAfter, null, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MaintenanceOutcomeResponse> changes(Instant updatedAfter, UUID afterId, Integer limit) {
         Instant threshold = updatedAfter == null ? Instant.EPOCH : updatedAfter;
         return outcomeRepository.findChangesAfter(
-                        threshold,
+                        threshold, afterId,
                         PageRequest.of(0, normalizedLimit(limit), Sort.by(Sort.Direction.ASC, "updatedAt")))
                 .stream()
                 .map(this::toResponse)

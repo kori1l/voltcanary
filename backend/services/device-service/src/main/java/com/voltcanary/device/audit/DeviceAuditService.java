@@ -1,6 +1,5 @@
 package com.voltcanary.device.audit;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.security.AuthenticatedUser;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;

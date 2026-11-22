@@ -5,6 +5,7 @@ import com.voltcanary.analytics.config.AnalyticsInternalProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -18,7 +19,7 @@ public class DeviceMetadataClient {
     private final MeterRegistry meterRegistry;
 
     public DeviceMetadataClient(
-            RestClient.Builder restClientBuilder,
+            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties,
             MeterRegistry meterRegistry) {

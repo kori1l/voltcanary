@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.AccountResponse;
 import com.voltcanary.device.security.AuthenticatedUserResolver;
 import com.voltcanary.device.service.AccountService;

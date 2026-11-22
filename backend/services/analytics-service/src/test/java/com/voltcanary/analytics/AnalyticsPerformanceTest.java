@@ -38,6 +38,13 @@ import static org.mockito.Mockito.when;
         "spring.flyway.enabled=true"
 })
 class AnalyticsPerformanceTest {
+    @MockitoBean
+    private com.voltcanary.analytics.service.AlertRuleClient alertRuleClient;
+
+    @org.junit.jupiter.api.BeforeEach
+    void provideAnAvailableEmptyRuleSnapshot() {
+        when(alertRuleClient.effectiveRules(any(), any())).thenReturn(List.of());
+    }
 
     @Autowired
     private AnalyticsRecalculationService recalculationService;

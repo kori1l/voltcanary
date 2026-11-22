@@ -4,7 +4,6 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -18,18 +17,8 @@ public class ProcessedEventService {
         if (eventId == null) {
             return true;
         }
-        try {
-            jdbcTemplate.update("""
-                    insert into processed_events (id, source_name, event_id, processed_at)
-                    values (?, ?, ?, ?)
-                    """,
-                    UUID.randomUUID(),
-                    sourceName,
-                    eventId,
-                    Timestamp.from(Instant.now()));
-            return true;
-        } catch (DuplicateKeyException ignored) {
-            return false;
-        }
+        return com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "processed_events",
+                java.util.List.of("id", "source_name", "event_id", "processed_at"), java.util.List.of("source_name", "event_id"),
+                UUID.randomUUID(), sourceName, eventId, Timestamp.from(Instant.now())) == 1;
     }
 }

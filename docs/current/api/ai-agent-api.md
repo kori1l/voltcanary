@@ -778,6 +778,15 @@ return502 with safe code/message fields, retaining the parent review.
 Provider secrets are write-only after submission or rotation. Responses must
 not expose API keys or provider credentials.
 
+Encrypted provider credentials retain their encryption key version. Decryption
+selects that stored version from `app.ai-agent.secrets.previous-keys` or the
+current `encryption-key`/`key-version` pair; an unknown version fails closed.
+To rotate the encryption key, retain the old Base64 key under its exact version
+in `previous-keys`, then configure the new current key and a new version.
+New writes use the current version. Remove an old key only after all credentials
+encrypted with it have been replaced or explicitly re-encrypted. Keep this map in
+secret configuration and make it consistent across replicas.
+
 ## Reviewed tasks and recovery
 
 The creation-v15 planner receives a separate `taskMemory` map of current task values.

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Component;
 public class IdentityDownstreamProperties {
     private String deviceServiceBaseUrl = "http://localhost:8082";
     private String internalServiceToken = "dev-internal-token";
-    private boolean deviceLifecycleSyncEnabled = false;
     private boolean deviceLifecycleReconciliationEnabled = false;
     private int deviceLifecycleReconciliationBatchSize = 100;
 

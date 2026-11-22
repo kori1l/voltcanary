@@ -129,11 +129,13 @@ Operational tables:
 Reconciliation fetches:
 
 ```http
-GET /internal/maintenance-windows/changes?updatedAfter={instant}&limit={n}
+GET /internal/maintenance-windows/changes?updatedAfter={instant}&afterId={lastId}&limit={n}
 ```
 
 The fetch uses `X-Internal-Service-Token` and is guarded by a scheduler lock so
-analytics instances can scale independently.
+analytics instances can scale independently. The checkpoint persists both the
+last timestamp and record ID; equal-timestamp windows and outcomes continue
+across batch boundaries without being skipped.
 ## ML prediction settings
 
 All endpoints are authenticated. `X-Account-Id` is resolved from the
@@ -165,3 +167,12 @@ creation. Risk scores are not failure probabilities; recorded confidence is not
 measured accuracy, and unavailable prediction statuses have no display confidence.
 The shared typed request, budgets and owner-snapshot result semantics are in
 [dashboard-api.md](dashboard-api.md); existing analytics routes are unchanged.
+
+## Downstream request budgets
+
+The `app.telemetry-service.timeout`, `app.device-service.timeout`,
+`app.alert-service.timeout` and `app.ml-service.timeout` settings bound their
+HTTP transports (default `2s`). Training uses `app.ml-training-timeout`
+(default `10m`) so its long request does not inherit the inference budget.
+All requests have a bounded connection timeout. Network waits run outside the
+analytics result and job-state transactions.

@@ -14,6 +14,7 @@ public class RefreshTokenCleanupJob {
     private static final Duration LOCK_LEASE = Duration.ofMinutes(30);
 
     private final RefreshTokenService refreshTokenService;
+    private final com.voltcanary.identity.service.RecoveryTokenCleanup recoveryTokens;
     private final SchedulerLockService schedulerLockService;
 
     @Scheduled(
@@ -25,6 +26,7 @@ public class RefreshTokenCleanupJob {
         }
         try {
             refreshTokenService.deleteExpired();
+            recoveryTokens.deleteExpired();
         } finally {
             schedulerLockService.release(LOCK_NAME);
         }

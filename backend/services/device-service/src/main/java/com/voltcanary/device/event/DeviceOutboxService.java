@@ -6,7 +6,6 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -19,22 +18,10 @@ public class DeviceOutboxService {
 
     public void enqueue(String eventKey, String topic, String messageKey, Object payload) {
         Instant now = Instant.now();
-        try {
-            jdbcTemplate.update("""
-                    insert into device_event_outbox
-                        (id, event_key, topic, message_key, payload_json, status, attempts, next_attempt_at, created_at)
-                    values (?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
-                    """,
-                    UUID.randomUUID(),
-                    eventKey,
-                    topic,
-                    messageKey,
-                    writeJson(payload),
-                    Timestamp.from(now),
-                    Timestamp.from(now));
-        } catch (DuplicateKeyException ignored) {
-            // Domain retries should not enqueue duplicate registry side effects.
-        }
+        com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "device_event_outbox",
+                java.util.List.of("id", "event_key", "topic", "message_key", "payload_json", "status", "attempts", "next_attempt_at", "created_at"), java.util.List.of("event_key"),
+                UUID.randomUUID(), eventKey, topic, messageKey, writeJson(payload), "PENDING", 0,
+                Timestamp.from(now), Timestamp.from(now));
     }
 
     private String writeJson(Object payload) {

@@ -12,7 +12,6 @@ import com.voltcanary.aiagent.model.AgentTool;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import com.voltcanary.aiagent.service.PlanStore;
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;

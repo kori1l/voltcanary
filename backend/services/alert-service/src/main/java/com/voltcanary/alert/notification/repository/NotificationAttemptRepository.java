@@ -1,5 +1,7 @@
 package com.voltcanary.alert.notification.repository;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import com.voltcanary.alert.notification.domain.NotificationAttempt;
 import com.voltcanary.alert.notification.domain.NotificationAttemptStatus;
 import java.time.Instant;
@@ -14,6 +16,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface NotificationAttemptRepository extends JpaRepository<NotificationAttempt, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select attempt from NotificationAttempt attempt where attempt.id=:id")
+    Optional<NotificationAttempt> lockById(@Param("id") UUID id);
+
 
     List<NotificationAttempt> findByAlertIdOrderByCreatedAtDesc(UUID alertId);
 
@@ -69,7 +75,7 @@ public interface NotificationAttemptRepository extends JpaRepository<Notificatio
             @Param("lockExpiredBefore") Instant lockExpiredBefore,
             Pageable pageable);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update NotificationAttempt attempt
             set attempt.status = :processingStatus,
@@ -99,5 +105,5 @@ public interface NotificationAttemptRepository extends JpaRepository<Notificatio
 
     long countByStatus(NotificationAttemptStatus status);
 
-    long deleteByCreatedAtBefore(java.time.Instant createdAtBefore);
+    long deleteByCreatedAtBefore(Instant createdAtBefore);
 }

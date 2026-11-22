@@ -1,6 +1,5 @@
 package com.voltcanary.device.configurable.adapter;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.voltcanary.device.configurable.domain.NativeDataset;
 import com.voltcanary.device.configurable.domain.NativeRow;
@@ -8,7 +7,6 @@ import com.voltcanary.vcl.VclCanonical;
 import com.voltcanary.vcl.VclException;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.UUID;
 
 /** Optional capture metadata shares the actual data/history/head transaction. No read repairs history. */

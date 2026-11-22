@@ -12,6 +12,8 @@ import org.springframework.stereotype.Component;
 @Setter
 public class AnalyticsDownstreamProperties {
 
+    private Duration mlTrainingTimeout = Duration.ofMinutes(10);
+
     private DownstreamService telemetryService = new DownstreamService("http://localhost:8084", Duration.ofSeconds(2));
     private DownstreamService mlService = new DownstreamService("http://localhost:8090", Duration.ofSeconds(2));
     private DownstreamService alertService = new DownstreamService("http://localhost:8086", Duration.ofSeconds(2));

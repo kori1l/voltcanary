@@ -1,5 +1,6 @@
 package com.voltcanary.device.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
@@ -29,7 +30,7 @@ public class SensorService {
     private final DeviceRegistryEventPublisher eventPublisher;
     private final DeviceAuditService auditService;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SensorResponse> list(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
         return sensorRepository.findByDeviceId(device.getId()).stream()
@@ -37,7 +38,7 @@ public class SensorService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SensorResponse get(AuthenticatedUser user, UUID deviceId, UUID sensorId) {
         Device device = deviceService.findOwned(user, deviceId);
         return toResponse(findOwnedSensor(device, sensorId));

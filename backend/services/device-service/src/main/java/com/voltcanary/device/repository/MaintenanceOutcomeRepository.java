@@ -20,7 +20,8 @@ public interface MaintenanceOutcomeRepository extends JpaRepository<MaintenanceO
             select outcome
             from MaintenanceOutcome outcome
             where outcome.updatedAt > :updatedAfter
-            order by outcome.updatedAt asc
+               or (outcome.updatedAt = :updatedAfter and :afterId is not null and outcome.id > :afterId)
+            order by outcome.updatedAt asc, outcome.id asc
             """)
-    List<MaintenanceOutcome> findChangesAfter(@Param("updatedAfter") Instant updatedAfter, Pageable pageable);
+    List<MaintenanceOutcome> findChangesAfter(@Param("updatedAfter") Instant updatedAfter, @Param("afterId") UUID afterId, Pageable pageable);
 }

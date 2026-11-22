@@ -22,7 +22,7 @@ public class TelemetryClient {
     private final String internalServiceToken;
     private final String internalServiceName;
     public TelemetryClient(
-            RestClient.Builder restClientBuilder,
+            @org.springframework.beans.factory.annotation.Qualifier("telemetryRestClientBuilder") RestClient.Builder restClientBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties,
             MeterRegistry meterRegistry) {

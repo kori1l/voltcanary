@@ -1,5 +1,8 @@
 package com.voltcanary.telemetry.repository;
 
+import java.util.Collections;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.transaction.annotation.Transactional;
 import com.voltcanary.telemetry.domain.QualityFlag;
 import com.voltcanary.telemetry.domain.TelemetryMeasurement;
 import java.sql.PreparedStatement;
@@ -12,9 +15,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -29,69 +29,60 @@ public class TelemetryMeasurementRepository {
                 (row, index) -> row.getString("unit"), deviceId, metric).stream().findFirst().orElse("");
     }
 
+    @Transactional
     public int insertAll(Collection<TelemetryMeasurement> measurements) {
         List<TelemetryMeasurement> batch = List.copyOf(measurements);
-        if (batch.isEmpty()) {
-            return 0;
-        }
-        try {
-                int[] inserted = jdbcTemplate.batchUpdate("""
-                    insert into telemetry.measurements
-                        (device_id, source_id, recorded_at, metric_name, metric_value, unit, quality, received_at, created_at)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, new BatchPreparedStatementSetter() {
-                @Override
-                public void setValues(PreparedStatement ps, int i) throws SQLException {
-                    TelemetryMeasurement measurement = batch.get(i);
-                    ps.setObject(1, measurement.deviceId());
-                    ps.setString(2, measurement.sourceId());
-                    ps.setTimestamp(3, Timestamp.from(measurement.recordedAt()));
-                    ps.setString(4, measurement.metricName());
-                    ps.setDouble(5, measurement.metricValue());
-                    ps.setString(6, measurement.unit());
-                    ps.setString(7, measurement.quality().name());
-                    ps.setTimestamp(8, Timestamp.from(measurement.receivedAt()));
-                    ps.setTimestamp(9, Timestamp.from(measurement.createdAt()));
-                }
-
-                @Override
-                public int getBatchSize() {
-                    return batch.size();
-                }
-            });
+        if (batch.isEmpty()) return 0;
+        return jdbcTemplate.execute((ConnectionCallback<Integer>) connection -> {
+            boolean postgres = connection.getMetaData().getDatabaseProductName().equalsIgnoreCase("PostgreSQL");
             int total = 0;
-            for (int count : inserted) {
-                total += Math.max(count, 0);
+            for (int start = 0; start < batch.size(); start += 512) {
+                List<TelemetryMeasurement> chunk = batch.subList(start, Math.min(batch.size(), start + 512));
+                if (postgres) {
+                    String tuples = String.join(",", Collections.nCopies(chunk.size(), "(?,?,?,?,?,?,?,?,?)"));
+                    String sql = "with inserted as (insert into telemetry.measurements "
+                            + "(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) values "
+                            + tuples + " on conflict do nothing returning 1) select count(*) from inserted";
+                    try (var statement = connection.prepareStatement(sql)) {
+                        for (int index = 0; index < chunk.size(); index++) bind(statement, index * 9, chunk.get(index));
+                        try (var result = statement.executeQuery()) {
+                            result.next();
+                            total += result.getInt(1);
+                        }
+                    }
+                } else {
+                    String sql = "merge into telemetry.measurements target using (values (?,?,?,?,?,?,?,?,?)) "
+                            + "incoming(device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) "
+                            + "on target.device_id=incoming.device_id and target.source_id=incoming.source_id "
+                            + "and target.recorded_at=incoming.recorded_at and target.metric_name=incoming.metric_name "
+                            + "when not matched then insert (device_id,source_id,recorded_at,metric_name,metric_value,unit,quality,received_at,created_at) "
+                            + "values(incoming.device_id,incoming.source_id,incoming.recorded_at,incoming.metric_name,incoming.metric_value,incoming.unit,incoming.quality,incoming.received_at,incoming.created_at)";
+                    try (var statement = connection.prepareStatement(sql)) {
+                        for (var measurement : chunk) {
+                            bind(statement, 0, measurement);
+                            statement.addBatch();
+                        }
+                        for (int count : statement.executeBatch()) {
+                            if (count < 0) throw new SQLException("Database did not report an exact telemetry insert count");
+                            total += count;
+                        }
+                    }
+                }
             }
             return total;
-        } catch (DataIntegrityViolationException duplicate) {
-            return insertIndividuallyIgnoringDuplicates(batch);
-        }
+        });
     }
 
-    private int insertIndividuallyIgnoringDuplicates(Collection<TelemetryMeasurement> measurements) {
-        int inserted = 0;
-        for (TelemetryMeasurement measurement : measurements) {
-            try {
-                inserted += jdbcTemplate.update("""
-                        insert into telemetry.measurements
-                            (device_id, source_id, recorded_at, metric_name, metric_value, unit, quality, received_at, created_at)
-                        values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        measurement.deviceId(),
-                        measurement.sourceId(),
-                        Timestamp.from(measurement.recordedAt()),
-                        measurement.metricName(),
-                        measurement.metricValue(),
-                        measurement.unit(),
-                        measurement.quality().name(),
-                        Timestamp.from(measurement.receivedAt()),
-                        Timestamp.from(measurement.createdAt()));
-            } catch (DuplicateKeyException duplicate) {
-                // Idempotency at the storage boundary: already persisted metric rows are ignored.
-            }
-        }
-        return inserted;
+    private static void bind(PreparedStatement statement, int offset, TelemetryMeasurement measurement) throws SQLException {
+        statement.setObject(offset + 1, measurement.deviceId());
+        statement.setString(offset + 2, measurement.sourceId());
+        statement.setTimestamp(offset + 3, Timestamp.from(measurement.recordedAt()));
+        statement.setString(offset + 4, measurement.metricName());
+        statement.setDouble(offset + 5, measurement.metricValue());
+        statement.setString(offset + 6, measurement.unit());
+        statement.setString(offset + 7, measurement.quality().name());
+        statement.setTimestamp(offset + 8, Timestamp.from(measurement.receivedAt()));
+        statement.setTimestamp(offset + 9, Timestamp.from(measurement.createdAt()));
     }
 
     public Optional<Instant> latestTimestamp(UUID deviceId) {

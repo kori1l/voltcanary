@@ -1,6 +1,5 @@
 package com.voltcanary.device.repository;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.DeviceType;
 import java.util.Optional;
 import java.util.UUID;

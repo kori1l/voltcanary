@@ -189,7 +189,7 @@ class AnalyticsPipelineTest {
                 "http://ml-service",
                 Duration.ofSeconds(1)));
         MlClient client = new MlClient(
-                builder,
+                builder, builder,
                 downstreamProperties,
                 new AnalyticsInternalProperties(),
                 new SimpleMeterRegistry());
@@ -214,7 +214,7 @@ class AnalyticsPipelineTest {
                 "http://ml-service",
                 Duration.ofSeconds(1)));
         MlClient client = new MlClient(
-                builder,
+                builder, builder,
                 downstreamProperties,
                 internalProperties,
                 new SimpleMeterRegistry());
@@ -259,7 +259,7 @@ class AnalyticsPipelineTest {
                 "http://ml-service",
                 Duration.ofSeconds(1)));
         MlClient client = new MlClient(
-                builder,
+                builder, builder,
                 downstreamProperties,
                 internalProperties,
                 new SimpleMeterRegistry());

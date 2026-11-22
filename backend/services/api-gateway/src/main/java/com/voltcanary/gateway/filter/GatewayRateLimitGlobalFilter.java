@@ -1,12 +1,17 @@
 package com.voltcanary.gateway.filter;
 
+import com.voltcanary.common.security.BoundedWindowRateLimiter;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import com.voltcanary.gateway.config.GatewayRateLimitProperties;
 import com.voltcanary.gateway.error.GatewayErrorResponseWriter;
 import java.time.Duration;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -21,8 +26,13 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
 
+    private static final RedisScript<Long> COUNT_SCRIPT =
+            new DefaultRedisScript<>(
+                    "local n=redis.call('INCR',KEYS[1]); if n==1 or redis.call('PTTL',KEYS[1])<0 then redis.call('PEXPIRE',KEYS[1],ARGV[1]); end; return n;", Long.class);
+
     private final GatewayRateLimitProperties properties;
-    private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
+    private final BoundedWindowRateLimiter counters =
+            new BoundedWindowRateLimiter(10_000);
     private final ReactiveStringRedisTemplate redisTemplate;
 
     public GatewayRateLimitGlobalFilter(
@@ -64,24 +74,12 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
 
     private Mono<Boolean> allowRedis(String key, long windowStartedAt, int limit) {
         String redisKey = "gateway:rate-limit:" + key + ":" + windowStartedAt;
-        return redisTemplate.opsForValue()
-                .increment(redisKey)
-                .flatMap(count -> {
-                    Mono<Boolean> expire = count == 1L
-                            ? redisTemplate.expire(redisKey, redisTtl())
-                            : Mono.just(Boolean.TRUE);
-                    return expire.thenReturn(count <= limit);
-                });
+        return redisTemplate.execute(COUNT_SCRIPT, List.of(redisKey), List.of(Long.toString(redisTtl().toMillis())))
+                .next().map(count -> count <= limit).defaultIfEmpty(false);
     }
 
     private boolean allowInMemory(String key, long windowStartedAt, int limit) {
-        WindowCounter counter = counters.compute(key, (ignored, existing) -> {
-            if (existing == null || existing.windowStartedAt != windowStartedAt) {
-                return new WindowCounter(windowStartedAt);
-            }
-            return existing;
-        });
-        return counter.count.incrementAndGet() <= limit;
+        return counters.allow(key, windowStartedAt, limit);
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, Limit limit) {
@@ -121,14 +119,29 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private String clientIp(ServerWebExchange exchange) {
-        String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",", 2)[0].trim();
+        var remote = exchange.getRequest().getRemoteAddress();
+        if (remote == null || remote.getAddress() == null) return "unknown";
+        String peer = remote.getAddress().getHostAddress();
+        var trusted = properties.getTrustedProxyAddresses().stream().map(this::numericAddress)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        if (!trusted.contains(peer)) return peer;
+        String forwarded = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
+        if (forwarded == null || forwarded.length() > 1024) return peer;
+        String[] chain = forwarded.split(",", -1);
+        if (chain.length > 16) return peer;
+        for (int index = chain.length - 1; index >= 0; index--) {
+            String candidate = numericAddress(chain[index].trim());
+            if (candidate == null) return peer;
+            peer = candidate;
+            if (!trusted.contains(peer)) break;
         }
-        if (exchange.getRequest().getRemoteAddress() == null) {
-            return "unknown";
-        }
-        return exchange.getRequest().getRemoteAddress().getAddress().getHostAddress();
+        return peer;
+    }
+
+    private String numericAddress(String value) {
+        if (value == null || !value.matches("[0-9a-fA-F:.]+") || !(value.contains(".") || value.contains(":"))) return null;
+        try { return InetAddress.getByName(value).getHostAddress(); }
+        catch (UnknownHostException invalid) { return null; }
     }
 
     private long currentWindowStartedAt() {
@@ -140,12 +153,4 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
     private record Limit(String name, int maxRequests) {
     }
 
-    private static final class WindowCounter {
-        private final long windowStartedAt;
-        private final AtomicInteger count = new AtomicInteger();
-
-        private WindowCounter(long windowStartedAt) {
-            this.windowStartedAt = windowStartedAt;
-        }
-    }
 }

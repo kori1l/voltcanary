@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AccountService {
 
     private final AccountRepository accountRepository;
+    private final AccountProvisioning provisioning;
     private final AccountDeletionCleanupService accountDeletionCleanupService;
 
     @Transactional
@@ -62,21 +63,6 @@ public class AccountService {
     }
 
     private Account createAccount(UUID userId, String email) {
-        Instant now = Instant.now();
-        Account account = new Account();
-        account.setId(UUID.randomUUID());
-        account.setUserId(userId);
-        account.setName(defaultAccountName(email));
-        account.setStatus(AccountStatus.ACTIVE);
-        account.setCreatedAt(now);
-        account.setUpdatedAt(now);
-        return accountRepository.save(account);
-    }
-
-    private String defaultAccountName(String email) {
-        if (email == null || email.isBlank()) {
-            return "Personal account";
-        }
-        return email + " account";
+        return provisioning.ensure(userId, email);
     }
 }

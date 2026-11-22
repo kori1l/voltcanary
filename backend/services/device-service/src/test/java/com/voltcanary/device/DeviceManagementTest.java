@@ -30,7 +30,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -47,6 +46,112 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
                 "app.kafka.publish-enabled=false"
         })
 class DeviceManagementTest extends SignedUserTest {
+    @Autowired
+    private jakarta.persistence.EntityManagerFactory entityManagerFactory;
+
+    @Test
+    void rejectsAnIndirectLocationCycleWithoutChangingTheExistingHierarchy() {
+        UUID user = UUID.randomUUID();
+        var a = createLocation(user, "Cycle A");
+        var b = createLocation(user, "Cycle B");
+        var headers = headersFor(user, "cycle@example.com");
+        var first = restTemplate.exchange("/locations/" + a.id(), HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("name", "Cycle A", "parentId", b.id().toString()), headers), LocationResponse.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        var cycle = restTemplate.exchange("/locations/" + b.id(), HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("name", "Cycle B", "parentId", a.id().toString()), headers), String.class);
+        assertThat(cycle.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        var unchanged = restTemplate.exchange("/locations/" + b.id(), HttpMethod.GET, new HttpEntity<>(headers), LocationResponse.class);
+        assertThat(unchanged.getBody().parentId()).isNull();
+    }
+
+    @Test
+    void maintenanceStatusIsFilteredBeforeLimitAndOffset() {
+        UUID user = UUID.randomUUID();
+        var location = createLocation(user, "Paging maintenance");
+        var device = createDevice(user, location.id(), "Paging device");
+        var now = Instant.now();
+        var older = createAuditWindow(user, device.id(), now.minusSeconds(7200));
+        var newer = createAuditWindow(user, device.id(), now.minusSeconds(3600));
+        createAuditWindow(user, device.id(), now.plusSeconds(3600));
+        var first = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=0",
+                HttpMethod.GET, new HttpEntity<>(headersFor(user, "paging@example.com")), MaintenanceWindowResponse[].class);
+        var second = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows?status=FINISHED&limit=1&offset=1",
+                HttpMethod.GET, new HttpEntity<>(headersFor(user, "paging@example.com")), MaintenanceWindowResponse[].class);
+        assertThat(first.getBody()).extracting(MaintenanceWindowResponse::id).containsExactly(newer.id());
+        assertThat(second.getBody()).extracting(MaintenanceWindowResponse::id).containsExactly(older.id());
+    }
+
+    @Test
+    void staleMaintenanceWritesCannotOverwriteACommittedUpdate() {
+        UUID user = UUID.randomUUID();
+        var location = createLocation(user, "Optimistic maintenance");
+        var device = createDevice(user, location.id(), "Optimistic device");
+        var window = createAuditWindow(user, device.id(), Instant.now().plusSeconds(3600));
+        var first = entityManagerFactory.createEntityManager();
+        var second = entityManagerFactory.createEntityManager();
+        try {
+            first.getTransaction().begin();
+            second.getTransaction().begin();
+            var winner = first.find(com.voltcanary.device.domain.MaintenanceWindow.class, window.id());
+            var stale = second.find(com.voltcanary.device.domain.MaintenanceWindow.class, window.id());
+            winner.setTitle("Committed maintenance edit");
+            first.getTransaction().commit();
+            stale.setTitle("Lost update");
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.getTransaction().commit())
+                    .hasRootCauseInstanceOf(org.hibernate.StaleStateException.class);
+        } finally {
+            if (first.getTransaction().isActive()) first.getTransaction().rollback();
+            if (second.getTransaction().isActive()) second.getTransaction().rollback();
+            first.close();
+            second.close();
+        }
+        var actual = restTemplate.exchange("/devices/" + device.id() + "/maintenance-windows/" + window.id(), HttpMethod.GET,
+                new HttpEntity<>(headersFor(user, "optimistic@example.com")), MaintenanceWindowResponse.class);
+        assertThat(actual.getBody().title()).isEqualTo("Committed maintenance edit");
+    }
+
+    @Test
+    void operationListQueryCountDoesNotGrowWithOperationsAndTheirDevices() {
+        UUID user = UUID.randomUUID();
+        var location = createLocation(user, "Batch maintenance");
+        var first = createDevice(user, location.id(), "Batch device A");
+        var second = createDevice(user, location.id(), "Batch device B");
+        var headers = headersFor(user, "batch@example.com");
+        for (int index = 0; index < 8; index++) {
+            var start = Instant.now().plusSeconds(3600 + 3600L * index);
+            var created = restTemplate.exchange("/maintenance-operations", HttpMethod.POST, new HttpEntity<>(Map.of(
+                    "title", "Batch " + index, "deviceIds", List.of(first.id(), second.id()),
+                    "startAt", start.toString(), "endAt", start.plusSeconds(600).toString()), headers), MaintenanceOperationResponse.class);
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        }
+        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        boolean enabled = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        try {
+            statistics.clear();
+            var one = restTemplate.exchange("/maintenance-operations?limit=1", HttpMethod.GET,
+                    new HttpEntity<>(headers), MaintenanceOperationResponse[].class);
+            long singleQueries = statistics.getPrepareStatementCount();
+            statistics.clear();
+            var many = restTemplate.exchange("/maintenance-operations?limit=8", HttpMethod.GET,
+                    new HttpEntity<>(headers), MaintenanceOperationResponse[].class);
+            long batchQueries = statistics.getPrepareStatementCount();
+            assertThat(one.getBody()).hasSize(1);
+            assertThat(many.getBody()).hasSize(8).allSatisfy(operation -> assertThat(operation.devices()).hasSize(2));
+            assertThat(batchQueries).isLessThanOrEqualTo(singleQueries + 1);
+        } finally {
+            statistics.setStatisticsEnabled(enabled);
+        }
+    }
+
+    private MaintenanceWindowResponse createAuditWindow(UUID user, UUID device, Instant start) {
+        var created = restTemplate.exchange("/devices/" + device + "/maintenance-windows", HttpMethod.POST,
+                new HttpEntity<>(Map.of("title", "Audit maintenance", "startAt", start.toString(), "endAt", start.plusSeconds(600).toString()),
+                        headersFor(user, "maintenance-audit@example.com")), MaintenanceWindowResponse.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return created.getBody();
+    }
 
     @Test
     void directHttpNeverAcceptsIdentityHeadersOrLetsThemOverrideTheSignedActor() {

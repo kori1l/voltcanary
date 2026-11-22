@@ -8,7 +8,6 @@ import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts.Session;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import com.voltcanary.aiagent.service.PlanStore;
-import com.voltcanary.aiagent.service.PlanningInputGuard;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 

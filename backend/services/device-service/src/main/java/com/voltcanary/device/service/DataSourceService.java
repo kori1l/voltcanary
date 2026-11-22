@@ -1,5 +1,8 @@
 package com.voltcanary.device.service;
 
+import com.voltcanary.device.telemetry.SourceRuntimeMappings;
+import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.device.audit.DeviceAuditService;
 import com.voltcanary.device.domain.AccountStatus;
 import com.voltcanary.device.domain.DataSource;
@@ -28,7 +31,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -46,10 +48,10 @@ public class DataSourceService {
     private final DeviceRegistryEventPublisher eventPublisher;
     private final SourceRuntimeConfigEventPublisher runtimeConfigEventPublisher;
     private final DeviceAuditService auditService;
-    private final com.voltcanary.device.telemetry.SourceRuntimeMappings runtimeMappings;
+    private final SourceRuntimeMappings runtimeMappings;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<DataSourceResponse> list(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
         return dataSourceRepository.findByDeviceId(device.getId()).stream()
@@ -57,7 +59,7 @@ public class DataSourceService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DataSourceResponse get(AuthenticatedUser user, UUID deviceId, UUID dataSourceId) {
         Device device = deviceService.findOwned(user, deviceId);
         return toResponse(findOwnedDataSource(device, dataSourceId));
@@ -99,19 +101,19 @@ public class DataSourceService {
         Set<String> importedSourceIds = new HashSet<>();
         Set<String> existingSourceIds = dataSourceRepository.findByDeviceId(device.getId()).stream()
                 .map(DataSource::getSourceId)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
-        String[] lines = csv == null ? new String[0] : csv.replace("\r\n", "\n").replace('\r', '\n').split("\n");
-        if (lines.length == 0 || !lines[0].trim().equalsIgnoreCase("externalId,sourceType,protocol")) {
+        List<String[]> rows;
+        try { rows = RegistryCsv.read(csv); }
+        catch (IllegalArgumentException invalid) { return new DataSourceImportResponse(0, List.of(invalid.getMessage())); }
+        if (rows.isEmpty() || rows.getFirst().length != 3
+                || !"externalId".equalsIgnoreCase(rows.getFirst()[0].trim())
+                || !"sourceType".equalsIgnoreCase(rows.getFirst()[1].trim())
+                || !"protocol".equalsIgnoreCase(rows.getFirst()[2].trim())) {
             errors.add("Header must be externalId,sourceType,protocol");
         }
-
-        for (int index = 1; index < lines.length; index++) {
-            String line = lines[index];
-            if (line.isBlank()) {
-                continue;
-            }
-            String[] columns = line.split(",", -1);
+        for (int index = 1; index < rows.size(); index++) {
+            String[] columns = rows.get(index);
             try {
                 DataSourceRequest request = validateImportRow(columns, index + 1, existingSourceIds, importedSourceIds);
                 requests.add(request);
@@ -128,14 +130,14 @@ public class DataSourceService {
         return new DataSourceImportResponse(requests.size(), List.of());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String exportCsv(AuthenticatedUser user, UUID deviceId) {
         Device device = deviceService.findOwned(user, deviceId);
         StringBuilder csv = new StringBuilder("id,deviceId,externalId,sourceType,protocol,status\n");
         dataSourceRepository.findByDeviceId(device.getId()).forEach(source -> csv
                 .append(source.getId()).append(',')
                 .append(source.getDeviceId()).append(',')
-                .append(csvValue(source.getSourceId())).append(',')
+                .append(RegistryCsv.cell(source.getSourceId())).append(',')
                 .append(source.getSourceType()).append(',')
                 .append(source.getProtocol()).append(',')
                 .append(source.getStatus()).append('\n'));
@@ -344,15 +346,6 @@ public class DataSourceService {
         }
     }
 
-    private String csvValue(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
-    }
 
     private void applyRuntimeConfig(DataSource source, DataSourceRequest request) {
         runtimeMappings.apply(source, request);

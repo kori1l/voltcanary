@@ -57,6 +57,61 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "app.maintenance.reconciliation.enabled=false"
         })
 class AlertServiceApiTest extends SignedUserTest {
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Test
+    void anOldInboxAttemptCannotCompleteOrFailANewerSuccessfulAttempt() {
+        UUID eventId = UUID.randomUUID();
+        var event = new AnomalyDetectedEvent(eventId, UUID.randomUUID(), UUID.randomUUID(),
+                "POWER_SPIKE", "HIGH", 80, "Claim ownership regression", Instant.now());
+        var entry = alertAnalyticsEventInboxService.recordReceived("analytics-service", eventId, "ANOMALY_DETECTED", event);
+        var original = alertAnalyticsEventInboxService.markProcessing(entry.getId());
+        assertThat(alertAnalyticsEventInboxService.markProcessing(entry.getId())).isNull();
+        jdbc.update("update alert_analytics_event_inbox set processing_started_at=? where id=?",
+                java.sql.Timestamp.from(Instant.now().minusSeconds(86400)), entry.getId());
+        var replacement = alertAnalyticsEventInboxService.markProcessing(entry.getId());
+        assertThat(replacement.getAttempts()).isEqualTo(original.getAttempts() + 1);
+        assertThat(alertAnalyticsEventInboxService.markProcessed(original, null)).isFalse();
+        assertThat(alertAnalyticsEventInboxService.markProcessed(replacement, null)).isTrue();
+        alertAnalyticsEventInboxService.markFailed(original, new IllegalStateException("Late old failure"));
+        var completed = alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow();
+        assertThat(completed.getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.NO_ALERT);
+        assertThat(completed.getLastError()).isNull();
+        assertThat(alertAnalyticsEventInboxService.markProcessing(entry.getId())).isNull();
+    }
+
+    @Test
+    void concurrentAcknowledgeAndResolveCannotReopenAnIncidentOrLoseItsHistory() throws Exception {
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            for (int iteration = 0; iteration < 5; iteration++) {
+                var alert = alertService.handleAnomaly(new AnomalyDetectedEvent(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                        "POWER_SPIKE", "HIGH", 80, "Lifecycle concurrency regression", Instant.now()));
+                var start = new CountDownLatch(1);
+                var acknowledge = executor.submit(() -> {
+                    start.await();
+                    return alertService.acknowledge(alert.getId(), null, "USER", "race-ack");
+                });
+                var resolve = executor.submit(() -> {
+                    start.await();
+                    return alertService.resolve(alert.getId(), "Resolved concurrently", null, "USER", "race-resolve");
+                });
+                start.countDown();
+                acknowledge.get(15, TimeUnit.SECONDS);
+                resolve.get(15, TimeUnit.SECONDS);
+                var finalAlert = alertRepository.findById(alert.getId()).orElseThrow();
+                assertThat(finalAlert.getStatus()).isEqualTo(AlertStatus.RESOLVED);
+                assertThat(finalAlert.getResolvedAt()).isNotNull();
+                if (finalAlert.getAcknowledgedAt() != null) assertThat(finalAlert.getAcknowledgedAt()).isBeforeOrEqualTo(finalAlert.getResolvedAt());
+                assertThat(alertEventRepository.findByAlertIdOrderByCreatedAtDesc(alert.getId()))
+                        .filteredOn(event -> "RESOLVED".equals(event.getEventType())).hasSize(1);
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     @org.junit.jupiter.api.BeforeEach
     void authenticateApi() {
         restTemplate.getRestTemplate().setInterceptors(List.of((request, body, execution) -> {
@@ -236,8 +291,8 @@ class AlertServiceApiTest extends SignedUserTest {
                 event.eventId(),
                 AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE,
                 event);
-        alertAnalyticsEventInboxService.markProcessing(entry.getId());
-        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("transient downstream failure"));
+        var claim = alertAnalyticsEventInboxService.markProcessing(entry.getId());
+        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("transient downstream failure"));
 
         alertAnalyticsEventReconciliationService.reconcile(
                 alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow());
@@ -703,12 +758,13 @@ class AlertServiceApiTest extends SignedUserTest {
         UUID device = UUID.randomUUID();
         var event = new AnomalyDetectedEvent(UUID.randomUUID(), device, UUID.randomUUID(), "DELETE_TEST", "MEDIUM", 10, "Synthetic", Instant.now());
         var entry = alertAnalyticsEventInboxService.recordReceived(AnalyticsAlertEventHandler.ANOMALY_TOPIC, event.eventId(), AnalyticsAlertEventHandler.ANOMALY_EVENT_TYPE, event);
-        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("Transient test failure"));
+        var claim = alertAnalyticsEventInboxService.markProcessing(entry.getId());
+        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("Transient test failure"));
         assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId()).orElseThrow().getStatus()).isEqualTo(AlertAnalyticsEventInboxStatus.FAILED);
         deviceHistoryDeletion.close(device, true);
         assertThat(analyticsEventHandler.handleAnomaly(event)).isFalse();
         assertThat(analyticsEventHandler.replayAnomaly(entry.getId(), event)).isFalse();
-        alertAnalyticsEventInboxService.markFailed(entry.getId(), new IllegalStateException("Late failure"));
+        alertAnalyticsEventInboxService.markFailed(claim, new IllegalStateException("Late failure"));
         assertThat(alertAnalyticsEventInboxRepository.findById(entry.getId())).isEmpty();
     }
 

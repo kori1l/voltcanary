@@ -1,5 +1,10 @@
 package com.voltcanary.device.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.voltcanary.device.repository.RegistryQueries;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.web.server.ResponseStatusException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.audit.DeviceAuditService;
@@ -29,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class DeviceService {
 
+    private final RegistryQueries queries;
     private final AccountService accountService;
     private final LocationService locationService;
     private final DeviceRepository deviceRepository;
@@ -73,16 +79,12 @@ public class DeviceService {
         }
         List<DeviceRequest> requests = new ArrayList<>();
         List<String> errors = new ArrayList<>();
-        String[] lines = csv.replace("\r\n", "\n").replace('\r', '\n').split("\n");
-        for (int index = 0; index < lines.length; index++) {
-            String line = lines[index];
-            if (index == 0 && line.toLowerCase().startsWith("name,type")) {
-                continue;
-            }
-            if (line.isBlank()) {
-                continue;
-            }
-            String[] columns = line.split(",", -1);
+        List<String[]> rows;
+        try { rows = RegistryCsv.read(csv); }
+        catch (IllegalArgumentException invalid) { return new DeviceImportResponse(0, List.of(invalid.getMessage())); }
+        for (int index = 0; index < rows.size(); index++) {
+            String[] columns = rows.get(index);
+            if (index == 0 && columns.length >= 2 && "name".equalsIgnoreCase(columns[0].trim()) && "type".equalsIgnoreCase(columns[1].trim())) continue;
             if (columns.length < 2) {
                 errors.add("line " + (index + 1) + ": expected at least name,type");
                 continue;
@@ -105,27 +107,27 @@ public class DeviceService {
         return new DeviceImportResponse(requests.size(), List.of());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public String exportCsv(AuthenticatedUser user) {
         StringBuilder csv = new StringBuilder("id,name,type,locationId,manufacturer,model,status\n");
         for (DeviceResponse device : list(user)) {
             csv.append(device.id()).append(',')
-                    .append(csvValue(device.name())).append(',')
-                    .append(csvValue(device.type())).append(',')
+                    .append(RegistryCsv.cell(device.name())).append(',')
+                    .append(RegistryCsv.cell(device.type())).append(',')
                     .append(device.locationId() == null ? "" : device.locationId()).append(',')
-                    .append(csvValue(device.manufacturer())).append(',')
-                    .append(csvValue(device.model())).append(',')
-                    .append(csvValue(device.status())).append('\n');
+                    .append(RegistryCsv.cell(device.manufacturer())).append(',')
+                    .append(RegistryCsv.cell(device.model())).append(',')
+                    .append(RegistryCsv.cell(device.status())).append('\n');
         }
         return csv.toString();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<DeviceResponse> list(AuthenticatedUser user) {
         return list(user, null, null, null, null, null, null);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<DeviceResponse> list(
             AuthenticatedUser user,
             UUID locationId,
@@ -135,20 +137,11 @@ public class DeviceService {
             Integer limit,
             Integer offset) {
         Account account = accountService.currentAccount(user);
-        return deviceRepository.findByAccountIdOrderByCreatedAtAsc(account.getId()).stream()
-                .sorted(java.util.Comparator.comparing(Device::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
-                        .thenComparing(Device::getId, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
-                .filter(device -> locationId == null || locationId.equals(device.getLocationId()))
-                .filter(device -> type == null || type.isBlank() || type.equalsIgnoreCase(toDeviceType(device).getCode()))
-                .filter(device -> status == null || status == device.getStatus())
-                .filter(device -> matchesSearch(device, search))
-                .skip(normalizedOffset(offset))
-                .limit(normalizedLimit(limit))
-                .map(this::toResponse)
-                .toList();
+        return queries.devices(account.getId(), locationId, type, status, search, limit, offset).stream()
+                .map(row -> toResponse(row.device(), row.type())).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DeviceResponse get(AuthenticatedUser user, UUID id) {
         return toResponse(findOwned(user, id));
     }
@@ -160,8 +153,8 @@ public class DeviceService {
         DeviceType deviceType = deviceType(request.type());
         if (!device.getDeviceTypeId().equals(deviceType.getId())
                 && deviceRepository.countEnabledVariableBindings(device.getId()) > 0) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT,
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
                     "Disable device variable bindings before changing device type");
         }
         if (request.locationId() != null) {
@@ -257,41 +250,6 @@ public class DeviceService {
         return toResponse(saved);
     }
 
-    private boolean matchesSearch(Device device, String search) {
-        if (search == null || search.isBlank()) {
-            return true;
-        }
-        String needle = search.trim().toLowerCase();
-        return contains(device.getName(), needle)
-                || contains(device.getManufacturer(), needle)
-                || contains(device.getModel(), needle)
-                || contains(device.getExternalId(), needle);
-    }
-
-    private boolean contains(String value, String needle) {
-        return value != null && value.toLowerCase().contains(needle);
-    }
-
-    private long normalizedOffset(Integer offset) {
-        if (offset == null) {
-            return 0;
-        }
-        if (offset < 0) {
-            throw new IllegalArgumentException("offset must be greater than or equal to 0");
-        }
-        return offset;
-    }
-
-    private long normalizedLimit(Integer limit) {
-        if (limit == null) {
-            return Long.MAX_VALUE;
-        }
-        if (limit < 1 || limit > 200) {
-            throw new IllegalArgumentException("limit must be between 1 and 200");
-        }
-        return limit;
-    }
-
     private String normalizeRequired(String value, String field) {
         String normalized = normalizeOptional(value);
         if (normalized == null) {
@@ -334,19 +292,11 @@ public class DeviceService {
                 locationService.findOwned(user, request.locationId());
             }
             normalizeRequired(request.name(), "name");
+            if (request.name().length() > 255 || request.manufacturer() != null && request.manufacturer().length() > 255
+                    || request.model() != null && request.model().length() > 255) throw new IllegalArgumentException("Device text fields must be at most 255 characters");
         } catch (RuntimeException exception) {
             errors.add("line " + line + ": " + exception.getMessage());
         }
-    }
-
-    private String csvValue(String value) {
-        if (value == null) {
-            return "";
-        }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
     }
 
     private Map<String, Object> safeMetadata(Map<String, Object> metadata) {
@@ -377,8 +327,8 @@ public class DeviceService {
         try {
             return objectMapper.readValue(json, new TypeReference<>() {
             });
-        } catch (Exception exception) {
-            return Map.of();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Invalid persisted device metadata", exception);
         }
     }
 }

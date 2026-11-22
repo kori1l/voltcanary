@@ -1,11 +1,5 @@
 package com.voltcanary.analytics;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.analytics.domain.MlDatasetStatus;
@@ -23,13 +17,25 @@ import com.voltcanary.analytics.repository.MlImportedFileRepository;
 import com.voltcanary.analytics.repository.MlImportedMetricRowRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
+import com.voltcanary.analytics.service.MlDatasetWrites;
 import com.voltcanary.analytics.service.MlExternalDatasetImportService;
+import com.voltcanary.analytics.service.MlImportCsv;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
+import org.springframework.web.server.ResponseStatusException;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class MlExternalDatasetImportServiceTest {
 
@@ -49,6 +55,13 @@ class MlExternalDatasetImportServiceTest {
             deviceMappingRepository,
             reportRepository,
             accessService,
+            new MlDatasetWrites(new AbstractPlatformTransactionManager() {
+                protected Object doGetTransaction() { return new Object(); }
+                protected void doBegin(Object transaction, TransactionDefinition definition) { }
+                protected void doCommit(DefaultTransactionStatus status) { }
+                protected void doRollback(DefaultTransactionStatus status) { }
+            }),
+            new MlImportCsv(),
             objectMapper);
 
     @Test
@@ -286,6 +299,87 @@ class MlExternalDatasetImportServiceTest {
         assertThat(quality.path("duplicateTimestampRate").asDouble()).isEqualTo(1.0 / 3.0);
         assertThat(quality.path("nonFiniteImpossibleValueCount").asLong()).isEqualTo(1L);
         assertThat(quality.path("coverageByDeviceMetric").path("washer-1:activePowerW").asLong()).isEqualTo(3L);
+    }
+
+    @Test
+    void csvSupportsBomQuotedCommasEscapedQuotesAndMultilineFields() {
+        var response = service.importCsv(UUID.randomUUID(), UUID.randomUUID(), "quoted", null,
+                csv("\uFEFFts,device,metric,value,unit,label,firmware\r\n"
+                        + "2026-07-01T00:00:00Z,washer-1,activePowerW,1,W,NORMAL,\"one, \"\"two\"\"\nthree\"\r\n"), mapping());
+        assertThat(response.acceptedRows()).isEqualTo(1);
+        ArgumentCaptor<List<MlImportedMetricRow>> rows = ArgumentCaptor.forClass(List.class);
+        verify(rowRepository).saveAll(rows.capture());
+        assertThat(readTree(rows.getValue().getFirst().getMetadataJson()).path("firmware").asText())
+                .isEqualTo("one, \"two\"\nthree");
+    }
+
+    @Test
+    void malformedCsvOrDuplicateHeadersCannotPersistAnyRecords() {
+        for (String content : List.of(
+                "ts,device,metric,value,unit,label,firmware\n\"unclosed",
+                "ts,device,metric,value,unit,label,firmware,firmware\n")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importCsv(
+                    UUID.randomUUID(), UUID.randomUUID(), "invalid", null, csv(content), mapping()))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value()).isEqualTo(400));
+        }
+        org.mockito.Mockito.verifyNoInteractions(datasetRepository, importedFileRepository, rowRepository);
+    }
+
+    @Test
+    void repeatedDeviceUsesOneOwnershipLookupPerImportForCsvAndJsonl() {
+        UUID account = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
+        when(accessService.accountIdForDevice(device, null)).thenReturn(account);
+        String csvRow = "2026-07-01T00:00:00Z,washer-1,activePowerW,1,W,NORMAL,firmware," + device + "\n";
+        var response = service.importCsv(account, UUID.randomUUID(), "repeat", null,
+                csv("ts,device,metric,value,unit,label,firmware,existingDeviceId\n" + csvRow.repeat(3)), mapping());
+        assertThat(response.acceptedRows()).isEqualTo(3);
+        verify(accessService, org.mockito.Mockito.times(1)).accountIdForDevice(device, null);
+        String jsonRow = "{\"ts\":\"2026-07-01T00:00:00Z\",\"device\":\"washer-1\",\"metric\":\"activePowerW\",\"value\":1,\"existingDeviceId\":\"" + device + "\"}\n";
+        assertThat(service.importJsonl(account, UUID.randomUUID(), "repeat", null, jsonl(jsonRow.repeat(3)), mapping()).acceptedRows()).isEqualTo(3);
+        verify(accessService, org.mockito.Mockito.times(2)).accountIdForDevice(device, null);
+    }
+
+    @Test
+    void downstreamOutageAbortsCsvAndJsonlWithoutSavingPartialImport() {
+        UUID device = UUID.randomUUID();
+        when(accessService.accountIdForDevice(device, null)).thenThrow(new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Device ownership unavailable"));
+        var csvFile = csv("ts,device,metric,value,unit,label,firmware,existingDeviceId\n"
+                + "2026-07-01T00:00:00Z,washer-1,activePowerW,1,W,NORMAL,x," + device + "\n");
+        var jsonFile = jsonl("{\"ts\":\"2026-07-01T00:00:00Z\",\"device\":\"washer-1\",\"metric\":\"activePowerW\",\"value\":1,\"existingDeviceId\":\"" + device + "\"}\n");
+        for (boolean json : List.of(false, true)) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> {
+                if (json) service.importJsonl(UUID.randomUUID(), UUID.randomUUID(), "outage", null, jsonFile, mapping());
+                else service.importCsv(UUID.randomUUID(), UUID.randomUUID(), "outage", null, csvFile, mapping());
+            }).isInstanceOf(ResponseStatusException.class)
+                    .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value()).isEqualTo(503));
+        }
+        org.mockito.Mockito.verifyNoInteractions(datasetRepository, importedFileRepository, rowRepository);
+    }
+
+    @Test
+    void strictImportRejectsAllRowsBeforeAnyWrite() {
+        var strict = new MlCsvSchemaMapping("ts", "device", "metric", "value", "unit", "label",
+                "existingDeviceId", "deviceType", List.of("firmware"), "strict-v1", false);
+        var file = csv("ts,device,metric,value,unit,label,firmware\n"
+                + "2026-07-01T00:00:00Z,washer-1,activePowerW,1,W,NORMAL,x\n"
+                + "bad-time,washer-1,activePowerW,1,W,NORMAL,x\n");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.importCsv(
+                UUID.randomUUID(), UUID.randomUUID(), "strict", null, file, strict))
+                .isInstanceOf(ResponseStatusException.class);
+        org.mockito.Mockito.verifyNoInteractions(datasetRepository, importedFileRepository, rowRepository);
+    }
+
+    @Test
+    void invalidUuidRemainsARowErrorWithoutCallingDeviceService() {
+        var response = service.importCsv(UUID.randomUUID(), UUID.randomUUID(), "invalid-id", null,
+                csv("ts,device,metric,value,unit,label,firmware,existingDeviceId\n"
+                        + "2026-07-01T00:00:00Z,washer,activePowerW,1,W,NORMAL,x,not-a-uuid\n"), mapping());
+        assertThat(response.rejectedRows()).isEqualTo(1);
+        assertThat(response.validationMessages()).anySatisfy(message -> assertThat(message).contains("INVALID_EXISTING_DEVICE_ID"));
+        org.mockito.Mockito.verifyNoInteractions(accessService);
     }
 
     private MlCsvSchemaMapping mapping() {

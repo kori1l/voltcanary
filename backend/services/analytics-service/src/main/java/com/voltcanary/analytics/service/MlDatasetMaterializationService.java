@@ -1,5 +1,8 @@
 package com.voltcanary.analytics.service;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.web.server.ResponseStatusException;
 import com.voltcanary.analytics.domain.MlCanonicalMetricRow;
 import com.voltcanary.analytics.domain.MlDataset;
 import com.voltcanary.analytics.domain.MlDatasetLineage;
@@ -31,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MlDatasetMaterializationService {
 
     private final MlDatasetRepository datasetRepository;
+    private final MlDatasetWrites writes;
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlValidationReportRepository validationReportRepository;
     private final MlDatasetLineageRepository lineageRepository;
@@ -40,7 +44,7 @@ public class MlDatasetMaterializationService {
     private final MlDatasetPreviewService previewService;
     private final MlDatasetSupportService support;
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MlInternalDatasetResponse createFromInternalTelemetry(
             UUID accountId,
             UUID userId,
@@ -49,6 +53,11 @@ public class MlDatasetMaterializationService {
         MlDatasetValidationResult validation = validationService.validateTelemetry(request);
         assertPreviewFresh(accountId, request, validation);
 
+        return writes.commit(() -> persist(accountId, userId, request, validation));
+    }
+
+    private MlInternalDatasetResponse persist(UUID accountId, UUID userId, MlInternalDatasetRequest request,
+            MlDatasetValidationResult validation) {
         Instant now = Instant.now();
         MlDataset dataset = new MlDataset();
         dataset.setId(UUID.randomUUID());
@@ -79,21 +88,12 @@ public class MlDatasetMaterializationService {
         version.setFailureReason(validation.ready() ? null : String.join("; ", validation.messages()));
         datasetVersionRepository.save(version);
         if (validation.ready()) {
-            try {
-                canonicalMetricRowRepository.saveAll(canonicalRows(accountId, version.getId(), request, validation.extractedRows(), now));
-                version.setStatus(MlDatasetStatus.READY);
-                version.setReadyAt(now);
-                version.setImmutableRowReference(immutableRowReference(version.getId()));
-                version.setDataHash(dataHash(validation.extractedRows()));
-                datasetVersionRepository.save(version);
-            } catch (RuntimeException exception) {
-                version.setStatus(MlDatasetStatus.FAILED);
-                version.setReadyAt(null);
-                version.setFailureReason("Internal telemetry materialization failed.");
-                version.setImmutableRowReference(null);
-                version.setDataHash(null);
-                datasetVersionRepository.save(version);
-            }
+            canonicalMetricRowRepository.saveAll(canonicalRows(accountId, version.getId(), request, validation.extractedRows(), now));
+            version.setStatus(MlDatasetStatus.READY);
+            version.setReadyAt(now);
+            version.setImmutableRowReference(immutableRowReference(version.getId()));
+            version.setDataHash(dataHash(validation.extractedRows()));
+            datasetVersionRepository.save(version);
         }
 
         MlValidationReport report = new MlValidationReport();
@@ -148,8 +148,8 @@ public class MlDatasetMaterializationService {
             return;
         }
         if (support.isBlank(request.previewHash())) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST,
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
                     "previewHash is required when previewId is supplied");
         }
         MlDatasetLabelReadinessDto labelReadiness = labelReadinessService.labelReadiness(

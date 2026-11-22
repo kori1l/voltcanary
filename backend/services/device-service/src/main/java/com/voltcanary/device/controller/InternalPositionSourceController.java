@@ -5,7 +5,6 @@ import com.voltcanary.device.config.InternalServiceAuth;
 import com.voltcanary.device.repository.DataSourceRepository;
 import com.voltcanary.device.repository.DeviceRepository;
 import com.voltcanary.device.repository.DeviceTypeRepository;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;

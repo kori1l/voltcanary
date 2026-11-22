@@ -1,7 +1,5 @@
 package com.voltcanary.identity;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
@@ -16,20 +14,25 @@ import com.voltcanary.identity.repository.LoginAuditRepository;
 import com.voltcanary.identity.repository.RefreshTokenRepository;
 import com.voltcanary.identity.repository.UserRepository;
 import com.voltcanary.identity.security.RefreshTokenService;
+import com.voltcanary.identity.service.DeviceAccountLifecycleClient;
+import com.voltcanary.identity.service.IdentityLifecycleOutboxService;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AutoConfigureTestRestTemplate
 @SpringBootTest(
@@ -41,9 +44,57 @@ import org.springframework.security.crypto.password.PasswordEncoder;
                 "app.auth.login.max-attempts-per-ip=1000"
         })
 class AuthRegistrationTest {
+    @Autowired
+    private com.voltcanary.identity.service.RecoveryTokenCleanup recoveryTokenCleanup;
+
+    @Test
+    void recoveryCleanupRemovesExpiredTokensAndKeepsUnexpiredTokens() {
+        var user = new User();
+        user.setId(UUID.randomUUID());
+        user.setEmail("cleanup-" + UUID.randomUUID() + "@example.test");
+        user.setPasswordHash("unused");
+        user.setRole(UserRole.USER);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setCreatedAt(Instant.now());
+        user.setUpdatedAt(Instant.now());
+        userRepository.save(user);
+        var now = Instant.now();
+        for (String table : java.util.List.of("password_reset_tokens", "email_verification_tokens")) {
+            for (int index = 0; index < 3; index++) {
+                jdbc.update("insert into " + table + "(id,user_id,token_hash,created_at,expires_at,used_at) values(?,?,?,?,?,?)",
+                        UUID.randomUUID(), user.getId(), UUID.randomUUID().toString(), java.sql.Timestamp.from(now.minusSeconds(120)),
+                        java.sql.Timestamp.from(index < 2 ? now.minusSeconds(60) : now.plusSeconds(600)),
+                        index == 0 ? null : java.sql.Timestamp.from(now.minusSeconds(90)));
+            }
+        }
+        recoveryTokenCleanup.deleteExpired();
+        for (String table : java.util.List.of("password_reset_tokens", "email_verification_tokens")) {
+            assertThat(jdbc.queryForObject("select count(*) from " + table + " where user_id=?", Integer.class, user.getId())).isEqualTo(1);
+            assertThat(jdbc.queryForObject("select expires_at from " + table + " where user_id=?", java.sql.Timestamp.class, user.getId()).toInstant()).isAfter(now);
+        }
+    }
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private com.voltcanary.identity.service.RecoveryMail recoveryMail;
+
+    private String deliveredCode(String email, String purpose) {
+        var code = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(recoveryMail).queue(org.mockito.ArgumentMatchers.eq(email), org.mockito.ArgumentMatchers.eq(purpose), code.capture());
+        return code.getValue();
+    }
+
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @MockitoSpyBean
+    private IdentityLifecycleOutboxService lifecycleOutbox;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private DeviceAccountLifecycleClient deviceLifecycle;
 
     @Autowired
     private UserRepository userRepository;
@@ -59,6 +110,12 @@ class AuthRegistrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    private void assertLifecycleOutbox(UUID userId, String status) {
+        var payloads = jdbc.queryForList("select payload_json from identity_event_outbox where message_key=?", String.class, userId.toString());
+        assertThat(payloads).anySatisfy(payload -> assertThat(payload).contains("\"status\":\"" + status + "\""));
+        org.mockito.Mockito.verifyNoInteractions(deviceLifecycle);
+    }
 
     @Test
     void registerCreatesUserWithHashedPassword() {
@@ -290,6 +347,7 @@ class AuthRegistrationTest {
                 Map.of("refreshToken", managedTokens.refreshToken()),
                 String.class);
 
+        assertLifecycleOutbox(managed.getId(), "DELETED");
         assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(deleted.getBody()).contains("\"status\":\"DELETED\"");
         assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.DELETED);
@@ -322,9 +380,35 @@ class AuthRegistrationTest {
                 Map.of("refreshToken", managedTokens.refreshToken()),
                 String.class);
 
+        assertLifecycleOutbox(managed.getId(), "DISABLED");
         assertThat(disabled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(disabled.getBody()).contains("\"status\":\"DISABLED\"");
         assertThat(refreshAfterDisable.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void failedOutboxWriteRollsBackStatusChangeAndSessionRevocation() {
+        register("rollback-admin@example.com", "Password123!");
+        register("rollback-managed@example.com", "Password123!");
+        User admin = userRepository.findByEmail("rollback-admin@example.com").orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        userRepository.save(admin);
+        User managed = userRepository.findByEmail("rollback-managed@example.com").orElseThrow();
+        var adminTokens = login(admin.getEmail(), "Password123!").getBody();
+        var managedTokens = login(managed.getEmail(), "Password123!").getBody();
+        org.mockito.Mockito.doThrow(new IllegalStateException("outbox unavailable"))
+                .when(lifecycleOutbox).enqueueAccountLifecycle(org.mockito.ArgumentMatchers.any());
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(adminTokens.accessToken());
+        var response = restTemplate.exchange("/auth/admin/users/" + managed.getId() + "/status", HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("status", "DISABLED"), headers), String.class);
+        assertThat(response.getStatusCode().is5xxServerError()).isTrue();
+        assertThat(userRepository.findById(managed.getId()).orElseThrow().getStatus()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(refreshTokenRepository.findByUserId(managed.getId()))
+                .anySatisfy(token -> assertThat(token.getRevokedAt()).isNull());
+        assertThat(restTemplate.postForEntity("/auth/refresh", Map.of("refreshToken", managedTokens.refreshToken()), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        org.mockito.Mockito.verifyNoInteractions(deviceLifecycle);
     }
 
     @Test
@@ -587,6 +671,24 @@ class AuthRegistrationTest {
     }
 
     @Test
+    void concurrentRefreshCanConsumeTheOriginalTokenOnlyOnce() throws Exception {
+        register("concurrent-refresh@example.com", "Password123!");
+        var original = login("concurrent-refresh@example.com", "Password123!").getBody();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            java.util.concurrent.Callable<HttpStatus> refresh = () -> {
+                barrier.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                var response = restTemplate.postForEntity("/auth/refresh", Map.of("refreshToken", original.refreshToken()), String.class);
+                return HttpStatus.valueOf(response.getStatusCode().value());
+            };
+            var first = executor.submit(refresh);
+            var second = executor.submit(refresh);
+            assertThat(java.util.List.of(first.get(15, java.util.concurrent.TimeUnit.SECONDS), second.get(15, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.UNAUTHORIZED);
+        }
+    }
+
+    @Test
     void forgotPasswordIssuesOneTimeResetToken() {
         register("reset@example.com", "Password123!");
         AuthTokenResponse tokens = login("reset@example.com", "Password123!").getBody();
@@ -594,7 +696,8 @@ class AuthRegistrationTest {
                 "/auth/forgot-password",
                 Map.of("email", "reset@example.com"),
                 String.class);
-        String resetToken = tokenFromMessage(resetRequest.getBody());
+        String resetToken = deliveredCode("reset@example.com", "password reset");
+        assertThat(resetRequest.getBody()).doesNotContain(resetToken);
 
         ResponseEntity<String> reset = restTemplate.postForEntity(
                 "/auth/reset-password",
@@ -627,7 +730,8 @@ class AuthRegistrationTest {
                 "/auth/email-verification/request",
                 Map.of("email", "verify@example.com"),
                 String.class);
-        String verificationToken = tokenFromMessage(verificationRequest.getBody());
+        String verificationToken = deliveredCode("verify@example.com", "email verification");
+        assertThat(verificationRequest.getBody()).doesNotContain(verificationToken);
 
         ResponseEntity<String> verified = restTemplate.postForEntity(
                 "/auth/email-verification/confirm",

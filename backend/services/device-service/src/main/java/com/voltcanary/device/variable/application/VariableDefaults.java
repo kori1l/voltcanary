@@ -6,8 +6,6 @@ import com.voltcanary.device.security.AuthenticatedUser;
 import com.voltcanary.device.service.AccountService;
 import com.voltcanary.device.variable.adapter.VariableBindingRows;
 import com.voltcanary.device.variable.port.VariableStore;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;

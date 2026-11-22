@@ -1,7 +1,6 @@
 package com.voltcanary.device.dto;
 
-import java.util.UUID;import com.voltcanary.device.domain.Device;
-
+import java.util.UUID;
 
 public record InternalDataSourceResponse(
         UUID accountId,

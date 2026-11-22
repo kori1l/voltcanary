@@ -71,6 +71,10 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         foreignDeviceId = UUID.randomUUID();
         ownedAccountId = UUID.randomUUID();
         foreignAccountId = UUID.randomUUID();
+        when(accessService.accountScope(USER_ID)).thenAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return ownedAccountId;
+        });
         when(accessService.canReadDevice(eq(ownedDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID))).thenReturn(true);
         when(accessService.canReadDevice(eq(foreignDeviceId), eq(USER_ID), eq(ROLE), eq(CORRELATION_ID))).thenReturn(false);
         when(accessService.resolveDeviceAccountId(eq(ownedDeviceId), anyString())).thenReturn(ownedAccountId);
@@ -95,6 +99,21 @@ class AlertServiceAuthorizationTest extends SignedUserTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).extracting(AlertResponse::id).contains(owned.id());
         assertThat(response.getBody()).extracting(AlertResponse::deviceId).doesNotContain(foreignDeviceId);
+    }
+
+    @Test
+    void foreignNewerAlertsCannotConsumeTheOwnedListOrPageLimit() {
+        AlertResponse owned = createAlert(ownedDeviceId, "POWER_SPIKE");
+        for (int index = 0; index < 5; index++) createAlert(foreignDeviceId, "FOREIGN_" + index);
+        var list = restTemplate.exchange("/alerts?limit=1", HttpMethod.GET, userEntity(null), AlertResponse[].class);
+        assertThat(list.getBody()).extracting(AlertResponse::id).containsExactly(owned.id());
+        var page = restTemplate.exchange("/alerts/page?page=0&size=1", HttpMethod.GET, userEntity(null),
+                com.voltcanary.alert.dto.AlertPageResponse.class);
+        assertThat(page.getBody().content()).extracting(AlertResponse::id).containsExactly(owned.id());
+        assertThat(page.getBody().totalElements()).isEqualTo(1);
+        org.mockito.Mockito.verify(accessService, org.mockito.Mockito.never())
+                .canReadDevice(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

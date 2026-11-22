@@ -1,5 +1,6 @@
 package com.voltcanary.alert.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,12 +52,13 @@ public class AlertRuleService {
             "LONG_HIGH_RUN");
 
     private final AlertRuleRepository repository;
+    private final AlertRuleWrites writes;
     private final ObjectMapper objectMapper;
     private final AlertAccessService accessService;
     private final AlertRuleEvaluationClient evaluationClient;
     private final VariableRuleValidation variableRules;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleResponse> list(
             String userId,
             String accountId,
@@ -80,12 +82,12 @@ public class AlertRuleService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse get(UUID id, String userId, String accountId) {
         return toResponse(loadOwned(id, userId, accountId));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse create(String userId, String accountId, CreateAlertRuleRequest request) {
         UUID scope = accountScope(userId, accountId);
         Instant now = Instant.now();
@@ -99,12 +101,13 @@ public class AlertRuleService {
         rule.setUpdatedAt(now);
         applyCreate(rule, request);
         variableRules.validate(rule, userId, null);
-        return toResponse(repository.save(rule));
+        return toResponse(writes.create(rule));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse update(UUID id, String userId, String accountId, UpdateAlertRuleRequest request) {
-        AlertRule rule = lockOwned(id, userId, accountId);
+        AlertRule rule = draft(loadOwned(id, userId, accountId));
+        int expectedVersion = rule.getVersion();
         if (variableRules.applies(rule.getMetric(), variableRules.config(rule))) {
             Object expected = request == null || request.config() == null ? null : request.config().get("expectedVersion");
             if (!(expected instanceof Number number) || number.intValue() != rule.getVersion()) {
@@ -116,26 +119,27 @@ public class AlertRuleService {
         rule.setVersion(rule.getVersion() + 1);
         rule.setUpdatedBy(parseUuid(userId));
         rule.setUpdatedAt(Instant.now());
-        return toResponse(rule);
+        return toResponse(writes.update(rule, expectedVersion));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleResponse setEnabled(UUID id, String userId, String accountId, boolean enabled) {
-        AlertRule rule = lockOwned(id, userId, accountId);
+        AlertRule rule = draft(loadOwned(id, userId, accountId));
+        int expectedVersion = rule.getVersion();
         rule.setEnabled(enabled);
         variableRules.validate(rule, userId, null);
         rule.setVersion(rule.getVersion() + 1);
         rule.setUpdatedBy(parseUuid(userId));
         rule.setUpdatedAt(Instant.now());
-        return toResponse(rule);
+        return toResponse(writes.update(rule, expectedVersion));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void delete(UUID id, String userId, String accountId) {
-        repository.delete(lockOwned(id, userId, accountId));
+        writes.delete(loadOwned(id, userId, accountId));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public AlertRuleTestResponse test(String userId, String accountId, String correlationId, AlertRuleTestRequest request) {
         accountScope(userId, accountId);
         if (request == null || request.rule() == null) {
@@ -164,7 +168,7 @@ public class AlertRuleService {
                 List.of());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleResponse> effectiveForDevice(String userId, String accountId, UUID deviceId, String correlationId) {
         UUID scope = accountScope(userId, accountId);
         if (deviceId == null) {
@@ -183,7 +187,7 @@ public class AlertRuleService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<AlertRuleSnapshotResponse> effectiveRuleSnapshotsForDevice(UUID deviceId, String correlationId) {
         if (deviceId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deviceId is required");
@@ -221,10 +225,34 @@ public class AlertRuleService {
         return rule;
     }
 
-    private AlertRule lockOwned(UUID id, String userId, String accountId) {
-        repository.lockOwned(id, accountScope(userId, accountId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert rule not found"));
-        return loadOwned(id, userId, accountId);
+    private AlertRule draft(AlertRule source) {
+        var copy = new AlertRule();
+        copy.setId(source.getId());
+        copy.setAccountId(source.getAccountId());
+        copy.setName(source.getName());
+        copy.setDescription(source.getDescription());
+        copy.setRuleType(source.getRuleType());
+        copy.setEnabled(source.isEnabled());
+        copy.setScopeType(source.getScopeType());
+        copy.setScopeId(source.getScopeId());
+        copy.setDeviceType(source.getDeviceType());
+        copy.setMetric(source.getMetric());
+        copy.setConditionType(source.getConditionType());
+        copy.setThreshold(source.getThreshold());
+        copy.setThresholdUnit(source.getThresholdUnit());
+        copy.setBaselineMultiplier(source.getBaselineMultiplier());
+        copy.setMinPoints(source.getMinPoints());
+        copy.setSeverity(source.getSeverity());
+        copy.setCooldownSeconds(source.getCooldownSeconds());
+        copy.setDeduplicationWindowSeconds(source.getDeduplicationWindowSeconds());
+        copy.setNotificationChannelIdsJson(source.getNotificationChannelIdsJson());
+        copy.setConfigJson(source.getConfigJson());
+        copy.setVersion(source.getVersion());
+        copy.setCreatedBy(source.getCreatedBy());
+        copy.setUpdatedBy(source.getUpdatedBy());
+        copy.setCreatedAt(source.getCreatedAt());
+        copy.setUpdatedAt(source.getUpdatedAt());
+        return copy;
     }
 
     private void applyCreate(AlertRule rule, CreateAlertRuleRequest request) {

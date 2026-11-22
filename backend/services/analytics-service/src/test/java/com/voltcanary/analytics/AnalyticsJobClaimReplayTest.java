@@ -49,7 +49,7 @@ class AnalyticsJobClaimReplayTest {
         firstWorker.runClaimedJobs();
         secondWorker.runClaimedJobs();
 
-        verify(runner, times(1)).run(jobId);
+        verify(runner, times(1)).run(org.mockito.ArgumentMatchers.eq(jobId), org.mockito.ArgumentMatchers.anyString());
         assertThat(status(jobId)).isEqualTo("RUNNING");
         assertThat(lockedAt(jobId)).isNotNull();
 
@@ -59,7 +59,7 @@ class AnalyticsJobClaimReplayTest {
                 jobId);
         secondWorker.runClaimedJobs();
 
-        verify(runner, times(2)).run(jobId);
+        verify(runner, times(2)).run(org.mockito.ArgumentMatchers.eq(jobId), org.mockito.ArgumentMatchers.anyString());
     }
 
     private AnalyticsJobWorker worker(AnalyticsJobRunner runner) {

@@ -39,6 +39,8 @@ public class MlImportedDatasetFeatureBuilder {
                         .thenComparingLong(MlImportedMetricRow::getSourceRowNumber))
                 .toList();
 
+        var partitions = MlFeaturePartitions.assign(datasetVersion, rows, MlImportedMetricRow::getId, MlImportedMetricRow::getTimestamp,
+                row -> row.getMatchedDeviceId() == null ? row.getExternalDeviceKey() : row.getMatchedDeviceId().toString());
         Map<String, List<MlImportedMetricRow>> groups = rows.stream()
                 .collect(Collectors.groupingBy(
                         row -> row.getExternalDeviceKey() + "|" + row.getMetricName(),
@@ -51,9 +53,11 @@ public class MlImportedDatasetFeatureBuilder {
         long rejected = 0;
         List<MlFeatureRowData> featureRows = new java.util.ArrayList<>();
         for (List<MlImportedMetricRow> groupRows : groups.values()) {
-            double baselineMean = groupRows.stream().mapToDouble(MlImportedMetricRow::getNumericValue).average().orElse(0);
+            double observedSum = 0;
             for (int index = 0; index < groupRows.size(); index++) {
                 MlImportedMetricRow row = groupRows.get(index);
+                observedSum += row.getNumericValue();
+                double baselineMean = observedSum / (index + 1);
                 int from = Math.max(0, index - config.rollingWindowSize() + 1);
                 List<MlImportedMetricRow> window = groupRows.subList(from, index + 1);
                 Map<String, Object> features = new LinkedHashMap<>();
@@ -97,7 +101,7 @@ public class MlImportedDatasetFeatureBuilder {
                         row.getExternalDeviceKey() + "|" + row.getMetricName(),
                         features,
                         labelValues.isEmpty() && row.getLabel() != null ? Map.of("label", row.getLabel().name()) : labelValues,
-                        splitAssignment(index, groupRows.size()),
+                        partitions.get(row.getId()),
                         Map.of(
                                 "source", "ml_imported_metric_rows",
                                 "importedFileId", row.getImportedFileId().toString(),
@@ -129,17 +133,4 @@ public class MlImportedDatasetFeatureBuilder {
                 .orElse(0));
     }
 
-    private String splitAssignment(int index, int groupSize) {
-        if (groupSize <= 1) {
-            return "TRAIN";
-        }
-        double ratio = (double) index / groupSize;
-        if (ratio < 0.7) {
-            return "TRAIN";
-        }
-        if (ratio < 0.85) {
-            return "VALIDATION";
-        }
-        return "TEST";
-    }
 }

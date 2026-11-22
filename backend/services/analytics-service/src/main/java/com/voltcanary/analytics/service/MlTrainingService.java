@@ -39,6 +39,7 @@ public class MlTrainingService {
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlTrainingRunRepository trainingRunRepository;
+    private final jakarta.persistence.EntityManager entityManager;
     private final MlModelVersionRepository modelVersionRepository;
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
@@ -137,7 +138,10 @@ public class MlTrainingService {
 
     @Transactional
     public MlTrainingRunDto cancel(UUID accountId, UUID runId) {
-        MlTrainingRun run = findOwned(accountId, runId);
+        MlTrainingRun run = trainingRunRepository.lockById(runId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ML training run not found"));
+        entityManager.refresh(run);
+        if (!accountId.equals(run.getAccountId())) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "ML training run not found");
         if (run.getStatus() != MlTrainingRunStatus.QUEUED && run.getStatus() != MlTrainingRunStatus.RUNNING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only queued or running training runs can be canceled");
         }

@@ -7,7 +7,6 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;

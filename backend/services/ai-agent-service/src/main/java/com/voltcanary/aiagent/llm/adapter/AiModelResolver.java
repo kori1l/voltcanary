@@ -41,7 +41,7 @@ public class AiModelResolver {
             return Optional.empty();
         }
         String apiKey = secretRepository.findByProviderIdAndSecretType(provider.getId(), AiModelSecretType.API_KEY)
-                .map(secret -> encryptionService.decrypt(secret.getEncryptedValue()))
+                .map(secret -> encryptionService.decrypt(secret.getEncryptedValue(), secret.getEncryptionKeyVersion()))
                 .orElse("");
         if (!provider.getAuthType().name().equals("NONE") && apiKey.isBlank()) {
             return Optional.empty();

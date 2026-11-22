@@ -14,7 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DuplicateKeyException;
+import com.voltcanary.common.web.JdbcInsertIfAbsent;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,14 +34,10 @@ public class ConversationStore {
 
     public Conversation create(Scope user, UUID id) {
         Instant now = Instant.now();
-        try {
-            jdbc.update("""
-                    insert into ai_conversations(id,user_id,account_id,title,revision,created_at,updated_at,expires_at)
-                    values(?,?,?,'Новый разговор',0,?,?,?)
-                    """, id, user.userId(), user.accountId(), time(now), time(now), time(now.plus(properties.getRetention())));
-        } catch (DuplicateKeyException duplicate) {
-            // A lost create response may be retried with the same client-generated ID.
-        }
+        JdbcInsertIfAbsent.insert(jdbc, "ai_conversations",
+                List.of("id", "user_id", "account_id", "title", "revision", "created_at", "updated_at", "expires_at"),
+                List.of("id"), id, user.userId(), user.accountId(), "Новый разговор", 0,
+                time(now), time(now), time(now.plus(properties.getRetention())));
         var conversation = get(user, id);
         select(user, id);
         return conversation;
@@ -76,14 +72,11 @@ public class ConversationStore {
 
     public void select(Scope user, UUID id) {
         get(user, id);
-        // Separate statements avoid leaving a PostgreSQL transaction aborted on an insert race.
-        try {
-            jdbc.update("insert into ai_conversation_selection(user_id,account_id,conversation_id) values(?,?,?)",
-                    user.userId(), user.accountId(), id);
-        } catch (DuplicateKeyException duplicate) {
-            jdbc.update("update ai_conversation_selection set conversation_id=? where user_id=? and account_id=?",
-                    id, user.userId(), user.accountId());
-        }
+        JdbcInsertIfAbsent.insert(jdbc, "ai_conversation_selection",
+                List.of("user_id", "account_id", "conversation_id"), List.of("user_id", "account_id"),
+                user.userId(), user.accountId(), id);
+        jdbc.update("update ai_conversation_selection set conversation_id=? where user_id=? and account_id=?",
+                id, user.userId(), user.accountId());
     }
 
     public Page<Message> messages(Scope user, UUID id, long after, int limit) {

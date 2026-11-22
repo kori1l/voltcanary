@@ -6,7 +6,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -48,19 +47,9 @@ public class SchedulerLockService {
             if (updated == 1) {
                 return true;
             }
-            try {
-                jdbcTemplate.update("""
-                        insert into scheduler_locks (lock_name, locked_until, locked_at, locked_by)
-                        values (?, ?, ?, ?)
-                        """,
-                        lockName,
-                        Timestamp.from(lockedUntil),
-                        Timestamp.from(now),
-                        ownerId);
-                return true;
-            } catch (DuplicateKeyException ignored) {
-                return false;
-            }
+            return com.voltcanary.common.web.JdbcInsertIfAbsent.insert(jdbcTemplate, "scheduler_locks",
+                    java.util.List.of("lock_name", "locked_until", "locked_at", "locked_by"), java.util.List.of("lock_name"),
+                    lockName, Timestamp.from(lockedUntil), Timestamp.from(now), ownerId) == 1;
         });
         meterRegistry.counter(
                 "identity.scheduler.lock.acquire",

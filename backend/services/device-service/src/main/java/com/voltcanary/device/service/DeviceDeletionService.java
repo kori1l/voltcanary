@@ -1,5 +1,7 @@
 package com.voltcanary.device.service;
 
+import com.voltcanary.device.event.SourceRuntimeConfigEventPublisher;
+import org.springframework.transaction.annotation.Propagation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltcanary.device.domain.SourceStatus;
@@ -32,7 +34,7 @@ public class DeviceDeletionService {
     private final AccountService accounts;
     private final DeviceRegistryEventPublisher events;
     private final ObjectMapper mapper;
-    private final com.voltcanary.device.event.SourceRuntimeConfigEventPublisher runtimeEvents;
+    private final SourceRuntimeConfigEventPublisher runtimeEvents;
 
     @Transactional
     public Receipt begin(AuthenticatedUser user, UUID id, boolean deleteHistory) {
@@ -72,7 +74,7 @@ public class DeviceDeletionService {
         return receipt(user, id);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<Receipt> list(AuthenticatedUser user) {
         UUID account = accounts.currentAccount(user).getId();
         return jdbc.query("select * from device_deletions where account_id=? order by created_at desc", (rs, row) ->

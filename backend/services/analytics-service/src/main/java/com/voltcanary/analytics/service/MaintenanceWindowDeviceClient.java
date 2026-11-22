@@ -9,6 +9,9 @@ import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -22,7 +25,7 @@ public class MaintenanceWindowDeviceClient {
     private final MeterRegistry meterRegistry;
 
     public MaintenanceWindowDeviceClient(
-            RestClient.Builder restClientBuilder,
+            @Qualifier("deviceRestClientBuilder") RestClient.Builder restClientBuilder,
             AnalyticsDownstreamProperties downstreamProperties,
             AnalyticsInternalProperties internalProperties,
             MeterRegistry meterRegistry) {
@@ -33,12 +36,17 @@ public class MaintenanceWindowDeviceClient {
     }
 
     public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, int limit) {
+        return changes(updatedAfter, null, limit);
+    }
+
+    public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, UUID afterId, int limit) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             MaintenanceWindowSnapshot[] response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/internal/maintenance-windows/changes")
                             .queryParam("updatedAfter", updatedAfter)
+                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
                             .queryParam("limit", limit)
                             .build())
                     .headers(headers -> {
@@ -59,12 +67,17 @@ public class MaintenanceWindowDeviceClient {
     }
 
     public List<MaintenanceOutcomeSnapshot> outcomeChanges(Instant updatedAfter, int limit) {
+        return outcomeChanges(updatedAfter, null, limit);
+    }
+
+    public List<MaintenanceOutcomeSnapshot> outcomeChanges(Instant updatedAfter, UUID afterId, int limit) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             MaintenanceOutcomeSnapshot[] response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/internal/maintenance-outcomes/changes")
                             .queryParam("updatedAfter", updatedAfter)
+                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
                             .queryParam("limit", limit)
                             .build())
                     .headers(headers -> {

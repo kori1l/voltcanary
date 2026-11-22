@@ -5,7 +5,6 @@ import com.voltcanary.ingestion.adapter.api.AdapterCapabilities;
 import com.voltcanary.ingestion.adapter.api.AdapterCapability;
 import com.voltcanary.ingestion.adapter.api.AdapterManifest;
 import com.voltcanary.ingestion.adapter.api.AdapterType;
-import com.voltcanary.ingestion.adapter.api.InboundTelemetryAdapter;
 import com.voltcanary.ingestion.adapter.api.ProtocolType;
 import com.voltcanary.ingestion.adapter.api.SourceRuntimeConfig;
 import com.voltcanary.ingestion.adapter.api.TelemetryAdapter;

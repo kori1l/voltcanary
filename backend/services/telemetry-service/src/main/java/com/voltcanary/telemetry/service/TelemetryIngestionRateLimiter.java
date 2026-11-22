@@ -1,12 +1,13 @@
 package com.voltcanary.telemetry.service;
 
+import com.voltcanary.common.security.BoundedWindowRateLimiter;
+import java.util.List;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import com.voltcanary.telemetry.config.TelemetryValidationProperties;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -17,8 +18,13 @@ public class TelemetryIngestionRateLimiter {
 
     private static final Duration REDIS_KEY_TTL = Duration.ofMinutes(2);
 
+    private static final RedisScript<Long> COUNT_SCRIPT =
+            new DefaultRedisScript<>(
+                    "local n=redis.call('INCR',KEYS[1]); if n==1 or redis.call('PTTL',KEYS[1])<0 then redis.call('PEXPIRE',KEYS[1],ARGV[1]); end; return n;", Long.class);
+
     private final TelemetryValidationProperties properties;
-    private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
+    private final BoundedWindowRateLimiter counters =
+            new BoundedWindowRateLimiter(10_000);
     private final StringRedisTemplate redisTemplate;
 
     public TelemetryIngestionRateLimiter(
@@ -46,11 +52,8 @@ public class TelemetryIngestionRateLimiter {
     private Boolean allowRedis(UUID deviceId, long windowStartedAt, int limit) {
         String key = "telemetry:rate-limit:device:" + deviceId + ":" + windowStartedAt;
         try {
-            Long count = redisTemplate.opsForValue().increment(key);
-            if (count != null && count == 1L) {
-                redisTemplate.expire(key, REDIS_KEY_TTL);
-            }
-            return count == null || count <= limit;
+            Long count = redisTemplate.execute(COUNT_SCRIPT, List.of(key), Long.toString(REDIS_KEY_TTL.toMillis()));
+            return count != null && count <= limit;
         } catch (RuntimeException exception) {
             log.warn("telemetryRateLimitRedisUnavailable reasonCode={}", exception.getClass().getSimpleName());
             return null;
@@ -58,13 +61,7 @@ public class TelemetryIngestionRateLimiter {
     }
 
     private boolean allowInMemory(UUID deviceId, long windowStartedAt, int limit) {
-        WindowCounter counter = counters.compute(deviceId.toString(), (ignored, existing) -> {
-            if (existing == null || existing.windowStartedAt != windowStartedAt) {
-                return new WindowCounter(windowStartedAt);
-            }
-            return existing;
-        });
-        return counter.count.incrementAndGet() <= limit;
+        return counters.allow(deviceId.toString(), windowStartedAt, limit);
     }
 
     private long currentMinuteStartedAt() {
@@ -72,12 +69,4 @@ public class TelemetryIngestionRateLimiter {
         return now - (now % 60_000);
     }
 
-    private static final class WindowCounter {
-        private final long windowStartedAt;
-        private final AtomicInteger count = new AtomicInteger();
-
-        private WindowCounter(long windowStartedAt) {
-            this.windowStartedAt = windowStartedAt;
-        }
-    }
 }

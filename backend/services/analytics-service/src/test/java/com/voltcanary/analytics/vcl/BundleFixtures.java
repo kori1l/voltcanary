@@ -11,7 +11,6 @@ import com.voltcanary.vcl.VclParser;
 import com.voltcanary.vcl.VclRegistry;
 import com.voltcanary.vcl.VclUnits;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 

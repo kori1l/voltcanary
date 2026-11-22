@@ -4,8 +4,6 @@ import com.voltcanary.analytics.baseline.BaselineStats;
 import com.voltcanary.analytics.domain.DeviceBaseline;
 import com.voltcanary.analytics.domain.FeatureSet;
 import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
-import com.voltcanary.analytics.repository.DeviceBaselineRepository;
-import com.voltcanary.analytics.repository.FeatureSetRepository;
 import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
 import java.time.Instant;
 import java.util.Comparator;
@@ -21,11 +19,9 @@ public class AnalyticsBaselineFeatureService {
 
     private static final String BASELINE_ALGORITHM_VERSION = "baseline-basic-v1";
 
-    private final DeviceBaselineRepository baselineRepository;
-    private final FeatureSetRepository featureSetRepository;
     private final AnalyticsPredictionTraceService traceService;
 
-    public DeviceBaseline saveBaseline(UUID deviceId, String metric, String period, BaselineStats baseline, Instant now) {
+    public DeviceBaseline baseline(UUID deviceId, String metric, String period, BaselineStats baseline, Instant now) {
         DeviceBaseline entity = new DeviceBaseline();
         entity.setId(UUID.randomUUID());
         entity.setDeviceId(deviceId);
@@ -49,10 +45,10 @@ public class AnalyticsBaselineFeatureService {
                 "min", baseline.min(),
                 "max", baseline.max(),
                 "sampleCount", baseline.sampleCount())));
-        return baselineRepository.save(entity);
+        return entity;
     }
 
-    public FeatureSet saveFeatureSet(
+    public FeatureSet featureSet(
             UUID deviceId,
             String metric,
             String period,
@@ -82,7 +78,7 @@ public class AnalyticsBaselineFeatureService {
                         .map(MaintenanceWindowReadModel::getMaintenanceWindowId)
                         .map(UUID::toString)
                         .toList()))));
-        return featureSetRepository.save(entity);
+        return entity;
     }
 
     public double latestValue(TelemetryChartResponse chart) {

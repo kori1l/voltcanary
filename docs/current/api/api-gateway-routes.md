@@ -74,6 +74,14 @@ Route ownership:
 
 Gateway-generated downstream failures return `503` with `code=downstream_unavailable`.
 
+The rate limiter uses the direct socket peer by default. Configure
+`app.gateway.rate-limit.trusted-proxy-addresses` only with explicitly trusted
+numeric proxy addresses. Forwarded chains are traversed from right to left and
+stop at the first untrusted hop; caller-supplied leftmost addresses cannot
+create a fresh allowance. In-memory fallback retains at most 10,000 keys,
+rejects new keys at capacity, and never evicts active counters to make room.
+Redis increment and expiry are one atomic script operation.
+
 ## JWT Verification
 
 The gateway verifies access tokens with configured public keys:

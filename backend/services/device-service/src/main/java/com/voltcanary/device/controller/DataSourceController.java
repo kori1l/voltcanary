@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.DataSourceImportResponse;
 import com.voltcanary.device.dto.DataSourceRequest;
 import com.voltcanary.device.dto.DataSourceResponse;

@@ -42,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -60,130 +61,81 @@ public class MlExternalDatasetImportService {
     private final MlExternalDeviceMappingRepository deviceMappingRepository;
     private final MlValidationReportRepository validationReportRepository;
     private final AnalyticsAccessService accessService;
+    private final MlDatasetWrites writes;
+    private final MlImportCsv csv;
     private final ObjectMapper objectMapper;
 
-    @Transactional
-    public MlExternalImportResponse importCsv(
-            UUID accountId,
-            UUID userId,
-            String datasetName,
-            String description,
-            MultipartFile file,
-            MlCsvSchemaMapping mapping) {
+    @Transactional(propagation = Propagation.NEVER)
+    public MlExternalImportResponse importCsv(UUID accountId, UUID userId, String datasetName,
+            String description, MultipartFile file, MlCsvSchemaMapping mapping) {
+        return importFile(accountId, userId, datasetName, description, file, mapping, false);
+    }
+
+    @Transactional(propagation = Propagation.NEVER)
+    public MlExternalImportResponse importJsonl(UUID accountId, UUID userId, String datasetName,
+            String description, MultipartFile file, MlCsvSchemaMapping mapping) {
+        return importFile(accountId, userId, datasetName, description, file, mapping, true);
+    }
+
+    private MlExternalImportResponse importFile(UUID accountId, UUID userId, String datasetName,
+            String description, MultipartFile file, MlCsvSchemaMapping mapping, boolean jsonl) {
         validateFile(file);
         validateMapping(mapping);
-
         byte[] content = readBytes(file);
         String contentHash = sha256(content);
         Instant now = Instant.now();
-
-        MlDataset dataset = createDataset(accountId, userId, datasetName, description, file, now);
-        MlImportedFile importedFile = createImportedFile(accountId, userId, dataset.getId(), file, content, contentHash, mapping, "text/csv", now);
-
-        ImportResult result = parseRows(accountId, importedFile.getId(), content, mapping, now);
-        persistImportResult(importedFile.getId(), result);
-        MlDatasetVersion datasetVersion = createExternalDatasetVersion(accountId, userId, dataset.getId(), contentHash, mapping, result, now);
-        MlValidationReport report = createReport(datasetVersion.getId(), importedFile.getId(), result, now, "CSV import");
-
+        var dataset = createDataset(accountId, userId, datasetName, description, file, now);
+        String mediaType = jsonl ? "application/x-ndjson" : "text/csv";
+        var importedFile = createImportedFile(accountId, userId, dataset.getId(), file, content, contentHash, mapping, mediaType, now);
+        Map<UUID, UUID> owners = new LinkedHashMap<>();
+        ImportResult result = jsonl
+                ? parseJsonlRows(accountId, importedFile.getId(), content, mapping, now, owners)
+                : parseRows(accountId, importedFile.getId(), content, mapping, now, owners);
         if (Boolean.FALSE.equals(mapping.allowPartialAcceptance()) && result.rejectedRows() > 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CSV import contains rejected rows and partial acceptance is disabled");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Import contains rejected rows and partial acceptance is disabled");
         }
-        log.info("mlExternalImportCompleted importedFileId={} datasetId={} accountId={} mediaType={} acceptedRows={} rejectedRows={} warningCount={} contentHash={}",
-                importedFile.getId(), dataset.getId(), accountId, "text/csv", result.acceptedRows().size(), result.rejectedRows(), result.warningCount(), contentHash);
-
-        return new MlExternalImportResponse(
-                dataset.getId(),
-                datasetVersion.getId(),
-                importedFile.getId(),
-                report.getId(),
-                contentHash,
-                report.getAcceptedRows(),
-                report.getRejectedRows(),
-                report.getWarningCount(),
-                result.messages(),
-                now);
+        var response = writes.commit(() -> {
+            datasetRepository.save(dataset);
+            importedFileRepository.save(importedFile);
+            persistImportResult(importedFile.getId(), result);
+            var version = createExternalDatasetVersion(accountId, userId, dataset.getId(), contentHash, mapping, result, now);
+            var report = createReport(version.getId(), importedFile.getId(), result, now, jsonl ? "JSONL import" : "CSV import");
+            return new MlExternalImportResponse(dataset.getId(), version.getId(), importedFile.getId(), report.getId(),
+                    contentHash, report.getAcceptedRows(), report.getRejectedRows(), report.getWarningCount(), result.messages(), now);
+        });
+        log.info("mlExternalImportCompleted importedFileId={} datasetId={} accountId={} mediaType={} acceptedRows={} rejectedRows={}",
+                importedFile.getId(), dataset.getId(), accountId, mediaType, response.acceptedRows(), response.rejectedRows());
+        return response;
     }
 
-    @Transactional
-    public MlExternalImportResponse importJsonl(
-            UUID accountId,
-            UUID userId,
-            String datasetName,
-            String description,
-            MultipartFile file,
-            MlCsvSchemaMapping mapping) {
-        validateFile(file);
-        validateMapping(mapping);
-
-        byte[] content = readBytes(file);
-        String contentHash = sha256(content);
-        Instant now = Instant.now();
-
-        MlDataset dataset = createDataset(accountId, userId, datasetName, description, file, now);
-        MlImportedFile importedFile = createImportedFile(accountId, userId, dataset.getId(), file, content, contentHash, mapping, "application/x-ndjson", now);
-        ImportResult result = parseJsonlRows(accountId, importedFile.getId(), content, mapping, now);
-        persistImportResult(importedFile.getId(), result);
-        MlDatasetVersion datasetVersion = createExternalDatasetVersion(accountId, userId, dataset.getId(), contentHash, mapping, result, now);
-
-        MlValidationReport report = createReport(datasetVersion.getId(), importedFile.getId(), result, now, "JSONL import");
-        if (Boolean.FALSE.equals(mapping.allowPartialAcceptance()) && result.rejectedRows() > 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "JSONL import contains rejected rows and partial acceptance is disabled");
-        }
-        log.info("mlExternalImportCompleted importedFileId={} datasetId={} accountId={} mediaType={} acceptedRows={} rejectedRows={} warningCount={} contentHash={}",
-                importedFile.getId(), dataset.getId(), accountId, "application/x-ndjson", result.acceptedRows().size(), result.rejectedRows(), result.warningCount(), contentHash);
-
-        return new MlExternalImportResponse(
-                dataset.getId(),
-                datasetVersion.getId(),
-                importedFile.getId(),
-                report.getId(),
-                contentHash,
-                report.getAcceptedRows(),
-                report.getRejectedRows(),
-                report.getWarningCount(),
-                result.messages(),
-                now);
-    }
-
-    private ImportResult parseRows(UUID accountId, UUID importedFileId, byte[] content, MlCsvSchemaMapping mapping, Instant now) {
+    private ImportResult parseRows(UUID accountId, UUID importedFileId, byte[] content, MlCsvSchemaMapping mapping, Instant now, Map<UUID, UUID> owners) {
         List<MlImportedMetricRow> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
         Map<String, Long> mappingStats = new LinkedHashMap<>();
         long rejected = 0;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new java.io.ByteArrayInputStream(content), StandardCharsets.UTF_8))) {
-            String headerLine = reader.readLine();
-            if (headerLine == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CSV import file is empty");
+        var table = csv.read(content);
+        Map<String, Integer> indexes = indexes(table.headers());
+        requireMappedColumns(indexes, mapping);
+        rejectCredentialLikeColumns(table.headers());
+        for (var record : table.records()) {
+            long rowNumber = record.getRecordNumber() + 1;
+            try {
+                if (record.size() != table.headers().size()) throw new IllegalArgumentException("CSV_COLUMN_COUNT_MISMATCH");
+                var row = toImportedRow(accountId, importedFileId, rowNumber, record.toList(), indexes, mapping, now, owners);
+                accepted.add(row);
+                increment(mappingStats, "accepted:" + row.getMetricName());
+            } catch (IllegalArgumentException exception) {
+                rejected++;
+                increment(rejectedReasons, exception.getMessage());
+                messages.add("Row " + rowNumber + ": " + exception.getMessage());
             }
-            List<String> headers = parseCsvLine(headerLine);
-            Map<String, Integer> indexes = indexes(headers);
-            requireMappedColumns(indexes, mapping);
-            rejectCredentialLikeColumns(headers);
-
-            String line;
-            long rowNumber = 1;
-            while ((line = reader.readLine()) != null) {
-                rowNumber++;
-                List<String> row = parseCsvLine(line);
-                try {
-                    MlImportedMetricRow acceptedRow = toImportedRow(accountId, importedFileId, rowNumber, row, indexes, mapping, now);
-                    accepted.add(acceptedRow);
-                    increment(mappingStats, "accepted:" + acceptedRow.getMetricName());
-                } catch (IllegalArgumentException exception) {
-                    rejected++;
-                    increment(rejectedReasons, exception.getMessage());
-                    messages.add("Row " + rowNumber + ": " + exception.getMessage());
-                }
-            }
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read CSV import file", exception);
         }
         return new ImportResult(accepted, rejected, 0, rejectedReasons, mappingStats, List.copyOf(messages));
     }
 
-    private ImportResult parseJsonlRows(UUID accountId, UUID importedFileId, byte[] content, MlCsvSchemaMapping mapping, Instant now) {
+    private ImportResult parseJsonlRows(UUID accountId, UUID importedFileId, byte[] content, MlCsvSchemaMapping mapping, Instant now, Map<UUID, UUID> owners) {
         List<MlImportedMetricRow> accepted = new ArrayList<>();
         List<String> messages = new ArrayList<>();
         Map<String, Long> rejectedReasons = new LinkedHashMap<>();
@@ -200,7 +152,7 @@ public class MlExternalDatasetImportService {
                 }
                 try {
                     Map<String, Object> row = objectMapper.readValue(line, new TypeReference<>() {});
-                    MlImportedMetricRow acceptedRow = toImportedRow(accountId, importedFileId, rowNumber, row, mapping, now);
+                    MlImportedMetricRow acceptedRow = toImportedRow(accountId, importedFileId, rowNumber, row, mapping, now, owners);
                     accepted.add(acceptedRow);
                     increment(mappingStats, "accepted:" + acceptedRow.getMetricName());
                 } catch (IllegalArgumentException exception) {
@@ -226,7 +178,7 @@ public class MlExternalDatasetImportService {
             List<String> row,
             Map<String, Integer> indexes,
             MlCsvSchemaMapping mapping,
-            Instant now) {
+            Instant now, Map<UUID, UUID> owners) {
         String deviceKey = cell(row, indexes, mapping.deviceKeyColumn());
         String metricName = cell(row, indexes, mapping.metricNameColumn());
         String rawValue = cell(row, indexes, mapping.metricValueColumn());
@@ -261,7 +213,7 @@ public class MlExternalDatasetImportService {
         importedRow.setExternalDeviceKey(deviceKey);
         applyDeviceMatch(importedRow, accountId, deviceKey,
                 mapping.existingDeviceIdColumn() == null ? "" : cell(row, indexes, mapping.existingDeviceIdColumn()),
-                mapping.deviceTypeColumn() == null ? "" : cell(row, indexes, mapping.deviceTypeColumn()));
+                mapping.deviceTypeColumn() == null ? "" : cell(row, indexes, mapping.deviceTypeColumn()), owners);
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
@@ -279,7 +231,7 @@ public class MlExternalDatasetImportService {
             long rowNumber,
             Map<String, Object> row,
             MlCsvSchemaMapping mapping,
-            Instant now) {
+            Instant now, Map<UUID, UUID> owners) {
         String deviceKey = field(row, mapping.deviceKeyColumn());
         String metricName = field(row, mapping.metricNameColumn());
         String rawValue = field(row, mapping.metricValueColumn());
@@ -314,7 +266,7 @@ public class MlExternalDatasetImportService {
         importedRow.setExternalDeviceKey(deviceKey);
         applyDeviceMatch(importedRow, accountId, deviceKey,
                 mapping.existingDeviceIdColumn() == null ? "" : field(row, mapping.existingDeviceIdColumn()),
-                mapping.deviceTypeColumn() == null ? "" : field(row, mapping.deviceTypeColumn()));
+                mapping.deviceTypeColumn() == null ? "" : field(row, mapping.deviceTypeColumn()), owners);
         importedRow.setTimestamp(timestamp);
         importedRow.setMetricName(metricName);
         importedRow.setNumericValue(value);
@@ -353,26 +305,22 @@ public class MlExternalDatasetImportService {
             UUID accountId,
             String externalDeviceKey,
             String existingDeviceId,
-            String deviceType) {
+            String deviceType, Map<UUID, UUID> owners) {
         row.setVirtualDeviceKey("virtual:" + accountId + ":" + externalDeviceKey);
         row.setDeviceType(blankToNull(deviceType));
         if (existingDeviceId == null || existingDeviceId.isBlank()) {
             return;
         }
+        UUID matchedDeviceId;
         try {
-            UUID matchedDeviceId = UUID.fromString(existingDeviceId.trim());
-            UUID ownerAccountId = accessService.accountIdForDevice(matchedDeviceId, null);
-            if (!accountId.equals(ownerAccountId)) {
-                throw new IllegalArgumentException("DEVICE_OWNERSHIP_MISMATCH");
-            }
-            row.setMatchedDeviceId(matchedDeviceId);
-        } catch (Exception exception) {
-            if (exception instanceof IllegalArgumentException illegalArgumentException
-                    && "DEVICE_OWNERSHIP_MISMATCH".equals(illegalArgumentException.getMessage())) {
-                throw illegalArgumentException;
-            }
+            matchedDeviceId = UUID.fromString(existingDeviceId.trim());
+        } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("INVALID_EXISTING_DEVICE_ID");
         }
+        UUID ownerAccountId = owners.computeIfAbsent(matchedDeviceId,
+                id -> accessService.accountIdForDevice(id, null));
+        if (!accountId.equals(ownerAccountId)) throw new IllegalArgumentException("DEVICE_OWNERSHIP_MISMATCH");
+        row.setMatchedDeviceId(matchedDeviceId);
     }
 
     private void persistImportResult(UUID importedFileId, ImportResult result) {
@@ -405,7 +353,6 @@ public class MlExternalDatasetImportService {
         dataset.setCreatedBy(userId);
         dataset.setCreatedAt(now);
         dataset.setUpdatedAt(now);
-        datasetRepository.save(dataset);
         return dataset;
     }
 
@@ -434,7 +381,6 @@ public class MlExternalDatasetImportService {
         importedFile.setArtifactUri(null);
         importedFile.setUploadedBy(userId);
         importedFile.setImportedAt(now);
-        importedFileRepository.save(importedFile);
         return importedFile;
     }
 
@@ -667,30 +613,6 @@ public class MlExternalDatasetImportService {
     private String field(Map<String, Object> row, String field) {
         Object value = row.get(field);
         return value == null ? "" : String.valueOf(value).trim();
-    }
-
-    private List<String> parseCsvLine(String line) {
-        List<String> values = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean quoted = false;
-        for (int index = 0; index < line.length(); index++) {
-            char value = line.charAt(index);
-            if (value == '"') {
-                if (quoted && index + 1 < line.length() && line.charAt(index + 1) == '"') {
-                    current.append('"');
-                    index++;
-                } else {
-                    quoted = !quoted;
-                }
-            } else if (value == ',' && !quoted) {
-                values.add(current.toString());
-                current.setLength(0);
-            } else {
-                current.append(value);
-            }
-        }
-        values.add(current.toString());
-        return values;
     }
 
     private byte[] readBytes(MultipartFile file) {

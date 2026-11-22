@@ -1,6 +1,7 @@
 package com.voltcanary.alert;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpServer;
 import com.voltcanary.alert.domain.Alert;
@@ -18,7 +19,6 @@ import com.voltcanary.alert.repository.AlertEventRepository;
 import com.voltcanary.alert.repository.AlertRepository;
 import com.voltcanary.alert.service.AlertService;
 import com.voltcanary.common.events.analytics.AnomalyDetectedEvent;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -283,7 +283,7 @@ class NotificationChannelApiTest extends SignedUserTest {
         var channel = notificationChannelRepository.findById(createChannelResponse.getBody().id()).orElseThrow();
         var attempt = notificationAttemptService.createTestAttempt(channel, Map.of());
         notificationAttemptService.markFailed(
-                attempt.getId(),
+                notificationAttemptService.claimAttempt(attempt.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(),
                 "HTTP_401",
                 "provider rejected token=super-secret-value",
                 true);
@@ -405,8 +405,8 @@ class NotificationChannelApiTest extends SignedUserTest {
         var pending = notificationAttemptService.createPendingAttempt(
                 notificationRequest(alert, UUID.randomUUID(), "MANUAL"),
                 channel);
-        var retrying = notificationAttemptService.markRetrying(pending.getId(), "HTTP_503", "Provider unavailable");
-        var sent = notificationAttemptService.markSent(retrying.getId(), "Accepted by provider");
+        var retrying = notificationAttemptService.markRetrying(notificationAttemptService.claimAttempt(pending.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(), "HTTP_503", "Provider unavailable");
+        var sent = notificationAttemptService.markSent(notificationAttemptService.claimAttempt(retrying.getId(), "test", java.time.Duration.ofMinutes(1)).orElseThrow(), "Accepted by provider");
 
         ResponseEntity<List<NotificationAttemptResponse>> response = restTemplate.exchange(
                 "/alerts/{id}/notification-attempts",
@@ -468,6 +468,11 @@ class NotificationChannelApiTest extends SignedUserTest {
         assertThat(replayClaim.get().getId()).isEqualTo(pending.getId());
         assertThat(notificationAttemptRepository.findById(pending.getId()).orElseThrow().getLockedBy())
                 .isEqualTo("worker-b");
+        assertThatThrownBy(() -> notificationAttemptService.markSent(firstClaim.orElseThrow(), "late acknowledgement"))
+                .isInstanceOf(NotificationAttemptService.LeaseLost.class);
+        var current = notificationAttemptRepository.findById(pending.getId()).orElseThrow();
+        assertThat(current.getLockedBy()).isEqualTo("worker-b");
+        assertThat(current.getStatus().name()).isEqualTo("PROCESSING");
     }
 
     @org.junit.jupiter.params.ParameterizedTest

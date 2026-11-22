@@ -1,6 +1,5 @@
 package com.voltcanary.device.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.common.security.VclWorkerAssertion;
 import com.voltcanary.device.config.VclWorkerIdentityProperties;
 import com.voltcanary.device.configurable.application.DatasetDescriptions;

@@ -6,8 +6,8 @@ import com.voltcanary.alert.scheduling.SchedulerLockService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -15,7 +15,6 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @ConditionalOnProperty(prefix = "app.maintenance.reconciliation", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -53,44 +52,36 @@ public class MaintenanceWindowReconciliationService {
     }
 
     public ReconciliationResult reconcile() {
-        Instant checkpoint = checkpoint();
-        List<MaintenanceWindowSnapshot> changes = deviceClient.changes(checkpoint, properties.getBatchSize());
+        Cursor checkpoint = checkpoint(CHECKPOINT_NAME);
+        List<MaintenanceWindowSnapshot> changes = deviceClient.changes(checkpoint.at(), checkpoint.id(), properties.getBatchSize());
         int applied = 0;
         for (MaintenanceWindowSnapshot snapshot : changes) {
             if (projectionService.upsertSnapshot(snapshot)) {
                 applied++;
             }
         }
-        changes.stream()
-                .map(MaintenanceWindowSnapshot::updatedAt)
-                .filter(value -> value != null)
-                .max(Comparator.naturalOrder())
-                .ifPresent(this::saveCheckpoint);
+        if (!changes.isEmpty()) {
+            var last = changes.getLast();
+            saveCheckpoint(CHECKPOINT_NAME, last.updatedAt(), last.id());
+        }
         meterRegistry.counter("alert.maintenance.reconciliation.completed", "status", "success").increment();
         return new ReconciliationResult(changes.size(), applied);
     }
 
-    private Instant checkpoint() {
-        List<Instant> values = jdbcTemplate.query("""
-                select checkpoint_at
-                from maintenance_projection_checkpoints
-                where source_name = ?
-                """, (rs, rowNum) -> rs.getTimestamp("checkpoint_at").toInstant(), CHECKPOINT_NAME);
-        return values.isEmpty() ? Instant.EPOCH : values.getFirst();
+    private record Cursor(Instant at, UUID id) { }
+
+    private Cursor checkpoint(String name) {
+        return jdbcTemplate.query("select checkpoint_at, checkpoint_id from maintenance_projection_checkpoints where source_name=?",
+                (rs, index) -> new Cursor(rs.getTimestamp(1).toInstant(), rs.getObject(2, UUID.class)), name)
+                .stream().findFirst().orElse(new Cursor(Instant.EPOCH, null));
     }
 
-    @Transactional
-    public void saveCheckpoint(Instant checkpoint) {
-        int updated = jdbcTemplate.update("""
-                update maintenance_projection_checkpoints
-                set checkpoint_at = ?, updated_at = ?
-                where source_name = ?
-                """, Timestamp.from(checkpoint), Timestamp.from(Instant.now()), CHECKPOINT_NAME);
+    private void saveCheckpoint(String name, Instant at, UUID id) {
+        int updated = jdbcTemplate.update("update maintenance_projection_checkpoints set checkpoint_at=?, checkpoint_id=?, updated_at=? where source_name=?",
+                Timestamp.from(at), id, Timestamp.from(Instant.now()), name);
         if (updated == 0) {
-            jdbcTemplate.update("""
-                    insert into maintenance_projection_checkpoints (source_name, checkpoint_at, updated_at)
-                    values (?, ?, ?)
-                    """, CHECKPOINT_NAME, Timestamp.from(checkpoint), Timestamp.from(Instant.now()));
+            jdbcTemplate.update("insert into maintenance_projection_checkpoints(source_name, checkpoint_at, checkpoint_id, updated_at) values(?,?,?,?)",
+                    name, Timestamp.from(at), id, Timestamp.from(Instant.now()));
         }
     }
 

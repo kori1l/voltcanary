@@ -2,7 +2,6 @@ package com.voltcanary.device.repository;
 
 import com.voltcanary.device.domain.DataSource;
 import com.voltcanary.device.domain.DataSourceProtocol;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.domain.SourceStatus;
 import java.util.List;
 import java.util.Optional;

@@ -31,6 +31,41 @@ These are operating targets, not hard real-time guarantees:
 | Notification attempt to provider adapter call | Under 30 seconds when provider and worker are healthy. |
 | Notification test delivery request to provider adapter call | Same request when the selected channel is enabled and the provider is reachable. |
 
+## Calculation and Lease Boundaries
+
+Analytics gathers telemetry, device metadata, alert rules and ML responses outside database
+transactions. A short result transaction reacquires the device deletion fence, verifies
+job ownership and saves baselines, features, anomalies, risk, predictions, recommendations,
+outbox events and the successful job status together. Failed and skipped jobs finish in
+an independent transaction. A stale worker cannot commit results for a replacement lease.
+
+ML dataset materialization reads and validates remote telemetry before its local commit.
+Training claims, heartbeats and completion use short locked transactions; model registration
+and successful completion commit together. The ML training request has a separate bounded
+HTTP budget from inference. Provider calls do not hold a database transaction open.
+
+Outbox acknowledgements and notification completion require the exact claim owner and
+attempt or claim timestamp. Lease recovery can still repeat an external side effect after
+a crash; consumers and providers must apply their documented idempotency contracts.
+
+Maintenance reconciliation uses `(updatedAt, id)` cursors, including across page boundaries.
+A timestamp alone is insufficient when several changes share the same update time.
+
+Background work has explicit recovery boundaries:
+
+| Work | Durable owner and recovery | Atomic local completion |
+| --- | --- | --- |
+| Analytics recalculation | Database job lease; claim one job immediately before execution; stale leases are reclaimable. | Results, outbox events and COMPLETED share the exact-claim transaction. |
+| Model training | Database training lease with heartbeats; stale attempts cannot register a model. | Model registration and successful run completion share the account registry fence. |
+| Horizon label generation | Database job row lock; the scheduler rediscovers QUEUED and legacy RUNNING jobs after restart. Executor dispatch is only a wake-up hint. | Labels and COMPLETED share one transaction. An interrupted transaction rolls back to the durable queued state. |
+| Alert escalation | Scheduled scan delegates to a separate transactional writer and locks each alert. | Escalation event and notification attempts commit together. |
+| Recovery mail | Encrypted database outbox; after-commit wake-up plus periodic discovery and stale-claim recovery. | Claim-owner/attempt-fenced delivery status; SMTP remains at least once. |
+
+These boundaries deliberately differ with the work: remote calculation cannot
+hold a database transaction open, while bounded local label generation can commit
+its effects with its job row. A process-local executor is never the sole recovery
+mechanism for these durable jobs.
+
 ## Client Retry Expectations
 
 | Response | Client behavior |

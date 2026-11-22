@@ -1,5 +1,7 @@
 package com.voltcanary.analytics.producer;
 
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.lang.management.ManagementFactory;
@@ -10,7 +12,6 @@ import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -53,9 +54,14 @@ public class AnalyticsOutboxPublisher {
             return;
         }
         for (OutboxMessage event : claimPending()) {
+            if (!renewClaim(event)) continue;
             try {
-                kafkaTemplate.send(event.topic(), event.messageKey(), event.payloadJson()).get();
-                markPublished(event.id(), event.topic());
+                kafkaTemplate.send(event.topic(), event.messageKey(), event.payloadJson()).get(30, TimeUnit.SECONDS);
+                markPublished(event);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                markFailed(event, interrupted);
+                return;
             } catch (Exception exception) {
                 log.warn("analyticsOutboxPublishFailed outboxId={} topic={} reasonCode={}",
                         event.id(),
@@ -70,7 +76,7 @@ public class AnalyticsOutboxPublisher {
         return transactionTemplate.execute(status -> {
             Instant now = Instant.now();
             Instant staleBefore = now.minus(LEASE_TTL);
-            List<UUID> ids = claimIds(now, staleBefore, true);
+            List<UUID> ids = claimIds(now, staleBefore);
             if (ids.isEmpty()) {
                 return List.of();
             }
@@ -79,8 +85,7 @@ public class AnalyticsOutboxPublisher {
         });
     }
 
-    private List<UUID> claimIds(Instant now, Instant staleBefore, boolean skipLocked) {
-        String lockClause = skipLocked ? " for update skip locked" : " for update";
+    private List<UUID> claimIds(Instant now, Instant staleBefore) {
         String sql = """
                 select id
                 from analytics_event_outbox
@@ -93,20 +98,13 @@ public class AnalyticsOutboxPublisher {
                 )
                 order by created_at asc
                 limit ?
-                """ + lockClause;
-        try {
-            return jdbcTemplate.query(
-                    sql,
-                    (rs, rowNum) -> rs.getObject("id", UUID.class),
-                    Timestamp.from(now),
-                    Timestamp.from(staleBefore),
-                    BATCH_SIZE);
-        } catch (DataAccessException exception) {
-            if (skipLocked) {
-                return claimIds(now, staleBefore, false);
-            }
-            throw exception;
-        }
+                """ + " for update skip locked";
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> rs.getObject("id", UUID.class),
+                Timestamp.from(now),
+                Timestamp.from(staleBefore),
+                BATCH_SIZE);
     }
 
     private void updateClaim(List<UUID> ids, Instant now) {
@@ -138,17 +136,22 @@ public class AnalyticsOutboxPublisher {
                 ids.toArray());
     }
 
-    private void markPublished(UUID id, String topic) {
-        transactionTemplate.executeWithoutResult(status -> jdbcTemplate.update("""
+    private boolean renewClaim(OutboxMessage event) {
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> jdbcTemplate.update("""
+                update analytics_event_outbox set locked_at = ?
+                where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
+                """, Timestamp.from(Instant.now()), event.id(), publisherId, event.attempts()) == 1));
+    }
+
+    private void markPublished(OutboxMessage event) {
+        Integer updated = transactionTemplate.execute(status -> jdbcTemplate.update("""
                 update analytics_event_outbox
-                set status = 'PUBLISHED',
-                    published_at = ?,
-                    locked_at = null,
-                    locked_by = null,
-                    last_error = null
-                where id = ?
-                """, Timestamp.from(Instant.now()), id));
-        meterRegistry.counter("analytics.events.published", "topic", topic, "status", "published").increment();
+                set status = 'PUBLISHED', published_at = ?, locked_at = null, locked_by = null, last_error = null
+                where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
+                """, Timestamp.from(Instant.now()), event.id(), publisherId, event.attempts()));
+        if (Integer.valueOf(1).equals(updated)) {
+            meterRegistry.counter("analytics.events.published", "topic", event.topic(), "status", "published").increment();
+        }
     }
 
     private void markFailed(OutboxMessage event, Exception exception) {
@@ -156,24 +159,24 @@ public class AnalyticsOutboxPublisher {
         Instant nextAttemptAt = event.attempts() >= MAX_ATTEMPTS
                 ? null
                 : Instant.now().plus(RETRY_DELAY.multipliedBy(event.attempts()));
-        transactionTemplate.executeWithoutResult(status -> jdbcTemplate.update("""
+        Integer updated = transactionTemplate.execute(status -> jdbcTemplate.update("""
                 update analytics_event_outbox
                 set status = ?,
                     next_attempt_at = ?,
                     locked_at = null,
                     locked_by = null,
                     last_error = ?
-                where id = ?
+                where id = ? and status = 'PROCESSING' and locked_by = ? and attempts = ?
                 """,
                 nextStatus,
                 nextAttemptAt == null ? null : Timestamp.from(nextAttemptAt),
                 message(exception),
-                event.id()));
-        meterRegistry.counter("analytics.events.published", "topic", event.topic(), "status", "failed").increment();
+                event.id(), publisherId, event.attempts()));
+        if (Integer.valueOf(1).equals(updated)) meterRegistry.counter("analytics.events.published", "topic", event.topic(), "status", "failed").increment();
     }
 
     private String placeholders(int size) {
-        return String.join(",", java.util.Collections.nCopies(size, "?"));
+        return String.join(",", Collections.nCopies(size, "?"));
     }
 
     private Object[] parameters(List<UUID> ids, Object... prefix) {

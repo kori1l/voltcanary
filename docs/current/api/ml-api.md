@@ -39,6 +39,18 @@ deployment and recorded inference. Approval/configuration does not establish
 observed runtime success. Approval/deployment/ownership gates remain server
 authoritative; the console applies no new numeric promotion thresholds.
 
+The serving cache synchronizes shared state and coalesces concurrent loads of
+the same model within one process. Clearing it prevents an earlier in-flight
+load from repopulating the cleared generation. Training requests sharing an
+idempotency key also share one in-flight execution within a process; a conflicting
+request fingerprint is rejected. These process-local caches do not replace the
+backend's durable training lease and registry.
+
+Local artifact paths must remain below the configured artifact root, including
+resolved symlinks. Absolute paths, traversal segments, Windows path separators,
+and non-local URI schemes are rejected. S3 reads stay within the configured
+bucket, and manifest members must use canonical relative paths.
+
 ## Internal ML-service boundary
 
 Analytics-service is the trusted caller for ML-service execution and metadata
@@ -352,6 +364,31 @@ Training split strategies:
 - `TIME_BASED`
 - `DEVICE_BASED`
 - `RANDOM`
+
+Feature materialization applies `splitConfigJson` weights (`train`, `validation`,
+`test`, summing to one; optional `seed`, default 42). `TIME_BASED` partitions
+distinct timestamps chronologically across the selected data. `DEVICE_BASED`
+keeps every observation of a device in one stable hash partition. `RANDOM`
+hashes the device and timestamp together, keeping metrics of one observation
+together and remaining stable across input ordering. Small datasets may have
+empty validation/test partitions; they do not manufacture independent quality
+metrics. Training with an empty TRAIN partition is rejected.
+
+ML training uses TRAIN rows for fitting and VALIDATION rows for reported validation
+metrics. TEST rows remain excluded from both. Inline anomaly requests without
+partition metadata use a chronological holdout that keeps equal timestamps together.
+Anomaly contamination uses positive anomaly/failure labels, rather than total label
+coverage; NORMAL labels do not increase the expected anomaly fraction.
+
+Python run outcomes and idempotency metadata are persisted in SQLite at
+`ML_TRAINING_HISTORY_PATH` (default: `.training-history.sqlite3` under the artifact
+root). Retention defaults to seven days and 1,000 outcomes, controlled by
+`ML_TRAINING_HISTORY_RETENTION_SECONDS` and `ML_TRAINING_HISTORY_CAPACITY`.
+Use a persistent local volume across restarts. This history does not replace the
+backend's authoritative job lease or provide cross-host execution locking.
+Fitting runs in a separate process that is terminated when its remaining time
+budget expires. `ML_TRAINING_FIT_TIMEOUT_SECONDS` defaults to 600 seconds; the
+request's `trainingTimeoutSeconds` can shorten this limit.
 
 Model families:
 
@@ -1393,3 +1430,19 @@ Only unreferenced artifacts are cleanup candidates.
 ## Frontend status boundary
 
 The frontend does not call ML-service directly. It reads the latest persisted prediction through analytics-service. Model name, version, type, readiness status, prediction status, confidence, signals, explanations, recommended actions, input hash, model id, policy source, resolved device type, canary fields, fallback reason, prediction path, and shadow marker are read-only traceability fields. Missing or unavailable ML metadata is represented with controlled status values; internal endpoints and errors are not exposed.
+
+### External dataset import validation and persistence
+
+Java analytics-service parses CSV with Apache Commons CSV (UTF-8 BOM, quoted
+commas, escaped quotes and multiline fields). Duplicate or missing headers and
+malformed quoting reject the file with `400`; inconsistent record widths are
+reported as rejected rows. CSV row numbers identify logical records, including
+the header, rather than physical lines inside quoted fields.
+
+CSV/JSONL parsing and device ownership lookups run before the write transaction.
+Ownership is checked once per distinct matched device per import. An unavailable
+authorization service aborts the import with `503`; it is not reported as an
+invalid UUID or accepted as a partial import. Invalid UUIDs and ownership
+mismatches remain row validation errors. With partial acceptance disabled, any
+rejected row prevents all writes. Dataset, file metadata, accepted rows, mappings,
+version and validation report commit together, or all roll back on storage failure.

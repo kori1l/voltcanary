@@ -1,5 +1,6 @@
 package com.voltcanary.alert.service;
 
+import java.util.Optional;
 import com.voltcanary.alert.config.AlertDownstreamProperties;
 import com.voltcanary.alert.config.AlertInternalProperties;
 import com.voltcanary.alert.dto.MaintenanceWindowSnapshot;
@@ -8,6 +9,7 @@ import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -32,12 +34,17 @@ public class MaintenanceWindowDeviceClient {
     }
 
     public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, int limit) {
+        return changes(updatedAfter, null, limit);
+    }
+
+    public List<MaintenanceWindowSnapshot> changes(Instant updatedAfter, UUID afterId, int limit) {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             MaintenanceWindowSnapshot[] response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/internal/maintenance-windows/changes")
                             .queryParam("updatedAfter", updatedAfter)
+                            .queryParamIfPresent("afterId", Optional.ofNullable(afterId))
                             .queryParam("limit", limit)
                             .build())
                     .headers(headers -> {

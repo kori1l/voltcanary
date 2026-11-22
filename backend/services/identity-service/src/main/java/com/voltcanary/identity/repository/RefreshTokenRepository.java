@@ -1,5 +1,8 @@
 package com.voltcanary.identity.repository;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.transaction.annotation.Transactional;
 import com.voltcanary.identity.domain.RefreshToken;
 import java.time.Instant;
 import java.util.List;
@@ -12,6 +15,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
+    @Transactional
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<RefreshToken> findByTokenHash(String tokenHash);
 
     List<RefreshToken> findByUserIdAndRevokedAtIsNull(UUID userId);

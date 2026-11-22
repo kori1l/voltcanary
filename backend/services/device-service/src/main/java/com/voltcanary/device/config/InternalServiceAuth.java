@@ -1,6 +1,5 @@
 package com.voltcanary.device.config;
 
-import com.voltcanary.device.domain.Device;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;

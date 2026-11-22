@@ -113,7 +113,7 @@ class MlHorizonLabelGenerationServiceTest {
 
         UUID jobId = UUID.randomUUID();
         MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
-        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(jobRepository.tryLockById(jobId)).thenReturn(Optional.of(job));
 
         service.runJob(jobId);
 
@@ -179,7 +179,7 @@ class MlHorizonLabelGenerationServiceTest {
         MlDatasetVersion datasetVersion = datasetVersion(accountId, datasetVersionId);
         MlHorizonLabelGenerationJob job = job(accountId, actorId, datasetVersionId, jobId, "test-v1", 7, false);
 
-        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(jobRepository.tryLockById(jobId)).thenReturn(Optional.of(job));
         when(datasetVersionRepository.findById(datasetVersionId)).thenReturn(Optional.of(datasetVersion));
         when(canonicalMetricRowRepository.findByDatasetVersionIdOrderByTimestampAsc(datasetVersionId)).thenReturn(List.of());
 

@@ -20,6 +20,7 @@
         <postgresql.version>42.7.11</postgresql.version>
         <h2.version>2.5.252</h2.version>
         <flyway.version>12.6.1</flyway.version>
+        <commons.csv.version>1.14.1</commons.csv.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <lombok.version>1.18.46</lombok.version>
         <junit.jupiter.version>5.14.4</junit.jupiter.version>
@@ -55,6 +56,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-csv</artifactId>
+                <version>${commons.csv.version}</version>
+            </dependency>
             <!-- Boot 4.0's H2 2.4.240 has a cross-connection CHECK constraint regression. -->
             <dependency>
                 <groupId>com.h2database</groupId>

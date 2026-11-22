@@ -1,7 +1,7 @@
 package com.voltcanary.analytics.service;
 
+import org.springframework.transaction.annotation.Propagation;
 import com.voltcanary.analytics.domain.MaintenanceOutcomeReadModel;
-import com.voltcanary.analytics.domain.MaintenanceWindowReadModel;
 import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.dto.MlCandidateWindowKind;
 import com.voltcanary.analytics.dto.MlDatasetCandidateWindowDto;
@@ -9,7 +9,6 @@ import com.voltcanary.analytics.dto.MlDatasetLabelReadinessDto;
 import com.voltcanary.analytics.dto.MlDatasetMetricCoverageDto;
 import com.voltcanary.analytics.dto.MlDatasetPreviewCreateDefaultsDto;
 import com.voltcanary.analytics.dto.MlDatasetQualityGateDto;
-import com.voltcanary.analytics.dto.MlDatasetTimelineBucketDto;
 import com.voltcanary.analytics.dto.MlDatasetWindowDto;
 import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewRequest;
 import com.voltcanary.analytics.dto.MlDatasetWorkbenchPreviewResponse;
@@ -18,15 +17,9 @@ import com.voltcanary.analytics.dto.MlMetricSelectionMode;
 import com.voltcanary.analytics.dto.MlWorkbenchGateStatus;
 import com.voltcanary.analytics.dto.MlWorkbenchStatus;
 import com.voltcanary.analytics.repository.MaintenanceOutcomeReadModelRepository;
-import com.voltcanary.analytics.repository.MaintenanceWindowReadModelRepository;
-import com.voltcanary.analytics.telemetry.TelemetryChartResponse;
-import com.voltcanary.analytics.telemetry.TelemetryClient;
-import com.voltcanary.analytics.telemetry.TelemetryMetricResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,13 +35,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class MlDatasetPreviewService {
 
     private final MaintenanceOutcomeReadModelRepository maintenanceOutcomeRepository;
-    private final MaintenanceWindowReadModelRepository maintenanceWindowRepository;
-    private final TelemetryClient telemetryClient;
+    private final MlDatasetMetricCoverage metricCoverage;
+    private final MlDatasetTimeline timeline;
     private final MlDatasetValidationService validationService;
     private final MlDatasetLabelReadinessService labelReadinessService;
     private final MlDatasetSupportService support;
 
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public MlDatasetWorkbenchPreviewResponse previewInternalTelemetryDataset(
             UUID accountId,
             MlDatasetWorkbenchPreviewRequest request) {
@@ -60,7 +53,7 @@ public class MlDatasetPreviewService {
         int minSamples = support.minSamplesPerMetric(request.minSamplesPerMetric());
         long maxGapSeconds = support.maxSamplingGapSeconds(request.maxSamplingGapSeconds());
 
-        List<MlDatasetMetricCoverageDto> availableMetrics = availableMetrics(
+        List<MlDatasetMetricCoverageDto> availableMetrics = metricCoverage.availableMetrics(
                 deviceIds,
                 request.from(),
                 request.to(),
@@ -115,7 +108,7 @@ public class MlDatasetPreviewService {
                 new MlDatasetWindowDto(request.from(), request.to(), MlCandidateWindowKind.USER_SELECTED),
                 availableMetrics,
                 candidates,
-                timeline(accountId, request, validation),
+                timeline.timeline(accountId, request, validation),
                 labelReadiness,
                 decision.qualityGates(),
                 decision.blockingReasons(),
@@ -192,144 +185,6 @@ public class MlDatasetPreviewService {
         payload.put("maintenanceWindowIdsByDevice", support.sortedUuidListMap(validation.maintenanceWindowIdsByDevice()));
         payload.put("labelReadiness", labelReadiness == null ? Map.of() : support.labelReadinessMap(labelReadiness));
         return support.sha256(support.writeJson(payload));
-    }
-
-    private List<MlDatasetMetricCoverageDto> availableMetrics(
-            List<UUID> deviceIds,
-            Instant from,
-            Instant to,
-            MlMetricSelectionMode metricSelectionMode,
-            int minSamples,
-            long maxGapSeconds) {
-        Map<UUID, Map<String, MetricMetadata>> metricsByDevice = metricMetadataByDevice(deviceIds);
-        Set<String> metricNames = metricNamesForMode(metricsByDevice.values(), metricSelectionMode);
-        return metricNames.stream()
-                .sorted()
-                .map(metricName -> metricCoverage(metricName, deviceIds, metricsByDevice, from, to, metricSelectionMode, minSamples, maxGapSeconds))
-                .toList();
-    }
-
-    private Map<UUID, Map<String, MetricMetadata>> metricMetadataByDevice(List<UUID> deviceIds) {
-        Map<UUID, Map<String, MetricMetadata>> value = new LinkedHashMap<>();
-        for (UUID deviceId : deviceIds) {
-            Map<String, MetricMetadata> metrics = new LinkedHashMap<>();
-            for (TelemetryMetricResponse metric : telemetryClient.metrics(deviceId)) {
-                if (metric.name() == null || metric.name().isBlank()) {
-                    continue;
-                }
-                MlDatasetNormalizedMetric normalized = support.normalizeMetric(metric.name());
-                metrics.put(metric.name(), new MetricMetadata(
-                        metric.name(),
-                        support.blankToDefault(metric.displayName(), metric.name()),
-                        normalized.canonicalMetricName(),
-                        metric.unit() == null || metric.unit().isBlank() ? normalized.canonicalUnit() : metric.unit()));
-            }
-            value.put(deviceId, metrics);
-        }
-        return value;
-    }
-
-    private Set<String> metricNamesForMode(
-            Collection<Map<String, MetricMetadata>> metricsByDevice,
-            MlMetricSelectionMode metricSelectionMode) {
-        LinkedHashSet<String> metricNames = new LinkedHashSet<>();
-        boolean first = true;
-        for (Map<String, MetricMetadata> deviceMetrics : metricsByDevice) {
-            if (metricSelectionMode == MlMetricSelectionMode.COMMON) {
-                if (first) {
-                    metricNames.addAll(deviceMetrics.keySet());
-                    first = false;
-                } else {
-                    metricNames.retainAll(deviceMetrics.keySet());
-                }
-            } else {
-                metricNames.addAll(deviceMetrics.keySet());
-            }
-        }
-        return metricNames;
-    }
-
-    private MlDatasetMetricCoverageDto metricCoverage(
-            String metricName,
-            List<UUID> deviceIds,
-            Map<UUID, Map<String, MetricMetadata>> metricsByDevice,
-            Instant from,
-            Instant to,
-            MlMetricSelectionMode metricSelectionMode,
-            int minSamples,
-            long maxGapSeconds) {
-        MetricMetadata metadata = metricsByDevice.values().stream()
-                .map(metrics -> metrics.get(metricName))
-                .filter(item -> item != null)
-                .findFirst()
-                .orElseGet(() -> {
-                    MlDatasetNormalizedMetric normalized = support.normalizeMetric(metricName);
-                    return new MetricMetadata(metricName, metricName, normalized.canonicalMetricName(), normalized.canonicalUnit());
-                });
-        int devicesWithMetric = 0;
-        long sampleCount = 0;
-        long maxGapObserved = 0;
-        long duplicateTimestamps = 0;
-        long nonFinite = 0;
-        List<String> blockingReasons = new ArrayList<>();
-        List<String> warningReasons = new ArrayList<>();
-        for (UUID deviceId : deviceIds) {
-            if (!metricsByDevice.getOrDefault(deviceId, Map.of()).containsKey(metricName)) {
-                continue;
-            }
-            devicesWithMetric++;
-            TelemetryChartResponse readings = telemetryClient.readings(deviceId, metricName, from, to);
-            List<TelemetryChartResponse.Point> points = readings == null || readings.points() == null
-                    ? List.of()
-                    : readings.points().stream()
-                            .sorted(Comparator.comparing(TelemetryChartResponse.Point::timestamp))
-                            .toList();
-            sampleCount += points.size();
-            maxGapObserved = Math.max(maxGapObserved, support.maxGapSeconds(points));
-            duplicateTimestamps += support.duplicateTimestampCount(points);
-            nonFinite += points.stream().filter(point -> !Double.isFinite(point.value())).count();
-        }
-        double coverageRatio = deviceIds.isEmpty() ? 0.0 : (double) devicesWithMetric / deviceIds.size();
-        double duplicateRate = sampleCount == 0 ? 0.0 : (double) duplicateTimestamps / sampleCount;
-        if (devicesWithMetric == 0) {
-            blockingReasons.add("Metric is not available on selected devices.");
-        }
-        if (metricSelectionMode == MlMetricSelectionMode.COMMON && devicesWithMetric < deviceIds.size()) {
-            blockingReasons.add("Metric is not present on every selected device.");
-        } else if (metricSelectionMode == MlMetricSelectionMode.ALL_AVAILABLE && devicesWithMetric < deviceIds.size()) {
-            warningReasons.add("Metric is available on only " + devicesWithMetric + " of " + deviceIds.size() + " selected devices.");
-        }
-        if (sampleCount == 0) {
-            warningReasons.add("Metric has no samples in the selected window.");
-        }
-        if (sampleCount > 0 && sampleCount < (long) minSamples * Math.max(1, devicesWithMetric)) {
-            blockingReasons.add("Metric has fewer than " + minSamples + " samples per covered device.");
-        }
-        if (maxGapObserved > maxGapSeconds) {
-            warningReasons.add("Metric max sampling gap exceeds " + maxGapSeconds + " seconds.");
-        }
-        if (nonFinite > 0) {
-            blockingReasons.add("Metric contains non-finite values.");
-        }
-        MlWorkbenchStatus status = blockingReasons.isEmpty()
-                ? warningReasons.isEmpty() ? MlWorkbenchStatus.READY : MlWorkbenchStatus.READY_WITH_WARNINGS
-                : sampleCount == 0 ? MlWorkbenchStatus.NO_DATA : MlWorkbenchStatus.BLOCKED;
-        return new MlDatasetMetricCoverageDto(
-                metricName,
-                metadata.displayName(),
-                metadata.canonicalMetricName(),
-                metadata.unit(),
-                devicesWithMetric,
-                deviceIds.size(),
-                coverageRatio,
-                sampleCount,
-                maxGapObserved,
-                duplicateRate,
-                nonFinite,
-                0,
-                status,
-                List.copyOf(blockingReasons),
-                List.copyOf(warningReasons));
     }
 
     private PreviewDecision previewDecision(
@@ -664,78 +519,6 @@ public class MlDatasetPreviewService {
         return support.maxInstant(from, to.minus(recent));
     }
 
-    private List<MlDatasetTimelineBucketDto> timeline(
-            UUID accountId,
-            MlDatasetWorkbenchPreviewRequest request,
-            MlDatasetValidationResult validation) {
-        Instant from = request.from();
-        Instant to = request.to();
-        if (!to.isAfter(from)) {
-            return List.of();
-        }
-        List<UUID> selectedDeviceIds = support.normalizedDeviceIds(request.deviceIds());
-        Map<UUID, List<MaintenanceWindowReadModel>> windowsByDevice = new LinkedHashMap<>();
-        for (UUID deviceId : selectedDeviceIds) {
-            List<MaintenanceWindowReadModel> windows = maintenanceWindowRepository.findActiveOverlapping(deviceId, from, to);
-            windowsByDevice.put(deviceId, windows == null ? List.of() : windows);
-        }
-        Set<UUID> selectedDevices = new LinkedHashSet<>(selectedDeviceIds);
-        List<MaintenanceOutcomeReadModel> outcomeRows = maintenanceOutcomeRepository.findByAccountAndObservedRange(accountId, from, to);
-        List<MaintenanceOutcomeReadModel> outcomes = (outcomeRows == null ? List.<MaintenanceOutcomeReadModel>of() : outcomeRows).stream()
-                .filter(outcome -> selectedDevices.contains(outcome.getDeviceId()))
-                .toList();
-        int bucketCount = 12;
-        long totalMillis = Math.max(1, Duration.between(from, to).toMillis());
-        long bucketMillis = Math.max(1, totalMillis / bucketCount);
-        List<MlDatasetTimelineBucketDto> buckets = new ArrayList<>();
-        for (int index = 0; index < bucketCount; index++) {
-            Instant bucketStart = from.plusMillis(bucketMillis * index);
-            Instant bucketEnd = index == bucketCount - 1 ? to : from.plusMillis(bucketMillis * (index + 1));
-            long samples = validation.extractedRows().stream()
-                    .filter(row -> !row.timestamp().isBefore(bucketStart) && row.timestamp().isBefore(bucketEnd))
-                    .count();
-            List<String> events = timelineEvents(bucketStart, bucketEnd, index == bucketCount - 1, windowsByDevice, outcomes);
-            buckets.add(new MlDatasetTimelineBucketDto(
-                    bucketStart,
-                    bucketEnd,
-                    samples,
-                    samples == 0 ? 0.0 : 1.0,
-                    samples == 0 ? MlWorkbenchStatus.NO_DATA : MlWorkbenchStatus.READY,
-                    events));
-        }
-        return buckets;
-    }
-
-    private List<String> timelineEvents(
-            Instant bucketStart,
-            Instant bucketEnd,
-            boolean lastBucket,
-            Map<UUID, List<MaintenanceWindowReadModel>> windowsByDevice,
-            List<MaintenanceOutcomeReadModel> outcomes) {
-        List<String> events = new ArrayList<>();
-        for (List<MaintenanceWindowReadModel> windows : windowsByDevice.values()) {
-            for (MaintenanceWindowReadModel window : windows) {
-                if (windowOverlaps(bucketStart, bucketEnd, window)) {
-                    events.add(window.isExcludeFromMl() ? "MAINTENANCE_EXCLUDED" : "MAINTENANCE_OVERLAP");
-                }
-            }
-        }
-        for (MaintenanceOutcomeReadModel outcome : outcomes) {
-            Instant observedAt = outcome.getObservedAt();
-            boolean inBucket = lastBucket
-                    ? !observedAt.isBefore(bucketStart) && !observedAt.isAfter(bucketEnd)
-                    : !observedAt.isBefore(bucketStart) && observedAt.isBefore(bucketEnd);
-            if (inBucket) {
-                events.add(support.labelType(outcome).name());
-            }
-        }
-        return support.distinct(events);
-    }
-
-    private boolean windowOverlaps(Instant bucketStart, Instant bucketEnd, MaintenanceWindowReadModel window) {
-        return window.getStartAt().isBefore(bucketEnd) && window.getEndAt().isAfter(bucketStart);
-    }
-
     private double candidateScore(
             MlDatasetValidationResult validation,
             MlDatasetLabelReadinessDto labelReadiness,
@@ -768,13 +551,6 @@ public class MlDatasetPreviewService {
         Map<String, Long> coverageByDeviceMetric = support.longMapFromQualityProfile(validation.qualityProfile(), "coverageByDeviceMetric");
         long coveredPairs = coverageByDeviceMetric.values().stream().filter(value -> value > 0).count();
         return Math.min(1.0, (double) coveredPairs / ((long) deviceCount * metricCount));
-    }
-
-    private record MetricMetadata(
-            String metricName,
-            String displayName,
-            String canonicalMetricName,
-            String unit) {
     }
 
     private record PreviewDecision(

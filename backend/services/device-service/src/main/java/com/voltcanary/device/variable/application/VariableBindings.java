@@ -1,7 +1,6 @@
 package com.voltcanary.device.variable.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.common.events.telemetry.VariableContract;
 import com.voltcanary.device.security.AuthenticatedUser;
 import com.voltcanary.device.service.AccountService;
 import com.voltcanary.device.telemetry.SourceRuntimeJson;

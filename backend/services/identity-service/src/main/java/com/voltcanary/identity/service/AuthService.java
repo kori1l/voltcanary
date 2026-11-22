@@ -1,8 +1,5 @@
 package com.voltcanary.identity.service;
 
-import com.voltcanary.identity.config.IdentityAuthProperties;
-import com.voltcanary.identity.domain.EmailVerificationToken;
-import com.voltcanary.identity.domain.PasswordResetToken;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.RefreshToken;
 import com.voltcanary.identity.domain.UserRole;
@@ -27,20 +24,13 @@ import com.voltcanary.identity.dto.ResetPasswordRequest;
 import com.voltcanary.identity.exception.AuthenticationFailedException;
 import com.voltcanary.identity.exception.AuthorizationFailedException;
 import com.voltcanary.identity.exception.DuplicateEmailException;
-import com.voltcanary.identity.repository.EmailVerificationTokenRepository;
-import com.voltcanary.identity.repository.PasswordResetTokenRepository;
 import com.voltcanary.identity.repository.RefreshTokenRepository;
 import com.voltcanary.identity.repository.UserRepository;
 import com.voltcanary.identity.security.AuthenticatedUser;
 import com.voltcanary.identity.security.JwtService;
 import com.voltcanary.identity.security.RefreshTokenService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -49,53 +39,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@lombok.RequiredArgsConstructor
 public class AuthService {
 
     private static final UserRole DEFAULT_ROLE = UserRole.USER;
     private static final String TOKEN_TYPE = "Bearer";
 
     private final UserRepository userRepository;
+    private final AccountRecoveryService recovery;
     private final LoginAuditService loginAuditService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final LoginProtectionService loginProtectionService;
-    private final PasswordResetTokenRepository passwordResetTokenRepository;
-    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final DeviceAccountLifecycleClient deviceAccountLifecycleClient;
     private final IdentityLifecycleOutboxService identityLifecycleOutboxService;
-    private final SecureRandom secureRandom = new SecureRandom();
-    private final long passwordResetTokenTtlSeconds;
-    private final long emailVerificationTokenTtlSeconds;
-
-    public AuthService(
-            UserRepository userRepository,
-            LoginAuditService loginAuditService,
-            PasswordEncoder passwordEncoder,
-            JwtService jwtService,
-            RefreshTokenService refreshTokenService,
-            LoginProtectionService loginProtectionService,
-            PasswordResetTokenRepository passwordResetTokenRepository,
-            EmailVerificationTokenRepository emailVerificationTokenRepository,
-            RefreshTokenRepository refreshTokenRepository,
-            DeviceAccountLifecycleClient deviceAccountLifecycleClient,
-            IdentityLifecycleOutboxService identityLifecycleOutboxService,
-            IdentityAuthProperties authProperties) {
-        this.userRepository = userRepository;
-        this.loginAuditService = loginAuditService;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
-        this.refreshTokenService = refreshTokenService;
-        this.loginProtectionService = loginProtectionService;
-        this.passwordResetTokenRepository = passwordResetTokenRepository;
-        this.emailVerificationTokenRepository = emailVerificationTokenRepository;
-        this.refreshTokenRepository = refreshTokenRepository;
-        this.deviceAccountLifecycleClient = deviceAccountLifecycleClient;
-        this.identityLifecycleOutboxService = identityLifecycleOutboxService;
-        this.passwordResetTokenTtlSeconds = authProperties.getPasswordResetTokenTtlSeconds();
-        this.emailVerificationTokenTtlSeconds = authProperties.getEmailVerificationTokenTtlSeconds();
-    }
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
@@ -190,78 +148,20 @@ public class AuthService {
         return new AuthMessageResponse("password changed");
     }
 
-    @Transactional
     public AuthMessageResponse forgotPassword(ForgotPasswordRequest request) {
-        String email = normalizeEmail(request.email());
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
-            return new AuthMessageResponse("password reset requested");
-        }
-
-        String token = randomToken();
-        PasswordResetToken resetToken = new PasswordResetToken();
-        resetToken.setId(UUID.randomUUID());
-        resetToken.setUser(user);
-        resetToken.setTokenHash(hash(token));
-        Instant now = Instant.now();
-        resetToken.setCreatedAt(now);
-        resetToken.setExpiresAt(now.plusSeconds(passwordResetTokenTtlSeconds));
-        passwordResetTokenRepository.save(resetToken);
-        return new AuthMessageResponse("password reset requested: " + token);
+        return recovery.forgotPassword(request);
     }
 
-    @Transactional
     public AuthMessageResponse resetPassword(ResetPasswordRequest request) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByTokenHash(hash(request.token()))
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid password reset token"));
-        Instant now = Instant.now();
-        if (resetToken.getUsedAt() != null || !resetToken.getExpiresAt().isAfter(now)) {
-            throw new AuthenticationFailedException("Invalid password reset token");
-        }
-
-        User user = resetToken.getUser();
-        ensureActive(user);
-        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        user.setUpdatedAt(now);
-        resetToken.setUsedAt(now);
-        refreshTokenService.revokeAllForUser(user.getId());
-        return new AuthMessageResponse("password reset complete");
+        return recovery.resetPassword(request);
     }
 
-    @Transactional
     public AuthMessageResponse requestEmailVerification(EmailVerificationRequest request) {
-        String email = normalizeEmail(request.email());
-        User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null || user.isEmailVerified()) {
-            return new AuthMessageResponse("email verification requested");
-        }
-
-        String token = randomToken();
-        EmailVerificationToken verificationToken = new EmailVerificationToken();
-        verificationToken.setId(UUID.randomUUID());
-        verificationToken.setUser(user);
-        verificationToken.setTokenHash(hash(token));
-        Instant now = Instant.now();
-        verificationToken.setCreatedAt(now);
-        verificationToken.setExpiresAt(now.plusSeconds(emailVerificationTokenTtlSeconds));
-        emailVerificationTokenRepository.save(verificationToken);
-        return new AuthMessageResponse("email verification requested: " + token);
+        return recovery.requestEmailVerification(request);
     }
 
-    @Transactional
     public AuthMessageResponse confirmEmailVerification(EmailVerificationConfirmRequest request) {
-        EmailVerificationToken verificationToken = emailVerificationTokenRepository.findByTokenHash(hash(request.token()))
-                .orElseThrow(() -> new AuthenticationFailedException("Invalid email verification token"));
-        Instant now = Instant.now();
-        if (verificationToken.getUsedAt() != null || !verificationToken.getExpiresAt().isAfter(now)) {
-            throw new AuthenticationFailedException("Invalid email verification token");
-        }
-
-        User user = verificationToken.getUser();
-        user.setEmailVerified(true);
-        user.setUpdatedAt(now);
-        verificationToken.setUsedAt(now);
-        return new AuthMessageResponse("email verified");
+        return recovery.confirmEmailVerification(request);
     }
 
     @Transactional(readOnly = true)
@@ -287,7 +187,6 @@ public class AuthService {
             refreshTokenService.revokeAllForUser(user.getId());
         }
         identityLifecycleOutboxService.enqueueAccountLifecycle(user);
-        deviceAccountLifecycleClient.sync(user.getId(), user.getEmail(), user.getStatus());
         return toAdminUserResponse(user);
     }
 
@@ -300,7 +199,6 @@ public class AuthService {
         user.setUpdatedAt(Instant.now());
         refreshTokenService.revokeAllForUser(user.getId());
         identityLifecycleOutboxService.enqueueAccountLifecycle(user);
-        deviceAccountLifecycleClient.sync(user.getId(), user.getEmail(), user.getStatus());
         return toAdminUserResponse(user);
     }
 
@@ -414,18 +312,4 @@ public class AuthService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
-    private String randomToken() {
-        byte[] bytes = new byte[32];
-        secureRandom.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private String hash(String token) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Failed to hash token", exception);
-        }
-    }
 }

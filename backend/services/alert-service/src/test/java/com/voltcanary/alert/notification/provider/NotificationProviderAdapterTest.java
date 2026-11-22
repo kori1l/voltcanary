@@ -29,7 +29,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.web.client.RestClient;
 
 class NotificationProviderAdapterTest {
 

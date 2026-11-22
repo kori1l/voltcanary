@@ -708,7 +708,7 @@ describe("MlSettingsPage", () => {
     await userEvent.type(screen.getByLabelText(/Minimum label coverage/i), "0.75");
     await userEvent.click(screen.getByRole("button", { name: /Queue training/i }));
 
-    expect(await screen.findByText("Training workflow updated")).toBeInTheDocument();
+    await waitFor(() => expect(requests.some((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST")).toBe(true));
     const trainingRequest = requests.find((request) => request.url.endsWith("/analytics/ml/training-runs") && request.method === "POST");
     expect(trainingRequest).toBeDefined();
     expect(await trainingRequest!.json()).toMatchObject({

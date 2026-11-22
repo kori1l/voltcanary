@@ -60,6 +60,8 @@ class MlModelRegistryServiceTest {
                     new MlDemoModelSeeder(modelRepository, auditWriter),
                     mapper),
             new MlModelLifecycleService(
+                    mock(com.voltcanary.analytics.service.MlRegistryFence.class),
+                    mock(jakarta.persistence.EntityManager.class),
                     modelRepository,
                     policyRepository,
                     predictionResultRepository,
@@ -67,6 +69,8 @@ class MlModelRegistryServiceTest {
                     auditWriter,
                     mapper),
             new MlDeploymentPolicyService(
+                    mock(com.voltcanary.analytics.service.MlRegistryFence.class),
+                    mock(jakarta.persistence.EntityManager.class),
                     policyRepository,
                     modelRepository,
                     auditWriter,

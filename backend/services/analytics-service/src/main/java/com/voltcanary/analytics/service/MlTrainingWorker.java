@@ -7,6 +7,7 @@ import com.voltcanary.analytics.domain.MlDatasetStatus;
 import com.voltcanary.analytics.domain.MlDatasetVersion;
 import com.voltcanary.analytics.domain.MlFeatureRow;
 import com.voltcanary.analytics.domain.MlFeatureSnapshot;
+import com.voltcanary.analytics.domain.MlModelFamily;
 import com.voltcanary.analytics.domain.MlModelStatus;
 import com.voltcanary.analytics.domain.MlModelVersion;
 import com.voltcanary.analytics.domain.MlTrainingRun;
@@ -32,13 +33,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @ConditionalOnProperty(name = "app.ml.training.worker-enabled", havingValue = "true")
@@ -49,10 +50,12 @@ public class MlTrainingWorker {
     private static final Duration LEASE_DURATION = Duration.ofMinutes(15);
 
     private final MlTrainingRunRepository trainingRunRepository;
+    private final MlTrainingLeases leases;
     private final MlDatasetVersionRepository datasetVersionRepository;
     private final MlFeatureSnapshotRepository featureSnapshotRepository;
     private final MlFeatureRowRepository featureRowRepository;
     private final MlModelVersionRepository modelVersionRepository;
+    private final MlRegistryFence registryFence;
     private final MlClient mlClient;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
@@ -65,13 +68,11 @@ public class MlTrainingWorker {
 
     public Optional<MlTrainingRun> executeNextQueuedRun() {
         recoverStaleRuns();
-        return trainingRunRepository.findByStatusOrderByCreatedAtAsc(MlTrainingRunStatus.QUEUED).stream()
-                .findFirst()
-                .map(this::claim)
-                .map(this::execute);
+        return leases.claim(workerId + ":" + UUID.randomUUID(), LEASE_DURATION).map(this::execute);
     }
 
     MlTrainingRun execute(MlTrainingRun run) {
+        UUID runId = run.getId();
         Timer.Sample sample = Timer.start(meterRegistry);
         Instant started = run.getStartedAt() == null ? Instant.now() : run.getStartedAt();
         log.info("mlTrainingStarted runId={} accountId={} datasetVersionId={} featureSnapshotId={} modelFamily={} algorithm={}",
@@ -169,75 +170,46 @@ public class MlTrainingWorker {
             run.setLogsSummary("Training delegated to ML-service and load-test inference passed.");
             run.setStatus(MlTrainingRunStatus.SUCCEEDED);
             run.setCompletedAt(Instant.now());
-            clearLease(run);
-            trainingRunRepository.save(run);
-            registerCandidateModel(run, datasetVersion, featureSnapshot, metricsJson, trainingResponse, modelVersionId);
+            run = leases.finish(run, () -> registerCandidateModel(runId, datasetVersion, featureSnapshot, metricsJson, trainingResponse, modelVersionId));
             sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "succeeded", "algorithm", run.getAlgorithm()));
             log.info("mlTrainingSucceeded runId={} accountId={} durationMs={} artifactUri={} trainingRows={}",
-                    run.getId(), run.getAccountId(), java.time.Duration.between(started, run.getCompletedAt()).toMillis(), trainingResponse.artifactUri(), trainingRows.size());
+                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis(), trainingResponse.artifactUri(), trainingRows.size());
             return run;
         } catch (TrainingCanceledException exception) {
             run.setStatus(MlTrainingRunStatus.CANCELED);
             run.setFailureReason(null);
             run.setLogsSummary("Training canceled before candidate model registration.");
             run.setCompletedAt(Instant.now());
-            clearLease(run);
-            trainingRunRepository.save(run);
+            try { run = leases.finish(run, () -> { }); }
+            catch (MlTrainingLeases.Lost lost) { return trainingRunRepository.findById(run.getId()).orElse(run); }
             sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "canceled", "algorithm", run.getAlgorithm()));
             log.info("mlTrainingCanceled runId={} accountId={} durationMs={}",
-                    run.getId(), run.getAccountId(), java.time.Duration.between(started, run.getCompletedAt()).toMillis());
+                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis());
             return run;
+        } catch (MlTrainingLeases.Lost lost) {
+            return trainingRunRepository.findById(run.getId()).orElse(run);
         } catch (Exception exception) {
             run.setStatus(MlTrainingRunStatus.FAILED);
             run.setFailureReason(publicReason(exception));
             run.setLogsSummary("Training failed before model artifact registration.");
             run.setCompletedAt(Instant.now());
-            clearLease(run);
-            trainingRunRepository.save(run);
+            try { run = leases.finish(run, () -> { }); }
+            catch (MlTrainingLeases.Lost lost) { return trainingRunRepository.findById(run.getId()).orElse(run); }
             meterRegistry.counter("analytics.ml.training.failures", "reason", exception.getClass().getSimpleName()).increment();
             sample.stop(meterRegistry.timer("analytics.ml.training.duration", "status", "failed", "algorithm", run.getAlgorithm()));
             log.warn("mlTrainingFailed runId={} accountId={} durationMs={} reason={}",
-                    run.getId(), run.getAccountId(), java.time.Duration.between(started, run.getCompletedAt()).toMillis(), run.getFailureReason());
+                    run.getId(), run.getAccountId(), Duration.between(started, run.getCompletedAt()).toMillis(), run.getFailureReason());
             return run;
         }
     }
 
-    private MlTrainingRun claim(MlTrainingRun run) {
-        Instant now = Instant.now();
-        run.setStatus(MlTrainingRunStatus.RUNNING);
-        run.setStartedAt(run.getStartedAt() == null ? now : run.getStartedAt());
-        run.setLeaseOwner(workerId);
-        run.setLeaseExpiresAt(now.plus(LEASE_DURATION));
-        run.setHeartbeatAt(now);
-        MlTrainingRun saved = trainingRunRepository.save(run);
-        return saved == null ? run : saved;
-    }
-
     void recoverStaleRuns() {
-        Instant now = Instant.now();
-        List<MlTrainingRun> staleRuns = trainingRunRepository.findByStatusAndLeaseExpiresAtBeforeOrderByCreatedAtAsc(MlTrainingRunStatus.RUNNING, now);
-        if (staleRuns == null) {
-            return;
-        }
-        for (MlTrainingRun stale : staleRuns) {
-            stale.setStatus(MlTrainingRunStatus.QUEUED);
-            stale.setLeaseOwner(null);
-            stale.setLeaseExpiresAt(null);
-            stale.setHeartbeatAt(null);
-            stale.setRetryCount(stale.getRetryCount() + 1);
-            stale.setStaleRecoveredAt(now);
-            stale.setLogsSummary("Training run recovered from stale worker lease.");
-            trainingRunRepository.save(stale);
-            meterRegistry.counter("analytics.ml.training.stale.recovered").increment();
-            log.warn("mlTrainingStaleRecovered runId={} accountId={} retryCount={}", stale.getId(), stale.getAccountId(), stale.getRetryCount());
-        }
+        int recovered = leases.recover();
+        if (recovered > 0) meterRegistry.counter("analytics.ml.training.stale.recovered").increment(recovered);
     }
 
     private void heartbeat(MlTrainingRun run) {
-        Instant now = Instant.now();
-        run.setHeartbeatAt(now);
-        run.setLeaseExpiresAt(now.plus(LEASE_DURATION));
-        trainingRunRepository.save(run);
+        leases.heartbeat(run, LEASE_DURATION);
     }
 
     private void assertNotCanceled(MlTrainingRun run) {
@@ -248,19 +220,15 @@ public class MlTrainingWorker {
         }
     }
 
-    private void clearLease(MlTrainingRun run) {
-        run.setLeaseOwner(null);
-        run.setLeaseExpiresAt(null);
-        run.setHeartbeatAt(null);
-    }
-
     private void registerCandidateModel(
-            MlTrainingRun run,
+            UUID runId,
             MlDatasetVersion datasetVersion,
             MlFeatureSnapshot featureSnapshot,
             String metricsJson,
             MlTrainingResponse trainingResponse,
             UUID modelVersionId) {
+        MlTrainingRun run = trainingRunRepository.findById(runId).orElseThrow();
+        registryFence.account(run.getAccountId());
         MlModelVersion model = new MlModelVersion();
         model.setId(modelVersionId);
         model.setAccountId(run.getAccountId());
@@ -308,6 +276,7 @@ public class MlTrainingWorker {
         metadata.put("featureSnapshotId", row.getFeatureSnapshotId().toString());
         metadata.put("deviceType", row.getDeviceType() == null ? "" : row.getDeviceType());
         metadata.put("horizonDays", row.getHorizonDays());
+        metadata.put("splitAssignment", row.getSplitAssignment());
         metadata.putAll(labelValues(row));
         return metadata;
     }
@@ -397,7 +366,7 @@ public class MlTrainingWorker {
     }
 
     private String modelType(MlTrainingRun run) {
-        return run.getModelFamily() == com.voltcanary.analytics.domain.MlModelFamily.FAILURE_PREDICTION
+        return run.getModelFamily() == MlModelFamily.FAILURE_PREDICTION
                 ? "trained_failure_prediction"
                 : "trained_tabular_anomaly";
     }
@@ -436,10 +405,16 @@ public class MlTrainingWorker {
 
     private String publicReason(Exception exception) {
         String message = exception.getMessage();
-        if (message == null || message.isBlank()) {
-            return "Training failed";
-        }
-        return message.length() > 240 ? message.substring(0, 240) : message;
+        if (exception instanceof IllegalStateException && Set.of(
+                "Dataset version is not READY",
+                "Feature snapshot has no rows",
+                "Feature snapshot has no numeric feature rows",
+                "ML-service training did not produce a succeeded model artifact",
+                "ML-service model artifact failed load-test inference",
+                "Could not parse feature row values",
+                "Could not parse feature row label values",
+                "Could not serialize training metrics").contains(message == null ? "" : message)) return message;
+        return "Training failed before model artifact registration.";
     }
 
     private String idempotencyKey(MlTrainingRun run) {

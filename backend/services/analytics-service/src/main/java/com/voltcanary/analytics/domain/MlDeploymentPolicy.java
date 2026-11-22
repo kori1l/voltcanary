@@ -16,6 +16,20 @@ import lombok.Setter;
 @Getter
 @Setter
 public class MlDeploymentPolicy {
+    @Column(name = "active_scope_key")
+    private String activeScopeKey;
+
+    @jakarta.persistence.PrePersist
+    @jakarta.persistence.PreUpdate
+    private void updateScopeKey() {
+        activeScopeKey = deletedAt != null ? null : switch (scope) {
+            case SYSTEM -> "SYSTEM";
+            case ACCOUNT -> "ACCOUNT:" + accountId;
+            case DEVICE_TYPE -> "DEVICE_TYPE:" + accountId + ":" + deviceType;
+            case DEVICE -> "DEVICE:" + deviceId;
+        };
+    }
+
     @Id
     private UUID id;
     @Column(name = "account_id")

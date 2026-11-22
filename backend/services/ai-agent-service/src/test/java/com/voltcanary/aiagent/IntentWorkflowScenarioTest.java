@@ -2,7 +2,6 @@ package com.voltcanary.aiagent;
 
 import com.voltcanary.aiagent.model.AgentTool;
 import com.voltcanary.aiagent.orchestration.contract.AssistantProtocol;
-import com.voltcanary.aiagent.orchestration.plan.IntentOrchestration;
 import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts;
 import java.util.ArrayList;

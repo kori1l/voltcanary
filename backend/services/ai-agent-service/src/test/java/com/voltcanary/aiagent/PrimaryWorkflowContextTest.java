@@ -13,7 +13,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
-import org.springframework.web.client.RestClient;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 

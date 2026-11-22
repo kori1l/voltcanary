@@ -14,7 +14,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 class AlertAccessServiceTest {

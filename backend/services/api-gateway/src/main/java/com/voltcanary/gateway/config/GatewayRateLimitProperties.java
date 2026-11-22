@@ -1,5 +1,6 @@
 package com.voltcanary.gateway.config;
 
+import java.util.List;
 import java.time.Duration;
 import lombok.Getter;
 import lombok.Setter;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 @Setter
 public class GatewayRateLimitProperties {
 
+    private List<String> trustedProxyAddresses = List.of();
     private boolean enabled = true;
     private boolean redisEnabled = true;
     private Duration window = Duration.ofMinutes(1);

@@ -1,5 +1,6 @@
 package com.voltcanary.identity.service;
 
+import java.util.UUID;
 import com.voltcanary.identity.config.IdentityDownstreamProperties;
 import com.voltcanary.identity.domain.User;
 import com.voltcanary.identity.domain.UserStatus;
@@ -11,7 +12,6 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +28,7 @@ public class IdentityLifecycleReconciliationJob {
     private final DeviceAccountLifecycleClient deviceAccountLifecycleClient;
     private final IdentityLifecycleOutboxService identityLifecycleOutboxService;
     private final SchedulerLockService schedulerLockService;
+    private UUID afterUser;
 
     @Scheduled(fixedDelayString = "${app.identity.lifecycle-reconciliation.delay:5m}")
     public void reconcileDeviceLifecycle() {
@@ -46,12 +47,10 @@ public class IdentityLifecycleReconciliationJob {
 
     private void reconcileBatch() {
         int batchSize = Math.max(1, properties.getDeviceLifecycleReconciliationBatchSize());
-        List<User> users = userRepository.findAll(PageRequest.of(
-                0,
-                batchSize,
-                Sort.by(Sort.Direction.DESC, "updatedAt"))).getContent();
+        List<User> users = userRepository.reconciliationBatch(afterUser, PageRequest.of(0, batchSize));
         int repaired = 0;
         for (User user : users) {
+            try {
             String expected = accountStatus(user.getStatus());
             Optional<String> actual = deviceAccountLifecycleClient.findAccountStatus(user.getId());
             boolean missingInactiveProjection = actual.isEmpty() && user.getStatus() != UserStatus.ACTIVE;
@@ -65,7 +64,12 @@ public class IdentityLifecycleReconciliationJob {
                         expected,
                         actual.orElse("MISSING"));
             }
+            } catch (RuntimeException unavailable) {
+                log.warn("identityLifecycleReconciliationUnavailable userId={} reasonCode={}",
+                        user.getId(), unavailable.getClass().getSimpleName());
+            }
         }
+        afterUser = users.size() < batchSize ? null : users.getLast().getId();
         log.info("identityLifecycleReconciliationCompleted checked={} repaired={}", users.size(), repaired);
     }
 

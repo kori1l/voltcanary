@@ -39,7 +39,6 @@ data:
   DASHBOARD_SERVICE_URI: http://dashboard-service:8089
   DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/voltcanary_dashboard
   IDENTITY_KAFKA_PUBLISH_ENABLED: "true"
-  IDENTITY_DEVICE_LIFECYCLE_SYNC_ENABLED: "false"
   IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED: "true"
   DEVICE_KAFKA_PUBLISH_ENABLED: "true"
   DEVICE_KAFKA_CONSUME_ENABLED: "true"
@@ -79,6 +78,8 @@ stringData:
   POSTGRES_PASSWORD: change_me
   TIMESCALE_PASSWORD: change_me
   JWT_SECRET: change_me
+  # Supply a stable Base64-encoded 32-byte random key before enabling recovery mail.
+  AUTH_MAIL_ENCRYPTION_KEY: ""
   INTERNAL_SERVICE_TOKEN: change_me_internal_token
   MINIO_ROOT_USER: voltcanary
   MINIO_ROOT_PASSWORD: change_me_change_me

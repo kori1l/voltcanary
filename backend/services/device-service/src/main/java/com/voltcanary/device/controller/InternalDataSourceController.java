@@ -1,7 +1,6 @@
 package com.voltcanary.device.controller;
 
 import com.voltcanary.device.config.InternalServiceAuth;
-import com.voltcanary.device.domain.Device;
 import com.voltcanary.device.dto.InternalDataSourceResponse;
 import com.voltcanary.device.metrics.DeviceOperationalMetrics;
 import com.voltcanary.device.service.DataSourceService;
@@ -13,7 +12,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
