@@ -94,7 +94,7 @@ public class PrimaryAssistantConfiguration {
     }
 
     @Bean
-    PrimaryDomainPreparation primaryDomain(
+    public static PrimaryDomainPreparation primaryDomain(
         ObjectMapper mapper,
         ProtocolValidator validator,
         IntentPlanStore plans,
@@ -113,10 +113,22 @@ public class PrimaryAssistantConfiguration {
             reviews,
             authority,
             dashboards,
-            properties,
-            builder,
+            new com.voltcanary.aiagent.service.DashboardCompositionCompiler(
+                properties,
+                builder,
+                mapper
+            ),
             journal,
-            jdbc
+            new com.voltcanary.aiagent.adapter.JdbcWorkflowContextStore(jdbc, mapper, validator),
+            new com.voltcanary.aiagent.adapter.PrimaryDeviceHttpReads(
+                builder.clone().baseUrl(properties.getServices().getDeviceBaseUrl()).build()
+            ),
+            new com.voltcanary.aiagent.service.DashboardDraftTarget(
+                builder,
+                properties.getServices().getDashboardBaseUrl(),
+                mapper,
+                reviews
+            )
         );
     }
 

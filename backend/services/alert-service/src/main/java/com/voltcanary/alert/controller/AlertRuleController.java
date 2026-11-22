@@ -46,9 +46,11 @@ public class AlertRuleController {
         @RequestParam(value = "enabled", required = false) Boolean enabled,
         @RequestParam(value = "ruleType", required = false) String ruleType,
         @RequestParam(value = "scopeType", required = false) String scopeType,
-        @RequestParam(value = "metric", required = false) String metric
+        @RequestParam(value = "metric", required = false) String metric,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "100") int size
     ) {
-        return service.list(userId, accountId, enabled, ruleType, scopeType, metric);
+        return service.list(userId, accountId, enabled, ruleType, scopeType, metric, page, size);
     }
 
     @GetMapping("/effective")

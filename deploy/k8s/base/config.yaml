@@ -40,6 +40,9 @@ data:
   DASHBOARD_SERVICE_URI: http://dashboard-service:8089
   DASHBOARD_DB_URL: jdbc:postgresql://postgres:5432/voltcanary_dashboard
   IDENTITY_KAFKA_PUBLISH_ENABLED: "true"
+  # Local cluster HTTP profile. TLS overlays must set Secure and their console origin.
+  BROWSER_SESSION_SECURE_COOKIE: "false"
+  BROWSER_SESSION_ALLOWED_ORIGINS: "http://localhost:3000,https://localhost:8443"
   IDENTITY_DEVICE_LIFECYCLE_RECONCILIATION_ENABLED: "true"
   DEVICE_KAFKA_PUBLISH_ENABLED: "true"
   DEVICE_KAFKA_CONSUME_ENABLED: "true"

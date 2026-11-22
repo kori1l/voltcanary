@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setTokens } from "../../api/client";
+import { setSession } from "../../api/client";
 import { createDataSourceToken, updateDataSource } from "../devicesApi";
 import * as api from "../../simulation/simulationApi";
 import { useDeviceSimulationWorkspace } from "./useDeviceSimulationWorkspace";
@@ -78,10 +78,16 @@ function workspace() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers();
-  setTokens("access", "refresh");
+  setSession("access", "refresh");
   vi.mocked(api.getSimulationConfig).mockResolvedValue(config);
   vi.mocked(api.getSimulationStatus).mockResolvedValue(stopped);
-  vi.mocked(api.getSimulationRuns).mockResolvedValue([]);
+  vi.mocked(api.getSimulationRuns).mockResolvedValue({
+    content: [],
+    page: 0,
+    size: 25,
+    totalElements: 0,
+    totalPages: 0,
+  });
   vi.mocked(api.validateSimulationConfig).mockResolvedValue({
     valid: true,
     errors: [],
@@ -95,6 +101,35 @@ afterEach(() => {
 });
 
 describe("simulation workspace asynchronous boundaries", () => {
+  it("loads the selected run page and resets history when the device changes", async () => {
+    vi.mocked(api.getSimulationRuns).mockImplementation(async (_device, page = 0) => ({
+      content: [{ ...stopped, runId: `run-${page}` }],
+      page,
+      size: 25,
+      totalElements: 26,
+      totalPages: 2,
+    }));
+    const { result, rerender } = workspace();
+    await act(async () => {
+      await result.current.refreshSimulationRuntime();
+    });
+    expect(result.current.simulationRuns[0].runId).toBe("run-0");
+    act(() => result.current.simulationHistory.selectPage(1));
+    expect(result.current.simulationRuns).toEqual([]);
+    await act(async () => {
+      await result.current.refreshSimulationRuntime();
+    });
+    expect(api.getSimulationRuns).toHaveBeenLastCalledWith("device-a", 1);
+    expect(result.current.simulationRuns[0].runId).toBe("run-1");
+    rerender({ deviceId: "device-b" });
+    expect(result.current.simulationHistory.page).toBe(0);
+    expect(result.current.simulationRuns).toEqual([]);
+    await act(async () => {
+      await result.current.refreshSimulationRuntime();
+    });
+    expect(api.getSimulationRuns).toHaveBeenLastCalledWith("device-b", 0);
+  });
+
   it("keeps the latest selected profile when template responses arrive out of order", async () => {
     const first = deferred<{ yamlConfig: string }>();
     const second = deferred<{ yamlConfig: string }>();
@@ -235,7 +270,7 @@ describe("simulation workspace asynchronous boundaries", () => {
     await act(async () => {
       start = result.current.toggleSimulation();
     });
-    act(() => setTokens("another-access", "another-refresh"));
+    act(() => setSession("another-access", "another-refresh"));
     await act(async () => {
       update.resolve({} as never);
       await start;

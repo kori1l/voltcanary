@@ -60,7 +60,10 @@ public class SourceRuntimeMappings {
             }
         );
         rejectRawCredentials(requested, "mapping");
-        rejectRawCredentials(request.adapterConfig(), "adapterConfig");
+        rejectRawCredentials(
+            SourceCredentialConfiguration.nonSecretAdapterConfig(request),
+            "adapterConfig"
+        );
         if (reviewed instanceof Map<?, ?> conversions) {
             var oldPolicy = objectMapper.valueToTree(stored.get("telemetryPolicy"));
             var newPolicy = objectMapper.valueToTree(requested.get("telemetryPolicy"));

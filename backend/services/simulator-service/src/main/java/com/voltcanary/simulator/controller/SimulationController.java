@@ -1,5 +1,6 @@
 package com.voltcanary.simulator.controller;
 
+import com.voltcanary.common.web.PageResponse;
 import com.voltcanary.simulator.domain.SimulationProfile;
 import com.voltcanary.simulator.dto.SaveSimulationConfigRequest;
 import com.voltcanary.simulator.dto.SimulationConfigResponse;
@@ -112,8 +113,12 @@ public class SimulationController {
     }
 
     @GetMapping("/devices/{deviceId}/runs")
-    public List<SimulationRunResponse> runs(@PathVariable("deviceId") UUID deviceId) {
-        return runManager.runs(deviceId);
+    public PageResponse<SimulationRunResponse> runs(
+        @PathVariable("deviceId") UUID deviceId,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "25") int size
+    ) {
+        return runManager.runs(deviceId, page, size);
     }
 
     @GetMapping("/runs/{runId}")

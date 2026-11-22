@@ -22,8 +22,10 @@ export function DeviceSetupReconciliation({
   onLocation: (id: string) => void;
 }) {
   const stage = progress.unknownStage;
+  const [runSelection, setRunSelection] = useState({ deviceId: progress.device?.id, page: 0 });
+  const runPage = runSelection.deviceId === progress.device?.id ? runSelection.page : 0;
   const resource = useSectionResource<Array<{ id: string; label: string; accept: () => void }>>(
-    `${stage}:${progress.device?.id ?? "unknown"}`,
+    `${stage}:${progress.device?.id ?? "unknown"}:${runPage}`,
   );
   const [location, setLocation] = useState("");
   async function readRecords() {
@@ -58,7 +60,7 @@ export function DeviceSetupReconciliation({
               ]
             : [];
         }
-        return (await getSimulationRuns(deviceId))
+        return (await getSimulationRuns(deviceId, runPage)).content
           .filter((run) => run.runId)
           .map((run) => ({
             id: run.runId!,
@@ -73,7 +75,7 @@ export function DeviceSetupReconciliation({
   }
   useEffect(() => {
     void readRecords();
-  }, [stage, progress.device?.id]);
+  }, [stage, progress.device?.id, runPage]);
   function confirm(action: () => void) {
     action();
     progress.unknownStage = undefined;
@@ -125,6 +127,25 @@ export function DeviceSetupReconciliation({
           </button>
         </div>
       ))}
+      {stage === "run" ? (
+        <div className="button-row" aria-label="Reconciliation run pages">
+          <button
+            type="button"
+            disabled={resource.refreshing || runPage === 0}
+            onClick={() => setRunSelection({ deviceId: progress.device?.id, page: runPage - 1 })}
+          >
+            Previous runs
+          </button>
+          <span>Page {runPage + 1}</span>
+          <button
+            type="button"
+            disabled={resource.refreshing || (resource.data?.length ?? 0) < 25}
+            onClick={() => setRunSelection({ deviceId: progress.device?.id, page: runPage + 1 })}
+          >
+            Next runs
+          </button>
+        </div>
+      ) : null}
       {progress.device ? (
         <Link to={`/devices/${progress.device.id}?tab=configuration`}>
           Review existing device and credential configuration

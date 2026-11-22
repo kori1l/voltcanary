@@ -607,7 +607,7 @@ describe("MlSettingsPage", () => {
       if (url.includes("/analytics/devices/device-1/predictions/latest"))
         return json(readyPrediction);
       if (url.endsWith("/analytics/ml-settings/devices/device-1")) return json(inheritedSettings);
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.endsWith("/analytics/ml/training-runs") && init?.method === "POST")
         return json({
           id: "run-failure-1",
@@ -708,7 +708,7 @@ describe("MlSettingsPage", () => {
     };
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.endsWith("/analytics/ml/datasets/feature-snapshots") && init?.method !== "POST") {
         return json([newerFailureSnapshot, olderFailureSnapshot, featureSnapshot]);
       }
@@ -789,7 +789,7 @@ describe("MlSettingsPage", () => {
       if (url.includes("/analytics/devices/device-1/predictions/latest"))
         return json(readyPrediction);
       if (url.endsWith("/analytics/ml-settings/devices/device-1")) return json(inheritedSettings);
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models/model-failure-1/approve") && init?.method === "POST") {
         return errorJson(400, {
@@ -835,7 +835,7 @@ describe("MlSettingsPage", () => {
       }),
     );
     mockFetch((url) => {
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -872,7 +872,7 @@ describe("MlSettingsPage", () => {
       requests.push(new Request(url, init));
       if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview"))
         return json(pressurePreview);
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -920,7 +920,7 @@ describe("MlSettingsPage", () => {
       requests.push(new Request(url, init));
       if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview"))
         return json(workbenchPreview);
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -959,7 +959,7 @@ describe("MlSettingsPage", () => {
     mockFetch((url) => {
       if (url.endsWith("/analytics/ml/datasets/internal-telemetry/preview"))
         return json(workbenchPreview);
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -1000,7 +1000,7 @@ describe("MlSettingsPage", () => {
         }
         return json(blockedPreview);
       }
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -1031,7 +1031,7 @@ describe("MlSettingsPage", () => {
           path: "/analytics/ml/datasets/internal-telemetry/preview",
         });
       }
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -1064,7 +1064,7 @@ describe("MlSettingsPage", () => {
             horizonDays: 30,
           },
         });
-      if (url.endsWith("/analytics/ml/datasets")) return json([]);
+      if (url.includes("/analytics/ml/datasets?")) return json([]);
       if (url.endsWith("/analytics/ml/training-runs")) return json([]);
       if (url.endsWith("/analytics/ml/models")) return json([]);
       if (url.endsWith("/analytics/ml/deployment-policies")) return json([]);
@@ -1103,7 +1103,7 @@ describe("MlSettingsPage", () => {
       if (url.endsWith("/analytics/ml-settings")) return json(accountSettings);
       if (url.includes("/analytics/ml/datasets?statusFilter=archived"))
         return json([{ ...datasetSummary, status: "ARCHIVED" }]);
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1"))
         return json(datasetDetail);
       if (url.includes("/analytics/ml/datasets/versions/dataset-version-1/lifecycle-impact"))
@@ -1239,7 +1239,7 @@ describe("MlSettingsPage", () => {
     );
     expect(
       requests.some((request) =>
-        request.url.endsWith("/analytics/ml/datasets?statusFilter=archived"),
+        request.url.includes("/analytics/ml/datasets?statusFilter=archived"),
       ),
     ).toBe(true);
     expect(
@@ -1268,7 +1268,7 @@ describe("MlSettingsPage", () => {
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
       if (url.endsWith("/analytics/ml-settings")) return json(accountSettings);
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.endsWith("/analytics/ml/datasets/versions/dataset-version-1"))
         return json({ ...datasetDetail, dataset: { ...datasetSummary, status: "FAILED" } });
       if (url.includes("/analytics/ml/datasets/versions/dataset-version-1/lifecycle-impact")) {
@@ -1312,7 +1312,7 @@ describe("MlSettingsPage", () => {
       if (url.includes("/analytics/devices/device-1/predictions/latest"))
         return json(readyPrediction);
       if (url.endsWith("/analytics/ml-settings/devices/device-1")) return json(inheritedSettings);
-      if (url.endsWith("/analytics/ml/datasets"))
+      if (url.includes("/analytics/ml/datasets?"))
         return json(
           importedDatasetVisible ? [importedDatasetSummary, datasetSummary] : [datasetSummary],
         );
@@ -1719,7 +1719,7 @@ describe("MlSettingsPage", () => {
     const requests: Request[] = [];
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1")) return json([]);
       if (url.endsWith("/analytics/ml/datasets/horizon-labels") && init?.method === "POST") {
         return errorJson(504, {
@@ -1756,7 +1756,7 @@ describe("MlSettingsPage", () => {
     const requests: Request[] = [];
     mockFetch((url, init) => {
       requests.push(new Request(url, init));
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1"))
         return json([labelItem]);
       if (url.endsWith("/analytics/ml/datasets/horizon-labels") && init?.method === "POST")
@@ -1847,7 +1847,7 @@ describe("MlSettingsPage", () => {
     const requests: Request[] = [];
     mockFetch((url) => {
       requests.push(new Request(url));
-      if (url.endsWith("/analytics/ml/datasets")) return json([datasetSummary]);
+      if (url.includes("/analytics/ml/datasets?")) return json([datasetSummary]);
       if (url.includes("/analytics/ml/labels?datasetVersionId=dataset-version-1"))
         return json([labelItem]);
       if (url.endsWith("/analytics/ml/datasets/horizon-labels/label-job-1"))

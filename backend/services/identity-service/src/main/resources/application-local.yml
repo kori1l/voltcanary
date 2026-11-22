@@ -12,3 +12,9 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+
+app:
+  auth:
+    browser:
+      secure-cookie: ${BROWSER_SESSION_SECURE_COOKIE:false}
+      allowed-origins: ${BROWSER_SESSION_ALLOWED_ORIGINS:http://localhost:3000,https://localhost:8443}

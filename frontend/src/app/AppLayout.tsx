@@ -14,7 +14,7 @@ import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from "re
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   clearTokens,
-  getRefreshToken,
+  getSessionId,
   sessionIdentityRevision,
   subscribeSession,
 } from "../api/client";
@@ -129,10 +129,10 @@ function AppLayoutScreen() {
     .sort((a, b) => b.to.length - a.to.length)[0]?.to;
 
   async function logout() {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
+    const sessionId = getSessionId();
+    if (sessionId) {
       try {
-        await logoutRequest(refreshToken);
+        await logoutRequest(sessionId);
       } catch {
         // Local logout should still complete if the token was already invalid.
       }

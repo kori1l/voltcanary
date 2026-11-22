@@ -1,10 +1,12 @@
+import { DashboardEditorToolbar } from "./DashboardEditorToolbar";
+import { DashboardSettingsDialog } from "./DashboardSettingsDialog";
+import { DashboardWidgetConfigurationDialog } from "./DashboardWidgetConfigurationDialog";
 import { visualizationLabels, type Visualization } from "../model/dashboardVisualization";
-import { DashboardManagement } from "./DashboardManagement";
 import { resizeScreenGrid } from "../model/dashboardGridResize";
 import { workingGrid } from "../model/dashboardGrid";
 import { compactGridLayout } from "../model/dashboardGridCompaction";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings2, Plus, Undo2, Redo2, Eye, Pencil, Grid2X2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { SidebarToggle } from "../../../components/NavigationVisibility";
 import { Dialog } from "../../../components/Dialog";
@@ -19,40 +21,25 @@ import {
 import {
   commandKey,
   createDashboard,
-  dashboardRevisions,
-  getDashboardDraft,
-  rollbackDashboardDraft,
   type Breakpoint,
   type DashboardDefinition,
   type DashboardDraft,
   type DashboardMetadata,
 } from "../../../dashboards/dashboardsApi";
 import { useDashboardEditor } from "../hooks/useDashboardEditor";
-import {
-  moveWidget,
-  normalizeLayouts,
-  removeWidget,
-  resizeWidget,
-  shiftWidget,
-  widgetDefaultSize,
-  registerManifestSizes,
-  placeRelative,
-} from "../model/dashboardLayout";
+import { widgetDefaultSize, registerManifestSizes } from "../model/dashboardLayout";
 import {
   dashboardScreens,
   replaceScreenContent,
   screenDefinition,
-  transferWidget,
 } from "../model/dashboardScreens";
-import { WidgetConfiguration } from "./WidgetConfiguration";
 import { DashboardWidgetPalette } from "./DashboardWidgetPalette";
 import { insertWidget } from "../model/dashboardWidgetInsertion";
 import type { Placement, DashboardGrid } from "../../../dashboards/dashboardsApi";
 import { DashboardGridSettings } from "./DashboardGridSettings";
 import { DashboardCanvas } from "./DashboardCanvas";
-import { DashboardRuntimeControls, runtimeFromUrl } from "./DashboardRuntimeControls";
+import { runtimeFromUrl } from "./DashboardRuntimeControls";
 import { DashboardScreenNavigation } from "./DashboardScreenNavigation";
-import { DashboardPanelLayoutSettings } from "./DashboardPanelLayoutSettings";
 
 export function DashboardEditor({
   metadata,
@@ -99,7 +86,6 @@ export function DashboardEditor({
     ),
     [textScale, setTextScale] = useState("100"),
     [announcement, setAnnouncement] = useState("");
-  const [revisions, setRevisions] = useState<{ revision: number; publishedAt: string }[]>([]);
   useEffect(() => {
     const responsive = () =>
       setBreakpoint(
@@ -152,11 +138,6 @@ export function DashboardEditor({
         if (!controller.signal.aborted)
           setCatalogError(error instanceof Error ? error.message : "Catalog unavailable");
       });
-    void dashboardRevisions(metadata.id)
-      .then((page) => {
-        if (!controller.signal.aborted) setRevisions(page.items);
-      })
-      .catch(() => {});
     return () => controller.abort();
   }, [metadata.id]);
   function editCanvas(next: DashboardDefinition) {
@@ -300,96 +281,22 @@ export function DashboardEditor({
         textScale === "200" ? "dashboard-editor dashboard-editor-large" : "dashboard-editor"
       }
     >
-      <header className="dashboard-workspace-header">
-        <div className="dashboard-workspace-title">
-          <SidebarToggle />
-          <h1>{editor.definition.name}</h1>
-          <span className="dashboard-save-state" role="status">
-            {editor.status}
-          </span>
-          <span className="sr-only">
-            Edit private draft · base revision {editor.draft.baseRevision}
-          </span>
-        </div>
-        <div className="dashboard-header-links">
-          <div ref={setScreenToolbar} className="dashboard-screen-slot" />{" "}
-          <fieldset className="dashboard-editor-actions" disabled={locked}>
-            <div className="action-row">
-              <button
-                className="ghost-button"
-                onClick={() => setGridOpen(true)}
-                aria-label="Grid settings"
-              >
-                <Grid2X2 size={16} /> Grid
-              </button>
-              <button
-                className="primary-button"
-                disabled={!manifests.length || editor.definition.widgets.length >= 24}
-                onClick={() => setPaletteOpen((open) => !open)}
-                aria-expanded={paletteOpen}
-                aria-label="Add widget"
-              >
-                <Plus size={16} /> Panel
-              </button>
-              <button
-                className="ghost-button"
-                disabled={!editor.canUndo}
-                onClick={editor.undo}
-                aria-label="Undo"
-                title="Undo"
-              >
-                <Undo2 size={16} />
-              </button>
-              <button
-                className="ghost-button"
-                disabled={!editor.canRedo}
-                onClick={editor.redo}
-                aria-label="Redo"
-                title="Redo"
-              >
-                <Redo2 size={16} />
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => void editor.save()}
-                aria-label="Save draft now"
-              >
-                Save
-              </button>
-              {canPublish ? (
-                <button
-                  className="primary-button"
-                  disabled={
-                    !editor.definition.name.trim() ||
-                    editor.dirty ||
-                    !!evidence.error ||
-                    (canvas.widgets.length > 0 && !evidence.data)
-                  }
-                  onClick={() => void reviewPublication()}
-                  aria-label="Review publication"
-                >
-                  {confirmationBusy ? "Checking…" : "Publish"}
-                </button>
-              ) : null}
-            </div>
-          </fieldset>
-          <Link
-            to={`/dashboards/${metadata.id}?screenId=${active.id}`}
-            aria-label="View published dashboard"
-            title="View published dashboard"
-          >
-            <Eye size={16} />
-          </Link>
-          <button
-            className="ghost-button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Dashboard settings"
-            title="Dashboard settings"
-          >
-            <Settings2 size={16} />
-          </button>
-        </div>
-      </header>
+      <DashboardEditorToolbar
+        editor={editor}
+        dashboardId={metadata.id}
+        screenId={active.id}
+        locked={locked}
+        catalogAvailable={manifests.length > 0}
+        paletteOpen={paletteOpen}
+        canPublish={canPublish}
+        confirmationBusy={confirmationBusy}
+        publicationBlocked={!!evidence.error || (canvas.widgets.length > 0 && !evidence.data)}
+        setScreenToolbar={setScreenToolbar}
+        onGridSettings={() => setGridOpen(true)}
+        onTogglePalette={() => setPaletteOpen((open) => !open)}
+        onSettings={() => setSettingsOpen(true)}
+        reviewPublication={reviewPublication}
+      />
       {commandError || catalogError ? <p role="alert">{commandError ?? catalogError}</p> : null}
       {requestedScreen && active.id !== requestedScreen ? (
         <p role="status">Requested screen is unavailable. Showing {active.title}.</p>
@@ -446,7 +353,7 @@ export function DashboardEditor({
               </dd>
             </dl>
           ) : (
-            <p>Loading latest draft for comparison…</p>
+            <p>Loading latest draft for comparisonвЂ¦</p>
           )}
           <button className="ghost-button" onClick={() => void editor.resolve(false)}>
             Load latest and discard local changes
@@ -553,7 +460,7 @@ export function DashboardEditor({
                       <p>
                         {manifests.length
                           ? "Unsupported panel retained; layout and management remain available in settings."
-                          : "Loading widget catalog…"}
+                          : "Loading widget catalogвЂ¦"}
                       </p>
                     ) : null}
                   </fieldset>
@@ -601,224 +508,38 @@ export function DashboardEditor({
         </Dialog>
       ) : null}
       {settingsOpen ? (
-        <Dialog title="Dashboard settings" side onClose={() => setSettingsOpen(false)}>
-          <Link to="/dashboards">All dashboards</Link>
-          <DashboardManagement
-            id={metadata.id}
-            name={editor.definition.name}
-            published={metadata.publishedRevision > 0}
-            disabled={locked || editor.dirty}
-            permissions={permissions}
-          />
-          <p>
-            Saved draft · Editing {active.title} · {breakpoint} layout. Publish updates the viewing
-            version; choose the personal start page from the published dashboard.
-          </p>{" "}
-          <fieldset disabled={locked}>
-            <legend>Dashboard metadata and presentation</legend>
-            <label>
-              Responsive layout
-              <select
-                value={breakpoint}
-                onChange={(event) => setBreakpoint(event.target.value as Breakpoint)}
-              >
-                <option value="desktop">Desktop</option>
-                <option value="tablet">Tablet</option>
-                <option value="mobile">Mobile</option>
-              </select>
-            </label>
-            <label>
-              Dashboard name
-              <input
-                maxLength={80}
-                required
-                value={editor.definition.name}
-                onChange={(event) =>
-                  editor.edit({ ...editor.definition, name: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Dashboard description
-              <textarea
-                maxLength={500}
-                value={editor.definition.description ?? ""}
-                onChange={(event) =>
-                  editor.edit({ ...editor.definition, description: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Preview text size
-              <select value={textScale} onChange={(event) => setTextScale(event.target.value)}>
-                <option value="100">100%</option>
-                <option value="200">200%</option>
-              </select>
-            </label>
-          </fieldset>
-          <DashboardRuntimeControls
-            key={JSON.stringify(runtime)}
-            context={runtime}
-            disabled={locked}
-            onDefaults={(defaultContext) => editor.edit({ ...editor.definition, defaultContext })}
-          />
-          <h3>Sections on {active.title}</h3>
-          <fieldset disabled={locked}>
-            <button
-              className="ghost-button"
-              disabled={editor.definition.sections.length >= 24}
-              onClick={() =>
-                editCanvas({
-                  ...canvas,
-                  sections: [
-                    ...canvas.sections,
-                    {
-                      id: commandKey(),
-                      title: `Section ${canvas.sections.length + 1}`,
-                      widgetIds: [],
-                      screenId: active.id,
-                    },
-                  ],
-                })
-              }
-            >
-              Add section
-            </button>
-            {canvas.sections.map((section) => (
-              <div key={section.id}>
-                <label>
-                  Section title
-                  <input
-                    maxLength={120}
-                    value={section.title}
-                    onChange={(event) =>
-                      editCanvas({
-                        ...canvas,
-                        sections: canvas.sections.map((item) =>
-                          item.id === section.id ? { ...item, title: event.target.value } : item,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <button
-                  className="ghost-button"
-                  onClick={() =>
-                    editCanvas({
-                      ...canvas,
-                      sections: canvas.sections.filter((item) => item.id !== section.id),
-                    })
-                  }
-                >
-                  Remove section {section.title}
-                </button>
-              </div>
-            ))}
-          </fieldset>{" "}
-          {revisions.length ? (
-            <details>
-              <summary>Published history and rollback as draft</summary>
-              {revisions.map((revision) => (
-                <button
-                  className="ghost-button"
-                  key={revision.revision}
-                  disabled={locked || editor.dirty}
-                  onClick={() =>
-                    void rollbackDashboardDraft(editor.draft, revision.revision)
-                      .then(() => getDashboardDraft(metadata.id))
-                      .then(() => editor.resolve(false))
-                      .catch((error) =>
-                        setCommandError(error instanceof Error ? error.message : "Rollback failed"),
-                      )
-                  }
-                >
-                  Review revision {revision.revision} as draft · {revision.publishedAt}
-                </button>
-              ))}
-            </details>
-          ) : null}
-          <p>
-            Drag a panel header to move it or pull an edge to resize. Keyboard placement and panel
-            actions are in panel settings → Layout. Each responsive layout is independent.
-          </p>
-        </Dialog>
+        <DashboardSettingsDialog
+          editor={editor}
+          metadata={metadata}
+          permissions={permissions}
+          active={active}
+          canvas={canvas}
+          breakpoint={breakpoint}
+          setBreakpoint={setBreakpoint}
+          textScale={textScale}
+          setTextScale={setTextScale}
+          runtime={runtime}
+          locked={locked}
+          editCanvas={editCanvas}
+          onError={setCommandError}
+          onClose={() => setSettingsOpen(false)}
+        />
       ) : null}
       {widget && manifest ? (
-        <Dialog title={`Configure ${widget.title}`} onClose={() => setConfigured(null)} side>
-          <WidgetConfiguration
-            key={widget.id}
-            layoutControls={
-              <DashboardPanelLayoutSettings
-                definition={canvas}
-                id={widget.id}
-                breakpoint={breakpoint}
-                screens={screens}
-                screenId={active.id}
-                disabled={locked}
-                limitReached={editor.definition.widgets.length >= 24}
-                onMove={(direction) => {
-                  editCanvas(
-                    direction === "up" || direction === "down"
-                      ? moveWidget(canvas, widget.id, direction === "up" ? -1 : 1, breakpoint)
-                      : shiftWidget(canvas, widget.id, direction === "left" ? -1 : 1, breakpoint),
-                  );
-                }}
-                onResize={(w, h) => editCanvas(resizeWidget(canvas, widget.id, w, h, breakpoint))}
-                onPlace={(anchor, direction) =>
-                  editCanvas(placeRelative(canvas, widget.id, anchor, direction, breakpoint))
-                }
-                onScreen={(screenId) => {
-                  editor.edit(
-                    normalizeLayouts(transferWidget(editor.definition, widget.id, screenId)),
-                  );
-                  query.update({ screenId });
-                }}
-                onSection={(sectionId) =>
-                  editCanvas(
-                    normalizeLayouts({
-                      ...canvas,
-                      sections: canvas.sections.map((section) => ({
-                        ...section,
-                        widgetIds: [
-                          ...section.widgetIds.filter((value) => value !== widget.id),
-                          ...(section.id === sectionId ? [widget.id] : []),
-                        ],
-                      })),
-                    }),
-                  )
-                }
-                onDuplicate={() => {
-                  const duplicate = {
-                    ...widget,
-                    id: commandKey(),
-                    title: `${widget.title.slice(0, 110)} copy`,
-                  };
-                  editCanvas(
-                    normalizeLayouts({ ...canvas, widgets: [...canvas.widgets, duplicate] }),
-                  );
-                  setConfigured(duplicate.id);
-                }}
-                onDelete={() => {
-                  editCanvas(removeWidget(canvas, widget.id));
-                  setConfigured(null);
-                }}
-              />
-            }
-            widget={widget}
-            manifest={manifest}
-            onCancel={() => setConfigured(null)}
-            onSave={(next) => {
-              editor.edit({
-                ...editor.definition,
-                widgets: editor.definition.widgets.map((item) =>
-                  item.id === next.id ? next : item,
-                ),
-              });
-              setConfigured(null);
-              focusWidget(next.id);
-            }}
-          />
-        </Dialog>
+        <DashboardWidgetConfigurationDialog
+          editor={editor}
+          canvas={canvas}
+          widget={widget}
+          manifest={manifest}
+          breakpoint={breakpoint}
+          screens={screens}
+          active={active}
+          locked={locked}
+          editCanvas={editCanvas}
+          setConfigured={setConfigured}
+          focusWidget={focusWidget}
+          onScreenChange={(screenId) => query.update({ screenId })}
+        />
       ) : null}
       {publishOpen ? (
         <Dialog

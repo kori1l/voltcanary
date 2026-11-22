@@ -208,6 +208,35 @@ export function DeviceSimulationPanel({
           </details>
           <div className="run-history">
             <h3>Run history</h3>
+            <div className="button-row" aria-label="Run history pages">
+              <button
+                type="button"
+                disabled={
+                  simulation.simulationHistory.loading || simulation.simulationHistory.page === 0
+                }
+                onClick={() =>
+                  simulation.simulationHistory.selectPage(simulation.simulationHistory.page - 1)
+                }
+              >
+                Previous
+              </button>
+              <span>
+                Page {simulation.simulationHistory.page + 1} of{" "}
+                {Math.max(1, simulation.simulationHistory.totalPages)}
+              </span>
+              <button
+                type="button"
+                disabled={
+                  simulation.simulationHistory.loading ||
+                  simulation.simulationHistory.page + 1 >= simulation.simulationHistory.totalPages
+                }
+                onClick={() =>
+                  simulation.simulationHistory.selectPage(simulation.simulationHistory.page + 1)
+                }
+              >
+                Next
+              </button>
+            </div>
             {simulationRuns.length > 0 ? (
               <ul className="plain-list compact-list">
                 {simulationRuns.map((run) => (

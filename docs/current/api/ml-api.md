@@ -41,7 +41,10 @@ authoritative; the console applies no new numeric promotion thresholds.
 
 The serving cache synchronizes shared state and coalesces concurrent loads of
 the same model within one process. Clearing it prevents an earlier in-flight
-load from repopulating the cleared generation. Training requests sharing an
+load from repopulating the cleared generation. Followers use a bounded
+`ML_SERVING_CACHE_LOAD_WAIT_SECONDS` wait (default 15 seconds); timeout returns
+the existing model-unavailable result without cancelling the shared loader.
+Training requests sharing an
 idempotency key share execution before fitting starts. Production-like profiles
 use a PostgreSQL session reservation across replicas; local profiles use an OS
 file lock across processes sharing the history directory. A waiting worker checks
@@ -442,6 +445,17 @@ Optional query:
   `active`, and `current` hide archived/deleted versions and return the latest
   visible version per dataset. `failed`, `archived`, `deleted`, and `all` return
   matching dataset versions for cleanup review.
+- `page` (zero-based, default `0`) and `size` (default `100`, range `1–100`).
+  Invalid page/size or unsupported status filters return 400. The response
+  remains an array, limited by SQL after the account/status/latest-version
+  filters. Results are ordered by dataset creation time and id descending,
+  then version number and version id descending. Request the next page while
+  the previous page contains `size` items; a final empty page is possible.
+  Concurrent writes can shift positions between pages.
+
+The console exposes dataset page navigation. A selected version outside the
+current page is read by its authorized detail endpoint and remains available
+to training and feature preparation; it is not added to the inventory page.
 
 Example item:
 
@@ -742,6 +756,7 @@ compares the current stateless preview fingerprint. A mismatch returns HTTP
   ]
 }
 ```
+
 Fresh workbench creates store the selected preview summary under
 `qualityProfile.selectedPreview`.
 
@@ -897,7 +912,17 @@ top-level fields match the mapping names.
 Example JSONL row:
 
 ```json
-{"ts":"2026-07-01T00:00:00Z","device":"washer-1","existingDeviceId":"a0b7f4dc-2f4b-4d7a-9f9e-5d1f88a5bc16","deviceType":"washer","metric":"activePowerW","value":123.4,"unit":"W","label":"NORMAL","firmware":"2.4.1"}
+{
+  "ts": "2026-07-01T00:00:00Z",
+  "device": "washer-1",
+  "existingDeviceId": "a0b7f4dc-2f4b-4d7a-9f9e-5d1f88a5bc16",
+  "deviceType": "washer",
+  "metric": "activePowerW",
+  "value": 123.4,
+  "unit": "W",
+  "label": "NORMAL",
+  "firmware": "2.4.1"
+}
 ```
 
 The response shape matches `POST /analytics/ml/datasets/external-csv`.
@@ -931,13 +956,7 @@ Request:
   "horizonDays": null,
   "featureTemplateId": "generic-appliance",
   "featureTemplateVersion": "template-v1",
-  "enabledFeatureFamilies": [
-    "rolling_stats",
-    "baseline_deviation",
-    "missing_data",
-    "time",
-    "label"
-  ]
+  "enabledFeatureFamilies": ["rolling_stats", "baseline_deviation", "missing_data", "time", "label"]
 }
 ```
 
@@ -1237,6 +1256,16 @@ include failure-specific fields when a failure model scores the device:
 `modelVersionId`, `modelFamily`, `failureRiskScore`, `failureHorizonDays`,
 `failureRiskBand`, `riskDrivers`, `labelCoverage`, and `trainingDataWindow`.
 Risk drivers are structured objects suitable for traceability and UI display.
+For logistic regression, `weight` is the coefficient in standardized feature
+space and `contribution` is that coefficient times the actual standardized input.
+Contributions plus the intercept reconstruct the model logit, before rounding.
+Missing trained features use the vectorizer's zero input and its corresponding
+standardization; unknown input features do not appear as model drivers. Forest
+drivers report dimensionless global feature importance with
+`direction=model_importance`, not a signed observation-level effect.
+Automatic failure-model holdout keeps every observation timestamp in one
+partition and requires the training times to precede validation times strictly.
+A dataset with only one observation time has no independent temporal holdout.
 When analytics-service supplies only `modelVersionId`, ML-service may resolve
 the model from its registry metadata; production requests should still include
 manifest and artifact hash metadata for durable object-store loading. Failure

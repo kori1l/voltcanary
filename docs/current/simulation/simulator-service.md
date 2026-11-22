@@ -19,12 +19,19 @@ Current endpoints:
 - `POST /simulation/devices/{deviceId}/start`
 - `POST /simulation/devices/{deviceId}/stop`
 - `GET /simulation/devices/{deviceId}/status`
-- `GET /simulation/devices/{deviceId}/runs`
+- `GET /simulation/devices/{deviceId}/runs?page=0&size=25`
 - `GET /simulation/runs/{runId}`
 - `GET /simulation/devices/{deviceId}/config/versions`
 - `GET /simulation/templates`
 - `GET /simulation/presets`
 - `GET /simulation/templates/{profile}`
+
+Run history returns `{content, page, size, totalElements, totalPages}`. `page`
+starts at zero; `size` defaults to 25 and must be 1–100. Invalid bounds return 400. The database limits each page and orders by `startedAt DESC, id DESC`, so
+equal start timestamps have deterministic ordering. Concurrent new runs can
+shift page positions; refresh to see the current history. The console and setup
+reconciliation expose page navigation. Status uses a separate single latest-run
+query and does not load history.
 
 `reset-template` returns `{ "yamlConfig": "..." }` without persisting the
 configuration. The frontend uses it to replace the editor contents from a

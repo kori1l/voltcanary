@@ -10,6 +10,7 @@ import {
   listTrainingRuns,
   getTrainingRun,
   trainingPageSize,
+  datasetPageSize,
   MlDatasetDetail,
   MlDatasetSummary,
   MlDeploymentPolicy,
@@ -61,12 +62,14 @@ export function useMlWorkspaceData({
   modelStatusFilter,
   policyStatusFilter,
   selectedTrainingRunId = "",
+  selectedDatasetVersionId = "",
 }: {
   datasetStatusFilter: MlLifecycleStatusFilter;
   trainingStatusFilter: MlLifecycleStatusFilter;
   modelStatusFilter: MlLifecycleStatusFilter;
   policyStatusFilter: MlLifecycleStatusFilter;
   selectedTrainingRunId?: string;
+  selectedDatasetVersionId?: string;
 }) {
   const scopeGeneration = useRef(0);
   const detailGeneration = useRef(0);
@@ -90,8 +93,35 @@ export function useMlWorkspaceData({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const datasetSection = useSectionResource<MlDatasetSummary[]>(datasetStatusFilter);
-  const datasets = datasetSection.data ?? [];
+  const [datasetPaging, setDatasetPaging] = useState({ filter: datasetStatusFilter, page: 0 });
+  const datasetPage = datasetPaging.filter === datasetStatusFilter ? datasetPaging.page : 0;
+  const setDatasetPage = (page: number) =>
+    setDatasetPaging({ filter: datasetStatusFilter, page: Math.max(0, page) });
+  const datasetSection = useSectionResource<MlDatasetSummary[]>(
+    `${datasetStatusFilter}:${datasetPage}`,
+  );
+  const datasetPageRecords = datasetSection.data ?? [];
+  const selectedDataset = useSectionResource<MlDatasetSummary>(selectedDatasetVersionId);
+  const datasets =
+    selectedDataset.data &&
+    selectedDataset.data.datasetVersionId === selectedDatasetVersionId &&
+    !datasetPageRecords.some((item) => item.datasetVersionId === selectedDatasetVersionId)
+      ? [...datasetPageRecords, selectedDataset.data]
+      : datasetPageRecords;
+  useEffect(() => {
+    if (
+      !selectedDatasetVersionId ||
+      datasetSection.data === null ||
+      datasetPageRecords.some((item) => item.datasetVersionId === selectedDatasetVersionId)
+    )
+      return;
+    void selectedDataset.load(async () => {
+      const detail = await getMlDatasetVersion(selectedDatasetVersionId);
+      if (detail.dataset.datasetVersionId !== selectedDatasetVersionId)
+        throw new Error("Selected dataset version unavailable");
+      return detail.dataset;
+    });
+  }, [selectedDatasetVersionId, datasetSection.data, selectedDataset.load]);
   const setDatasets = datasetSection.setData;
   const [datasetDetail, setDatasetDetail] = useState<MlDatasetDetail | null>(null);
   const [trainingPaging, setTrainingPaging] = useState({ filter: trainingStatusFilter, page: 0 });
@@ -155,6 +185,7 @@ export function useMlWorkspaceData({
     modelStatusFilter,
     policyStatusFilter,
     trainingPage,
+    datasetPage,
   ]);
 
   function adopt(v: MlSettingsResponse) {
@@ -235,7 +266,7 @@ export function useMlWorkspaceData({
 
   async function refreshMlWorkspace() {
     const results = await Promise.allSettled([
-      datasetSection.load(() => listMlDatasets(datasetStatusFilter), isEmptyList),
+      datasetSection.load(() => listMlDatasets(datasetStatusFilter, datasetPage), isEmptyList),
       snapshotSection.load(async () => {
         const response = await listFeatureSnapshots();
         if (!Array.isArray(response))
@@ -356,7 +387,8 @@ export function useMlWorkspaceData({
         label: "datasets",
         id: "dataset",
         resource: datasetSection,
-        retry: () => datasetSection.load(() => listMlDatasets(datasetStatusFilter), isEmptyList),
+        retry: () =>
+          datasetSection.load(() => listMlDatasets(datasetStatusFilter, datasetPage), isEmptyList),
       },
       {
         label: "snapshots",
@@ -409,6 +441,11 @@ export function useMlWorkspaceData({
     busy,
     setBusy,
     datasets,
+    datasetPageRecords,
+    datasetPage,
+    setDatasetPage,
+    datasetHasMore: datasetPageRecords.length === datasetPageSize,
+    datasetLoading: datasetSection.status === "loading" || datasetSection.refreshing,
     setDatasets,
     datasetDetail,
     setDatasetDetail,

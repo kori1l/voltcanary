@@ -11,6 +11,52 @@ polling publication, and subscription forwarding must use the current
 generation. Command-capable adapters remain disabled until their command
 boundary can require current fenced ownership.
 
+Work runs on bounded independent pools. `app.ingestion.connector-runtime`
+defaults to `work-concurrency: 8`, `heartbeat-concurrency: 4` and
+`work-queue-capacity: 128` (capacity per pool). Thread counts must be 1–128;
+queue capacity must be 1–4096. A saturated work queue defers that source to
+another tick; it does not execute network I/O on the scheduler or heartbeat
+thread. A blocked poll occupies one work slot while other slots serve other
+sources and the heartbeat pool renews leases. Choose concurrency and tick/TTL
+budgets for the deployed source count and Redis latency.
+
+Only one work item per data source may run or wait in the queue. Replacement
+configuration waits for the previous work item to finish setup/cleanup before
+starting its own adapter session. Stopped generations drop late results and
+subscription callbacks. Heartbeats continue between polling deadlines and
+during polling I/O; failure to renew drops local publication authority.
+
+## Credential Grants
+
+Credential resolution is denied by default. A source's `credentialReferences`
+select opaque names; they do not authorize reading process environment variables
+or system properties. Operators grant each reference to one account, source and
+exact destination URI in ingestion-service's external application configuration:
+
+```yaml
+app:
+  ingestion:
+    credentials:
+      grants:
+        - account-id: 11111111-1111-1111-1111-111111111111
+          data-source-id: 22222222-2222-2222-2222-222222222222
+          endpoint: opc.tcp://plc-1.internal:4840
+          reference: credential:opcua-user
+          environment-variable: OPCUA_USER
+```
+
+Only the deployment names the environment variable. Repeat the grant for the
+password reference. Account, source, reference or destination mismatches deny
+resolution. Existing `env:` names require an explicit matching grant too; `sys:`
+is never implicitly resolved. Grant changes require a service configuration
+reload/restart. Never put secret values in source configuration or grant metadata.
+
+HTTP polling uses `adapterConfig.credentialHeaders`, for example
+`{"Authorization":"sensor"}`, with
+`credentialReferences.sensor=credential:sensor`. Inline sensitive HTTP headers
+are rejected. The grant must match the complete polling URL, including its path.
+Credential-bearing endpoints must not contain URI user information.
+
 ## Modbus TCP Source Configuration
 
 Use `adapterType=GENERIC_MODBUS_TCP`, `protocol=MODBUS_TCP`, `transport=TCP`,
@@ -92,8 +138,8 @@ Node mapping:
 `credentialReferences.password`. `authenticationMode=CERTIFICATE` requires
 `credentialReferences.clientCertificate` and `credentialReferences.privateKey`;
 `credentialReferences.trustList` may reference trusted server certificates.
-Store only references such as `env:OPCUA_USER`, `env:OPCUA_PASSWORD`, or an
-internal secret reference. Do not store raw usernames, passwords, private keys,
+Store only granted references such as `credential:opcua-user` and
+`credential:opcua-password`. Do not store raw usernames, passwords, private keys,
 or certificates in source config.
 
 ## Failure Modes
@@ -102,6 +148,12 @@ Invalid node mappings fail before a session is opened and are reported in
 per-source connector health. Endpoint failures, session loss, authentication
 failure, and certificate/trust failures move the source through connector
 backoff and reconnect without affecting other sources.
+
+An explicitly requested OPC UA security policy must match the advertised policy
+URI exactly. If no matching endpoint exists, connection fails; another policy
+is not selected. Partially established sessions are disconnected after setup
+failure. Runtime ticks renew ownership even between polling deadlines, including
+quiet subscriptions.
 
 Lease loss, source disable, and config replacement close the local OPC UA
 session immediately. After lease loss, the replica that lost ownership must

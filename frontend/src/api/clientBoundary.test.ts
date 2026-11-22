@@ -6,7 +6,7 @@ import {
   apiTextRequest,
   clearTokens,
   getAccessToken,
-  setTokens,
+  setSession,
 } from "./client";
 
 afterEach(() => {
@@ -30,10 +30,10 @@ it("handles malformed error fields without throwing from the error handler", asy
 });
 
 it("does not accept non-string credentials from a refresh response", async () => {
-  setTokens("old", "refresh");
+  setSession("old", "refresh");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) =>
-    String(url).endsWith("/auth/refresh")
-      ? new Response(JSON.stringify({ accessToken: 1, refreshToken: {} }))
+    String(url).endsWith("/refresh")
+      ? new Response(JSON.stringify({ accessToken: 1, sessionId: {} }))
       : new Response("{}", { status: 401 }),
   );
   await expect(apiRequest("/devices")).rejects.toMatchObject({ status: 503 });

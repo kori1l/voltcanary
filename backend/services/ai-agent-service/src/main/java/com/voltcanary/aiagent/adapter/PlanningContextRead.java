@@ -1,4 +1,4 @@
-package com.voltcanary.aiagent.service;
+package com.voltcanary.aiagent.adapter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltcanary.aiagent.trace.AssistantTrace;
@@ -9,11 +9,11 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
 
-final class PlanningContextRead {
+public final class PlanningContextRead {
 
     private PlanningContextRead() {}
 
-    static JsonNode read(
+    public static JsonNode read(
         RestClient client,
         String path,
         String authorization,

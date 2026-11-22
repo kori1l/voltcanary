@@ -27,6 +27,7 @@ export function DatasetsTab(props: {
   refreshRecords?: () => Promise<unknown>;
   isGeneratingSnapshot?: boolean;
   datasets: MlDatasetSummary[];
+  paging?: { page: number; hasMore: boolean; loading: boolean; selectPage: (page: number) => void };
   datasetsAvailable?: boolean;
   devices: Device[];
   detail: MlDatasetDetail | null;
@@ -149,6 +150,25 @@ export function DatasetsTab(props: {
               ))}
             </div>
           )}
+          {props.paging ? (
+            <div className="button-row" aria-label="Dataset pages">
+              <button
+                type="button"
+                disabled={props.paging.loading || props.paging.page === 0}
+                onClick={() => props.paging!.selectPage(props.paging!.page - 1)}
+              >
+                Previous datasets
+              </button>
+              <span>Page {props.paging.page + 1}</span>
+              <button
+                type="button"
+                disabled={props.paging.loading || !props.paging.hasMore}
+                onClick={() => props.paging!.selectPage(props.paging!.page + 1)}
+              >
+                Next datasets
+              </button>
+            </div>
+          ) : null}
         </section>
         <section className="panel ml-datasets-detail-panel">
           <div className="section-header">

@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,7 +15,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 public interface SimulationRunRepository extends JpaRepository<SimulationRun, UUID> {
-    List<SimulationRun> findByDeviceIdOrderByStartedAtDesc(UUID deviceId);
+    Page<SimulationRun> findByDeviceId(UUID deviceId, Pageable pageable);
+    Optional<SimulationRun> findFirstByDeviceIdOrderByStartedAtDesc(UUID deviceId);
     Optional<SimulationRun> findFirstByDeviceIdAndStatusOrderByStartedAtDesc(
         UUID deviceId,
         SimulationRunStatus status

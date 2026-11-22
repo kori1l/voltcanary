@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import {
   readDeviceSetupCheckpoint,
   writeDeviceSetupCheckpoint,
@@ -11,7 +11,7 @@ afterEach(() => {
   localStorage.clear();
 });
 const login = (sub: string) =>
-  setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}\.${btoa(JSON.stringify({ sub }))}.fixture`, "fixture");
 const account = { id: "account-A", userId: "user-A", name: "Private", status: "ACTIVE" as const };
 const checkpoint: DeviceSetupCheckpoint = {
   deviceId: "device-canonical",

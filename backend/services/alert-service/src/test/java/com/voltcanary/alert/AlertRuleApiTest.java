@@ -59,6 +59,56 @@ class AlertRuleApiTest extends SignedUserTest {
     private TestRestTemplate restTemplate;
 
     @Test
+    void rulesAreFilteredBeforePagingAndRejectUnboundedPageSizes() {
+        String metric = "paged_test_metric";
+        var ids = new java.util.ArrayList<UUID>();
+        for (int i = 0; i < 5; i++) {
+            var request = new java.util.HashMap<>(ruleRequest("Paged rule " + i));
+            request.put("metric", metric);
+            var created = restTemplate.exchange(
+                "/alert-rules",
+                HttpMethod.POST,
+                entity(ACCOUNT_ID, request),
+                AlertRuleResponse.class
+            );
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            ids.add(created.getBody().id());
+        }
+        var found = new java.util.HashSet<UUID>();
+        for (int page = 0; page < 3; page++) {
+            var response = restTemplate.exchange(
+                "/alert-rules?metric=" + metric + "&page=" + page + "&size=2",
+                HttpMethod.GET,
+                entity(ACCOUNT_ID, null),
+                AlertRuleResponse[].class
+            );
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).hasSize(page < 2 ? 2 : 1);
+            for (var rule : response.getBody()) assertThat(found.add(rule.id())).isTrue();
+        }
+        assertThat(found).containsExactlyInAnyOrderElementsOf(ids);
+        var other = restTemplate.exchange(
+            "/alert-rules?metric=" + metric + "&size=2",
+            HttpMethod.GET,
+            entity(OTHER_ACCOUNT_ID, null),
+            AlertRuleResponse[].class
+        );
+        assertThat(other.getBody()).isEmpty();
+        for (String bounds : List.of("size=101", "size=0", "page=-1")) {
+            assertThat(
+                restTemplate
+                    .exchange(
+                        "/alert-rules?" + bounds,
+                        HttpMethod.GET,
+                        entity(ACCOUNT_ID, null),
+                        String.class
+                    )
+                    .getStatusCode()
+            ).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Test
     void ruleCrudIsScopedByAccountAndCanBeTested() {
         ResponseEntity<AlertRuleResponse> createResponse = restTemplate.exchange(
             "/alert-rules",

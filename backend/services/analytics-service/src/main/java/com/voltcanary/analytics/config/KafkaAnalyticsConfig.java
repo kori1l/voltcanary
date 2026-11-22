@@ -62,6 +62,7 @@ public class KafkaAnalyticsConfig {
         Map<String, Object> properties = kafkaProperties.buildProducerProperties();
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        properties.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 10_000);
         return new DefaultKafkaProducerFactory<>(properties);
     }
 
@@ -73,8 +74,10 @@ public class KafkaAnalyticsConfig {
     }
 
     @Bean
-    DefaultErrorHandler analyticsKafkaErrorHandler() {
-        return new DefaultErrorHandler(new FixedBackOff(1_000L, 3L));
+    DefaultErrorHandler analyticsKafkaErrorHandler(
+        com.voltcanary.analytics.producer.AnalyticsDeadLetterRecovery recovery
+    ) {
+        return new DefaultErrorHandler(recovery, new FixedBackOff(1_000L, 3L));
     }
 
     @Bean

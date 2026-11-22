@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import { draftScope, readScopedDraft, saveScopedDraft, scopedDraftKey } from "./scopedDrafts";
 const token = (sub: string) => `${btoa("{}")}\.${btoa(JSON.stringify({ sub }))}.fixture`;
 afterEach(() => {
@@ -7,7 +7,7 @@ afterEach(() => {
   localStorage.clear();
 });
 it("isolates recovery by user, account, entity and base revision", () => {
-  setTokens(token("user-A"), "fixture");
+  setSession(token("user-A"), "fixture");
   const scope = draftScope("account-A", "rule-1", "revision-1")!;
   expect(
     saveScopedDraft(
@@ -25,13 +25,13 @@ it("isolates recovery by user, account, entity and base revision", () => {
   expect(readScopedDraft({ ...scope, accountId: "account-B" }, (value) => value.name)).toBeNull();
   clearTokens();
   expect(readScopedDraft(scope, (value) => value.name)).toBeNull();
-  setTokens(token("user-B"), "fixture");
+  setSession(token("user-B"), "fixture");
   expect(readScopedDraft(scope, (value) => value.name)).toBeNull();
-  setTokens(token("user-A"), "fixture");
+  setSession(token("user-A"), "fixture");
   expect(readScopedDraft(scope, (value) => value.name)).toBe("Unsaved rule");
 });
 it("uses a safe fallback for corrupt records and refuses credential fields", () => {
-  setTokens(token("user-A"), "fixture");
+  setSession(token("user-A"), "fixture");
   const scope = draftScope("account-A", "rule", "1")!;
   localStorage.setItem(scopedDraftKey(scope), "{broken");
   expect(readScopedDraft(scope, (value) => value)).toBeNull();

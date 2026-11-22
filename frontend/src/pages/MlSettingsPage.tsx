@@ -90,6 +90,7 @@ function MlSettingsScreen() {
     datasetStatusFilter,
     trainingStatusFilter,
     selectedTrainingRunId: pipelineSelection.runId,
+    selectedDatasetVersionId: pipelineSelection.datasetVersionId,
     modelStatusFilter,
     policyStatusFilter,
   });
@@ -360,7 +361,13 @@ function MlSettingsScreen() {
               lifecycle.isPending(`${kind}:${id}:${action}`)
             }
             datasetsAvailable={workspace.dataAvailable.datasets}
-            datasets={datasets}
+            datasets={workspace.datasetPageRecords}
+            paging={{
+              page: workspace.datasetPage,
+              hasMore: workspace.datasetHasMore,
+              loading: workspace.datasetLoading,
+              selectPage: workspace.setDatasetPage,
+            }}
             devices={devices}
             detail={datasetDetail}
             featureSnapshots={featureSnapshots}

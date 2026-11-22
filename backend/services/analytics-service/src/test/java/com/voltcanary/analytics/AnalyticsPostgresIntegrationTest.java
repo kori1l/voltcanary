@@ -48,6 +48,7 @@ class AnalyticsPostgresIntegrationTest extends SignedUserTest {
 
     @org.junit.jupiter.api.BeforeEach
     void authenticateUserReads() {
+        when(alertRuleClient.effectiveRules(any(), any())).thenReturn(List.of());
         restTemplate.getRestTemplate().setInterceptors(
             java.util.List.of((request, body, execution) -> {
                 if (
@@ -88,6 +89,9 @@ class AnalyticsPostgresIntegrationTest extends SignedUserTest {
 
     @MockitoBean
     private MlClient mlClient;
+
+    @MockitoBean
+    private com.voltcanary.analytics.service.AlertRuleClient alertRuleClient;
 
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbc;

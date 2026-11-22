@@ -28,7 +28,6 @@ import com.voltcanary.analytics.ml.MlInferenceRecentWindow;
 import com.voltcanary.analytics.ml.MlInferenceRequest;
 import com.voltcanary.analytics.ml.MlTrainingMetricRow;
 import com.voltcanary.analytics.ml.MlTrainingRequest;
-import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.producer.AnalyticsEventPublisher;
 import com.voltcanary.analytics.service.AnalyticsAccessService;
 import com.voltcanary.analytics.service.TelemetryValidatedEventHandler;
@@ -59,11 +58,9 @@ class AnalyticsPipelineTest {
     @Test
     void telemetryValidatedEventEnqueuesRecalculationJob() throws Exception {
         TelemetryValidatedEventHandler eventHandler = mock(TelemetryValidatedEventHandler.class);
-        AnalyticsDeadLetterPublisher deadLetterPublisher = mock(AnalyticsDeadLetterPublisher.class);
         TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(
             objectMapper,
-            eventHandler,
-            deadLetterPublisher
+            eventHandler
         );
         UUID deviceId = UUID.randomUUID();
         TelemetryValidatedEvent event = new TelemetryValidatedEvent(
@@ -84,21 +81,15 @@ class AnalyticsPipelineTest {
     @Test
     void invalidTelemetryValidatedEventIsRejected() {
         TelemetryValidatedEventHandler eventHandler = mock(TelemetryValidatedEventHandler.class);
-        AnalyticsDeadLetterPublisher deadLetterPublisher = mock(AnalyticsDeadLetterPublisher.class);
         TelemetryValidatedConsumer consumer = new TelemetryValidatedConsumer(
             objectMapper,
-            eventHandler,
-            deadLetterPublisher
+            eventHandler
         );
 
         assertThatThrownBy(() -> consumer.consume("{not-json"))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Invalid TelemetryValidatedEvent payload");
-        verify(deadLetterPublisher).publish(
-            eq("telemetry.validated.v1"),
-            eq("{not-json"),
-            eq("Invalid TelemetryValidatedEvent payload")
-        );
+        org.mockito.Mockito.verifyNoInteractions(eventHandler);
     }
 
     @Test

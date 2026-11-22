@@ -1,4 +1,4 @@
-import { apiRequest } from "../api/client";
+import { ApiError, apiRequest } from "../api/client";
 
 export interface RegisterRequest {
   email: string;
@@ -17,7 +17,7 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   accessToken: string;
-  refreshToken: string;
+  sessionId: string;
   tokenType: "Bearer";
   expiresIn: number;
 }
@@ -60,28 +60,39 @@ export function register(request: RegisterRequest) {
   });
 }
 
-export function login(request: LoginRequest) {
-  return apiRequest<LoginResponse>("/auth/login", {
+export async function login(request: LoginRequest) {
+  const sessionId = crypto.randomUUID();
+  const response = await apiRequest<LoginResponse>(`/auth/browser/${sessionId}/login`, {
+    credentials: "include",
     method: "POST",
     body: JSON.stringify(request),
   });
+  if (
+    response?.sessionId !== sessionId ||
+    typeof response.accessToken !== "string" ||
+    !response.accessToken.trim()
+  )
+    throw new ApiError("Sign-in response is invalid.", 503);
+  return response;
 }
 
 export function me() {
   return apiRequest<MeResponse>("/auth/me");
 }
 
-export function refresh(refreshToken: string) {
-  return apiRequest<LoginResponse>("/auth/refresh", {
+export function refresh(sessionId: string) {
+  return apiRequest<LoginResponse>(`/auth/browser/${encodeURIComponent(sessionId)}/refresh`, {
+    credentials: "include",
     method: "POST",
-    body: JSON.stringify({ refreshToken }),
+    body: "{}",
   });
 }
 
-export function logout(refreshToken: string) {
-  return apiRequest<MessageResponse>("/auth/logout", {
+export function logout(sessionId: string) {
+  return apiRequest<MessageResponse>(`/auth/browser/${encodeURIComponent(sessionId)}/logout`, {
+    credentials: "include",
     method: "POST",
-    body: JSON.stringify({ refreshToken }),
+    body: "{}",
   });
 }
 

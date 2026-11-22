@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it } from "vitest";
 import { createMemoryRouter, Link, RouterProvider } from "react-router-dom";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import { WorkflowDraftProvider } from "./WorkflowDraftGuard";
 import { useConsoleQuery } from "../app/useConsoleQuery";
 import { useScopedDraftValue } from "./useScopedDraftValue";
@@ -55,7 +55,7 @@ function PersistedEditor() {
   );
 }
 it("discards a newly persisted controlled draft as well as its visible form", async () => {
-  setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "account-1" }))}.fixture`, "fixture");
   const router = createMemoryRouter(
     [
       {
@@ -82,7 +82,7 @@ it("discards a newly persisted controlled draft as well as its visible form", as
   expect(await screen.findByLabelText("Draft title")).toHaveValue("Original");
 });
 it("keeps dirty route/tab drafts and proceeds only after explicit discard", async () => {
-  setTokens("fixture", "fixture");
+  setSession("fixture", "fixture");
   const router = createMemoryRouter(
     [
       {
@@ -113,7 +113,7 @@ it("keeps dirty route/tab drafts and proceeds only after explicit discard", asyn
   await screen.findByText("Devices destination");
 });
 it("protects browser Back through the data router", async () => {
-  setTokens("fixture", "fixture");
+  setSession("fixture", "fixture");
   const router = createMemoryRouter(
     [
       {

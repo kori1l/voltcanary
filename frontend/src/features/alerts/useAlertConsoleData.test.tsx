@@ -1,4 +1,4 @@
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode, useEffect } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import * as api from "../../alerts/alertsApi";
@@ -8,6 +8,29 @@ import { useAlertConsoleData } from "./useAlertConsoleData";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+});
+
+it("loads rule pages independently of the inbox and reference lists", async () => {
+  const rules = vi
+    .spyOn(api, "listAlertRules")
+    .mockImplementation(async (_filters, page = 0) =>
+      Array.from(
+        { length: page === 0 ? 100 : 1 },
+        (_, i) => ({ id: `${page}-${i}` }) as api.AlertRule,
+      ),
+    );
+  const channels = vi.spyOn(api, "listNotificationChannels").mockResolvedValue([]);
+  vi.spyOn(devices, "listDevices").mockResolvedValue([]);
+  vi.spyOn(devices, "listLocations").mockResolvedValue([]);
+  const { result } = renderHook(() => useAlertConsoleData({}));
+  await waitFor(() => expect(result.current.rules.data).toHaveLength(100));
+  expect(result.current.rulePaging.hasMore).toBe(true);
+  act(() => result.current.rulePaging.selectPage(1));
+  expect(result.current.rules.data).toBeNull();
+  await waitFor(() => expect(result.current.rules.data?.[0].id).toBe("1-0"));
+  expect(rules).toHaveBeenLastCalledWith({}, 1);
+  expect(result.current.rulePaging.hasMore).toBe(false);
+  expect(channels).toHaveBeenCalledTimes(1);
 });
 
 it("finishes summary and inbox loading after StrictMode replays the initial read", async () => {

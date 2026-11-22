@@ -11,9 +11,9 @@ import com.voltcanary.analytics.repository.MlDatasetVersionRepository;
 import com.voltcanary.analytics.repository.MlValidationReportRepository;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,41 +36,50 @@ public class MlDatasetQueryService {
 
     @Transactional(readOnly = true)
     public List<MlDatasetSummaryDto> list(UUID accountId, String statusFilter) {
+        return list(accountId, statusFilter, 0, 100);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MlDatasetSummaryDto> list(UUID accountId, String statusFilter, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "page must be non-negative and size must be between 1 and 100"
+            );
+        }
         String filter = normalizedFilter(statusFilter);
-        var datasets = datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId);
         boolean latestOnly = List.of("default", "active", "current").contains(filter);
-        var selectedVersions = latestOnly
-            ? datasetVersionRepository.findLatestVisibleByAccountId(
-                  accountId,
-                  List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)
-              )
-            : switch (filter) {
-                  case "archived" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
-                      accountId,
-                      MlDatasetStatus.ARCHIVED
-                  );
-                  case "deleted" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
-                      accountId,
-                      MlDatasetStatus.DELETED
-                  );
-                  case "failed" -> datasetVersionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
-                      accountId,
-                      MlDatasetStatus.FAILED
-                  );
-                  default -> datasetVersionRepository.findByAccountIdOrderByVersionDesc(accountId);
-              };
-        var versions = selectedVersions
+        List<MlDatasetStatus> statuses = switch (filter) {
+            case "default", "active", "current" -> List.of(
+                MlDatasetStatus.DRAFT,
+                MlDatasetStatus.VALIDATING,
+                MlDatasetStatus.READY,
+                MlDatasetStatus.FAILED
+            );
+            case "archived" -> List.of(MlDatasetStatus.ARCHIVED);
+            case "deleted" -> List.of(MlDatasetStatus.DELETED);
+            case "failed" -> List.of(MlDatasetStatus.FAILED);
+            case "all" -> List.of(MlDatasetStatus.values());
+            default -> throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Unsupported dataset status filter"
+            );
+        };
+        var versions = datasetVersionRepository
+            .findInventory(accountId, statuses, latestOnly, PageRequest.of(page, size))
+            .getContent();
+        var datasets = datasetRepository
+            .findAllById(versions.stream().map(MlDatasetVersion::getDatasetId).distinct().toList())
             .stream()
-            .collect(java.util.stream.Collectors.groupingBy(MlDatasetVersion::getDatasetId));
-        return datasets
+            .collect(java.util.stream.Collectors.toMap(MlDataset::getId, dataset -> dataset));
+        return versions
             .stream()
-            .flatMap(dataset -> {
-                var selected = versions
-                    .getOrDefault(dataset.getId(), List.of())
-                    .stream()
-                    .filter(version -> matchesFilter(version.getStatus(), filter));
-                if (latestOnly) selected = selected.limit(1);
-                return selected.map(version -> mapper.summary(dataset, version));
+            .map(version -> {
+                MlDataset dataset = datasets.get(version.getDatasetId());
+                if (dataset == null || !accountId.equals(dataset.getAccountId())) {
+                    throw new IllegalStateException("Dataset inventory changed while reading");
+                }
+                return mapper.summary(dataset, version);
             })
             .toList();
     }
@@ -103,16 +112,6 @@ public class MlDatasetQueryService {
                 .map(mapper::lineage)
                 .toList()
         );
-    }
-
-    private boolean matchesFilter(MlDatasetStatus status, String filter) {
-        return switch (filter) {
-            case "all" -> true;
-            case "failed" -> status == MlDatasetStatus.FAILED;
-            case "archived" -> status == MlDatasetStatus.ARCHIVED;
-            case "deleted" -> status == MlDatasetStatus.DELETED;
-            default -> status != MlDatasetStatus.ARCHIVED && status != MlDatasetStatus.DELETED;
-        };
     }
 
     private String normalizedFilter(String statusFilter) {

@@ -23,7 +23,8 @@ public record OpcUaAdapterConfig(
     Duration samplingInterval,
     int queueSize,
     OpcUaTimestampPolicy timestampPolicy,
-    java.util.List<OpcUaNodeMapping> nodes
+    java.util.List<OpcUaNodeMapping> nodes,
+    com.voltcanary.ingestion.adapter.http.CredentialProvider.Access credentialAccess
 ) {
     static OpcUaAdapterConfig from(SourceRuntimeConfig sourceRuntimeConfig) {
         if (!"v1".equalsIgnoreCase(sourceRuntimeConfig.adapterConfigSchemaVersion())) {
@@ -89,7 +90,12 @@ public record OpcUaAdapterConfig(
                 string(config, "timestampPolicy", "SOURCE_TIME"),
                 "timestampPolicy"
             ),
-            nodes(sourceRuntimeConfig.mapping())
+            nodes(sourceRuntimeConfig.mapping()),
+            new com.voltcanary.ingestion.adapter.http.CredentialProvider.Access(
+                sourceRuntimeConfig.accountId(),
+                sourceRuntimeConfig.dataSourceId(),
+                endpoint
+            )
         );
     }
 

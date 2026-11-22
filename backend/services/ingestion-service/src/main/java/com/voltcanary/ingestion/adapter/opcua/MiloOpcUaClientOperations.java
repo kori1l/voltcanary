@@ -42,18 +42,10 @@ class MiloOpcUaClientOperations implements OpcUaClientOperations {
                 "OPC UA endpointReference must be resolved before opening a Milo session"
             );
         }
+        OpcUaClient client = null;
         try {
             IdentityProvider identityProvider = identityProvider(config);
-            OpcUaClient client = OpcUaClient.create(
-                config.endpoint().toString(),
-                endpoints -> selectEndpoint(config, endpoints),
-                builder ->
-                    builder
-                        .setIdentityProvider(identityProvider)
-                        .setSessionTimeout(uint(config.sessionTimeout().toMillis()))
-                        .setRequestTimeout(uint(config.sessionTimeout().toMillis()))
-                        .build()
-            );
+            client = createClient(config, identityProvider);
             client.connect().get(config.sessionTimeout().toMillis(), TimeUnit.MILLISECONDS);
             UaSubscription subscription = client
                 .getSubscriptionManager()
@@ -68,32 +60,55 @@ class MiloOpcUaClientOperations implements OpcUaClientOperations {
                 .get(config.sessionTimeout().toMillis(), TimeUnit.MILLISECONDS);
             return new MiloOpcUaSubscriptionHandle(client, subscription);
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (client != null) {
+                try {
+                    client.disconnect().get(5, TimeUnit.SECONDS);
+                } catch (Exception cleanup) {
+                    if (cleanup instanceof InterruptedException) Thread.currentThread().interrupt();
+                    exception.addSuppressed(cleanup);
+                }
+            }
             throw new IllegalStateException("OPC UA subscription failed", exception);
         }
     }
 
-    private java.util.Optional<EndpointDescription> selectEndpoint(
+    OpcUaClient createClient(
+        OpcUaAdapterConfig config,
+        IdentityProvider identity
+    ) throws Exception {
+        return OpcUaClient.create(
+            config.endpoint().toString(),
+            endpoints -> selectEndpoint(config, endpoints),
+            builder ->
+                builder
+                    .setIdentityProvider(identity)
+                    .setSessionTimeout(uint(config.sessionTimeout().toMillis()))
+                    .setRequestTimeout(uint(config.sessionTimeout().toMillis()))
+                    .build()
+        );
+    }
+
+    static java.util.Optional<EndpointDescription> selectEndpoint(
         OpcUaAdapterConfig config,
         List<EndpointDescription> endpoints
     ) {
         return endpoints
             .stream()
             .filter(endpoint -> matchesSecurityPolicy(config, endpoint))
-            .findFirst()
-            .or(() -> endpoints.stream().findFirst());
+            .findFirst();
     }
 
-    private boolean matchesSecurityPolicy(OpcUaAdapterConfig config, EndpointDescription endpoint) {
+    private static boolean matchesSecurityPolicy(
+        OpcUaAdapterConfig config,
+        EndpointDescription endpoint
+    ) {
         String securityPolicy = config.securityPolicy();
-        if (securityPolicy == null || securityPolicy.isBlank()) {
-            return true;
-        }
+        if (securityPolicy == null || securityPolicy.isBlank()) return false;
         String uri = endpoint.getSecurityPolicyUri();
         return (
             uri != null &&
-            uri
-                .toLowerCase(java.util.Locale.ROOT)
-                .endsWith("#" + securityPolicy.toLowerCase(java.util.Locale.ROOT))
+            uri.equals("http://opcfoundation.org/UA/SecurityPolicy#" + securityPolicy)
         );
     }
 
@@ -101,8 +116,8 @@ class MiloOpcUaClientOperations implements OpcUaClientOperations {
         return switch (config.authenticationMode()) {
             case ANONYMOUS -> AnonymousProvider.INSTANCE;
             case USERNAME -> new UsernameProvider(
-                resolve(config.usernameCredentialRef(), "username"),
-                resolve(config.passwordCredentialRef(), "password")
+                resolve(config.usernameCredentialRef(), "username", config),
+                resolve(config.passwordCredentialRef(), "password", config)
             );
             case CERTIFICATE -> throw new IllegalArgumentException(
                 "OPC UA certificate authentication requires deployment certificate material wiring"
@@ -110,9 +125,9 @@ class MiloOpcUaClientOperations implements OpcUaClientOperations {
         };
     }
 
-    private String resolve(String credentialReference, String name) {
+    private String resolve(String credentialReference, String name, OpcUaAdapterConfig config) {
         return credentialProvider
-            .resolve(credentialReference)
+            .resolve(credentialReference, config.credentialAccess())
             .orElseThrow(() ->
                 new IllegalArgumentException(
                     "OPC UA " + name + " credential reference could not be resolved"

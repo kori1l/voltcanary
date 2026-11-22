@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { login, register } from "../auth/authApi";
-import { setTokens } from "../api/client";
+import { setSession } from "../api/client";
 import { AuthShell } from "../auth/AuthShell";
 import { PasswordField } from "../auth/PasswordField";
 
@@ -24,7 +24,7 @@ export function RegisterPage() {
         setRegistered(true);
       }
       const tokens = await login({ email, password });
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setSession(tokens.accessToken, tokens.sessionId);
       navigate("/devices", { replace: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Registration failed");

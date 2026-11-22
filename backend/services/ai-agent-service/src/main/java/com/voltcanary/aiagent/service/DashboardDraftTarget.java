@@ -2,6 +2,7 @@ package com.voltcanary.aiagent.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltcanary.aiagent.adapter.PlanningContextRead;
 import com.voltcanary.aiagent.model.AgentTool;
 import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import java.util.Map;
@@ -9,13 +10,13 @@ import java.util.UUID;
 import org.springframework.web.client.RestClient;
 
 /** Fresh owning-domain draft identity. No model IDs, reconstruction or duplicate composition path. */
-final class DashboardDraftTarget {
+public final class DashboardDraftTarget {
 
     private final RestClient dashboards;
     private final ObjectMapper mapper;
     private final PlanStore reviews;
 
-    DashboardDraftTarget(
+    public DashboardDraftTarget(
         RestClient.Builder builder,
         String baseUrl,
         ObjectMapper mapper,

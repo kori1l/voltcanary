@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -59,7 +60,7 @@ public class TelemetryOperationalMetrics {
             Long value = jdbcTemplate.queryForObject(sql, Long.class, args);
             return value == null ? 0 : value;
         } catch (RuntimeException ignored) {
-            return 0;
+            return Double.NaN;
         }
     }
 
@@ -78,8 +79,10 @@ public class TelemetryOperationalMetrics {
             return timestamp == null
                 ? 0
                 : Math.max(0, Duration.between(timestamp.toInstant(), Instant.now()).toSeconds());
-        } catch (RuntimeException ignored) {
+        } catch (EmptyResultDataAccessException empty) {
             return 0;
+        } catch (RuntimeException unavailable) {
+            return Double.NaN;
         }
     }
 }

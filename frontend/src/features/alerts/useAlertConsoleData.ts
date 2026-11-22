@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type AlertFilters,
   type AlertResponse,
@@ -9,6 +9,7 @@ import {
   listAlertPage,
   getAlertSummary,
   listAlertRules,
+  alertRulePageSize,
   listNotificationChannels,
 } from "../../alerts/alertsApi";
 import { type Device, type Location, listDevices, listLocations } from "../../devices/devicesApi";
@@ -26,13 +27,13 @@ export function useAlertConsoleData(filters: AlertFilters, page = 0) {
   const summary = useSectionResource<AlertSummaryResponse>(scope);
   const summaryScope = useRef<string | null>(null);
   const request = useRef<AbortController | null>(null);
-  const rules = useSectionResource<AlertRule[]>();
+  const [rulePage, setRulePage] = useState(0);
+  const rules = useSectionResource<AlertRule[]>(String(rulePage));
   const channels = useSectionResource<NotificationChannelResponse[]>();
   const devices = useSectionResource<Device[]>();
   const locations = useSectionResource<Location[]>();
   useEffect(() => {
     void Promise.allSettled([
-      rules.load(listAlertRules, (data) => !data.length),
       channels.load(listNotificationChannels, (data) => !data.length),
       devices.load(listDevices, (data) => !data.length),
       locations.load(listLocations, (data) => !data.length),
@@ -42,6 +43,17 @@ export function useAlertConsoleData(filters: AlertFilters, page = 0) {
       summaryScope.current = null;
     };
   }, []);
+  const reloadRules = () =>
+    rules.load(
+      () => listAlertRules({}, rulePage),
+      (data) => {
+        if (!Array.isArray(data)) throw new Error("Rule records unavailable: invalid response");
+        return !data.length;
+      },
+    );
+  useEffect(() => {
+    void reloadRules();
+  }, [rulePage, rules.load]);
   async function load(refreshSummary = true) {
     request.current?.abort();
     const controller = new AbortController();
@@ -79,6 +91,13 @@ export function useAlertConsoleData(filters: AlertFilters, page = 0) {
     pagination: pageResource.data,
     summary,
     rules,
+    reloadRules,
+    rulePaging: {
+      page: rulePage,
+      hasMore: (rules.data?.length ?? 0) === alertRulePageSize,
+      size: alertRulePageSize,
+      selectPage: (page: number) => setRulePage(Math.max(0, page)),
+    },
     channels,
     devices,
     locations,

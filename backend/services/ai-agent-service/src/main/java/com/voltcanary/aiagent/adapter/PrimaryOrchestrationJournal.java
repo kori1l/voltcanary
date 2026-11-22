@@ -12,7 +12,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /** Owner-scoped mappings; saved reviews and transcript remain the only user-visible history. */
 @RequiredArgsConstructor
-public final class PrimaryOrchestrationJournal {
+public final class PrimaryOrchestrationJournal
+    implements com.voltcanary.aiagent.port.PrimaryReviewBindings
+{
 
     public record Turn(UUID planId, TurnSubmit request, Long clientRevision) {}
 

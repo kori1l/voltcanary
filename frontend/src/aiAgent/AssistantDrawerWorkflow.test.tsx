@@ -5,7 +5,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { AssistantDrawer } from "./AssistantDrawer";
 import { WorkflowDraftProvider } from "../components/WorkflowDraftGuard";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 
 afterEach(() => {
   cleanup();
@@ -14,7 +14,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 function setup() {
-  setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "drawer-owner" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "drawer-owner" }))}.fixture`, "fixture");
   const router = createMemoryRouter(
     [
       {

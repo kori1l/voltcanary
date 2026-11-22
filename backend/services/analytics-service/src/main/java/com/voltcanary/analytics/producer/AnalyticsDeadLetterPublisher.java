@@ -6,7 +6,7 @@ import com.voltcanary.analytics.config.AnalyticsDlqProperties;
 import com.voltcanary.analytics.config.AnalyticsKafkaProperties;
 import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -30,29 +30,48 @@ public class AnalyticsDeadLetterPublisher {
         this.publishEnabled = kafkaProperties.isPublishEnabled();
     }
 
-    public void publish(String sourceTopic, String originalPayload, String reason) {
+    public void publish(
+        String deadLetterId,
+        String sourceTopic,
+        String originalPayload,
+        String reason
+    ) {
         if (!publishEnabled) {
-            return;
+            throw new IllegalStateException("Analytics DLQ publication is disabled");
         }
-        String deadLetterId = UUID.randomUUID().toString();
-        kafkaTemplate.send(
-            topic,
-            deadLetterId,
-            writeJson(
-                Map.of(
-                    "deadLetterId",
+        try {
+            kafkaTemplate
+                .send(
+                    topic,
                     deadLetterId,
-                    "sourceTopic",
-                    sourceTopic,
-                    "reason",
-                    reason,
-                    "originalPayload",
-                    originalPayload == null ? "" : originalPayload,
-                    "failedAt",
-                    Instant.now().toString()
+                    writeJson(
+                        Map.of(
+                            "deadLetterId",
+                            deadLetterId,
+                            "sourceTopic",
+                            sourceTopic,
+                            "reason",
+                            reason,
+                            "originalPayload",
+                            originalPayload == null ? "" : originalPayload,
+                            "failedAt",
+                            Instant.now().toString()
+                        )
+                    )
                 )
-            )
-        );
+                .get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                "Analytics DLQ acknowledgement interrupted",
+                interrupted
+            );
+        } catch (Exception unavailable) {
+            throw new IllegalStateException(
+                "Analytics DLQ acknowledgement unavailable",
+                unavailable
+            );
+        }
     }
 
     private String writeJson(Map<String, Object> payload) {

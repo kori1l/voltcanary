@@ -96,7 +96,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./deploy/docker-compose/init/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -131,7 +131,7 @@ services:
       - timescale-data:/var/lib/postgresql/data
       - ./deploy/docker-compose/init/timescaledb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -252,7 +252,8 @@ services:
     command:
       - "echo 'listener 1883' > /mosquitto/config/mosquitto.conf && echo 'allow_anonymous true' >> /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 3 >/dev/null 2>&1 || true"]
+      test:
+        ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/#' -C 1 -W 3 >/dev/null 2>&1 || true"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -390,6 +391,8 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-voltcanary-api}
       JWT_ACCESS_TOKEN_TTL_SECONDS: ${JWT_ACCESS_TOKEN_TTL_SECONDS:-900}
       JWT_REFRESH_TOKEN_TTL_SECONDS: ${JWT_REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      BROWSER_SESSION_SECURE_COOKIE: ${BROWSER_SESSION_SECURE_COOKIE:-false}
+      BROWSER_SESSION_ALLOWED_ORIGINS: ${BROWSER_SESSION_ALLOWED_ORIGINS:-http://localhost:3000,https://localhost:8443}
       SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-}
       SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
       SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}

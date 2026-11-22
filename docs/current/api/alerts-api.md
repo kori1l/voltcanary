@@ -15,31 +15,41 @@ When accessed through the API Gateway:
 http://localhost:8080/alerts
 ```
 
+## Rule Inventory
+
+`GET /alert-rules` returns an account-scoped array. Optional `enabled`,
+`ruleType`, `scopeType` and `metric` filters run in SQL before pagination.
+`page` starts at zero (default `0`); `size` defaults to `100` and must be 1–100.
+Invalid bounds return 400. Ordering is `updatedAt DESC, id DESC`. Fetch another
+page while the preceding page has `size` items; the last page may be empty.
+Concurrent changes can shift page positions. The console exposes page controls
+for the inventory and for matching-rule inspection after an uncertain create.
+
 ## Alert Statuses
 
-| Status | Meaning |
-| --- | --- |
-| `OPEN` | Alert was created and still needs attention. |
+| Status         | Meaning                                                     |
+| -------------- | ----------------------------------------------------------- |
+| `OPEN`         | Alert was created and still needs attention.                |
 | `ACKNOWLEDGED` | User saw the alert and accepted ownership or investigation. |
-| `RESOLVED` | Alert was closed. A resolution reason may be attached. |
+| `RESOLVED`     | Alert was closed. A resolution reason may be attached.      |
 
 ## Alert Severities
 
-| Severity | Meaning |
-| --- | --- |
-| `INFO` | Low-risk signal, usually not user-visible as a high-priority alert. |
-| `WARNING` | Medium risk or anomaly. |
-| `HIGH` | High-risk anomaly or high-risk score that should be prioritized but is not critical. |
-| `CRITICAL` | Critical condition that needs immediate attention. |
+| Severity   | Meaning                                                                              |
+| ---------- | ------------------------------------------------------------------------------------ |
+| `INFO`     | Low-risk signal, usually not user-visible as a high-priority alert.                  |
+| `WARNING`  | Medium risk or anomaly.                                                              |
+| `HIGH`     | High-risk anomaly or high-risk score that should be prioritized but is not critical. |
+| `CRITICAL` | Critical condition that needs immediate attention.                                   |
 
 Analytics severity mapping:
 
 | Analytics level | Alert severity |
-| --- | --- |
-| `LOW` | `INFO` |
-| `MEDIUM` | `WARNING` |
-| `HIGH` | `HIGH` |
-| `CRITICAL` | `CRITICAL` |
+| --------------- | -------------- |
+| `LOW`           | `INFO`         |
+| `MEDIUM`        | `WARNING`      |
+| `HIGH`          | `HIGH`         |
+| `CRITICAL`      | `CRITICAL`     |
 
 ## Response Model
 
@@ -158,9 +168,9 @@ Returns one alert.
 
 Failure cases:
 
-| Status | Reason |
-| ---: | --- |
-| `404` | Alert was not found. |
+| Status | Reason               |
+| -----: | -------------------- |
+|  `404` | Alert was not found. |
 
 ## Acknowledge Alert
 
@@ -380,16 +390,16 @@ understand pending retries and exhaustion without reading database rows.
 
 Operational provider configuration:
 
-| Environment variable | Purpose |
-| --- | --- |
-| `ALERT_NOTIFICATIONS_MAX_ATTEMPTS` | Maximum provider call attempts, including the initial call. Defaults to `3`. |
-| `ALERT_NOTIFICATIONS_RETRY_INTERVAL` | Initial retry delay and compatibility setting for the former fixed retry delay. Defaults to `1s`. |
-| `ALERT_NOTIFICATIONS_RETRY_MULTIPLIER` | Exponential backoff multiplier. Defaults to `1.0` for fixed delay compatibility. |
-| `ALERT_NOTIFICATIONS_MAX_RETRY_DELAY` | Upper bound for computed retry delay. Defaults to the retry interval. |
-| `ALERT_NOTIFICATIONS_RETRY_JITTER_PERCENT` | Optional jitter percentage applied inside the max delay cap. Defaults to `0`. |
-| `ALERT_NOTIFICATIONS_EMAIL_FROM_ADDRESS` | Optional default sender address for email notifications. SMTP host, username, and password are supplied through Spring Mail configuration such as `SPRING_MAIL_HOST`, `SPRING_MAIL_USERNAME`, and `SPRING_MAIL_PASSWORD`. |
-| `ALERT_NOTIFICATIONS_TELEGRAM_API_BASE_URL` | Optional Telegram API base URL override for tests or private gateways. Defaults to `https://api.telegram.org`. |
-| `ALERT_NOTIFICATIONS_TELEGRAM_BOT_TOKEN` | Service-level Telegram bot token. Keep it out of channel config JSON. |
+| Environment variable                        | Purpose                                                                                                                                                                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ALERT_NOTIFICATIONS_MAX_ATTEMPTS`          | Maximum provider call attempts, including the initial call. Defaults to `3`.                                                                                                                                              |
+| `ALERT_NOTIFICATIONS_RETRY_INTERVAL`        | Initial retry delay and compatibility setting for the former fixed retry delay. Defaults to `1s`.                                                                                                                         |
+| `ALERT_NOTIFICATIONS_RETRY_MULTIPLIER`      | Exponential backoff multiplier. Defaults to `1.0` for fixed delay compatibility.                                                                                                                                          |
+| `ALERT_NOTIFICATIONS_MAX_RETRY_DELAY`       | Upper bound for computed retry delay. Defaults to the retry interval.                                                                                                                                                     |
+| `ALERT_NOTIFICATIONS_RETRY_JITTER_PERCENT`  | Optional jitter percentage applied inside the max delay cap. Defaults to `0`.                                                                                                                                             |
+| `ALERT_NOTIFICATIONS_EMAIL_FROM_ADDRESS`    | Optional default sender address for email notifications. SMTP host, username, and password are supplied through Spring Mail configuration such as `SPRING_MAIL_HOST`, `SPRING_MAIL_USERNAME`, and `SPRING_MAIL_PASSWORD`. |
+| `ALERT_NOTIFICATIONS_TELEGRAM_API_BASE_URL` | Optional Telegram API base URL override for tests or private gateways. Defaults to `https://api.telegram.org`.                                                                                                            |
+| `ALERT_NOTIFICATIONS_TELEGRAM_BOT_TOKEN`    | Service-level Telegram bot token. Keep it out of channel config JSON.                                                                                                                                                     |
 
 ## Notification Preferences
 
@@ -446,14 +456,14 @@ Access is checked through the same alert ownership rules as `GET /alerts/{id}`.
 
 Attempt statuses:
 
-| Status | Meaning |
-| --- | --- |
-| `PENDING` | Attempt was created and is waiting for delivery. |
+| Status       | Meaning                                                         |
+| ------------ | --------------------------------------------------------------- |
+| `PENDING`    | Attempt was created and is waiting for delivery.                |
 | `PROCESSING` | A worker claimed the attempt with a lease and is delivering it. |
-| `SENT` | Provider accepted or completed delivery. |
-| `FAILED` | Delivery failed and is not currently retrying. |
-| `RETRYING` | Delivery failed and is scheduled for another attempt. |
-| `DISABLED` | Channel was disabled, so delivery was skipped. |
+| `SENT`       | Provider accepted or completed delivery.                        |
+| `FAILED`     | Delivery failed and is not currently retrying.                  |
+| `RETRYING`   | Delivery failed and is scheduled for another attempt.           |
+| `DISABLED`   | Channel was disabled, so delivery was skipped.                  |
 
 Example response:
 
@@ -552,11 +562,11 @@ Searches alerts across accounts for `ADMIN` and `SUPPORT` users. Supports
 
 Retention cleanup is scheduled by alert-service:
 
-| Record type | Default TTL |
-| --- | ---: |
-| Resolved alerts | 180 days |
-| Alert events | 365 days |
-| Notification attempts | 90 days |
+| Record type           | Default TTL |
+| --------------------- | ----------: |
+| Resolved alerts       |    180 days |
+| Alert events          |    365 days |
+| Notification attempts |     90 days |
 
 Configure with `ALERT_RETENTION_RESOLVED_ALERT_TTL`,
 `ALERT_RETENTION_EVENT_TTL`, and `ALERT_RETENTION_NOTIFICATION_ATTEMPT_TTL`.
@@ -565,24 +575,24 @@ Configure with `ALERT_RETENTION_RESOLVED_ALERT_TTL`,
 
 The OpenAPI metadata documents common error responses:
 
-| Status | Reason |
-| ---: | --- |
-| `400` | Invalid UUID, enum, pagination, timezone, notification config, or request body. |
-| `401` | Missing authenticated user context. |
-| `403` | User lacks the required admin/support role. |
-| `404` | Alert or notification channel was not found, or it is outside caller scope. |
-| `503` | Device authorization service is unavailable. |
+| Status | Reason                                                                          |
+| -----: | ------------------------------------------------------------------------------- |
+|  `400` | Invalid UUID, enum, pagination, timezone, notification config, or request body. |
+|  `401` | Missing authenticated user context.                                             |
+|  `403` | User lacks the required admin/support role.                                     |
+|  `404` | Alert or notification channel was not found, or it is outside caller scope.     |
+|  `503` | Device authorization service is unavailable.                                    |
 
 ## Escalation
 
 The service scans unacknowledged `OPEN` alerts and records one `ESCALATED`
 event when the configured severity threshold is exceeded:
 
-| Severity | Default threshold |
-| --- | ---: |
-| `WARNING` | 30 minutes |
-| `HIGH` | 15 minutes |
-| `CRITICAL` | 5 minutes |
+| Severity   | Default threshold |
+| ---------- | ----------------: |
+| `WARNING`  |        30 minutes |
+| `HIGH`     |        15 minutes |
+| `CRITICAL` |         5 minutes |
 
 Escalated alerts remain `OPEN`; the escalation is stored in `alert_events` for
 audit/history and triggers another notification delivery pass for eligible
@@ -677,16 +687,16 @@ All create/preview/inspect operations require the signed actor's fresh ACTIVE
 account. Source/native descriptions are fetched over fixed authenticated owner
 routes, strictly decoded and checked against that actor/account and exact fields.
 
-| Operation | Route and exact body |
-| --- | --- |
-| Reserve | `POST /alert-rules/configurable/grant-review-reservations`: `{kind:"AUTOMATION_GRANT",ruleReviewId,idempotencyKey}` |
-| Prepare | `POST /alert-rules/configurable/grant-reviews`: `{reservationId,definition:{sourceBindings:[{id,schemaRevision,fieldIds}],datasets:[{id,schemaRevision,fieldIds}],expiresAt}}` |
-| Inspect review | `GET /alert-rules/configurable/grant-reviews/{id}` |
-| Apply | `POST /alert-rules/configurable/grant-reviews/{id}/apply`: `{reviewRevision,reviewDigest,idempotencyKey}` |
-| Reconcile | `POST /alert-rules/configurable/grant-reviews/{id}/reconcile`: `{}` |
-| Inspect permission | `GET /alert-rules/configurable/grants/{id}` |
-| Revoke | `POST /alert-rules/configurable/grants/{id}/revoke`: `{expectedEpoch:string,idempotencyKey}` |
-| Inspect revocation receipt | `GET /alert-rules/configurable/grant-revocations/{id}` |
+| Operation                  | Route and exact body                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Reserve                    | `POST /alert-rules/configurable/grant-review-reservations`: `{kind:"AUTOMATION_GRANT",ruleReviewId,idempotencyKey}`                                                            |
+| Prepare                    | `POST /alert-rules/configurable/grant-reviews`: `{reservationId,definition:{sourceBindings:[{id,schemaRevision,fieldIds}],datasets:[{id,schemaRevision,fieldIds}],expiresAt}}` |
+| Inspect review             | `GET /alert-rules/configurable/grant-reviews/{id}`                                                                                                                             |
+| Apply                      | `POST /alert-rules/configurable/grant-reviews/{id}/apply`: `{reviewRevision,reviewDigest,idempotencyKey}`                                                                      |
+| Reconcile                  | `POST /alert-rules/configurable/grant-reviews/{id}/reconcile`: `{}`                                                                                                            |
+| Inspect permission         | `GET /alert-rules/configurable/grants/{id}`                                                                                                                                    |
+| Revoke                     | `POST /alert-rules/configurable/grants/{id}/revoke`: `{expectedEpoch:string,idempotencyKey}`                                                                                   |
+| Inspect revocation receipt | `GET /alert-rules/configurable/grant-revocations/{id}`                                                                                                                         |
 
 At least one source binding is required; each source/dataset list is bounded by16
 and each distinct field set by64. Source-only permission is allowed. Expiry is an
@@ -727,14 +737,14 @@ metadata for one existing grant/rule and exact grant epoch. It permits only
 `maxObservationReferences`1..100. Policy creation does not write evidence, run
 retention cleanup, activate a rule, disclose input values or authorize delivery.
 
-| Operation | Route and exact body |
-| --- | --- |
-| Reserve | `POST /alert-rules/configurable/evidence-policy-reservations`: `{kind:"EVIDENCE_POLICY",grantId,expectedGrantEpoch:string,idempotencyKey}` |
-| Prepare | `POST /alert-rules/configurable/evidence-policy-reviews`: `{reservationId,definition:{mode:"PRIVATE_REFERENCES",retentionDays,maxObservationReferences}}` |
-| Inspect review | `GET /alert-rules/configurable/evidence-policy-reviews/{id}` |
-| Apply | `POST /alert-rules/configurable/evidence-policy-reviews/{id}/apply`: `{reviewRevision,reviewDigest,idempotencyKey}` |
-| Reconcile | `POST /alert-rules/configurable/evidence-policy-reviews/{id}/reconcile`: `{}` |
-| Inspect policy | `GET /alert-rules/configurable/evidence-policies/{id}` |
+| Operation      | Route and exact body                                                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reserve        | `POST /alert-rules/configurable/evidence-policy-reservations`: `{kind:"EVIDENCE_POLICY",grantId,expectedGrantEpoch:string,idempotencyKey}`                |
+| Prepare        | `POST /alert-rules/configurable/evidence-policy-reviews`: `{reservationId,definition:{mode:"PRIVATE_REFERENCES",retentionDays,maxObservationReferences}}` |
+| Inspect review | `GET /alert-rules/configurable/evidence-policy-reviews/{id}`                                                                                              |
+| Apply          | `POST /alert-rules/configurable/evidence-policy-reviews/{id}/apply`: `{reviewRevision,reviewDigest,idempotencyKey}`                                       |
+| Reconcile      | `POST /alert-rules/configurable/evidence-policy-reviews/{id}/reconcile`: `{}`                                                                             |
+| Inspect policy | `GET /alert-rules/configurable/evidence-policies/{id}`                                                                                                    |
 
 Signed identity and fresh ACTIVE account authority remain mandatory, including
 with legacy authorization disabled. First reservation, prepare and uncompleted

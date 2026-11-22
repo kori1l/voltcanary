@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { PageResponse } from "../../api/page";
 import {
   readDeviceSourcePreference,
   writeDeviceSourcePreference,
@@ -26,7 +27,6 @@ import { useSimulationDraft } from "./useSimulationDraft";
 
 interface SimulationRuntime {
   status: SimulationRun;
-  runs: SimulationRun[];
 }
 
 function validationMessage(result: Awaited<ReturnType<typeof validateSimulationConfig>>) {
@@ -46,6 +46,9 @@ export function useDeviceSimulationWorkspace({
 }) {
   const config = useSectionResource<SimulationConfig>(deviceId);
   const runtime = useSectionResource<SimulationRuntime>(deviceId);
+  const [historySelection, setHistorySelection] = useState({ deviceId, page: 0 });
+  const historyPage = historySelection.deviceId === deviceId ? historySelection.page : 0;
+  const history = useSectionResource<PageResponse<SimulationRun>>(`${deviceId}:${historyPage}`);
   const templates = useSectionResource<{ yamlConfig: string }>(deviceId);
   const validation =
     useSectionResource<Awaited<ReturnType<typeof validateSimulationConfig>>>(deviceId);
@@ -96,26 +99,23 @@ export function useDeviceSimulationWorkspace({
 
   async function refreshSimulationRuntime(currentDeviceId = deviceId) {
     if (!currentDeviceId || currentDeviceId !== deviceId) return;
-    await runtime.load(async () => {
-      const [status, runs] = await Promise.all([
-        getSimulationStatus(currentDeviceId),
-        getSimulationRuns(currentDeviceId),
-      ]);
-      return { status, runs };
-    });
+    await Promise.all([
+      runtime.load(async () => ({ status: await getSimulationStatus(currentDeviceId) })),
+      history.load(() => getSimulationRuns(currentDeviceId, historyPage)),
+    ]);
   }
 
   useEffect(() => {
     if (!deviceId || activeTab !== "simulation") return;
     if (simulationConfig) void refreshSimulationRuntime();
     else void loadSimulation();
-  }, [deviceId, activeTab, config.load]);
+  }, [deviceId, activeTab, config.load, historyPage]);
 
   useEffect(() => {
     if (!deviceId || simulationStatus?.status !== "RUNNING") return;
     const interval = window.setInterval(() => void refreshSimulationRuntime(), 5000);
     return () => window.clearInterval(interval);
-  }, [deviceId, simulationStatus?.status, runtime.load]);
+  }, [deviceId, simulationStatus?.status, runtime.load, historyPage]);
 
   useEffect(() => {
     if (!deviceId || !simulationConfig || !yaml) return;
@@ -336,13 +336,24 @@ export function useDeviceSimulationWorkspace({
     simulationConfig,
     setSimulationConfig: config.setData,
     simulationStatus,
-    simulationRuns: runtime.data?.runs ?? [],
+    simulationRuns: history.data?.content ?? [],
+    simulationHistory: {
+      page: historyPage,
+      totalPages: history.data?.totalPages ?? 0,
+      loading: history.refreshing,
+      selectPage: (page: number) => setHistorySelection({ deviceId, page: Math.max(0, page) }),
+    },
     simulationYaml: yaml,
     setSimulationYaml,
     simulationProfile: profile,
     simulationProtocol: protocol,
     simulationMessage:
-      message ?? templates.error ?? validation.error ?? config.error ?? runtime.error,
+      message ??
+      templates.error ??
+      validation.error ??
+      config.error ??
+      runtime.error ??
+      history.error,
     simulationValidation: validation.error
       ? { valid: false, message: validation.error }
       : draft.value.validation,

@@ -17,7 +17,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /** Resolves model references; the owning dashboard service compiles the real definition. */
-final class DashboardCompositionCompiler {
+public final class DashboardCompositionCompiler {
 
     private static final Set<String> FIELDS = Set.of("name", "period", "deviceRefs", "widgets");
     static final Set<String> PANEL_FIELDS = Set.of(
@@ -45,7 +45,7 @@ final class DashboardCompositionCompiler {
     private final RestClient dashboards;
     private final ObjectMapper mapper;
 
-    DashboardCompositionCompiler(
+    public DashboardCompositionCompiler(
         AiAgentProperties properties,
         RestClient.Builder builder,
         ObjectMapper mapper

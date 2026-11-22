@@ -16,6 +16,31 @@ from app.services.training_service import TrainingService
 
 
 class RuntimeBoundariesTest(unittest.TestCase):
+    def test_cache_waiter_times_out_without_canceling_the_shared_owner(self):
+        cache = ServingArtifactCache(Mock(), load_wait_seconds=0.02)
+        started, release = threading.Event(), threading.Event()
+        runtime = SimpleNamespace(loaded_at=time.monotonic())
+
+        def load(*_):
+            started.set()
+            if not release.wait(5):
+                raise RuntimeError("Test owner was not released")
+            return runtime
+
+        cache._load = Mock(side_effect=load)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            owner = executor.submit(cache.get, {"modelVersionId": "model"})
+            try:
+                self.assertTrue(started.wait(5))
+                with self.assertRaisesRegex(ValueError, "request budget"):
+                    cache.get({"modelVersionId": "model"})
+                self.assertFalse(owner.done())
+            finally:
+                release.set()
+            self.assertIs(owner.result(timeout=5), runtime)
+        self.assertIs(cache.get({"modelVersionId": "model"}), runtime)
+        self.assertEqual(cache._load.call_count, 1)
+
     def test_local_artifacts_cannot_read_write_or_delete_outside_root(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "models"

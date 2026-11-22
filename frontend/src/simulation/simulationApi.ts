@@ -1,4 +1,5 @@
 import { apiRequest } from "../api/client";
+import type { PageResponse } from "../api/page";
 
 export interface SimulationConfig {
   id: string;
@@ -105,6 +106,9 @@ export function getSimulationStatus(deviceId: string, signal?: AbortSignal) {
   return apiRequest<SimulationRun>(`/simulation/devices/${deviceId}/status`, { signal });
 }
 
-export function getSimulationRuns(deviceId: string) {
-  return apiRequest<SimulationRun[]>(`/simulation/devices/${deviceId}/runs`);
+export function getSimulationRuns(deviceId: string, page = 0, signal?: AbortSignal) {
+  return apiRequest<PageResponse<SimulationRun>>(
+    `/simulation/devices/${deviceId}/runs?page=${page}&size=25`,
+    { signal },
+  );
 }

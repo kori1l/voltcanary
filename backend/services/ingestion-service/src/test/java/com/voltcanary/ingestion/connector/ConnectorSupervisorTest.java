@@ -39,6 +39,203 @@ class ConnectorSupervisorTest {
     private final MutableClock clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
 
     @Test
+    void blockedPollDoesNotDelayOtherSourcesOrItsOwnLeaseHeartbeat() throws Exception {
+        var blocked = config(1L, "ACTIVE", Map.of("pollInterval", "1m"));
+        var healthy = config(1L, "ACTIVE", Map.of("pollInterval", "1m"));
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var healthyPolled = new java.util.concurrent.CountDownLatch(1);
+        var heartbeatFinished = new java.util.concurrent.LinkedBlockingQueue<Instant>();
+        var leases = new InMemoryConnectorLeaseManager(properties, clock);
+        PollingTelemetryAdapter adapter = new PollingTelemetryAdapter() {
+            public AdapterManifest manifest() {
+                return ConnectorSupervisorTest.manifest(AdapterCapability.POLLING);
+            }
+
+            public List<IncomingTelemetryMessage> poll(SourceRuntimeConfig source) {
+                if (source.dataSourceId().equals(blocked.dataSourceId())) {
+                    started.countDown();
+                    try {
+                        if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                            throw new IllegalStateException("Test did not release blocked poll");
+                        }
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return List.of();
+                    }
+                } else {
+                    healthyPolled.countDown();
+                }
+                return List.of();
+            }
+        };
+        properties.setWorkConcurrency(2);
+        var tasks = new BoundedConnectorTasks(properties);
+        var supervisor = supervisor(
+            leases,
+            adapter,
+            new ConnectorTaskDispatcher() {
+                public boolean heartbeat(Runnable task) {
+                    return tasks.heartbeat(() -> {
+                        try {
+                            task.run();
+                        } finally {
+                            heartbeatFinished.add(clock.instant());
+                        }
+                    });
+                }
+
+                public boolean work(Runnable task) {
+                    return tasks.work(task);
+                }
+            }
+        );
+        try {
+            supervisor.reconcile(List.of(blocked, healthy));
+            supervisor.tick();
+            assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(healthyPolled.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            for (int worker = 0; worker < 2; worker++) {
+                assertThat(
+                    heartbeatFinished.poll(2, java.util.concurrent.TimeUnit.SECONDS)
+                ).isNotNull();
+            }
+            for (int i = 0; i < 7; i++) {
+                clock.advance(Duration.ofSeconds(5));
+                supervisor.tick();
+                for (int worker = 0; worker < 2; worker++) {
+                    assertThat(
+                        heartbeatFinished.poll(2, java.util.concurrent.TimeUnit.SECONDS)
+                    ).isEqualTo(clock.instant());
+                }
+                assertThat(
+                    leases.isCurrent(leases.current(blocked.dataSourceId()).orElseThrow())
+                ).isTrue();
+            }
+        } finally {
+            supervisor.reconcile(List.of());
+            release.countDown();
+            tasks.close();
+        }
+    }
+
+    @Test
+    void supersededSubscriptionCallbackCannotForwardIntoReplacementWorker() {
+        var source = config(1L, "ACTIVE", Map.of());
+        var adapter = new RecordingSubscriptionAdapter();
+        var supervisor = supervisor(new ManualLeaseManager(), adapter);
+        supervisor.reconcile(List.of(source));
+        supervisor.tick();
+        var staleSink = adapter.sink;
+        supervisor.reconcile(List.of());
+        supervisor.reconcile(List.of(source));
+        supervisor.tick();
+        staleSink.accept(message(source));
+        staleSink.reject(source, new IllegalStateException("Late failure from previous session"));
+        assertThat(pipeline.ingested).isEmpty();
+        assertThat(adapter.stops).isEqualTo(1);
+        assertThat(supervisor.state(source.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.RUNNING
+        );
+        adapter.sink.accept(message(source));
+        assertThat(pipeline.ingested).hasSize(1);
+    }
+
+    @Test
+    void replacementWaitsForPendingSubscriptionSetupAndCleanup() throws Exception {
+        var source = config(1L, "ACTIVE", Map.of());
+        var started = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var starts = new java.util.concurrent.atomic.AtomicInteger();
+        var queued = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
+        var adapter = new SubscriptionTelemetryAdapter() {
+            public AdapterManifest manifest() {
+                return ConnectorSupervisorTest.manifest(AdapterCapability.SUBSCRIPTION);
+            }
+
+            public void startSubscription(
+                SourceRuntimeConfig config,
+                SubscriptionTelemetrySink sink
+            ) {
+                if (starts.incrementAndGet() == 1) {
+                    started.countDown();
+                    try {
+                        if (
+                            !release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                        ) throw new IllegalStateException("Setup was not released");
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(interrupted);
+                    }
+                }
+            }
+
+            public void stopSubscription(SourceRuntimeConfig config) {}
+        };
+        var supervisor = supervisor(
+            new InMemoryConnectorLeaseManager(properties, clock),
+            adapter,
+            new ConnectorTaskDispatcher() {
+                public boolean heartbeat(Runnable task) {
+                    task.run();
+                    return true;
+                }
+
+                public boolean work(Runnable task) {
+                    return queued.add(task);
+                }
+            }
+        );
+        try (var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            supervisor.reconcile(List.of(source));
+            supervisor.tick();
+            var setup = executor.submit(queued.remove());
+            try {
+                assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                supervisor.reconcile(List.of());
+                supervisor.reconcile(List.of(source));
+                supervisor.tick();
+                assertThat(queued).isEmpty();
+                assertThat(starts).hasValue(1);
+            } finally {
+                release.countDown();
+            }
+            setup.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            supervisor.tick();
+            queued.remove().run();
+            assertThat(starts).hasValue(2);
+            assertThat(supervisor.state(source.dataSourceId())).isEqualTo(
+                ConnectorRuntimeState.RUNNING
+            );
+            supervisor.reconcile(List.of());
+        }
+    }
+
+    @Test
+    void renewsQuietSubscriptionBetweenPollingDeadlinesAndClosesItWhenOwnershipIsLost() {
+        properties.setLeaseTtl(Duration.ofSeconds(30));
+        var config = config(1L, "ACTIVE", Map.of("pollInterval", "1m"));
+        var adapter = new RecordingSubscriptionAdapter();
+        var leases = new InMemoryConnectorLeaseManager(properties, clock);
+        var supervisor = supervisor(leases, adapter);
+        supervisor.reconcile(List.of(config));
+        supervisor.tick();
+        for (int i = 0; i < 7; i++) {
+            clock.advance(Duration.ofSeconds(5));
+            supervisor.tick();
+            assertThat(leases.current(config.dataSourceId())).isPresent();
+        }
+        assertThat(adapter.starts).isEqualTo(1);
+        assertThat(adapter.stops).isZero();
+        leases.release(leases.current(config.dataSourceId()).orElseThrow());
+        supervisor.tick();
+        assertThat(adapter.stops).isEqualTo(1);
+        assertThat(supervisor.state(config.dataSourceId())).isEqualTo(
+            ConnectorRuntimeState.LEASE_LOST
+        );
+    }
+
+    @Test
     void pollingSourceRunsOnlyWhenLeaseIsOwned() {
         SourceRuntimeConfig config = config(1L, "ACTIVE", Map.of("pollInterval", "1s"));
         RecordingPollingAdapter adapter = new RecordingPollingAdapter(message(config));
@@ -262,6 +459,28 @@ class ConnectorSupervisorTest {
         ConnectorLeaseManager leaseManager,
         TelemetryAdapter adapter
     ) {
+        return supervisor(
+            leaseManager,
+            adapter,
+            new ConnectorTaskDispatcher() {
+                public boolean heartbeat(Runnable task) {
+                    task.run();
+                    return true;
+                }
+
+                public boolean work(Runnable task) {
+                    task.run();
+                    return true;
+                }
+            }
+        );
+    }
+
+    private ConnectorSupervisor supervisor(
+        ConnectorLeaseManager leaseManager,
+        TelemetryAdapter adapter,
+        ConnectorTaskDispatcher tasks
+    ) {
         IngestionAdapterResolver resolver = ignored -> Optional.of(adapter);
         return new ConnectorSupervisor(
             leaseManager,
@@ -270,7 +489,8 @@ class ConnectorSupervisorTest {
             backoffPolicy,
             healthManager,
             pipeline,
-            clock
+            clock,
+            tasks
         );
     }
 
@@ -513,7 +733,7 @@ class ConnectorSupervisorTest {
 
     private static final class MutableClock extends Clock {
 
-        private Instant instant;
+        private volatile Instant instant;
 
         private MutableClock(Instant instant) {
             this.instant = instant;

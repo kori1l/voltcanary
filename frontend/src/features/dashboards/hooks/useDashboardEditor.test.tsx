@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, clearTokens, setTokens } from "../../../api/client";
+import { ApiError, clearTokens, setSession } from "../../../api/client";
 import {
   getDashboardDraft,
   publishDashboard,
@@ -39,7 +39,7 @@ const initial: DashboardDraft = {
 beforeEach(() => {
   vi.resetAllMocks();
   localStorage.clear();
-  setTokens(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "owner" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "owner" }))}.fixture`, "fixture");
 });
 afterEach(() => {
   cleanup();

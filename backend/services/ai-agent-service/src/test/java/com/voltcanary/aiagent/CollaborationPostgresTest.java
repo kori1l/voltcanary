@@ -508,7 +508,7 @@ class CollaborationPostgresTest {
             store,
             f.mapper
         );
-        var domain = new com.voltcanary.aiagent.service.PrimaryDomainPreparation(
+        var domain = com.voltcanary.aiagent.config.PrimaryAssistantConfiguration.primaryDomain(
             f.mapper,
             f.validator,
             store,

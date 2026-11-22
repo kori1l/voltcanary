@@ -117,7 +117,10 @@ class ArtifactStore:
 
             current_settings = self.settings_provider()
             config = Config(
-                s3={"addressing_style": "path" if current_settings.s3_force_path_style else "auto"}
+                s3={"addressing_style": "path" if current_settings.s3_force_path_style else "auto"},
+                connect_timeout=3,
+                read_timeout=5,
+                retries={"mode": "standard", "total_max_attempts": 2},
             )
             self._s3_client = boto3.client(
                 "s3",

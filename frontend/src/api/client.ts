@@ -1,8 +1,16 @@
 import { withSessionRefreshLock } from "./sessionRefreshLock";
+import { RequestDeadlineError, withRequestDeadline } from "./requestDeadline";
+
+export interface ApiRequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 const ACCESS_TOKEN_KEY = "voltcanary.accessToken";
-const REFRESH_TOKEN_KEY = "voltcanary.refreshToken";
+const BROWSER_SESSION_KEY = "voltcanary.browserSessionId";
+const SESSION_REVISION_KEY = "voltcanary.sessionRevision";
+// Discard the former script-readable refresh credential during upgrade.
+localStorage.removeItem("voltcanary.refreshToken");
 const SESSION_IDENTITY_KEY = "voltcanary.sessionIdentity";
 let observedIdentity = localStorage.getItem(SESSION_IDENTITY_KEY);
 export const AUTH_CHANGED = "voltcanary.auth-changed";
@@ -18,7 +26,7 @@ export function sessionIdentityRevision() {
   return identityEpoch;
 }
 let expired = false;
-let refreshFlight: { token: string; epoch: number; promise: Promise<boolean> } | null = null;
+let refreshFlight: { sessionId: string; epoch: number; promise: Promise<boolean> } | null = null;
 export function sessionStatus() {
   return getAccessToken() ? "authenticated" : expired ? "expired" : "anonymous";
 }
@@ -30,7 +38,8 @@ window.addEventListener("storage", (event) => {
   if (
     event.key === null ||
     event.key === ACCESS_TOKEN_KEY ||
-    event.key === REFRESH_TOKEN_KEY ||
+    event.key === BROWSER_SESSION_KEY ||
+    event.key === SESSION_REVISION_KEY ||
     event.key === SESSION_IDENTITY_KEY
   ) {
     authEpoch++;
@@ -72,20 +81,21 @@ export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
-export function getRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+export function getSessionId() {
+  return localStorage.getItem(BROWSER_SESSION_KEY);
 }
 
-export function setTokens(accessToken: string, refreshToken: string) {
+export function setSession(accessToken: string, sessionId: string) {
+  localStorage.setItem(BROWSER_SESSION_KEY, sessionId);
   localStorage.setItem(SESSION_IDENTITY_KEY, crypto.randomUUID());
   sessionIdentityRevision();
-  writeTokens(accessToken, refreshToken);
+  writeAccessToken(accessToken);
 }
-function writeTokens(accessToken: string, refreshToken: string) {
+function writeAccessToken(accessToken: string) {
   authEpoch++;
   expired = false;
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  localStorage.setItem(SESSION_REVISION_KEY, crypto.randomUUID());
   window.dispatchEvent(new Event(AUTH_CHANGED));
 }
 
@@ -99,7 +109,8 @@ function removeTokens() {
   identityEpoch++;
   authEpoch++;
   localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem(BROWSER_SESSION_KEY);
+  localStorage.removeItem(SESSION_REVISION_KEY);
   window.dispatchEvent(new Event(AUTH_CHANGED));
 }
 function expireSession() {
@@ -127,7 +138,7 @@ export async function prepareAiSession() {
   }
   if (typeof expiry !== "number" || expiry * 1000 > Date.now() + 300_000) return;
   const identity = sessionIdentityRevision();
-  if (!getRefreshToken() || !(await refreshAccessToken()))
+  if (!getSessionId() || !(await refreshAccessToken()))
     throw new ApiError("Renew your session before preparing this request.", 401);
   if (identity !== sessionIdentityRevision())
     throw new ApiError("Authentication scope changed. Retry in the current session.", 401);
@@ -135,22 +146,44 @@ export async function prepareAiSession() {
 
 export async function apiRequest<TResponse>(
   path: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
 ): Promise<TResponse> {
   return requestWithAuth<TResponse>(path, options, true, "json");
 }
 
-export async function apiTextRequest(path: string, options: RequestInit = {}): Promise<string> {
+export async function apiTextRequest(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<string> {
   return requestWithAuth<string>(path, options, true, "text");
 }
 export async function apiResponseRequest(
   path: string,
-  options: RequestInit = {},
+  options: ApiRequestOptions = {},
 ): Promise<Response> {
   return requestWithAuth<Response>(path, options, true, "response");
 }
 
 async function requestWithAuth<TResponse>(
+  path: string,
+  options: ApiRequestOptions,
+  allowRefresh: boolean,
+  responseType: "json" | "text" | "response",
+): Promise<TResponse> {
+  // Assistant calls have their own server-owned turn budget; ordinary console reads are shorter.
+  const { timeoutMs = path.startsWith("/ai-agent/") ? 180_000 : 30_000, ...request } = options;
+  try {
+    return await withRequestDeadline(request.signal, timeoutMs, (signal) =>
+      performRequestWithAuth<TResponse>(path, { ...request, signal }, allowRefresh, responseType),
+    );
+  } catch (failure) {
+    if (failure instanceof RequestDeadlineError)
+      throw new ApiError(failure.message, 504, "REQUEST_TIMEOUT");
+    throw failure;
+  }
+}
+
+async function performRequestWithAuth<TResponse>(
   path: string,
   options: RequestInit,
   allowRefresh: boolean,
@@ -187,6 +220,7 @@ async function requestWithAuth<TResponse>(
   if (
     response.status === 401 &&
     allowRefresh &&
+    !path.startsWith("/auth/browser/") &&
     !path.startsWith("/auth/login") &&
     !path.startsWith("/auth/refresh")
   ) {
@@ -247,30 +281,38 @@ async function requestWithAuth<TResponse>(
 }
 
 async function refreshAccessToken() {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
+  const sessionId = getSessionId();
+  const revision = localStorage.getItem(SESSION_REVISION_KEY);
+  if (!sessionId) {
     if (getAccessToken()) expireSession();
     return false;
   }
-  if (refreshFlight?.token === refreshToken && refreshFlight.epoch === authEpoch)
+  if (refreshFlight?.sessionId === sessionId && refreshFlight.epoch === authEpoch)
     return refreshFlight.promise;
   const epoch = authEpoch;
   const refreshIdentity = sessionIdentityRevision();
   const promise = withSessionRefreshLock(async () => {
-    // A preceding tab may already have rotated this exact token while we waited.
-    if (getRefreshToken() !== refreshToken || refreshIdentity !== sessionIdentityRevision())
+    // A preceding tab may already have rotated the HttpOnly cookie while we waited.
+    if (
+      localStorage.getItem(SESSION_REVISION_KEY) !== revision ||
+      refreshIdentity !== sessionIdentityRevision()
+    )
       return Boolean(getAccessToken());
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       let response: Response;
       try {
-        response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
-          signal: controller.signal,
-        });
+        response = await fetch(
+          `${API_BASE_URL}/auth/browser/${encodeURIComponent(sessionId)}/refresh`,
+          {
+            credentials: "include",
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+            signal: controller.signal,
+          },
+        );
       } catch {
         throw new ApiError("Session refresh unavailable. Retry when the connection recovers.", 503);
       }
@@ -291,20 +333,19 @@ async function refreshAccessToken() {
 
       const tokens = (await response.json()) as {
         accessToken: string;
-        refreshToken: string;
+        sessionId: string;
       } | null;
       if (!tokens || typeof tokens !== "object")
         throw new ApiError("Session refresh returned an invalid response.", 503);
       if (
         typeof tokens.accessToken !== "string" ||
         !tokens.accessToken.trim() ||
-        typeof tokens.refreshToken !== "string" ||
-        !tokens.refreshToken.trim()
+        tokens.sessionId !== sessionId
       )
         throw new ApiError("Session refresh returned an invalid response.", 503);
       if (epoch !== authEpoch || refreshIdentity !== sessionIdentityRevision())
         return Boolean(getAccessToken());
-      writeTokens(tokens.accessToken, tokens.refreshToken);
+      writeAccessToken(tokens.accessToken);
       return true;
     } finally {
       clearTimeout(timeout);
@@ -316,7 +357,7 @@ async function refreshAccessToken() {
       503,
     );
   });
-  const flight = { token: refreshToken, epoch, promise };
+  const flight = { sessionId, epoch, promise };
   refreshFlight = flight;
   try {
     return await promise;

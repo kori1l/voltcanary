@@ -1,5 +1,6 @@
 package com.voltcanary.simulator.runner;
 
+import com.voltcanary.common.web.PageResponse;
 import com.voltcanary.simulator.domain.SimulationConfig;
 import com.voltcanary.simulator.domain.SimulationConfigStatus;
 import com.voltcanary.simulator.domain.SimulationRun;
@@ -27,6 +28,8 @@ import java.util.UUID;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -215,9 +218,7 @@ public class SimulationRunManager {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
             );
         return runRepository
-            .findByDeviceIdOrderByStartedAtDesc(deviceId)
-            .stream()
-            .findFirst()
+            .findFirstByDeviceIdOrderByStartedAtDesc(deviceId)
             .map(run ->
                 registry.isRunning(deviceId) || run.getStatus() != SimulationRunStatus.RUNNING
                     ? toResponse(run, config)
@@ -274,17 +275,33 @@ public class SimulationRunManager {
     }
 
     @Transactional(readOnly = true)
-    public List<SimulationRunResponse> runs(UUID deviceId) {
+    public PageResponse<SimulationRunResponse> runs(UUID deviceId, int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "page must be non-negative and size must be between 1 and 100"
+            );
+        }
         SimulationConfig config = configRepository
             .findByDeviceId(deviceId)
             .orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation config not found")
             );
-        return runRepository
-            .findByDeviceIdOrderByStartedAtDesc(deviceId)
+        var found = runRepository.findByDeviceId(
+            deviceId,
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startedAt", "id"))
+        );
+        var content = found
             .stream()
             .map(run -> toResponse(run, config))
             .toList();
+        return new PageResponse<>(
+            content,
+            page,
+            size,
+            found.getTotalElements(),
+            found.getTotalPages()
+        );
     }
 
     @Transactional(readOnly = true)

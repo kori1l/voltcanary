@@ -222,6 +222,14 @@ registry repair that changes the manifest or hash forces a verified reload.
 The first request after a miss, TTL expiry, or capacity eviction still verifies
 the manifest hash and every bundle file hash before a pipeline is reused.
 
+Concurrent requests for the same missing model share one loader. Followers wait
+at most `ML_SERVING_CACHE_LOAD_WAIT_SECONDS` (default `15`, positive seconds).
+On timeout they report `MODEL_UNAVAILABLE` through the existing inference
+fallback path; they do not cancel the owner load, which may populate the cache
+for later requests. S3 connections have a 3-second connect timeout, a 5-second
+read timeout and at most two attempts per request. These are transport budgets,
+not a hard deadline for deserializing an entire model bundle.
+
 For cache diagnostics, search ML-service logs for
 `mlServingArtifactCache event=...`. Expected events are `hit`, `miss`,
 `load_success`, `load_failure`, and `eviction`; log fields include

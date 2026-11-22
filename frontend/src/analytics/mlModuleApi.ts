@@ -414,8 +414,12 @@ function statusFilterQuery(statusFilter: MlLifecycleStatusFilter = "default") {
   return statusFilter === "default" ? "" : `?statusFilter=${encodeURIComponent(statusFilter)}`;
 }
 
-export function listMlDatasets(statusFilter: MlLifecycleStatusFilter = "default") {
-  return apiRequest<MlDatasetSummary[]>(`/analytics/ml/datasets${statusFilterQuery(statusFilter)}`);
+export const datasetPageSize = 100;
+export function listMlDatasets(statusFilter: MlLifecycleStatusFilter = "default", page = 0) {
+  const query = new URLSearchParams(statusFilterQuery(statusFilter).replace(/^\?/, ""));
+  query.set("page", String(page));
+  query.set("size", String(datasetPageSize));
+  return apiRequest<MlDatasetSummary[]>(`/analytics/ml/datasets?${query}`);
 }
 
 export function getMlDatasetVersion(datasetVersionId: string) {

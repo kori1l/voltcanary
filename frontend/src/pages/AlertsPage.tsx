@@ -14,7 +14,6 @@ import {
   disableAlertRule,
   enableAlertRule,
   getAlertSummary,
-  listAlertRules,
   listNotificationAttempts,
   listNotificationChannels,
   NotificationAttemptResponse,
@@ -280,7 +279,7 @@ export function AlertsPage() {
       <SectionFeedback
         resource={data.rules}
         label="alert rules"
-        onRetry={() => void data.rules.load(listAlertRules)}
+        onRetry={() => void data.reloadRules()}
       />
       <SectionFeedback
         resource={data.channels}
@@ -293,9 +292,17 @@ export function AlertsPage() {
           <div className="section-header">
             <div>
               <h2>Alert Rules</h2>
-              <p>{rules.length} configured</p>
+              <p>{rules.length} on this page</p>
             </div>
           </div>
+          <PageNavigation
+            offset={data.rulePaging.page * data.rulePaging.size}
+            size={data.rulePaging.size}
+            hasMore={data.rulePaging.hasMore}
+            loading={data.rules.refreshing}
+            loaded={rules.length}
+            onChange={(offset) => data.rulePaging.selectPage(offset / data.rulePaging.size)}
+          />
           <AlertRuleEditor
             key={editingRule?.id ?? `${searchParams.get("metric")}:${searchParams.get("deviceId")}`}
             existing={editingRule ?? undefined}

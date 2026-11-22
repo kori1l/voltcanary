@@ -2,7 +2,6 @@ package com.voltcanary.analytics.consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.analytics.producer.AnalyticsDeadLetterPublisher;
 import com.voltcanary.analytics.service.MaintenanceWindowProjectionService;
 import com.voltcanary.common.events.device.MaintenanceWindowChangedEvent;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +16,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class MaintenanceWindowChangedConsumer {
 
-    private static final String SOURCE_TOPIC = "maintenance-window.changed.v1";
-
     private final ObjectMapper objectMapper;
     private final MaintenanceWindowProjectionService projectionService;
-    private final AnalyticsDeadLetterPublisher deadLetterPublisher;
 
     @KafkaListener(
         topics = "maintenance-window.changed.v1",
@@ -30,11 +26,6 @@ public class MaintenanceWindowChangedConsumer {
     public void consume(String eventPayload) {
         MaintenanceWindowChangedEvent event = readEvent(eventPayload);
         if (event.deviceId() == null || event.maintenanceWindowId() == null) {
-            deadLetterPublisher.publish(
-                SOURCE_TOPIC,
-                eventPayload,
-                "MaintenanceWindowChangedEvent ids are required"
-            );
             throw new IllegalArgumentException("MaintenanceWindowChangedEvent ids are required");
         }
         boolean processed = projectionService.project(event);
@@ -52,11 +43,6 @@ public class MaintenanceWindowChangedConsumer {
         try {
             return objectMapper.readValue(eventPayload, MaintenanceWindowChangedEvent.class);
         } catch (JsonProcessingException exception) {
-            deadLetterPublisher.publish(
-                SOURCE_TOPIC,
-                eventPayload,
-                "Invalid MaintenanceWindowChangedEvent payload"
-            );
             throw new IllegalArgumentException(
                 "Invalid MaintenanceWindowChangedEvent payload",
                 exception

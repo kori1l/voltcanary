@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAssistantConversation } from "./useAssistantConversation";
 import type { AgentPlan } from "./aiAgentApi";
 import type { DashboardTaskSummary } from "./aiAgentApi";
-import { setTokens } from "../api/client";
+import { setSession } from "../api/client";
 import { rememberDashboardTask } from "./assistantTaskRecovery";
 const plan = (id: string, ancestors?: string[]): AgentPlan => ({
   planId: id,
@@ -74,7 +74,7 @@ const working = (
   pending: [],
 });
 const login = () =>
-  setTokens(`header.${btoa(JSON.stringify({ sub: "working-state-user" }))}.signature`, "refresh");
+  setSession(`header.${btoa(JSON.stringify({ sub: "working-state-user" }))}.signature`, "refresh");
 it("reuses the original request identity after a lost initial response", async () => {
   login();
   const domain = mockAssistantFetch().mockResolvedValue(

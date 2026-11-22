@@ -8,6 +8,7 @@ import {
   testAlertRule,
   updateAlertRule,
   listAlertRules,
+  alertRulePageSize,
 } from "../../alerts/alertsApi";
 import { Device, Location } from "../../devices/devicesApi";
 import { EntitySelector } from "../../components/EntitySelector";
@@ -19,6 +20,7 @@ import { useScopedDraftValue } from "../../components/useScopedDraftValue";
 import { markWorkflowDraftSaved, useWorkflowDraft } from "../../components/workflowDraftContext";
 import { CommandFeedback } from "../../components/CommandFeedback";
 import { useEntityCommands } from "../../components/useEntityCommands";
+import { PageNavigation } from "../../components/PageNavigation";
 const conditions = [
   "BASELINE_MULTIPLIER",
   "ABOVE_THRESHOLD",
@@ -52,6 +54,7 @@ export function AlertRuleEditor({
 }) {
   const commands = useEntityCommands();
   const [matchingRecords, setMatchingRecords] = useState<AlertRule[]>([]);
+  const [matchingPaging, setMatchingPaging] = useState({ page: 0, loaded: 0, loading: false });
   const commandKey = existing ? `rule:${existing.id}:update` : "rule:create";
   const initial: AlertRuleRequest = existing
     ? {
@@ -180,6 +183,27 @@ export function AlertRuleEditor({
     baselineMultiplier: multiplierRequired ? draft.baselineMultiplier : null,
     minPoints: pointsRequired ? draft.minPoints : null,
   });
+  async function readMatching(page: number) {
+    setMatchingRecords([]);
+    setMatchingPaging({ page, loaded: 0, loading: true });
+    try {
+      const records = await listAlertRules(
+        { metric: draft.metric, scopeType: draft.scopeType, ruleType: draft.ruleType },
+        page,
+      );
+      if (!Array.isArray(records)) throw new Error("Unavailable rules");
+      setMatchingRecords(
+        records.filter((rule) => rule.name === draft.name && rule.scopeId === draft.scopeId),
+      );
+      setMatchingPaging({ page, loaded: records.length, loading: false });
+      return true;
+    } catch (failure) {
+      setMatchingPaging({ page, loaded: 0, loading: false });
+      setError(failure instanceof Error ? failure.message : "Rule records unavailable");
+      throw failure;
+    }
+  }
+
   async function execute(test: boolean) {
     if (busy || !valid || (test && !validInterval)) return;
     setBusy(true);
@@ -205,20 +229,7 @@ export function AlertRuleEditor({
             markWorkflowDraftSaved("alert-rule");
             onSaved(saved);
           },
-          refresh: async () => {
-            const records = await listAlertRules();
-            if (!Array.isArray(records)) throw new Error("Unavailable rules");
-            setMatchingRecords(
-              records.filter(
-                (rule) =>
-                  rule.name === draft.name &&
-                  rule.metric === draft.metric &&
-                  rule.scopeType === draft.scopeType &&
-                  rule.scopeId === draft.scopeId,
-              ),
-            );
-            return true;
-          },
+          refresh: () => readMatching(0),
         });
       }
     } catch (error) {
@@ -255,6 +266,16 @@ export function AlertRuleEditor({
               Use matching rule {rule.name} · {rule.id}
             </button>
           ))}
+          <PageNavigation
+            offset={matchingPaging.page * alertRulePageSize}
+            size={alertRulePageSize}
+            loaded={matchingPaging.loaded}
+            loading={matchingPaging.loading}
+            hasMore={matchingPaging.loaded === alertRulePageSize}
+            onChange={(offset) => {
+              void readMatching(offset / alertRulePageSize).catch(() => {});
+            }}
+          />
         </div>
       ) : null}
       {recovered ? (

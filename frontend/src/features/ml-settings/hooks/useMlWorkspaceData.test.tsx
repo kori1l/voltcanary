@@ -6,6 +6,58 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+it("pages dataset inventory while retaining a separately selected version and resetting the filter page", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    let body: unknown = [];
+    if (url.pathname === "/analytics/ml/datasets") {
+      body =
+        url.searchParams.get("page") === "1"
+          ? [{ datasetVersionId: "next-page" }]
+          : Array.from({ length: 100 }, (_, index) => ({ datasetVersionId: `page-zero-${index}` }));
+    } else if (url.pathname === "/analytics/ml/datasets/versions/selected") {
+      body = { dataset: { datasetVersionId: "selected" }, lineage: [], validationReports: [] };
+    } else if (url.pathname.endsWith("ml-settings")) body = { mlEnabled: true };
+    return new Response(JSON.stringify(body), { status: 200 });
+  });
+  const { result, rerender } = renderHook(
+    ({ filter }: { filter: "default" | "archived" }) =>
+      useMlWorkspaceData({
+        datasetStatusFilter: filter,
+        trainingStatusFilter: "default",
+        modelStatusFilter: "default",
+        policyStatusFilter: "default",
+        selectedDatasetVersionId: "selected",
+      }),
+    { initialProps: { filter: "default" } },
+  );
+  await waitFor(() =>
+    expect(result.current.datasets.some((item) => item.datasetVersionId === "selected")).toBe(true),
+  );
+  expect(result.current.datasetPageRecords).toHaveLength(100);
+  expect(result.current.datasetHasMore).toBe(true);
+  act(() => result.current.setDatasetPage(1));
+  await waitFor(() =>
+    expect(result.current.datasetPageRecords[0]?.datasetVersionId).toBe("next-page"),
+  );
+  expect(result.current.datasets.some((item) => item.datasetVersionId === "selected")).toBe(true);
+  expect(result.current.datasetHasMore).toBe(false);
+  rerender({ filter: "archived" });
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(([input]) => {
+        const url = new URL(String(input));
+        return (
+          url.pathname === "/analytics/ml/datasets" &&
+          url.searchParams.get("statusFilter") === "archived" &&
+          url.searchParams.get("page") === "0"
+        );
+      }),
+    ).toBe(true),
+  );
+  expect(result.current.datasetPage).toBe(0);
+});
+
 it("does not display obsolete dataset labels after selecting another dataset", async () => {
   const pending = new Map<string, (response: Response) => void>();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {

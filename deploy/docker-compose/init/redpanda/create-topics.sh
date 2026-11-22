@@ -21,13 +21,13 @@ telemetry.measurements.accepted.v1
 telemetry.observations.accepted.v1
 source.processing-config.dlq.v1
 analytics.variable-measurements.dlq.v1
-telemetry.raw.v1.dlq
-telemetry.validated.v1.dlq
+telemetry.raw.dlq.v1
+analytics.telemetry.validated.dlq.v1
 device-registry.changed.v1.dlq
-maintenance-window.changed.v1.dlq
+maintenance-window.changed.dlq.v1
 identity.account-lifecycle.v1.dlq
-anomaly.detected.v1.dlq
-risk-score.changed.v1.dlq
+anomaly.detected.dlq.v1
+risk-score.changed.dlq.v1
 alert.created.v1.dlq
 "
 

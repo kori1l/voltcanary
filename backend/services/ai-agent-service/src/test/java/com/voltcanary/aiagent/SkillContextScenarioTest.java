@@ -962,18 +962,19 @@ class SkillContextScenarioTest {
             selectedRequest.toString(),
             oldToken.requestId()
         );
-        var primaryContext = new com.voltcanary.aiagent.service.PrimaryDomainPreparation(
-            f.mapper,
-            f.validator,
-            f.store,
-            f.reviews,
-            authority,
-            null,
-            properties,
-            http,
-            null,
-            f.jdbc
-        );
+        var primaryContext =
+            com.voltcanary.aiagent.config.PrimaryAssistantConfiguration.primaryDomain(
+                f.mapper,
+                f.validator,
+                f.store,
+                f.reviews,
+                authority,
+                null,
+                properties,
+                http,
+                null,
+                f.jdbc
+            );
         server.reset();
         server
             .expect(requestTo("http://devices.test/devices/" + device))

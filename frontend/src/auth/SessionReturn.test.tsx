@@ -3,7 +3,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router-dom";
-import { apiRequest, clearTokens, setTokens } from "../api/client";
+import { apiRequest, clearTokens, setSession } from "../api/client";
 import { RequireAuth } from "../app/App";
 import { LoginPage } from "../pages/LoginPage";
 
@@ -26,12 +26,17 @@ function PrivatePage() {
   );
 }
 it("returns from definitive expiry to the exact device/metric/incident interval after login", async () => {
-  setTokens("expired", "rejected");
+  setSession("expired", "rejected");
   let refreshes = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    if (String(input).endsWith("/auth/login"))
-      return new Response(JSON.stringify({ accessToken: "valid", refreshToken: "valid-refresh" }));
-    if (String(input).endsWith("/auth/refresh")) {
+    if (String(input).endsWith("/login"))
+      return new Response(
+        JSON.stringify({
+          accessToken: "valid",
+          sessionId: new URL(String(input)).pathname.split("/")[3],
+        }),
+      );
+    if (String(input).endsWith("/refresh")) {
       refreshes++;
       return new Response("{}", { status: 401 });
     }

@@ -98,7 +98,14 @@ public class HttpPollingTelemetryAdapter implements PollingTelemetryAdapter {
                 );
             }
             String credential = credentialProvider
-                .resolve(credentialReference)
+                .resolve(
+                    credentialReference,
+                    new CredentialProvider.Access(
+                        sourceRuntimeConfig.accountId(),
+                        sourceRuntimeConfig.dataSourceId(),
+                        config.endpoint()
+                    )
+                )
                 .orElseThrow(() ->
                     new IllegalArgumentException(
                         "Unable to resolve credential reference " + credentialName

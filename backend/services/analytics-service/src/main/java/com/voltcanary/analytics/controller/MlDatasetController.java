@@ -56,11 +56,13 @@ public class MlDatasetController {
         @RequestHeader(value = "X-Account-Id", required = false) UUID accountId,
         @RequestHeader(value = "X-User-Id", required = false) String userId,
         @RequestHeader(value = "X-Correlation-Id", required = false) String correlationId,
-        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter
+        @RequestParam(value = "statusFilter", defaultValue = "default") String statusFilter,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "100") int size
     ) {
         UUID resolvedAccountId =
             accountId != null ? accountId : accessService.accountIdForUser(userId, correlationId);
-        return service.list(resolvedAccountId, statusFilter);
+        return service.list(resolvedAccountId, statusFilter, page, size);
     }
 
     @GetMapping("/versions/{datasetVersionId}")

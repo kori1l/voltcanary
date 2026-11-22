@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -41,6 +42,26 @@ public class AlertRuleService {
         String scopeType,
         String metric
     ) {
+        return list(userId, accountId, enabled, ruleType, scopeType, metric, 0, 100);
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<AlertRuleResponse> list(
+        String userId,
+        String accountId,
+        Boolean enabled,
+        String ruleType,
+        String scopeType,
+        String metric,
+        int page,
+        int size
+    ) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "page must be non-negative and size must be between 1 and 100"
+            );
+        }
         UUID scope = accountScope(userId, accountId);
         Specification<AlertRule> spec = Specification.allOf(
             equalsIfPresent("accountId", scope),
@@ -49,21 +70,11 @@ public class AlertRuleService {
             equalsIfPresent("scopeType", definition.normalizeOptional(scopeType)),
             equalsIfPresent("metric", definition.normalizeMetric(metric))
         );
-        var found = repository.findAll(spec, Sort.by(Sort.Direction.DESC, "updatedAt"));
-        UUID owner = found
-            .stream()
-            .anyMatch(rule -> variableRules.applies(rule.getMetric(), variableRules.config(rule)))
-            ? accessService.ownAccount(userId)
-            : null;
-        return found
-            .stream()
-            .filter(
-                rule ->
-                    !variableRules.applies(rule.getMetric(), variableRules.config(rule)) ||
-                    rule.getAccountId().equals(owner)
-            )
-            .map(views::toResponse)
-            .toList();
+        var found = repository.findAll(
+            spec,
+            PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt", "id"))
+        );
+        return found.stream().map(views::toResponse).toList();
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)

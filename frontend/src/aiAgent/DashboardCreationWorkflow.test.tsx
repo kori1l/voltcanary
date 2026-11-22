@@ -8,7 +8,7 @@ import type { AgentPlan } from "./aiAgentApi";
 import { AiAgentPage } from "../pages/AiAgentPage";
 import { AssistantDrawer } from "./AssistantDrawer";
 import { WorkflowDraftProvider } from "../components/WorkflowDraftGuard";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 
 afterEach(() => {
   cleanup();
@@ -104,7 +104,7 @@ it("reviews an update in the shared preview and confirms the exact same-dashboar
 });
 
 it("a persisted review leaves no unsaved request warning when opening the next workflow", async () => {
-  setTokens(
+  setSession(
     `${btoa("{}")}\.${btoa(JSON.stringify({ sub: "dashboard-owner" }))}.fixture`,
     "fixture",
   );

@@ -117,6 +117,10 @@ class FailurePredictionEvaluator:
         preferred_validation_count = max(1, round(len(usable) * 0.3))
         for validation_count in range(preferred_validation_count, 0, -1):
             split_index = len(usable) - validation_count
+            cutoff = usable[split_index].prediction_at
+            # An observation time is indivisible, including across devices.
+            while split_index > 0 and usable[split_index - 1].prediction_at == cutoff:
+                split_index -= 1
             train_samples = usable[:split_index]
             validation_samples = usable[split_index:]
             if self._has_both_classes(train_samples) and validation_samples:

@@ -45,6 +45,10 @@ public class MlDatasetService {
         return queryService.list(accountId, statusFilter);
     }
 
+    public List<MlDatasetSummaryDto> list(UUID accountId, String statusFilter, int page, int size) {
+        return queryService.list(accountId, statusFilter, page, size);
+    }
+
     public MlDatasetDetailDto detail(UUID accountId, UUID datasetVersionId) {
         return queryService.detail(accountId, datasetVersionId);
     }

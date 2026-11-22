@@ -10,7 +10,6 @@ import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts;
 import com.voltcanary.aiagent.service.AuthorizedPlanningContext;
 import com.voltcanary.aiagent.service.DashboardPlanningContext;
-import com.voltcanary.aiagent.service.PrimaryDomainPreparation;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -26,7 +25,7 @@ class PrimaryWorkflowContextTest {
             new ClassPathResource("db/migration/V010__assistant_primary_bindings.sql")
         ).execute(f.jdbc.getDataSource());
         var dashboards = mock(DashboardPlanningContext.class);
-        var domain = new PrimaryDomainPreparation(
+        var domain = com.voltcanary.aiagent.config.PrimaryAssistantConfiguration.primaryDomain(
             f.mapper,
             f.validator,
             f.store,
@@ -106,7 +105,7 @@ class PrimaryWorkflowContextTest {
             assertFalse(values.containsKey("name"));
             return call.getArgument(0);
         });
-        var domain = new PrimaryDomainPreparation(
+        var domain = com.voltcanary.aiagent.config.PrimaryAssistantConfiguration.primaryDomain(
             f.mapper,
             f.validator,
             f.store,
@@ -281,7 +280,7 @@ class PrimaryWorkflowContextTest {
             assertEquals("Мой трамвай", base.context().get("name"));
             return base;
         });
-        var domain = new PrimaryDomainPreparation(
+        var domain = com.voltcanary.aiagent.config.PrimaryAssistantConfiguration.primaryDomain(
             f.mapper,
             f.validator,
             f.store,

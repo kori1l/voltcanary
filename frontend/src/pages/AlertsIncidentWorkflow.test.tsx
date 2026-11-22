@@ -367,9 +367,10 @@ function defaultJson(url: string) {
       yamlConfig: "",
     });
   if (url.includes("/simulation/devices/device-1/status")) return json(null);
-  if (url.includes("/simulation/devices/device-1/runs")) return json([]);
+  if (url.includes("/simulation/devices/device-1/runs"))
+    return json({ content: [], page: 0, size: 25, totalElements: 0, totalPages: 0 });
   if (url.endsWith("/alerts/notification-channels")) return json([]);
-  if (url.endsWith("/alert-rules")) return json([rule]);
+  if (url.includes("/alert-rules?")) return json([rule]);
   if (url.endsWith("/alerts/summary?limit=100")) {
     return json({
       total: 1,

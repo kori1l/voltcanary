@@ -178,7 +178,7 @@ class AdapterContractTest {
     void httpPollingAdapterRegistersPollingManifest() {
         HttpPollingTelemetryAdapter adapter = new HttpPollingTelemetryAdapter(
             HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
-            ignored -> java.util.Optional.empty(),
+            (ignored, access) -> java.util.Optional.empty(),
             new HttpPollingResponseMapper(new ObjectMapper(), Clock.systemUTC())
         );
 

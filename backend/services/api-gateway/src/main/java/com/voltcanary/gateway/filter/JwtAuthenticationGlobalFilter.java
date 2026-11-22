@@ -107,6 +107,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
             return true;
         }
         String path = exchange.getRequest().getPath().pathWithinApplication().value();
+        if (path.matches("/auth/browser/[0-9a-fA-F-]{36}/(?:login|refresh|logout)")) return true;
         return (
             PUBLIC_PATHS.contains(path) || PUBLIC_PATH_PREFIXES.stream().anyMatch(path::startsWith)
         );

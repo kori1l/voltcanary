@@ -224,3 +224,5 @@ export function useDashboardEditor(metadata: DashboardMetadata, initial: Dashboa
     },
   };
 }
+
+export type DashboardEditorState = ReturnType<typeof useDashboardEditor>;

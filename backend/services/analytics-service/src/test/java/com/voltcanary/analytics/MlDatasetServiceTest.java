@@ -804,15 +804,20 @@ class MlDatasetServiceTest {
         lineage.setSelectedMetricsJson("[\"activePowerW\"]");
         lineage.setContentHash("sha256:lineage");
         lineage.setCreatedAt(createdAt);
-        when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(
-            List.of(dataset)
-        );
+        when(datasetRepository.findAllById(List.of(datasetId))).thenReturn(List.of(dataset));
         when(
-            versionRepository.findLatestVisibleByAccountId(
+            versionRepository.findInventory(
                 accountId,
-                List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)
+                List.of(
+                    MlDatasetStatus.DRAFT,
+                    MlDatasetStatus.VALIDATING,
+                    MlDatasetStatus.READY,
+                    MlDatasetStatus.FAILED
+                ),
+                true,
+                org.springframework.data.domain.PageRequest.of(0, 100)
             )
-        ).thenReturn(List.of(version));
+        ).thenReturn(new org.springframework.data.domain.SliceImpl<>(List.of(version)));
         when(versionRepository.findById(versionId)).thenReturn(Optional.of(version));
         when(datasetRepository.findById(datasetId)).thenReturn(Optional.of(dataset));
         when(reportRepository.findByDatasetVersionIdOrderByCreatedAtDesc(versionId)).thenReturn(
@@ -860,21 +865,28 @@ class MlDatasetServiceTest {
             createdAt,
             MlDatasetStatus.ARCHIVED
         );
-        when(datasetRepository.findByAccountIdOrderByCreatedAtDesc(accountId)).thenReturn(
-            List.of(dataset)
-        );
+        when(datasetRepository.findAllById(List.of(datasetId))).thenReturn(List.of(dataset));
         when(
-            versionRepository.findLatestVisibleByAccountId(
+            versionRepository.findInventory(
                 accountId,
-                List.of(MlDatasetStatus.ARCHIVED, MlDatasetStatus.DELETED)
+                List.of(
+                    MlDatasetStatus.DRAFT,
+                    MlDatasetStatus.VALIDATING,
+                    MlDatasetStatus.READY,
+                    MlDatasetStatus.FAILED
+                ),
+                true,
+                org.springframework.data.domain.PageRequest.of(0, 100)
             )
-        ).thenReturn(List.of());
+        ).thenReturn(new org.springframework.data.domain.SliceImpl<>(List.of()));
         when(
-            versionRepository.findByAccountIdAndStatusOrderByCreatedAtDesc(
+            versionRepository.findInventory(
                 accountId,
-                MlDatasetStatus.ARCHIVED
+                List.of(MlDatasetStatus.ARCHIVED),
+                false,
+                org.springframework.data.domain.PageRequest.of(0, 100)
             )
-        ).thenReturn(List.of(version));
+        ).thenReturn(new org.springframework.data.domain.SliceImpl<>(List.of(version)));
 
         assertThat(service.list(accountId)).isEmpty();
         assertThat(service.list(accountId, "archived"))

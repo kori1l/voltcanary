@@ -2,8 +2,6 @@ package com.voltcanary.aiagent.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.voltcanary.aiagent.adapter.PrimaryOrchestrationJournal;
-import com.voltcanary.aiagent.config.AiAgentProperties;
 import com.voltcanary.aiagent.model.AgentAction;
 import com.voltcanary.aiagent.model.AgentPlan;
 import com.voltcanary.aiagent.model.AgentTool;
@@ -15,14 +13,15 @@ import com.voltcanary.aiagent.orchestration.plan.IntentPlanStore;
 import com.voltcanary.aiagent.orchestration.plan.IntentPlans;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts;
 import com.voltcanary.aiagent.orchestration.plan.OrchestrationPorts.Session;
+import com.voltcanary.aiagent.port.PrimaryDeviceReads;
+import com.voltcanary.aiagent.port.PrimaryReviewBindings;
+import com.voltcanary.aiagent.port.WorkflowContextStore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.client.RestClient;
 
 /** Typed preparation only: no natural-language parsers, provider calls, retries or domain mutations. */
 public final class PrimaryDomainPreparation
@@ -36,9 +35,9 @@ public final class PrimaryDomainPreparation
     private final AuthorizedPlanningContext authority;
     private final DashboardPlanningContext dashboards;
     private final DashboardCompositionCompiler compositions;
-    private final PrimaryOrchestrationJournal journal;
-    private final JdbcTemplate jdbc;
-    private final RestClient devices;
+    private final PrimaryReviewBindings journal;
+    private final WorkflowContextStore contexts;
+    private final PrimaryDeviceReads devices;
     private final DashboardDraftTarget draftTarget;
 
     public PrimaryDomainPreparation(
@@ -48,10 +47,11 @@ public final class PrimaryDomainPreparation
         PlanStore reviews,
         AuthorizedPlanningContext authority,
         DashboardPlanningContext dashboards,
-        AiAgentProperties properties,
-        RestClient.Builder builder,
-        PrimaryOrchestrationJournal journal,
-        JdbcTemplate jdbc
+        DashboardCompositionCompiler compositions,
+        PrimaryReviewBindings journal,
+        WorkflowContextStore contexts,
+        PrimaryDeviceReads devices,
+        DashboardDraftTarget draftTarget
     ) {
         this.mapper = mapper;
         this.validator = validator;
@@ -59,16 +59,11 @@ public final class PrimaryDomainPreparation
         this.reviews = reviews;
         this.authority = authority;
         this.dashboards = dashboards;
-        this.compositions = new DashboardCompositionCompiler(properties, builder, mapper);
+        this.compositions = compositions;
         this.journal = journal;
-        this.jdbc = jdbc;
-        this.devices = builder.clone().baseUrl(properties.getServices().getDeviceBaseUrl()).build();
-        this.draftTarget = new DashboardDraftTarget(
-            builder,
-            properties.getServices().getDashboardBaseUrl(),
-            mapper,
-            reviews
-        );
+        this.contexts = contexts;
+        this.devices = devices;
+        this.draftTarget = draftTarget;
     }
 
     @Override
@@ -89,12 +84,7 @@ public final class PrimaryDomainPreparation
         var selected = selectedDevices(input, session);
         var result = new ArrayList<AssistantProtocol.Choice>();
         for (String id : selected) {
-            var device = PlanningContextRead.read(
-                devices,
-                "/devices/" + UUID.fromString(id),
-                session.authorization(),
-                true
-            );
+            var device = devices.device(UUID.fromString(id), session.authorization());
             var properties = mapper
                 .createObjectNode()
                 .put("deviceId", id)
@@ -157,24 +147,12 @@ public final class PrimaryDomainPreparation
 
     private List<String> selectedDevices(IntentPlans.ModelInput input, Session session) {
         // Selection is structured persisted input, never a semantic extraction from dialogue.
-        var rows = jdbc.query(
-            """
-            select r.request_json from ai_orchestration_requests r
-            join ai_orchestrations p on p.id=r.plan_id
-            join ai_conversation_messages m on m.id=r.message_id
-            where p.conversation_id=? and p.user_id=? and p.account_id=? and r.request_kind='TURN'
-            order by m.sequence desc limit 100
-            """,
-            (row, index) -> row.getString(1),
-            input.state().conversationId(),
-            session.owner().userId(),
-            session.owner().accountId()
-        );
-        for (String row : rows) {
+        var rows = contexts.recentSelections(session.owner(), input.state().conversationId());
+        for (var row : rows) {
             var selected = new ArrayList<String>();
-            for (var item : validator.parse(row).path("selection")) {
-                if (item.path("field").asText().equals("deviceId")) selected.add(
-                    UUID.fromString(item.path("ref").asText()).toString()
+            for (var item : row) {
+                if (item.field().equals("deviceId")) selected.add(
+                    UUID.fromString(item.ref()).toString()
                 );
             }
             if (selected.size() > 20) throw IntentPlans.reject("SELECTED_DEVICE_LIMIT");
@@ -576,11 +554,10 @@ public final class PrimaryDomainPreparation
                 command.payload().path("dataSourceId")
             );
             var source = context.refs().getLast();
-            var actual = PlanningContextRead.read(
-                devices,
-                "/devices/" + deviceId + "/data-sources/" + source.resourceId(),
-                session.authorization(),
-                true
+            var actual = devices.source(
+                UUID.fromString(deviceId),
+                UUID.fromString(source.resourceId()),
+                session.authorization()
             );
             if (!source.resourceId().equals(actual.path("id").asText())) throw IntentPlans.reject(
                 "SIMULATOR_SOURCE_UNAVAILABLE"
@@ -591,7 +568,7 @@ public final class PrimaryDomainPreparation
             UUID.randomUUID(),
             tool,
             skill.intentId(),
-            "Проверьте подготовленное действие",
+            "РџСЂРѕРІРµСЂСЊС‚Рµ РїРѕРґРіРѕС‚РѕРІР»РµРЅРЅРѕРµ РґРµР№СЃС‚РІРёРµ",
             true,
             payload
         );
@@ -599,8 +576,8 @@ public final class PrimaryDomainPreparation
             UUID.randomUUID(),
             session.owner().userId(),
             input.currentMessage().text(),
-            "Подготовлено через assistant-v2",
-            "Проверьте результат перед подтверждением.",
+            "РџРѕРґРіРѕС‚РѕРІР»РµРЅРѕ С‡РµСЂРµР· assistant-v2",
+            "РџСЂРѕРІРµСЂСЊС‚Рµ СЂРµР·СѓР»СЊС‚Р°С‚ РїРµСЂРµРґ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµРј.",
             List.of("assistant-v2"),
             List.of(action),
             Instant.now()
@@ -738,8 +715,8 @@ public final class PrimaryDomainPreparation
                     new AgentAction(
                         prepared.id(),
                         AgentTool.UPDATE_DASHBOARD_DRAFT,
-                        "Обновить черновик дашборда",
-                        "Будет обновлён этот дашборд после проверки его версии.",
+                        "РћР±РЅРѕРІРёС‚СЊ С‡РµСЂРЅРѕРІРёРє РґР°С€Р±РѕСЂРґР°",
+                        "Р‘СѓРґРµС‚ РѕР±РЅРѕРІР»С‘РЅ СЌС‚РѕС‚ РґР°С€Р±РѕСЂРґ РїРѕСЃР»Рµ РїСЂРѕРІРµСЂРєРё РµРіРѕ РІРµСЂСЃРёРё.",
                         true,
                         Map.copyOf(values)
                     )
@@ -756,12 +733,7 @@ public final class PrimaryDomainPreparation
                 input.resolvedInputs().get("deviceId"),
                 command.payload().path("deviceId")
             );
-            var device = PlanningContextRead.read(
-                devices,
-                "/devices/" + deviceId,
-                session.authorization(),
-                true
-            );
+            var device = devices.device(UUID.fromString(deviceId), session.authorization());
             if (
                 !deviceId.equals(device.path("id").asText()) ||
                 !"VEHICLE".equals(device.path("type").asText()) ||
@@ -976,7 +948,7 @@ public final class PrimaryDomainPreparation
                     new AssistantProtocol.Diagnostic(
                         "RESOURCE",
                         "VCL_SOURCE_RULE_EXECUTION_UNAVAILABLE",
-                        "Для выбранной привязки VCL выполнение правил недоступно. Подготовка правила для этого источника остановлена.",
+                        "Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕР№ РїСЂРёРІСЏР·РєРё VCL РІС‹РїРѕР»РЅРµРЅРёРµ РїСЂР°РІРёР» РЅРµРґРѕСЃС‚СѓРїРЅРѕ. РџРѕРґРіРѕС‚РѕРІРєР° РїСЂР°РІРёР»Р° РґР»СЏ СЌС‚РѕРіРѕ РёСЃС‚РѕС‡РЅРёРєР° РѕСЃС‚Р°РЅРѕРІР»РµРЅР°.",
                         List.of(),
                         false
                     )
@@ -986,41 +958,12 @@ public final class PrimaryDomainPreparation
     }
 
     private AuthorizedPlanningContext.Prepared cached(IntentPlans.ModelInput input) {
-        var rows = jdbc.query(
-            "select context_json from ai_orchestration_contexts where plan_id=? and request_id=? and step_id=?",
-            (row, index) -> row.getString(1),
-            input.state().planId(),
-            input.token().requestId(),
-            step(input)
-        );
-        if (rows.isEmpty()) return null;
-        try {
-            return mapper.readValue(rows.getFirst(), AuthorizedPlanningContext.Prepared.class);
-        } catch (java.io.IOException invalid) {
-            throw IntentPlans.reject("WORKFLOW_CONTEXT_INVALID");
-        }
+        return contexts
+            .load(input.state().planId(), input.token().requestId(), step(input))
+            .orElse(null);
     }
 
     private void save(IntentPlans.ModelInput input, AuthorizedPlanningContext.Prepared context) {
-        String json;
-        try {
-            json = mapper.writeValueAsString(context);
-        } catch (java.io.IOException invalid) {
-            throw IntentPlans.reject("WORKFLOW_CONTEXT_INVALID");
-        }
-        int count = jdbc.update(
-            "update ai_orchestration_contexts set context_json=? where plan_id=? and request_id=? and step_id=?",
-            json,
-            input.state().planId(),
-            input.token().requestId(),
-            step(input)
-        );
-        if (count == 0) jdbc.update(
-            "insert into ai_orchestration_contexts(plan_id,request_id,step_id,context_json) values(?,?,?,?)",
-            input.state().planId(),
-            input.token().requestId(),
-            step(input),
-            json
-        );
+        contexts.save(input.state().planId(), input.token().requestId(), step(input), context);
     }
 }

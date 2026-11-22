@@ -8,7 +8,7 @@ import {
   PersonalDashboardPage,
   PersonalDashboardsPage,
 } from "../../../pages/PersonalDashboardsPage";
-import { clearTokens, setTokens } from "../../../api/client";
+import { clearTokens, setSession } from "../../../api/client";
 import { blankDashboard } from "../model/dashboardLayout";
 import { DashboardEditor } from "./DashboardEditor";
 import type {
@@ -160,7 +160,7 @@ it("blocks publication when an inactive screen fails renewed validation", async 
 });
 it("lets USER create, preview three-device facts, publish, default, reload and archive with safe fallback", async () => {
   localStorage.clear();
-  setTokens(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "owner" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "owner" }))}.fixture`, "fixture");
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   let metadata: DashboardMetadata | null = null;
   let draft: DashboardDraft = {

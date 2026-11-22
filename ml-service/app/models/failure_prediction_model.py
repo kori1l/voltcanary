@@ -80,11 +80,21 @@ class FailurePredictionModel:
     def risk_drivers(self, features: dict[str, float], limit: int = 5) -> list[dict[str, Any]]:
         if self.pipeline is None:
             return []
+        vector = self.pipeline.named_steps["vectorizer"].transform([features])
+        scaler = self.pipeline.named_steps.get("scaler")
+        transformed = scaler.transform(vector) if scaler is not None else vector
         weights = self._feature_weights()
         drivers = []
-        for name, value in features.items():
+        for index, name in enumerate(self.feature_columns):
+            value = float(features.get(name, 0.0))
             weight = float(weights.get(name, 0.0))
-            contribution = weight * float(value)
+            # Coefficients apply to standardized inputs. Forest importances are global,
+            # dimensionless importance values, not signed per-observation effects.
+            contribution = (
+                weight * float(transformed[0][index])
+                if self.algorithm == self.LOGISTIC_REGRESSION_ALGORITHM
+                else weight
+            )
             drivers.append(
                 {
                     "feature": name,

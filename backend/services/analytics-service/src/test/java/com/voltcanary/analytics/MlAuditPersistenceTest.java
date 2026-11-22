@@ -76,6 +76,36 @@ class MlAuditPersistenceTest {
     private EntityManagerFactory entityManagerFactory;
 
     @Test
+    void datasetInventoryPagesLatestVersionsInSqlAndRetainsHistoryFilters() {
+        UUID account = UUID.randomUUID();
+        var first = dataset(account, "First paged dataset");
+        var second = dataset(account, "Second paged dataset");
+        var latest = version(first.getDatasetId(), account, 2, MlDatasetStatus.READY);
+        var archived = version(first.getDatasetId(), account, 3, MlDatasetStatus.ARCHIVED);
+        dataset(UUID.randomUUID(), "Other account");
+        var one = queries.list(account, "default", 0, 1);
+        var two = queries.list(account, "default", 1, 1);
+        assertThat(one).hasSize(1);
+        assertThat(two).hasSize(1);
+        assertThat(
+            java.util.stream.Stream.concat(one.stream(), two.stream())
+                .map(item -> item.datasetVersionId())
+                .toList()
+        ).containsExactlyInAnyOrder(latest.getId(), second.getId());
+        assertThat(queries.list(account, "default", 2, 1)).isEmpty();
+        assertThat(queries.list(account, "archived", 0, 1))
+            .extracting("datasetVersionId")
+            .containsExactly(archived.getId());
+        assertThat(queries.list(account, "all", 0, 100)).hasSize(4);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+            queries.list(account, "all", 0, 101)
+        ).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+            queries.list(account, "unknown", 0, 10)
+        ).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    @Test
     void schedulerRecoversPersistedJobsAndCompletedJobsDoNotRegenerateLabels() {
         var version = dataset(UUID.randomUUID(), "Recovery");
         var job = queuedJob(version);

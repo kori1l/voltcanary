@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useSectionResource } from "./useSectionResource";
-import { ApiError, clearTokens, setTokens } from "../api/client";
+import { ApiError, clearTokens, setSession } from "../api/client";
 
 afterEach(() => {
   cleanup();
@@ -10,10 +10,10 @@ afterEach(() => {
 
 describe("independent resource evidence", () => {
   it("purges retained evidence immediately when login identity changes", async () => {
-    setTokens("account-A", "refresh-A");
+    setSession("account-A", "refresh-A");
     const { result } = renderHook(() => useSectionResource<string>("same-filter"));
     await act(() => result.current.load(async () => "private-A"));
-    act(() => setTokens("account-B", "refresh-B"));
+    act(() => setSession("account-B", "refresh-B"));
     expect(result.current.data).toBeNull();
     expect(result.current.status).toBe("idle");
   });

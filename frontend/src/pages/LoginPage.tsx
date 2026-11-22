@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { safeReturnTo } from "../app/consoleRouteContext";
-import { setTokens } from "../api/client";
+import { setSession } from "../api/client";
 import { login } from "../auth/authApi";
 import { AuthShell } from "../auth/AuthShell";
 import { PasswordField } from "../auth/PasswordField";
@@ -21,7 +21,7 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       const tokens = await login({ email, password });
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setSession(tokens.accessToken, tokens.sessionId);
       navigate(params.has("returnTo") ? safeReturnTo(params.get("returnTo")) : "/dashboard", {
         replace: true,
       });

@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import OrderedDict
-from concurrent.futures import Future
+from concurrent.futures import Future, TimeoutError
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any
@@ -43,6 +43,7 @@ class ServingArtifactCache:
         *,
         max_entries: int | None = None,
         ttl_seconds: float | None = None,
+        load_wait_seconds: float | None = None,
     ) -> None:
         self.artifact_store = artifact_store
         self.max_entries = max(
@@ -56,6 +57,13 @@ class ServingArtifactCache:
             ),
         )
         self._entries: OrderedDict[ServingCacheKey, ServingRuntimeArtifact] = OrderedDict()
+        self.load_wait_seconds = (
+            load_wait_seconds
+            if load_wait_seconds is not None
+            else settings.ml_serving_cache_load_wait_seconds
+        )
+        if self.load_wait_seconds <= 0:
+            raise ValueError("Model load wait must be positive")
         self._lock = RLock()
         self._loading: dict[ServingCacheKey, Future[ServingRuntimeArtifact]] = {}
         self._generation = 0
@@ -87,7 +95,12 @@ class ServingArtifactCache:
                 self.misses += 1
                 self._log("miss", key, cache_size=len(self._entries))
         if not owner:
-            result = pending.result()
+            try:
+                result = pending.result(timeout=self.load_wait_seconds)
+            except TimeoutError as failure:
+                raise ValueError(
+                    "Model loading did not complete within the request budget"
+                ) from failure
             with self._lock:
                 self.hits += 1
             return result

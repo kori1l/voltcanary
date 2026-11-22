@@ -117,7 +117,11 @@ public class GatewayRateLimitGlobalFilter implements GlobalFilter, Ordered {
 
     private Limit limitFor(ServerWebExchange exchange) {
         String path = exchange.getRequest().getPath().pathWithinApplication().value();
-        if (path.equals("/auth/login") || path.equals("/auth/register")) {
+        if (
+            path.equals("/auth/login") ||
+            path.equals("/auth/register") ||
+            path.matches("/auth/browser/[0-9a-fA-F-]{36}/login")
+        ) {
             return new Limit("auth", properties.getAuthRequestsPerWindow());
         }
         if (path.startsWith("/ingestion/")) {

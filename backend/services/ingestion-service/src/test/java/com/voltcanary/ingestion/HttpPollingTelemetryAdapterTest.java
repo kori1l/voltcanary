@@ -147,7 +147,7 @@ class HttpPollingTelemetryAdapterTest {
     }
 
     private HttpPollingTelemetryAdapter adapter(Map<String, String> credentials) {
-        CredentialProvider credentialProvider = reference ->
+        CredentialProvider credentialProvider = (reference, access) ->
             Optional.ofNullable(credentials.get(reference));
         return new HttpPollingTelemetryAdapter(
             HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),

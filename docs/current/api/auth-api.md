@@ -8,6 +8,39 @@ reset, and email verification. Browser traffic reaches these endpoints through
 
 ## Public Auth Endpoints
 
+The web console uses browser sessions:
+
+```http
+POST /auth/browser/{sessionId}/login
+POST /auth/browser/{sessionId}/refresh
+POST /auth/browser/{sessionId}/logout
+```
+
+`sessionId` is a client-generated UUID and is not a credential. Login accepts
+the normal email/password body. Responses contain `sessionId`, `accessToken`,
+`tokenType`, and `expiresIn`; refresh tokens never appear in browser JSON.
+The refresh credential is rotated through a host-only `HttpOnly; SameSite=Strict`
+cookie scoped to `/auth/browser/{sessionId}`. Separate paths prevent a late
+response from an old login overwriting another login's cookie. Login and refresh
+responses use `Cache-Control: no-store`.
+
+Every browser-session mutation requires an exact allowed `Origin`; missing and
+untrusted origins receive 403 before credentials are consumed. Configure
+`app.auth.browser.allowed-origins` for the console's actual origin, in addition
+to the gateway CORS allowlist. Fetch requests use `credentials: include`.
+Cookies are Secure by default. The local profile permits HTTP development with
+`BROWSER_SESSION_SECURE_COOKIE=false`; TLS deployments set it to true.
+
+The console retains the short-lived access token and public session/rotation IDs
+in browser storage. It removes the former `voltcanary.refreshToken` entry during
+upgrade; an old login may require signing in again. Refresh remains serialized
+across tabs, and logout revokes the server-side refresh session and expires its
+path-scoped cookie.
+
+Programmatic clients use the JSON credential endpoints below. Their refresh
+credentials must be stored by those clients securely; the web console does not
+use this transport.
+
 ```http
 POST /auth/register
 POST /auth/login
@@ -124,8 +157,7 @@ Role and status changes revoke refresh sessions. User writes use an optimistic
 revision; competing updates return 409 `concurrent_update`.
 
 `GET /auth/admin/users` accepts `page` (zero-based, default 0), `size` (default 100,
-range 1..200), and `search` (email, role or status). Invalid pagination returns
-400. Filtering, literal wildcard escaping, and `createdAt DESC, id DESC` ordering
+range 1..200), and `search` (email, role or status). Invalid pagination returns 400. Filtering, literal wildcard escaping, and `createdAt DESC, id DESC` ordering
 execute in the database; the response remains an array.
 
 ```http
@@ -160,8 +192,9 @@ session id, user id, creation, expiry, revocation timestamp, and active flag.
 ## Token And Boundary Notes
 
 Access tokens are bearer JWTs verified by `api-gateway` before protected routes
-are forwarded. Refresh tokens are server-side session credentials and are sent
-only to identity endpoints that explicitly accept `refreshToken`.
+are forwarded. Refresh tokens are server-side session credentials. The console
+sends them only as HttpOnly cookies to browser-session endpoints; programmatic
+clients use the JSON `refreshToken` endpoints described above.
 
 Current public auth routes are unversioned. Public API key management, MFA, SSO,
 SCIM, custom RBAC, audit export, and tenant administration are not implemented;

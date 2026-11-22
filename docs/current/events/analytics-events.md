@@ -5,19 +5,19 @@ then publishes alert-driving analytics events through its durable outbox.
 
 ## Consumed Topics
 
-| Topic | Producer | Purpose |
-| --- | --- | --- |
-| `telemetry.validated.v1` | `telemetry-service` | Source for baseline, feature, anomaly, risk, recommendation, and prediction recalculation. |
-| `maintenance-window.changed.v1` | `device-service` | Local maintenance read model for analytics and ML exclusion policy. |
+| Topic                           | Producer            | Purpose                                                                                    |
+| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------ |
+| `telemetry.validated.v1`        | `telemetry-service` | Source for baseline, feature, anomaly, risk, recommendation, and prediction recalculation. |
+| `maintenance-window.changed.v1` | `device-service`    | Local maintenance read model for analytics and ML exclusion policy.                        |
 
 Consumers use `processed_events` and service-specific checkpoints for
 idempotency and replay safety.
 
 ## Produced Topics
 
-| Topic | Record | Key | Consumer |
-| --- | --- | --- | --- |
-| `anomaly.detected.v1` | `AnomalyDetectedEvent` | `deviceId` | `alert-service` |
+| Topic                   | Record                  | Key        | Consumer        |
+| ----------------------- | ----------------------- | ---------- | --------------- |
+| `anomaly.detected.v1`   | `AnomalyDetectedEvent`  | `deviceId` | `alert-service` |
 | `risk-score.changed.v1` | `RiskScoreChangedEvent` | `deviceId` | `alert-service` |
 
 The current record classes are:
@@ -74,11 +74,16 @@ Producer: `analytics-service`.
 
 Current consumers: none in this repository.
 
-Key: generated `deadLetterId`.
+Key: stable `deadLetterId` in the form `<sourceTopic>:<partition>:<offset>`.
 
-Analytics-service publishes this DLQ payload when a consumed
-`telemetry.validated.v1` or `maintenance-window.changed.v1` message is
-malformed or misses required ids and analytics DLQ publication is enabled.
+Analytics-service sends failed `telemetry.validated.v1` and
+`maintenance-window.changed.v1` records to centralized recovery after the
+consumer retry budget (three retries, one second apart). Recovery waits up to
+10 seconds for the DLQ send acknowledgement; producer metadata acquisition is
+also bounded to 10 seconds. Disabled publication or send failure throws from
+recovery, so the original record is not treated as recovered. A retry can create
+duplicate DLQ copies with the same key; this is at-least-once recovery.
+`reason` contains the exception class rather than an upstream error message.
 
 Payload fields:
 

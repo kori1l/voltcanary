@@ -56,7 +56,7 @@ it("shares rotated credentials between independent client instances", async () =
   const first = await import("./client");
   const jwt = (seconds: number) =>
     `header.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))}.signature`;
-  first.setTokens(jwt(100), "original-refresh");
+  first.setSession(jwt(100), "original-refresh");
   vi.resetModules();
   const second = await import("./client");
   const renewed = jwt(900);
@@ -71,7 +71,7 @@ it("shares rotated credentials between independent client instances", async () =
   const b = second.prepareAiSession();
   await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   finish(
-    new Response(JSON.stringify({ accessToken: renewed, refreshToken: "rotated-refresh" }), {
+    new Response(JSON.stringify({ accessToken: renewed, sessionId: "original-refresh" }), {
       status: 200,
     }),
   );

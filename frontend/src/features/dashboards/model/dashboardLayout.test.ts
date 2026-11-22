@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { blankDashboard, moveWidget, normalizeLayouts, resizeWidget } from "./dashboardLayout";
 import type { DashboardWidget } from "../../../dashboards/dashboardsApi";
 import { safeDefinition, readRecovery, writeRecovery } from "./dashboardRecovery";
-import { clearTokens, setTokens } from "../../../api/client";
+import { clearTokens, setSession } from "../../../api/client";
 const widgets: DashboardWidget[] = ["first", "second"].map((id) => ({
   id,
   type: "fleet-count",
@@ -58,7 +58,7 @@ describe("dashboard layout and recovery invariants", () => {
     localStorage.clear();
     const token = (sub: string) =>
       `${btoa("{}")} .${btoa(JSON.stringify({ sub }))}.fixture`.replace(" ", "");
-    setTokens(token("owner"), "fixture");
+    setSession(token("owner"), "fixture");
     const metadata = {
       id: "dashboard",
       accountId: "account",
@@ -76,7 +76,7 @@ describe("dashboard layout and recovery invariants", () => {
     expect(readRecovery({ ...metadata, accountId: "other" }, 1)).toBeNull();
     expect(safeDefinition({ payload: { readings: [120] } })).toBe(false);
     expect(safeDefinition({ payload: { sourceToken: "secret" } })).toBe(false);
-    setTokens(token("other"), "fixture");
+    setSession(token("other"), "fixture");
     expect(readRecovery(metadata, 1)).toBeNull();
     clearTokens();
     localStorage.clear();

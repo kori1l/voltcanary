@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { DevicesPage } from "./DevicesPage";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import { writeDeviceSetupCheckpoint } from "../devices/deviceSetupCheckpoint";
 
 afterEach(() => {
@@ -12,7 +12,7 @@ afterEach(() => {
   localStorage.clear();
 });
 it("unlocks restored source reconciliation even when the wizard already has no error and is on Review", async () => {
-  setTokens(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "user-fixture" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}.${btoa(JSON.stringify({ sub: "user-fixture" }))}.fixture`, "fixture");
   const account = {
     id: "account-fixture",
     userId: "user-fixture",

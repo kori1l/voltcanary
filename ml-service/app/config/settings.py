@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     ml_training_fit_timeout_seconds: float = Field(default=600, gt=0)
     ml_serving_cache_max_entries: int = 32
     ml_serving_cache_ttl_seconds: float = 900.0
+    ml_serving_cache_load_wait_seconds: float = Field(default=15.0, gt=0)
 
     @property
     def allowed_source_service_names(self) -> set[str]:

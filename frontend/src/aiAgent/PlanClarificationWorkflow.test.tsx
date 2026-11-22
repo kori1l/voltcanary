@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { AiAgentPage } from "../pages/AiAgentPage";
 import { AssistantDrawer } from "./AssistantDrawer";
 import { WorkflowDraftProvider } from "../components/WorkflowDraftGuard";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 
 afterEach(() => {
   cleanup();
@@ -51,7 +51,7 @@ const ready = {
 it.each(["page", "drawer"])(
   "continues a clarification in the %s and preserves the answer for retry",
   async (surface) => {
-    setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "reply-owner" }))}.fixture`, "fixture");
+    setSession(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "reply-owner" }))}.fixture`, "fixture");
     let replies = 0;
     const fetch = mockAssistantFetch().mockImplementation(async (input) => {
       const url = String(input);

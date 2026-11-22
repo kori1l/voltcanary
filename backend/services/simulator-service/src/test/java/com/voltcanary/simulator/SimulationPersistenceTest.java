@@ -60,6 +60,45 @@ class SimulationPersistenceTest {
     }
 
     @Test
+    void runHistoryPagesAreBoundedStableAndDeviceScoped() {
+        UUID userId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID source = UUID.randomUUID();
+        profileService.save(userId, deviceId, request(source, "sim-history-pages", "pages"));
+        var config = configRepository.findByDeviceId(deviceId).orElseThrow();
+        Instant timestamp = Instant.parse("2026-01-01T00:00:00Z");
+        for (int i = 1; i <= 7; i++) {
+            var run = activeRun(config.getId(), config.getAccountId(), deviceId, source);
+            run.setId(new UUID(0, i));
+            run.setStartedAt(timestamp);
+            run.setStatus(SimulationRunStatus.STOPPED);
+            run.setActiveKey(null);
+            runRepository.saveAndFlush(run);
+        }
+        var foreign = activeRun(config.getId(), config.getAccountId(), UUID.randomUUID(), source);
+        runRepository.saveAndFlush(foreign);
+        var first = runManager.runs(deviceId, 0, 3);
+        var second = runManager.runs(deviceId, 1, 3);
+        var third = runManager.runs(deviceId, 2, 3);
+        assertThat(first.totalElements()).isEqualTo(7);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.content())
+            .extracting("runId")
+            .containsExactly(new UUID(0, 7), new UUID(0, 6), new UUID(0, 5));
+        assertThat(second.content())
+            .extracting("runId")
+            .containsExactly(new UUID(0, 4), new UUID(0, 3), new UUID(0, 2));
+        assertThat(third.content()).extracting("runId").containsExactly(new UUID(0, 1));
+        assertThat(runManager.runs(deviceId, 3, 3).content()).isEmpty();
+        assertThatThrownBy(() -> runManager.runs(deviceId, -1, 25)).isInstanceOf(
+            ResponseStatusException.class
+        );
+        assertThatThrownBy(() -> runManager.runs(deviceId, 0, 101)).isInstanceOf(
+            ResponseStatusException.class
+        );
+    }
+
+    @Test
     void aSavedCredentialIsRetainedOnlyForTheSameSource() {
         UUID userId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();

@@ -1,12 +1,12 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import { mockAssistantFetch } from "../test/assistantConversationServer";
 import { useServerConversation } from "./useServerConversation";
 import { readConversationDraft, saveConversationDraft } from "./conversationDrafts";
 
 const login = (owner = "history-owner") =>
-  setTokens(`header.${btoa(JSON.stringify({ sub: owner }))}.fixture`, "refresh");
+  setSession(`header.${btoa(JSON.stringify({ sub: owner }))}.fixture`, "refresh");
 const response = {
   planId: "saved",
   summary: "Review bus22",

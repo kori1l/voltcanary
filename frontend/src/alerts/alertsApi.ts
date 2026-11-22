@@ -352,8 +352,11 @@ export function updateNotificationPreference(request: NotificationPreferenceRequ
   });
 }
 
-export function listAlertRules(filters: AlertRuleFilters = {}) {
-  return apiRequest<AlertRule[]>(`/alert-rules${query(filters)}`);
+export const alertRulePageSize = 100;
+export function listAlertRules(filters: AlertRuleFilters = {}, page = 0) {
+  return apiRequest<AlertRule[]>(
+    `/alert-rules${query({ ...filters, page, size: alertRulePageSize })}`,
+  );
 }
 
 export function getAlertRule(ruleId: string) {

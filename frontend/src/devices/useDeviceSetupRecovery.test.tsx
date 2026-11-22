@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { clearTokens, setTokens } from "../api/client";
+import { clearTokens, setSession } from "../api/client";
 import { getDevice, listDataSources } from "./devicesApi";
 import { getSimulationConfig, getSimulationStatus } from "../simulation/simulationApi";
 import { writeDeviceSetupCheckpoint } from "./deviceSetupCheckpoint";
@@ -19,7 +19,7 @@ afterEach(() => {
 });
 const account = { id: "account-A", userId: "user-A", name: "Private", status: "ACTIVE" as const };
 function save() {
-  setTokens(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "user-A" }))}.fixture`, "fixture");
+  setSession(`${btoa("{}")}\.${btoa(JSON.stringify({ sub: "user-A" }))}.fixture`, "fixture");
   writeDeviceSetupCheckpoint(account, {
     deviceId: "device-canonical",
     sourceId: "source-canonical",

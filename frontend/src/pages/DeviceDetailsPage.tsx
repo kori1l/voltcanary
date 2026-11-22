@@ -135,12 +135,17 @@ function DeviceDetailsWorkspace({ deviceId }: { deviceId?: string }) {
     alerts.setError(null);
     registry.setError(null);
     try {
-      await Promise.all([loadDeviceContext(deviceId), refreshMaintenanceWindows(deviceId)]);
-      await loadDeviceAlerts(deviceId);
-      await loadTelemetry(deviceId);
-      await loadAnalytics(deviceId);
-      await loadRegistry(deviceId);
-      await loadSimulation(deviceId);
+      const results = await Promise.allSettled([
+        loadDeviceContext(deviceId),
+        refreshMaintenanceWindows(deviceId),
+        loadDeviceAlerts(deviceId),
+        loadTelemetry(deviceId),
+        loadAnalytics(deviceId),
+        loadRegistry(deviceId),
+        loadSimulation(deviceId),
+      ]);
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     } catch (requestError) {
       details.setError(
         requestError instanceof Error ? requestError.message : "Failed to load device",
